@@ -48,9 +48,14 @@ export interface LocalAuthUser {
 
 export interface SystemCapabilities {
   project_bootstrap_enabled?: boolean
+  dataset_import?: {
+    implemented_task_types?: string[]
+    format_types_by_task_type?: Record<string, string[]>
+  }
   dataset_export?: {
     implemented_formats?: string[]
     default_format?: string
+    format_types_by_task_type?: Record<string, string[]>
   }
   project_summary_topics?: string[]
   platform_model_types_by_task_type?: Record<string, string[]>

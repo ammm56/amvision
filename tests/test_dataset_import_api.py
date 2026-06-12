@@ -354,6 +354,231 @@ def test_import_dataset_zip_creates_dota_obb_dataset_version(tmp_path: Path) -> 
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_creates_yolo_detection_dataset_version(tmp_path: Path) -> None:
+    """验证导入 YOLO detection zip 会创建 detection DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-det-1",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "yolo-detection-dataset.zip",
+                        _build_yolo_detection_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "yolo"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "detection"
+        annotation = dataset_version.samples[0].annotations[0]
+        assert round(annotation.bbox_xywh[0], 4) == 10.0
+        assert round(annotation.bbox_xywh[1], 4) == 20.0
+        assert round(annotation.bbox_xywh[2], 4) == 30.0
+        assert round(annotation.bbox_xywh[3], 4) == 40.0
+        assert dataset_version.categories[0].name == "bolt"
+        assert dataset_import.validation_report["task_type"] == "detection"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: Path) -> None:
+    """验证导入 YOLO instance segmentation zip 会创建 segmentation DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-seg-1",
+                    "format_type": "yolo",
+                    "task_type": "segmentation",
+                },
+                files={
+                    "package": (
+                        "yolo-segmentation-dataset.zip",
+                        _build_yolo_segmentation_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "yolo"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "segmentation"
+        annotation = dataset_version.samples[0].annotations[0]
+        assert round(annotation.bbox_xywh[0], 4) == 10.0
+        assert round(annotation.bbox_xywh[1], 4) == 20.0
+        assert round(annotation.bbox_xywh[2], 4) == 30.0
+        assert round(annotation.bbox_xywh[3], 4) == 40.0
+        assert annotation.segmentation is not None
+        assert dataset_import.validation_report["task_type"] == "segmentation"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) -> None:
+    """验证导入 YOLO pose zip 会创建 pose DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-pose-1",
+                    "format_type": "yolo",
+                    "task_type": "pose",
+                },
+                files={
+                    "package": (
+                        "yolo-pose-dataset.zip",
+                        _build_yolo_pose_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "yolo"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "pose"
+        annotation = dataset_version.samples[0].annotations[0]
+        assert annotation.keypoints is not None
+        assert annotation.num_keypoints == 2
+        assert annotation.keypoints[:6] == [10.0, 16.0, 2.0, 40.0, 48.0, 1.0]
+        assert dataset_import.validation_report["task_type"] == "pose"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_creates_yolo_obb_dataset_version(tmp_path: Path) -> None:
+    """验证导入 YOLO OBB zip 会创建 obb DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-obb-1",
+                    "format_type": "yolo",
+                    "task_type": "obb",
+                },
+                files={
+                    "package": (
+                        "yolo-obb-dataset.zip",
+                        _build_yolo_obb_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.format_type == "yolo"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "obb"
+        annotation = dataset_version.samples[0].annotations[0]
+        assert annotation.polygon_xy == (10.0, 10.0, 40.0, 10.0, 40.0, 30.0, 10.0, 30.0)
+        assert round(annotation.bbox_xywh[0], 4) == 10.0
+        assert round(annotation.bbox_xywh[1], 4) == 10.0
+        assert round(annotation.bbox_xywh[2], 4) == 30.0
+        assert round(annotation.bbox_xywh[3], 4) == 20.0
+        assert dataset_import.validation_report["task_type"] == "obb"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_semantic_segmentation_task_type(tmp_path: Path) -> None:
+    """验证导入接口当前不会把 semantic-segmentation 暴露为已实现 task type。"""
+
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-semantic-1",
+                    "task_type": "semantic-segmentation",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+
+        assert response.status_code == 422
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_get_dataset_import_detail_returns_validation_report_and_version_relation(
     tmp_path: Path,
 ) -> None:
@@ -1091,6 +1316,107 @@ def _build_dota_zip_bytes() -> bytes:
         zip_file.writestr(
             "dataset-root/labels/val_original/val-1.txt",
             "12 12 28 12 28 28 12 28 ship 0\n",
+        )
+    return buffer.getvalue()
+
+
+def _build_yolo_detection_zip_bytes() -> bytes:
+    """构建一个最小 YOLO detection zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="JPEG", size=(100, 80))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "dataset-root/data.yaml",
+            "\n".join(
+                (
+                    "path: .",
+                    "train: images/train",
+                    "val: images/val",
+                    "names:",
+                    "  0: bolt",
+                )
+            ),
+        )
+        zip_file.writestr("dataset-root/images/train/train-1.jpg", image_bytes)
+        zip_file.writestr("dataset-root/labels/train/train-1.txt", "0 0.250000 0.500000 0.300000 0.500000\n")
+        zip_file.writestr("dataset-root/images/val/val-1.jpg", image_bytes)
+        zip_file.writestr("dataset-root/labels/val/val-1.txt", "")
+    return buffer.getvalue()
+
+
+def _build_yolo_segmentation_zip_bytes() -> bytes:
+    """构建一个最小 YOLO instance segmentation zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="PNG", size=(100, 100))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "dataset-root/data.yaml",
+            "\n".join(
+                (
+                    "path: .",
+                    "train: images/train",
+                    "names:",
+                    "  0: sealant",
+                )
+            ),
+        )
+        zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
+        zip_file.writestr(
+            "dataset-root/labels/train/train-1.txt",
+            "0 0.100000 0.200000 0.400000 0.200000 0.400000 0.600000 0.100000 0.600000\n",
+        )
+    return buffer.getvalue()
+
+
+def _build_yolo_pose_zip_bytes() -> bytes:
+    """构建一个最小 YOLO pose zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="JPEG", size=(100, 80))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "dataset-root/data.yaml",
+            "\n".join(
+                (
+                    "path: .",
+                    "train: images/train",
+                    "names:",
+                    "  0: person",
+                    "kpt_shape: [2, 3]",
+                )
+            ),
+        )
+        zip_file.writestr("dataset-root/images/train/train-1.jpg", image_bytes)
+        zip_file.writestr(
+            "dataset-root/labels/train/train-1.txt",
+            "0 0.250000 0.500000 0.300000 0.500000 0.100000 0.200000 2 0.400000 0.600000 1\n",
+        )
+    return buffer.getvalue()
+
+
+def _build_yolo_obb_zip_bytes() -> bytes:
+    """构建一个最小 YOLO OBB zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="PNG", size=(100, 80))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "dataset-root/data.yaml",
+            "\n".join(
+                (
+                    "path: .",
+                    "train: images/train",
+                    "names:",
+                    "  0: tray",
+                )
+            ),
+        )
+        zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
+        zip_file.writestr(
+            "dataset-root/labels/train/train-1.txt",
+            "0 0.100000 0.125000 0.400000 0.125000 0.400000 0.375000 0.100000 0.375000\n",
         )
     return buffer.getvalue()
 

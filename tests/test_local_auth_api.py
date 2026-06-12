@@ -6,13 +6,20 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
+from backend.contracts.datasets.exports.dataset_formats import (
+    IMPLEMENTED_DATASET_EXPORT_FORMATS,
+    IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
+)
 from backend.service.api.app import create_app
 from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
     DEFAULT_LOCAL_AUTH_USERNAME,
 )
 from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
+from backend.service.domain.datasets.dataset_import import (
+    IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
+    IMPLEMENTED_DATASET_IMPORT_TASK_TYPES,
+)
 from backend.service.domain.models.platform_model_support import (
     SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE,
 )
@@ -316,10 +323,21 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     assert payload["visible_projects"][0]["display_name"] == "Project One"
     assert payload["visible_projects"][0]["project_source"] == "configured"
     assert payload["capabilities"]["project_bootstrap_enabled"] is True
+    assert payload["capabilities"]["dataset_import"]["implemented_task_types"] == list(
+        IMPLEMENTED_DATASET_IMPORT_TASK_TYPES
+    )
+    assert payload["capabilities"]["dataset_import"]["format_types_by_task_type"] == {
+        task_type: list(format_types)
+        for task_type, format_types in IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+    }
     assert payload["capabilities"]["dataset_export"]["implemented_formats"] == list(
         IMPLEMENTED_DATASET_EXPORT_FORMATS
     )
     assert payload["capabilities"]["dataset_export"]["default_format"] == "coco-detection-v1"
+    assert payload["capabilities"]["dataset_export"]["format_types_by_task_type"] == {
+        task_type: list(format_types)
+        for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+    }
     assert "workflows.preview-runs" in payload["capabilities"]["project_summary_topics"]
     assert payload["capabilities"]["platform_model_types_by_task_type"] == {
         task_type: list(model_types)

@@ -34,12 +34,19 @@ from backend.service.api.rest.v1.routes.projects import (
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.auth.provider_registry import AuthProviderRegistry
 from backend.service.application.project_summary import get_supported_project_summary_topics
+from backend.service.domain.datasets.dataset_import import (
+    IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
+    IMPLEMENTED_DATASET_IMPORT_TASK_TYPES,
+)
 from backend.service.domain.models.platform_model_support import (
     SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
-from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
+from backend.contracts.datasets.exports.dataset_formats import (
+    IMPLEMENTED_DATASET_EXPORT_FORMATS,
+    IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
+)
 
 
 system_router = APIRouter(prefix="/system", tags=["system"])
@@ -86,12 +93,27 @@ class DatasetExportCapabilityContract(BaseModel):
 
     implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
     default_format: str = Field(description="当前默认导出格式")
+    format_types_by_task_type: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="按 task_type 汇总的已实现导出格式列表",
+    )
+
+
+class DatasetImportCapabilityContract(BaseModel):
+    """描述前端需要读取的数据集导入能力。"""
+
+    implemented_task_types: list[str] = Field(default_factory=list, description="当前已实现并可用的导入任务类型")
+    format_types_by_task_type: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="按 task_type 汇总的已实现导入格式列表",
+    )
 
 
 class SystemBootstrapCapabilitiesContract(BaseModel):
     """描述 system/bootstrap 返回的关键能力摘要。"""
 
     project_bootstrap_enabled: bool = Field(description="是否支持 Project 初始化接口")
+    dataset_import: DatasetImportCapabilityContract = Field(description="数据集导入能力")
     dataset_export: DatasetExportCapabilityContract = Field(description="数据集导出格式能力")
     project_summary_topics: list[str] = Field(default_factory=list, description="projects.events 支持的 topic 列表")
     platform_model_types_by_task_type: dict[str, list[str]] = Field(
@@ -198,9 +220,20 @@ def get_system_bootstrap(
         visible_projects=visible_projects,
         capabilities=SystemBootstrapCapabilitiesContract(
             project_bootstrap_enabled=True,
+            dataset_import=DatasetImportCapabilityContract(
+                implemented_task_types=list(IMPLEMENTED_DATASET_IMPORT_TASK_TYPES),
+                format_types_by_task_type={
+                    task_type: list(format_types)
+                    for task_type, format_types in IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+                },
+            ),
             dataset_export=DatasetExportCapabilityContract(
                 implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),
                 default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
+                format_types_by_task_type={
+                    task_type: list(format_types)
+                    for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+                },
             ),
             project_summary_topics=list(get_supported_project_summary_topics()),
             platform_model_types_by_task_type={

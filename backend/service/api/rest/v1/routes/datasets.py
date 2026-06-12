@@ -24,11 +24,12 @@ from backend.service.application.errors import (
 )
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.domain.datasets.dataset_import import (
-	DatasetFormatType,
-	DatasetImport,
-	DatasetImportRequestedSplitStrategy,
+    DatasetFormatType,
+    DatasetImport,
+    DatasetImportTaskType,
+    DatasetImportRequestedSplitStrategy,
 )
-from backend.service.domain.datasets.dataset_version import DatasetTaskType, DatasetVersion
+from backend.service.domain.datasets.dataset_version import DatasetVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -167,7 +168,7 @@ async def import_dataset_zip(
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
-	task_type: Annotated[DatasetTaskType, Form()],
+	task_type: Annotated[DatasetImportTaskType, Form()],
 	format_type: Annotated[DatasetFormatType | None, Form()] = None,
 	split_strategy: Annotated[DatasetImportRequestedSplitStrategy | None, Form()] = None,
 	class_map_json: Annotated[str | None, Form()] = None,

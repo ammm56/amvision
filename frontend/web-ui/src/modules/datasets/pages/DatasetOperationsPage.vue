@@ -203,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Download, PackageCheck, RefreshCw, UploadCloud } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -237,13 +237,6 @@ const sessionStore = useSessionStore()
 const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
-
-const taskTypeOptions = [
-  { label: 'detection', value: 'detection' },
-  { label: 'segmentation', value: 'segmentation' },
-  { label: 'semantic-segmentation', value: 'semantic-segmentation' },
-  { label: 'pose', value: 'pose' },
-]
 
 const splitStrategyOptions = [
   { label: 'auto', value: 'auto' },
@@ -283,10 +276,37 @@ const exportFormatOptions = computed(() => {
   if (!catalog) return []
   return catalog.implemented_formats.length > 0 ? catalog.implemented_formats : catalog.items.map((item) => item.format_id)
 })
+const supportedImportTaskTypes = computed<string[]>(() => {
+  const rawValue = sessionStore.bootstrap?.capabilities.dataset_import?.implemented_task_types
+  if (!Array.isArray(rawValue)) {
+    return []
+  }
+  return rawValue
+    .filter((taskType): taskType is string => typeof taskType === 'string' && taskType.trim().length > 0)
+    .map((taskType) => taskType.trim().toLowerCase())
+})
+const supportedImportFormatTypesByTaskType = computed<Record<string, string[]>>(() => {
+  const rawValue = sessionStore.bootstrap?.capabilities.dataset_import?.format_types_by_task_type
+  if (!rawValue || typeof rawValue !== 'object') {
+    return {}
+  }
+  const normalizedEntries = Object.entries(rawValue).map(([taskType, formatTypes]) => [
+    taskType.trim().toLowerCase(),
+    Array.isArray(formatTypes)
+      ? formatTypes
+          .filter((formatType): formatType is string => typeof formatType === 'string' && formatType.trim().length > 0)
+          .map((formatType) => formatType.trim().toLowerCase())
+      : [],
+  ])
+  return Object.fromEntries(normalizedEntries)
+})
+const taskTypeOptions = computed(() => supportedImportTaskTypes.value.map((taskType) => ({ label: taskType, value: taskType })))
 const formatTypeOptions = computed(() => [
   { label: t('datasetOps.fields.autoDetect'), value: '' },
-  { label: 'COCO', value: 'coco' },
-  { label: 'VOC', value: 'voc' },
+  ...resolveSupportedImportFormatTypes(taskType.value).map((formatType) => ({
+    label: resolveImportFormatDisplayName(formatType),
+    value: formatType,
+  })),
 ])
 const exportFormatSelectOptions = computed(() => exportFormatOptions.value.map((item) => ({ label: item, value: item })))
 
@@ -299,7 +319,8 @@ function setFormatType(value: SelectValue): void {
 }
 
 function setTaskType(value: SelectValue): void {
-  taskType.value = selectValueToString(value) || 'detection'
+  taskType.value = selectValueToString(value) || taskType.value
+  syncImportSelectionFromCapabilities()
 }
 
 function setSplitStrategy(value: SelectValue): void {
@@ -309,6 +330,14 @@ function setSplitStrategy(value: SelectValue): void {
 function setExportFormatId(value: SelectValue): void {
   exportFormatId.value = selectValueToString(value)
 }
+
+watch(
+  [supportedImportTaskTypes, supportedImportFormatTypesByTaskType],
+  () => {
+    syncImportSelectionFromCapabilities()
+  },
+  { immediate: true, deep: true },
+)
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
@@ -333,6 +362,7 @@ async function loadInitialData(): Promise<void> {
     const catalog = await getDatasetExportFormats()
     exportFormats.value = catalog
     exportFormatId.value ||= catalog.default_format
+    syncImportSelectionFromCapabilities()
     await refreshRecords()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('datasetOps.messages.loadFailed')
@@ -442,5 +472,30 @@ async function downloadExport(datasetExport: DatasetExportSummary): Promise<void
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('datasetOps.messages.downloadFailed')
   }
+}
+
+function syncImportSelectionFromCapabilities(): void {
+  const nextSupportedTaskTypes = supportedImportTaskTypes.value
+  if (nextSupportedTaskTypes.length > 0 && !nextSupportedTaskTypes.includes(taskType.value)) {
+    taskType.value = nextSupportedTaskTypes[0]
+  }
+  const nextSupportedFormatTypes = resolveSupportedImportFormatTypes(taskType.value)
+  if (formatType.value && !nextSupportedFormatTypes.includes(formatType.value)) {
+    formatType.value = ''
+  }
+}
+
+function resolveSupportedImportFormatTypes(taskTypeValue: string): string[] {
+  return supportedImportFormatTypesByTaskType.value[taskTypeValue.trim().toLowerCase()] ?? []
+}
+
+function resolveImportFormatDisplayName(formatTypeValue: string): string {
+  const normalizedFormatType = formatTypeValue.trim().toLowerCase()
+  if (normalizedFormatType === 'coco') return 'COCO'
+  if (normalizedFormatType === 'voc') return 'VOC'
+  if (normalizedFormatType === 'yolo') return 'YOLO'
+  if (normalizedFormatType === 'imagenet') return 'ImageNet'
+  if (normalizedFormatType === 'dota') return 'DOTA'
+  return formatTypeValue
 }
 </script>

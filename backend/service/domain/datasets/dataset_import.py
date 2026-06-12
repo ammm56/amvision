@@ -3,13 +3,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
-
-from backend.service.domain.datasets.dataset_version import DatasetTaskType
+from typing import Final, Literal
 
 
 # 当前支持的数据集导入格式类型。
-DatasetFormatType = Literal["coco", "voc", "imagenet", "dota"]
+DatasetFormatType = Literal["coco", "voc", "yolo", "imagenet", "dota"]
+
+
+# 当前已经正式实现的数据集导入任务类型。
+DatasetImportTaskType = Literal["detection", "segmentation", "pose", "classification", "obb"]
+
+
+IMPLEMENTED_DATASET_IMPORT_TASK_TYPES: Final[tuple[DatasetImportTaskType, ...]] = (
+    "detection",
+    "segmentation",
+    "pose",
+    "classification",
+    "obb",
+)
+
+
+IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
+    dict[DatasetImportTaskType, tuple[DatasetFormatType, ...]]
+] = {
+    "detection": ("coco", "voc", "yolo"),
+    "segmentation": ("coco", "yolo"),
+    "pose": ("coco", "yolo"),
+    "classification": ("imagenet",),
+    "obb": ("dota", "yolo"),
+}
 
 
 # 数据集导入记录的最小状态集合。
@@ -62,7 +84,7 @@ class DatasetImport:
     dataset_import_id: str
     dataset_id: str
     project_id: str
-    task_type: DatasetTaskType
+    task_type: DatasetImportTaskType
     format_type: DatasetFormatType | None = None
     status: DatasetImportStatus = "received"
     created_at: str = ""

@@ -68,3 +68,29 @@ IMPLEMENTED_DATASET_EXPORT_FORMATS: Final[tuple[DatasetExportFormatId, ...]] = (
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     DOTA_OBB_DATASET_FORMAT,
 )
+
+
+# 当前已经正式实现并可对外开放的导出格式，按 task_type 汇总。
+IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
+    dict[str, tuple[DatasetExportFormatId, ...]]
+] = {
+    "detection": (
+        COCO_DETECTION_DATASET_FORMAT,
+        VOC_DETECTION_DATASET_FORMAT,
+        YOLO_DETECTION_DATASET_FORMAT,
+    ),
+    "segmentation": (
+        COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    ),
+    "pose": (
+        COCO_KEYPOINTS_DATASET_FORMAT,
+        YOLO_POSE_DATASET_FORMAT,
+    ),
+    "classification": (
+        IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    ),
+    "obb": (
+        DOTA_OBB_DATASET_FORMAT,
+    ),
+}

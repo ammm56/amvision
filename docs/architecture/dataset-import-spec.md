@@ -11,7 +11,8 @@
 - 数据集导入对象链与生命周期
 - 外部数据集格式识别、显式声明和导入校验规则
 - 通用数据格式的字段定义和任务类型拆分
-- detection、segmentation、semantic segmentation、pose 的导入格式与导出格式矩阵
+- detection、segmentation、pose、classification、obb 的导入格式与导出格式支持清单
+- semantic segmentation 的数据对象边界与后续扩展预留
 - DatasetVersion 与数据集导出的关系
 
 ## 非目标
@@ -58,12 +59,16 @@
 - 当前阶段默认通过 FastAPI 接收 zip 数据集压缩包，服务端负责解压、校验、转成通用数据格式并保存到本地磁盘
 - 训练、验证和推理默认读取平台内部统一结构；只有在导出时才回到目标模型需要的目录和文件格式
 
-## 当前第一阶段实现范围
+## 当前实现范围
 
-- 第一阶段导入接口只实现 detection task type 的数据集导入
-- 第一阶段只支持两种外部格式：COCO detection json 和 Pascal VOC detection xml
-- COCO 第一阶段只接受 bbox 检测标注；segmentation、keypoints 等字段如存在，只保留原始值，不写入 detection 通用字段
-- Pascal VOC 第一阶段只接受 object/bndbox 检测标注；segmented、part、action 等扩展信息不写入 detection 通用字段
+- 当前导入接口已实现 `detection / segmentation / pose / classification / obb` 五类 task type
+- 当前已实现的外部导入格式是：
+  - `COCO`：`detection / segmentation / pose`
+  - `Pascal VOC`：`detection`
+  - `YOLO` 风格目录：`detection / segmentation / pose / obb`
+  - `ImageNet` 风格目录：`classification`
+  - `DOTA` 风格目录：`obb`
+- `semantic-segmentation` 当前仍是数据对象和格式规划预留，还没有接通正式的 zip 导入解析链，因此不应在当前导入 UI 中作为已实现选项暴露
 - 输入统一为 zip 压缩包；zip 内允许存在一层额外包裹目录，导入器应先消除单层包裹目录后再识别结构
 - zip 中所有图片和标注都必须位于压缩包内部；不接受 xml 或 json 指向 zip 外绝对路径的情况
 
@@ -1094,19 +1099,19 @@ versions/{dataset_version_id}/
 - 导出失败不应影响既有 DatasetVersion 的稳定性
 - 数据集导出默认不作为新的正式数据版本，除非显式发起新的导入或回写流程
 
-## 任务类型格式矩阵
+## 按任务类型的支持清单
 
-下表中的“第一阶段支持”表示优先实现的格式，“扩展支持”表示后续可逐步补充。
+下表中的“当前已实现”表示仓库里已经接通的导入或导出；“后续可补充”表示仍保留的扩展方向。
 
 ### detection
 
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | detection |
-| 第一阶段导入格式 | COCO detection json, Pascal VOC xml |
-| 扩展导入格式 | YOLO detection, LabelMe rectangle json, CVAT detection export, custom csv/json manifest |
-| 第一阶段导出格式 | COCO detection |
-| 扩展导出格式 | YOLO detection, Pascal VOC xml, backend-specific detection manifest |
+| 当前已实现导入格式 | COCO detection json, Pascal VOC xml, YOLO detection |
+| 后续可补充导入格式 | LabelMe rectangle json, CVAT detection export, custom csv/json manifest |
+| 当前已实现导出格式 | COCO detection, Pascal VOC, YOLO detection |
+| 后续可补充导出格式 | backend-specific detection manifest |
 | 常见模型/后端 | YOLOX, YOLOv8 detection, YOLOv11 detection, RT-DETR |
 | 说明 | RT-DETR 与 YOLO 可以共用 detection 通用格式，但导出格式通常不同 |
 
@@ -1115,10 +1120,10 @@ versions/{dataset_version_id}/
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | segmentation |
-| 第一阶段导入格式 | COCO instance segmentation, YOLO segmentation |
-| 扩展导入格式 | LabelMe polygon json, CVAT polygon export, Supervisely instance export |
-| 第一阶段导出格式 | COCO instance segmentation, YOLO segmentation |
-| 扩展导出格式 | polygon manifest, mask package manifest |
+| 当前已实现导入格式 | COCO instance segmentation, YOLO instance segmentation |
+| 后续可补充导入格式 | LabelMe polygon json, CVAT polygon export, Supervisely instance export |
+| 当前已实现导出格式 | COCO instance segmentation, YOLO instance segmentation |
+| 后续可补充导出格式 | polygon manifest, mask package manifest |
 | 常见模型/后端 | YOLOv8 seg, YOLOv11 seg, Mask-oriented pipelines |
 | 说明 | polygon 与 mask 可以放在同一套通用格式里，但导出时要按目标训练后端选择一种主表示 |
 
@@ -1139,10 +1144,10 @@ versions/{dataset_version_id}/
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | pose |
-| 第一阶段导入格式 | COCO keypoints, YOLO pose |
-| 扩展导入格式 | CVAT keypoints export, custom keypoints manifest |
-| 第一阶段导出格式 | COCO keypoints, YOLO pose |
-| 扩展导出格式 | backend-specific pose manifest |
+| 当前已实现导入格式 | COCO keypoints, YOLO pose |
+| 后续可补充导入格式 | CVAT keypoints export, custom keypoints manifest |
+| 当前已实现导出格式 | COCO keypoints, YOLO pose |
+| 后续可补充导出格式 | backend-specific pose manifest |
 | 常见模型/后端 | YOLO pose, keypoint estimation pipelines |
 | 说明 | pose 除类别外还需要 keypoint schema 与 skeleton 定义，不能只靠 bbox 或类别表描述 |
 
@@ -1151,10 +1156,10 @@ versions/{dataset_version_id}/
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | classification |
-| 第一阶段导入格式 | ImageNet 风格 class directory |
-| 扩展导入格式 | custom classification manifest, CSV label list |
-| 第一阶段导出格式 | imagenet-classification-v1 |
-| 扩展导出格式 | backend-specific classification manifest |
+| 当前已实现导入格式 | ImageNet 风格 class directory |
+| 后续可补充导入格式 | custom classification manifest, CSV label list |
+| 当前已实现导出格式 | imagenet-classification-v1 |
+| 后续可补充导出格式 | backend-specific classification manifest |
 | 常见模型/后端 | YOLOv8/11/26 classification |
 | 说明 | 当前导出会同时保留 ImageNet 风格目录和 split annotation json，便于项目内训练/评估直接消费 |
 
@@ -1163,10 +1168,10 @@ versions/{dataset_version_id}/
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | obb |
-| 第一阶段导入格式 | DOTA OBB |
-| 扩展导入格式 | COCO + angle, YOLO OBB label |
-| 第一阶段导出格式 | dota-obb-v1 |
-| 扩展导出格式 | backend-specific obb manifest |
+| 当前已实现导入格式 | DOTA OBB, YOLO OBB |
+| 后续可补充导入格式 | COCO + angle |
+| 当前已实现导出格式 | dota-obb-v1 |
+| 后续可补充导出格式 | YOLO OBB, backend-specific obb manifest |
 | 常见模型/后端 | YOLOv8/11/26 obb |
 | 说明 | 当前统一内部表示会保留 axis-aligned bbox 和 polygon 四角点，不再把旋转框继续塞进 detection 专用结构 |
 

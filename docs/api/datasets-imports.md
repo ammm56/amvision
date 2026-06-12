@@ -54,7 +54,7 @@
 | project_id | string | 是 | 所属 Project id。接口会用它做权限可见性校验。 |
 | dataset_id | string | 是 | 所属 Dataset id。当前导入记录和生成的 DatasetVersion 都挂到这个 Dataset 下。 |
 | package | file | 是 | zip 压缩包文件。当前接口只接受 zip。 |
-| format_type | string \| null | 否 | 显式指定数据集格式。当前支持 COCO、VOC、ImageNet classification 和 DOTA OBB；为空时自动识别。 |
+| format_type | string \| null | 否 | 显式指定数据集格式。当前支持 COCO、VOC、YOLO、ImageNet classification 和 DOTA OBB；为空时自动识别。 |
 | task_type | string | 是 | 任务类型。必须显式传入；当前支持 detection、classification、segmentation、pose、obb。 |
 | split_strategy | string \| null | 否 | 显式 split 策略。允许值为 auto、train、val、test。auto 表示按数据集结构自动识别；train、val、test 表示强制把全部样本归到对应 split。 |
 | class_map_json | string \| null | 否 | JSON 对象字符串。键和值都会被转成 string，用于覆盖导入时识别到的类别映射。 |
