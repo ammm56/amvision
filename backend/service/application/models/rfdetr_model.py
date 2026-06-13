@@ -780,13 +780,11 @@ class RfdetrModel(nn.Module):
         feats, masks = self.backbone(images)
         projected_features = self.projector(feats)
         src_parts: list[torch.Tensor] = []
-        mask_parts: list[torch.Tensor] = []
         pos_parts: list[torch.Tensor] = []
         spatial_shape_items: list[tuple[int, int]] = []
         for projected_feature, mask in zip(projected_features, masks, strict=True):
             batch_size, _, feature_height, feature_width = projected_feature.shape
             src_parts.append(projected_feature.flatten(2).permute(0, 2, 1))
-            mask_parts.append(mask.flatten(1))
             y_coords, x_coords = torch.meshgrid(
                 torch.arange(feature_height, dtype=torch.float32, device=projected_feature.device),
                 torch.arange(feature_width, dtype=torch.float32, device=projected_feature.device),
@@ -811,7 +809,7 @@ class RfdetrModel(nn.Module):
                 spatial_shapes.prod(1).cumsum(0)[:-1],
             )
         )
-        valid_ratios = _compute_valid_ratios(mask_parts)
+        valid_ratios = _compute_valid_ratios(masks)
         active_group_count = self.group_detr if self.training else 1
         query_features = (
             self.query_embed.weight[: self.num_queries * active_group_count]

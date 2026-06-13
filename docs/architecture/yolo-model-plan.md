@@ -4,6 +4,8 @@
 
 本文档用于把 `projectsrc/ultralytics` 作为参考源码面，整理出 amvision 后续接入 YOLO 系列模型时的分层方式、层级关系、实现边界和优先顺序。
 
+`YOLOv8 / YOLO11 / YOLO26` 的完整 core 目录、任务拆分、Ultralytics 参考映射、许可证边界和验收规则，统一维护在 [model-core-implementation-plan.md](model-core-implementation-plan.md)。本文档只保留 YOLO 系列在平台中的高层分层和进入顺序，不重复展开 full core 实现清单。
+
 本文档重点回答下面几个问题：
 
 - `projectsrc/ultralytics` 中哪些结构适合作为参考

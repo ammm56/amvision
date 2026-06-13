@@ -19,11 +19,13 @@
 - 真正执行模型差异的实现层按 `model_type` 命名。
 - 只有在多个同系列模型真实共享了一层内部实现时，才允许按模型系列名命名。
 - 只有和值对象或公共返回结构真的无关模型、无关任务时，才允许使用中性通用名。
+- 模型 core 包先按 `model_type` 命名，core 包内部再按 `task_type` 拆分任务实现。
 
 最重要的限制是：
 
 - 不能把只服务某个模型系列的内部层，命名成 `detection_*` 这类看起来像全任务通用的名字。
 - 不能因为公开 API 已经统一，就把内部 worker、task kind、planner、runner 也一起改成通用名。
+- 不能在 `yolo_core_common` 这类共享目录里写 `if model_type == ...`，否则说明代码应该下沉到对应 `*_core`。
 
 ## 命名边界表
 
@@ -32,8 +34,29 @@
 | 公开控制面 | 按 `task_type` 命名 | `detection_training_tasks.py`、`detection_conversion_tasks.py`、`detection-inference`、`detection-evaluation` | 把公开 detection 路由写成 `yolox_*_tasks.py` | 这一层面对的是平台调用方、前端和 workflow 公共入口，重点是任务分类一致。 |
 | 模型实现层 | 按 `model_type` 命名 | `yolox_training_service.py`、`yolox_training_queue_worker.py`、`yolox_conversion_task_service.py`、`rfdetr_conversion_task_service.py` | 把仍然只服务 YOLOX 的训练/转换 worker 改成 `detection-training`、`detection-conversion` | 这一层承载的是模型结构、训练/转换流程、队列和执行器差异，必须明确隔离。 |
 | 模型系列共享内部层 | 按模型系列命名 | `yolo_conversion_task_service_base.py`、`yolo_primary_conversion_task_service.py` | `detection_conversion_task_service.py` | 这一层允许多个同系列模型共用代码，但名字必须说明“共享范围只在这个系列里”，不能冒充全任务通用层。 |
+| 模型 core 包 | 外层按 `model_type`，内部按 `task_type` | `yolov8_core/nn/tasks/detection.py`、`yolo26_core/losses/pose.py` | `yolo_core_common/detection_yolo26.py`、`detection_core.py` | core 外层表达模型代际，内部任务文件表达任务差异。 |
 | 真正通用的值对象或小工具 | 用中性通用名 | `conversion_result_snapshot.py`、`TaskRecord`、`ModelBuild` | `yolox_conversion_result_snapshot.py` | 只有当类型本身不表达模型差异时，才允许用中性名。 |
 | task kind / worker consumer / queue name | 谁执行就按谁命名 | `yolox-training`、`yolox-conversion`、`rfdetr-conversion` | 在实现未抽共享前统一改成 `detection-*` | 这些名字最终决定 worker 分发和执行归属，必须和真实实现边界一致。 |
+
+## 模型 core 内部命名规则
+
+模型 core 是模型内部实现层，不是公开 API 层。新增或迁移 core 代码时按下面规则命名：
+
+- core 包按模型分类命名，例如 `yolov8_core`、`yolo11_core`、`yolo26_core`、`rfdetr_core`。
+- core 包内部的任务目录或文件按任务分类命名，例如 `detection.py`、`segmentation.py`、`classification.py`、`pose.py`、`obb.py`。
+- 真正跨 YOLOv8 / YOLO11 / YOLO26 共用的基础工具放入 `yolo_core_common`。
+- `yolo_core_common` 只能放不关心 `model_type` 的基础函数、基础层和通用数学工具。
+- 如果某段代码需要判断 `model_type`，它不应放在 `yolo_core_common`，应放入对应的 `yolov8_core`、`yolo11_core` 或 `yolo26_core`。
+- 如果某段代码需要判断 `task_type`，优先拆成对应任务文件，不要在一个大函数里用多分支混写五类任务。
+
+示例：
+
+| 目标 | 推荐命名 | 不推荐命名 |
+| --- | --- | --- |
+| YOLO26 pose head | `yolo26_core/nn/modules/heads_pose.py` | `yolo_core_common/pose_yolo26.py` |
+| YOLOv8 detection loss | `yolov8_core/losses/detection.py` | `detection_loss.py` 放在模型无关目录 |
+| YOLO 通用 anchor 工具 | `yolo_core_common/utils/anchors.py` | `yolov8_core/common_anchors.py` |
+| YOLO11 segmentation postprocess | `yolo11_core/postprocess/segmentation.py` | `segmentation_postprocess.py` 放在共享目录 |
 
 ## 当前已经落地的修正
 

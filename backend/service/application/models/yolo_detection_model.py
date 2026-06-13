@@ -1377,6 +1377,7 @@ class YoloDetectionModel(nn.Module):
         num_classes: int,
         model_config: dict[str, object],
         input_channels: int = 3,
+        head_module_map: dict[str, type[nn.Module]] | None = None,
     ) -> None:
         """初始化 YOLO 主线模型。"""
 
@@ -1392,6 +1393,7 @@ class YoloDetectionModel(nn.Module):
             num_classes=num_classes,
             model_config=model_config,
             input_channels=input_channels,
+            head_module_map=head_module_map,
         )
 
     def forward(self, x: torch.Tensor) -> Any:
@@ -1423,6 +1425,7 @@ def build_yolo_detection_model(
     num_classes: int,
     model_config: dict[str, object],
     input_channels: int = 3,
+    head_module_map: dict[str, type[nn.Module]] | None = None,
 ) -> YoloDetectionModel:
     """按指定配置构建一套项目内 YOLO 主线模型。"""
 
@@ -1432,6 +1435,7 @@ def build_yolo_detection_model(
         num_classes=num_classes,
         model_config=model_config,
         input_channels=input_channels,
+        head_module_map=head_module_map,
     )
 
 
@@ -1442,6 +1446,7 @@ def _parse_yolo_detection_model(
     num_classes: int,
     model_config: dict[str, object],
     input_channels: int,
+    head_module_map: dict[str, type[nn.Module]] | None = None,
 ) -> tuple[nn.Sequential, tuple[int, ...]]:
     """把 YOLO 主线配置解析为顺序模块和跨层保存列表。"""
 
@@ -1469,6 +1474,16 @@ def _parse_yolo_detection_model(
     layers: list[nn.Module] = []
     save: list[int] = []
     module_defs = tuple(backbone) + tuple(head)
+    head_modules = head_module_map or {
+        "Detect": Detect,
+        "Segment": Segment,
+        "Segment26": Segment26,
+        "Pose": Pose,
+        "Pose26": Pose26,
+        "OBB": OBB,
+        "OBB26": OBB26,
+        "Classify": Classify,
+    }
     module_map = {
         "Conv": Conv,
         "C2f": C2f,
@@ -1478,16 +1493,9 @@ def _parse_yolo_detection_model(
         "C2PSA": C2PSA,
         "SPPF": SPPF,
         "Concat": Concat,
-        "Detect": Detect,
-        "Segment": Segment,
-        "Segment26": Segment26,
-        "Pose": Pose,
-        "Pose26": Pose26,
-        "OBB": OBB,
-        "OBB26": OBB26,
-        "Classify": Classify,
         "nn.Upsample": nn.Upsample,
     }
+    module_map.update(head_modules)
 
     for layer_index, raw_layer_def in enumerate(module_defs):
         if not isinstance(raw_layer_def, list | tuple) or len(raw_layer_def) != 4:
