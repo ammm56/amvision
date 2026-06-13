@@ -70,6 +70,7 @@ export interface DatasetImportInput {
 export interface DatasetExportFormatCatalog {
   implemented_formats: string[]
   default_format: string
+  format_types_by_task_type: Record<string, string[]>
   items: Array<{ format_id: string }>
 }
 
@@ -146,6 +147,12 @@ export async function listDatasetImports(datasetId: string): Promise<DatasetImpo
 
 export async function getDatasetImportDetail(datasetImportId: string): Promise<DatasetImportDetail> {
   return apiRequest<DatasetImportDetail>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`)
+}
+
+export async function getDatasetVersionRelation(datasetId: string, datasetVersionId: string): Promise<DatasetVersionRelation> {
+  return apiRequest<DatasetVersionRelation>(
+    `/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(datasetVersionId)}`,
+  )
 }
 
 export async function getDatasetExportFormats(): Promise<DatasetExportFormatCatalog> {

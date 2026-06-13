@@ -865,6 +865,11 @@ class SqlAlchemyDatasetImportService:
         supported_candidates = [
             candidate for candidate in candidates if candidate in supported_format_types
         ]
+        task_exclusive_mismatches: list[DatasetFormatType] = []
+        if "imagenet" in candidates and task_type != "classification":
+            task_exclusive_mismatches.append("imagenet")
+        if "dota" in candidates and task_type != "obb":
+            task_exclusive_mismatches.append("dota")
 
         if requested_format_type is not None:
             if requested_format_type not in candidates:
@@ -877,6 +882,15 @@ class SqlAlchemyDatasetImportService:
                 )
             return requested_format_type
 
+        if task_exclusive_mismatches:
+            raise InvalidRequestError(
+                "导入包识别结果与 task_type 不匹配",
+                details={
+                    "task_type": task_type,
+                    "detected_candidates": task_exclusive_mismatches,
+                    "supported_format_types": list(supported_format_types),
+                },
+            )
         if len(supported_candidates) == 1:
             return supported_candidates[0]
         if len(supported_candidates) > 1:
@@ -2971,7 +2985,19 @@ class SqlAlchemyDatasetImportService:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                return len(stripped.split()) >= 9
+                parts = stripped.split()
+                if len(parts) < 9:
+                    return False
+                try:
+                    for value in parts[:8]:
+                        float(value)
+                except ValueError:
+                    return False
+                try:
+                    float(parts[8])
+                except ValueError:
+                    return True
+                return False
         return False
 
     def _resolve_requested_split(

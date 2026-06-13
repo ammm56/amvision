@@ -882,6 +882,56 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
         session_factory.engine.dispose()
 
 
+def test_get_dataset_version_relation_returns_task_type_summary(tmp_path: Path) -> None:
+    """验证可以按 DatasetVersion id 读取版本摘要。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            assert create_response.status_code == 202
+            assert _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            dataset_import, _dataset_version = _load_dataset_objects(
+                session_factory=session_factory,
+                dataset_import_id=create_response.json()["dataset_import_id"],
+            )
+            dataset_version_id = dataset_import.dataset_version_id if dataset_import is not None else None
+            assert dataset_version_id is not None
+
+            detail_response = client.get(
+                f"/api/v1/datasets/dataset-1/versions/{dataset_version_id}",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["dataset_version_id"] == dataset_version_id
+        assert payload["dataset_id"] == "dataset-1"
+        assert payload["project_id"] == "project-1"
+        assert payload["task_type"] == "detection"
+        assert payload["sample_count"] == 1
+        assert payload["category_count"] == 1
+        assert payload["split_names"] == ["train"]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_path: Path) -> None:
     """验证显式 split_strategy 会覆盖导入器自动识别出的 split。"""
 

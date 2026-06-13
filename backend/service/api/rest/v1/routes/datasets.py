@@ -315,6 +315,43 @@ def get_dataset_import_detail(
 	)
 
 
+@datasets_router.get(
+	"/{dataset_id}/versions/{dataset_version_id}",
+	response_model=DatasetVersionRelationResponse,
+)
+def get_dataset_version_relation(
+	dataset_id: str,
+	dataset_version_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> DatasetVersionRelationResponse:
+	"""按 DatasetVersion id 返回版本摘要。
+
+	参数：
+	- dataset_id：所属 Dataset id。
+	- dataset_version_id：要读取的 DatasetVersion id。
+	- principal：具备 datasets:read scope 的调用主体。
+	- unit_of_work：当前请求级 Unit of Work。
+
+	返回：
+	- DatasetVersion 摘要。
+	"""
+
+	dataset_version = unit_of_work.datasets.get_dataset_version(dataset_version_id)
+	if dataset_version is None or dataset_version.dataset_id != dataset_id:
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetVersion",
+			details={"dataset_version_id": dataset_version_id},
+		)
+	if not _project_visible(principal=principal, project_id=dataset_version.project_id):
+		raise ResourceNotFoundError(
+			"找不到指定的 DatasetVersion",
+			details={"dataset_version_id": dataset_version_id},
+		)
+
+	return _build_dataset_version_relation(dataset_version)
+
+
 @datasets_router.delete(
 	"/imports/{dataset_import_id}",
 	status_code=204,

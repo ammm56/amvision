@@ -10,7 +10,11 @@ from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
+    IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
     SUPPORTED_DATASET_EXPORT_FORMATS,
+)
+from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.domain.datasets.dataset_version import (
@@ -163,10 +167,52 @@ def test_dataset_export_format_catalog_only_exposes_implemented_formats(tmp_path
     payload = response.json()
     assert payload["implemented_formats"] == list(IMPLEMENTED_DATASET_EXPORT_FORMATS)
     assert payload["default_format"] == COCO_DETECTION_DATASET_FORMAT
+    assert payload["format_types_by_task_type"] == {
+        task_type: list(format_types)
+        for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+    }
     items_by_id = {item["format_id"]: item for item in payload["items"]}
     assert set(items_by_id) == set(IMPLEMENTED_DATASET_EXPORT_FORMATS)
     assert COCO_DETECTION_DATASET_FORMAT in items_by_id
     assert VOC_DETECTION_DATASET_FORMAT in items_by_id
+
+
+def test_create_dataset_export_rejects_format_that_mismatches_dataset_version_task_type(
+    tmp_path: Path,
+) -> None:
+    """验证导出创建接口会拒绝与 DatasetVersion.task_type 不匹配的格式。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_version = _build_dataset_version(dataset_version_id="dataset-version-api-mismatch")
+    _seed_dataset_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_version=dataset_version,
+    )
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_write_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "dataset_version_id": "dataset-version-api-mismatch",
+                    "format_id": COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+                },
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "invalid_request"
+    assert payload["error"]["message"] == "当前导出格式与 DatasetVersion.task_type 不匹配"
+    assert payload["error"]["details"] == {
+        "dataset_version_id": "dataset-version-api-mismatch",
+        "format_id": COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        "task_type": "detection",
+    }
 
 
 def test_package_and_download_dataset_export_archive(tmp_path: Path) -> None:

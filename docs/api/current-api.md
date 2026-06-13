@@ -99,7 +99,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
 | DELETE | /api/v1/datasets/imports/{dataset_import_id} | datasets:write | 删除一个已完成或已失败的 DatasetImport 记录，并清理关联文件目录。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
-| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 supported、implemented 和 default_format。 |
+| GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id} | datasets:read | 查询一个 DatasetVersion 的摘要，包括 task_type、样本数、类别数和 split 列表。 |
+| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 implemented、default_format 和按 task_type 分组的 format_types_by_task_type。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |

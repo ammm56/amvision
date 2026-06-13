@@ -54,6 +54,14 @@
   - yolo-pose-v1
   - imagenet-classification-v1
   - dota-obb-v1
+- DatasetVersion 的内部保存结构是按当前任务类型归一化后的平台内部格式，不是“跨所有任务通用”的标注集合
+- 导出只能在同一 task_type 内切换目标格式：
+  - detection 版本只能导出 detection 格式
+  - segmentation 版本只能导出 segmentation 格式
+  - pose 版本只能导出 pose 格式
+  - classification 版本只能导出 classification 格式
+  - obb 版本只能导出 obb 格式
+- 当前不会把 detection 标注自动补造成 segmentation、pose 或 obb；如果源版本本身没有这些标注，导出阶段也不会凭空生成
 - DatasetImport 可以兼容多种外部目录结构与命名方式，但 DatasetExport 不保留原始导入包的目录结构；导出阶段始终按 format_id 收口为单一标准格式
 - 当前如果 format_id=coco-detection-v1，则目录结构固定为 images/{split}/ 和 annotations/instances_{split}.json，不再区分传统 annotations 目录、年份后缀命名或 Roboflow split-local manifest 这类导入变体
 - training 前置步骤应消费 manifest_object_key，而不是直接读取 DatasetVersion 内部目录结构
@@ -70,12 +78,14 @@
 - 当前公开字段包括：
   - implemented_formats
   - default_format
+  - format_types_by_task_type
   - items[].format_id
 
 #### 当前返回语义
 
 - `implemented_formats` 表示当前已经正式实现并可用的格式。
 - `default_format` 表示当前默认导出格式；当前值为 `coco-detection-v1`。
+- `format_types_by_task_type` 按 task_type 返回当前允许的导出格式列表，前端或脚本应优先用它过滤可选项，而不是把全部 format_id 混在一起展示。
 - `items` 只列出当前已经实现并可直接使用的格式。
 
 ### POST /api/v1/datasets/exports
@@ -102,6 +112,7 @@
 #### format_id 语义
 
 - format_id 控制的是导出目标标准格式，不是导入阶段识别到的原始目录变体
+- format_id 必须与 DatasetVersion.task_type 匹配；当前接口不会做跨任务类型导出
 - 当前若请求 coco-detection-v1，服务会统一生成 COCO 标准导出目录：images/{split}/、annotations/instances_{split}.json、manifest.json
 - 当前若请求 voc-detection-v1，服务会统一生成 Pascal VOC 标准导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json
 - 当前若请求 imagenet-classification-v1，服务会统一生成 `{split}/{class_name}/` 图片目录、`annotations/{split}.json` 和 `manifest.json`

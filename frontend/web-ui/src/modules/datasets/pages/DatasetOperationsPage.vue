@@ -212,6 +212,7 @@ import {
   createDatasetExport,
   downloadDatasetExport,
   getDatasetExportFormats,
+  getDatasetVersionRelation,
   listDatasetExports,
   listDatasetImports,
   packageDatasetExport,
@@ -221,6 +222,7 @@ import {
   type DatasetExportSummary,
   type DatasetImportSubmissionResponse,
   type DatasetImportSummary,
+  type DatasetVersionRelation,
 } from '../services/dataset.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -259,6 +261,7 @@ const includeTestSplit = ref(true)
 const imports = ref<DatasetImportSummary[]>([])
 const exports = ref<DatasetExportSummary[]>([])
 const exportFormats = ref<DatasetExportFormatCatalog | null>(null)
+const datasetVersionRelation = ref<DatasetVersionRelation | null>(null)
 const loading = ref(false)
 const submittingImport = ref(false)
 const submittingExport = ref(false)
@@ -266,6 +269,7 @@ const packagingExportId = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 const lastImportSubmission = ref<DatasetImportSubmissionResponse | null>(null)
 const lastExportSubmission = ref<DatasetExportSubmissionResponse | null>(null)
+let datasetVersionRelationRequestId = 0
 
 const canWriteDatasets = computed(() => sessionStore.hasScopes(['datasets:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -274,7 +278,13 @@ const categoryNameList = computed(() => exportCategoryNames.value.split(',').map
 const exportFormatOptions = computed(() => {
   const catalog = exportFormats.value
   if (!catalog) return []
-  return catalog.implemented_formats.length > 0 ? catalog.implemented_formats : catalog.items.map((item) => item.format_id)
+  if (!resolvedDatasetVersionId.value) {
+    return catalog.implemented_formats.length > 0 ? catalog.implemented_formats : catalog.items.map((item) => item.format_id)
+  }
+  if (!resolvedDatasetVersionTaskType.value) {
+    return []
+  }
+  return resolveSupportedExportFormatTypes(resolvedDatasetVersionTaskType.value)
 })
 const supportedImportTaskTypes = computed<string[]>(() => {
   const rawValue = sessionStore.bootstrap?.capabilities.dataset_import?.implemented_task_types
@@ -299,6 +309,36 @@ const supportedImportFormatTypesByTaskType = computed<Record<string, string[]>>(
       : [],
   ])
   return Object.fromEntries(normalizedEntries)
+})
+const supportedExportFormatTypesByTaskType = computed<Record<string, string[]>>(() => {
+  const rawValue = exportFormats.value?.format_types_by_task_type
+  if (!rawValue || typeof rawValue !== 'object') {
+    return {}
+  }
+  const normalizedEntries = Object.entries(rawValue).map(([taskType, formatTypes]) => [
+    taskType.trim().toLowerCase(),
+    Array.isArray(formatTypes)
+      ? formatTypes
+          .filter((formatType): formatType is string => typeof formatType === 'string' && formatType.trim().length > 0)
+          .map((formatType) => formatType.trim())
+      : [],
+  ])
+  return Object.fromEntries(normalizedEntries)
+})
+const resolvedDatasetVersionTaskType = computed(() => {
+  const relationTaskType = datasetVersionRelation.value?.task_type
+  if (typeof relationTaskType === 'string' && relationTaskType.trim().length > 0) {
+    return relationTaskType.trim().toLowerCase()
+  }
+  const matchedImportTaskType = imports.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value)?.task_type
+  if (typeof matchedImportTaskType === 'string' && matchedImportTaskType.trim().length > 0) {
+    return matchedImportTaskType.trim().toLowerCase()
+  }
+  const matchedExportTaskType = exports.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value)?.task_type
+  if (typeof matchedExportTaskType === 'string' && matchedExportTaskType.trim().length > 0) {
+    return matchedExportTaskType.trim().toLowerCase()
+  }
+  return ''
 })
 const taskTypeOptions = computed(() => supportedImportTaskTypes.value.map((taskType) => ({ label: taskType, value: taskType })))
 const formatTypeOptions = computed(() => [
@@ -339,6 +379,22 @@ watch(
   { immediate: true, deep: true },
 )
 
+watch(
+  [resolvedDatasetVersionId, () => datasetId.value.trim()],
+  ([nextDatasetVersionId, nextDatasetId]) => {
+    void loadDatasetVersionRelation(nextDatasetId, nextDatasetVersionId)
+  },
+  { immediate: true },
+)
+
+watch(
+  [exportFormats, resolvedDatasetVersionTaskType, resolvedDatasetVersionId],
+  () => {
+    syncExportSelectionFromCapabilities()
+  },
+  { immediate: true, deep: true },
+)
+
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
     await projectStore.loadProjects()
@@ -361,9 +417,9 @@ async function loadInitialData(): Promise<void> {
   try {
     const catalog = await getDatasetExportFormats()
     exportFormats.value = catalog
-    exportFormatId.value ||= catalog.default_format
     syncImportSelectionFromCapabilities()
     await refreshRecords()
+    syncExportSelectionFromCapabilities()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('datasetOps.messages.loadFailed')
   } finally {
@@ -485,8 +541,23 @@ function syncImportSelectionFromCapabilities(): void {
   }
 }
 
+function syncExportSelectionFromCapabilities(): void {
+  const nextSupportedFormatTypes = exportFormatOptions.value
+  if (nextSupportedFormatTypes.length === 0) {
+    exportFormatId.value = ''
+    return
+  }
+  if (!exportFormatId.value || !nextSupportedFormatTypes.includes(exportFormatId.value)) {
+    exportFormatId.value = nextSupportedFormatTypes[0]
+  }
+}
+
 function resolveSupportedImportFormatTypes(taskTypeValue: string): string[] {
   return supportedImportFormatTypesByTaskType.value[taskTypeValue.trim().toLowerCase()] ?? []
+}
+
+function resolveSupportedExportFormatTypes(taskTypeValue: string): string[] {
+  return supportedExportFormatTypesByTaskType.value[taskTypeValue.trim().toLowerCase()] ?? []
 }
 
 function resolveImportFormatDisplayName(formatTypeValue: string): string {
@@ -497,5 +568,31 @@ function resolveImportFormatDisplayName(formatTypeValue: string): string {
   if (normalizedFormatType === 'imagenet') return 'ImageNet'
   if (normalizedFormatType === 'dota') return 'DOTA'
   return formatTypeValue
+}
+
+async function loadDatasetVersionRelation(nextDatasetId: string, nextDatasetVersionId: string): Promise<void> {
+  const requestId = ++datasetVersionRelationRequestId
+  if (!nextDatasetId || !nextDatasetVersionId) {
+    datasetVersionRelation.value = null
+    syncExportSelectionFromCapabilities()
+    return
+  }
+
+  try {
+    const relation = await getDatasetVersionRelation(nextDatasetId, nextDatasetVersionId)
+    if (requestId !== datasetVersionRelationRequestId) {
+      return
+    }
+    datasetVersionRelation.value = relation
+  } catch {
+    if (requestId !== datasetVersionRelationRequestId) {
+      return
+    }
+    datasetVersionRelation.value = null
+  } finally {
+    if (requestId === datasetVersionRelationRequestId) {
+      syncExportSelectionFromCapabilities()
+    }
+  }
 }
 </script>

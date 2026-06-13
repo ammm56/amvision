@@ -9,7 +9,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.dataset_formats import IMPLEMENTED_DATASET_EXPORT_FORMATS
+from backend.contracts.datasets.exports.dataset_formats import (
+	IMPLEMENTED_DATASET_EXPORT_FORMATS,
+	IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
+)
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.queue import get_queue_backend
@@ -111,6 +114,10 @@ class DatasetExportFormatCatalogResponse(BaseModel):
 
 	implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
 	default_format: str = Field(description="默认导出格式")
+	format_types_by_task_type: dict[str, list[str]] = Field(
+		default_factory=dict,
+		description="按 task_type 列出的已实现导出格式",
+	)
 	items: list[DatasetExportFormatItemResponse] = Field(default_factory=list, description="已实现格式列表")
 
 
@@ -387,6 +394,10 @@ def _build_dataset_export_format_catalog_response() -> DatasetExportFormatCatalo
 	return DatasetExportFormatCatalogResponse(
 		implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),
 		default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
+		format_types_by_task_type={
+			task_type: list(format_types)
+			for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
+		},
 		items=[
 			DatasetExportFormatItemResponse(format_id=format_id)
 			for format_id in IMPLEMENTED_DATASET_EXPORT_FORMATS
