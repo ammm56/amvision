@@ -23,9 +23,9 @@ from backend.service.application.models.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
-from backend.service.application.models.yolo_detection_model import (
-    _dist2bbox_xyxy,
-    _make_anchors,
+from backend.service.application.models.yolo_core_common import (
+    dist2bbox_xyxy as _dist2bbox_xyxy,
+    make_anchors as _make_anchors,
 )
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,

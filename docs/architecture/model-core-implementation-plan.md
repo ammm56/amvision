@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档固定 `YOLOv8 / YOLO11 / YOLO26 / RF-DETR` 在本项目中的完整 core 实现边界。
+本文档固定 `YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR` 在本项目中的完整 core 实现边界。
 
 这里的重点不是再新增一个模型分类，而是把当前“平台链路已接通”的实现继续收成“模型结构、训练逻辑、权重加载、评估和导出都可长期维护”的项目内 core。
 
@@ -11,17 +11,67 @@
 - `projectsrc/` 只作为开发阶段参考源码目录，不作为运行时代码来源。
 - 项目运行时代码只能依赖 `backend/`、`custom_nodes/`、`frontend/`、`runtimes/` 和明确登记的本项目代码。
 - 预训练模型和转换产物继续放在 `data/files/models/` 约定目录，不放进 git。
+- 模型结构 core、训练 loss、权重映射、导出 forward 边界统一放在 `backend/service/application/models/`。
+- `backend/service/application/runtime/` 只放 deployment runtime、长期驻留会话、加载器、推理包装和运行时后端适配，不放模型结构 core。
 
 ## 命名
 
 目标 core 包按模型分类命名：
 
+- `yolox_core`
 - `yolov8_core`
 - `yolo11_core`
 - `yolo26_core`
 - `rfdetr_core`
 
 公开 API 和前端仍使用 `model_type`、`task_type` 和现有任务入口。`*-core` 是模型实现层，不直接暴露给外部系统。
+
+## 适用范围
+
+本文档集中承担 YOLO 系列规划职责，后续不再维护第二份 YOLO 规划文档。
+
+普通 YOLO 主线当前只覆盖这些模型分类：
+
+- `yolox`
+- `yolov8`
+- `yolo11`
+- `yolo26`
+
+普通 YOLO 主线当前按这些任务分类拆分：
+
+- `detection`
+- `segmentation`
+- `classification`
+- `pose`
+- `obb`
+
+`yolo-world`、`yoloe` 不纳入普通 YOLO full core 主线。它们包含 text prompt、visual prompt、open-vocabulary 或动态类别能力，后续按 prompt / open-vocabulary 扩展模型单独规划，不和 `YOLOv8 / YOLO11 / YOLO26` 的普通任务 core 混在一起。
+
+`projectsrc/ultralytics` 中可见的 `v3`、`v5`、`v6`、`v9`、`v10`、`12` 等历史或其他版本当前不优先进入主线。后续如确有现场需求，也必须按本文档的 `models/*_core`、`task_type` 和验收规则进入，不为单个版本复制一条新架构。
+
+## 分层关系
+
+YOLO 系列长期按下面五层理解：
+
+- 平台通用层：DatasetVersion、DatasetExport、ModelVersion、ModelBuild、DeploymentInstance、TrainingBackend、ConversionBackend、ModelRuntime、workflow 和任务系统。
+- YOLO 共用层：`yolo_core_common` 中真正跨 `YOLOv8 / YOLO11 / YOLO26` 共用的基础层、几何工具、decode 辅助和后续通用 loss / target 工具。
+- 任务分类层：detection、segmentation、classification、pose、obb 各自的输入输出、loss、assigner、decode、postprocess 和评估规则。
+- 模型分类层：`yolox_core`、`yolov8_core`、`yolo11_core`、`yolo26_core` 各自的配置、head 差异、权重映射和训练/导出细节。
+- 运行时后端层：PyTorch、ONNXRuntime、OpenVINO、TensorRT 等 deployment backend，只负责加载、warmup、reset、资源释放和同步/异步推理包装。
+
+这五层不能互相替代。尤其是 runtime backend 不是模型 core，平台 service / worker 也不承载模型结构细节。
+
+## 目录归属规则
+
+`models/` 和 `runtime/` 的职责不能混用：
+
+- `backend/service/application/models/*_core/`：放模型结构、head、decoder、loss、assigner、target 编码、权重加载、导出 forward 和 core 验收工具。
+- `backend/service/application/runtime/`：放推理后端加载、长驻会话、同步/异步推理包装、进程健康检查、warmup、reset 和资源释放。
+- service / worker 层只调用 core 的正式入口，不直接理解 head、loss、assigner 内部细节。
+
+当前 `backend/service/application/runtime/yolox_core/` 是早期实现留下的历史落点，不是新的目标目录。后续应单独做一轮 YOLOX core 迁移，把模型结构相关代码收敛到 `backend/service/application/models/yolox_core/`，runtime 目录只保留 YOLOX 推理加载和会话外壳。
+
+在 YOLOX core 完成迁移前，不应继续往 `runtime/yolox_core/` 扩展新的模型结构能力；除 bugfix 外，新 core 能力统一落到 `models/*_core/`。
 
 ## 完整 core 的含义
 
@@ -78,7 +128,7 @@
 
 ## YOLO 主线 full core 详细计划
 
-本节是 `YOLOv8 / YOLO11 / YOLO26` 完整 core 实现的唯一详细计划。其他文档只保留导航、边界或阶段摘要，不重复维护本节内容。
+本节是 `YOLOv8 / YOLO11 / YOLO26` 完整 core 实现的唯一详细计划。其他文档只保留导航，不重复维护 YOLO 目录、任务拆分或进入顺序。
 
 目标是把当前共享的 `yolo_primary` 实现继续收成清晰的两层结构：
 
@@ -124,6 +174,9 @@
 
 ```text
 backend/service/application/models/
+  yolox_core/
+    # 目标位置。当前 YOLOX core 仍在 runtime/yolox_core，后续单独迁移。
+
   yolo_core_common/
     __init__.py
     nn/
@@ -231,10 +284,10 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 迁移必须按小步推进，每步都保持测试绿。
 
-1. 建立 `yolo_core_common`，先迁出不含模型代际判断的基础函数和基础层。
-2. 把 `Detect / Classify` 的具体实现迁到任务文件，保持输出形状和 state_dict key 覆盖率不变。
-3. 把 `Segment / Pose / OBB` 迁到任务文件，YOLO26 的 `Segment26 / Pose26 / OBB26` 必须留在 `yolo26_core`。
-4. 把 decode 逻辑从 head 类内部拆到各任务的 `postprocess` 或 `decode` 边界。
+1. 已建立 `yolo_core_common`，先迁出不含模型代际判断的基础函数和基础层。
+2. 已把 `Detect / Classify` 的具体实现迁到任务文件，保持输出形状和 state_dict key 覆盖率不变。
+3. 已把 `Segment / Pose / OBB` 迁到任务文件，YOLO26 的 `Segment26 / Pose26 / OBB26` 留在 `yolo26_core`。
+4. 已把 detection bbox decode 从 head 类内部拆到 `yolo_core_common/decode/detection.py`，并把 NMS 前候选过滤收进 `yolo_core_common/postprocess/detection.py`。
 5. 把 loss、assigner、target 编码从训练 service 下沉到 core。
 6. 把 checkpoint 加载和覆盖率报告收进各 core 的 `weights.py`。
 7. 把 ONNX / OpenVINO / TensorRT 导出 forward 边界收进各 core 的 `export.py`。
@@ -275,7 +328,14 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 ### YOLOX
 
-`YOLOX` 已有 `backend/service/application/runtime/yolox_core/`，模型结构与训练主线相对完整，后续主要是保持命名边界和回归稳定。
+`YOLOX` 当前已有 `backend/service/application/runtime/yolox_core/`，模型结构与训练主线相对完整，但这个位置是历史落点，不符合当前统一的 core 目录规则。
+
+目标状态：
+
+- `backend/service/application/models/yolox_core/`：放 YOLOX 模型结构、loss、权重加载、训练/导出 core 边界和验收工具。
+- `backend/service/application/runtime/`：只保留 YOLOX deployment runtime、长期驻留会话、加载器和推理包装。
+
+后续应单独做 YOLOX core 迁移，不和 YOLOv8 / YOLO11 / YOLO26 的 full core 拆分混在一个提交里。
 
 ### YOLOv8 / YOLO11 / YOLO26
 
@@ -305,6 +365,41 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 当前底层算子、head 类实现、loss、assigner 和 decode 方法仍主要复用 `yolo_detection_model.py`、训练 service 与相关任务模块，还没有全部移动到独立 core 文件。
 
+已新增 `backend/service/application/models/yolo_core_common/`，作为 YOLO 主线共用基础层和几何工具包。当前已迁出：
+
+- `Conv / DWConv`
+- `DistributionFocalLossDecoder`
+- `make_anchors`
+- `dist2bbox_xyxy`
+- `dist2rbox`
+- `make_divisible`
+
+这些能力不包含模型代际判断，后续 loss、assigner、target 编码、postprocess 继续下沉时都应优先复用 common。
+
+`Detect / Classify / Segment / Pose / OBB` 已从 `yolo_detection_model.py` 迁到 task 文件：
+
+- `backend/service/application/models/yolo_core_common/tasks/detection.py`
+- `backend/service/application/models/yolo_core_common/tasks/classification.py`
+- `backend/service/application/models/yolo_core_common/tasks/segmentation.py`
+- `backend/service/application/models/yolo_core_common/tasks/pose.py`
+- `backend/service/application/models/yolo_core_common/tasks/obb.py`
+
+`yolov8_core/heads.py`、`yolo11_core/heads.py` 已直接引用这些 common task head，不再从 `yolo_detection_model.py` 中转。
+
+YOLO26 专用 head 已放入 `yolo26_core/tasks/`：
+
+- `backend/service/application/models/yolo26_core/tasks/segmentation.py`
+- `backend/service/application/models/yolo26_core/tasks/pose.py`
+- `backend/service/application/models/yolo26_core/tasks/obb.py`
+
+`yolo26_core/heads.py` 直接引用 `Segment26 / Pose26 / OBB26`，避免与 YOLOv8/YOLO11 混用。`yolo_detection_model.py` 当前只保留配置解析、通用骨干模块和模型构建入口。
+
+Detection 推理 decode / postprocess 已开始下沉到共用边界：
+
+- `backend/service/application/models/yolo_core_common/decode/detection.py`：负责 detection bbox decode 和 prediction 张量组装。
+- `backend/service/application/models/yolo_core_common/postprocess/detection.py`：负责 NMS 前的 score / class / candidate 过滤。
+- `backend/service/application/models/detection_postprocess.py`：继续保留 runtime array 后处理和 NMS 调用，但候选筛选已经复用 core postprocess 入口。
+
 已新增 `tests/test_yolo_core_entrypoints.py`，覆盖：
 
 - `YOLOv8 / YOLO11 / YOLO26` 独立 core builder 可以构建 detection。
@@ -314,8 +409,7 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 当前需要继续补齐：
 
-- 模型分类独立底层模块包。
-- 按任务分类拆清楚 loss、assigner 和 decode 入口。
+- 按任务分类继续拆清楚 loss、assigner、target 编码、decode 和 postprocess 入口。
 - 与参考实现对应的训练增强、优化器、scheduler、EMA、AMP、resume 等训练细节。
 - 每个 `model_type × task_type` 的 tiny dataset overfit 和真实转换部署回归。
 
@@ -359,9 +453,10 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 详细目录、任务拆分、Ultralytics 参考映射和 YOLO full core 迁移顺序以“YOLO 主线 full core 详细计划”为准。本节只保留阶段摘要。
 
-- 已完成：core 验收工具、YOLO 主线结构快照、state_dict 覆盖率测试、RF-DETR detection / segmentation core 验收测试、YOLOv8 / YOLO11 / YOLO26 的初始 core 包和 head/decode 入口登记。
-- 下一批：建立 `yolo_core_common`，先迁出不含模型代际判断的基础函数和基础层，再迁 `Detect / Classify`，保持输出形状和 state_dict 覆盖率不变。
-- 后续批次：继续迁 `Segment / Pose / OBB`、loss、assigner、target 编码、postprocess、weights、export，service / worker 层只保留任务、文件、状态和产物登记。
+- 已完成：core 验收工具、YOLO 主线结构快照、state_dict 覆盖率测试、RF-DETR detection / segmentation core 验收测试、YOLOv8 / YOLO11 / YOLO26 的初始 core 包、head/decode 入口登记、`yolo_core_common` 基础层和几何工具迁出，以及 `Detect / Classify / Segment / Pose / OBB` task head 下沉。
+- 已完成本批：detection bbox decode 和 NMS 前候选过滤迁入 core 边界，保持输出形状和 state_dict 覆盖率不变。
+- 下一批：继续迁 segmentation mask decode、pose keypoint decode、obb angle / rotated box decode 和更完整 postprocess 边界。
+- 后续批次：继续迁 loss、assigner、target 编码、weights、export，service / worker 层只保留任务、文件、状态和产物登记。
 - RF-DETR：在 YOLO 主线 core 收稳后进入 `rfdetr_core` full core，补齐 DINOv2 backbone、LW-DETR transformer、matcher、criterion、postprocess 和权重映射。
 - 全链路切换：每个 core 包最终必须通过数据集导入/导出、训练、验证、评估、转换、deployment sync/async、推理、workflow invoke 和前端创建任务查看结果。
 
@@ -386,7 +481,7 @@ service / worker 层最终只调用 core 的正式入口，不再理解 head、l
 
 下一步继续按这个顺序推进：
 
-1. 把 Detect / Segment / Pose / OBB / Classify 的具体实现继续拆到各自 core 或清晰的 shared 模块。
-2. 把 loss、assigner、postprocess 从 service 层继续下沉到各自 core。
+1. 继续把 segmentation mask decode、pose keypoint decode、obb angle / rotated box decode 和 postprocess 从 head / service 层下沉到各任务边界。
+2. 把 loss、assigner、target 编码从 service 层继续下沉到各自 core。
 3. 补 tiny dataset overfit 和真实转换部署回归。
 4. 进入 `rfdetr_core` full core，补齐 backbone、transformer、matcher、criterion、postprocess 和权重映射。

@@ -193,8 +193,10 @@ def compute_obb_loss(
     返回：
     - dict 包含 loss、class_loss、box_loss、dfl_loss、angle_loss。
     """
+    from backend.service.application.models.yolo_core_common import (
+        make_anchors as _make_anchors,
+    )
     from backend.service.application.models.yolo_primary_detection_training import (
-        _make_anchors,
         _distribution_focal_loss,
     )
 

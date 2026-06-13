@@ -512,7 +512,7 @@ TriggerSource 和 SDK 只负责协议入口。
 ## 关联文档
 
 - [model-platform-plan.md](model-platform-plan.md)
-- [yolo-model-plan.md](yolo-model-plan.md)
+- [model-core-implementation-plan.md](model-core-implementation-plan.md)
 - [workflow-runtime.md](workflow-runtime.md)
 - [workflow-json-contracts.md](workflow-json-contracts.md)
 - [node-system.md](node-system.md)

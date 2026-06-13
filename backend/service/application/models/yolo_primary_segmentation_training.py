@@ -20,8 +20,8 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolo_detection_model import (
-    _dist2bbox_xyxy,
+from backend.service.application.models.yolo_core_common import (
+    dist2bbox_xyxy as _dist2bbox_xyxy,
 )
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,

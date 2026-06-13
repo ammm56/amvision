@@ -17,8 +17,7 @@
 - [docs/architecture/model-support-matrix.md](architecture/model-support-matrix.md) 汇总当前主干代码里 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 的真实支持矩阵
 - [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md) 汇总训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
 - [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md) 固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
-- [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md) 固定 YOLOv8 / YOLO11 / YOLO26 / RF-DETR 在本项目中的完整 core 实现边界，并集中维护 YOLO full core 目录、任务拆分、参考映射和验收规则
-- [docs/architecture/yolo-model-plan.md](architecture/yolo-model-plan.md) 汇总 YOLO 系列模型的参考源码边界、层级关系、任务分类拆分、模型分类适配和进入顺序
+- [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md) 固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 在本项目中的完整 core 实现边界，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
 - [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md) 汇总模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md) 汇总 YOLOE 与 SAM3 custom node 的磁盘资产规则、manifest.json 字段和 payload 规则 约定
 - [docs/architecture/video-workflow-node-plan.md](architecture/video-workflow-node-plan.md) 汇总通用视频 payload 规则、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
@@ -75,33 +74,32 @@
 8. [docs/architecture/model-support-matrix.md](architecture/model-support-matrix.md)
 9. [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md)
 10. [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md)
-11. [docs/architecture/yolo-model-plan.md](architecture/yolo-model-plan.md)
-12. [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md)
-13. [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md)
-14. [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md)
-15. [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md)
-16. [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md)
-17. [docs/architecture/plc-modbus-field-debug-checklist.md](architecture/plc-modbus-field-debug-checklist.md)
-18. [docs/architecture/yoloe-sam3-workflow-app-operations.md](architecture/yoloe-sam3-workflow-app-operations.md)
-19. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
-20. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
-21. [docs/architecture/project-structure.md](architecture/project-structure.md)
-22. [docs/architecture/backend-service.md](architecture/backend-service.md)
-23. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
-24. [docs/architecture/task-system.md](architecture/task-system.md)
-25. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-26. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-27. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
-28. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
-29. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
-30. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
-31. [docs/architecture/node-system.md](architecture/node-system.md)
-32. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-33. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-34. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
-35. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-36. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-37. 根据任务继续进入 API、部署、节点扩展或决策文档
+11. [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md)
+12. [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md)
+13. [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md)
+14. [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md)
+15. [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md)
+16. [docs/architecture/plc-modbus-field-debug-checklist.md](architecture/plc-modbus-field-debug-checklist.md)
+17. [docs/architecture/yoloe-sam3-workflow-app-operations.md](architecture/yoloe-sam3-workflow-app-operations.md)
+18. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
+19. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
+20. [docs/architecture/project-structure.md](architecture/project-structure.md)
+21. [docs/architecture/backend-service.md](architecture/backend-service.md)
+22. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
+23. [docs/architecture/task-system.md](architecture/task-system.md)
+24. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+25. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+26. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
+27. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
+28. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
+29. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
+30. [docs/architecture/node-system.md](architecture/node-system.md)
+31. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+32. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+33. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
+34. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+35. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+36. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_detection_model import (
+from backend.service.application.models.yolo_core_common.tasks import (
     Classify,
     Detect,
     OBB,

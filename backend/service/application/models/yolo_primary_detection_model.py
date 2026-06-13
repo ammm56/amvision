@@ -13,6 +13,17 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.yolo_core_common import (
+    Classify,
+    Conv,
+    Detect,
+    DistributionFocalLossDecoder,
+    DWConv,
+    OBB,
+    Pose,
+    Proto,
+    Segment,
+)
 from backend.service.application.models.yolo_detection_model import (
     Attention,
     Bottleneck,
@@ -21,22 +32,8 @@ from backend.service.application.models.yolo_detection_model import (
     C3,
     C3k,
     C3k2,
-    Classify,
     Concat,
-    Conv,
-    Detect,
-    DistributionFocalLossDecoder,
-    DWConv,
-    OBB,
-    OBB26,
-    Pose,
-    Pose26,
-    Proto,
-    Proto26,
     PSABlock,
-    RealNVP,
-    Segment,
-    Segment26,
     SPPF,
     YoloDetectionModel,
     build_yolo_detection_model,
@@ -325,6 +322,14 @@ def _temporary_ultralytics_checkpoint_modules():
     modules_module.block = block_module
     modules_module.conv = conv_module
     modules_module.head = head_module
+
+    from backend.service.application.models.yolo26_core.tasks import (
+        OBB26,
+        Pose26,
+        Proto26,
+        RealNVP,
+        Segment26,
+    )
 
     block_module.Attention = Attention
     block_module.Bottleneck = Bottleneck

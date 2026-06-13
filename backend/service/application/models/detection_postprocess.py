@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.postprocess import (
+    prepare_detection_nms_inputs_array,
+)
 from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
 
 
@@ -59,29 +62,24 @@ def postprocess_detection_prediction_array(
     )
     results: list[DetectionPostprocessResult | None] = []
     for image_prediction in normalized_prediction:
-        boxes = image_prediction[:, :4]
-        class_scores = image_prediction[:, 4 : 4 + num_classes]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
-        keep_mask = best_scores >= score_threshold
-        boxes = boxes[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        if int(boxes.shape[0]) <= 0:
+        nms_inputs = prepare_detection_nms_inputs_array(
+            image_prediction=image_prediction,
+            np_module=np_module,
+            num_classes=num_classes,
+            score_threshold=score_threshold,
+        )
+        if nms_inputs is None:
             results.append(None)
             continue
 
         if postprocess_mode == DETECTION_POSTPROCESS_MODE_END2END_TOPK:
-            actual_k = min(resolved_max_detections, int(boxes.shape[0]))
-            keep_indices = np_module.argsort(best_scores)[::-1][:actual_k]
+            actual_k = min(resolved_max_detections, int(nms_inputs.boxes_xyxy.shape[0]))
+            keep_indices = np_module.argsort(nms_inputs.scores)[::-1][:actual_k]
         elif postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS:
             keep_indices = batched_nms_indices(
-                boxes=boxes,
-                scores=best_scores,
-                class_ids=best_class_ids,
+                boxes=nms_inputs.boxes_xyxy,
+                scores=nms_inputs.scores,
+                class_ids=nms_inputs.class_ids,
                 nms_threshold=nms_threshold,
                 np_module=np_module,
             )
@@ -95,9 +93,9 @@ def postprocess_detection_prediction_array(
             continue
         results.append(
             DetectionPostprocessResult(
-                boxes_xyxy=boxes[keep_indices],
-                scores=best_scores[keep_indices],
-                class_ids=best_class_ids[keep_indices],
+                boxes_xyxy=nms_inputs.boxes_xyxy[keep_indices],
+                scores=nms_inputs.scores[keep_indices],
+                class_ids=nms_inputs.class_ids[keep_indices],
             )
         )
     return results

@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_detection_model import (
-    Classify,
-    Detect,
-    OBB26,
-    Pose26,
-    Segment26,
-)
+from backend.service.application.models.yolo_core_common.tasks import Classify, Detect
+from backend.service.application.models.yolo26_core.tasks import OBB26, Pose26, Segment26
 
 
 YOLO26_HEAD_MODULES = {
