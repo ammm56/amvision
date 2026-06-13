@@ -72,6 +72,7 @@ class YoloPrimaryPretrainedModelCatalogSeeder:
         - runtime：当前 backend-service 进程使用的运行时资源。
         """
 
+        seen_model_version_ids: dict[str, Path] = {}
         for model_type, catalog_root_key in YOLO_PRIMARY_PRETRAINED_CATALOG_ROOTS.items():
             catalog_root = runtime.dataset_storage.resolve(catalog_root_key)
             if not catalog_root.exists():
@@ -86,6 +87,17 @@ class YoloPrimaryPretrainedModelCatalogSeeder:
                     dataset_storage=runtime.dataset_storage,
                     model_type=model_type,
                 )
+                previous_manifest_path = seen_model_version_ids.get(entry.model_version_id)
+                if previous_manifest_path is not None:
+                    raise ServiceConfigurationError(
+                        "预训练模型 manifest 的 model_version_id 重复",
+                        details={
+                            "model_version_id": entry.model_version_id,
+                            "manifest_path": manifest_path.as_posix(),
+                            "previous_manifest_path": previous_manifest_path.as_posix(),
+                        },
+                    )
+                seen_model_version_ids[entry.model_version_id] = manifest_path
                 model_service.register_pretrained(
                     PretrainedRegistrationRequest(
                         model_name=entry.model_name,
@@ -123,15 +135,26 @@ def _load_yolo_primary_catalog_entry(
     manifest_key = str(manifest_path.relative_to(dataset_storage.root_dir)).replace("\\", "/")
     dataset_storage.write_text(manifest_key, manifest_path.read_text(encoding="utf-8"))
     checkpoint_key = str(checkpoint_path.relative_to(dataset_storage.root_dir)).replace("\\", "/")
+    model_name = _require_str(payload, "model_name")
+    model_scale = _require_str(payload, "model_scale")
+    task_type = _require_str(payload, "task_type")
+    model_version_id = _require_str(payload, "model_version_id")
+    _validate_model_version_id_prefix(
+        manifest_path=manifest_path,
+        model_name=model_name,
+        model_scale=model_scale,
+        task_type=task_type,
+        model_version_id=model_version_id,
+    )
 
     return YoloPrimaryPretrainedCatalogEntry(
         model_type=model_type,
-        model_name=_require_str(payload, "model_name"),
-        model_scale=_require_str(payload, "model_scale"),
-        model_version_id=_require_str(payload, "model_version_id"),
+        model_name=model_name,
+        model_scale=model_scale,
+        model_version_id=model_version_id,
         checkpoint_file_id=_require_str(payload, "checkpoint_file_id"),
         checkpoint_storage_uri=checkpoint_key,
-        task_type=_require_str(payload, "task_type"),
+        task_type=task_type,
         metadata=metadata,
     )
 
@@ -149,3 +172,29 @@ def _require_str(payload: dict, key: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     raise ServiceConfigurationError(f"预训练模型 manifest 缺少必填字段: {key}")
+
+
+def _validate_model_version_id_prefix(
+    *,
+    manifest_path: Path,
+    model_name: str,
+    model_scale: str,
+    task_type: str,
+    model_version_id: str,
+) -> None:
+    """校验预训练版本 id 与 manifest 描述的模型、任务和 scale 一致。"""
+
+    expected_prefix = f"mv-pretrained-{model_name}-{task_type}-{model_scale}"
+    if model_version_id == expected_prefix or model_version_id.startswith(f"{expected_prefix}-"):
+        return
+    raise ServiceConfigurationError(
+        "预训练模型 manifest 的 model_version_id 与模型信息不一致",
+        details={
+            "manifest_path": manifest_path.as_posix(),
+            "model_name": model_name,
+            "task_type": task_type,
+            "model_scale": model_scale,
+            "model_version_id": model_version_id,
+            "expected_prefix": expected_prefix,
+        },
+    )

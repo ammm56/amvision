@@ -471,6 +471,7 @@ def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_p
     client, session_factory, _ = _create_runtime_api_client(
         tmp_path,
         database_name="workflow-runtime-invoke-upload-image.db",
+        enable_local_buffer_broker=False,
     )
     headers = build_test_headers(scopes="workflows:read,workflows:write")
     try:

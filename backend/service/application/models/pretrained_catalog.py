@@ -65,11 +65,23 @@ class YoloXPretrainedModelCatalogSeeder:
             return
 
         model_service = SqlAlchemyModelService(session_factory=runtime.session_factory)
+        seen_model_version_ids: dict[str, Path] = {}
         for manifest_path in sorted(catalog_root.rglob(YOLOX_PRETRAINED_MANIFEST_FILE_NAME)):
             entry = _load_pretrained_catalog_entry(
                 manifest_path=manifest_path,
                 dataset_storage=runtime.dataset_storage,
             )
+            previous_manifest_path = seen_model_version_ids.get(entry.model_version_id)
+            if previous_manifest_path is not None:
+                raise ServiceConfigurationError(
+                    "预训练模型 manifest 的 model_version_id 重复",
+                    details={
+                        "model_version_id": entry.model_version_id,
+                        "manifest_path": manifest_path.as_posix(),
+                        "previous_manifest_path": previous_manifest_path.as_posix(),
+                    },
+                )
+            seen_model_version_ids[entry.model_version_id] = manifest_path
             model_service.register_pretrained(
                 PretrainedRegistrationRequest(
                     model_name=entry.model_name,
@@ -128,21 +140,31 @@ def _load_pretrained_catalog_entry(
         }
     )
 
+    model_name = _require_manifest_str(payload, "model_name")
+    model_scale = _require_manifest_str(payload, "model_scale")
+    task_type = _require_manifest_str(payload, "task_type")
     model_version_id = _require_manifest_str(payload, "model_version_id")
+    _validate_model_version_id_prefix(
+        manifest_path=manifest_path,
+        model_name=model_name,
+        model_scale=model_scale,
+        task_type=task_type,
+        model_version_id=model_version_id,
+    )
     checkpoint_file_id = _read_manifest_str(payload, "checkpoint_file_id") or (
         f"{model_version_id}-checkpoint"
     )
 
     return YoloXPretrainedCatalogEntry(
-        model_name=_require_manifest_str(payload, "model_name"),
-        model_scale=_require_manifest_str(payload, "model_scale"),
+        model_name=model_name,
+        model_scale=model_scale,
         model_version_id=model_version_id,
         checkpoint_file_id=checkpoint_file_id,
         checkpoint_storage_uri=_build_storage_uri(
             dataset_storage=dataset_storage,
             file_path=checkpoint_path,
         ),
-        task_type=_require_manifest_str(payload, "task_type"),
+        task_type=task_type,
         metadata=metadata,
     )
 
@@ -190,3 +212,29 @@ def _read_manifest_str(payload: dict[str, object], key: str) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _validate_model_version_id_prefix(
+    *,
+    manifest_path: Path,
+    model_name: str,
+    model_scale: str,
+    task_type: str,
+    model_version_id: str,
+) -> None:
+    """校验预训练版本 id 与 manifest 描述的模型、任务和 scale 一致。"""
+
+    expected_prefix = f"mv-pretrained-{model_name}-{task_type}-{model_scale}"
+    if model_version_id == expected_prefix or model_version_id.startswith(f"{expected_prefix}-"):
+        return
+    raise ServiceConfigurationError(
+        "预训练模型 manifest 的 model_version_id 与模型信息不一致",
+        details={
+            "manifest_path": manifest_path.as_posix(),
+            "model_name": model_name,
+            "task_type": task_type,
+            "model_scale": model_scale,
+            "model_version_id": model_version_id,
+            "expected_prefix": expected_prefix,
+        },
+    )

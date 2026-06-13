@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.pretrained_catalog import (
     YOLOX_PRETRAINED_CATALOG_ROOT,
     YoloXPretrainedModelCatalogSeeder,
+    _load_pretrained_catalog_entry,
 )
 from backend.service.application.models.model_service import SqlAlchemyModelService
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE
@@ -43,11 +45,11 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     checkpoint_path.write_bytes(b"pretrained-checkpoint")
     manifest_path.write_text(
         json.dumps(
-                {
-                    "model_name": "yolox",
-                    "model_scale": "nano",
-                    "task_type": "detection",
-                    "model_version_id": "model-version-pretrained-yolox-nano",
+            {
+                "model_name": "yolox",
+                "model_scale": "nano",
+                "task_type": "detection",
+                "model_version_id": "mv-pretrained-yolox-detection-nano",
                 "checkpoint_file_id": "model-file-pretrained-yolox-nano-checkpoint",
                 "checkpoint_path": "checkpoints/yolox_nano.pth",
                 "metadata": {"catalog_name": "default"},
@@ -61,7 +63,7 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     YoloXPretrainedModelCatalogSeeder().seed(runtime)
 
     model_service = SqlAlchemyModelService(session_factory=session_factory)
-    model_version = model_service.get_model_version("model-version-pretrained-yolox-nano")
+    model_version = model_service.get_model_version("mv-pretrained-yolox-detection-nano")
     assert model_version is not None
     assert model_version.source_kind == "pretrained-reference"
     model = model_service.get_model(model_version.model_id)
@@ -79,3 +81,44 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     )
 
     session_factory.engine.dispose()
+
+
+def test_yolox_pretrained_catalog_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
+    """验证 YOLOX 预训练 manifest 不会接受与 scale 不一致的版本 id。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    manifest_path = dataset_storage.resolve(
+        f"{YOLOX_PRETRAINED_CATALOG_ROOT}/nano/default/manifest.json"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = manifest_path.parent / "checkpoints" / "yolox_nano.pth"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"pretrained-checkpoint")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "model_name": "yolox",
+                "model_scale": "nano",
+                "task_type": "detection",
+                "model_version_id": "mv-pretrained-yolox-detection-n",
+                "checkpoint_file_id": "model-file-pretrained-yolox-nano-checkpoint",
+                "checkpoint_path": "checkpoints/yolox_nano.pth",
+                "metadata": {"catalog_name": "default"},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        _load_pretrained_catalog_entry(
+            manifest_path=manifest_path,
+            dataset_storage=dataset_storage,
+        )
+    except ServiceConfigurationError as exc:
+        assert exc.details["expected_prefix"] == "mv-pretrained-yolox-detection-nano"
+    else:
+        raise AssertionError("错误的 YOLOX model_version_id 应该被拒绝")

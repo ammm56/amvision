@@ -11,6 +11,14 @@ from backend.service.application.models.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
+from backend.service.application.models.yolo_primary_pretrained_catalog import (
+    _load_yolo_primary_catalog_entry,
+)
+from backend.service.application.errors import ServiceConfigurationError
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from tests.api_test_support import (
     build_bearer_headers,
@@ -117,6 +125,43 @@ def test_list_platform_base_models_requires_models_read_scope(tmp_path: Path) ->
         session_factory.engine.dispose()
 
 
+def test_yolo_primary_pretrained_manifest_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
+    """验证 YOLO 主线预训练 manifest 不会静默接受错误版本 id。"""
+
+    manifest_path, dataset_storage = _write_yolo_primary_manifest(
+        tmp_path,
+        model_version_id="mv-pretrainanoed-yolov8-detectionano-nano",
+    )
+
+    try:
+        _load_yolo_primary_catalog_entry(
+            manifest_path=manifest_path,
+            dataset_storage=dataset_storage,
+            model_type="yolov8",
+        )
+    except ServiceConfigurationError as exc:
+        assert exc.details["expected_prefix"] == "mv-pretrained-yolov8-detection-nano"
+    else:
+        raise AssertionError("错误的 model_version_id 应该被拒绝")
+
+
+def test_yolo_primary_pretrained_manifest_accepts_variant_model_version_id(tmp_path: Path) -> None:
+    """验证 YOLO 主线预训练 manifest 允许使用 variant 后缀区分版本。"""
+
+    manifest_path, dataset_storage = _write_yolo_primary_manifest(
+        tmp_path,
+        model_version_id="mv-pretrained-yolov8-detection-nano-openimagev7",
+    )
+
+    entry = _load_yolo_primary_catalog_entry(
+        manifest_path=manifest_path,
+        dataset_storage=dataset_storage,
+        model_type="yolov8",
+    )
+
+    assert entry.model_version_id == "mv-pretrained-yolov8-detection-nano-openimagev7"
+
+
 def _seed_platform_and_project_models(
     session_factory: SessionFactory,
     *,
@@ -197,3 +242,36 @@ def _build_model_headers(*, scopes: str = "models:read") -> dict[str, str]:
     """构建平台基础模型 API 测试请求头。"""
 
     return build_test_headers(scopes=scopes)
+
+
+def _write_yolo_primary_manifest(
+    tmp_path: Path,
+    *,
+    model_version_id: str,
+) -> tuple[Path, LocalDatasetStorage]:
+    """写入一个最小 YOLO 主线预训练 manifest。"""
+
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+    manifest_dir = dataset_storage.root_dir / "models" / "pretrained" / "yolov8" / "detection" / "nano" / "default"
+    checkpoint_path = manifest_dir / "checkpoints" / "yolov8n.pt"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b"fake-checkpoint")
+    manifest_path = manifest_dir / "manifest.json"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "{",
+                '  "model_name": "yolov8",',
+                '  "model_scale": "nano",',
+                '  "task_type": "detection",',
+                f'  "model_version_id": "{model_version_id}",',
+                '  "checkpoint_file_id": "mf-pretrained-yolov8-detection-nano-checkpoint",',
+                '  "checkpoint_path": "checkpoints/yolov8n.pt",',
+                '  "metadata": {"catalog_name": "default", "entry_name": "default"}',
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return manifest_path, dataset_storage
