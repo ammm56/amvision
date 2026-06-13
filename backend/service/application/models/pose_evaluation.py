@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from typing import Any
 
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_dataset_manifest_support import (
+    build_coco_payload_from_yolo_pose_split,
+    normalize_yolo_category_names,
+)
 from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
 from backend.service.application.runtime.pose_runtime_contracts import PosePredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
@@ -42,35 +47,23 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
 
-    # 加载模型运行时
-    from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
     model_runtime = DefaultPoseModelRuntime()
 
     started_at = datetime.now(timezone.utc)
 
-    # 解析 manifest 中的 annotations 和 images
-    images = {img["id"]: img for img in manifest.get("images", [])}
-    annotations = manifest.get("annotations", [])
-    categories = manifest.get("categories", [])
-    cat_id_to_name = {c["id"]: c["name"] for c in categories}
-
-    # 按 image_id 分组 GT
-    gt_by_image: dict[int, list[dict]] = {}
-    for ann in annotations:
-        img_id = ann["image_id"]
-        gt_by_image.setdefault(img_id, []).append(ann)
+    _, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
 
     # 收集预测
     all_preds: list[dict] = []
     all_gts: list[dict] = []
     processed_count = 0
 
-    for img_id, gt_anns in gt_by_image.items():
-        img_info = images.get(img_id)
-        if not img_info:
-            continue
-        image_path = img_info.get("file_name", "")
-        resolved = dataset_storage.resolve(image_path)
+    for image_index, sample in enumerate(samples):
+        image_path = str(sample.get("image_path", "")).strip()
+        gt_anns = sample.get("annotations", [])
+        if not isinstance(gt_anns, list):
+            gt_anns = []
+        resolved = dataset_storage.resolve(image_path) if image_path else None
         if not resolved or not resolved.is_file():
             continue
 
@@ -90,10 +83,12 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
 
         # 收集 GT keypoints
         for gt_ann in gt_anns:
+            if not isinstance(gt_ann, dict):
+                continue
             kpts = gt_ann.get("keypoints", [])
             if kpts:
                 all_gts.append({
-                    "image_id": img_id,
+                    "image_id": image_index,
                     "category_id": gt_ann.get("category_id", 0),
                     "keypoints": kpts,
                     "num_keypoints": gt_ann.get("num_keypoints", len(kpts) // 3),
@@ -102,7 +97,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
         # 收集预测 keypoints
         for det in result.detections:
             all_preds.append({
-                "image_id": img_id,
+                "image_id": image_index,
                 "category_id": det.class_id,
                 "keypoints": det.keypoints,
                 "score": det.score,
@@ -114,8 +109,8 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     all_ap50_95 = []
 
     for cat in categories:
-        cat_id = cat["id"]
-        cat_name = cat["name"]
+        cat_id = int(cat.get("id", 0))
+        cat_name = str(cat.get("name", cat_id))
         cat_gts = [g for g in all_gts if g["category_id"] == cat_id]
         cat_preds = [p for p in all_preds if p["category_id"] == cat_id]
 
@@ -164,6 +159,120 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
         per_class_metrics=per_class_metrics,
         predictions_payload=all_preds,
     )
+
+
+def _parse_pose_manifest(
+    manifest: dict[str, object],
+    dataset_storage: LocalDatasetStorage,
+) -> tuple[str, list[dict[str, object]], list[dict[str, Any]]]:
+    """解析 pose export manifest。"""
+
+    splits = manifest.get("splits", [])
+    chosen_split: dict[str, object] | None = None
+    for split in (splits or []):
+        if not isinstance(split, dict):
+            continue
+        name = str(split.get("name", "")).lower()
+        if name in ("val", "valid", "validation", "test"):
+            chosen_split = split
+            break
+    if chosen_split is None and splits:
+        chosen_split = next((split for split in splits if isinstance(split, dict)), None)
+    if chosen_split is None:
+        raise InvalidRequestError("pose manifest 不包含可用的 split")
+
+    split_name = str(chosen_split.get("name", "unknown"))
+    image_root = str(chosen_split.get("image_root", "")).strip()
+    annotation_file = str(chosen_split.get("annotation_file", "")).strip()
+    label_root = str(chosen_split.get("label_root", "")).strip()
+    if annotation_file:
+        annotation_payload = dataset_storage.read_json(annotation_file)
+        if not isinstance(annotation_payload, dict):
+            raise InvalidRequestError(
+                "pose annotation 文件格式无效",
+                details={"annotation_file": annotation_file},
+            )
+        categories = _normalize_pose_categories(annotation_payload.get("categories"))
+        return split_name, _build_pose_samples(image_root=image_root, payload=annotation_payload), categories
+    if label_root:
+        category_names = normalize_yolo_category_names(
+            category_names=manifest.get("category_names"),
+            format_label="YOLO pose",
+        )
+        image_root_path = dataset_storage.resolve(image_root)
+        label_root_path = dataset_storage.resolve(label_root)
+        if not image_root_path.is_dir():
+            raise InvalidRequestError(
+                "pose 图片目录不存在",
+                details={"image_root": image_root, "split_name": split_name},
+            )
+        if not label_root_path.is_dir():
+            raise InvalidRequestError(
+                "pose 标签目录不存在",
+                details={"label_root": label_root, "split_name": split_name},
+            )
+        payload = build_coco_payload_from_yolo_pose_split(
+            split_name=split_name,
+            image_root=image_root_path,
+            label_root=label_root_path,
+            category_names=category_names,
+        )
+        categories = _normalize_pose_categories(payload.get("categories"))
+        return split_name, _build_pose_samples(image_root=image_root, payload=payload), categories
+    categories = _normalize_pose_categories(manifest.get("categories"))
+    return split_name, _build_pose_samples(image_root=image_root, payload=chosen_split), categories
+
+
+def _build_pose_samples(
+    *,
+    image_root: str,
+    payload: dict[str, object],
+) -> list[dict[str, object]]:
+    """把 COCO 风格 pose 标注组装成按图片分组的样本列表。"""
+
+    images_by_id: dict[int, str] = {}
+    for image in (payload.get("images") or []):
+        if not isinstance(image, dict):
+            continue
+        image_id = image.get("id")
+        file_name = str(image.get("file_name", "")).strip()
+        if not isinstance(image_id, int) or not file_name:
+            continue
+        images_by_id[image_id] = file_name
+
+    anns_by_image: dict[int, list[dict[str, object]]] = {}
+    for ann in (payload.get("annotations") or []):
+        if not isinstance(ann, dict):
+            continue
+        image_id = ann.get("image_id")
+        if not isinstance(image_id, int):
+            continue
+        anns_by_image.setdefault(image_id, []).append(ann)
+
+    samples: list[dict[str, object]] = []
+    for image_id, file_name in images_by_id.items():
+        full_path = f"{image_root}/{file_name}" if image_root else file_name
+        samples.append(
+            {
+                "image_path": full_path,
+                "annotations": anns_by_image.get(image_id, []),
+            }
+        )
+    return samples
+
+
+def _normalize_pose_categories(categories_payload: object) -> list[dict[str, Any]]:
+    """归一化 pose 类别列表。"""
+
+    categories: list[dict[str, Any]] = []
+    for category in categories_payload if isinstance(categories_payload, list) else ():
+        if not isinstance(category, dict):
+            continue
+        category_id = category.get("id", category.get("category_id"))
+        if not isinstance(category_id, int):
+            continue
+        categories.append({"id": category_id, "name": str(category.get("name", category_id))})
+    return categories
 
 
 def _compute_keypoint_ap(gts: list[dict], preds: list[dict], sigma: float = 0.05) -> tuple[float, float]:

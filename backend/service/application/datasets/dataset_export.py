@@ -1398,6 +1398,15 @@ class SqlAlchemyDatasetExporter:
 
         if self.dataset_storage is None or export_result.export_path is None:
             return
+        category_index_by_id = {
+            category.category_id: category_index
+            for category_index, category in enumerate(
+                sorted(
+                    dataset_version.categories,
+                    key=lambda item: item.category_id,
+                )
+            )
+        }
         for split_name, samples in split_samples:
             label_dir = f"{export_result.export_path}/labels/{split_name}"
             image_dir = f"{export_result.export_path}/images/{split_name}"
@@ -1417,24 +1426,54 @@ class SqlAlchemyDatasetExporter:
                     yc = max(0.0, min(1.0, yc))
                     nw = max(0.0, min(1.0, nw))
                     nh = max(0.0, min(1.0, nh))
-                    category_index = ann.category_id - 1 if ann.category_id >= 1 else 0
-                    parts = [str(category_index), f"{xc:.6f}", f"{yc:.6f}", f"{nw:.6f}", f"{nh:.6f}"]
+                    category_index = category_index_by_id.get(ann.category_id)
+                    if category_index is None:
+                        continue
+                    parts: list[str]
                     if (
                         export_result.format_id == YOLO_POSE_DATASET_FORMAT
                         and isinstance(ann, PoseAnnotation)
                         and isinstance(ann.keypoints, list)
                     ):
-                        for val in ann.keypoints:
-                            parts.append(f"{float(val):.6f}")
+                        parts = [str(category_index), f"{xc:.6f}", f"{yc:.6f}", f"{nw:.6f}", f"{nh:.6f}"]
+                        for keypoint_index, val in enumerate(ann.keypoints):
+                            if keypoint_index % 3 == 0:
+                                parts.append(
+                                    f"{max(0.0, min(1.0, float(val) / sample.width)):.6f}"
+                                )
+                            elif keypoint_index % 3 == 1:
+                                parts.append(
+                                    f"{max(0.0, min(1.0, float(val) / sample.height)):.6f}"
+                                )
+                            else:
+                                parts.append(f"{float(val):.6f}")
                     elif (
                         export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
                         and isinstance(ann, InstanceSegmentationAnnotation)
                         and isinstance(ann.segmentation, list)
                     ):
-                        for seg in ann.segmentation:
-                            if isinstance(seg, list):
-                                for val in seg:
-                                    parts.append(f"{float(val):.6f}")
+                        first_polygon = next(
+                            (
+                                seg
+                                for seg in ann.segmentation
+                                if isinstance(seg, list) and len(seg) >= 6 and len(seg) % 2 == 0
+                            ),
+                            None,
+                        )
+                        if first_polygon is None:
+                            continue
+                        parts = [str(category_index)]
+                        for point_index, raw_value in enumerate(first_polygon):
+                            if point_index % 2 == 0:
+                                parts.append(
+                                    f"{max(0.0, min(1.0, float(raw_value) / sample.width)):.6f}"
+                                )
+                            else:
+                                parts.append(
+                                    f"{max(0.0, min(1.0, float(raw_value) / sample.height)):.6f}"
+                                )
+                    else:
+                        parts = [str(category_index), f"{xc:.6f}", f"{yc:.6f}", f"{nw:.6f}", f"{nh:.6f}"]
                     label_lines.append(" ".join(parts))
                 base_name = sample.file_name.rsplit(".", 1)[0] if "." in sample.file_name else sample.file_name
                 self.dataset_storage.write_text(f"{label_dir}/{base_name}.txt", "\n".join(label_lines))

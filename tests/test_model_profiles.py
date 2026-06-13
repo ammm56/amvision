@@ -6,6 +6,8 @@ import pytest
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.dataset_formats import (
+    DOTA_OBB_DATASET_FORMAT,
+    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
@@ -64,7 +66,8 @@ def test_yolo_model_profiles_expose_shared_task_defaults() -> None:
     assert profile.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
-    assert profile.resolve_default_dataset_format(OBB_TASK_TYPE) is None
+    assert profile.resolve_default_dataset_format(OBB_TASK_TYPE) == DOTA_OBB_DATASET_FORMAT
+    assert profile.resolve_default_dataset_format(CLASSIFICATION_TASK_TYPE) == IMAGENET_CLASSIFICATION_DATASET_FORMAT
 
 
 def test_yolo_model_specs_follow_registered_profiles() -> None:
@@ -79,7 +82,8 @@ def test_yolo_model_specs_follow_registered_profiles() -> None:
         assert spec.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
         assert spec.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
         assert spec.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
-        assert spec.resolve_default_dataset_format(CLASSIFICATION_TASK_TYPE) is None
+        assert spec.resolve_default_dataset_format(OBB_TASK_TYPE) == DOTA_OBB_DATASET_FORMAT
+        assert spec.resolve_default_dataset_format(CLASSIFICATION_TASK_TYPE) == IMAGENET_CLASSIFICATION_DATASET_FORMAT
 
 
 def test_platform_model_support_matrix_matches_registered_specs() -> None:

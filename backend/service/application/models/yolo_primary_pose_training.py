@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import io
-import math
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.contracts.datasets.exports.dataset_formats import (
+    COCO_KEYPOINTS_DATASET_FORMAT,
+    YOLO_POSE_DATASET_FORMAT,
+)
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_dataset_manifest_support import (
+    build_coco_payload_from_yolo_pose_split,
+    normalize_yolo_category_names,
+)
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -190,7 +197,6 @@ def run_yolo_primary_pose_training(
 
     best_metric_value = 0.0
     best_metric_name = "val_map50_95"
-    total_iterations = max_epochs * iterations_per_epoch
     ckpt_bytes = b""
 
     for epoch in range(start_epoch, max_epochs):
@@ -314,6 +320,15 @@ def _load_pose_manifest(
     """加载 COCO keypoints 格式的 Pose manifest。"""
 
     splits = manifest.get("splits", [])
+    format_id = str(manifest.get("format_id") or COCO_KEYPOINTS_DATASET_FORMAT).strip()
+    yolo_category_names = (
+        normalize_yolo_category_names(
+            category_names=manifest.get("category_names"),
+            format_label="YOLO pose",
+        )
+        if format_id == YOLO_POSE_DATASET_FORMAT
+        else ()
+    )
     all_categories: dict[int, str] = {}
     train_anns: list[_PoseAnnotation] = []
     val_anns: list[_PoseAnnotation] = []
@@ -323,15 +338,35 @@ def _load_pose_manifest(
             continue
         split_name = str(split.get("name", ""))
         image_root = str(split.get("image_root", ""))
-        annotation_file = str(split.get("annotation_file", ""))
+        if format_id == YOLO_POSE_DATASET_FORMAT:
+            label_root = str(split.get("label_root", ""))
+            image_root_path = dataset_storage.resolve(image_root)
+            label_root_path = dataset_storage.resolve(label_root)
+            if not image_root_path.is_dir():
+                raise InvalidRequestError(
+                    "pose 训练 split 缺少图片目录",
+                    details={"split_name": split_name, "image_root": image_root},
+                )
+            if not label_root_path.is_dir():
+                raise InvalidRequestError(
+                    "pose 训练 split 缺少标签目录",
+                    details={"split_name": split_name, "label_root": label_root},
+                )
+            payload = build_coco_payload_from_yolo_pose_split(
+                split_name=split_name,
+                image_root=image_root_path,
+                label_root=label_root_path,
+                category_names=yolo_category_names,
+            )
+        else:
+            annotation_file = str(split.get("annotation_file", ""))
+            annotation_path = dataset_storage.resolve(annotation_file)
+            if not annotation_path.is_file():
+                continue
 
-        annotation_path = dataset_storage.resolve(annotation_file)
-        if not annotation_path.is_file():
-            continue
-
-        payload = dataset_storage.read_json(annotation_file)
-        if not isinstance(payload, dict):
-            continue
+            payload = dataset_storage.read_json(annotation_file)
+            if not isinstance(payload, dict):
+                continue
 
         for cat in (payload.get("categories") or []):
             if isinstance(cat, dict):

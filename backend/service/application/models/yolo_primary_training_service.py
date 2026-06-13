@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from backend.queue import QueueBackend
+from backend.service.application.dataset_export_format_support import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
@@ -995,16 +998,15 @@ class SqlAlchemyYoloPrimaryTrainingTaskService:
                     "status": dataset_export.status,
                 },
             )
-        expected_format = self.spec.resolve_default_dataset_format(DETECTION_TASK_TYPE)
-        if expected_format is not None and dataset_export.format_id != expected_format:
-            raise InvalidRequestError(
-                f"当前 {self.model_label} detection 训练只接受 YOLO detection 导出格式",
-                details={
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "format_id": dataset_export.format_id,
-                    "expected_format_id": expected_format,
-                },
-            )
+        require_supported_dataset_export_format(
+            model_type=self.spec.model_name,
+            task_type=DETECTION_TASK_TYPE,
+            format_id=dataset_export.format_id,
+            dataset_export_id=dataset_export.dataset_export_id,
+            unsupported_message=(
+                f"当前 {self.model_label} detection 训练只接受当前模型支持的 detection 导出格式"
+            ),
+        )
         if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
             raise InvalidRequestError(
                 "当前 DatasetExport 缺少 manifest_object_key，不能用于训练",

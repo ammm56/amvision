@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
-
-import numpy as np
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_dataset_manifest_support import (
+    build_coco_payload_from_yolo_segmentation_split,
+    normalize_yolo_category_names,
+)
 from backend.service.application.runtime.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
@@ -159,9 +160,6 @@ def _parse_segmentation_manifest(
 ) -> tuple[str, list[dict[str, object]], tuple[str, ...]]:
     """解析 segmentation manifest。"""
     splits = manifest.get("splits", [])
-    categories = manifest.get("categories", [])
-    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict))
-
     chosen_split: dict[str, object] | None = None
     for split in (splits or []):
         if not isinstance(split, dict):
@@ -176,18 +174,66 @@ def _parse_segmentation_manifest(
         raise InvalidRequestError("segmentation manifest 不包含可用的 split")
 
     split_name = str(chosen_split.get("name", "unknown"))
-    image_root = str(chosen_split.get("image_root", ""))
-    annotations = chosen_split.get("annotations", [])
-    if not isinstance(annotations, list):
-        annotations = []
+    image_root = str(chosen_split.get("image_root", "")).strip()
+    annotation_file = str(chosen_split.get("annotation_file", "")).strip()
+    label_root = str(chosen_split.get("label_root", "")).strip()
+    if annotation_file:
+        annotation_payload = dataset_storage.read_json(annotation_file)
+        if not isinstance(annotation_payload, dict):
+            raise InvalidRequestError(
+                "segmentation annotation 文件格式无效",
+                details={"annotation_file": annotation_file},
+            )
+        categories = annotation_payload.get("categories", [])
+        label_names = tuple(
+            str(category.get("name", category.get("id", "")))
+            for category in categories
+            if isinstance(category, dict)
+        )
+        return split_name, _build_segmentation_samples(image_root=image_root, payload=annotation_payload), label_names
+    if label_root:
+        category_names = normalize_yolo_category_names(
+            category_names=manifest.get("category_names"),
+            format_label="YOLO segmentation",
+        )
+        image_root_path = dataset_storage.resolve(image_root)
+        label_root_path = dataset_storage.resolve(label_root)
+        if not image_root_path.is_dir():
+            raise InvalidRequestError(
+                "segmentation 图片目录不存在",
+                details={"image_root": image_root, "split_name": split_name},
+            )
+        if not label_root_path.is_dir():
+            raise InvalidRequestError(
+                "segmentation 标签目录不存在",
+                details={"label_root": label_root, "split_name": split_name},
+            )
+        payload = build_coco_payload_from_yolo_segmentation_split(
+            split_name=split_name,
+            image_root=image_root_path,
+            label_root=label_root_path,
+            category_names=category_names,
+        )
+        return split_name, _build_segmentation_samples(image_root=image_root, payload=payload), category_names
+    categories = manifest.get("categories", [])
+    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict))
+    return split_name, _build_segmentation_samples(image_root=image_root, payload=chosen_split), label_names
+
+
+def _build_segmentation_samples(
+    *,
+    image_root: str,
+    payload: dict[str, object],
+) -> list[dict[str, object]]:
+    """把 COCO 风格 images/annotations 组装成评估样本列表。"""
 
     images_by_id: dict[int, str] = {}
-    for img in (chosen_split.get("images") or []):
+    for img in (payload.get("images") or []):
         if isinstance(img, dict):
             images_by_id[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
     anns_by_image: dict[int, list[dict]] = {}
-    for ann in annotations:
+    for ann in (payload.get("annotations") or []):
         if isinstance(ann, dict):
             img_id = int(ann.get("image_id", -1))
             anns_by_image.setdefault(img_id, []).append(ann)
@@ -199,8 +245,7 @@ def _parse_segmentation_manifest(
             "image_path": full_path,
             "annotations": anns_by_image.get(img_id, []),
         })
-
-    return split_name, samples, label_names
+    return samples
 
 
 def _compute_bbox_ap(
@@ -236,7 +281,6 @@ def _compute_bbox_ap(
             fp = 0
             for _, pred_idx in sorted_pred:
                 pred_box = pred_boxes[pred_idx]
-                pred_img = image_ids[pred_idx] if pred_idx < len(image_ids) else -1
                 best_iou = 0.0
                 best_gt = -1
                 for gt_idx in cls_gt_indices:

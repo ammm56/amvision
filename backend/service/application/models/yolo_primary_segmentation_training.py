@@ -6,17 +6,23 @@
 from __future__ import annotations
 
 import io
-import json
-import math
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.contracts.datasets.exports.dataset_formats import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolo_detection_model import (
     _dist2bbox_xyxy,
+)
+from backend.service.application.models.yolo_dataset_manifest_support import (
+    build_coco_payload_from_yolo_segmentation_split,
+    normalize_yolo_category_names,
 )
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
@@ -362,6 +368,15 @@ def _seg_load_manifest(dataset_storage: LocalDatasetStorage, manifest: dict[str,
     splits = manifest.get("splits")
     if not isinstance(splits, list):
         raise InvalidRequestError("segmentation 训练 manifest 缺少合法 splits")
+    format_id = str(manifest.get("format_id") or COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT).strip()
+    yolo_category_names = (
+        normalize_yolo_category_names(
+            category_names=manifest.get("category_names"),
+            format_label="YOLO segmentation",
+        )
+        if format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+        else ()
+    )
     all_cats: dict[int, str] = {}
     train_a, val_a = [], []
     for sp in splits:
@@ -369,13 +384,34 @@ def _seg_load_manifest(dataset_storage: LocalDatasetStorage, manifest: dict[str,
             continue
         sn = str(sp.get("name", ""))
         im_root = str(sp.get("image_root", ""))
-        af = str(sp.get("annotation_file", ""))
-        ap = dataset_storage.resolve(af)
-        if not ap.is_file():
-            raise InvalidRequestError(f"标注文件不存在: {af}")
-        payload = dataset_storage.read_json(af)
-        if not isinstance(payload, dict):
-            raise InvalidRequestError(f"标注格式无效: {af}")
+        if format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
+            label_root = str(sp.get("label_root", ""))
+            image_root_path = dataset_storage.resolve(im_root)
+            label_root_path = dataset_storage.resolve(label_root)
+            if not image_root_path.is_dir():
+                raise InvalidRequestError(
+                    "segmentation 训练 split 缺少图片目录",
+                    details={"split_name": sn, "image_root": im_root},
+                )
+            if not label_root_path.is_dir():
+                raise InvalidRequestError(
+                    "segmentation 训练 split 缺少标签目录",
+                    details={"split_name": sn, "label_root": label_root},
+                )
+            payload = build_coco_payload_from_yolo_segmentation_split(
+                split_name=sn,
+                image_root=image_root_path,
+                label_root=label_root_path,
+                category_names=yolo_category_names,
+            )
+        else:
+            af = str(sp.get("annotation_file", ""))
+            ap = dataset_storage.resolve(af)
+            if not ap.is_file():
+                raise InvalidRequestError(f"标注文件不存在: {af}")
+            payload = dataset_storage.read_json(af)
+            if not isinstance(payload, dict):
+                raise InvalidRequestError(f"标注格式无效: {af}")
         cats = payload.get("categories", [])
         if isinstance(cats, list):
             for c in cats:
