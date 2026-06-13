@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 import zipfile
 
 from backend.queue import QueueBackend
+from backend.service.application.dataset_export_format_support import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.errors import (
     InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError,
 )
@@ -367,6 +370,13 @@ class SqlAlchemyDetectionEvaluationTaskService:
             raise InvalidRequestError("DatasetExport 尚未完成", details={"status": export.status})
         if not export.manifest_object_key:
             raise InvalidRequestError("DatasetExport 缺少 manifest_object_key")
+        require_supported_dataset_export_format(
+            model_type=request.model_type,
+            task_type=DETECTION_TASK_TYPE,
+            format_id=export.format_id,
+            dataset_export_id=export.dataset_export_id,
+            unsupported_message="当前 detection 评估只接受当前模型支持的 detection 导出格式",
+        )
         return export
 
     def _resolve_runtime_target(self, request: DetectionEvaluationTaskRequest):

@@ -25,11 +25,18 @@ from backend.service.application.models.yolo_primary_detection_training import (
     _ResolvedTrainingSample,
     _build_training_batch,
     _compute_e2e_detection_loss,
+    _load_coco_ground_truth_silently,
+    _load_training_samples,
     _resolve_detection_augmentation_options,
+    _resolve_detection_splits,
     _unwrap_e2e_detection_outputs,
 )
 from backend.service.application.runtime.yolo_primary_predictor import (
     _resolve_yolo_primary_postprocess_strategy,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
 )
 
 
@@ -221,6 +228,96 @@ def test_yolo26_runtime_postprocess_strategy_uses_end2end_topk() -> None:
         DETECTION_POSTPROCESS_MODE_NMS,
         None,
     )
+
+
+def test_resolve_detection_splits_supports_yolo_detection_manifest(
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO detection manifest 可以直接被主线 detection 训练加载。"""
+
+    storage_root = tmp_path / "dataset-storage"
+    image_root = storage_root / "exports" / "sample" / "images" / "train"
+    label_root = storage_root / "exports" / "sample" / "labels" / "train"
+    image_root.mkdir(parents=True, exist_ok=True)
+    label_root.mkdir(parents=True, exist_ok=True)
+
+    image_path = image_root / "sample-1.jpg"
+    image = np.full((100, 200, 3), 180, dtype=np.uint8)
+    assert cv2.imwrite(str(image_path), image) is True
+    label_path = label_root / "sample-1.txt"
+    label_path.write_text("0 0.5 0.5 0.2 0.4\n", encoding="utf-8")
+
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(storage_root)))
+    resolved_splits = _resolve_detection_splits(
+        dataset_storage=dataset_storage,
+        imports=SimpleNamespace(cv2=cv2, np=np, torch=torch, COCO=None, COCOeval=None),
+        manifest_payload={
+            "format_id": "yolo-detection-v1",
+            "category_names": ["barcode"],
+            "splits": [
+                {
+                    "name": "train",
+                    "image_root": "exports/sample/images/train",
+                    "label_root": "exports/sample/labels/train",
+                }
+            ],
+        },
+    )
+
+    assert len(resolved_splits) == 1
+    resolved_split = resolved_splits[0]
+    assert resolved_split.annotation_file is None
+    assert resolved_split.sample_count == 1
+
+    samples, category_names, category_ids = _load_training_samples(
+        imports=SimpleNamespace(),
+        split=resolved_split,
+    )
+    assert category_names == ("barcode",)
+    assert category_ids == (1,)
+    assert len(samples) == 1
+    assert samples[0].image_width == 200
+    assert samples[0].image_height == 100
+    assert len(samples[0].annotations) == 1
+    x1, y1, x2, y2 = samples[0].annotations[0].bbox_xyxy
+    assert x1 == pytest.approx(80.0)
+    assert y1 == pytest.approx(30.0)
+    assert x2 == pytest.approx(120.0)
+    assert y2 == pytest.approx(70.0)
+
+
+def test_load_coco_ground_truth_silently_supports_in_memory_payload() -> None:
+    """验证验证阶段可以直接使用内存中的 COCO ground truth。"""
+
+    imports = SimpleNamespace(
+        cv2=cv2,
+        np=np,
+        torch=torch,
+        COCO=pytest.importorskip("pycocotools.coco").COCO,
+        COCOeval=pytest.importorskip("pycocotools.cocoeval").COCOeval,
+    )
+    ground_truth = _load_coco_ground_truth_silently(
+        imports=imports,
+        annotation_file=None,
+        annotation_payload={
+            "images": [{"id": 1, "file_name": "sample-1.jpg", "width": 200, "height": 100}],
+            "annotations": [
+                {
+                    "id": 1,
+                    "image_id": 1,
+                    "category_id": 1,
+                    "bbox": [80.0, 30.0, 40.0, 40.0],
+                    "area": 1600.0,
+                    "iscrowd": 0,
+                }
+            ],
+            "categories": [{"id": 1, "name": "barcode"}],
+        },
+    )
+
+    assert ground_truth.getImgIds() == [1]
+    assert ground_truth.getCatIds() == [1]
+    assert ground_truth.getAnnIds(imgIds=[1]) == [1]
 
 
 def _write_detection_sample(

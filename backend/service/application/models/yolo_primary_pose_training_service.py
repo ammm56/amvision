@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.queue import QueueBackend
+from backend.service.application.dataset_export_format_support import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -120,6 +123,7 @@ class SqlAlchemyYoloPrimaryPoseTrainingTaskService:
             project_id=request.project_id,
             dataset_export_id=request.dataset_export_id,
             dataset_export_manifest_key=request.dataset_export_manifest_key,
+            model_type=model_type,
         )
         task_spec = self._build_task_spec(
             request=request,
@@ -184,6 +188,7 @@ class SqlAlchemyYoloPrimaryPoseTrainingTaskService:
             dataset_export_manifest_key=self._read_optional_str(
                 payload.get("dataset_export_manifest_key")
             ),
+            model_type=resolved_model_type,
         )
         manifest_object_key = dataset_export.manifest_object_key
         if manifest_object_key is None or not manifest_object_key.strip():
@@ -538,6 +543,7 @@ class SqlAlchemyYoloPrimaryPoseTrainingTaskService:
         project_id: str,
         dataset_export_id: str | None,
         dataset_export_manifest_key: str | None,
+        model_type: str,
     ) -> DatasetExport:
         """根据 id 或 manifest key 解析 pose 训练输入。"""
 
@@ -592,6 +598,13 @@ class SqlAlchemyYoloPrimaryPoseTrainingTaskService:
                 "当前 DatasetExport 缺少 manifest_object_key，不能用于训练",
                 details={"dataset_export_id": dataset_export.dataset_export_id},
             )
+        require_supported_dataset_export_format(
+            model_type=model_type,
+            task_type=POSE_TASK_TYPE,
+            format_id=dataset_export.format_id,
+            dataset_export_id=dataset_export.dataset_export_id,
+            unsupported_message="当前 pose 训练只接受当前模型支持的 pose 导出格式",
+        )
         return dataset_export
 
     def _get_dataset_export(self, dataset_export_id: str) -> DatasetExport:

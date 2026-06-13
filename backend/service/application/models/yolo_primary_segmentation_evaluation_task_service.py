@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 import zipfile
 
 from backend.queue import QueueBackend
+from backend.service.application.dataset_export_format_support import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.errors import (
     InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError,
 )
@@ -97,7 +100,11 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
         if not request.model_version_id.strip():
             raise InvalidRequestError("model_version_id 不能为空")
         queue_backend = self._require_queue_backend()
-        dataset_export = self._resolve_dataset_export(request)
+        runtime_target = self._resolve_runtime_target(request)
+        dataset_export = self._resolve_dataset_export(
+            request,
+            model_type=runtime_target.model_type,
+        )
         task_spec = {"project_id": request.project_id, "model_version_id": request.model_version_id,
                      "dataset_export_id": dataset_export.dataset_export_id,
                      "dataset_export_manifest_key": dataset_export.manifest_object_key or "",
@@ -138,8 +145,11 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
             raise InvalidRequestError("当前评估任务已结束", details={"task_id": task_id, "state": task_record.state})
 
         request = self._build_request_from_task_record(task_record)
-        dataset_export = self._resolve_dataset_export(request)
         runtime_target = self._resolve_runtime_target(request)
+        dataset_export = self._resolve_dataset_export(
+            request,
+            model_type=runtime_target.model_type,
+        )
         attempt_no = max(1, task_record.current_attempt_no + 1)
         output_prefix = f"task-runs/evaluation/{task_id}"
         report_key = f"{output_prefix}/artifacts/reports/evaluation-report.json"
@@ -202,6 +212,8 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
     def _resolve_dataset_export(
         self,
         request: YoloPrimarySegmentationEvaluationTaskRequest,
+        *,
+        model_type: str,
     ) -> DatasetExport:
         export = None
         if request.dataset_export_id:
@@ -224,6 +236,13 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
             raise InvalidRequestError("DatasetExport 尚未完成", details={"status": export.status})
         if not export.manifest_object_key:
             raise InvalidRequestError("DatasetExport 缺少 manifest_object_key")
+        require_supported_dataset_export_format(
+            model_type=model_type,
+            task_type="segmentation",
+            format_id=export.format_id,
+            dataset_export_id=export.dataset_export_id,
+            unsupported_message="当前 segmentation 评估只接受当前模型支持的 segmentation 导出格式",
+        )
         return export
 
     def _resolve_runtime_target(

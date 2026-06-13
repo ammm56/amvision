@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.contracts.datasets.exports.dataset_formats import (
+    COCO_DETECTION_DATASET_FORMAT,
+    YOLO_DETECTION_DATASET_FORMAT,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.detection_postprocess import (
     DEFAULT_END2END_MAX_DETECTIONS,
@@ -177,13 +181,14 @@ class _TrainingImports:
 
 
 @dataclass(frozen=True)
-class _ResolvedCocoSplit:
-    """描述一个已经解析到本地绝对路径的 COCO split。"""
+class _ResolvedDetectionSplit:
+    """描述一个已经解析完成的 detection split。"""
 
     name: str
     image_root: Path
-    annotation_file: Path
     sample_count: int
+    annotation_payload: dict[str, object]
+    annotation_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -269,8 +274,9 @@ def run_yolo_primary_detection_training(
 
     imports = _require_training_imports()
     manifest_payload = dict(request.manifest_payload)
-    resolved_splits = _resolve_coco_splits(
+    resolved_splits = _resolve_detection_splits(
         dataset_storage=request.dataset_storage,
+        imports=imports,
         manifest_payload=manifest_payload,
     )
     train_split = _resolve_train_split(resolved_splits)
@@ -658,6 +664,7 @@ def run_yolo_primary_detection_training(
                 samples=validation_samples,
                 category_ids=category_ids,
                 annotation_file=validation_split.annotation_file if validation_split is not None else None,
+                annotation_payload=validation_split.annotation_payload if validation_split is not None else None,
                 input_size=input_size,
                 batch_size=batch_size,
                 device=device,
@@ -976,17 +983,38 @@ def _require_training_imports() -> _TrainingImports:
     return _TrainingImports(cv2=cv2, np=np, torch=torch, COCO=COCO, COCOeval=COCOeval)
 
 
-def _resolve_coco_splits(
+def _resolve_detection_splits(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    imports: _TrainingImports,
+    manifest_payload: dict[str, object],
+) -> tuple[_ResolvedDetectionSplit, ...]:
+    """从导出 manifest 里解析可用的 detection split。"""
+
+    format_id = str(manifest_payload.get("format_id") or COCO_DETECTION_DATASET_FORMAT).strip()
+    if format_id == YOLO_DETECTION_DATASET_FORMAT:
+        return _resolve_yolo_detection_splits(
+            dataset_storage=dataset_storage,
+            imports=imports,
+            manifest_payload=manifest_payload,
+        )
+    return _resolve_coco_detection_splits(
+        dataset_storage=dataset_storage,
+        manifest_payload=manifest_payload,
+    )
+
+
+def _resolve_coco_detection_splits(
     *,
     dataset_storage: LocalDatasetStorage,
     manifest_payload: dict[str, object],
-) -> tuple[_ResolvedCocoSplit, ...]:
-    """从导出 manifest 里解析可用的 COCO split。"""
+) -> tuple[_ResolvedDetectionSplit, ...]:
+    """从导出 manifest 里解析可用的 COCO detection split。"""
 
     splits_payload = manifest_payload.get("splits")
     if not isinstance(splits_payload, list):
         raise InvalidRequestError("训练输入 manifest 缺少 splits 定义")
-    resolved_splits: list[_ResolvedCocoSplit] = []
+    resolved_splits: list[_ResolvedDetectionSplit] = []
     for split_item in splits_payload:
         if not isinstance(split_item, dict):
             continue
@@ -1011,11 +1039,12 @@ def _resolve_coco_splits(
         image_items = annotation_payload.get("images", [])
         sample_count = len(image_items) if isinstance(image_items, list) else 0
         resolved_splits.append(
-            _ResolvedCocoSplit(
+            _ResolvedDetectionSplit(
                 name=split_name,
                 image_root=image_root_path,
-                annotation_file=annotation_path,
                 sample_count=sample_count,
+                annotation_payload=annotation_payload,
+                annotation_file=annotation_path,
             )
         )
     if not resolved_splits:
@@ -1023,7 +1052,74 @@ def _resolve_coco_splits(
     return tuple(resolved_splits)
 
 
-def _resolve_train_split(resolved_splits: tuple[_ResolvedCocoSplit, ...]) -> _ResolvedCocoSplit:
+def _resolve_yolo_detection_splits(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    imports: _TrainingImports,
+    manifest_payload: dict[str, object],
+) -> tuple[_ResolvedDetectionSplit, ...]:
+    """从导出 manifest 里解析可用的 YOLO detection split。"""
+
+    splits_payload = manifest_payload.get("splits")
+    if not isinstance(splits_payload, list):
+        raise InvalidRequestError("训练输入 manifest 缺少 splits 定义")
+    category_names_payload = manifest_payload.get("category_names")
+    if not isinstance(category_names_payload, list | tuple):
+        raise InvalidRequestError("YOLO detection 训练输入 manifest 缺少 category_names")
+    category_names = tuple(
+        normalized_name
+        for item in category_names_payload
+        if (normalized_name := str(item).strip())
+    )
+    if not category_names:
+        raise InvalidRequestError("YOLO detection 训练输入缺少有效的 category_names")
+
+    resolved_splits: list[_ResolvedDetectionSplit] = []
+    for split_item in splits_payload:
+        if not isinstance(split_item, dict):
+            continue
+        split_name = str(split_item.get("name") or "").strip()
+        image_root = str(split_item.get("image_root") or "").strip()
+        label_root = str(split_item.get("label_root") or "").strip()
+        if not split_name or not image_root or not label_root:
+            continue
+        image_root_path = dataset_storage.resolve(image_root)
+        label_root_path = dataset_storage.resolve(label_root)
+        if not image_root_path.is_dir():
+            raise InvalidRequestError(
+                "训练输入 split 缺少图片目录",
+                details={"split_name": split_name, "image_root": image_root},
+            )
+        if not label_root_path.is_dir():
+            raise InvalidRequestError(
+                "训练输入 split 缺少标签目录",
+                details={"split_name": split_name, "label_root": label_root},
+            )
+        annotation_payload = _build_coco_annotation_payload_from_yolo_detection_split(
+            imports=imports,
+            split_name=split_name,
+            image_root=image_root_path,
+            label_root=label_root_path,
+            category_names=category_names,
+        )
+        image_items = annotation_payload.get("images", [])
+        sample_count = len(image_items) if isinstance(image_items, list) else 0
+        resolved_splits.append(
+            _ResolvedDetectionSplit(
+                name=split_name,
+                image_root=image_root_path,
+                sample_count=sample_count,
+                annotation_payload=annotation_payload,
+            )
+        )
+    if not resolved_splits:
+        raise InvalidRequestError("训练输入 manifest 没有可用的 split")
+    return tuple(resolved_splits)
+
+
+def _resolve_train_split(
+    resolved_splits: tuple[_ResolvedDetectionSplit, ...],
+) -> _ResolvedDetectionSplit:
     """优先解析 train split。"""
 
     for split in resolved_splits:
@@ -1033,8 +1129,8 @@ def _resolve_train_split(resolved_splits: tuple[_ResolvedCocoSplit, ...]) -> _Re
 
 
 def _resolve_validation_split(
-    resolved_splits: tuple[_ResolvedCocoSplit, ...],
-) -> _ResolvedCocoSplit | None:
+    resolved_splits: tuple[_ResolvedDetectionSplit, ...],
+) -> _ResolvedDetectionSplit | None:
     """解析验证 split。"""
 
     validation_names = {"val", "valid", "validation", "test"}
@@ -1047,19 +1143,22 @@ def _resolve_validation_split(
 def _load_training_samples(
     *,
     imports: _TrainingImports,
-    split: _ResolvedCocoSplit,
+    split: _ResolvedDetectionSplit,
 ) -> tuple[tuple[_ResolvedTrainingSample, ...], tuple[str, ...], tuple[int, ...]]:
-    """把 COCO split 转成训练阶段可直接消费的样本列表。"""
+    """把 detection split 转成训练阶段可直接消费的样本列表。"""
 
     del imports
-    annotation_payload = json.loads(split.annotation_file.read_text(encoding="utf-8"))
+    annotation_payload = split.annotation_payload
     categories_payload = annotation_payload.get("categories", [])
     images_payload = annotation_payload.get("images", [])
     annotations_payload = annotation_payload.get("annotations", [])
     if not isinstance(categories_payload, list) or not isinstance(images_payload, list):
         raise InvalidRequestError(
-            "COCO annotation 文件结构不合法",
-            details={"annotation_file": str(split.annotation_file)},
+            "detection annotation 结构不合法",
+            details={
+                "split_name": split.name,
+                "annotation_file": str(split.annotation_file) if split.annotation_file is not None else None,
+            },
         )
     category_names: list[str] = []
     category_ids: list[int] = []
@@ -1154,6 +1253,178 @@ def _load_training_samples(
             )
         )
     return tuple(resolved_samples), tuple(category_names), tuple(category_ids)
+
+
+def _build_coco_annotation_payload_from_yolo_detection_split(
+    *,
+    imports: _TrainingImports,
+    split_name: str,
+    image_root: Path,
+    label_root: Path,
+    category_names: tuple[str, ...],
+) -> dict[str, object]:
+    """把 YOLO detection 标签目录转换成内存中的 COCO payload。"""
+
+    images_payload: list[dict[str, object]] = []
+    annotations_payload: list[dict[str, object]] = []
+    categories_payload = [
+        {
+            "id": category_index + 1,
+            "name": category_name,
+        }
+        for category_index, category_name in enumerate(category_names)
+    ]
+    annotation_id = 1
+    for image_id, image_path in enumerate(_iter_image_files(image_root), start=1):
+        image_height, image_width = _read_image_shape(imports=imports, image_path=image_path)
+        relative_image_path = image_path.relative_to(image_root)
+        images_payload.append(
+            {
+                "id": image_id,
+                "file_name": relative_image_path.as_posix(),
+                "width": image_width,
+                "height": image_height,
+            }
+        )
+        label_path = (label_root / relative_image_path).with_suffix(".txt")
+        annotation_rows, annotation_id = _parse_yolo_detection_label_file(
+            label_path=label_path,
+            split_name=split_name,
+            image_id=image_id,
+            image_width=image_width,
+            image_height=image_height,
+            category_count=len(category_names),
+            next_annotation_id=annotation_id,
+        )
+        annotations_payload.extend(annotation_rows)
+    return {
+        "images": images_payload,
+        "annotations": annotations_payload,
+        "categories": categories_payload,
+    }
+
+
+def _iter_image_files(image_root: Path) -> tuple[Path, ...]:
+    """收集目录下全部训练图片。"""
+
+    image_suffixes = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+    return tuple(
+        sorted(
+            (
+                candidate
+                for candidate in image_root.rglob("*")
+                if candidate.is_file() and candidate.suffix.lower() in image_suffixes
+            ),
+            key=lambda item: item.as_posix().lower(),
+        )
+    )
+
+
+def _read_image_shape(
+    *,
+    imports: _TrainingImports,
+    image_path: Path,
+) -> tuple[int, int]:
+    """读取一张训练图片的尺寸。"""
+
+    image = imports.cv2.imread(str(image_path), imports.cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise InvalidRequestError(
+            "训练输入图片无法读取",
+            details={"image_path": str(image_path)},
+        )
+    image_height = int(image.shape[0])
+    image_width = int(image.shape[1])
+    if image_height <= 0 or image_width <= 0:
+        raise InvalidRequestError(
+            "训练输入图片尺寸无效",
+            details={"image_path": str(image_path)},
+        )
+    return image_height, image_width
+
+
+def _parse_yolo_detection_label_file(
+    *,
+    label_path: Path,
+    split_name: str,
+    image_id: int,
+    image_width: int,
+    image_height: int,
+    category_count: int,
+    next_annotation_id: int,
+) -> tuple[list[dict[str, object]], int]:
+    """解析一个 YOLO detection label 文件。"""
+
+    if not label_path.is_file():
+        return [], next_annotation_id
+    annotation_rows: list[dict[str, object]] = []
+    annotation_id = next_annotation_id
+    for line_index, raw_line in enumerate(label_path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 5:
+            raise InvalidRequestError(
+                "YOLO detection 标注行必须是 5 列",
+                details={
+                    "split_name": split_name,
+                    "label_file": str(label_path),
+                    "line_index": line_index,
+                },
+            )
+        try:
+            category_index = int(parts[0])
+            x_center = float(parts[1])
+            y_center = float(parts[2])
+            box_width = float(parts[3])
+            box_height = float(parts[4])
+        except ValueError as error:
+            raise InvalidRequestError(
+                "YOLO detection 标注行包含非法数字",
+                details={
+                    "split_name": split_name,
+                    "label_file": str(label_path),
+                    "line_index": line_index,
+                },
+            ) from error
+        if category_index < 0 or category_index >= category_count:
+            raise InvalidRequestError(
+                "YOLO detection 标注行类别索引越界",
+                details={
+                    "split_name": split_name,
+                    "label_file": str(label_path),
+                    "line_index": line_index,
+                    "category_index": category_index,
+                    "category_count": category_count,
+                },
+            )
+        if box_width <= 0.0 or box_height <= 0.0:
+            continue
+        normalized_x1 = x_center - (box_width / 2.0)
+        normalized_y1 = y_center - (box_height / 2.0)
+        normalized_x2 = x_center + (box_width / 2.0)
+        normalized_y2 = y_center + (box_height / 2.0)
+        x1 = max(0.0, min(normalized_x1 * float(image_width), float(image_width)))
+        y1 = max(0.0, min(normalized_y1 * float(image_height), float(image_height)))
+        x2 = max(0.0, min(normalized_x2 * float(image_width), float(image_width)))
+        y2 = max(0.0, min(normalized_y2 * float(image_height), float(image_height)))
+        bbox_width = max(0.0, x2 - x1)
+        bbox_height = max(0.0, y2 - y1)
+        if bbox_width <= 0.0 or bbox_height <= 0.0:
+            continue
+        annotation_rows.append(
+            {
+                "id": annotation_id,
+                "image_id": image_id,
+                "category_id": category_index + 1,
+                "bbox": [x1, y1, bbox_width, bbox_height],
+                "area": bbox_width * bbox_height,
+                "iscrowd": 0,
+            }
+        )
+        annotation_id += 1
+    return annotation_rows, annotation_id
 
 
 def _resolve_input_size(input_size: tuple[int, int] | None) -> tuple[int, int]:
@@ -2381,6 +2652,7 @@ def _evaluate_detection_model(
     samples: tuple[_ResolvedTrainingSample, ...],
     category_ids: tuple[int, ...],
     annotation_file: Path | None,
+    annotation_payload: dict[str, object] | None,
     input_size: tuple[int, int],
     batch_size: int,
     device: str,
@@ -2423,6 +2695,7 @@ def _evaluate_detection_model(
         runtime_precision=runtime_precision,
         category_ids=category_ids,
         annotation_file=annotation_file,
+        annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
     )
@@ -2824,12 +3097,13 @@ def _evaluate_validation_map(
     runtime_precision: str,
     category_ids: tuple[int, ...],
     annotation_file: Path | None,
+    annotation_payload: dict[str, object] | None,
     confidence_threshold: float,
     nms_threshold: float,
 ) -> dict[str, float]:
     """执行一次真实 COCO mAP 评估。"""
 
-    if not samples or annotation_file is None:
+    if not samples or annotation_payload is None:
         return {"map50": 0.0, "map50_95": 0.0}
     if imports.COCO is None or imports.COCOeval is None:
         raise ServiceConfigurationError("当前环境缺少 pycocotools，无法执行 detection mAP 验证")
@@ -2882,6 +3156,7 @@ def _evaluate_validation_map(
     ground_truth = _load_coco_ground_truth_silently(
         imports=imports,
         annotation_file=annotation_file,
+        annotation_payload=annotation_payload,
     )
     with redirect_stdout(io.StringIO()):
         coco_detections = ground_truth.loadRes(detections)
@@ -2956,14 +3231,22 @@ def _convert_primary_predictions_to_coco_detections(
 def _load_coco_ground_truth_silently(
     *,
     imports: _TrainingImports,
-    annotation_file: Path,
+    annotation_file: Path | None,
+    annotation_payload: dict[str, object] | None,
 ) -> Any:
     """静默加载 COCO ground truth。"""
 
     if imports.COCO is None:
         raise ServiceConfigurationError("当前环境缺少 pycocotools.COCO")
     with redirect_stdout(io.StringIO()):
-        return imports.COCO(str(annotation_file))
+        if annotation_file is not None:
+            return imports.COCO(str(annotation_file))
+        if annotation_payload is None:
+            raise InvalidRequestError("缺少可用的 COCO ground truth 数据")
+        ground_truth = imports.COCO()
+        ground_truth.dataset = annotation_payload
+        ground_truth.createIndex()
+        return ground_truth
 
 
 def _freeze_batch_norm_modules(

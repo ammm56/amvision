@@ -221,9 +221,8 @@ def _parse_detection_manifest(
     manifest: dict[str, object],
     dataset_storage: LocalDatasetStorage,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
-    """解析 COCO detection manifest，返回 (split_name, images, categories)。"""
+    """解析 detection manifest，返回 (split_name, images, categories)。"""
     splits = manifest.get("splits", [])
-    categories = manifest.get("categories", [])
 
     chosen_split: dict[str, object] | None = None
     for split in (splits or []):
@@ -239,17 +238,155 @@ def _parse_detection_manifest(
         raise InvalidRequestError("detection manifest 不包含可用的 split")
 
     split_name = str(chosen_split.get("name", "unknown"))
-    image_root = str(chosen_split.get("image_root", ""))
+    image_root = str(chosen_split.get("image_root", "")).strip()
+    annotation_file = str(chosen_split.get("annotation_file", "")).strip()
+    label_root = str(chosen_split.get("label_root", "")).strip()
+    if annotation_file:
+        return _parse_coco_detection_split(
+            dataset_storage=dataset_storage,
+            split_name=split_name,
+            image_root=image_root,
+            annotation_file=annotation_file,
+        )
+    if label_root:
+        return _parse_yolo_detection_split(
+            dataset_storage=dataset_storage,
+            split_name=split_name,
+            image_root=image_root,
+            label_root=label_root,
+            category_names=manifest.get("category_names"),
+        )
+    return _parse_inline_detection_split(
+        split_name=split_name,
+        image_root=image_root,
+        split_payload=chosen_split,
+        categories_payload=manifest.get("categories"),
+    )
 
-    # 构建图片映射
+
+def _parse_coco_detection_split(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    split_name: str,
+    image_root: str,
+    annotation_file: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """解析 COCO detection split。"""
+
+    annotation_payload = dataset_storage.read_json(annotation_file)
+    if not isinstance(annotation_payload, dict):
+        raise InvalidRequestError(
+            "detection annotation 文件格式无效",
+            details={"annotation_file": annotation_file},
+        )
+    categories = _normalize_detection_categories(annotation_payload.get("categories"))
+    images = _build_detection_images_from_annotation_payload(
+        image_root=image_root,
+        annotation_payload=annotation_payload,
+    )
+    return split_name, images, categories
+
+
+def _parse_yolo_detection_split(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    split_name: str,
+    image_root: str,
+    label_root: str,
+    category_names: object,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """解析 YOLO detection split。"""
+
+    normalized_category_names = [
+        normalized_name
+        for item in (category_names if isinstance(category_names, list | tuple) else [])
+        if (normalized_name := str(item).strip())
+    ]
+    categories = [
+        {"id": category_index + 1, "name": category_name}
+        for category_index, category_name in enumerate(normalized_category_names)
+    ]
+    resolved_image_root = dataset_storage.resolve(image_root)
+    resolved_label_root = dataset_storage.resolve(label_root)
+    if not resolved_image_root.is_dir():
+        raise InvalidRequestError(
+            "detection 图片目录不存在",
+            details={"image_root": image_root, "split_name": split_name},
+        )
+    if not resolved_label_root.is_dir():
+        raise InvalidRequestError(
+            "detection 标签目录不存在",
+            details={"label_root": label_root, "split_name": split_name},
+        )
+    images: list[dict[str, Any]] = []
+    for image_id, image_path in enumerate(_iter_detection_image_files(resolved_image_root), start=1):
+        image_width, image_height = _read_detection_image_size(image_path)
+        relative_image_path = image_path.relative_to(resolved_image_root).as_posix()
+        label_path = (resolved_label_root / relative_image_path).with_suffix(".txt")
+        images.append(
+            {
+                "image_path": f"{image_root}/{relative_image_path}",
+                "annotations": _parse_yolo_detection_annotations(
+                    label_path=label_path,
+                    image_id=image_id,
+                    image_width=image_width,
+                    image_height=image_height,
+                ),
+            }
+        )
+    return split_name, images, categories
+
+
+def _parse_inline_detection_split(
+    *,
+    split_name: str,
+    image_root: str,
+    split_payload: dict[str, object],
+    categories_payload: object,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """解析内嵌 images/annotations 的 detection split。"""
+
+    categories = _normalize_detection_categories(categories_payload)
+    images = _build_detection_images_from_annotation_payload(
+        image_root=image_root,
+        annotation_payload=split_payload,
+    )
+    return split_name, images, categories
+
+
+def _normalize_detection_categories(categories_payload: object) -> list[dict[str, Any]]:
+    """归一化 detection 类别列表。"""
+
+    normalized_categories: list[dict[str, Any]] = []
+    for category in categories_payload if isinstance(categories_payload, list) else ():
+        if not isinstance(category, dict):
+            continue
+        category_id = category.get("id", category.get("category_id"))
+        if not isinstance(category_id, int):
+            continue
+        normalized_categories.append(
+            {
+                "id": category_id,
+                "name": str(category.get("name", category_id)),
+            }
+        )
+    return normalized_categories
+
+
+def _build_detection_images_from_annotation_payload(
+    *,
+    image_root: str,
+    annotation_payload: dict[str, object],
+) -> list[dict[str, Any]]:
+    """把 COCO 风格 annotation payload 转成评估使用的图片列表。"""
+
     images_by_id: dict[int, str] = {}
-    for img in (chosen_split.get("images") or []):
+    for img in (annotation_payload.get("images") or []):
         if isinstance(img, dict):
             images_by_id[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
-    # 构建标注映射
-    anns_by_image: dict[int, list[dict]] = {}
-    for ann in (chosen_split.get("annotations") or []):
+    anns_by_image: dict[int, list[dict[str, Any]]] = {}
+    for ann in (annotation_payload.get("annotations") or []):
         if isinstance(ann, dict):
             img_id = int(ann.get("image_id", -1))
             anns_by_image.setdefault(img_id, []).append(ann)
@@ -257,12 +394,86 @@ def _parse_detection_manifest(
     images: list[dict[str, Any]] = []
     for img_id, file_name in images_by_id.items():
         full_path = f"{image_root}/{file_name}" if image_root else file_name
-        images.append({
-            "image_path": full_path,
-            "annotations": anns_by_image.get(img_id, []),
-        })
+        images.append(
+            {
+                "image_path": full_path,
+                "annotations": anns_by_image.get(img_id, []),
+            }
+        )
+    return images
 
-    return split_name, images, categories
+
+def _iter_detection_image_files(image_root: Any) -> tuple[Any, ...]:
+    """收集 detection split 下的全部图片文件。"""
+
+    image_suffixes = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+    return tuple(
+        sorted(
+            (
+                candidate
+                for candidate in image_root.rglob("*")
+                if candidate.is_file() and candidate.suffix.lower() in image_suffixes
+            ),
+            key=lambda item: item.as_posix().lower(),
+        )
+    )
+
+
+def _read_detection_image_size(image_path: Any) -> tuple[int, int]:
+    """读取 detection 图片尺寸。"""
+
+    import cv2
+
+    image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise InvalidRequestError(
+            "detection 图片无法读取",
+            details={"image_path": str(image_path)},
+        )
+    return int(image.shape[1]), int(image.shape[0])
+
+
+def _parse_yolo_detection_annotations(
+    *,
+    label_path: Any,
+    image_id: int,
+    image_width: int,
+    image_height: int,
+) -> list[dict[str, Any]]:
+    """解析 YOLO detection 标签文件。"""
+
+    if not label_path.is_file():
+        return []
+    annotations: list[dict[str, Any]] = []
+    for raw_line in label_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 5:
+            continue
+        try:
+            category_index = int(parts[0])
+            x_center = float(parts[1])
+            y_center = float(parts[2])
+            box_width = float(parts[3])
+            box_height = float(parts[4])
+        except ValueError:
+            continue
+        x = max(0.0, (x_center - (box_width / 2.0)) * float(image_width))
+        y = max(0.0, (y_center - (box_height / 2.0)) * float(image_height))
+        w = max(0.0, box_width * float(image_width))
+        h = max(0.0, box_height * float(image_height))
+        if w <= 0.0 or h <= 0.0:
+            continue
+        annotations.append(
+            {
+                "image_id": image_id,
+                "category_id": category_index + 1,
+                "bbox": [x, y, w, h],
+            }
+        )
+    return annotations
 
 
 def _compute_ap(
