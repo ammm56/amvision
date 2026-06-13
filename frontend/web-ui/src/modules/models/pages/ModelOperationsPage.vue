@@ -7,10 +7,6 @@
         <p class="page-description">{{ t('modelOps.description') }}</p>
       </div>
       <div class="page-actions">
-        <label class="segmented-field">
-          <span>task_type</span>
-          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
-        </label>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -20,83 +16,45 @@
 
     <InlineError :message="errorMessage" />
 
-    <section class="resource-section">
-      <div class="section-heading">
-        <div>
-          <p class="page-kicker">{{ t('modelOps.baseKicker') }}</p>
-          <h2>{{ t('modelOps.baseTitle') }}</h2>
-        </div>
-      </div>
-      <EmptyState v-if="!loading && baseModels.length === 0" :title="t('modelOps.emptyModelsTitle')" :description="t('modelOps.emptyModelsDescription')" />
-      <div v-else class="resource-table">
-        <table>
-          <thead>
-            <tr>
-              <th>{{ t('modelOps.columns.model') }}</th>
-              <th>{{ t('modelOps.columns.type') }}</th>
-              <th>{{ t('modelOps.columns.scale') }}</th>
-              <th>{{ t('modelOps.columns.versions') }}</th>
-              <th>{{ t('modelOps.columns.builds') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="model in baseModels"
-              :key="model.model_id"
-              :class="{ 'is-selected': model.model_id === selectedModelDetail?.model_id }"
-              @click="selectBaseModel(model.model_id)"
-            >
-              <td>
-                <strong>{{ model.model_name }}</strong>
-                <span>{{ model.model_id }}</span>
-              </td>
-              <td>{{ model.model_type }}</td>
-              <td>{{ model.model_scale }}</td>
-              <td>{{ model.version_count }}</td>
-              <td>{{ model.build_count }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-if="selectedModelDetail" class="summary-grid">
-        <div>
-          <span>{{ t('modelOps.fields.selectedModel') }}</span>
-          <strong>{{ selectedModelDetail.model_name }}</strong>
-        </div>
-        <div>
-          <span>{{ t('modelOps.fields.taskType') }}</span>
-          <strong>{{ selectedModelDetail.task_type }}</strong>
-        </div>
-        <div>
-          <span>{{ t('modelOps.fields.versionCount') }}</span>
-          <strong>{{ selectedModelDetail.versions.length }}</strong>
-        </div>
-        <div>
-          <span>{{ t('modelOps.fields.buildCount') }}</span>
-          <strong>{{ selectedModelDetail.builds.length }}</strong>
-        </div>
-      </div>
-      <div v-if="selectedModelAvailableVersions.length" class="compact-list">
-        <div v-for="version in selectedModelAvailableVersions" :key="version.model_version_id" class="compact-list__item">
-          <div>
-            <strong>{{ version.model_version_id }}</strong>
-            <span>{{ version.source_kind }}</span>
-          </div>
-          <div class="table-actions">
-            <Button size="sm" variant="secondary" @click="useVersionForTraining(version.model_version_id)">{{ t('modelOps.actions.useWarmStart') }}</Button>
-            <Button size="sm" variant="ghost" @click="useVersionForConversion(version.model_version_id)">{{ t('modelOps.actions.useConversionSource') }}</Button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="operation-grid">
-      <form class="form-panel" @submit.prevent="submitTraining">
+    <div class="operation-grid model-ops-grid">
+      <form class="form-panel model-ops-form" @submit.prevent="submitTraining">
         <div>
           <p class="page-kicker">{{ t('modelOps.trainingKicker') }}</p>
           <h2>{{ t('modelOps.trainingTitle') }}</h2>
         </div>
-        <div class="form-grid">
+        <div class="form-grid model-ops-form__grid">
+          <div class="field field--wide model-picker-field">
+            <div class="model-picker-field__header">
+              <div class="model-picker-field__title">
+                <span>{{ t('modelOps.fields.trainingBaseModel') }}</span>
+                <span class="model-picker-chip">{{ selectedTaskType }}</span>
+              </div>
+              <Button size="sm" variant="secondary" type="button" :disabled="loading || baseModels.length === 0" @click="openBaseModelPicker('training')">
+                {{ t('modelOps.actions.chooseBaseModel') }}
+              </Button>
+            </div>
+            <div class="model-picker-summary" :class="{ 'is-empty': !trainingSelectedModelSummary }">
+              <template v-if="trainingSelectedModelSummary">
+                <div class="model-picker-summary__top">
+                  <div class="model-picker-summary__identity">
+                    <strong>{{ trainingSelectedModelSummary.model_name }}</strong>
+                    <span>{{ trainingSelectedModelSummary.model_id }}</span>
+                  </div>
+                  <div class="model-picker-summary__chips">
+                    <span class="model-picker-chip">{{ trainingSelectedModelSummary.model_type }}</span>
+                    <span class="model-picker-chip">{{ t('modelOps.columns.scale') }} · {{ trainingSelectedModelSummary.model_scale }}</span>
+                  </div>
+                </div>
+                <div class="model-picker-summary__footer">
+                  <span>{{ t('modelOps.fields.warmStart') }}: {{ warmStartModelVersionId || t('common.noValue') }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <strong>{{ t('modelOps.baseModelEmptyTitle') }}</strong>
+                <span>{{ t('modelOps.baseModelEmptyDescription') }}</span>
+              </template>
+            </div>
+          </div>
           <label class="field field--wide">
             <span>{{ t('modelOps.fields.datasetExportId') }}</span>
             <input v-model="trainingDatasetExportId" placeholder="dataset-export-id" />
@@ -107,7 +65,7 @@
           </label>
           <label class="field">
             <span>model_type</span>
-            <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
+            <input v-model="trainingModelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.recipeId') }}</span>
@@ -166,15 +124,47 @@
         </p>
       </form>
 
-      <form class="form-panel" @submit.prevent="submitConversion">
+      <form class="form-panel model-ops-form" @submit.prevent="submitConversion">
         <div>
           <p class="page-kicker">{{ t('modelOps.conversionKicker') }}</p>
           <h2>{{ t('modelOps.conversionTitle') }}</h2>
         </div>
-        <div class="form-grid">
+        <div class="form-grid model-ops-form__grid">
+          <div class="field field--wide model-picker-field">
+            <div class="model-picker-field__header">
+              <div class="model-picker-field__title">
+                <span>{{ t('modelOps.fields.conversionBaseModel') }}</span>
+                <span class="model-picker-chip">{{ selectedTaskType }}</span>
+              </div>
+              <Button size="sm" variant="secondary" type="button" :disabled="loading || baseModels.length === 0" @click="openBaseModelPicker('conversion')">
+                {{ t('modelOps.actions.chooseConversionSource') }}
+              </Button>
+            </div>
+            <div class="model-picker-summary" :class="{ 'is-empty': !conversionSelectedModelSummary }">
+              <template v-if="conversionSelectedModelSummary">
+                <div class="model-picker-summary__top">
+                  <div class="model-picker-summary__identity">
+                    <strong>{{ conversionSelectedModelSummary.model_name }}</strong>
+                    <span>{{ conversionSelectedModelSummary.model_id }}</span>
+                  </div>
+                  <div class="model-picker-summary__chips">
+                    <span class="model-picker-chip">{{ conversionSelectedModelSummary.model_type }}</span>
+                    <span class="model-picker-chip">{{ t('modelOps.columns.scale') }} · {{ conversionSelectedModelSummary.model_scale }}</span>
+                  </div>
+                </div>
+                <div class="model-picker-summary__footer">
+                  <span>{{ t('modelOps.fields.sourceModelVersionId') }}: {{ conversionSourceModelVersionId || t('common.noValue') }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <strong>{{ t('modelOps.baseModelEmptyTitle') }}</strong>
+                <span>{{ t('modelOps.baseModelEmptyDescription') }}</span>
+              </template>
+            </div>
+          </div>
           <label class="field">
             <span>model_type</span>
-            <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
+            <input v-model="conversionModelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
           </label>
           <label class="field field--wide">
             <span>{{ t('modelOps.fields.sourceModelVersionId') }}</span>
@@ -275,6 +265,44 @@
         </table>
       </div>
     </section>
+
+    <PlatformBaseModelPickerDialog
+      :open="baseModelPickerOpen"
+      :loading="loading"
+      :mode="baseModelPickerMode"
+      :kicker="t('modelOps.baseKicker')"
+      :title="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingTitle') : t('modelOps.picker.conversionTitle')"
+      :description="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingDescription') : t('modelOps.picker.conversionDescription')"
+      :close-label="t('modelOps.picker.close')"
+      :task-type-label="t('modelOps.fields.taskType')"
+      :task-type-options="taskTypeOptions"
+      :selected-task-type="selectedTaskType"
+      :model-list-title="t('modelOps.baseTitle')"
+      :detail-title="t('modelOps.picker.detailTitle')"
+      :versions-title="t('modelOps.availableVersionsTitle')"
+      :versions-label="t('modelOps.columns.versions')"
+      :builds-label="t('modelOps.columns.builds')"
+      :scale-label="t('modelOps.columns.scale')"
+      :apply-model-label="t('modelOps.picker.applyModel')"
+      :apply-training-version-label="t('modelOps.actions.useWarmStart')"
+      :apply-conversion-version-label="t('modelOps.actions.useConversionSource')"
+      :empty-title="t('modelOps.emptyModelsTitle')"
+      :empty-description="t('modelOps.emptyModelsDescription')"
+      :detail-empty-title="t('modelOps.picker.detailEmptyTitle')"
+      :detail-empty-description="t('modelOps.picker.detailEmptyDescription')"
+      :empty-versions-title="t('modelOps.picker.emptyVersionsTitle')"
+      :empty-versions-description="t('modelOps.picker.emptyVersionsDescription')"
+      :models="baseModels"
+      :selected-model-id="selectedModelDetail?.model_id ?? null"
+      :selected-model-detail="selectedModelDetail"
+      :selected-version-id="baseModelPickerMode === 'training' ? warmStartModelVersionId : conversionSourceModelVersionId"
+      @close="closeBaseModelPicker"
+      @change-task-type="setTaskType"
+      @select-model="selectBaseModel"
+      @apply-model="applyTrainingModel"
+      @apply-training-version="applyTrainingVersion"
+      @apply-conversion-version="applyConversionVersion"
+    />
   </section>
 </template>
 
@@ -294,6 +322,8 @@ import {
   type ConversionTargetKey,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
+  type PlatformBaseModelVersionDetail,
+  type PlatformBaseModelVersionSummary,
   type ModelConversionTaskSummary,
   type ModelTrainingTaskSubmissionResponse,
   type ModelTrainingTaskSummary,
@@ -308,6 +338,7 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import PlatformBaseModelPickerDialog from '../components/PlatformBaseModelPickerDialog.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
@@ -329,7 +360,7 @@ const precisionOptions = [
   { label: 'fp16', value: 'fp16' },
 ]
 
-const taskTypeOptions = [
+const defaultTaskTypeOptions: Array<{ label: ModelTaskType; value: ModelTaskType }> = [
   { label: 'detection', value: 'detection' },
   { label: 'classification', value: 'classification' },
   { label: 'segmentation', value: 'segmentation' },
@@ -358,7 +389,12 @@ const lastTrainingSubmission = ref<ModelTrainingTaskSubmissionResponse | null>(n
 const lastConversionSubmission = ref<ModelConversionTaskSubmissionResponse | null>(null)
 
 const selectedTaskType = ref<ModelTaskType>('detection')
-const modelType = ref('')
+const baseModelPickerOpen = ref(false)
+const baseModelPickerMode = ref<'training' | 'conversion'>('training')
+const trainingSelectedModelId = ref('')
+const conversionSelectedModelId = ref('')
+const trainingModelType = ref('')
+const conversionModelType = ref('')
 const trainingDatasetExportId = ref('')
 const trainingManifestKey = ref('')
 const recipeId = ref('default')
@@ -380,6 +416,12 @@ const conversionDisplayName = ref('')
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const trainingSelectedModelSummary = computed(
+  () => baseModels.value.find((model) => model.model_id === trainingSelectedModelId.value) ?? null,
+)
+const conversionSelectedModelSummary = computed(
+  () => baseModels.value.find((model) => model.model_id === conversionSelectedModelId.value) ?? null,
+)
 const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   const rawValue = sessionStore.bootstrap?.capabilities.platform_model_types_by_task_type
   if (!rawValue || typeof rawValue !== 'object') {
@@ -395,8 +437,13 @@ const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   ])
   return Object.fromEntries(normalizedEntries)
 })
-
-const selectedModelAvailableVersions = computed(() => selectedModelDetail.value?.versions ?? selectedModelDetail.value?.available_versions ?? [])
+const taskTypeOptions = computed(() => {
+  const supportedOptions = defaultTaskTypeOptions.filter((option) => {
+    const supportedModelTypes = platformModelTypesByTaskType.value[option.value] ?? []
+    return supportedModelTypes.length > 0
+  })
+  return supportedOptions.length > 0 ? supportedOptions : defaultTaskTypeOptions
+})
 
 function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
@@ -412,13 +459,16 @@ function setPrecision(value: SelectValue): void {
 
 function setTaskType(value: SelectValue): void {
   const nextValue = selectValueToString(value)
-  if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(nextValue)) {
+  if (taskTypeOptions.value.some((option) => option.value === nextValue)) {
     const nextTaskType = nextValue as ModelTaskType
     selectedTaskType.value = nextTaskType
     selectedModelDetail.value = null
-    if (!isModelTypeSupportedForTask(nextTaskType, modelType.value)) {
-      modelType.value = ''
-    }
+    trainingSelectedModelId.value = ''
+    conversionSelectedModelId.value = ''
+    trainingModelType.value = ''
+    conversionModelType.value = ''
+    warmStartModelVersionId.value = ''
+    conversionSourceModelVersionId.value = ''
     void refreshPage()
   }
 }
@@ -453,11 +503,10 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    const modelTypeFilter = resolveModelTypeFilter(selectedTaskType.value, modelType.value)
     const [models, training, conversion] = await Promise.all([
       listPlatformBaseModels(selectedTaskType.value),
-      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelTypeFilter),
-      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelTypeFilter),
+      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value),
+      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value),
     ])
     baseModels.value = models
     trainingTasks.value = training
@@ -466,9 +515,6 @@ async function refreshPage(): Promise<void> {
     const selectedModelStillVisible = selectedModelId !== null && models.some((model) => model.model_id === selectedModelId)
     if (!selectedModelStillVisible) {
       selectedModelDetail.value = null
-    }
-    if (!selectedModelDetail.value && models[0]) {
-      await selectBaseModel(models[0].model_id)
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
@@ -481,37 +527,59 @@ async function selectBaseModel(modelId: string): Promise<void> {
   try {
     const detail = await getPlatformBaseModelDetail(modelId)
     selectedModelDetail.value = detail
-    if (['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(detail.task_type)) {
-      selectedTaskType.value = detail.task_type as ModelTaskType
-    }
-    modelType.value = detail.model_type
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.detailFailed')
   }
 }
 
-function isModelTypeSupportedForTask(taskType: ModelTaskType, modelTypeValue: string): boolean {
-  const normalizedModelType = modelTypeValue.trim().toLowerCase()
-  if (!normalizedModelType) {
-    return false
+async function openBaseModelPicker(mode: 'training' | 'conversion'): Promise<void> {
+  baseModelPickerMode.value = mode
+  baseModelPickerOpen.value = true
+  if (baseModels.value.length === 0) {
+    return
   }
-  return (platformModelTypesByTaskType.value[taskType] ?? []).includes(normalizedModelType)
+  const preferredModelId = mode === 'training'
+    ? trainingSelectedModelId.value || selectedModelDetail.value?.model_id || baseModels.value[0].model_id
+    : conversionSelectedModelId.value || selectedModelDetail.value?.model_id || baseModels.value[0].model_id
+  if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
+    await selectBaseModel(preferredModelId)
+  }
 }
 
-function resolveModelTypeFilter(taskType: ModelTaskType, modelTypeValue: string): string | undefined {
-  return isModelTypeSupportedForTask(taskType, modelTypeValue) ? modelTypeValue.trim().toLowerCase() : undefined
+function closeBaseModelPicker(): void {
+  baseModelPickerOpen.value = false
 }
 
-function useVersionForTraining(modelVersionId: string): void {
-  warmStartModelVersionId.value = modelVersionId
+function applyTrainingModel(model: PlatformBaseModelDetail): void {
+  trainingSelectedModelId.value = model.model_id
+  trainingModelType.value = model.model_type
+  modelScale.value = model.model_scale
+  closeBaseModelPicker()
 }
 
-function useVersionForConversion(modelVersionId: string): void {
-  conversionSourceModelVersionId.value = modelVersionId
+function applyTrainingVersion(payload: {
+  model: PlatformBaseModelDetail
+  version: PlatformBaseModelVersionDetail | PlatformBaseModelVersionSummary
+}): void {
+  trainingSelectedModelId.value = payload.model.model_id
+  trainingModelType.value = payload.model.model_type
+  modelScale.value = payload.model.model_scale
+  warmStartModelVersionId.value = payload.version.model_version_id
+  closeBaseModelPicker()
+}
+
+function applyConversionVersion(payload: {
+  model: PlatformBaseModelDetail
+  version: PlatformBaseModelVersionDetail | PlatformBaseModelVersionSummary
+}): void {
+  conversionSelectedModelId.value = payload.model.model_id
+  conversionModelType.value = payload.model.model_type
+  conversionSourceModelVersionId.value = payload.version.model_version_id
+  closeBaseModelPicker()
 }
 
 async function submitTraining(): Promise<void> {
-  if (!modelType.value.trim()) {
+  if (!trainingModelType.value.trim()) {
     errorMessage.value = 'model_type 不能为空'
     return
   }
@@ -525,7 +593,7 @@ async function submitTraining(): Promise<void> {
     lastTrainingSubmission.value = await createModelTrainingTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
-      modelType: modelType.value.trim(),
+      modelType: trainingModelType.value.trim(),
       datasetExportId: trainingDatasetExportId.value.trim(),
       datasetExportManifestKey: trainingManifestKey.value.trim(),
       recipeId: recipeId.value,
@@ -540,7 +608,7 @@ async function submitTraining(): Promise<void> {
       inputHeight: inputHeight.value,
       displayName: trainingDisplayName.value,
     })
-    trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
+    trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitTrainingFailed')
   } finally {
@@ -549,7 +617,7 @@ async function submitTraining(): Promise<void> {
 }
 
 async function submitConversion(): Promise<void> {
-  if (!modelType.value.trim()) {
+  if (!conversionModelType.value.trim()) {
     errorMessage.value = 'model_type 不能为空'
     return
   }
@@ -559,13 +627,13 @@ async function submitConversion(): Promise<void> {
     lastConversionSubmission.value = await createModelConversionTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
-      modelType: modelType.value.trim(),
+      modelType: conversionModelType.value.trim(),
       sourceModelVersionId: conversionSourceModelVersionId.value.trim(),
       target: conversionTarget.value,
       runtimeProfileId: conversionRuntimeProfileId.value.trim(),
       displayName: conversionDisplayName.value,
     })
-    conversionTasks.value = await listModelConversionTasks(selectedTaskType.value, selectedProjectId.value, modelType.value.trim())
+    conversionTasks.value = await listModelConversionTasks(selectedTaskType.value, selectedProjectId.value)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.submitConversionFailed')
   } finally {
@@ -573,3 +641,109 @@ async function submitConversion(): Promise<void> {
   }
 }
 </script>
+
+<style scoped>
+.model-ops-grid {
+  align-items: start;
+}
+
+.model-ops-form,
+.model-ops-form__grid {
+  align-content: start;
+}
+
+.model-picker-field {
+  gap: 10px;
+}
+
+.model-picker-field__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.model-picker-field__title > span:first-child {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.model-picker-field__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-picker-summary {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--summary-bg);
+}
+
+.model-picker-summary.is-empty {
+  min-height: 120px;
+  align-content: center;
+}
+
+.model-picker-summary__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.model-picker-summary__identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.model-picker-summary__identity strong,
+.model-picker-summary__identity span,
+.model-picker-summary.is-empty strong,
+.model-picker-summary.is-empty span {
+  overflow-wrap: anywhere;
+}
+
+.model-picker-summary__identity span,
+.model-picker-summary.is-empty span,
+.model-picker-summary__footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.model-picker-summary__chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--badge-neutral-text);
+  background: var(--badge-neutral-bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .model-picker-field__header {
+    justify-content: flex-start;
+  }
+
+  .model-picker-summary__top {
+    flex-direction: column;
+  }
+}
+</style>
