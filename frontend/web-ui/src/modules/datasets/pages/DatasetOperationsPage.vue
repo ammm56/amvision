@@ -16,7 +16,7 @@
 
     <InlineError :message="errorMessage" />
 
-    <div class="operation-grid">
+    <div class="operation-grid dataset-ops-grid">
       <form class="form-panel" @submit.prevent="submitImportForm">
         <div>
           <p class="page-kicker">{{ t('datasetOps.importKicker') }}</p>
@@ -72,27 +72,76 @@
         </p>
       </form>
 
-      <form class="form-panel" @submit.prevent="submitExportForm">
+      <form class="form-panel dataset-export-panel" @submit.prevent="submitExportForm">
         <div>
           <p class="page-kicker">{{ t('datasetOps.exportKicker') }}</p>
           <h2>{{ t('datasetOps.exportTitle') }}</h2>
         </div>
         <div class="form-grid">
-          <label class="field">
-            <span>{{ t('datasetOps.fields.datasetVersionId') }}</span>
-            <input v-model="datasetVersionId" placeholder="dataset-version-id" required />
-          </label>
+          <div class="field field--wide dataset-version-field">
+            <div class="dataset-version-field__header">
+              <span>{{ t('datasetOps.fields.datasetVersionId') }}</span>
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                :disabled="availableDatasetVersions.length === 0"
+                @click="openDatasetVersionPicker"
+              >
+                {{ resolvedDatasetVersionId ? t('datasetOps.actions.changeDatasetVersion') : t('datasetOps.actions.chooseDatasetVersion') }}
+              </Button>
+            </div>
+            <div class="dataset-version-summary" :class="{ 'is-empty': !resolvedDatasetVersionId }">
+              <template v-if="selectedDatasetVersionImport">
+                <div class="dataset-version-summary__top">
+                  <div class="dataset-version-summary__identity">
+                    <strong>{{ selectedDatasetVersionImport.dataset_version_id }}</strong>
+                    <span>
+                      {{ t('datasetOps.versionPicker.importIdLabel') }}
+                      {{ selectedDatasetVersionImport.dataset_import_id }}
+                    </span>
+                  </div>
+                  <div class="dataset-version-summary__chips">
+                    <span class="dataset-version-chip">{{ resolvedDatasetVersionTaskType || t('common.noValue') }}</span>
+                    <span class="dataset-version-chip">{{ selectedDatasetVersionFormatLabel }}</span>
+                  </div>
+                </div>
+                <div class="dataset-version-summary__grid">
+                  <div class="dataset-version-summary__item">
+                    <span>{{ t('datasetOps.versionPicker.createdAtLabel') }}</span>
+                    <strong>{{ formatSystemDateTime(selectedDatasetVersionImport.created_at) }}</strong>
+                  </div>
+                  <div class="dataset-version-summary__item">
+                    <span>{{ t('datasetOps.versionPicker.sampleCountLabel') }}</span>
+                    <strong>{{ selectedDatasetVersionSampleCount }}</strong>
+                  </div>
+                  <div class="dataset-version-summary__item">
+                    <span>{{ t('datasetOps.versionPicker.categoryCountLabel') }}</span>
+                    <strong>{{ selectedDatasetVersionCategoryCount }}</strong>
+                  </div>
+                  <div class="dataset-version-summary__item">
+                    <span>{{ t('datasetOps.versionPicker.splitNamesLabel') }}</span>
+                    <strong>{{ selectedDatasetVersionSplitNames }}</strong>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <strong>{{ t('datasetOps.versionPicker.emptyTitle') }}</strong>
+                <span>{{ t('datasetOps.versionPicker.emptyDescription') }}</span>
+              </template>
+            </div>
+          </div>
           <label class="field">
             <span>{{ t('datasetOps.fields.exportFormat') }}</span>
             <SelectField :model-value="exportFormatId" :options="exportFormatSelectOptions" @update:model-value="setExportFormatId" />
           </label>
-          <label class="field field--wide">
-            <span>{{ t('datasetOps.fields.displayName') }}</span>
+          <label class="field">
+            <span>{{ t('datasetOps.fields.exportTaskDisplayName') }}</span>
             <input v-model="exportDisplayName" />
           </label>
-          <label class="field field--wide">
-            <span>{{ t('datasetOps.fields.categoryNames') }}</span>
-            <input v-model="exportCategoryNames" placeholder="person, defect" />
+          <label class="field">
+            <span>{{ t('datasetOps.fields.exportCategoryNamesOverride') }}</span>
+            <input v-model="exportCategoryNames" :placeholder="t('datasetOps.placeholders.exportCategoryNamesOverride')" />
           </label>
           <label class="checkbox-field field--wide">
             <input v-model="includeTestSplit" type="checkbox" />
@@ -110,6 +159,77 @@
           <RouterLink :to="`/tasks/${lastExportSubmission.task_id}`">{{ lastExportSubmission.task_id }}</RouterLink>
         </p>
       </form>
+    </div>
+
+    <div v-if="datasetVersionPickerOpen" class="dataset-version-picker-backdrop" @click="closeDatasetVersionPicker">
+      <div
+        class="dataset-version-picker"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('datasetOps.versionPicker.title')"
+        @click.stop
+        @keydown.esc.prevent="closeDatasetVersionPicker"
+      >
+        <header class="dataset-version-picker__header">
+          <div>
+            <p class="page-kicker">{{ t('datasetOps.exportKicker') }}</p>
+            <h2>{{ t('datasetOps.versionPicker.title') }}</h2>
+            <p class="dataset-version-picker__description">{{ t('datasetOps.versionPicker.description') }}</p>
+          </div>
+          <button
+            type="button"
+            class="dataset-version-picker__close"
+            :title="t('datasetOps.versionPicker.close')"
+            :aria-label="t('datasetOps.versionPicker.close')"
+            @click="closeDatasetVersionPicker"
+          >
+            <X :size="16" />
+          </button>
+        </header>
+
+        <label class="dataset-version-picker__search">
+          <Search :size="16" />
+          <input
+            ref="datasetVersionSearchInput"
+            v-model="datasetVersionSearch"
+            :placeholder="t('datasetOps.versionPicker.searchPlaceholder')"
+          />
+        </label>
+
+        <div v-if="filteredDatasetVersions.length === 0" class="dataset-version-picker__empty">
+          <strong>{{ t('datasetOps.versionPicker.noResultsTitle') }}</strong>
+          <span>{{ t('datasetOps.versionPicker.noResultsDescription') }}</span>
+        </div>
+
+        <div v-else class="dataset-version-picker__list">
+          <button
+            v-for="item in filteredDatasetVersions"
+            :key="item.dataset_version_id ?? item.dataset_import_id"
+            type="button"
+            class="dataset-version-picker__item"
+            :class="{ 'is-selected': item.dataset_version_id === resolvedDatasetVersionId }"
+            @click="selectDatasetVersion(item.dataset_version_id ?? '')"
+          >
+            <div class="dataset-version-picker__item-main">
+              <div class="dataset-version-picker__item-title">
+                <strong>{{ item.dataset_version_id }}</strong>
+                <div class="dataset-version-picker__item-chips">
+                  <span class="dataset-version-chip">{{ item.task_type }}</span>
+                  <span class="dataset-version-chip">{{ resolveImportFormatDisplayName(item.format_type || '') || t('common.noValue') }}</span>
+                </div>
+              </div>
+              <div class="dataset-version-picker__item-meta">
+                <span>{{ t('datasetOps.versionPicker.importIdLabel') }} {{ item.dataset_import_id }}</span>
+                <span>{{ t('datasetOps.versionPicker.createdAtLabel') }} {{ formatSystemDateTime(item.created_at) }}</span>
+              </div>
+            </div>
+            <div class="dataset-version-picker__item-side">
+              <StatusBadge :tone="statusTone(item.processing_state || item.status)">{{ item.processing_state || item.status }}</StatusBadge>
+              <Check v-if="item.dataset_version_id === resolvedDatasetVersionId" :size="18" />
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
 
     <section class="resource-section">
@@ -203,8 +323,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { Download, PackageCheck, RefreshCw, UploadCloud } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { Check, Download, PackageCheck, RefreshCw, Search, UploadCloud, X } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -262,6 +382,9 @@ const imports = ref<DatasetImportSummary[]>([])
 const exports = ref<DatasetExportSummary[]>([])
 const exportFormats = ref<DatasetExportFormatCatalog | null>(null)
 const datasetVersionRelation = ref<DatasetVersionRelation | null>(null)
+const datasetVersionPickerOpen = ref(false)
+const datasetVersionSearch = ref('')
+const datasetVersionSearchInput = ref<HTMLInputElement | null>(null)
 const loading = ref(false)
 const submittingImport = ref(false)
 const submittingExport = ref(false)
@@ -270,18 +393,55 @@ const errorMessage = ref<string | null>(null)
 const lastImportSubmission = ref<DatasetImportSubmissionResponse | null>(null)
 const lastExportSubmission = ref<DatasetExportSubmissionResponse | null>(null)
 let datasetVersionRelationRequestId = 0
+let datasetExportsRequestId = 0
 
 const canWriteDatasets = computed(() => sessionStore.hasScopes(['datasets:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const resolvedDatasetVersionId = computed(() => datasetVersionId.value.trim() || imports.value.find((item) => item.dataset_version_id)?.dataset_version_id || '')
 const categoryNameList = computed(() => exportCategoryNames.value.split(',').map((item) => item.trim()).filter(Boolean))
+const availableDatasetVersions = computed(() => {
+  const byVersionId = new Map<string, DatasetImportSummary>()
+  for (const item of [...imports.value].sort((left, right) => right.created_at.localeCompare(left.created_at))) {
+    const versionId = item.dataset_version_id?.trim()
+    if (!versionId || byVersionId.has(versionId)) continue
+    byVersionId.set(versionId, item)
+  }
+  return [...byVersionId.values()]
+})
+const filteredDatasetVersions = computed(() => {
+  const query = datasetVersionSearch.value.trim().toLowerCase()
+  if (!query) return availableDatasetVersions.value
+  return availableDatasetVersions.value.filter((item) =>
+    [
+      item.dataset_version_id ?? '',
+      item.dataset_import_id,
+      item.task_type,
+      item.format_type ?? '',
+      item.processing_state,
+      item.status,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(query),
+  )
+})
+const selectedDatasetVersionImport = computed(
+  () => availableDatasetVersions.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value) ?? null,
+)
+const selectedDatasetVersionFormatLabel = computed(() => {
+  const formatTypeValue = selectedDatasetVersionImport.value?.format_type ?? ''
+  return formatTypeValue ? resolveImportFormatDisplayName(formatTypeValue) : t('common.noValue')
+})
+const selectedDatasetVersionSampleCount = computed(() => formatNumericSummary(datasetVersionRelation.value?.sample_count))
+const selectedDatasetVersionCategoryCount = computed(() => formatNumericSummary(datasetVersionRelation.value?.category_count))
+const selectedDatasetVersionSplitNames = computed(() => {
+  const splitNames = datasetVersionRelation.value?.split_names.filter((item) => item.trim().length > 0) ?? []
+  return splitNames.length > 0 ? splitNames.join(', ') : t('common.noValue')
+})
 const exportFormatOptions = computed(() => {
   const catalog = exportFormats.value
   if (!catalog) return []
-  if (!resolvedDatasetVersionId.value) {
-    return catalog.implemented_formats.length > 0 ? catalog.implemented_formats : catalog.items.map((item) => item.format_id)
-  }
-  if (!resolvedDatasetVersionTaskType.value) {
+  if (!resolvedDatasetVersionId.value || !resolvedDatasetVersionTaskType.value) {
     return []
   }
   return resolveSupportedExportFormatTypes(resolvedDatasetVersionTaskType.value)
@@ -383,6 +543,7 @@ watch(
   [resolvedDatasetVersionId, () => datasetId.value.trim()],
   ([nextDatasetVersionId, nextDatasetId]) => {
     void loadDatasetVersionRelation(nextDatasetId, nextDatasetVersionId)
+    void loadDatasetExports(nextDatasetId, nextDatasetVersionId)
   },
   { immediate: true },
 )
@@ -431,14 +592,9 @@ async function refreshRecords(): Promise<void> {
   if (!datasetId.value.trim()) return
   const nextImports = await listDatasetImports(datasetId.value.trim())
   imports.value = nextImports
-  if (!datasetVersionId.value.trim()) {
+  const currentDatasetVersionId = datasetVersionId.value.trim()
+  if (!currentDatasetVersionId || !nextImports.some((item) => item.dataset_version_id === currentDatasetVersionId)) {
     datasetVersionId.value = nextImports.find((item) => item.dataset_version_id)?.dataset_version_id ?? ''
-  }
-  const versionId = resolvedDatasetVersionId.value
-  if (versionId) {
-    exports.value = await listDatasetExports(datasetId.value.trim(), versionId)
-  } else {
-    exports.value = []
   }
 }
 
@@ -480,6 +636,10 @@ async function submitImportForm(): Promise<void> {
 }
 
 async function submitExportForm(): Promise<void> {
+  if (!resolvedDatasetVersionId.value) {
+    errorMessage.value = t('datasetOps.messages.selectDatasetVersion')
+    return
+  }
   submittingExport.value = true
   errorMessage.value = null
   try {
@@ -570,6 +730,29 @@ function resolveImportFormatDisplayName(formatTypeValue: string): string {
   return formatTypeValue
 }
 
+function formatNumericSummary(value: number | null | undefined): string {
+  return typeof value === 'number' ? String(value) : t('common.noValue')
+}
+
+function openDatasetVersionPicker(): void {
+  if (availableDatasetVersions.value.length === 0) return
+  datasetVersionPickerOpen.value = true
+  datasetVersionSearch.value = ''
+  void nextTick(() => datasetVersionSearchInput.value?.focus())
+}
+
+function closeDatasetVersionPicker(): void {
+  datasetVersionPickerOpen.value = false
+  datasetVersionSearch.value = ''
+}
+
+function selectDatasetVersion(nextDatasetVersionId: string): void {
+  const normalizedDatasetVersionId = nextDatasetVersionId.trim()
+  if (!normalizedDatasetVersionId) return
+  datasetVersionId.value = normalizedDatasetVersionId
+  closeDatasetVersionPicker()
+}
+
 async function loadDatasetVersionRelation(nextDatasetId: string, nextDatasetVersionId: string): Promise<void> {
   const requestId = ++datasetVersionRelationRequestId
   if (!nextDatasetId || !nextDatasetVersionId) {
@@ -595,4 +778,320 @@ async function loadDatasetVersionRelation(nextDatasetId: string, nextDatasetVers
     }
   }
 }
+
+async function loadDatasetExports(nextDatasetId: string, nextDatasetVersionId: string): Promise<void> {
+  const requestId = ++datasetExportsRequestId
+  if (!nextDatasetId || !nextDatasetVersionId) {
+    exports.value = []
+    return
+  }
+
+  try {
+    const nextExports = await listDatasetExports(nextDatasetId, nextDatasetVersionId)
+    if (requestId !== datasetExportsRequestId) {
+      return
+    }
+    exports.value = nextExports
+  } catch {
+    if (requestId !== datasetExportsRequestId) {
+      return
+    }
+    exports.value = []
+  }
+}
 </script>
+
+<style scoped>
+.dataset-ops-grid {
+  align-items: start;
+}
+
+.dataset-export-panel {
+  align-content: start;
+}
+
+.dataset-version-field {
+  gap: 10px;
+}
+
+.dataset-version-field__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dataset-version-field__header > span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dataset-version-summary {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--summary-bg);
+}
+
+.dataset-version-summary.is-empty {
+  min-height: 120px;
+  align-content: center;
+}
+
+.dataset-version-summary.is-empty strong,
+.dataset-version-summary.is-empty span {
+  overflow-wrap: anywhere;
+}
+
+.dataset-version-summary.is-empty span {
+  color: var(--muted);
+}
+
+.dataset-version-summary__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dataset-version-summary__identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dataset-version-summary__identity strong,
+.dataset-version-summary__identity span {
+  overflow-wrap: anywhere;
+}
+
+.dataset-version-summary__identity span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dataset-version-summary__chips,
+.dataset-version-picker__item-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dataset-version-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--badge-neutral-text);
+  background: var(--badge-neutral-bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dataset-version-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dataset-version-summary__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.dataset-version-summary__item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dataset-version-summary__item strong {
+  overflow-wrap: anywhere;
+}
+
+.dataset-version-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(16 20 24 / 0.38);
+}
+
+.dataset-version-picker {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(860px, calc(100vw - 36px));
+  max-height: min(640px, calc(100vh - 36px));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 24px 48px rgb(0 0 0 / 0.18);
+}
+
+.dataset-version-picker__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-version-picker__header h2,
+.dataset-version-picker__header p {
+  margin: 0;
+}
+
+.dataset-version-picker__description {
+  margin-top: 8px !important;
+  color: var(--muted);
+}
+
+.dataset-version-picker__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--button-secondary-bg);
+  cursor: pointer;
+}
+
+.dataset-version-picker__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--input-bg);
+}
+
+.dataset-version-picker__search:focus-within {
+  border-color: var(--accent);
+}
+
+.dataset-version-picker__search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--input-text);
+  background: transparent;
+}
+
+.dataset-version-picker__empty {
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.dataset-version-picker__list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.dataset-version-picker__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--summary-bg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dataset-version-picker__item:hover,
+.dataset-version-picker__item.is-selected {
+  border-color: var(--accent);
+  background: var(--selected-row-bg);
+}
+
+.dataset-version-picker__item-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dataset-version-picker__item-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dataset-version-picker__item-title strong,
+.dataset-version-picker__item-meta span {
+  overflow-wrap: anywhere;
+}
+
+.dataset-version-picker__item-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dataset-version-picker__item-side {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .dataset-version-summary__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-version-picker {
+    width: min(100%, calc(100vw - 24px));
+    max-height: min(100%, calc(100vh - 24px));
+  }
+
+  .dataset-version-picker__item,
+  .dataset-version-picker__item-title {
+    flex-direction: column;
+  }
+
+  .dataset-version-picker__item-side {
+    justify-items: start;
+  }
+}
+</style>
