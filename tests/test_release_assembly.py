@@ -293,10 +293,10 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert recorded_stop_calls == [
-        (12, "process-tree", 5.0),
-        (11, "process-tree", 5.0),
+        (12, "process-tree", 30.0),
+        (11, "process-tree", 30.0),
     ]
-    assert recorded_root_wait_calls == [(99, 5.0)]
+    assert recorded_root_wait_calls == [(99, 30.0)]
     assert "等待 full-stack-root 自行退出" in captured.out
     assert "full-stack-root 未在等待窗口内退出" not in captured.out
     assert "停止 full-stack-root 超时" not in captured.out

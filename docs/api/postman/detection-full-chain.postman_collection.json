@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "amvision-detection-full-chain",
     "name": "amvision detection-full-chain",
-    "description": "Detection 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/detection-coco-min.zip；如需切到 YOLO 数据集，直接把 datasetZipPath 改成对应 zip。导入请求默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolox, yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/01-15 仍然是 workflow/runtime 场景链，不替代这里的全生命周期调试集合。",
+    "description": "Detection 全链路 Postman 调试集合。覆盖 dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke。默认变量 datasetZipPath 指向本地调试数据包 data/files/postman-assets/detection-coco-min.zip；data/files/postman-assets/ 是本地调试数据目录，不纳入 git。如需切到 YOLO 数据集，直接把 datasetZipPath 改成对应 zip。导入请求默认 format_type 保持关闭，等同前端 auto；需要显式格式时再启用并填写 coco 或 yolo。默认同时预置 modelType=yolo11、targetFormat=onnx、deploymentRuntimeBackend=onnxruntime。当前支持 modelType: yolox, yolov8, yolo11, yolo26, rfdetr。注意：docs/api/postman/workflows/01-15 仍然是 workflow/runtime 场景链，不替代这里的全生命周期调试集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
