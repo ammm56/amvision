@@ -167,7 +167,7 @@ export interface ModelTrainingTaskCreateInput {
   modelType: string
   datasetExportId?: string
   datasetExportManifestKey?: string
-  recipeId: string
+  recipeId?: string
   modelScale: string
   outputModelName: string
   warmStartModelVersionId?: string
@@ -179,6 +179,7 @@ export interface ModelTrainingTaskCreateInput {
   inputWidth?: number
   inputHeight?: number
   displayName?: string
+  extraOptions?: Record<string, unknown>
 }
 
 export interface ModelConversionBuildSummary {
@@ -284,26 +285,43 @@ export async function getPlatformBaseModelDetail(modelId: string): Promise<Platf
 }
 
 export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput): Promise<ModelTrainingTaskSubmissionResponse> {
+  const extraOptions: Record<string, unknown> = {
+    ...(input.extraOptions ?? {}),
+  }
+  if (
+    (input.taskType === 'classification' || input.taskType === 'segmentation')
+    && typeof input.evaluationInterval === 'number'
+    && Number.isFinite(input.evaluationInterval)
+  ) {
+    extraOptions.evaluation_interval = input.evaluationInterval
+  }
+  const body: Record<string, unknown> = {
+    project_id: input.projectId,
+    model_type: input.modelType,
+    dataset_export_id: input.datasetExportId || null,
+    dataset_export_manifest_key: input.datasetExportManifestKey || null,
+    recipe_id: input.recipeId || 'default',
+    model_scale: input.modelScale,
+    output_model_name: input.outputModelName,
+    max_epochs: input.maxEpochs,
+    batch_size: input.batchSize,
+    precision: input.precision || null,
+    input_size: input.inputWidth && input.inputHeight ? [input.inputWidth, input.inputHeight] : null,
+    extra_options: extraOptions,
+    display_name: input.displayName ?? '',
+  }
+
+  if (input.taskType === 'detection') {
+    body.warm_start_model_version_id = input.warmStartModelVersionId || null
+    body.evaluation_interval = input.evaluationInterval
+    body.gpu_count = input.gpuCount
+  } else if (input.taskType === 'pose' || input.taskType === 'obb') {
+    body.evaluation_interval = input.evaluationInterval
+  }
+
   return apiRequest<ModelTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {
     method: 'POST',
-    body: {
-      project_id: input.projectId,
-      model_type: input.modelType,
-      dataset_export_id: input.datasetExportId || null,
-      dataset_export_manifest_key: input.datasetExportManifestKey || null,
-      recipe_id: input.recipeId,
-      model_scale: input.modelScale,
-      output_model_name: input.outputModelName,
-      warm_start_model_version_id: input.warmStartModelVersionId || null,
-      evaluation_interval: input.evaluationInterval,
-      max_epochs: input.maxEpochs,
-      batch_size: input.batchSize,
-      gpu_count: input.gpuCount,
-      precision: input.precision || null,
-      input_size: input.inputWidth && input.inputHeight ? [input.inputWidth, input.inputHeight] : null,
-      extra_options: {},
-      display_name: input.displayName ?? '',
-    },
+    body,
   })
 }
 

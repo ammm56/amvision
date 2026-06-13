@@ -8,6 +8,8 @@
 
 更细的 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 正式矩阵，现单独整理在 [model-support-matrix.md](model-support-matrix.md)。
 
+训练参数这层“公开接口支持什么、执行层真正使用什么、前端当前已经暴露什么、还缺什么”，现单独整理在 [training-parameter-support.md](training-parameter-support.md)。
+
 ## 适用范围
 
 - backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式

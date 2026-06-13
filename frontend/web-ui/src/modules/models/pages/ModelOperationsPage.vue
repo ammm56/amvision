@@ -45,18 +45,6 @@
                     <span class="model-picker-chip">{{ t('modelOps.columns.scale') }} · {{ trainingSelectedModelSummary.model_scale }}</span>
                   </div>
                 </div>
-                <div class="model-picker-summary__footer">
-                  <span>{{ t('modelOps.fields.warmStart') }}: {{ warmStartModelVersionId || t('common.noValue') }}</span>
-                  <Button
-                    v-if="warmStartModelVersionId"
-                    size="sm"
-                    variant="ghost"
-                    type="button"
-                    @click="clearTrainingWarmStart"
-                  >
-                    {{ t('common.filePicker.clear') }}
-                  </Button>
-                </div>
               </template>
               <template v-else>
                 <strong>{{ t('modelOps.baseModelEmptyTitle') }}</strong>
@@ -117,48 +105,113 @@
               </template>
             </div>
           </div>
-          <label class="field">
-            <span>{{ t('modelOps.fields.recipeId') }}</span>
-            <input v-model="recipeId" required />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.outputModelName') }}</span>
-            <input v-model="outputModelName" required />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.maxEpochs') }}</span>
-            <input v-model.number="maxEpochs" type="number" min="1" />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.batchSize') }}</span>
-            <input v-model.number="batchSize" type="number" min="1" />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
-            <input v-model.number="evaluationInterval" type="number" min="1" />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.precision') }}</span>
-            <SelectField :model-value="precision" :options="precisionOptions" @update:model-value="setPrecision" />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.inputWidth') }}</span>
-            <input v-model.number="inputWidth" type="number" min="32" step="32" />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.inputHeight') }}</span>
-            <input v-model.number="inputHeight" type="number" min="32" step="32" />
-          </label>
-          <label class="field field--wide">
-            <span>{{ t('modelOps.fields.trainingDisplayName') }}</span>
-            <input v-model="trainingDisplayName" />
-          </label>
+          <section class="training-parameter-section field field--wide">
+            <div class="training-parameter-section__header">
+              <div>
+                <p class="page-kicker">COMMON</p>
+                <h3>通用参数</h3>
+              </div>
+            </div>
+            <div class="form-grid training-parameter-grid">
+              <label class="field">
+                <span>{{ t('modelOps.fields.outputModelName') }}</span>
+                <input v-model="outputModelName" required />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.maxEpochs') }}</span>
+                <input v-model.number="maxEpochs" type="number" min="1" />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.batchSize') }}</span>
+                <input v-model.number="batchSize" type="number" min="1" />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.precision') }}</span>
+                <SelectField :model-value="precision" :options="precisionOptions" @update:model-value="setPrecision" />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.inputWidth') }}</span>
+                <input v-model.number="inputWidth" type="number" min="32" step="32" />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.inputHeight') }}</span>
+                <input v-model.number="inputHeight" type="number" min="32" step="32" />
+              </label>
+              <label class="field">
+                <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
+                <input v-model.number="evaluationInterval" type="number" min="1" />
+              </label>
+              <label v-if="trainingSupportsGpuCount" class="field">
+                <span>{{ t('modelOps.fields.gpuCount') }}</span>
+                <input v-model.number="gpuCount" type="number" min="1" step="1" />
+              </label>
+              <div v-if="trainingTaskSupportsWarmStart" class="field field--wide">
+                <span>{{ t('modelOps.fields.warmStart') }}</span>
+                <div class="training-inline-summary" :class="{ 'is-empty': !warmStartModelVersionId.trim() }">
+                  <strong>{{ warmStartModelVersionId || '当前未选择继续训练来源版本' }}</strong>
+                  <span>
+                    {{ warmStartModelVersionId ? '已选择继续训练来源版本。' : '未选择时从当前基础模型默认版本开始训练。' }}
+                  </span>
+                  <div class="training-inline-summary__actions">
+                    <Button
+                      v-if="warmStartModelVersionId"
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      @click="clearTrainingWarmStart"
+                    >
+                      {{ t('common.filePicker.clear') }}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <label class="field field--wide">
+                <span>{{ t('modelOps.fields.trainingDisplayName') }}</span>
+                <input v-model="trainingDisplayName" />
+              </label>
+            </div>
+          </section>
+
+          <section v-if="trainingModelParameterFields.length > 0" class="training-parameter-section field field--wide">
+            <div class="training-parameter-section__header">
+              <div>
+                <p class="page-kicker">MODEL TYPE</p>
+                <h3>{{ trainingModelParameterSectionTitle }}</h3>
+              </div>
+              <span class="training-parameter-section__hint">已按当前模型预填默认值，可按需修改</span>
+            </div>
+            <div class="form-grid training-parameter-grid">
+              <label
+                v-for="field in trainingModelParameterFields"
+                :key="field.key"
+                class="field"
+                :class="{ 'field--wide': field.wide }"
+              >
+                <span>{{ field.label }}</span>
+                <SelectField
+                  v-if="field.inputKind === 'select'"
+                  :model-value="trainingModelParameterValues[field.key] ?? ''"
+                  :options="field.options ?? []"
+                  @update:model-value="setTrainingModelParameterValue(field.key, $event)"
+                />
+                <input
+                  v-else
+                  v-model="trainingModelParameterValues[field.key]"
+                  :type="field.inputKind"
+                  :min="field.min"
+                  :max="field.max"
+                  :step="field.step"
+                  :placeholder="field.placeholder"
+                />
+              </label>
+            </div>
+          </section>
         </div>
         <div class="form-actions">
           <Button
             variant="primary"
             type="submit"
-            :disabled="!canWriteTasks || trainingSubmitting || !trainingSelectedModelSummary || !selectedTrainingDatasetExport"
+            :disabled="!canWriteTasks || trainingSubmitting"
           >
             <Play :size="16" />
             {{ trainingSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitTraining') }}
@@ -387,7 +440,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Play, RefreshCw, Wand2 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -412,6 +465,15 @@ import {
   type ModelConversionTaskSubmissionResponse,
   type ModelTaskType,
 } from '../services/model.service'
+import {
+  buildTrainingExtraOptions,
+  getDefaultTrainingEvaluationInterval,
+  getDefaultTrainingModelParameterValues,
+  getModelLayerTrainingFields,
+  supportsTrainingWarmStart,
+  type TrainingParameterValues,
+  validateTrainingModelLayerValues,
+} from '../training-parameter-support'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
@@ -440,6 +502,8 @@ const precisionOptions = [
   { label: 'fp32', value: 'fp32' },
   { label: 'fp16', value: 'fp16' },
 ]
+
+const DEFAULT_TRAINING_RECIPE_ID = 'default'
 
 const detectionTrainingFormatByModelType: Record<string, string> = {
   yolox: 'coco-detection-v1',
@@ -488,17 +552,18 @@ const trainingSelectedModelId = ref('')
 const conversionSelectedModelId = ref('')
 const conversionModelType = ref('')
 const trainingDatasetExportId = ref('')
-const recipeId = ref('default')
 const outputModelName = ref('')
 const lastSuggestedOutputModelName = ref('')
 const warmStartModelVersionId = ref('')
 const maxEpochs = ref(100)
 const batchSize = ref(1)
+const gpuCount = ref(1)
 const evaluationInterval = ref(5)
 const precision = ref('fp32')
 const inputWidth = ref(640)
 const inputHeight = ref(640)
 const trainingDisplayName = ref('')
+const trainingModelParameterValues = reactive<TrainingParameterValues>({})
 
 const conversionSourceModelVersionId = ref('')
 const conversionTarget = ref<ConversionTargetKey>('onnx')
@@ -525,6 +590,19 @@ const resolvedTrainingModelType = computed(
 const resolvedTrainingModelScale = computed(
   () => trainingSelectedModelSummary.value?.model_scale?.trim() ?? '',
 )
+const trainingTaskSupportsWarmStart = computed(
+  () => supportsTrainingWarmStart(selectedTaskType.value),
+)
+const trainingSupportsGpuCount = computed(() => selectedTaskType.value === 'detection')
+const trainingModelParameterFields = computed(
+  () => getModelLayerTrainingFields(selectedTaskType.value, resolvedTrainingModelType.value),
+)
+const trainingModelParameterSectionTitle = computed(() => {
+  if (!resolvedTrainingModelType.value) {
+    return '高级参数'
+  }
+  return `${selectedTaskType.value} / ${resolvedTrainingModelType.value} 高级参数`
+})
 const selectedModelDerivedTrainingVersions = computed<PickerVersionListItem[]>(() => {
   const selectedModel = selectedModelDetail.value
   if (selectedModel === null) {
@@ -676,6 +754,32 @@ function setConversionTarget(value: SelectValue): void {
   const nextValue = selectValueToString(value)
   conversionTarget.value = (nextValue || 'onnx') as ConversionTargetKey
 }
+
+function setTrainingModelParameterValue(key: string, value: SelectValue): void {
+  trainingModelParameterValues[key] = selectValueToString(value)
+}
+
+watch(
+  [selectedTaskType, resolvedTrainingModelType],
+  ([taskType, modelType]) => {
+    const defaultValues = getDefaultTrainingModelParameterValues(taskType, modelType)
+    const visibleKeys = new Set(Object.keys(defaultValues))
+    for (const key of Object.keys(trainingModelParameterValues)) {
+      if (!visibleKeys.has(key)) {
+        delete trainingModelParameterValues[key]
+      }
+    }
+    for (const [key, value] of Object.entries(defaultValues)) {
+      trainingModelParameterValues[key] = value
+    }
+    evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
+    if (taskType !== 'detection') {
+      gpuCount.value = 1
+      warmStartModelVersionId.value = ''
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
@@ -851,6 +955,15 @@ async function submitTraining(): Promise<void> {
     errorMessage.value = validationError
     return
   }
+  const parameterError = validateTrainingModelLayerValues(
+    selectedTaskType.value,
+    resolvedTrainingModelType.value,
+    trainingModelParameterValues,
+  )
+  if (parameterError) {
+    errorMessage.value = parameterError
+    return
+  }
   trainingSubmitting.value = true
   errorMessage.value = null
   try {
@@ -860,17 +973,23 @@ async function submitTraining(): Promise<void> {
       modelType: resolvedTrainingModelType.value,
       datasetExportId: trainingDatasetExportId.value.trim(),
       datasetExportManifestKey: resolvedTrainingManifestKey.value,
-      recipeId: recipeId.value.trim(),
+      recipeId: DEFAULT_TRAINING_RECIPE_ID,
       modelScale: resolvedTrainingModelScale.value,
       outputModelName: outputModelName.value.trim(),
-      warmStartModelVersionId: warmStartModelVersionId.value.trim(),
+      warmStartModelVersionId: trainingTaskSupportsWarmStart.value ? warmStartModelVersionId.value.trim() : '',
       evaluationInterval: evaluationInterval.value,
       maxEpochs: maxEpochs.value,
       batchSize: batchSize.value,
+      gpuCount: trainingSupportsGpuCount.value ? gpuCount.value : undefined,
       precision: precision.value,
       inputWidth: inputWidth.value,
       inputHeight: inputHeight.value,
       displayName: trainingDisplayName.value.trim(),
+      extraOptions: buildTrainingExtraOptions(
+        selectedTaskType.value,
+        resolvedTrainingModelType.value,
+        trainingModelParameterValues,
+      ),
     })
     trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value)
   } catch (error) {
@@ -914,6 +1033,65 @@ async function submitConversion(): Promise<void> {
 .model-ops-form,
 .model-ops-form__grid {
   align-content: start;
+}
+
+.training-parameter-section {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.training-parameter-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.training-parameter-section__header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.training-parameter-section__hint {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.training-parameter-grid {
+  align-content: start;
+}
+
+.training-inline-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--summary-bg);
+}
+
+.training-inline-summary.is-empty {
+  background: var(--surface);
+}
+
+.training-inline-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.training-inline-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.training-inline-summary__actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .model-picker-field {
@@ -1028,6 +1206,11 @@ async function submitConversion(): Promise<void> {
 }
 
 @media (max-width: 900px) {
+  .training-parameter-section__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .model-picker-field__header {
     justify-content: flex-start;
   }
