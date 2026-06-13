@@ -280,6 +280,7 @@
       :model-list-title="t('modelOps.baseTitle')"
       :detail-title="t('modelOps.picker.detailTitle')"
       :versions-title="t('modelOps.availableVersionsTitle')"
+      :extra-versions-title="t('modelOps.picker.projectTrainingVersionsTitle')"
       :versions-label="t('modelOps.columns.versions')"
       :builds-label="t('modelOps.columns.builds')"
       :scale-label="t('modelOps.columns.scale')"
@@ -295,6 +296,7 @@
       :models="baseModels"
       :selected-model-id="selectedModelDetail?.model_id ?? null"
       :selected-model-detail="selectedModelDetail"
+      :extra-versions="selectedModelDerivedTrainingVersions"
       :selected-version-id="baseModelPickerMode === 'training' ? warmStartModelVersionId : conversionSourceModelVersionId"
       @close="closeBaseModelPicker"
       @change-task-type="setTaskType"
@@ -322,8 +324,6 @@ import {
   type ConversionTargetKey,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
-  type PlatformBaseModelVersionDetail,
-  type PlatformBaseModelVersionSummary,
   type ModelConversionTaskSummary,
   type ModelTrainingTaskSubmissionResponse,
   type ModelTrainingTaskSummary,
@@ -345,6 +345,13 @@ const sessionStore = useSessionStore()
 const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
+
+interface PickerVersionListItem {
+  model_version_id: string
+  source_kind: string
+  title: string
+  subtitle: string
+}
 
 const modelScaleOptions = [
   { label: 'nano', value: 'nano' },
@@ -422,6 +429,54 @@ const trainingSelectedModelSummary = computed(
 const conversionSelectedModelSummary = computed(
   () => baseModels.value.find((model) => model.model_id === conversionSelectedModelId.value) ?? null,
 )
+const selectedModelDerivedTrainingVersions = computed<PickerVersionListItem[]>(() => {
+  const selectedModel = selectedModelDetail.value
+  if (selectedModel === null) {
+    return []
+  }
+
+  const selectedModelType = selectedModel.model_type.trim().toLowerCase()
+  const selectedModelScale = selectedModel.model_scale.trim().toLowerCase()
+  const baseVersionIds = new Set(
+    (selectedModel.versions ?? selectedModel.available_versions ?? []).map((version) => version.model_version_id),
+  )
+  const matchedVersions: PickerVersionListItem[] = []
+  const seenVersionIds = new Set<string>()
+
+  for (const task of trainingTasks.value) {
+    const modelVersionId = (task.model_version_id || task.latest_checkpoint_model_version_id || '').trim()
+    if (!modelVersionId || seenVersionIds.has(modelVersionId) || baseVersionIds.has(modelVersionId)) {
+      continue
+    }
+
+    const taskModelType = (task.model_type || '').trim().toLowerCase()
+    const taskModelScale = (task.model_scale || '').trim().toLowerCase()
+    if (taskModelType !== selectedModelType || taskModelScale !== selectedModelScale) {
+      continue
+    }
+
+    const warmStartPayload = task.training_summary?.warm_start
+    const warmStartSummary = warmStartPayload && typeof warmStartPayload === 'object'
+      ? warmStartPayload as Record<string, unknown>
+      : null
+    const sourceModelVersionId = typeof warmStartSummary?.source_model_version_id === 'string'
+      ? warmStartSummary.source_model_version_id.trim()
+      : ''
+    if (sourceModelVersionId && baseVersionIds.size > 0 && !baseVersionIds.has(sourceModelVersionId)) {
+      continue
+    }
+
+    seenVersionIds.add(modelVersionId)
+    matchedVersions.push({
+      model_version_id: modelVersionId,
+      source_kind: 'project-training-output',
+      title: task.output_model_name?.trim() || task.display_name?.trim() || modelVersionId,
+      subtitle: modelVersionId,
+    })
+  }
+
+  return matchedVersions
+})
 const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   const rawValue = sessionStore.bootstrap?.capabilities.platform_model_types_by_task_type
   if (!rawValue || typeof rawValue !== 'object') {
@@ -559,22 +614,22 @@ function applyTrainingModel(model: PlatformBaseModelDetail): void {
 
 function applyTrainingVersion(payload: {
   model: PlatformBaseModelDetail
-  version: PlatformBaseModelVersionDetail | PlatformBaseModelVersionSummary
+  modelVersionId: string
 }): void {
   trainingSelectedModelId.value = payload.model.model_id
   trainingModelType.value = payload.model.model_type
   modelScale.value = payload.model.model_scale
-  warmStartModelVersionId.value = payload.version.model_version_id
+  warmStartModelVersionId.value = payload.modelVersionId
   closeBaseModelPicker()
 }
 
 function applyConversionVersion(payload: {
   model: PlatformBaseModelDetail
-  version: PlatformBaseModelVersionDetail | PlatformBaseModelVersionSummary
+  modelVersionId: string
 }): void {
   conversionSelectedModelId.value = payload.model.model_id
   conversionModelType.value = payload.model.model_type
-  conversionSourceModelVersionId.value = payload.version.model_version_id
+  conversionSourceModelVersionId.value = payload.modelVersionId
   closeBaseModelPicker()
 }
 

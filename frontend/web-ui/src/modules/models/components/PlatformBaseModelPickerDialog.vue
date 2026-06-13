@@ -103,44 +103,50 @@
             </div>
 
             <div class="platform-model-detail__versions">
-              <div class="platform-model-picker__section-heading">
-                <strong>{{ versionsTitle }}</strong>
-                <span class="platform-model-picker__section-count">{{ availableVersions.length }}</span>
-              </div>
-              <div v-if="availableVersions.length === 0" class="platform-model-detail__empty">
-                <strong>{{ emptyVersionsTitle }}</strong>
-                <span>{{ emptyVersionsDescription }}</span>
-              </div>
-              <div v-else class="compact-list">
-                <div
-                  v-for="version in availableVersions"
-                  :key="version.model_version_id"
-                  class="compact-list__item"
-                  :class="{ 'is-active': version.model_version_id === selectedVersionId }"
-                >
-                  <div>
-                    <strong>{{ version.model_version_id }}</strong>
-                    <span>{{ version.source_kind }}</span>
-                  </div>
-                  <div class="table-actions">
-                    <Button
-                      v-if="mode === 'training'"
-                      size="sm"
-                      variant="secondary"
-                      @click="$emit('apply-training-version', { model: selectedModelDetail, version })"
-                    >
-                      {{ applyTrainingVersionLabel }}
-                    </Button>
-                    <Button
-                      v-if="mode === 'conversion'"
-                      size="sm"
-                      variant="secondary"
-                      @click="$emit('apply-conversion-version', { model: selectedModelDetail, version })"
-                    >
-                      {{ applyConversionVersionLabel }}
-                    </Button>
+              <div
+                v-for="group in versionGroups"
+                :key="group.id"
+                class="platform-model-detail__version-group"
+              >
+                <div class="platform-model-picker__section-heading">
+                  <strong>{{ group.title }}</strong>
+                  <span class="platform-model-picker__section-count">{{ group.items.length }}</span>
+                </div>
+                <div class="compact-list">
+                  <div
+                    v-for="version in group.items"
+                    :key="version.model_version_id"
+                    class="compact-list__item"
+                    :class="{ 'is-active': version.model_version_id === selectedVersionId }"
+                  >
+                    <div>
+                      <strong>{{ version.title }}</strong>
+                      <span>{{ version.subtitle }}</span>
+                    </div>
+                    <div class="table-actions">
+                      <Button
+                        v-if="mode === 'training'"
+                        size="sm"
+                        variant="secondary"
+                        @click="$emit('apply-training-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
+                      >
+                        {{ applyTrainingVersionLabel }}
+                      </Button>
+                      <Button
+                        v-if="mode === 'conversion'"
+                        size="sm"
+                        variant="secondary"
+                        @click="$emit('apply-conversion-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
+                      >
+                        {{ applyConversionVersionLabel }}
+                      </Button>
+                    </div>
                   </div>
                 </div>
+              </div>
+              <div v-if="versionGroups.length === 0" class="platform-model-detail__empty">
+                <strong>{{ emptyVersionsTitle }}</strong>
+                <span>{{ emptyVersionsDescription }}</span>
               </div>
             </div>
           </div>
@@ -159,12 +165,7 @@
 import { computed } from 'vue'
 import { X } from '@lucide/vue'
 
-import type {
-  PlatformBaseModelDetail,
-  PlatformBaseModelSummary,
-  PlatformBaseModelVersionDetail,
-  PlatformBaseModelVersionSummary,
-} from '../services/model.service'
+import type { PlatformBaseModelDetail, PlatformBaseModelSummary } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
@@ -175,7 +176,20 @@ interface TaskTypeOption {
 
 interface VersionSelectionPayload {
   model: PlatformBaseModelDetail
-  version: PlatformBaseModelVersionDetail | PlatformBaseModelVersionSummary
+  modelVersionId: string
+}
+
+interface VersionListItem {
+  model_version_id: string
+  source_kind: string
+  title: string
+  subtitle: string
+}
+
+interface VersionListGroup {
+  id: string
+  title: string
+  items: VersionListItem[]
 }
 
 const props = defineProps<{
@@ -192,6 +206,7 @@ const props = defineProps<{
   modelListTitle: string
   detailTitle: string
   versionsTitle: string
+  extraVersionsTitle: string
   versionsLabel: string
   buildsLabel: string
   scaleLabel: string
@@ -207,6 +222,7 @@ const props = defineProps<{
   models: PlatformBaseModelSummary[]
   selectedModelId: string | null
   selectedModelDetail: PlatformBaseModelDetail | null
+  extraVersions?: VersionListItem[]
   selectedVersionId?: string
 }>()
 
@@ -219,7 +235,34 @@ defineEmits<{
   'apply-conversion-version': [payload: VersionSelectionPayload]
 }>()
 
-const availableVersions = computed(() => props.selectedModelDetail?.versions ?? props.selectedModelDetail?.available_versions ?? [])
+const availableVersions = computed<VersionListItem[]>(() => {
+  const versions = props.selectedModelDetail?.versions ?? props.selectedModelDetail?.available_versions ?? []
+  return versions.map((version) => ({
+    model_version_id: version.model_version_id,
+    source_kind: version.source_kind,
+    title: version.model_version_id,
+    subtitle: version.source_kind,
+  }))
+})
+
+const versionGroups = computed<VersionListGroup[]>(() => {
+  const groups: VersionListGroup[] = []
+  if (availableVersions.value.length > 0) {
+    groups.push({
+      id: 'base-versions',
+      title: props.versionsTitle,
+      items: availableVersions.value,
+    })
+  }
+  if ((props.extraVersions ?? []).length > 0) {
+    groups.push({
+      id: 'extra-versions',
+      title: props.extraVersionsTitle,
+      items: props.extraVersions ?? [],
+    })
+  }
+  return groups
+})
 </script>
 
 <style scoped>
@@ -444,6 +487,11 @@ const availableVersions = computed(() => props.selectedModelDetail?.versions ?? 
 
 .platform-model-detail__versions {
   align-content: start;
+}
+
+.platform-model-detail__version-group {
+  display: grid;
+  gap: 10px;
 }
 
 .platform-model-detail__actions {
