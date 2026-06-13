@@ -272,7 +272,7 @@ def test_rfdetr_segmentation_openvino_real_toolchain_smoke(
     assert execution_result.runtime_session_info.backend_name == "openvino"
     assert execution_result.image_width == 64
     assert execution_result.image_height == 64
-    assert len(execution_result.instances) == 1
+    _assert_rfdetr_segmentation_instances_are_valid(execution_result.instances)
 
 
 def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
@@ -303,7 +303,7 @@ def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
     assert execution_result.runtime_session_info.backend_name == "tensorrt"
     assert execution_result.image_width == 64
     assert execution_result.image_height == 64
-    assert len(execution_result.instances) == 1
+    _assert_rfdetr_segmentation_instances_are_valid(execution_result.instances)
     assert (
         execution_result.runtime_session_info.metadata["engine_output_names"]
         == [
@@ -317,6 +317,17 @@ def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
             "3137",
         ]
     )
+
+
+def _assert_rfdetr_segmentation_instances_are_valid(instances: tuple[object, ...]) -> None:
+    """验证 RF-DETR segmentation 工具链返回有效类别结果。"""
+
+    assert instances
+    valid_class_names = {"segment-a", "segment-b"}
+    for instance in instances:
+        assert instance.class_id in {0, 1}
+        assert instance.class_name in valid_class_names
+        assert instance.score >= 0.01
 
 
 def _run_rfdetr_segmentation_real_toolchain_smoke(

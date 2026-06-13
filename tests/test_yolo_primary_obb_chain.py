@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import torch
 
+from backend.service.application.models.obb_loss import compute_obb_loss
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.runtime.yolo_primary_obb_predictor import _build_obb_instances
 
@@ -33,6 +36,34 @@ def test_obb26_model_can_build_and_forward():
     assert int(output.shape[2]) == 6
 
 
+def test_obb26_loss_can_backward_with_e2e_outputs():
+    """验证 OBB26 E2E obb loss 可以完成反向传播。"""
+
+    model = build_yolo_primary_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=2)
+    model.train()
+    outputs = model(torch.randn(1, 3, 64, 64))
+    raw_outputs = outputs["one2many"] if isinstance(outputs, dict) and "one2many" in outputs else outputs
+
+    loss_dict = compute_obb_loss(
+        torch=torch,
+        model=model,
+        raw_outputs=raw_outputs,
+        batch_targets=(
+            SimpleNamespace(
+                boxes_xywhr=((24.0, 24.0, 20.0, 12.0, 0.15),),
+                category_indexes=(1,),
+            ),
+        ),
+        num_classes=2,
+    )
+
+    assert torch.isfinite(loss_dict["loss"]).item() is True
+    loss_dict["loss"].backward()
+    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    assert grad_tensors
+    assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
+
+
 def test_obb_prediction_array_postprocess():
     """验证 obb 预测数组可以后处理。"""
     labels = ("person",)
@@ -53,3 +84,9 @@ def test_obb_runtime_contracts_importable():
         ObbPredictionExecutionResult, ObbPredictionInstance,
         ObbPredictionRequest, ObbRuntimeSessionInfo, ObbRuntimeTensorSpec,
     )
+
+    assert ObbPredictionExecutionResult
+    assert ObbPredictionInstance
+    assert ObbPredictionRequest
+    assert ObbRuntimeSessionInfo
+    assert ObbRuntimeTensorSpec

@@ -177,6 +177,11 @@ def test_yolo26_e2e_loss_path_runs_with_dual_branch_outputs() -> None:
     assert torch.isfinite(loss_components["one2many_loss"]).item() is True
     assert torch.isfinite(loss_components["one2one_loss"]).item() is True
 
+    loss_components["loss"].backward()
+    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    assert grad_tensors
+    assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
+
 
 def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_boxes() -> None:
     """验证 end-to-end detection 后处理会使用 top-k，而不是通用 NMS。"""

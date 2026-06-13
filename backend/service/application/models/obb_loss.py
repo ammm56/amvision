@@ -235,7 +235,7 @@ def compute_obb_loss(
 
     # 解码预测旋转框
     anchor_pts_3d = anchor_points.unsqueeze(0).expand(bs, -1, -1)
-    pred_rboxes = _dist2rbox(torch, dist_decoded, angle_all.squeeze(-1), anchor_pts_3d)  # (bs, N, 5)
+    pred_rboxes = _dist2rbox(torch, dist_decoded, angle_all, anchor_pts_3d)  # (bs, N, 5)
 
     anchor_centers_xy = anchor_points * stride_tensor
 
@@ -250,7 +250,6 @@ def compute_obb_loss(
         img_class_logits = class_logits_all[bi]
         img_class_probs = img_class_logits.sigmoid()
         img_pred_rboxes = pred_rboxes[bi]
-        img_pred_dist = dist_decoded[bi]
         img_angle = angle_all[bi] if angle_all.dim() == 3 else angle_all
         target_scores = torch.zeros_like(img_class_logits)
 
@@ -264,45 +263,45 @@ def compute_obb_loss(
             num_gt = int(gt_rboxes.shape[0])
             num_anchors = int(img_pred_rboxes.shape[0])
 
-            # probiou 矩阵 (num_gt, num_anchors)
-            gt_expanded = gt_rboxes.unsqueeze(1).expand(-1, num_anchors, -1).reshape(-1, 5)
-            pred_expanded = img_pred_rboxes.unsqueeze(0).expand(num_gt, -1, -1).reshape(-1, 5)
-            pair_iou = _probiou_aligned(torch, gt_expanded, pred_expanded).view(num_gt, num_anchors).clamp(0.0, 1.0)
+            # TAL 分配只生成正负样本和质量分数，参考 Ultralytics 使用 detached box/score 进入 assigner。
+            # 后面的 box、DFL 和 angle loss 仍使用原始预测，保证梯度只来自真实损失项。
+            with torch.no_grad():
+                gt_expanded = gt_rboxes.unsqueeze(1).expand(-1, num_anchors, -1).reshape(-1, 5)
+                pred_expanded = img_pred_rboxes.detach().unsqueeze(0).expand(num_gt, -1, -1).reshape(-1, 5)
+                pair_iou = _probiou_aligned(torch, gt_expanded, pred_expanded).view(num_gt, num_anchors).clamp(0.0, 1.0)
 
-            # TAL 分配（简化版：用 probiou 替代 bbox_iou）
-            gt_class_probs = img_class_probs[:, gt_classes].t().clamp(0.0, 1.0)
-            alignment = (gt_class_probs.pow(assign_alpha) * pair_iou.pow(assign_beta))
+                gt_class_probs = img_class_probs.detach()[:, gt_classes].t().clamp(0.0, 1.0)
+                alignment = gt_class_probs.pow(assign_alpha) * pair_iou.pow(assign_beta)
 
-            # anchor 在旋转框内部的简化检查（用轴对齐包围盒）
-            gt_corners = _xywhr_to_corners(torch, gt_rboxes)
-            inside_mask = _anchor_in_rotated_box(torch, anchor_centers_xy, gt_corners)
-            alignment = alignment * inside_mask.to(alignment.dtype)
+                gt_corners = _xywhr_to_corners(torch, gt_rboxes)
+                inside_mask = _anchor_in_rotated_box(torch, anchor_centers_xy, gt_corners)
+                alignment = alignment * inside_mask.to(alignment.dtype)
 
-            # TopK 选择
-            candidate_mask = torch.zeros_like(inside_mask)
-            gt_centers = gt_rboxes[:, :2]
-            center_dist = torch.cdist(gt_centers, anchor_centers_xy)
-            topk_count = min(max(1, assign_topk), num_anchors)
+                candidate_mask = torch.zeros_like(inside_mask)
+                gt_centers = gt_rboxes[:, :2]
+                center_dist = torch.cdist(gt_centers, anchor_centers_xy)
+                topk_count = min(max(1, assign_topk), num_anchors)
 
-            for gi in range(num_gt):
-                valid = torch.nonzero(alignment[gi] > 0, as_tuple=False).squeeze(1)
-                if int(valid.numel()) == 0:
-                    fallback = int(torch.argmin(center_dist[gi]).item())
-                    candidate_mask[gi, fallback] = True
-                    alignment[gi, fallback] = alignment[gi, fallback].clamp_min(1e-4)
-                    continue
-                k = min(topk_count, int(valid.numel()))
-                _, topk_idx = torch.topk(alignment[gi][valid], k=k)
-                candidate_mask[gi, valid[topk_idx]] = True
+                for gi in range(num_gt):
+                    valid = torch.nonzero(alignment[gi] > 0, as_tuple=False).squeeze(1)
+                    if int(valid.numel()) == 0:
+                        fallback = int(torch.argmin(center_dist[gi]).item())
+                        candidate_mask[gi, fallback] = True
+                        alignment[gi, fallback] = alignment[gi, fallback].clamp_min(1e-4)
+                        continue
+                    k = min(topk_count, int(valid.numel()))
+                    _, topk_idx = torch.topk(alignment[gi][valid], k=k)
+                    candidate_mask[gi, valid[topk_idx]] = True
 
-            matched = alignment * candidate_mask.to(alignment.dtype)
-            quality_scores, assigned_gt = matched.max(dim=0)
-            fg_mask = quality_scores > 0
+                matched = alignment * candidate_mask.to(alignment.dtype)
+                quality_scores, assigned_gt = matched.max(dim=0)
+                fg_mask = quality_scores > 0
 
             if bool(fg_mask.any()):
                 fg_assigned = assigned_gt[fg_mask]
-                max_per_gt = matched.max(dim=1).values.clamp_min(1e-6)
-                quality_scores[fg_mask] = (quality_scores[fg_mask] / max_per_gt[fg_assigned]).clamp(0.0, 1.0)
+                with torch.no_grad():
+                    max_per_gt = matched.max(dim=1).values.clamp_min(1e-6)
+                    quality_scores[fg_mask] = (quality_scores[fg_mask] / max_per_gt[fg_assigned]).clamp(0.0, 1.0)
 
                 fg_pred_rboxes = img_pred_rboxes[fg_mask]
                 fg_gt_rboxes = gt_rboxes[fg_assigned]

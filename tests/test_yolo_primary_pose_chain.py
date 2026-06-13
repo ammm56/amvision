@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import torch
 
+from backend.service.application.models.pose_loss import compute_pose_loss
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.runtime.yolo_primary_pose_predictor import _build_pose_instances
 
@@ -25,6 +28,36 @@ def test_pose26_model_can_build_and_forward():
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
     assert output is not None
+
+
+def test_pose26_loss_can_backward_with_e2e_outputs():
+    """验证 Pose26 E2E pose loss 可以完成反向传播。"""
+
+    model = build_yolo_primary_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=2)
+    model.train()
+    outputs = model(torch.randn(1, 3, 64, 64))
+    raw_outputs = outputs["one2many"] if isinstance(outputs, dict) and "one2many" in outputs else outputs
+    keypoints = tuple((16.0 + index * 0.5, 16.0 + index * 0.25, 2.0) for index in range(17))
+
+    loss_dict = compute_pose_loss(
+        torch=torch,
+        model=model,
+        raw_outputs=raw_outputs,
+        batch_targets=(
+            SimpleNamespace(
+                boxes_xyxy=((10.0, 10.0, 32.0, 34.0),),
+                category_indexes=(1,),
+                keypoints=(keypoints,),
+            ),
+        ),
+        num_classes=2,
+    )
+
+    assert torch.isfinite(loss_dict["loss"]).item() is True
+    loss_dict["loss"].backward()
+    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    assert grad_tensors
+    assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
 
 
 def test_segment26_model_can_build_and_forward():
@@ -81,6 +114,13 @@ def test_pose_runtime_contracts_importable():
         PoseRuntimeSessionInfo, PoseRuntimeTensorSpec,
     )
 
+    assert PosePredictionExecutionResult
+    assert PosePredictionInstance
+    assert PosePredictionKeypoint
+    assert PosePredictionRequest
+    assert PoseRuntimeSessionInfo
+    assert PoseRuntimeTensorSpec
+
 
 def test_pose_predictor_classes_importable():
     from backend.service.application.runtime.yolo_primary_pose_predictor import (
@@ -90,8 +130,16 @@ def test_pose_predictor_classes_importable():
         TensorRTYoloPrimaryPoseRuntimeSession,
     )
 
+    assert OnnxRuntimeYoloPrimaryPoseRuntimeSession
+    assert OpenVINOYoloPrimaryPoseRuntimeSession
+    assert PyTorchYoloPrimaryPoseRuntimeSession
+    assert TensorRTYoloPrimaryPoseRuntimeSession
+
 
 def test_pose_model_runtime_importable():
     from backend.service.application.runtime.pose_model_runtime import (
         DefaultPoseModelRuntime, PoseModelRuntimeRegistry,
     )
+
+    assert DefaultPoseModelRuntime
+    assert PoseModelRuntimeRegistry

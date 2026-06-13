@@ -119,6 +119,53 @@ def test_rfdetr_hungarian_match_uses_cxcywh_giou_cost() -> None:
     assert matched[0][1].tolist() == [0]
 
 
+def test_rfdetr_postprocess_uses_flattened_query_class_topk() -> None:
+    """验证 RF-DETR 后处理按 query × class 取 top-k。"""
+
+    from backend.service.application.models.rfdetr_model import RfdetrPostProcess
+
+    postprocess = RfdetrPostProcess(num_select=3)
+    processed = postprocess(
+        {
+            "pred_logits": torch.tensor(
+                [[[1.0, 5.0, 0.0], [4.0, 0.5, 3.0]]],
+                dtype=torch.float32,
+            ),
+            "pred_boxes": torch.tensor(
+                [[[0.5, 0.5, 0.2, 0.2], [0.25, 0.25, 0.1, 0.1]]],
+                dtype=torch.float32,
+            ),
+        },
+        torch.tensor([[100.0, 200.0]], dtype=torch.float32),
+    )
+
+    assert processed["labels"].tolist() == [[1, 0, 2]]
+    assert processed["boxes_xyxy"].shape == (1, 3, 4)
+
+
+def test_rfdetr_detection_builder_skips_background_class() -> None:
+    """验证 RF-DETR runtime 不把 background/no-object 输出为检测结果。"""
+
+    from backend.service.application.runtime.rfdetr_predictor import _build_detections
+
+    detections = _build_detections(
+        processed={
+            "scores": torch.tensor([[0.95, 0.93, 0.9]], dtype=torch.float32),
+            "labels": torch.tensor([[0, 2, 1]], dtype=torch.long),
+            "boxes_xyxy": torch.tensor(
+                [[[0.0, 0.0, 10.0, 10.0], [1.0, 1.0, 9.0, 9.0], [2.0, 2.0, 8.0, 8.0]]],
+                dtype=torch.float32,
+            ),
+        },
+        labels=("defect", "part"),
+        score_threshold=0.5,
+    )
+
+    assert len(detections) == 2
+    assert tuple(item.class_id for item in detections) == (0, 1)
+    assert tuple(item.class_name for item in detections) == ("defect", "part")
+
+
 def test_rfdetr_build_batch_returns_none_when_images_are_missing() -> None:
     """验证全部图片都缺失时，RF-DETR batch 构建会安全返回空批次。"""
 

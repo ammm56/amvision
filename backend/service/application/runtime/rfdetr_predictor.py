@@ -1125,11 +1125,13 @@ def _build_detections(
     if scores is None or class_ids is None or boxes_xyxy is None:
         return ()
     detections: list[DetectionPredictionDetection] = []
-    for index in range(min(int(scores.shape[0]), int(scores.shape[1]))):
+    for index in range(int(scores.shape[1])):
         score = float(scores[0, index])
         if score < score_threshold:
             continue
         class_id = int(class_ids[0, index])
+        if class_id < 0 or class_id >= len(labels):
+            continue
         detections.append(
             DetectionPredictionDetection(
                 bbox_xyxy=(
@@ -1140,7 +1142,7 @@ def _build_detections(
                 ),
                 score=round(score, 6),
                 class_id=class_id,
-                class_name=labels[class_id] if 0 <= class_id < len(labels) else None,
+                class_name=labels[class_id],
             )
         )
     return tuple(detections)

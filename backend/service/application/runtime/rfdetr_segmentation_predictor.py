@@ -1181,12 +1181,13 @@ def _build_segmentation_instances(
     result: list[SegmentationPredictionInstance] = []
     if scores is None or labels is None or boxes_xyxy is None or masks is None:
         return ()
-    score_count = min(int(scores.shape[0]), int(scores.shape[1]))
-    for index in range(score_count):
+    for index in range(int(scores.shape[1])):
         score = float(scores[0, index].item())
         if score < score_threshold:
             continue
         class_id = int(labels[0, index].item())
+        if class_id < 0 or class_id >= len(label_names):
+            continue
         box = boxes_xyxy[0, index]
         binary_mask = (
             (masks[0, index].sigmoid() >= mask_threshold)
@@ -1220,7 +1221,7 @@ def _build_segmentation_instances(
                 ),
                 score=round(score, 6),
                 class_id=class_id,
-                class_name=label_names[class_id] if 0 <= class_id < len(label_names) else None,
+                class_name=label_names[class_id],
                 segments=tuple(segments),
                 mask_area=float(binary_mask.sum()),
             )

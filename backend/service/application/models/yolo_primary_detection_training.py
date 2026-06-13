@@ -2485,18 +2485,21 @@ def _compute_detection_loss(
                 device=image_pred_boxes.device,
                 dtype=torch.long,
             )
-            assignment = _assign_detection_targets(
-                torch_module=torch,
-                pred_boxes=image_pred_boxes,
-                class_probabilities=image_class_probabilities,
-                anchor_centers_xy=anchor_centers_xy,
-                gt_boxes=gt_boxes,
-                gt_classes=gt_classes,
-                topk=assign_topk,
-                alpha=assign_alpha,
-                beta=assign_beta,
-                topk2=assign_topk2,
-            )
+            # 目标分配只决定标签，不参与反向传播；内部会做 top-k 与 mask 写入。
+            # 如果让它挂在 autograd 图上，E2E 双分支训练会因为 in-place 更新触发 backward 版本冲突。
+            with torch.no_grad():
+                assignment = _assign_detection_targets(
+                    torch_module=torch,
+                    pred_boxes=image_pred_boxes.detach(),
+                    class_probabilities=image_class_probabilities.detach(),
+                    anchor_centers_xy=anchor_centers_xy,
+                    gt_boxes=gt_boxes,
+                    gt_classes=gt_classes,
+                    topk=assign_topk,
+                    alpha=assign_alpha,
+                    beta=assign_beta,
+                    topk2=assign_topk2,
+                )
             if int(assignment["foreground_mask"].sum().item()) > 0:
                 foreground_mask = assignment["foreground_mask"]
                 assigned_gt_indices = assignment["assigned_gt_indices"][foreground_mask]

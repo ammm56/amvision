@@ -135,17 +135,20 @@ def compute_pose_loss(
             gt_boxes = torch.tensor(gt_boxes_list, device=img_pred_boxes.device, dtype=img_pred_boxes.dtype)
             gt_classes = torch.tensor(gt_classes_list, device=img_pred_boxes.device, dtype=torch.long)
 
-            assignment = _assign_detection_targets(
-                torch_module=torch,
-                pred_boxes=img_pred_boxes,
-                class_probabilities=img_class_probs,
-                anchor_centers_xy=anchor_centers_xy,
-                gt_boxes=gt_boxes,
-                gt_classes=gt_classes,
-                topk=assign_topk,
-                alpha=assign_alpha,
-                beta=assign_beta,
-            )
+            # 标签分配只决定正负样本和质量分数，必须与反向传播图隔离。
+            # Ultralytics 的 pose loss 同样使用 detach 后的 box/score 进入 assigner。
+            with torch.no_grad():
+                assignment = _assign_detection_targets(
+                    torch_module=torch,
+                    pred_boxes=img_pred_boxes.detach(),
+                    class_probabilities=img_class_probs.detach(),
+                    anchor_centers_xy=anchor_centers_xy,
+                    gt_boxes=gt_boxes,
+                    gt_classes=gt_classes,
+                    topk=assign_topk,
+                    alpha=assign_alpha,
+                    beta=assign_beta,
+                )
 
             fg_mask = assignment["foreground_mask"]
             if int(fg_mask.sum().item()) > 0:

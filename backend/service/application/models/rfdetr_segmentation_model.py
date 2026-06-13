@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import torch
@@ -11,14 +10,12 @@ import torch.nn.functional as F
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.rfdetr_model import (
-    MLP,
     MultiScaleProjector,
     RfdetrDecoder,
     RfdetrDecoderLayer,
     RfdetrDetectionHead,
     RfdetrViTBackbone,
     _RF_SCALE,
-    _box_cxcywh_to_xyxy,
     _compute_valid_ratios,
     gen_sineembed,
     load_rfdetr_pretrained,
@@ -145,19 +142,23 @@ class RfdetrSegmentationPostProcess(nn.Module):
         pred_logits = outputs["pred_logits"]
         pred_boxes = outputs["pred_boxes"]
         pred_masks = outputs["pred_masks"]
-        batch_size, query_count, _ = pred_logits.shape
+        batch_size, query_count, class_count = pred_logits.shape
         probabilities = pred_logits.sigmoid()
-        scores, labels = probabilities.max(dim=-1)
-        num_select = min(self.num_select, query_count)
-        top_scores, top_indices = torch.topk(scores, num_select, dim=1)
+        num_select = min(self.num_select, query_count * class_count)
+        top_scores, top_indices = torch.topk(
+            probabilities.view(batch_size, -1),
+            num_select,
+            dim=1,
+        )
+        top_query_indices = top_indices // class_count
+        top_labels = top_indices % class_count
         batch_indices = (
             torch.arange(batch_size, device=pred_logits.device)
             .unsqueeze(1)
             .expand(-1, num_select)
         )
-        top_labels = labels[batch_indices, top_indices]
-        top_boxes = pred_boxes[batch_indices, top_indices]
-        top_masks = pred_masks[batch_indices, top_indices]
+        top_boxes = pred_boxes[batch_indices, top_query_indices]
+        top_masks = pred_masks[batch_indices, top_query_indices]
 
         image_heights, image_widths = target_sizes.unbind(1)
         scale_factors = torch.stack(
