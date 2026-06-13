@@ -278,6 +278,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: '来源 ModelVersion id',
         targetFormat: '目标格式',
         runtimeProfileId: 'RuntimeProfile id',
+        conversionRuntimeProfileId: '目标运行时配置 id（可选）',
+        conversionDisplayName: '任务展示名称（可选）',
       },
       actions: {
         chooseBaseModel: '选择基础模型',
@@ -1303,6 +1305,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: 'Target format',
         runtimeProfileId: 'RuntimeProfile id',
+        conversionRuntimeProfileId: 'Target runtime profile id (optional)',
+        conversionDisplayName: 'Task display name (optional)',
       },
       actions: {
         chooseBaseModel: 'Choose base model',
@@ -2322,6 +2326,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: 'ターゲット形式',
         runtimeProfileId: 'RuntimeProfile id',
+        conversionRuntimeProfileId: '対象 RuntimeProfile id（任意）',
+        conversionDisplayName: 'タスク表示名（任意）',
       },
       actions: {
         chooseBaseModel: '基礎モデルを選択',
@@ -3341,6 +3347,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         sourceModelVersionId: 'Source ModelVersion id',
         targetFormat: '대상 형식',
         runtimeProfileId: 'RuntimeProfile id',
+        conversionRuntimeProfileId: '대상 RuntimeProfile id (선택)',
+        conversionDisplayName: '작업 표시 이름 (선택)',
       },
       actions: {
         chooseBaseModel: '기본 모델 선택',

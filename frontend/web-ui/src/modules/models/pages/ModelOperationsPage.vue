@@ -175,11 +175,11 @@
             <SelectField :model-value="conversionTarget" :options="conversionTargetOptions" @update:model-value="setConversionTarget" />
           </label>
           <label class="field">
-            <span>{{ t('modelOps.fields.runtimeProfileId') }}</span>
+            <span>{{ t('modelOps.fields.conversionRuntimeProfileId') }}</span>
             <input v-model="conversionRuntimeProfileId" />
           </label>
           <label class="field field--wide">
-            <span>{{ t('modelOps.fields.displayName') }}</span>
+            <span>{{ t('modelOps.fields.conversionDisplayName') }}</span>
             <input v-model="conversionDisplayName" />
           </label>
         </div>
