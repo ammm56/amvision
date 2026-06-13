@@ -22,7 +22,6 @@ from backend.service.application.models.rfdetr_model_service import (
 from backend.service.application.models.rfdetr_segmentation_training import (
     RFDETR_SEGMENTATION_IMPLEMENTATION_MODE,
     RfdetrSegmentationTrainingExecutionRequest,
-    RfdetrSegmentationTrainingSavePoint,
     RfdetrSegmentationTrainingTerminatedError,
     RfdetrSegmentationTrainingPausedError,
     run_rfdetr_segmentation_training,
@@ -670,7 +669,10 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                     "task_type": dataset_export.task_type,
                 },
             )
-        if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
+        if (
+            dataset_export.manifest_object_key is None
+            or not dataset_export.manifest_object_key.strip()
+        ):
             raise InvalidRequestError(
                 "当前 DatasetExport 缺少 manifest_object_key，不能用于训练",
                 details={"dataset_export_id": dataset_export.dataset_export_id},

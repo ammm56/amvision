@@ -14,7 +14,6 @@ from backend.service.application.models.yolo_primary_training_service import (
     SqlAlchemyYoloPrimaryTrainingTaskService,
     YoloPrimaryTrainingTaskRequest as Yolo11TrainingTaskRequest,
     YoloPrimaryTrainingTaskResult as Yolo11TrainingTaskResult,
-    YoloPrimaryTrainingTaskSubmission as Yolo11TrainingTaskSubmission,
 )
 from backend.service.domain.files.detection_model_file_types import YOLO11_DETECTION_FILE_TYPES
 from backend.service.domain.models.yolo11_model_spec import (

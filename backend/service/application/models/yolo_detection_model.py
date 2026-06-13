@@ -85,7 +85,12 @@ class Conv(nn.Module):
             bias=False,
         )
         self.bn = nn.BatchNorm2d(c2)
-        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+        if act is True:
+            self.act = self.default_act
+        elif isinstance(act, nn.Module):
+            self.act = act
+        else:
+            self.act = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """执行卷积前向。"""
@@ -134,7 +139,9 @@ class Bottleneck(nn.Module):
         """执行 bottleneck 前向。"""
 
         y = self.cv2(self.cv1(x))
-        return x + y if self.add else y
+        if self.add:
+            return x + y
+        return y
 
 
 class C2f(nn.Module):
@@ -300,8 +307,17 @@ class PSABlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """执行 PSA block 前向。"""
 
-        x = x + self.attn(x) if self.add else self.attn(x)
-        x = x + self.ffn(x) if self.add else self.ffn(x)
+        attn_output = self.attn(x)
+        if self.add:
+            x = x + attn_output
+        else:
+            x = attn_output
+
+        ffn_output = self.ffn(x)
+        if self.add:
+            x = x + ffn_output
+        else:
+            x = ffn_output
         return x
 
 
@@ -401,7 +417,9 @@ class SPPF(nn.Module):
         y = [self.cv1(x)]
         y.extend(self.pool(y[-1]) for _ in range(self.pool_count))
         output = self.cv2(torch.cat(y, dim=1))
-        return output + x if self.add else output
+        if self.add:
+            return output + x
+        return output
 
 
 class DistributionFocalLossDecoder(nn.Module):
@@ -447,22 +465,45 @@ class Proto(nn.Module):
 class Proto26(Proto):
     """YOLO26 分割 proto 头，支持多尺度特征融合。"""
 
-    def __init__(self, c_: int = 256, c2: int = 32, nc: int = 80, feature_channels: tuple[int, ...] = ()) -> None:
+    def __init__(
+        self,
+        c_: int = 256,
+        c2: int = 32,
+        nc: int = 80,
+        feature_channels: tuple[int, ...] = (),
+    ) -> None:
         """初始化多尺度融合 proto 头。"""
 
         super().__init__(c_, c_, c2)
-        self.feat_refine = nn.ModuleList(Conv(ch, feature_channels[0] if feature_channels else c_, k=1) for ch in feature_channels[1:])
-        self.feat_fuse = Conv(feature_channels[0] if feature_channels else c_, c_, k=3)
-        self.semseg = nn.Sequential(Conv(feature_channels[0] if feature_channels else c_, c_, k=3), Conv(c_, c_, k=3), nn.Conv2d(c_, nc, 1))
+        if feature_channels:
+            base_feature_channels = feature_channels[0]
+        else:
+            base_feature_channels = c_
+        self.feat_refine = nn.ModuleList(
+            [
+                Conv(channels, base_feature_channels, k=1)
+                for channels in feature_channels[1:]
+            ]
+        )
+        self.feat_fuse = Conv(base_feature_channels, c_, k=3)
+        self.semseg = nn.Sequential(
+            Conv(base_feature_channels, c_, k=3),
+            Conv(c_, c_, k=3),
+            nn.Conv2d(c_, nc, 1),
+        )
 
     def forward(self, x) -> torch.Tensor:
         """对多尺度特征图进行融合后生成 proto mask。"""
 
         if isinstance(x, (list, tuple)):
             feat = x[0]
-            for i, f in enumerate(self.feat_refine):
-                up_feat = f(x[i + 1])
-                up_feat = torch.nn.functional.interpolate(up_feat, size=feat.shape[2:], mode="nearest")
+            for index, refine_block in enumerate(self.feat_refine):
+                up_feat = refine_block(x[index + 1])
+                up_feat = torch.nn.functional.interpolate(
+                    up_feat,
+                    size=feat.shape[2:],
+                    mode="nearest",
+                )
                 feat = feat + up_feat
             p = super().forward(self.feat_fuse(feat))
             if self.training:
@@ -511,7 +552,10 @@ class Detect(nn.Module):
         )
         self.cv3 = nn.ModuleList(
             nn.Sequential(
-                nn.Sequential(DWConv(input_channels, input_channels, 3), Conv(input_channels, class_hidden_channels, 1)),
+                nn.Sequential(
+                    DWConv(input_channels, input_channels, 3),
+                    Conv(input_channels, class_hidden_channels, 1),
+                ),
                 nn.Sequential(
                     DWConv(class_hidden_channels, class_hidden_channels, 3),
                     Conv(class_hidden_channels, class_hidden_channels, 1),
@@ -541,7 +585,6 @@ class Detect(nn.Module):
                 details={"expected_feature_count": self.nl},
             )
 
-        batch_size = int(x[0].shape[0])
         raw_outputs = self._build_head_outputs(
             x,
             box_head=self.cv2,
@@ -561,7 +604,10 @@ class Detect(nn.Module):
         if self.training:
             return raw_outputs
 
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         return prediction.transpose(1, 2).contiguous()
 
@@ -577,14 +623,25 @@ class Detect(nn.Module):
     ) -> dict[str, torch.Tensor]:
         """根据指定 head 组装原始检测输出。"""
 
-        batch_size = int(x[0].shape[0])
-        box_channels = 4 * self.reg_max if self.reg_max > 1 else 4
+        batch_size = x[0].shape[0]
+        if self.reg_max > 1:
+            box_channels = 4 * self.reg_max
+        else:
+            box_channels = 4
+        box_feature_outputs = [
+            box_head[index](feature).view(batch_size, box_channels, -1)
+            for index, feature in enumerate(x)
+        ]
         box_outputs = torch.cat(
-            [box_head[index](feature).view(batch_size, box_channels, -1) for index, feature in enumerate(x)],
+            box_feature_outputs,
             dim=2,
         )
+        class_feature_outputs = [
+            class_head[index](feature).view(batch_size, self.nc, -1)
+            for index, feature in enumerate(x)
+        ]
         class_outputs = torch.cat(
-            [class_head[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)],
+            class_feature_outputs,
             dim=2,
         )
         output_bundle = {
@@ -593,11 +650,12 @@ class Detect(nn.Module):
             "feats": tuple(x),
         }
         if extra_head is not None and extra_key is not None and extra_channels is not None:
+            extra_feature_outputs = [
+                extra_head[index](feature).view(batch_size, int(extra_channels), -1)
+                for index, feature in enumerate(x)
+            ]
             output_bundle[extra_key] = torch.cat(
-                [
-                    extra_head[index](feature).view(batch_size, int(extra_channels), -1)
-                    for index, feature in enumerate(x)
-                ],
+                extra_feature_outputs,
                 dim=2,
             )
         return output_bundle
@@ -698,7 +756,10 @@ class Segment(Detect):
                 raw_outputs["proto"] = proto
             return raw_outputs
 
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
         return prediction.transpose(1, 2).contiguous(), proto
@@ -707,8 +768,26 @@ class Segment(Detect):
 class Segment26(Segment):
     """YOLO26 分割头。使用 Proto26 多尺度融合 proto。"""
 
-    def __init__(self, nc: int, nm: int = 32, npr: int = 256, *, ch: tuple[int, ...] = (), reg_max: int = 16, strides: tuple[int, ...] = (8, 16, 32), end2end: bool = False) -> None:
-        super().__init__(nc, nm=nm, npr=npr, ch=ch, reg_max=reg_max, strides=strides, end2end=end2end)
+    def __init__(
+        self,
+        nc: int,
+        nm: int = 32,
+        npr: int = 256,
+        *,
+        ch: tuple[int, ...] = (),
+        reg_max: int = 16,
+        strides: tuple[int, ...] = (8, 16, 32),
+        end2end: bool = False,
+    ) -> None:
+        super().__init__(
+            nc,
+            nm=nm,
+            npr=npr,
+            ch=ch,
+            reg_max=reg_max,
+            strides=strides,
+            end2end=end2end,
+        )
         self.proto = Proto26(c_=256, c2=self.nm, nc=nc, feature_channels=ch)
 
     def forward(
@@ -724,12 +803,30 @@ class Segment26(Segment):
                 details={"expected_feature_count": self.nl},
             )
         proto_output = self.proto(tuple(x))
-        proto = proto_output[0] if isinstance(proto_output, tuple) else proto_output
-        semseg = proto_output[1] if isinstance(proto_output, tuple) else None
-        raw_outputs = self._build_head_outputs(x, box_head=self.cv2, class_head=self.cv3, extra_head=self.cv4, extra_key="mask_coefficients", extra_channels=self.nm)
+        if isinstance(proto_output, tuple):
+            proto = proto_output[0]
+            semseg = proto_output[1]
+        else:
+            proto = proto_output
+            semseg = None
+        raw_outputs = self._build_head_outputs(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+            extra_head=self.cv4,
+            extra_key="mask_coefficients",
+            extra_channels=self.nm,
+        )
         if self.end2end:
             detached_inputs = [feature.detach() for feature in x]
-            one2one_outputs = self._build_head_outputs(detached_inputs, box_head=self.one2one_cv2, class_head=self.one2one_cv3, extra_head=self.one2one_cv4, extra_key="mask_coefficients", extra_channels=self.nm)
+            one2one_outputs = self._build_head_outputs(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+                extra_head=self.one2one_cv4,
+                extra_key="mask_coefficients",
+                extra_channels=self.nm,
+            )
             raw_outputs = {"one2many": raw_outputs, "one2one": one2one_outputs}
         if self.training:
             if self.end2end:
@@ -743,7 +840,10 @@ class Segment26(Segment):
                 if semseg is not None:
                     raw_outputs["semseg"] = semseg
             return raw_outputs
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
         return prediction.transpose(1, 2).contiguous(), proto
@@ -813,10 +913,16 @@ class OBB(Detect):
             }
         if self.training:
             return raw_outputs
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         dfl_distances = self.dfl(inference_outputs["boxes"])
         angle = self._decode_angle_logits(inference_outputs["angle"])
-        anchor_points = _make_anchors(feature_maps=inference_outputs["feats"], strides=self.strides)[0]
+        anchor_points = _make_anchors(
+            feature_maps=inference_outputs["feats"],
+            strides=self.strides,
+        )[0]
         rbox = _dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
         class_scores = inference_outputs["scores"].sigmoid()
         prediction = torch.cat((rbox, class_scores, angle), dim=1)
@@ -828,7 +934,12 @@ class OBB(Detect):
         return (angle_logits.sigmoid() - 0.25) * math.pi
 
 
-def _dist2rbox(pred_dist: torch.Tensor, pred_angle: torch.Tensor, anchor_points: torch.Tensor, dim: int = 1) -> torch.Tensor:
+def _dist2rbox(
+    pred_dist: torch.Tensor,
+    pred_angle: torch.Tensor,
+    anchor_points: torch.Tensor,
+    dim: int = 1,
+) -> torch.Tensor:
     lt, rb = pred_dist.split(2, dim=dim)
     cos_a, sin_a = torch.cos(pred_angle), torch.sin(pred_angle)
     xf, yf = (rb - lt).chunk(2, dim=dim)
@@ -916,7 +1027,10 @@ class Pose(Detect):
             }
         if self.training:
             return raw_outputs
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         prediction = torch.cat((prediction, self._decode_keypoints(inference_outputs)), dim=1)
         return prediction.transpose(1, 2).contiguous()
@@ -975,40 +1089,102 @@ class Pose26(Pose):
         """执行 YOLO26 关键点头前向。训练时返回 raw dict 含 kpts_sigma，eval 时返回组合预测张量。"""
 
         if not isinstance(x, list | tuple) or len(x) != self.nl:
-            raise InvalidRequestError("Pose26 头收到的特征层数量不合法", details={"expected_feature_count": self.nl})
-        raw_outputs = self._build_head_outputs_pose26(x, box_head=self.cv2, class_head=self.cv3, pose_head=self.cv4, kpts_head=self.cv4_kpts, kpts_sigma_head=self.cv4_sigma)
+            raise InvalidRequestError(
+                "Pose26 头收到的特征层数量不合法",
+                details={"expected_feature_count": self.nl},
+            )
+        raw_outputs = self._build_head_outputs_pose26(
+            x,
+            box_head=self.cv2,
+            class_head=self.cv3,
+            pose_head=self.cv4,
+            kpts_head=self.cv4_kpts,
+            kpts_sigma_head=self.cv4_sigma,
+        )
         if self.end2end:
             detached_inputs = [feature.detach() for feature in x]
-            one2one_outputs = self._build_head_outputs_pose26(detached_inputs, box_head=self.one2one_cv2, class_head=self.one2one_cv3, pose_head=self.one2one_cv4, kpts_head=self.one2one_cv4_kpts, kpts_sigma_head=self.one2one_cv4_sigma)
+            one2one_outputs = self._build_head_outputs_pose26(
+                detached_inputs,
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+                pose_head=self.one2one_cv4,
+                kpts_head=self.one2one_cv4_kpts,
+                kpts_sigma_head=self.one2one_cv4_sigma,
+            )
             raw_outputs = {"one2many": raw_outputs, "one2one": one2one_outputs}
         if self.training:
             return raw_outputs
-        inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
+        if self.end2end:
+            inference_outputs = raw_outputs["one2one"]
+        else:
+            inference_outputs = raw_outputs
         prediction = self._build_inference_prediction(inference_outputs)
         kpts = self._decode_keypoints_pose26(inference_outputs)
         prediction = torch.cat((prediction, kpts), dim=1)
         return prediction.transpose(1, 2).contiguous()
 
-    def _build_head_outputs_pose26(self, x, *, box_head, class_head, pose_head, kpts_head, kpts_sigma_head):
+    def _build_head_outputs_pose26(
+        self,
+        x,
+        *,
+        box_head,
+        class_head,
+        pose_head,
+        kpts_head,
+        kpts_sigma_head,
+    ):
         """构建 YOLO26 关键点头的多分支输出。"""
 
         batch_size = int(x[0].shape[0])
-        box_channels = 4 * self.reg_max if self.reg_max > 1 else 4
-        box_outputs = torch.cat([box_head[index](feature).view(batch_size, box_channels, -1) for index, feature in enumerate(x)], dim=2)
-        class_outputs = torch.cat([class_head[index](feature).view(batch_size, self.nc, -1) for index, feature in enumerate(x)], dim=2)
-        result = {"boxes": box_outputs, "scores": class_outputs, "feats": [x[i] for i in range(self.nl)]}
+        if self.reg_max > 1:
+            box_channels = 4 * self.reg_max
+        else:
+            box_channels = 4
+        box_feature_outputs = [
+            box_head[index](feature).view(batch_size, box_channels, -1)
+            for index, feature in enumerate(x)
+        ]
+        box_outputs = torch.cat(box_feature_outputs, dim=2)
+        class_feature_outputs = [
+            class_head[index](feature).view(batch_size, self.nc, -1)
+            for index, feature in enumerate(x)
+        ]
+        class_outputs = torch.cat(class_feature_outputs, dim=2)
+        result = {
+            "boxes": box_outputs,
+            "scores": class_outputs,
+            "feats": [x[i] for i in range(self.nl)],
+        }
         if pose_head is not None:
-            bs = int(x[0].shape[0])
+            keypoint_batch_size = int(x[0].shape[0])
             features = [pose_head[i](x[i]) for i in range(self.nl)]
-            result["kpts"] = torch.cat([kpts_head[i](features[i]).view(bs, self.nk, -1) for i in range(self.nl)], 2)
+            keypoint_outputs = [
+                kpts_head[i](features[i]).view(keypoint_batch_size, self.nk, -1)
+                for i in range(self.nl)
+            ]
+            result["kpts"] = torch.cat(keypoint_outputs, dim=2)
             if self.training:
-                result["kpts_sigma"] = torch.cat([kpts_sigma_head[i](features[i]).view(bs, self.nk_sigma, -1) for i in range(self.nl)], 2)
+                keypoint_sigma_outputs = [
+                    kpts_sigma_head[i](features[i]).view(
+                        keypoint_batch_size,
+                        self.nk_sigma,
+                        -1,
+                    )
+                    for i in range(self.nl)
+                ]
+                result["kpts_sigma"] = torch.cat(
+                    keypoint_sigma_outputs,
+                    dim=2,
+                )
         return result
 
     def _decode_keypoints_pose26(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """解码 YOLO26 关键点坐标（锚点 + 偏移 * 步幅）。"""
 
-        anchor_points, stride_tensor = _make_anchors(feature_maps=raw_outputs["feats"], strides=self.strides)
+        anchor_points, stride_tensor = _make_anchors(
+            feature_maps=raw_outputs["feats"],
+            strides=self.strides,
+        )
         kpts = raw_outputs["kpts"]
         batch_size = int(kpts.shape[0])
         ndim = self.kpt_shape[1]
@@ -1046,7 +1222,10 @@ class Classify(nn.Module):
         self.drop = nn.Dropout(p=0.0, inplace=True)
         self.linear = nn.Linear(hidden_channels, c2)
 
-    def forward(self, x: list[torch.Tensor] | tuple[torch.Tensor, ...] | torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: list[torch.Tensor] | tuple[torch.Tensor, ...] | torch.Tensor,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """把高层特征映射成分类 logits。"""
 
         if isinstance(x, list | tuple):
@@ -1058,7 +1237,9 @@ class Classify(nn.Module):
         if self.training:
             return logits
         probabilities = logits.softmax(dim=1)
-        return probabilities if self.export else (probabilities, logits)
+        if self.export:
+            return probabilities
+        return probabilities, logits
 
 
 class RealNVP(nn.Module):
@@ -1066,11 +1247,24 @@ class RealNVP(nn.Module):
 
     @staticmethod
     def _nets():
-        return nn.Sequential(nn.Linear(2, 64), nn.SiLU(), nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2), nn.Tanh())
+        return nn.Sequential(
+            nn.Linear(2, 64),
+            nn.SiLU(),
+            nn.Linear(64, 64),
+            nn.SiLU(),
+            nn.Linear(64, 2),
+            nn.Tanh(),
+        )
 
     @staticmethod
     def _nett():
-        return nn.Sequential(nn.Linear(2, 64), nn.SiLU(), nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2))
+        return nn.Sequential(
+            nn.Linear(2, 64),
+            nn.SiLU(),
+            nn.Linear(64, 64),
+            nn.SiLU(),
+            nn.Linear(64, 2),
+        )
 
     def __init__(self) -> None:
         """初始化 RealNVP 流模型。"""
@@ -1149,9 +1343,15 @@ class YoloDetectionModel(nn.Module):
         for layer in self.model:
             from_index = getattr(layer, "from_index", -1)
             if isinstance(from_index, tuple):
-                layer_input = [current if index == -1 else outputs[index] for index in from_index]
+                layer_input = [
+                    current if index == -1 else outputs[index]
+                    for index in from_index
+                ]
             else:
-                layer_input = current if from_index == -1 else outputs[from_index]
+                if from_index == -1:
+                    layer_input = current
+                else:
+                    layer_input = outputs[from_index]
             current = layer(layer_input)
             outputs.append(current)
         return current
@@ -1258,49 +1458,70 @@ def _parse_yolo_detection_model(
         if module_type in {Conv, C2f, C3, C3k, C3k2, C2PSA, SPPF}:
             source_channels = channels[_resolve_single_from_index(from_index)]
             output_channels = make_divisible(
-                min(float(module_args[0]), float(scale_profile.max_channels)) * scale_profile.width,
+                min(float(module_args[0]), float(scale_profile.max_channels))
+                * scale_profile.width,
                 8,
             )
-            if module_type is Conv:
-                built_module_args = [source_channels, output_channels, *module_args[1:]]
-                module = module_type(*built_module_args)
-            elif module_type is SPPF:
-                built_module_args = [source_channels, output_channels, *module_args[1:]]
-                module = module_type(*built_module_args)
-            elif module_type in {C2PSA, C2f, C3, C3k, C3k2}:
-                built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
-                module = module_type(*built_module_args)
+            if module_type in {Conv, SPPF}:
+                built_module_args = [
+                    source_channels,
+                    output_channels,
+                    *module_args[1:],
+                ]
             else:
-                built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
-                module = module_type(*built_module_args)
+                built_module_args = [
+                    source_channels,
+                    output_channels,
+                    repeat_count,
+                    *module_args[1:],
+                ]
+            module = module_type(*built_module_args)
         elif module_type is Concat:
             concat_sources = _resolve_multi_from_indexes(from_index)
             output_channels = sum(channels[item] for item in concat_sources)
             module = module_type(*module_args)
         elif module_type is nn.Upsample:
             output_channels = channels[_resolve_single_from_index(from_index)]
-            module = module_type(size=module_args[0], scale_factor=module_args[1], mode=module_args[2])
+            module = module_type(
+                size=module_args[0],
+                scale_factor=module_args[1],
+                mode=module_args[2],
+            )
         elif module_type is Classify:
             source_channels = channels[_resolve_single_from_index(from_index)]
             resolved_module_args = [
-                _resolve_model_config_argument(item, num_classes=num_classes, model_config=model_config)
+                _resolve_model_config_argument(
+                    item,
+                    num_classes=num_classes,
+                    model_config=model_config,
+                )
                 for item in module_args
             ]
-            output_channels = int(resolved_module_args[0]) if resolved_module_args else num_classes
+            if resolved_module_args:
+                output_channels = int(resolved_module_args[0])
+            else:
+                output_channels = num_classes
             module = module_type(source_channels, output_channels, *resolved_module_args[1:])
         else:
             detect_sources = _resolve_multi_from_indexes(from_index)
             detect_channels = tuple(channels[item] for item in detect_sources)
             output_channels = sum(detect_channels)
             resolved_module_args = [
-                _resolve_model_config_argument(item, num_classes=num_classes, model_config=model_config)
+                _resolve_model_config_argument(
+                    item,
+                    num_classes=num_classes,
+                    model_config=model_config,
+                )
                 for item in module_args
             ]
             module = module_type(
                 *resolved_module_args,
                 ch=detect_channels,
                 reg_max=int(model_config.get("reg_max", 16)),
-                strides=tuple(int(item) for item in model_config.get("strides", (8, 16, 32))),
+                strides=tuple(
+                    int(item)
+                    for item in model_config.get("strides", (8, 16, 32))
+                ),
                 end2end=bool(model_config.get("end2end", False)),
             )
 

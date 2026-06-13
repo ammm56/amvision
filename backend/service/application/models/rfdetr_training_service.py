@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from backend.queue import QueueBackend
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+    ServiceConfigurationError,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -262,7 +266,10 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     "format_id": dataset_export.format_id,
                 },
             )
-        if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
+        if (
+            dataset_export.manifest_object_key is None
+            or not dataset_export.manifest_object_key.strip()
+        ):
             raise InvalidRequestError(
                 "当前 DatasetExport 缺少 manifest_object_key，不能用于训练",
                 details={"dataset_export_id": dataset_export.dataset_export_id},
@@ -291,7 +298,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "extra_options": dict(request.extra_options),
         }
         if request.warm_start_model_version_id is not None:
-            task_spec["warm_start_model_version_id"] = request.warm_start_model_version_id
+            task_spec["warm_start_model_version_id"] = (
+                request.warm_start_model_version_id
+            )
         if request.evaluation_interval is not None:
             task_spec["evaluation_interval"] = request.evaluation_interval
         if request.max_epochs is not None:

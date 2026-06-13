@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from backend.queue import QueueBackend
 from backend.service.application.dataset_export_format_support import (
@@ -14,7 +14,6 @@ from backend.service.application.dataset_export_format_support import (
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
-    ServiceConfigurationError,
 )
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -212,7 +211,10 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
         task_record: TaskRecord,
         *,
         model_type: str,
-        on_control_state_change: Callable[[_ClassificationTrainingControlState], None] | None = None,
+        on_control_state_change: Callable[
+            [_ClassificationTrainingControlState],
+            None,
+        ] | None = None,
     ) -> dict[str, object]:
         """执行 classification 训练工作负载。"""
 
@@ -646,7 +648,10 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
                     "task_type": dataset_export.task_type,
                 },
             )
-        if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
+        if (
+            dataset_export.manifest_object_key is None
+            or not dataset_export.manifest_object_key.strip()
+        ):
             raise InvalidRequestError(
                 "当前 DatasetExport 缺少 manifest_object_key，不能用于训练",
                 details={"dataset_export_id": dataset_export.dataset_export_id},

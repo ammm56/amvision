@@ -69,7 +69,10 @@ class YoloXDetectionTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[["YoloXTrainingBatchProgress"], None] | None = None
-    epoch_callback: Callable[["YoloXTrainingEpochProgress"], "YoloXTrainingControlCommand | None"] | None = None
+    epoch_callback: Callable[
+        ["YoloXTrainingEpochProgress"],
+        "YoloXTrainingControlCommand | None",
+    ] | None = None
     savepoint_callback: Callable[["YoloXTrainingSavePoint"], None] | None = None
 
 
@@ -1072,7 +1075,11 @@ def run_yolox_detection_training(
                         precision=precision,
                         input_size=input_size,
                         num_classes=len(train_category_names),
-                        category_ids=validation_dataset.category_ids if validation_dataset is not None else (),
+                        category_ids=(
+                            validation_dataset.category_ids
+                            if validation_dataset is not None
+                            else ()
+                        ),
                         annotation_file=(
                             validation_split.annotation_file
                             if validation_split is not None
@@ -1196,8 +1203,6 @@ def run_yolox_detection_training(
             model_ema = None
             base_model = None
             optimizer = None
-            lr_scheduler = None
-            scaler = None
             train_loader = None
             validation_loader = None
             train_dataset = None
@@ -1270,8 +1275,6 @@ def run_yolox_detection_training(
                 model_ema = None
                 base_model = None
                 optimizer = None
-                lr_scheduler = None
-                scaler = None
                 train_loader = None
                 validation_loader = None
                 train_dataset = None
@@ -1388,8 +1391,6 @@ def run_yolox_detection_training(
     model_ema = None
     base_model = None
     optimizer = None
-    lr_scheduler = None
-    scaler = None
     train_loader = None
     validation_loader = None
     train_dataset = None
@@ -1446,7 +1447,11 @@ def _require_training_imports() -> _YoloXTrainingImports:
             YoloBatchSampler,
             worker_init_reset_seed,
         )
-        from backend.service.application.runtime.yolox_core.models import YOLOPAFPN, YOLOX, YOLOXHead
+        from backend.service.application.runtime.yolox_core.models import (
+            YOLOPAFPN,
+            YOLOX,
+            YOLOXHead,
+        )
         from backend.service.application.runtime.yolox_core.utils import (
             LRScheduler,
             ModelEMA,
@@ -1728,10 +1733,17 @@ def _set_yolox_head_use_l1(*, model: Any, enabled: bool) -> None:
 def _resolve_evaluation_model(*, training_model: Any, model_ema: Any | None) -> Any:
     """解析当前验证和导出 checkpoint 应使用的模型对象。"""
 
-    return model_ema.ema if model_ema is not None else training_model
+    if model_ema is not None:
+        return model_ema.ema
+    return training_model
 
 
-def _set_training_loader_input_size(*, train_dataset: Any, train_loader: Any, input_size: tuple[int, int]) -> None:
+def _set_training_loader_input_size(
+    *,
+    train_dataset: Any,
+    train_loader: Any,
+    input_size: tuple[int, int],
+) -> None:
     """同步更新训练数据集和 batch sampler 的输入尺寸。"""
 
     if hasattr(train_dataset, "set_input_dim"):
@@ -1741,7 +1753,12 @@ def _set_training_loader_input_size(*, train_dataset: Any, train_loader: Any, in
         batch_sampler.set_input_dimension(tuple(input_size))
 
 
-def _set_training_loader_mosaic_enabled(*, train_dataset: Any, train_loader: Any, enabled: bool) -> None:
+def _set_training_loader_mosaic_enabled(
+    *,
+    train_dataset: Any,
+    train_loader: Any,
+    enabled: bool,
+) -> None:
     """同步切换训练数据集与 batch sampler 的 Mosaic 开关。"""
 
     if hasattr(train_dataset, "enable_mosaic"):
@@ -2091,14 +2108,20 @@ def _load_resume_checkpoint(
     best_metric_name = checkpoint_payload.get("best_metric_name")
     if not isinstance(best_metric_name, str) or not best_metric_name.strip():
         metric_name = checkpoint_payload.get("metric_name")
-        best_metric_name = metric_name if isinstance(metric_name, str) and metric_name.strip() else ""
+        if isinstance(metric_name, str) and metric_name.strip():
+            best_metric_name = metric_name
+        else:
+            best_metric_name = ""
 
     raw_best_metric_value = checkpoint_payload.get("best_metric_value")
     if isinstance(raw_best_metric_value, int | float):
         best_metric_value: float | None = float(raw_best_metric_value)
     else:
         raw_metric_value = checkpoint_payload.get("metric_value")
-        best_metric_value = float(raw_metric_value) if isinstance(raw_metric_value, int | float) else None
+        if isinstance(raw_metric_value, int | float):
+            best_metric_value = float(raw_metric_value)
+        else:
+            best_metric_value = None
 
     raw_best_checkpoint_state = checkpoint_payload.get("best_checkpoint_state")
     best_checkpoint_state = (

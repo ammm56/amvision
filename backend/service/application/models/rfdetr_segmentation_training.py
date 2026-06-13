@@ -13,7 +13,10 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.rfdetr_model import (
     _box_cxcywh_to_xyxy,
     sigmoid_focal_loss,
@@ -158,6 +161,15 @@ class _RfdetrSegmentationResumeState:
     saved_eval_interval: int
 
 
+@dataclass(frozen=True)
+class _RfdetrSegmentationImports:
+    """描述 RF-DETR segmentation 训练依赖的本地模块。"""
+
+    cv2: Any
+    np: Any
+    torch: Any
+
+
 def run_rfdetr_segmentation_training(
     request: RfdetrSegmentationTrainingExecutionRequest,
 ) -> RfdetrSegmentationTrainingExecutionResult:
@@ -231,13 +243,21 @@ def run_rfdetr_segmentation_training(
         )
 
     model.to(device_name)
-    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    trainable_parameters = [
+        parameter
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    ]
     optimizer = imports.torch.optim.AdamW(
         trainable_parameters,
         lr=learning_rate,
         weight_decay=weight_decay,
     )
-    total_iterations = max(1, max_epochs * max(1, (len(train_annotations) + batch_size - 1) // batch_size))
+    iterations_per_epoch = max(
+        1,
+        (len(train_annotations) + batch_size - 1) // batch_size,
+    )
+    total_iterations = max(1, max_epochs * iterations_per_epoch)
     scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=total_iterations,
@@ -423,7 +443,9 @@ def run_rfdetr_segmentation_training(
     )
 
 
-def _require_segmentation_training_imports() -> Any:
+def _require_segmentation_training_imports() -> _RfdetrSegmentationImports:
+    """导入 RF-DETR segmentation 训练需要的本地依赖。"""
+
     try:
         import cv2
         import numpy as np
@@ -433,7 +455,7 @@ def _require_segmentation_training_imports() -> Any:
             "RF-DETR segmentation 训练缺少必要依赖",
             details={"missing": str(exc)},
         ) from exc
-    return type("_RfdetrSegmentationImports", (), {"cv2": cv2, "np": np, "torch": torch})()
+    return _RfdetrSegmentationImports(cv2=cv2, np=np, torch=torch)
 
 
 def _resolve_training_device(
@@ -441,14 +463,25 @@ def _resolve_training_device(
     torch_module: Any,
     extra_options: dict[str, object] | None,
 ) -> str:
+    """按请求解析训练设备。"""
+
     requested = str((extra_options or {}).get("device", "cpu")).strip().lower()
-    if (requested == "cuda" or requested.startswith("cuda:")) and torch_module.cuda.is_available():
-        return requested if ":" in requested else "cuda:0"
+    wants_cuda = requested == "cuda" or requested.startswith("cuda:")
+    if wants_cuda and torch_module.cuda.is_available():
+        if ":" in requested:
+            return requested
+        return "cuda:0"
     return "cpu"
 
 
 def _autocast(torch_module: Any, precision: str, device_name: str):
-    if precision == "fp16" and device_name.startswith("cuda") and hasattr(torch_module, "amp"):
+    """按精度和设备返回 autocast 上下文。"""
+
+    if (
+        precision == "fp16"
+        and device_name.startswith("cuda")
+        and hasattr(torch_module, "amp")
+    ):
         return torch_module.amp.autocast(device_type="cuda")
     return nullcontext()
 
@@ -457,7 +490,13 @@ def _load_segmentation_manifest(
     *,
     dataset_storage: LocalDatasetStorage,
     manifest: dict[str, object],
-) -> tuple[tuple[str, ...], list[_RfdetrSegmentationAnnotation], list[_RfdetrSegmentationAnnotation]]:
+) -> tuple[
+    tuple[str, ...],
+    list[_RfdetrSegmentationAnnotation],
+    list[_RfdetrSegmentationAnnotation],
+]:
+    """读取 segmentation manifest，并收成训练执行需要的内部结构。"""
+
     splits = manifest.get("splits")
     if not isinstance(splits, list):
         raise InvalidRequestError("RF-DETR segmentation manifest 缺少合法 splits")
@@ -480,7 +519,9 @@ def _load_segmentation_manifest(
         grouped_annotations: dict[int, list[dict[str, object]]] = defaultdict(list)
         for category in payload.get("categories") or []:
             if isinstance(category, dict):
-                all_categories[int(category.get("id", -1))] = str(category.get("name", ""))
+                all_categories[int(category.get("id", -1))] = str(
+                    category.get("name", "")
+                )
         for image in payload.get("images") or []:
             if isinstance(image, dict):
                 images_by_id[int(image.get("id", -1))] = dict(image)
@@ -524,8 +565,11 @@ def _load_segmentation_manifest(
         elif split_name == "val":
             val_annotations = split_annotations
 
-    sorted_categories = sorted(all_categories.items(), key=lambda item: item[0])
-    category_id_to_index = {category_id: index for index, (category_id, _) in enumerate(sorted_categories)}
+    sorted_categories = sorted(all_categories.items())
+    category_id_to_index = {
+        category_id: index
+        for index, (category_id, _) in enumerate(sorted_categories)
+    }
     labels = tuple(name for _, name in sorted_categories)
     return (
         labels,
@@ -533,7 +577,10 @@ def _load_segmentation_manifest(
             _RfdetrSegmentationAnnotation(
                 image_path=item.image_path,
                 boxes_xywh=item.boxes_xywh,
-                class_ids=[category_id_to_index.get(class_id, 0) for class_id in item.class_ids],
+                class_ids=[
+                    category_id_to_index.get(class_id, 0)
+                    for class_id in item.class_ids
+                ],
                 segmentations=item.segmentations,
             )
             for item in train_annotations
@@ -542,7 +589,10 @@ def _load_segmentation_manifest(
             _RfdetrSegmentationAnnotation(
                 image_path=item.image_path,
                 boxes_xywh=item.boxes_xywh,
-                class_ids=[category_id_to_index.get(class_id, 0) for class_id in item.class_ids],
+                class_ids=[
+                    category_id_to_index.get(class_id, 0)
+                    for class_id in item.class_ids
+                ],
                 segmentations=item.segmentations,
             )
             for item in val_annotations
@@ -571,6 +621,8 @@ def _build_training_batch(
     precision: str,
     imports: Any,
 ) -> tuple[torch.Tensor, list[dict[str, object]]] | None:
+    """构造一次 segmentation 训练 batch。"""
+
     if not annotations:
         return None
     input_height, input_width = input_size
@@ -586,7 +638,12 @@ def _build_training_batch(
             (input_width, input_height),
             interpolation=imports.cv2.INTER_LINEAR,
         )
-        image_tensor = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        image_tensor = (
+            resized_image[:, :, ::-1]
+            .transpose(2, 0, 1)
+            .astype(imports.np.float32)
+            / 255.0
+        )
         tensor = imports.torch.from_numpy(image_tensor).to(device_name).float()
         if precision == "fp16":
             tensor = tensor.half()
@@ -632,7 +689,10 @@ def _build_training_batch(
             "masks": imports.torch.from_numpy(
                 imports.np.stack(target_masks, axis=0)
                 if target_masks
-                else imports.np.zeros((0, input_height, input_width), dtype=imports.np.float32)
+                else imports.np.zeros(
+                    (0, input_height, input_width),
+                    dtype=imports.np.float32,
+                )
             ).to(device_name).float(),
         }
         targets.append(target_dict)
@@ -802,8 +862,14 @@ def _evaluate_segmentation_model(
                 sample_count += 1
                 continue
             best_prediction_index = int(processed["scores"][0].argmax().item())
-            predicted_box = processed["boxes_xyxy"][0, best_prediction_index : best_prediction_index + 1]
-            predicted_mask = processed["masks"][0, best_prediction_index : best_prediction_index + 1]
+            predicted_box = processed["boxes_xyxy"][
+                0,
+                best_prediction_index : best_prediction_index + 1,
+            ]
+            predicted_mask = processed["masks"][
+                0,
+                best_prediction_index : best_prediction_index + 1,
+            ]
             target_box = _box_cxcywh_to_xyxy(targets[0]["boxes"][:1])
             target_box = _scale_xyxy_to_pixels(target_box, input_size)
             target_mask = F.interpolate(
@@ -830,17 +896,25 @@ def _evaluate_segmentation_model(
 
 
 def _pairwise_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
+    """计算两组 box 的两两 IoU。"""
+
     x1 = torch.max(boxes1[:, None, 0], boxes2[None, :, 0])
     y1 = torch.max(boxes1[:, None, 1], boxes2[None, :, 1])
     x2 = torch.min(boxes1[:, None, 2], boxes2[None, :, 2])
     y2 = torch.min(boxes1[:, None, 3], boxes2[None, :, 3])
     inter = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
-    area1 = (boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) * (boxes1[:, 3] - boxes1[:, 1]).clamp(min=0)
-    area2 = (boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) * (boxes2[:, 3] - boxes2[:, 1]).clamp(min=0)
+    area1 = (boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) * (
+        boxes1[:, 3] - boxes1[:, 1]
+    ).clamp(min=0)
+    area2 = (boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) * (
+        boxes2[:, 3] - boxes2[:, 1]
+    ).clamp(min=0)
     return inter / (area1[:, None] + area2[None, :] - inter + 1e-7)
 
 
 def _pairwise_mask_iou(pred_masks: torch.Tensor, gt_masks: torch.Tensor) -> torch.Tensor:
+    """计算两组 mask 的两两 IoU。"""
+
     pred_flat = pred_masks.reshape(pred_masks.shape[0], -1).float()
     gt_flat = gt_masks.reshape(gt_masks.shape[0], -1).float()
     inter = pred_flat @ gt_flat.transpose(0, 1)
@@ -853,9 +927,16 @@ def _scale_xyxy_to_pixels(
     boxes_xyxy: torch.Tensor,
     image_size: tuple[int, int],
 ) -> torch.Tensor:
+    """把归一化 `xyxy` 框缩放回像素坐标。"""
+
     image_height, image_width = image_size
     scale = torch.tensor(
-        [float(image_width), float(image_height), float(image_width), float(image_height)],
+        [
+            float(image_width),
+            float(image_height),
+            float(image_width),
+            float(image_height),
+        ],
         device=boxes_xyxy.device,
         dtype=boxes_xyxy.dtype,
     )
@@ -919,6 +1000,8 @@ def _load_resume_state(
     request: RfdetrSegmentationTrainingExecutionRequest,
     imports: Any,
 ) -> _RfdetrSegmentationResumeState | None:
+    """读取恢复训练所需的 checkpoint 状态。"""
+
     if (
         request.resume_checkpoint_path is None
         or not request.resume_checkpoint_path.is_file()
@@ -971,6 +1054,8 @@ def _validate_resume_state(
     mask_dice_weight: float,
     evaluation_interval: int,
 ) -> None:
+    """校验 resume 请求与 checkpoint 保存参数是否一致。"""
+
     mismatches: list[str] = []
     if resume_state.saved_batch_size != batch_size:
         mismatches.append("batch_size")
@@ -1010,10 +1095,16 @@ def _filter_state_dict(
     model_state_dict: dict[str, torch.Tensor],
     loaded_state_dict: dict[str, object],
 ) -> dict[str, object]:
+    """只保留和当前模型结构兼容的 checkpoint 权重。"""
+
     filtered: dict[str, object] = {}
     for key, value in loaded_state_dict.items():
         current = model_state_dict.get(key)
-        if current is not None and hasattr(value, "shape") and current.shape == value.shape:
+        if (
+            current is not None
+            and hasattr(value, "shape")
+            and current.shape == value.shape
+        ):
             filtered[key] = value
     return filtered
 

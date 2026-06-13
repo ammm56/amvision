@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import io
-import math
 from collections.abc import Callable
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -122,7 +120,11 @@ def run_yolo_primary_obb_training(
     import torch
 
     device = "cpu"
-    if request.extra_options and str(request.extra_options.get("device", "")).startswith("cuda") and torch.cuda.is_available():
+    if (
+        request.extra_options
+        and str(request.extra_options.get("device", "")).startswith("cuda")
+        and torch.cuda.is_available()
+    ):
         device = str(request.extra_options["device"]).strip()
 
     precision = request.precision
@@ -130,7 +132,8 @@ def run_yolo_primary_obb_training(
     use_amp = precision == "fp16" and device.startswith("cuda")
 
     labels, train_annotations, val_annotations = _load_obb_manifest(
-        request.dataset_storage, request.manifest_payload,
+        request.dataset_storage,
+        request.manifest_payload,
     )
     num_classes = len(labels)
 
@@ -152,14 +155,20 @@ def run_yolo_primary_obb_training(
     optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     iterations_per_epoch = max(1, (len(train_annotations) + bs - 1) // bs)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=max_epochs * iterations_per_epoch, eta_min=lr * 0.01,
+        optimizer,
+        T_max=max_epochs * iterations_per_epoch,
+        eta_min=lr * 0.01,
     )
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
 
     # 恢复训练
     start_epoch = 0
     if request.resume_checkpoint_path and request.resume_checkpoint_path.is_file():
-        ckpt = torch.load(str(request.resume_checkpoint_path), map_location=device, weights_only=False)
+        ckpt = torch.load(
+            str(request.resume_checkpoint_path),
+            map_location=device,
+            weights_only=False,
+        )
         model.load_state_dict(ckpt["model_state_dict"])
         if "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -187,7 +196,15 @@ def run_yolo_primary_obb_training(
 
         for batch_start in range(0, len(shuffled), bs):
             batch_anns = shuffled[batch_start:batch_start + bs]
-            images, targets = _build_obb_batch(batch_anns, input_size, device, precision, cv2, np, torch)
+            images, targets = _build_obb_batch(
+                batch_anns,
+                input_size,
+                device,
+                precision,
+                cv2,
+                np,
+                torch,
+            )
             if images is None:
                 continue
 
@@ -246,7 +263,9 @@ def run_yolo_primary_obb_training(
         metrics_history.append({"epoch": epoch, **avg_metrics})
 
         ep_progress = YoloPrimaryObbTrainingEpochProgress(
-            epoch=epoch, max_epochs=max_epochs, input_size=input_size,
+            epoch=epoch,
+            max_epochs=max_epochs,
+            input_size=input_size,
             learning_rate=float(scheduler.get_last_lr()[0]),
             train_metrics=avg_metrics,
         )
@@ -256,25 +275,30 @@ def run_yolo_primary_obb_training(
 
         # 保存 checkpoint
         buf = io.BytesIO()
-        torch.save({
-            "epoch": epoch + 1,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "metrics_history": metrics_history,
-        }, buf)
+        torch.save(
+            {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "metrics_history": metrics_history,
+            },
+            buf,
+        )
         ckpt_bytes = buf.getvalue()
 
         if cmd and cmd.save_checkpoint and request.savepoint_callback:
-            request.savepoint_callback(YoloPrimaryObbTrainingSavePoint(
-                latest_checkpoint_bytes=ckpt_bytes,
-                train_metrics=avg_metrics,
-                validation_metrics={},
-                best_metric_value=best_metric_value,
-                best_metric_name=best_metric_name,
-                epoch=epoch + 1,
-                learning_rate=float(scheduler.get_last_lr()[0]),
-            ))
+            request.savepoint_callback(
+                YoloPrimaryObbTrainingSavePoint(
+                    latest_checkpoint_bytes=ckpt_bytes,
+                    train_metrics=avg_metrics,
+                    validation_metrics={},
+                    best_metric_value=best_metric_value,
+                    best_metric_name=best_metric_name,
+                    epoch=epoch + 1,
+                    learning_rate=float(scheduler.get_last_lr()[0]),
+                )
+            )
 
         if cmd and cmd.pause_training:
             raise YoloPrimaryObbTrainingPausedError()
@@ -283,7 +307,10 @@ def run_yolo_primary_obb_training(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=ckpt_bytes,
-        metrics_payload={"final_metrics": metrics_history[-1] if metrics_history else {}, "epoch_history": metrics_history},
+        metrics_payload={
+            "final_metrics": metrics_history[-1] if metrics_history else {},
+            "epoch_history": metrics_history,
+        },
         validation_metrics_payload={"epoch_history": []},
         labels=labels,
     )
@@ -415,7 +442,7 @@ def _poly_to_xywhr(poly: list[float]) -> list[float] | None:
     if right[0, 1] > right[1, 1]:
         right = right[::-1]
     p1, p4 = left[0], left[1]
-    p2, p3 = right[0], right[1]
+    p2 = right[0]
     cx = float(np.mean(pts[:, 0]))
     cy = float(np.mean(pts[:, 1]))
     w = float(np.linalg.norm(p1 - p2))
@@ -458,7 +485,12 @@ def _build_obb_batch(
         pad_y = (target_h - new_h) // 2
         canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
 
-        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        tensor = (
+            canvas[:, :, ::-1]
+            .transpose(2, 0, 1)
+            .astype(np.float32)
+            / 255.0
+        )
         tensor = torch.from_numpy(tensor).to(device).float()
         if precision == "fp16":
             tensor = tensor.half()
@@ -476,10 +508,16 @@ def _build_obb_batch(
             if new_w > 1 and new_h > 1:
                 scaled_boxes.append([new_cx, new_cy, new_w, new_h, angle])
 
-        targets.append(_ObbPreparedTarget(
-            boxes_xywhr=scaled_boxes,
-            category_indexes=ann.class_ids[:len(scaled_boxes)] if len(scaled_boxes) <= len(ann.class_ids) else ann.class_ids,
-        ))
+        if len(scaled_boxes) <= len(ann.class_ids):
+            category_indexes = ann.class_ids[: len(scaled_boxes)]
+        else:
+            category_indexes = ann.class_ids
+        targets.append(
+            _ObbPreparedTarget(
+                boxes_xywhr=scaled_boxes,
+                category_indexes=category_indexes,
+            )
+        )
 
     if not images:
         return None, ()

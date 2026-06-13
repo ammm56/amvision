@@ -93,6 +93,61 @@ def test_rfdetr_imports():
     )
 
 
+def test_rfdetr_hungarian_match_uses_cxcywh_giou_cost() -> None:
+    """验证 Hungarian 匹配会先把 cxcywh 转成 xyxy 再计算 GIoU 代价。"""
+
+    from backend.service.application.models.rfdetr_training import _hungarian_match
+
+    pred_logits = torch.zeros((1, 2, 1), dtype=torch.float32)
+    pred_boxes = torch.tensor(
+        [[[0.5, 0.5, 0.2, 0.2], [0.2, 0.2, 0.2, 0.2]]],
+        dtype=torch.float32,
+    )
+    targets = [{"boxes": [[0.5, 0.5, 0.2, 0.2]], "class_ids": [0]}]
+
+    matched = _hungarian_match(
+        pred_logits=pred_logits,
+        pred_boxes=pred_boxes,
+        targets=targets,
+        class_cost_weight=0.0,
+        bbox_cost_weight=0.0,
+        giou_cost_weight=1.0,
+        num_classes=1,
+    )
+
+    assert matched[0][0].tolist() == [0]
+    assert matched[0][1].tolist() == [0]
+
+
+def test_rfdetr_build_batch_returns_none_when_images_are_missing() -> None:
+    """验证全部图片都缺失时，RF-DETR batch 构建会安全返回空批次。"""
+
+    import cv2
+    import numpy as np
+
+    from backend.service.application.models.rfdetr_training import (
+        _RfAnnotation,
+        _RfImports,
+        _rf_build_batch,
+    )
+
+    images, targets = _rf_build_batch(
+        annotations=[
+            _RfAnnotation(
+                image_path="missing-image.jpg",
+                boxes_xywh=[[0.0, 0.0, 1.0, 1.0]],
+                class_ids=[0],
+            )
+        ],
+        input_size=(64, 64),
+        device="cpu",
+        imports=_RfImports(cv2=cv2, np=np),
+    )
+
+    assert images is None
+    assert targets == []
+
+
 def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
     """验证 RF-DETR TensorRT detection runtime 通过 cuda-python 辅助层加载。"""
 

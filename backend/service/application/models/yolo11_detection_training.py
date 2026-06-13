@@ -7,8 +7,6 @@ from dataclasses import replace
 from backend.service.application.models.yolo_primary_detection_training import (
     YoloPrimaryDetectionTrainingExecutionRequest as Yolo11DetectionTrainingExecutionRequest,
     YoloPrimaryDetectionTrainingExecutionResult as Yolo11DetectionTrainingExecutionResult,
-    YoloPrimaryTrainingBatchProgress as Yolo11TrainingBatchProgress,
-    YoloPrimaryTrainingEpochProgress as Yolo11TrainingEpochProgress,
     run_yolo_primary_detection_training,
 )
 

@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import io
-import json
-import math
-from collections.abc import Callable, Iterator
-from contextlib import nullcontext, redirect_stdout
+from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.models.yolo_primary_detection_model import (
-    load_yolo_primary_checkpoint,
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
 )
+from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -104,6 +102,15 @@ class _ResolvedClassificationTrainingAnnotation:
 
 
 @dataclass(frozen=True)
+class _ClassificationTrainingImports:
+    """描述 classification 训练依赖的本地模块。"""
+
+    cv2: Any
+    np: Any
+    torch: Any
+
+
+@dataclass(frozen=True)
 class YoloPrimaryClassificationTrainingExecutionRequest:
     dataset_storage: LocalDatasetStorage
     manifest_payload: dict[str, object]
@@ -116,7 +123,10 @@ class YoloPrimaryClassificationTrainingExecutionRequest:
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
-    epoch_callback: Callable[[YoloPrimaryClassificationTrainingEpochProgress], YoloPrimaryClassificationTrainingControlCommand | None] | None = None
+    epoch_callback: Callable[
+        [YoloPrimaryClassificationTrainingEpochProgress],
+        YoloPrimaryClassificationTrainingControlCommand | None,
+    ] | None = None
     savepoint_callback: Callable[[YoloPrimaryClassificationTrainingSavePoint], None] | None = None
 
 
@@ -159,21 +169,61 @@ def run_yolo_primary_classification_training(
 
     extra = request.extra_options or {}
     learning_rate = float(extra.get("learning_rate", YOLO_PRIMARY_CLASSIFICATION_DEFAULT_LR))
-    weight_decay = float(extra.get("weight_decay", YOLO_PRIMARY_CLASSIFICATION_DEFAULT_WEIGHT_DECAY))
-    min_lr_ratio = float(extra.get("min_lr_ratio", YOLO_PRIMARY_CLASSIFICATION_DEFAULT_MIN_LR_RATIO))
+    weight_decay = float(
+        extra.get(
+            "weight_decay",
+            YOLO_PRIMARY_CLASSIFICATION_DEFAULT_WEIGHT_DECAY,
+        )
+    )
+    min_lr_ratio = float(
+        extra.get(
+            "min_lr_ratio",
+            YOLO_PRIMARY_CLASSIFICATION_DEFAULT_MIN_LR_RATIO,
+        )
+    )
     batch_size = int(extra.get("batch_size", request.batch_size))
     max_epochs = int(extra.get("max_epochs", request.max_epochs))
-    evaluation_interval = int(extra.get("evaluation_interval", request.evaluation_interval))
+    evaluation_interval = int(
+        extra.get("evaluation_interval", request.evaluation_interval)
+    )
 
     if resume_state is not None:
-        _validate_resume_parameters(resume_state, batch_size=batch_size, max_epochs=max_epochs, learning_rate=learning_rate, weight_decay=weight_decay, evaluation_interval=evaluation_interval, min_lr_ratio=min_lr_ratio, extra=extra)
+        _validate_resume_parameters(
+            resume_state,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            evaluation_interval=evaluation_interval,
+            min_lr_ratio=min_lr_ratio,
+            extra=extra,
+        )
 
     model.to(device_name)
     trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = imports.torch.optim.AdamW(trainable_params, lr=learning_rate, weight_decay=weight_decay)
-    scaler = imports.torch.GradScaler(device_name, enabled=(precision == "fp16")) if hasattr(imports.torch, "GradScaler") else None
-    total_iterations = max_epochs * max(1, (len(train_annotations) + batch_size - 1) // batch_size)
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_iterations, eta_min=learning_rate * min_lr_ratio)
+    optimizer = imports.torch.optim.AdamW(
+        trainable_params,
+        lr=learning_rate,
+        weight_decay=weight_decay,
+    )
+    scaler = (
+        imports.torch.GradScaler(
+            device_name,
+            enabled=(precision == "fp16"),
+        )
+        if hasattr(imports.torch, "GradScaler")
+        else None
+    )
+    iterations_per_epoch = max(
+        1,
+        (len(train_annotations) + batch_size - 1) // batch_size,
+    )
+    total_iterations = max_epochs * iterations_per_epoch
+    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=total_iterations,
+        eta_min=learning_rate * min_lr_ratio,
+    )
 
     start_epoch = 0
     global_iteration = 0
@@ -181,6 +231,7 @@ def run_yolo_primary_classification_training(
     validation_history: list[dict[str, float]] = []
     best_metric_value = 0.0
     best_metric_name = "val_top1_accuracy"
+    checkpoint_bytes = b""
     if resume_state is not None:
         _resolve_model_state(model, resume_state.model_state_dict, imports, device_name)
         optimizer.load_state_dict(resume_state.optimizer_state_dict)
@@ -209,14 +260,22 @@ def run_yolo_primary_classification_training(
             images_list: list[Any] = []
             targets: list[int] = []
             for ann in batch_annotations:
-                img = _load_and_preprocess_classification_image(ann.image_path, input_size, imports.cv2)
+                img = _load_and_preprocess_classification_image(
+                    ann.image_path,
+                    input_size,
+                    imports.cv2,
+                )
                 img_tensor = imports.torch.from_numpy(img).to(device_name).float()
                 if precision == "fp16":
                     img_tensor = img_tensor.half()
                 images_list.append(img_tensor)
                 targets.append(ann.class_id)
             batch_images = imports.torch.stack(images_list, dim=0)
-            batch_targets = imports.torch.tensor(targets, dtype=imports.torch.long, device=device_name)
+            batch_targets = imports.torch.tensor(
+                targets,
+                dtype=imports.torch.long,
+                device=device_name,
+            )
             with _autocast_context(imports, precision, device_name):
                 outputs = model(batch_images)
                 logits: Any = None
@@ -240,14 +299,6 @@ def run_yolo_primary_classification_training(
             train_loss_sum += float(loss.item()) * int(batch_targets.size(0))
             epoch_iterations += 1
             global_iteration += 1
-            current_lr = float(scheduler.get_last_lr()[0])
-            batch_progress = YoloPrimaryClassificationTrainingBatchProgress(
-                epoch=epoch, max_epochs=max_epochs, iteration=epoch_iterations,
-                max_iterations=max(1, (len(train_annotations) + batch_size - 1) // batch_size),
-                global_iteration=global_iteration, total_iterations=total_iterations,
-                input_size=input_size, learning_rate=current_lr,
-                train_metrics={"loss": round(float(loss.item()), 6), "accuracy": round(train_correct / max(1, train_total), 6)},
-            )
         train_accuracy = train_correct / max(1, train_total)
         train_loss = train_loss_sum / max(1, train_total)
         epoch_metrics = {"loss": round(train_loss, 6), "accuracy": round(train_accuracy, 6)}
@@ -262,11 +313,21 @@ def run_yolo_primary_classification_training(
         if cmd is not None and cmd.terminate_training:
             raise YoloPrimaryClassificationTrainingTerminatedError()
         val_metrics: dict[str, float] = {}
-        if (len(val_annotations) > 0 and epoch > 0 and epoch % evaluation_interval == 0) or epoch == max_epochs - 1:
+        should_evaluate = (
+            len(val_annotations) > 0
+            and epoch > 0
+            and epoch % evaluation_interval == 0
+        ) or epoch == max_epochs - 1
+        if should_evaluate:
             val_metrics = _evaluate_classification_model(
-                model=model, val_annotations=val_annotations, labels=labels,
-                batch_size=batch_size, input_size=input_size, device_name=device_name,
-                precision=precision, imports=imports,
+                model=model,
+                val_annotations=val_annotations,
+                labels=labels,
+                batch_size=batch_size,
+                input_size=input_size,
+                device_name=device_name,
+                precision=precision,
+                imports=imports,
             )
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
@@ -295,10 +356,18 @@ def run_yolo_primary_classification_training(
             raise YoloPrimaryClassificationTrainingPausedError()
     final_val_metrics = validation_history[-1] if validation_history else {}
     return YoloPrimaryClassificationTrainingExecutionResult(
-        best_metric_value=best_metric_value, best_metric_name=best_metric_name,
-        latest_checkpoint_bytes=checkpoint_bytes if 'checkpoint_bytes' in dir() else b"",
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        latest_checkpoint_bytes=checkpoint_bytes,
         metrics_payload={
-            "final_metrics": {"loss": metrics_history[-1].get("loss", 0.0), "accuracy": metrics_history[-1].get("accuracy", 0.0)} if metrics_history else {},
+            "final_metrics": (
+                {
+                    "loss": metrics_history[-1].get("loss", 0.0),
+                    "accuracy": metrics_history[-1].get("accuracy", 0.0),
+                }
+                if metrics_history
+                else {}
+            ),
             "epoch_history": metrics_history,
             "scheduler": "CosineAnnealingLR",
         },
@@ -310,20 +379,34 @@ def run_yolo_primary_classification_training(
     )
 
 
-def _load_and_preprocess_classification_image(image_path: str, input_size: tuple[int, int], cv2_module: Any) -> Any:
+def _load_and_preprocess_classification_image(
+    image_path: str,
+    input_size: tuple[int, int],
+    cv2_module: Any,
+) -> Any:
     image = cv2_module.imread(image_path)
     if image is None:
         raise InvalidRequestError(f"无法读取训练图片: {image_path}")
-    resized = cv2_module.resize(image, (int(input_size[1]), int(input_size[0])), interpolation=cv2_module.INTER_LINEAR)
+    resized = cv2_module.resize(
+        image,
+        (int(input_size[1]), int(input_size[0])),
+        interpolation=cv2_module.INTER_LINEAR,
+    )
     tensor = resized[:, :, ::-1].transpose(2, 0, 1)
     tensor = tensor.astype(float) / 255.0
     return tensor
 
 
 def _load_classification_manifest(
-    *, dataset_storage: LocalDatasetStorage, manifest_payload: dict[str, object],
+    *,
+    dataset_storage: LocalDatasetStorage,
+    manifest_payload: dict[str, object],
     cv2_module: Any,
-) -> tuple[tuple[str, ...], list[_ResolvedClassificationTrainingAnnotation], list[_ResolvedClassificationTrainingAnnotation]]:
+) -> tuple[
+    tuple[str, ...],
+    list[_ResolvedClassificationTrainingAnnotation],
+    list[_ResolvedClassificationTrainingAnnotation],
+]:
     splits = manifest_payload.get("splits")
     if not isinstance(splits, list) or len(splits) < 1:
         raise InvalidRequestError("classification 训练 manifest 缺少合法 splits")
@@ -368,23 +451,46 @@ def _load_classification_manifest(
                 if not file_name:
                     continue
                 resolved_path = str(dataset_storage.resolve(f"{image_root}/{file_name}"))
-                resolved.append(_ResolvedClassificationTrainingAnnotation(image_path=resolved_path, class_id=class_id))
+                resolved.append(
+                    _ResolvedClassificationTrainingAnnotation(
+                        image_path=resolved_path,
+                        class_id=class_id,
+                    )
+                )
         if split_name == "train":
             train_annotations = resolved
         elif split_name == "val":
             val_annotations = resolved
-    sorted_labels = sorted(all_labels.items(), key=lambda x: x[0])
+    sorted_labels = sorted(all_labels.items())
     labels = tuple(name for _cid, name in sorted_labels)
     category_id_to_index = {cid: idx for idx, (cid, _name) in enumerate(sorted_labels)}
-    remapped_train = [_ResolvedClassificationTrainingAnnotation(image_path=a.image_path, class_id=category_id_to_index.get(a.class_id, 0)) for a in train_annotations]
-    remapped_val = [_ResolvedClassificationTrainingAnnotation(image_path=a.image_path, class_id=category_id_to_index.get(a.class_id, 0)) for a in val_annotations]
+    remapped_train = [
+        _ResolvedClassificationTrainingAnnotation(
+            image_path=annotation.image_path,
+            class_id=category_id_to_index.get(annotation.class_id, 0),
+        )
+        for annotation in train_annotations
+    ]
+    remapped_val = [
+        _ResolvedClassificationTrainingAnnotation(
+            image_path=annotation.image_path,
+            class_id=category_id_to_index.get(annotation.class_id, 0),
+        )
+        for annotation in val_annotations
+    ]
     return labels, remapped_train, remapped_val
 
 
 def _evaluate_classification_model(
-    *, model: Any, val_annotations: list[_ResolvedClassificationTrainingAnnotation],
-    labels: tuple[str, ...], batch_size: int, input_size: tuple[int, int],
-    device_name: str, precision: str, imports: Any,
+    *,
+    model: Any,
+    val_annotations: list[_ResolvedClassificationTrainingAnnotation],
+    labels: tuple[str, ...],
+    batch_size: int,
+    input_size: tuple[int, int],
+    device_name: str,
+    precision: str,
+    imports: Any,
 ) -> dict[str, float]:
     model.eval()
     correct_top1 = 0
@@ -396,14 +502,22 @@ def _evaluate_classification_model(
             images_list = []
             targets = []
             for ann in batch:
-                img = _load_and_preprocess_classification_image(ann.image_path, input_size, imports.cv2)
+                img = _load_and_preprocess_classification_image(
+                    ann.image_path,
+                    input_size,
+                    imports.cv2,
+                )
                 t = imports.torch.from_numpy(img).to(device_name).float()
                 if precision == "fp16":
                     t = t.half()
                 images_list.append(t)
                 targets.append(ann.class_id)
             batch_images = imports.torch.stack(images_list, dim=0)
-            batch_targets = imports.torch.tensor(targets, dtype=imports.torch.long, device=device_name)
+            batch_targets = imports.torch.tensor(
+                targets,
+                dtype=imports.torch.long,
+                device=device_name,
+            )
             outputs = model(batch_images)
             if isinstance(outputs, tuple):
                 probs = outputs[1] if len(outputs) >= 2 else outputs[0]
@@ -425,18 +539,26 @@ def _evaluate_classification_model(
     }
 
 
-def _require_training_imports() -> Any:
+def _require_training_imports() -> _ClassificationTrainingImports:
+    """导入 classification 训练需要的本地依赖。"""
+
     try:
         import cv2
         import numpy as np
         import torch
     except ImportError as exc:
-        raise ServiceConfigurationError("classification 训练缺少必要依赖", details={"missing": str(exc)}) from exc
-    return type("_Imports", (), {"cv2": cv2, "np": np, "torch": torch})()
+        raise ServiceConfigurationError(
+            "classification 训练缺少必要依赖",
+            details={"missing": str(exc)},
+        ) from exc
+    return _ClassificationTrainingImports(cv2=cv2, np=np, torch=torch)
 
 
 def _resolve_training_device(extra_options: dict[str, object] | None) -> str:
+    """按请求解析训练设备。"""
+
     import torch
+
     requested = str((extra_options or {}).get("device", "cpu")).strip().lower()
     if requested == "cuda" and torch.cuda.is_available():
         return "cuda:0"
@@ -457,12 +579,24 @@ def _logit_from_prob(probabilities: Any, imports: Any) -> Any:
 
 
 def _build_checkpoint_bytes(
-    *, epoch: int, global_iteration: int, model: Any, optimizer: Any,
-    scheduler: Any, scaler: Any | None, metrics_history: list[dict[str, float]],
-    validation_history: list[dict[str, float]], best_metric_value: float,
-    best_metric_name: str, batch_size: int, max_epochs: int,
-    learning_rate: float, weight_decay: float, evaluation_interval: int,
-    min_lr_ratio: float, imports: Any,
+    *,
+    epoch: int,
+    global_iteration: int,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    scaler: Any | None,
+    metrics_history: list[dict[str, float]],
+    validation_history: list[dict[str, float]],
+    best_metric_value: float,
+    best_metric_name: str,
+    batch_size: int,
+    max_epochs: int,
+    learning_rate: float,
+    weight_decay: float,
+    evaluation_interval: int,
+    min_lr_ratio: float,
+    imports: Any,
 ) -> bytes:
     payload = {
         "epoch": epoch + 1,
@@ -491,7 +625,11 @@ def _load_resume_state(
     request: YoloPrimaryClassificationTrainingExecutionRequest,
     imports: Any,
 ) -> _LoadedClassificationResumeState:
-    checkpoint = imports.torch.load(str(request.resume_checkpoint_path), map_location="cpu", weights_only=False)
+    checkpoint = imports.torch.load(
+        str(request.resume_checkpoint_path),
+        map_location="cpu",
+        weights_only=False,
+    )
     return _LoadedClassificationResumeState(
         model_state_dict=checkpoint.get("model_state_dict", {}),
         optimizer_state_dict=checkpoint.get("optimizer_state_dict", {}),
@@ -512,7 +650,17 @@ def _load_resume_state(
     )
 
 
-def _validate_resume_parameters(state: _LoadedClassificationResumeState, *, batch_size: int, max_epochs: int, learning_rate: float, weight_decay: float, evaluation_interval: int, min_lr_ratio: float, extra: dict[str, object]) -> None:
+def _validate_resume_parameters(
+    state: _LoadedClassificationResumeState,
+    *,
+    batch_size: int,
+    max_epochs: int,
+    learning_rate: float,
+    weight_decay: float,
+    evaluation_interval: int,
+    min_lr_ratio: float,
+    extra: dict[str, object],
+) -> None:
     mismatches = []
     if state.saved_batch_size != batch_size:
         mismatches.append(f"batch_size ({state.saved_batch_size} -> {batch_size})")
@@ -523,14 +671,24 @@ def _validate_resume_parameters(state: _LoadedClassificationResumeState, *, batc
     if abs(state.saved_weight_decay - weight_decay) > 1e-8:
         mismatches.append(f"weight_decay ({state.saved_weight_decay} -> {weight_decay})")
     if state.saved_evaluation_interval != evaluation_interval:
-        mismatches.append(f"evaluation_interval ({state.saved_evaluation_interval} -> {evaluation_interval})")
+        mismatches.append(
+            f"evaluation_interval ({state.saved_evaluation_interval} -> {evaluation_interval})"
+        )
     if abs(state.saved_min_lr_ratio - min_lr_ratio) > 1e-8:
         mismatches.append(f"min_lr_ratio ({state.saved_min_lr_ratio} -> {min_lr_ratio})")
     if mismatches:
-        raise InvalidRequestError("resume 请求的训练参数与 checkpoint 记录不一致，请检查配置", details={"mismatches": mismatches})
+        raise InvalidRequestError(
+            "resume 请求的训练参数与 checkpoint 记录不一致，请检查配置",
+            details={"mismatches": mismatches},
+        )
 
 
-def _resolve_model_state(model: Any, state_dict: dict[str, object], imports: Any, device_name: str) -> None:
+def _resolve_model_state(
+    model: Any,
+    state_dict: dict[str, object],
+    imports: Any,
+    device_name: str,
+) -> None:
     filtered = {}
     skipped = []
     for key, value in state_dict.items():
