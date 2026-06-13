@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+import types
 from types import SimpleNamespace
 
 import torch
 
+from backend.service.application.models.yolo_detection_model import YoloDetectionModel
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
@@ -83,6 +86,19 @@ def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: 
     assert any(".cv3." in key for key in load_summary["shape_mismatch_keys"])
 
 
+def test_yolov8_detection_model_uses_legacy_class_head() -> None:
+    """验证 YOLOv8 权重对应旧版分类 head 结构。"""
+
+    model = build_yolo_primary_detection_model(
+        model_type="yolov8",
+        model_scale="nano",
+        num_classes=2,
+    )
+    detect_head = model.model[-1]
+
+    assert detect_head.cv3[0][0].__class__.__name__ == "Conv"
+
+
 def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
     """验证共享层已经可以构建并前向 YOLO11 detection 模型。"""
 
@@ -99,6 +115,19 @@ def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
     assert prediction.shape == (1, 84, 6)
 
 
+def test_yolo11_detection_model_uses_current_class_head() -> None:
+    """验证 YOLO11 不会误用 YOLOv8 旧版分类 head。"""
+
+    model = build_yolo_primary_detection_model(
+        model_type="yolo11",
+        model_scale="nano",
+        num_classes=2,
+    )
+    detect_head = model.model[-1]
+
+    assert detect_head.cv3[0][0].__class__.__name__ == "Sequential"
+
+
 def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
     """验证共享层已经可以构建并前向 YOLO26 detection 模型。"""
 
@@ -113,6 +142,46 @@ def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
         prediction = model(torch.randn(1, 3, 64, 64))
 
     assert prediction.shape == (1, 84, 6)
+
+
+def test_yolo26_m_detection_model_enables_c3k2_scale_branch() -> None:
+    """验证 YOLO26 m/l/x 会按 upstream 规则启用 C3k2 的 C3k 分支。"""
+
+    model = build_yolo_primary_detection_model(
+        model_type="yolo26",
+        model_scale="m",
+        num_classes=2,
+    )
+
+    assert hasattr(model.model[2].m[0], "cv3")
+    assert hasattr(model.model[4].m[0], "cv3")
+
+
+def test_yolo_checkpoint_loader_reads_ultralytics_style_model_pickle(tmp_path: Path) -> None:
+    """验证无 ultralytics 依赖时也能读取ultralytics风格完整模型 checkpoint。"""
+
+    checkpoint_path = tmp_path / "ultralytics-style-yolo.pt"
+    source_model = build_yolo_primary_detection_model(
+        model_type="yolo26",
+        model_scale="m",
+        num_classes=1,
+    )
+    _save_as_ultralytics_style_detection_checkpoint(source_model, checkpoint_path)
+
+    target_model = build_yolo_primary_detection_model(
+        model_type="yolo26",
+        model_scale="m",
+        num_classes=1,
+    )
+    load_summary = load_yolo_primary_checkpoint(
+        imports=SimpleNamespace(torch=torch),
+        model=target_model,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert load_summary["checkpoint_path"] == str(checkpoint_path)
+    assert load_summary["loaded_key_count"] > 0
+    assert load_summary["unexpected_keys"] == []
 
 
 def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> None:
@@ -150,3 +219,48 @@ def test_yolo26_classification_model_forward_returns_probabilities_and_logits() 
 
     assert probabilities.shape == (1, 3)
     assert logits.shape == (1, 3)
+
+
+def _save_as_ultralytics_style_detection_checkpoint(
+    model: YoloDetectionModel,
+    checkpoint_path: Path,
+) -> None:
+    """把项目内模型临时保存成ultralytics风格的 pickle checkpoint。"""
+
+    root_module_name = "ultralytics"
+    nn_module_name = "ultralytics.nn"
+    module_name = "ultralytics.nn.tasks"
+    previous_root_module = sys.modules.get(root_module_name)
+    previous_nn_module = sys.modules.get(nn_module_name)
+    previous_tasks_module = sys.modules.get(module_name)
+    temporary_root_module = types.ModuleType(root_module_name)
+    temporary_nn_module = types.ModuleType(nn_module_name)
+    temporary_module = types.ModuleType(module_name)
+    detection_model_cls = type(
+        "DetectionModel",
+        (YoloDetectionModel,),
+        {"__module__": module_name, "__qualname__": "DetectionModel"},
+    )
+    temporary_root_module.nn = temporary_nn_module
+    temporary_nn_module.tasks = temporary_module
+    temporary_module.DetectionModel = detection_model_cls
+    sys.modules[root_module_name] = temporary_root_module
+    sys.modules[nn_module_name] = temporary_nn_module
+    sys.modules[module_name] = temporary_module
+    try:
+        model.__class__ = detection_model_cls
+        torch.save({"model": model}, checkpoint_path)
+    finally:
+        model.__class__ = YoloDetectionModel
+        if previous_tasks_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous_tasks_module
+        if previous_nn_module is None:
+            sys.modules.pop(nn_module_name, None)
+        else:
+            sys.modules[nn_module_name] = previous_nn_module
+        if previous_root_module is None:
+            sys.modules.pop(root_module_name, None)
+        else:
+            sys.modules[root_module_name] = previous_root_module

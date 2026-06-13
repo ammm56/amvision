@@ -3,19 +3,50 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from contextlib import contextmanager
 from pathlib import Path
+import sys
+import types
 from typing import Any
 
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolo_detection_model import build_yolo_detection_model
+from backend.service.application.models.yolo_detection_model import (
+    Attention,
+    Bottleneck,
+    C2PSA,
+    C2f,
+    C3,
+    C3k,
+    C3k2,
+    Classify,
+    Concat,
+    Conv,
+    Detect,
+    DistributionFocalLossDecoder,
+    DWConv,
+    OBB,
+    OBB26,
+    Pose,
+    Pose26,
+    Proto,
+    Proto26,
+    PSABlock,
+    RealNVP,
+    Segment,
+    Segment26,
+    SPPF,
+    YoloDetectionModel,
+    build_yolo_detection_model,
+)
 
 
 YOLOV8_DETECTION_MODEL_CONFIG: dict[str, object] = {
     "reg_max": 16,
     "strides": (8, 16, 32),
+    "legacy_class_head": True,
     "scales": {
         "nano": (0.33, 0.25, 1024),
         "s": (0.33, 0.50, 1024),
@@ -140,6 +171,17 @@ YOLO_PRIMARY_DETECTION_MODEL_CONFIGS: dict[str, dict[str, object]] = {
 }
 
 _IGNORED_SOURCE_ONLY_SUFFIXES = ("dfl.conv.weight",)
+_MISSING_MODULE = object()
+
+_ULTRALYTICS_CHECKPOINT_MODULE_NAMES = (
+    "ultralytics",
+    "ultralytics.nn",
+    "ultralytics.nn.modules",
+    "ultralytics.nn.modules.block",
+    "ultralytics.nn.modules.conv",
+    "ultralytics.nn.modules.head",
+    "ultralytics.nn.tasks",
+)
 
 
 def build_yolo_primary_detection_model(
@@ -230,10 +272,105 @@ def _load_checkpoint_payload(*, imports: Any, checkpoint_path: Path) -> object:
                 load_errors.append(str(error))
         except Exception as error:
             load_errors.append(str(error))
+    try:
+        return _load_ultralytics_style_checkpoint_payload(
+            imports=imports,
+            checkpoint_path=checkpoint_path,
+        )
+    except Exception as error:
+        load_errors.append(str(error))
     raise ServiceConfigurationError(
         "当前 YOLO checkpoint 无法加载为项目内模型权重",
         details={"checkpoint_path": str(checkpoint_path), "errors": load_errors},
     )
+
+
+def _load_ultralytics_style_checkpoint_payload(*, imports: Any, checkpoint_path: Path) -> object:
+    """读取 Ultralytics 风格的完整模型 checkpoint。
+
+    本项目不把 ultralytics Python 包作为运行时依赖。部分本地预训练 .pt
+    文件是完整 pickle checkpoint，反序列化时会按旧模块路径查找
+    ultralytics.nn.* 类。这里仅在普通 torch.load 已失败后，临时把这些
+    类名映射到项目内等价实现，用于提取 state_dict。
+    """
+
+    with _temporary_ultralytics_checkpoint_modules():
+        return imports.torch.load(
+            str(checkpoint_path),
+            map_location="cpu",
+            weights_only=False,
+        )
+
+
+@contextmanager
+def _temporary_ultralytics_checkpoint_modules():
+    """临时注册 checkpoint 反序列化需要的 ultralytics 模块路径。"""
+
+    previous_modules = {
+        module_name: sys.modules.get(module_name, _MISSING_MODULE)
+        for module_name in _ULTRALYTICS_CHECKPOINT_MODULE_NAMES
+    }
+
+    ultralytics_module = types.ModuleType("ultralytics")
+    nn_module = types.ModuleType("ultralytics.nn")
+    modules_module = types.ModuleType("ultralytics.nn.modules")
+    block_module = types.ModuleType("ultralytics.nn.modules.block")
+    conv_module = types.ModuleType("ultralytics.nn.modules.conv")
+    head_module = types.ModuleType("ultralytics.nn.modules.head")
+    tasks_module = types.ModuleType("ultralytics.nn.tasks")
+
+    ultralytics_module.nn = nn_module
+    nn_module.modules = modules_module
+    nn_module.tasks = tasks_module
+    modules_module.block = block_module
+    modules_module.conv = conv_module
+    modules_module.head = head_module
+
+    block_module.Attention = Attention
+    block_module.Bottleneck = Bottleneck
+    block_module.C2PSA = C2PSA
+    block_module.C2f = C2f
+    block_module.C3 = C3
+    block_module.C3k = C3k
+    block_module.C3k2 = C3k2
+    block_module.DFL = DistributionFocalLossDecoder
+    block_module.PSABlock = PSABlock
+    block_module.Proto = Proto
+    block_module.Proto26 = Proto26
+    block_module.SPPF = SPPF
+    conv_module.Concat = Concat
+    conv_module.Conv = Conv
+    conv_module.DWConv = DWConv
+    head_module.Classify = Classify
+    head_module.Detect = Detect
+    head_module.OBB = OBB
+    head_module.OBB26 = OBB26
+    head_module.Pose = Pose
+    head_module.Pose26 = Pose26
+    head_module.RealNVP = RealNVP
+    head_module.Segment = Segment
+    head_module.Segment26 = Segment26
+    tasks_module.ClassificationModel = YoloDetectionModel
+    tasks_module.DetectionModel = YoloDetectionModel
+    tasks_module.OBBModel = YoloDetectionModel
+    tasks_module.PoseModel = YoloDetectionModel
+    tasks_module.SegmentationModel = YoloDetectionModel
+
+    try:
+        sys.modules["ultralytics"] = ultralytics_module
+        sys.modules["ultralytics.nn"] = nn_module
+        sys.modules["ultralytics.nn.modules"] = modules_module
+        sys.modules["ultralytics.nn.modules.block"] = block_module
+        sys.modules["ultralytics.nn.modules.conv"] = conv_module
+        sys.modules["ultralytics.nn.modules.head"] = head_module
+        sys.modules["ultralytics.nn.tasks"] = tasks_module
+        yield
+    finally:
+        for module_name, previous_module in previous_modules.items():
+            if previous_module is _MISSING_MODULE:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
 
 
 def _extract_checkpoint_state_dict(checkpoint_payload: object) -> dict[str, object]:

@@ -524,6 +524,7 @@ class Detect(nn.Module):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         """初始化检测头。"""
 
@@ -534,6 +535,7 @@ class Detect(nn.Module):
         self.no = nc + 4
         self.strides = tuple(int(item) for item in strides)
         self.end2end = bool(end2end)
+        self.legacy_class_head = bool(legacy_class_head)
         if len(self.strides) != self.nl:
             raise ServiceConfigurationError(
                 "Detect 头的 stride 数量与特征层数量不一致",
@@ -550,7 +552,37 @@ class Detect(nn.Module):
             )
             for input_channels in ch
         )
-        self.cv3 = nn.ModuleList(
+        self.cv3 = self._build_class_head(
+            feature_channels=ch,
+            class_hidden_channels=class_hidden_channels,
+        )
+        self.dfl = (
+            DistributionFocalLossDecoder(self.reg_max)
+            if self.reg_max > 1
+            else nn.Identity()
+        )
+        if self.end2end:
+            self.one2one_cv2 = copy.deepcopy(self.cv2)
+            self.one2one_cv3 = copy.deepcopy(self.cv3)
+
+    def _build_class_head(
+        self,
+        *,
+        feature_channels: tuple[int, ...],
+        class_hidden_channels: int,
+    ) -> nn.ModuleList:
+        """按 YOLO 代际构建分类 head。"""
+
+        if self.legacy_class_head:
+            return nn.ModuleList(
+                nn.Sequential(
+                    Conv(input_channels, class_hidden_channels, 3),
+                    Conv(class_hidden_channels, class_hidden_channels, 3),
+                    nn.Conv2d(class_hidden_channels, self.nc, 1),
+                )
+                for input_channels in feature_channels
+            )
+        return nn.ModuleList(
             nn.Sequential(
                 nn.Sequential(
                     DWConv(input_channels, input_channels, 3),
@@ -562,16 +594,8 @@ class Detect(nn.Module):
                 ),
                 nn.Conv2d(class_hidden_channels, self.nc, 1),
             )
-            for input_channels in ch
+            for input_channels in feature_channels
         )
-        self.dfl = (
-            DistributionFocalLossDecoder(self.reg_max)
-            if self.reg_max > 1
-            else nn.Identity()
-        )
-        if self.end2end:
-            self.one2one_cv2 = copy.deepcopy(self.cv2)
-            self.one2one_cv3 = copy.deepcopy(self.cv3)
 
     def forward(
         self,
@@ -695,10 +719,18 @@ class Segment(Detect):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         """初始化分割头。"""
 
-        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        super().__init__(
+            nc,
+            ch,
+            reg_max=reg_max,
+            strides=strides,
+            end2end=end2end,
+            legacy_class_head=legacy_class_head,
+        )
         self.nm = int(nm)
         self.npr = int(npr)
         self.proto = Proto(ch[0], self.npr, self.nm)
@@ -778,6 +810,7 @@ class Segment26(Segment):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         super().__init__(
             nc,
@@ -787,6 +820,7 @@ class Segment26(Segment):
             reg_max=reg_max,
             strides=strides,
             end2end=end2end,
+            legacy_class_head=legacy_class_head,
         )
         self.proto = Proto26(c_=256, c2=self.nm, nc=nc, feature_channels=ch)
 
@@ -861,10 +895,18 @@ class OBB(Detect):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         """初始化旋转框头。"""
 
-        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        super().__init__(
+            nc,
+            ch,
+            reg_max=reg_max,
+            strides=strides,
+            end2end=end2end,
+            legacy_class_head=legacy_class_head,
+        )
         self.ne = int(ne)
         hidden_channels = max(ch[0] // 4, self.ne)
         self.cv4 = nn.ModuleList(
@@ -974,10 +1016,18 @@ class Pose(Detect):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         """初始化关键点头。"""
 
-        super().__init__(nc, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        super().__init__(
+            nc,
+            ch,
+            reg_max=reg_max,
+            strides=strides,
+            end2end=end2end,
+            legacy_class_head=legacy_class_head,
+        )
         self.kpt_shape = tuple(int(item) for item in kpt_shape)
         self.nk = self.kpt_shape[0] * self.kpt_shape[1]
         hidden_channels = max(ch[0] // 4, self.nk)
@@ -1067,10 +1117,19 @@ class Pose26(Pose):
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
         end2end: bool = False,
+        legacy_class_head: bool = False,
     ) -> None:
         """初始化 YOLO26 关键点头。"""
 
-        super().__init__(nc, kpt_shape, ch, reg_max=reg_max, strides=strides, end2end=end2end)
+        super().__init__(
+            nc,
+            kpt_shape,
+            ch,
+            reg_max=reg_max,
+            strides=strides,
+            end2end=end2end,
+            legacy_class_head=legacy_class_head,
+        )
         self.flow_model = RealNVP()
         c4 = max(ch[0] // 4, self.nk + kpt_shape[0] * 2)
         self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3)) for x in ch)
@@ -1475,6 +1534,8 @@ def _parse_yolo_detection_model(
                     repeat_count,
                     *module_args[1:],
                 ]
+                if module_type is C3k2 and model_scale in {"m", "l", "x"}:
+                    built_module_args[3] = True
             module = module_type(*built_module_args)
         elif module_type is Concat:
             concat_sources = _resolve_multi_from_indexes(from_index)
@@ -1523,6 +1584,7 @@ def _parse_yolo_detection_model(
                     for item in model_config.get("strides", (8, 16, 32))
                 ),
                 end2end=bool(model_config.get("end2end", False)),
+                legacy_class_head=bool(model_config.get("legacy_class_head", False)),
             )
 
         setattr(module, "layer_index", layer_index)
