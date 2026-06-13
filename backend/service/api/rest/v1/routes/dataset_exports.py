@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -177,6 +177,46 @@ def create_dataset_export(
 		queue_name=submission.queue_name,
 		queue_task_id=submission.queue_task_id,
 	)
+
+
+@dataset_exports_router.get(
+	"/exports",
+	response_model=list[DatasetExportSummaryResponse],
+)
+def list_project_dataset_exports(
+	project_id: Annotated[str, Query(description="所属 Project id")],
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	task_type: Annotated[str | None, Query(description="按 task_type 过滤")] = None,
+	status_value: Annotated[str | None, Query(alias="status", description="按状态过滤")] = None,
+	limit: Annotated[int, Query(ge=1, le=500, description="返回上限")] = 200,
+) -> list[DatasetExportSummaryResponse]:
+	"""按 Project 返回导出记录列表。"""
+
+	if principal.project_ids and project_id not in principal.project_ids:
+		raise PermissionDeniedError(
+			"当前主体无权访问该 Project",
+			details={"project_id": project_id},
+		)
+
+	normalized_task_type = task_type.strip().lower() if isinstance(task_type, str) else None
+	normalized_status = status_value.strip().lower() if isinstance(status_value, str) else None
+	dataset_exports = unit_of_work.dataset_exports.list_dataset_exports_by_project(project_id)
+	visible_exports = [
+		dataset_export
+		for dataset_export in dataset_exports
+		if _project_visible(principal=principal, project_id=dataset_export.project_id)
+		and (normalized_task_type is None or dataset_export.task_type.strip().lower() == normalized_task_type)
+		and (normalized_status is None or dataset_export.status.strip().lower() == normalized_status)
+	]
+	visible_exports.sort(
+		key=lambda item: (item.created_at, item.dataset_export_id),
+		reverse=True,
+	)
+	return [
+		_build_dataset_export_response(dataset_export)
+		for dataset_export in visible_exports[:limit]
+	]
 
 
 @dataset_exports_router.get(

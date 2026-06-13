@@ -150,6 +150,73 @@ def test_create_dataset_export_supports_voc_format(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_list_project_dataset_exports_supports_project_and_state_filters(tmp_path: Path) -> None:
+    """验证可以按 Project、task_type 和状态列出导出记录。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_version = _build_dataset_version(dataset_version_id="dataset-version-api-project-list")
+    _seed_dataset_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_version=dataset_version,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_write_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "dataset_version_id": "dataset-version-api-project-list",
+                    "format_id": COCO_DETECTION_DATASET_FORMAT,
+                },
+            )
+
+            assert create_response.status_code == 202
+            create_payload = create_response.json()
+
+            queued_list_response = client.get(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_read_headers(),
+                params={
+                    "project_id": "project-1",
+                    "task_type": "detection",
+                    "status": "queued",
+                },
+            )
+
+            assert _run_export_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            completed_list_response = client.get(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_read_headers(),
+                params={
+                    "project_id": "project-1",
+                    "task_type": "detection",
+                    "status": "completed",
+                },
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert queued_list_response.status_code == 200
+    queued_payload = queued_list_response.json()
+    assert len(queued_payload) == 1
+    assert queued_payload[0]["dataset_export_id"] == create_payload["dataset_export_id"]
+    assert queued_payload[0]["status"] == "queued"
+
+    assert completed_list_response.status_code == 200
+    completed_payload = completed_list_response.json()
+    assert len(completed_payload) == 1
+    assert completed_payload[0]["dataset_export_id"] == create_payload["dataset_export_id"]
+    assert completed_payload[0]["status"] == "completed"
+
+
 def test_dataset_export_format_catalog_only_exposes_implemented_formats(tmp_path: Path) -> None:
     """验证导出格式规则接口只公开已实现格式。"""
 

@@ -47,6 +47,15 @@
                 </div>
                 <div class="model-picker-summary__footer">
                   <span>{{ t('modelOps.fields.warmStart') }}: {{ warmStartModelVersionId || t('common.noValue') }}</span>
+                  <Button
+                    v-if="warmStartModelVersionId"
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    @click="clearTrainingWarmStart"
+                  >
+                    {{ t('common.filePicker.clear') }}
+                  </Button>
                 </div>
               </template>
               <template v-else>
@@ -55,33 +64,66 @@
               </template>
             </div>
           </div>
-          <label class="field field--wide">
-            <span>{{ t('modelOps.fields.datasetExportId') }}</span>
-            <input v-model="trainingDatasetExportId" placeholder="dataset-export-id" />
-          </label>
-          <label class="field field--wide">
-            <span>{{ t('modelOps.fields.datasetManifestKey') }}</span>
-            <input v-model="trainingManifestKey" placeholder="project/.../manifest.json" />
-          </label>
-          <label class="field">
-            <span>model_type</span>
-            <input v-model="trainingModelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" required />
-          </label>
+          <div class="field field--wide model-picker-field">
+            <div class="model-picker-field__header">
+              <div class="model-picker-field__title">
+                <span>{{ t('modelOps.fields.trainingDatasetExport') }}</span>
+                <span class="model-picker-chip">{{ selectedTaskType }}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                :disabled="loading || trainingDatasetExports.length === 0"
+                @click="openTrainingDatasetExportPicker"
+              >
+                {{ selectedTrainingDatasetExport ? t('modelOps.actions.changeTrainingDatasetExport') : t('modelOps.actions.chooseTrainingDatasetExport') }}
+              </Button>
+            </div>
+            <div class="model-picker-summary" :class="{ 'is-empty': !selectedTrainingDatasetExport }">
+              <template v-if="selectedTrainingDatasetExport">
+                <div class="model-picker-summary__top">
+                  <div class="model-picker-summary__identity">
+                    <strong>{{ selectedTrainingDatasetExport.dataset_export_id }}</strong>
+                    <span>{{ t('datasetOps.fields.datasetVersionId') }} {{ selectedTrainingDatasetExport.dataset_version_id }}</span>
+                  </div>
+                  <div class="model-picker-summary__chips">
+                    <span class="model-picker-chip">{{ selectedTrainingDatasetExport.task_type }}</span>
+                    <span class="model-picker-chip">{{ selectedTrainingDatasetExport.format_id }}</span>
+                  </div>
+                </div>
+                <div class="model-picker-summary__grid">
+                  <div class="model-picker-summary__item">
+                    <span>{{ t('datasetOps.fields.datasetId') }}</span>
+                    <strong>{{ selectedTrainingDatasetExport.dataset_id }}</strong>
+                  </div>
+                  <div class="model-picker-summary__item">
+                    <span>{{ t('datasetOps.columns.samples') }}</span>
+                    <strong>{{ selectedTrainingDatasetExport.sample_count }}</strong>
+                  </div>
+                  <div class="model-picker-summary__item">
+                    <span>{{ t('modelOps.columns.createdAt') }}</span>
+                    <strong>{{ formatSystemDateTime(selectedTrainingDatasetExport.created_at) }}</strong>
+                  </div>
+                  <div class="model-picker-summary__item">
+                    <span>{{ t('datasetOps.fields.categoryNames') }}</span>
+                    <strong>{{ selectedTrainingDatasetExport.category_names.join(', ') || t('common.noValue') }}</strong>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <strong>{{ t('modelOps.trainingDatasetExportEmptyTitle') }}</strong>
+                <span>{{ t('modelOps.trainingDatasetExportEmptyDescription') }}</span>
+              </template>
+            </div>
+          </div>
           <label class="field">
             <span>{{ t('modelOps.fields.recipeId') }}</span>
             <input v-model="recipeId" required />
           </label>
           <label class="field">
-            <span>{{ t('modelOps.fields.modelScale') }}</span>
-            <SelectField :model-value="modelScale" :options="modelScaleOptions" @update:model-value="setModelScale" />
-          </label>
-          <label class="field">
             <span>{{ t('modelOps.fields.outputModelName') }}</span>
             <input v-model="outputModelName" required />
-          </label>
-          <label class="field">
-            <span>{{ t('modelOps.fields.warmStart') }}</span>
-            <input v-model="warmStartModelVersionId" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.maxEpochs') }}</span>
@@ -108,12 +150,16 @@
             <input v-model.number="inputHeight" type="number" min="32" step="32" />
           </label>
           <label class="field field--wide">
-            <span>{{ t('modelOps.fields.displayName') }}</span>
+            <span>{{ t('modelOps.fields.trainingDisplayName') }}</span>
             <input v-model="trainingDisplayName" />
           </label>
         </div>
         <div class="form-actions">
-          <Button variant="primary" type="submit" :disabled="!canWriteTasks || trainingSubmitting">
+          <Button
+            variant="primary"
+            type="submit"
+            :disabled="!canWriteTasks || trainingSubmitting || !trainingSelectedModelSummary || !selectedTrainingDatasetExport"
+          >
             <Play :size="16" />
             {{ trainingSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitTraining') }}
           </Button>
@@ -305,6 +351,38 @@
       @apply-training-version="applyTrainingVersion"
       @apply-conversion-version="applyConversionVersion"
     />
+
+    <TrainingDatasetExportPickerDialog
+      :open="trainingDatasetExportPickerOpen"
+      :loading="loading"
+      :kicker="t('modelOps.trainingKicker')"
+      :title="t('modelOps.datasetExportPicker.title')"
+      :description="t('modelOps.datasetExportPicker.description')"
+      :close-label="t('modelOps.datasetExportPicker.close')"
+      :search-value="trainingDatasetExportSearch"
+      :search-placeholder="t('modelOps.datasetExportPicker.searchPlaceholder')"
+      :list-title="t('modelOps.datasetExportPicker.listTitle')"
+      :detail-title="t('modelOps.datasetExportPicker.detailTitle')"
+      :apply-label="t('modelOps.actions.useTrainingDatasetExport')"
+      :empty-title="t('modelOps.datasetExportPicker.emptyTitle')"
+      :empty-description="t('modelOps.datasetExportPicker.emptyDescription')"
+      :no-results-title="t('modelOps.datasetExportPicker.noResultsTitle')"
+      :no-results-description="t('modelOps.datasetExportPicker.noResultsDescription')"
+      :detail-empty-title="t('modelOps.datasetExportPicker.detailEmptyTitle')"
+      :detail-empty-description="t('modelOps.datasetExportPicker.detailEmptyDescription')"
+      :dataset-id-label="t('datasetOps.fields.datasetId')"
+      :dataset-version-id-label="t('datasetOps.fields.datasetVersionId')"
+      :sample-count-label="t('datasetOps.columns.samples')"
+      :created-at-label="t('modelOps.columns.createdAt')"
+      :category-names-label="t('datasetOps.fields.categoryNames')"
+      :no-value-label="t('common.noValue')"
+      :exports="trainingDatasetExports"
+      :selected-export-id="trainingDatasetExportBrowseId || null"
+      @close="closeTrainingDatasetExportPicker"
+      @update:search-value="trainingDatasetExportSearch = $event"
+      @select-export="selectTrainingDatasetExportBrowse"
+      @apply-export="applyTrainingDatasetExport"
+    />
   </section>
 </template>
 
@@ -314,6 +392,10 @@ import { Play, RefreshCw, Wand2 } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
+import {
+  listProjectDatasetExports,
+  type DatasetExportSummary,
+} from '@/modules/datasets/services/dataset.service'
 import {
   createModelConversionTask,
   createModelTrainingTask,
@@ -339,6 +421,7 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import PlatformBaseModelPickerDialog from '../components/PlatformBaseModelPickerDialog.vue'
+import TrainingDatasetExportPickerDialog from '../components/TrainingDatasetExportPickerDialog.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
@@ -353,19 +436,18 @@ interface PickerVersionListItem {
   subtitle: string
 }
 
-const modelScaleOptions = [
-  { label: 'nano', value: 'nano' },
-  { label: 'tiny', value: 'tiny' },
-  { label: 's', value: 's' },
-  { label: 'm', value: 'm' },
-  { label: 'l', value: 'l' },
-  { label: 'x', value: 'x' },
-]
-
 const precisionOptions = [
   { label: 'fp32', value: 'fp32' },
   { label: 'fp16', value: 'fp16' },
 ]
+
+const detectionTrainingFormatByModelType: Record<string, string> = {
+  yolox: 'coco-detection-v1',
+  rfdetr: 'coco-detection-v1',
+  yolov8: 'yolo-detection-v1',
+  yolo11: 'yolo-detection-v1',
+  yolo26: 'yolo-detection-v1',
+}
 
 const defaultTaskTypeOptions: Array<{ label: ModelTaskType; value: ModelTaskType }> = [
   { label: 'detection', value: 'detection' },
@@ -388,6 +470,7 @@ const baseModels = ref<PlatformBaseModelSummary[]>([])
 const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
 const trainingTasks = ref<ModelTrainingTaskSummary[]>([])
 const conversionTasks = ref<ModelConversionTaskSummary[]>([])
+const trainingDatasetExports = ref<DatasetExportSummary[]>([])
 const loading = ref(false)
 const trainingSubmitting = ref(false)
 const conversionSubmitting = ref(false)
@@ -398,17 +481,18 @@ const lastConversionSubmission = ref<ModelConversionTaskSubmissionResponse | nul
 const selectedTaskType = ref<ModelTaskType>('detection')
 const baseModelPickerOpen = ref(false)
 const baseModelPickerMode = ref<'training' | 'conversion'>('training')
+const trainingDatasetExportPickerOpen = ref(false)
+const trainingDatasetExportSearch = ref('')
+const trainingDatasetExportBrowseId = ref('')
 const trainingSelectedModelId = ref('')
 const conversionSelectedModelId = ref('')
-const trainingModelType = ref('')
 const conversionModelType = ref('')
 const trainingDatasetExportId = ref('')
-const trainingManifestKey = ref('')
 const recipeId = ref('default')
-const modelScale = ref('nano')
-const outputModelName = ref('model-custom')
+const outputModelName = ref('')
+const lastSuggestedOutputModelName = ref('')
 const warmStartModelVersionId = ref('')
-const maxEpochs = ref(1)
+const maxEpochs = ref(100)
 const batchSize = ref(1)
 const evaluationInterval = ref(5)
 const precision = ref('fp32')
@@ -423,11 +507,23 @@ const conversionDisplayName = ref('')
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const selectedTrainingDatasetExport = computed(
+  () => trainingDatasetExports.value.find((item) => item.dataset_export_id === trainingDatasetExportId.value) ?? null,
+)
 const trainingSelectedModelSummary = computed(
   () => baseModels.value.find((model) => model.model_id === trainingSelectedModelId.value) ?? null,
 )
 const conversionSelectedModelSummary = computed(
   () => baseModels.value.find((model) => model.model_id === conversionSelectedModelId.value) ?? null,
+)
+const resolvedTrainingManifestKey = computed(
+  () => selectedTrainingDatasetExport.value?.manifest_object_key?.trim() ?? '',
+)
+const resolvedTrainingModelType = computed(
+  () => trainingSelectedModelSummary.value?.model_type?.trim() ?? '',
+)
+const resolvedTrainingModelScale = computed(
+  () => trainingSelectedModelSummary.value?.model_scale?.trim() ?? '',
 )
 const selectedModelDerivedTrainingVersions = computed<PickerVersionListItem[]>(() => {
   const selectedModel = selectedModelDetail.value
@@ -504,8 +600,52 @@ function selectValueToString(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')
 }
 
-function setModelScale(value: SelectValue): void {
-  modelScale.value = selectValueToString(value) || 'nano'
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function normalizeModelNameSegment(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function buildModelNameTimestamp(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('')
+}
+
+function buildSuggestedOutputModelName(model: Pick<PlatformBaseModelDetail, 'model_name' | 'model_type' | 'model_scale'>): string {
+  const modelName = normalizeModelNameSegment(model.model_name || model.model_type) || 'model'
+  const modelScale = normalizeModelNameSegment(model.model_scale) || 'default'
+  return `${modelName}-${modelScale}-${buildModelNameTimestamp()}`
+}
+
+function syncSuggestedOutputModelName(model: Pick<PlatformBaseModelDetail, 'model_name' | 'model_type' | 'model_scale'>): void {
+  const currentValue = outputModelName.value.trim()
+  if (currentValue && currentValue !== lastSuggestedOutputModelName.value) {
+    return
+  }
+  const nextValue = buildSuggestedOutputModelName(model)
+  outputModelName.value = nextValue
+  lastSuggestedOutputModelName.value = nextValue
+}
+
+function resolveExpectedTrainingExportFormat(taskType: ModelTaskType, modelTypeValue: string): string | null {
+  if (taskType !== 'detection') {
+    return null
+  }
+  return detectionTrainingFormatByModelType[normalizeText(modelTypeValue)] ?? null
 }
 
 function setPrecision(value: SelectValue): void {
@@ -518,10 +658,14 @@ function setTaskType(value: SelectValue): void {
     const nextTaskType = nextValue as ModelTaskType
     selectedTaskType.value = nextTaskType
     selectedModelDetail.value = null
+    trainingDatasetExportPickerOpen.value = false
     trainingSelectedModelId.value = ''
     conversionSelectedModelId.value = ''
-    trainingModelType.value = ''
     conversionModelType.value = ''
+    trainingDatasetExportId.value = ''
+    trainingDatasetExportBrowseId.value = ''
+    outputModelName.value = ''
+    lastSuggestedOutputModelName.value = ''
     warmStartModelVersionId.value = ''
     conversionSourceModelVersionId.value = ''
     void refreshPage()
@@ -558,18 +702,28 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    const [models, training, conversion] = await Promise.all([
+    const [models, training, conversion, datasetExports] = await Promise.all([
       listPlatformBaseModels(selectedTaskType.value),
       listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value),
       listModelConversionTasks(selectedTaskType.value, selectedProjectId.value),
+      selectedProjectId.value
+        ? listProjectDatasetExports(selectedProjectId.value, selectedTaskType.value, 'completed')
+        : Promise.resolve<DatasetExportSummary[]>([]),
     ])
     baseModels.value = models
     trainingTasks.value = training
     conversionTasks.value = conversion
+    trainingDatasetExports.value = datasetExports
     const selectedModelId = selectedModelDetail.value?.model_id ?? null
     const selectedModelStillVisible = selectedModelId !== null && models.some((model) => model.model_id === selectedModelId)
     if (!selectedModelStillVisible) {
       selectedModelDetail.value = null
+    }
+    if (!datasetExports.some((item) => item.dataset_export_id === trainingDatasetExportId.value)) {
+      trainingDatasetExportId.value = ''
+    }
+    if (!datasetExports.some((item) => item.dataset_export_id === trainingDatasetExportBrowseId.value)) {
+      trainingDatasetExportBrowseId.value = datasetExports[0]?.dataset_export_id ?? ''
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
@@ -605,10 +759,35 @@ function closeBaseModelPicker(): void {
   baseModelPickerOpen.value = false
 }
 
+function openTrainingDatasetExportPicker(): void {
+  if (trainingDatasetExports.value.length === 0) {
+    return
+  }
+  trainingDatasetExportPickerOpen.value = true
+  trainingDatasetExportSearch.value = ''
+  trainingDatasetExportBrowseId.value =
+    trainingDatasetExportId.value || trainingDatasetExports.value[0]?.dataset_export_id || ''
+}
+
+function closeTrainingDatasetExportPicker(): void {
+  trainingDatasetExportPickerOpen.value = false
+  trainingDatasetExportSearch.value = ''
+}
+
+function selectTrainingDatasetExportBrowse(datasetExportId: string): void {
+  trainingDatasetExportBrowseId.value = datasetExportId.trim()
+}
+
+function applyTrainingDatasetExport(datasetExport: DatasetExportSummary): void {
+  trainingDatasetExportId.value = datasetExport.dataset_export_id
+  trainingDatasetExportBrowseId.value = datasetExport.dataset_export_id
+  closeTrainingDatasetExportPicker()
+}
+
 function applyTrainingModel(model: PlatformBaseModelDetail): void {
   trainingSelectedModelId.value = model.model_id
-  trainingModelType.value = model.model_type
-  modelScale.value = model.model_scale
+  warmStartModelVersionId.value = ''
+  syncSuggestedOutputModelName(model)
   closeBaseModelPicker()
 }
 
@@ -617,10 +796,13 @@ function applyTrainingVersion(payload: {
   modelVersionId: string
 }): void {
   trainingSelectedModelId.value = payload.model.model_id
-  trainingModelType.value = payload.model.model_type
-  modelScale.value = payload.model.model_scale
   warmStartModelVersionId.value = payload.modelVersionId
+  syncSuggestedOutputModelName(payload.model)
   closeBaseModelPicker()
+}
+
+function clearTrainingWarmStart(): void {
+  warmStartModelVersionId.value = ''
 }
 
 function applyConversionVersion(payload: {
@@ -633,13 +815,40 @@ function applyConversionVersion(payload: {
   closeBaseModelPicker()
 }
 
-async function submitTraining(): Promise<void> {
-  if (!trainingModelType.value.trim()) {
-    errorMessage.value = 'model_type 不能为空'
-    return
+function validateTrainingSelection(): string | null {
+  if (trainingSelectedModelSummary.value === null || !resolvedTrainingModelType.value || !resolvedTrainingModelScale.value) {
+    return t('modelOps.messages.selectTrainingBaseModel')
   }
-  if (!trainingDatasetExportId.value.trim() && !trainingManifestKey.value.trim()) {
-    errorMessage.value = t('modelOps.messages.trainingInputRequired')
+
+  const datasetExport = selectedTrainingDatasetExport.value
+  if (datasetExport === null) {
+    return t('modelOps.messages.selectTrainingDatasetExport')
+  }
+  if (normalizeText(datasetExport.status) !== 'completed') {
+    return t('modelOps.messages.trainingExportIncomplete')
+  }
+  if (normalizeText(datasetExport.task_type) !== normalizeText(selectedTaskType.value)) {
+    return t('modelOps.messages.trainingExportTaskMismatch')
+  }
+  if (!resolvedTrainingManifestKey.value) {
+    return t('modelOps.messages.trainingExportManifestMissing')
+  }
+
+  const expectedFormatId = resolveExpectedTrainingExportFormat(selectedTaskType.value, resolvedTrainingModelType.value)
+  if (expectedFormatId !== null && normalizeText(datasetExport.format_id) !== normalizeText(expectedFormatId)) {
+    return t('modelOps.messages.trainingExportFormatMismatch', {
+      modelType: resolvedTrainingModelType.value,
+      formatId: expectedFormatId,
+    })
+  }
+
+  return null
+}
+
+async function submitTraining(): Promise<void> {
+  const validationError = validateTrainingSelection()
+  if (validationError) {
+    errorMessage.value = validationError
     return
   }
   trainingSubmitting.value = true
@@ -648,12 +857,12 @@ async function submitTraining(): Promise<void> {
     lastTrainingSubmission.value = await createModelTrainingTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
-      modelType: trainingModelType.value.trim(),
+      modelType: resolvedTrainingModelType.value,
       datasetExportId: trainingDatasetExportId.value.trim(),
-      datasetExportManifestKey: trainingManifestKey.value.trim(),
-      recipeId: recipeId.value,
-      modelScale: modelScale.value,
-      outputModelName: outputModelName.value,
+      datasetExportManifestKey: resolvedTrainingManifestKey.value,
+      recipeId: recipeId.value.trim(),
+      modelScale: resolvedTrainingModelScale.value,
+      outputModelName: outputModelName.value.trim(),
       warmStartModelVersionId: warmStartModelVersionId.value.trim(),
       evaluationInterval: evaluationInterval.value,
       maxEpochs: maxEpochs.value,
@@ -661,7 +870,7 @@ async function submitTraining(): Promise<void> {
       precision: precision.value,
       inputWidth: inputWidth.value,
       inputHeight: inputHeight.value,
-      displayName: trainingDisplayName.value,
+      displayName: trainingDisplayName.value.trim(),
     })
     trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value)
   } catch (error) {
@@ -773,6 +982,32 @@ async function submitConversion(): Promise<void> {
   font-size: 12px;
 }
 
+.model-picker-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.model-picker-summary__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.model-picker-summary__item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-picker-summary__item strong {
+  overflow-wrap: anywhere;
+}
+
 .model-picker-summary__chips {
   display: flex;
   align-items: center;
@@ -799,6 +1034,10 @@ async function submitConversion(): Promise<void> {
 
   .model-picker-summary__top {
     flex-direction: column;
+  }
+
+  .model-picker-summary__grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

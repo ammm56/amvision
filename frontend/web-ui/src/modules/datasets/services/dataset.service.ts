@@ -180,6 +180,21 @@ export async function listDatasetExports(datasetId: string, datasetVersionId: st
   )
 }
 
+export async function listProjectDatasetExports(
+  projectId: string,
+  taskType?: string,
+  status?: string,
+): Promise<DatasetExportSummary[]> {
+  return apiRequest<DatasetExportSummary[]>('/datasets/exports', {
+    query: {
+      project_id: projectId,
+      task_type: taskType || undefined,
+      status: status || undefined,
+      limit: 200,
+    },
+  })
+}
+
 export async function packageDatasetExport(datasetExportId: string): Promise<DatasetExportPackageResponse> {
   return apiRequest<DatasetExportPackageResponse>(`/datasets/exports/${encodeURIComponent(datasetExportId)}/package`, {
     method: 'POST',
