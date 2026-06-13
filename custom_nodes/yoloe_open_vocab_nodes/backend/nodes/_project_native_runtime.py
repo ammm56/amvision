@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import io
+import math
 import sys
 import types
 from dataclasses import dataclass
@@ -28,6 +30,12 @@ from backend.service.application.runtime.detection_runtime_support import (
     resolve_execution_device_name,
 )
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import merge_text_prompt_items
+
+
+_YOLOE_CONV_USE_BATCH_NORM: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "yoloe_conv_use_batch_norm",
+    default=True,
+)
 
 
 @dataclass(frozen=True)
@@ -98,6 +106,7 @@ class YoloeConv(nn.Module):
         act: bool | nn.Module = True,
     ) -> None:
         super().__init__()
+        self.use_batch_norm = bool(_YOLOE_CONV_USE_BATCH_NORM.get())
         self.conv = nn.Conv2d(
             c1,
             c2,
@@ -106,13 +115,28 @@ class YoloeConv(nn.Module):
             _autopad(k, p, d),
             groups=g,
             dilation=d,
-            bias=False,
+            bias=not self.use_batch_norm,
         )
-        self.bn = nn.BatchNorm2d(c2, eps=1e-3, momentum=0.03)
+        self.bn = nn.BatchNorm2d(c2, eps=1e-3, momentum=0.03) if self.use_batch_norm else nn.Identity()
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.act(self.bn(self.conv(x)))
+
+
+class YoloeDWConv(YoloeConv):
+    """YOLOE depth-wise convolution。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        k: int = 1,
+        s: int = 1,
+        d: int = 1,
+        act: bool | nn.Module = True,
+    ) -> None:
+        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), d=d, act=act)
 
 
 class YoloeBottleneck(nn.Module):
@@ -171,6 +195,204 @@ class YoloeC2f(nn.Module):
         return self.cv2(torch.cat(y, dim=1))
 
 
+class YoloeC3(nn.Module):
+    """YOLOE C3 CSP 模块，用于 C3k/C3k2 分支的权重对齐。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+    ) -> None:
+        super().__init__()
+        hidden_channels = int(c2 * e)
+        self.cv1 = YoloeConv(c1, hidden_channels, 1, 1)
+        self.cv2 = YoloeConv(c1, hidden_channels, 1, 1)
+        self.cv3 = YoloeConv(2 * hidden_channels, c2, 1)
+        self.m = nn.Sequential(
+            *(
+                YoloeBottleneck(
+                    hidden_channels,
+                    hidden_channels,
+                    shortcut=shortcut,
+                    g=g,
+                    e=1.0,
+                )
+                for _ in range(n)
+            )
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
+
+
+class YoloeC3k(YoloeC3):
+    """YOLOE C3k 模块，保持 upstream C3k 的 state_dict 命名。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+        k: int = 3,
+    ) -> None:
+        super().__init__(c1, c2, n, shortcut, g, e)
+        hidden_channels = int(c2 * e)
+        self.m = nn.Sequential(
+            *(
+                YoloeBottleneck(
+                    hidden_channels,
+                    hidden_channels,
+                    shortcut=shortcut,
+                    g=g,
+                    k=(k, k),
+                    e=1.0,
+                )
+                for _ in range(n)
+            )
+        )
+
+
+class YoloeC3k2(YoloeC2f):
+    """YOLOE 11/26 使用的 C3k2 模块。"""
+
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        c3k: bool = False,
+        e: float = 0.5,
+        attn: bool = False,
+        g: int = 1,
+        shortcut: bool = True,
+    ) -> None:
+        super().__init__(c1, c2, n, shortcut, g, e)
+        self.m = nn.ModuleList(
+            nn.Sequential(
+                YoloeBottleneck(
+                    self.hidden_channels,
+                    self.hidden_channels,
+                    shortcut=shortcut,
+                    g=g,
+                ),
+                YoloePSABlock(
+                    self.hidden_channels,
+                    attn_ratio=0.5,
+                    num_heads=max(self.hidden_channels // 64, 1),
+                ),
+            )
+            if attn
+            else YoloeC3k(
+                self.hidden_channels,
+                self.hidden_channels,
+                2,
+                shortcut=shortcut,
+                g=g,
+            )
+            if c3k
+            else YoloeBottleneck(
+                self.hidden_channels,
+                self.hidden_channels,
+                shortcut=shortcut,
+                g=g,
+            )
+            for _ in range(n)
+        )
+
+
+class YoloeAttention(nn.Module):
+    """YOLOE 多头 attention 模块。"""
+
+    def __init__(self, dim: int, num_heads: int = 8, attn_ratio: float = 0.5) -> None:
+        super().__init__()
+        self.num_heads = max(1, int(num_heads))
+        self.head_dim = dim // self.num_heads
+        self.key_dim = max(1, int(self.head_dim * attn_ratio))
+        self.scale = float(self.key_dim) ** -0.5
+        qk_channels = self.key_dim * self.num_heads
+        hidden_channels = dim + qk_channels * 2
+        self.qkv = YoloeConv(dim, hidden_channels, 1, act=False)
+        self.proj = YoloeConv(dim, dim, 1, act=False)
+        self.pe = YoloeConv(dim, dim, 3, 1, g=dim, act=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, channels, height, width = x.shape
+        token_count = height * width
+        qkv = self.qkv(x)
+        q, k, v = qkv.view(
+            batch_size,
+            self.num_heads,
+            (self.key_dim * 2) + self.head_dim,
+            token_count,
+        ).split([self.key_dim, self.key_dim, self.head_dim], dim=2)
+        attention = (q.transpose(-2, -1) @ k) * self.scale
+        attention = attention.softmax(dim=-1)
+        attended = (v @ attention.transpose(-2, -1)).view(batch_size, channels, height, width)
+        position_encoded = self.pe(v.reshape(batch_size, channels, height, width))
+        return self.proj(attended + position_encoded)
+
+
+class YoloePSABlock(nn.Module):
+    """YOLOE PSA block。"""
+
+    def __init__(
+        self,
+        c: int,
+        attn_ratio: float = 0.5,
+        num_heads: int = 4,
+        shortcut: bool = True,
+    ) -> None:
+        super().__init__()
+        self.attn = YoloeAttention(c, attn_ratio=attn_ratio, num_heads=num_heads)
+        self.ffn = nn.Sequential(
+            YoloeConv(c, c * 2, 1),
+            YoloeConv(c * 2, c, 1, act=False),
+        )
+        self.add = bool(shortcut)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        attn_output = self.attn(x)
+        x = x + attn_output if self.add else attn_output
+        ffn_output = self.ffn(x)
+        return x + ffn_output if self.add else ffn_output
+
+
+class YoloeC2PSA(nn.Module):
+    """YOLOE 11 使用的 C2PSA 模块。"""
+
+    def __init__(self, c1: int, c2: int, n: int = 1, e: float = 0.5) -> None:
+        super().__init__()
+        if c1 != c2:
+            raise ServiceConfigurationError(
+                "YOLOE C2PSA 要求输入输出通道一致",
+                details={"input_channels": c1, "output_channels": c2},
+            )
+        self.c = int(c1 * e)
+        self.cv1 = YoloeConv(c1, 2 * self.c, 1, 1)
+        self.cv2 = YoloeConv(2 * self.c, c1, 1, 1)
+        self.m = nn.Sequential(
+            *(
+                YoloePSABlock(
+                    self.c,
+                    attn_ratio=0.5,
+                    num_heads=max(self.c // 64, 1),
+                )
+                for _ in range(n)
+            )
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        a, b = self.cv1(x).split((self.c, self.c), dim=1)
+        return self.cv2(torch.cat((a, self.m(b)), dim=1))
+
+
 class YoloeSPPF(nn.Module):
     """YOLOE SPPF 模块。"""
 
@@ -217,6 +439,33 @@ class YoloeProto(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.cv3(self.cv2(self.upsample(self.cv1(x))))
+
+
+class YoloeProto26(YoloeProto):
+    """YOLOE 26 segmentation proto 头，融合多层特征生成 mask proto。"""
+
+    def __init__(self, ch: tuple[int, ...], c_: int = 256, c2: int = 32, nc: int = 80) -> None:
+        super().__init__(c_, c_, c2)
+        self.feat_refine = nn.ModuleList(YoloeConv(input_channels, ch[0], k=1) for input_channels in ch[1:])
+        self.feat_fuse = YoloeConv(ch[0], c_, k=3)
+        self.semseg = nn.Sequential(
+            YoloeConv(ch[0], c_, k=3),
+            YoloeConv(c_, c_, k=3),
+            nn.Conv2d(c_, int(nc), 1),
+        )
+
+    def forward(self, x: list[torch.Tensor] | tuple[torch.Tensor, ...], return_semseg: bool = False) -> torch.Tensor:
+        if not isinstance(x, list | tuple) or not x:
+            raise InvalidRequestError("YOLOE 26 proto 要求输入多层特征")
+        feature = x[0]
+        for index, refine_layer in enumerate(self.feat_refine):
+            refined = refine_layer(x[index + 1])
+            refined = F.interpolate(refined, size=feature.shape[2:], mode="nearest")
+            feature = feature + refined
+        proto = super().forward(self.feat_fuse(feature))
+        if self.training and return_semseg:
+            return proto, self.semseg(feature)  # type: ignore[return-value]
+        return proto
 
 
 class YoloeSpatialAwareVisualPromptEmbedding(nn.Module):
@@ -337,6 +586,8 @@ class YoloePromptFreeRegionProposalHead(nn.Module):
         num_classes: int,
         *,
         enabled: bool,
+        loc_output_channels: int,
+        proposal_filter_channels: int = 1,
     ) -> None:
         super().__init__()
         self.enabled = bool(enabled)
@@ -344,8 +595,8 @@ class YoloePromptFreeRegionProposalHead(nn.Module):
             self.vocab = nn.Linear(cls_channels, num_classes)
         else:
             self.vocab = nn.Conv2d(cls_channels, num_classes, 1)
-        self.pf = nn.Conv2d(cls_channels, 1, 1)
-        self.loc = nn.Conv2d(loc_channels, loc_channels, 1)
+        self.pf = nn.Conv2d(cls_channels, int(proposal_filter_channels), 1)
+        self.loc = nn.Conv2d(loc_channels, int(loc_output_channels), 1)
 
     def forward(self, cls_feat: torch.Tensor, loc_feat: torch.Tensor, conf: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.enabled:
@@ -378,6 +629,11 @@ class YoloePromptFreeSegmentationHead(nn.Module):
         *,
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
+        legacy_class_head: bool = True,
+        class_hidden_source_count: int | None = None,
+        end2end: bool = False,
+        proto26: bool = False,
+        proposal_filter_channels: int = 1,
     ) -> None:
         super().__init__()
         self.nc = int(nc)
@@ -388,44 +644,119 @@ class YoloePromptFreeSegmentationHead(nn.Module):
         self.with_bn = bool(with_bn)
         self.reg_max = int(reg_max)
         self.strides = tuple(int(item) for item in strides)
+        self.legacy_class_head = bool(legacy_class_head)
+        self.end2end = bool(end2end)
+        self.proto26 = bool(proto26)
         self.conf = 0.001
 
         box_hidden_channels = max((16, ch[0] // 4, self.reg_max * 4))
-        class_hidden_channels = max(ch[0], min(self.nc, 100))
-        self.cv2 = nn.ModuleList(
+        class_hidden_count = self.nc if class_hidden_source_count is None else int(class_hidden_source_count)
+        class_hidden_channels = max(ch[0], min(class_hidden_count, 100))
+        self.cv2 = None
+        self.cv3 = None
+        if self.end2end:
+            self.one2one_cv2 = self._build_box_feature_head(ch, box_hidden_channels)
+            self.one2one_cv3 = self._build_prompt_free_class_head(ch, class_hidden_channels)
+        else:
+            self.cv2 = self._build_box_feature_head(ch, box_hidden_channels)
+            self.cv3 = self._build_prompt_free_class_head(ch, class_hidden_channels)
+        self.dfl = YoloeDistributionFocalLossDecoder(self.reg_max) if self.reg_max > 1 else nn.Identity()
+        self.proto = (
+            YoloeProto26(ch, self.npr, self.nm, class_hidden_count)
+            if self.proto26
+            else YoloeProto(ch[0], self.npr, self.nm)
+        )
+
+        hidden_channels = max(ch[0] // 4, self.nm)
+        self.cv5 = self._build_mask_coefficient_head(ch, hidden_channels)
+        if self.end2end:
+            self.one2one_cv5 = self._build_mask_coefficient_head(ch, hidden_channels)
+        self.savpe = YoloeSpatialAwareVisualPromptEmbedding(ch, class_hidden_channels, self.embed)
+        self.reprta = (
+            YoloeResidualTextAdapter(YoloeSwiGluFeedForward(self.embed, self.embed))
+            if self.end2end
+            else nn.Identity()
+        )
+        loc_output_channels = 4 * self.reg_max
+        self.lrpc = nn.ModuleList(
+            (
+                YoloePromptFreeRegionProposalHead(
+                    class_hidden_channels,
+                    box_hidden_channels,
+                    self.nc,
+                    enabled=True,
+                    loc_output_channels=loc_output_channels,
+                    proposal_filter_channels=proposal_filter_channels,
+                ),
+                YoloePromptFreeRegionProposalHead(
+                    class_hidden_channels,
+                    box_hidden_channels,
+                    self.nc,
+                    enabled=True,
+                    loc_output_channels=loc_output_channels,
+                    proposal_filter_channels=proposal_filter_channels,
+                ),
+                YoloePromptFreeRegionProposalHead(
+                    class_hidden_channels,
+                    box_hidden_channels,
+                    self.nc,
+                    enabled=False,
+                    loc_output_channels=loc_output_channels,
+                    proposal_filter_channels=proposal_filter_channels,
+                ),
+            )
+        )
+
+    def _build_box_feature_head(self, feature_channels: tuple[int, ...], box_hidden_channels: int) -> nn.ModuleList:
+        """构建 LRPC loc 分支前的 box feature head。"""
+
+        return nn.ModuleList(
             nn.Sequential(
                 YoloeConv(input_channels, box_hidden_channels, 3),
                 YoloeConv(box_hidden_channels, box_hidden_channels, 3),
             )
-            for input_channels in ch
+            for input_channels in feature_channels
         )
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(
-                YoloeConv(input_channels, class_hidden_channels, 3),
-                YoloeConv(class_hidden_channels, class_hidden_channels, 3),
-            )
-            for input_channels in ch
-        )
-        self.dfl = YoloeDistributionFocalLossDecoder(self.reg_max) if self.reg_max > 1 else nn.Identity()
-        self.proto = YoloeProto(ch[0], self.npr, self.nm)
 
-        hidden_channels = max(ch[0] // 4, self.nm)
-        self.cv5 = nn.ModuleList(
+    def _build_mask_coefficient_head(self, feature_channels: tuple[int, ...], hidden_channels: int) -> nn.ModuleList:
+        """构建 segmentation mask coefficient head。"""
+
+        return nn.ModuleList(
             nn.Sequential(
                 YoloeConv(input_channels, hidden_channels, 3),
                 YoloeConv(hidden_channels, hidden_channels, 3),
                 nn.Conv2d(hidden_channels, self.nm, 1),
             )
-            for input_channels in ch
+            for input_channels in feature_channels
         )
-        self.savpe = YoloeSpatialAwareVisualPromptEmbedding(ch, class_hidden_channels, self.embed)
-        self.reprta = nn.Identity()
-        self.lrpc = nn.ModuleList(
-            (
-                YoloePromptFreeRegionProposalHead(class_hidden_channels, box_hidden_channels, self.nc, enabled=True),
-                YoloePromptFreeRegionProposalHead(class_hidden_channels, box_hidden_channels, self.nc, enabled=True),
-                YoloePromptFreeRegionProposalHead(class_hidden_channels, box_hidden_channels, self.nc, enabled=False),
+
+    def _build_prompt_free_class_head(
+        self,
+        feature_channels: tuple[int, ...],
+        class_hidden_channels: int,
+    ) -> nn.ModuleList:
+        """按 YOLOE 代际构建 prompt-free 分类特征 head。"""
+
+        if self.legacy_class_head:
+            return nn.ModuleList(
+                nn.Sequential(
+                    YoloeConv(input_channels, class_hidden_channels, 3),
+                    YoloeConv(class_hidden_channels, class_hidden_channels, 3),
+                )
+                for input_channels in feature_channels
             )
+        return nn.ModuleList(
+            nn.Sequential(
+                nn.Sequential(
+                    YoloeDWConv(input_channels, input_channels, 3),
+                    YoloeConv(input_channels, class_hidden_channels, 1),
+                ),
+                nn.Sequential(
+                    YoloeDWConv(class_hidden_channels, class_hidden_channels, 3),
+                    YoloeConv(class_hidden_channels, class_hidden_channels, 1),
+                ),
+            )
+            for input_channels in feature_channels
         )
 
     def forward(self, x: list[torch.Tensor] | tuple[torch.Tensor, ...]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -438,15 +769,20 @@ class YoloePromptFreeSegmentationHead(nn.Module):
         boxes: list[torch.Tensor] = []
         scores: list[torch.Tensor] = []
         keep_masks: list[torch.Tensor] = []
+        box_head = self.one2one_cv2 if self.end2end else self.cv2
+        class_head = self.one2one_cv3 if self.end2end else self.cv3
+        mask_head = self.one2one_cv5 if self.end2end else self.cv5
+        if box_head is None or class_head is None:
+            raise ServiceConfigurationError("YOLOE prompt-free head 缺少可用的 box/class 分支")
         for index in range(self.nl):
-            cls_feat = self.cv3[index](x[index])
-            loc_feat = self.cv2[index](x[index])
+            cls_feat = class_head[index](x[index])
+            loc_feat = box_head[index](x[index])
             box_output, score_output, keep_mask = self.lrpc[index](cls_feat, loc_feat, self.conf)
             boxes.append(box_output.view(batch_size, self.reg_max * 4, -1))
             scores.append(score_output)
             keep_masks.append(keep_mask)
         mask_coefficients = torch.cat(
-            [self.cv5[index](x[index]).view(batch_size, self.nm, -1) for index in range(self.nl)],
+            [mask_head[index](x[index]).view(batch_size, self.nm, -1) for index in range(self.nl)],
             dim=2,
         )
         proposal_mask = torch.cat(keep_masks, dim=0)
@@ -459,7 +795,8 @@ class YoloePromptFreeSegmentationHead(nn.Module):
         }
         decoded = self._build_inference_prediction(predictions)
         decoded = torch.cat((decoded, predictions["mask_coefficients"]), dim=1)
-        return decoded.transpose(1, 2).contiguous(), self.proto(x[0])
+        proto = self.proto(x) if self.proto26 else self.proto(x[0])
+        return decoded.transpose(1, 2).contiguous(), proto
 
     def _build_inference_prediction(self, predictions: dict[str, torch.Tensor]) -> torch.Tensor:
         anchor_points, stride_tensor = _make_anchors(
@@ -495,13 +832,18 @@ class YoloePromptFreeSegmentationModel(nn.Module):
         self.num_classes = int(num_classes)
         self.model_config = dict(model_config)
         self.input_channels = int(input_channels)
-        self.model, self.save = _parse_prompt_free_model(
-            model_name=model_name,
-            model_scale=model_scale,
-            num_classes=num_classes,
-            model_config=model_config,
-            input_channels=input_channels,
-        )
+        use_batch_norm = not bool(model_config.get("end2end", False))
+        conv_context_token = _YOLOE_CONV_USE_BATCH_NORM.set(use_batch_norm)
+        try:
+            self.model, self.save = _parse_prompt_free_model(
+                model_name=model_name,
+                model_scale=model_scale,
+                num_classes=num_classes,
+                model_config=model_config,
+                input_channels=input_channels,
+            )
+        finally:
+            _YOLOE_CONV_USE_BATCH_NORM.reset(conv_context_token)
         self.names: dict[int, str] = {}
         self.stride = torch.tensor(tuple(int(item) for item in model_config.get("strides", (8, 16, 32))), dtype=torch.float32)
         self.task = "segment"
@@ -535,6 +877,9 @@ class YoloeTextPromptSegmentationHead(nn.Module):
         *,
         reg_max: int = 16,
         strides: tuple[int, ...] = (8, 16, 32),
+        legacy_class_head: bool = True,
+        class_hidden_source_count: int | None = None,
+        proto26: bool = False,
     ) -> None:
         super().__init__()
         self.nc = int(nc)
@@ -545,9 +890,12 @@ class YoloeTextPromptSegmentationHead(nn.Module):
         self.with_bn = bool(with_bn)
         self.reg_max = int(reg_max)
         self.strides = tuple(int(item) for item in strides)
+        self.legacy_class_head = bool(legacy_class_head)
+        self.proto26 = bool(proto26)
 
         box_hidden_channels = max((16, ch[0] // 4, self.reg_max * 4))
-        class_hidden_channels = max(ch[0], min(self.nc, 100))
+        class_hidden_count = self.nc if class_hidden_source_count is None else int(class_hidden_source_count)
+        class_hidden_channels = max(ch[0], min(class_hidden_count, 100))
         self.cv2 = nn.ModuleList(
             nn.Sequential(
                 YoloeConv(input_channels, box_hidden_channels, 3),
@@ -556,16 +904,13 @@ class YoloeTextPromptSegmentationHead(nn.Module):
             )
             for input_channels in ch
         )
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(
-                YoloeConv(input_channels, class_hidden_channels, 3),
-                YoloeConv(class_hidden_channels, class_hidden_channels, 3),
-                nn.Conv2d(class_hidden_channels, self.embed, 1),
-            )
-            for input_channels in ch
-        )
+        self.cv3 = self._build_text_class_head(ch, class_hidden_channels)
         self.cv4 = nn.ModuleList(YoloeBatchNormContrastiveHead(self.embed) for _ in ch)
-        self.proto = YoloeProto(ch[0], self.npr, self.nm)
+        self.proto = (
+            YoloeProto26(ch, self.npr, self.nm, class_hidden_count)
+            if self.proto26
+            else YoloeProto(ch[0], self.npr, self.nm)
+        )
         hidden_channels = max(ch[0] // 4, self.nm)
         self.cv5 = nn.ModuleList(
             nn.Sequential(
@@ -578,6 +923,37 @@ class YoloeTextPromptSegmentationHead(nn.Module):
         self.reprta = YoloeResidualTextAdapter(YoloeSwiGluFeedForward(self.embed, self.embed))
         self.savpe = YoloeSpatialAwareVisualPromptEmbedding(ch, class_hidden_channels, self.embed)
         self.dfl = YoloeDistributionFocalLossDecoder(self.reg_max) if self.reg_max > 1 else nn.Identity()
+
+    def _build_text_class_head(
+        self,
+        feature_channels: tuple[int, ...],
+        class_hidden_channels: int,
+    ) -> nn.ModuleList:
+        """按 YOLOE 代际构建 text/visual 分类特征 head。"""
+
+        if self.legacy_class_head:
+            return nn.ModuleList(
+                nn.Sequential(
+                    YoloeConv(input_channels, class_hidden_channels, 3),
+                    YoloeConv(class_hidden_channels, class_hidden_channels, 3),
+                    nn.Conv2d(class_hidden_channels, self.embed, 1),
+                )
+                for input_channels in feature_channels
+            )
+        return nn.ModuleList(
+            nn.Sequential(
+                nn.Sequential(
+                    YoloeDWConv(input_channels, input_channels, 3),
+                    YoloeConv(input_channels, class_hidden_channels, 1),
+                ),
+                nn.Sequential(
+                    YoloeDWConv(class_hidden_channels, class_hidden_channels, 3),
+                    YoloeConv(class_hidden_channels, class_hidden_channels, 1),
+                ),
+                nn.Conv2d(class_hidden_channels, self.embed, 1),
+            )
+            for input_channels in feature_channels
+        )
 
     def get_tpe(self, tpe: torch.Tensor | None) -> torch.Tensor | None:
         return None if tpe is None else F.normalize(self.reprta(tpe), dim=-1, p=2)
@@ -624,7 +1000,8 @@ class YoloeTextPromptSegmentationHead(nn.Module):
             }
         )
         prediction = torch.cat((prediction, mask_coefficients), dim=1)
-        return prediction.transpose(1, 2).contiguous(), self.proto(x[0])
+        proto = self.proto(x) if self.proto26 else self.proto(x[0])
+        return prediction.transpose(1, 2).contiguous(), proto
 
     def _build_inference_prediction(self, predictions: dict[str, torch.Tensor]) -> torch.Tensor:
         anchor_points, stride_tensor = _make_anchors(
@@ -760,10 +1137,13 @@ def _parse_prompt_free_model(
     module_map = {
         "Conv": YoloeConv,
         "C2f": YoloeC2f,
+        "C3k2": YoloeC3k2,
+        "C2PSA": YoloeC2PSA,
         "SPPF": YoloeSPPF,
         "Concat": YoloeConcat,
         "nn.Upsample": nn.Upsample,
         "YOLOESegment": YoloePromptFreeSegmentationHead,
+        "YOLOESegment26": YoloePromptFreeSegmentationHead,
     }
 
     for layer_index, raw_layer_def in enumerate(module_defs):
@@ -793,7 +1173,7 @@ def _parse_prompt_free_model(
         ]
         output_channels: int
 
-        if module_type in {YoloeConv, YoloeC2f, YoloeSPPF}:
+        if module_type in {YoloeConv, YoloeC2f, YoloeC3k2, YoloeC2PSA, YoloeSPPF}:
             source_channels = channels[_resolve_single_from_index(from_index)]
             output_channels = _make_divisible(min(float(module_args[0]), float(max_channels)) * width_multiple, 8)
             if module_type is YoloeConv:
@@ -801,7 +1181,10 @@ def _parse_prompt_free_model(
             elif module_type is YoloeSPPF:
                 module = module_type(source_channels, output_channels, *module_args[1:])
             else:
-                module = module_type(source_channels, output_channels, repeat_count, *module_args[1:])
+                built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
+                if module_type is YoloeC3k2 and _resolve_yaml_scale_key(model_scale) in {"m", "l", "x"}:
+                    built_module_args[3] = True
+                module = module_type(*built_module_args)
         elif module_type is YoloeConcat:
             concat_sources = _resolve_multi_from_indexes(from_index)
             output_channels = sum(channels[item] for item in concat_sources)
@@ -815,6 +1198,12 @@ def _parse_prompt_free_model(
             detect_channels = tuple(channels[item] for item in detect_sources)
             output_channels = sum(detect_channels)
             npr = _make_divisible(min(float(module_args[2]), float(max_channels)) * width_multiple, 8)
+            architecture_class_count = int(model_config.get("nc", module_args[0]))
+            proposal_filter_channels = (
+                int(module_args[3])
+                if module_name == "YOLOESegment26" and bool(model_config.get("end2end", False)) and scale_key == "n"
+                else 1
+            )
             module = module_type(
                 nc=int(module_args[0]),
                 nm=int(module_args[1]),
@@ -824,6 +1213,14 @@ def _parse_prompt_free_model(
                 ch=detect_channels,
                 reg_max=int(model_config.get("reg_max", 16)),
                 strides=tuple(int(item) for item in model_config.get("strides", (8, 16, 32))),
+                legacy_class_head=_uses_legacy_yoloe_class_head(
+                    model_name=model_name,
+                    model_config=model_config,
+                ),
+                class_hidden_source_count=architecture_class_count,
+                end2end=bool(model_config.get("end2end", False)),
+                proto26=module_name == "YOLOESegment26",
+                proposal_filter_channels=proposal_filter_channels,
             )
 
         setattr(module, "layer_index", layer_index)
@@ -880,10 +1277,13 @@ def _parse_text_prompt_model(
     module_map = {
         "Conv": YoloeConv,
         "C2f": YoloeC2f,
+        "C3k2": YoloeC3k2,
+        "C2PSA": YoloeC2PSA,
         "SPPF": YoloeSPPF,
         "Concat": YoloeConcat,
         "nn.Upsample": nn.Upsample,
         "YOLOESegment": YoloeTextPromptSegmentationHead,
+        "YOLOESegment26": YoloeTextPromptSegmentationHead,
     }
 
     for layer_index, raw_layer_def in enumerate(module_defs):
@@ -913,7 +1313,7 @@ def _parse_text_prompt_model(
         ]
         output_channels: int
 
-        if module_type in {YoloeConv, YoloeC2f, YoloeSPPF}:
+        if module_type in {YoloeConv, YoloeC2f, YoloeC3k2, YoloeC2PSA, YoloeSPPF}:
             source_channels = channels[_resolve_single_from_index(from_index)]
             output_channels = _make_divisible(min(float(module_args[0]), float(max_channels)) * width_multiple, 8)
             if module_type is YoloeConv:
@@ -921,7 +1321,10 @@ def _parse_text_prompt_model(
             elif module_type is YoloeSPPF:
                 module = module_type(source_channels, output_channels, *module_args[1:])
             else:
-                module = module_type(source_channels, output_channels, repeat_count, *module_args[1:])
+                built_module_args = [source_channels, output_channels, repeat_count, *module_args[1:]]
+                if module_type is YoloeC3k2 and _resolve_yaml_scale_key(model_scale) in {"m", "l", "x"}:
+                    built_module_args[3] = True
+                module = module_type(*built_module_args)
         elif module_type is YoloeConcat:
             concat_sources = _resolve_multi_from_indexes(from_index)
             output_channels = sum(channels[item] for item in concat_sources)
@@ -935,6 +1338,7 @@ def _parse_text_prompt_model(
             detect_channels = tuple(channels[item] for item in detect_sources)
             output_channels = sum(detect_channels)
             npr = _make_divisible(min(float(module_args[2]), float(max_channels)) * width_multiple, 8)
+            architecture_class_count = int(model_config.get("nc", module_args[0]))
             module = module_type(
                 nc=int(module_args[0]),
                 nm=int(module_args[1]),
@@ -944,6 +1348,12 @@ def _parse_text_prompt_model(
                 ch=detect_channels,
                 reg_max=int(model_config.get("reg_max", 16)),
                 strides=tuple(int(item) for item in model_config.get("strides", (8, 16, 32))),
+                legacy_class_head=_uses_legacy_yoloe_class_head(
+                    model_name=model_name,
+                    model_config=model_config,
+                ),
+                class_hidden_source_count=architecture_class_count,
+                proto26=module_name == "YOLOESegment26",
             )
 
         setattr(module, "layer_index", layer_index)
@@ -972,6 +1382,13 @@ def _resolve_model_config_argument(value: object, *, num_classes: int) -> object
     if value == "None":
         return None
     return value
+
+
+def _uses_legacy_yoloe_class_head(*, model_name: str, model_config: dict[str, object]) -> bool:
+    """判断 YOLOE checkpoint 对应的分类 head 结构。"""
+
+    model_label = f"{model_name} {model_config.get('yaml_file', '')}".lower()
+    return "v8" in model_label or "yolov8" in model_label
 
 
 def _resolve_repeat_count(raw_repeat: object, depth_multiple: float) -> int:
@@ -1078,11 +1495,43 @@ class _CheckpointCompatConv(_CheckpointCompatModule):
     pass
 
 
+class _CheckpointCompatDwConv(_CheckpointCompatModule):
+    pass
+
+
 class _CheckpointCompatConcat(_CheckpointCompatModule):
     pass
 
 
 class _CheckpointCompatC2f(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatC3(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatC3k(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatC3k2(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatC2PSA(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatPSABlock(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatAttention(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatA2C2f(_CheckpointCompatModule):
     pass
 
 
@@ -1099,10 +1548,16 @@ class _CheckpointCompatDfl(_CheckpointCompatModule):
 
 
 class _CheckpointCompatBatchNormContrastiveHead(_CheckpointCompatModule):
-    pass
+    @staticmethod
+    def forward_fuse(*args: object, **kwargs: object) -> None:
+        return None
 
 
 class _CheckpointCompatProto(_CheckpointCompatModule):
+    pass
+
+
+class _CheckpointCompatProto26(_CheckpointCompatModule):
     pass
 
 
@@ -1126,6 +1581,10 @@ class _CheckpointCompatYoloeSegmentHead(_CheckpointCompatModule):
     pass
 
 
+class _CheckpointCompatYoloeSegment26Head(_CheckpointCompatModule):
+    pass
+
+
 class _CheckpointCompatYoloeSegmentationModel(_CheckpointCompatModule):
     pass
 
@@ -1143,16 +1602,27 @@ def _temporary_checkpoint_class_aliases():
     }
     alias_modules["ultralytics.nn.tasks"].YOLOESegModel = _CheckpointCompatYoloeSegmentationModel
     alias_modules["ultralytics.nn.modules.conv"].Conv = _CheckpointCompatConv
+    alias_modules["ultralytics.nn.modules.conv"].DWConv = _CheckpointCompatDwConv
     alias_modules["ultralytics.nn.modules.conv"].Concat = _CheckpointCompatConcat
     alias_modules["ultralytics.nn.modules.block"].C2f = _CheckpointCompatC2f
+    alias_modules["ultralytics.nn.modules.block"].C3 = _CheckpointCompatC3
+    alias_modules["ultralytics.nn.modules.block"].C3k = _CheckpointCompatC3k
+    alias_modules["ultralytics.nn.modules.block"].C3k2 = _CheckpointCompatC3k2
+    alias_modules["ultralytics.nn.modules.block"].C2PSA = _CheckpointCompatC2PSA
+    alias_modules["ultralytics.nn.modules.block"].PSABlock = _CheckpointCompatPSABlock
+    alias_modules["ultralytics.nn.modules.block"].Attention = _CheckpointCompatAttention
+    alias_modules["ultralytics.nn.modules.block"].A2C2f = _CheckpointCompatA2C2f
     alias_modules["ultralytics.nn.modules.block"].Bottleneck = _CheckpointCompatBottleneck
     alias_modules["ultralytics.nn.modules.block"].SPPF = _CheckpointCompatSPPF
     alias_modules["ultralytics.nn.modules.block"].DFL = _CheckpointCompatDfl
     alias_modules["ultralytics.nn.modules.block"].BNContrastiveHead = _CheckpointCompatBatchNormContrastiveHead
     alias_modules["ultralytics.nn.modules.block"].Proto = _CheckpointCompatProto
+    alias_modules["ultralytics.nn.modules.block"].Proto26 = _CheckpointCompatProto26
+    alias_modules["ultralytics.nn.modules.block"].SAVPE = _CheckpointCompatSavpe
     alias_modules["ultralytics.nn.modules.block"].Residual = _CheckpointCompatResidual
     alias_modules["ultralytics.nn.modules.block"].SwiGLUFFN = _CheckpointCompatSwiGluFfn
     alias_modules["ultralytics.nn.modules.head"].YOLOESegment = _CheckpointCompatYoloeSegmentHead
+    alias_modules["ultralytics.nn.modules.head"].YOLOESegment26 = _CheckpointCompatYoloeSegment26Head
     alias_modules["ultralytics.nn.modules.head"].SAVPE = _CheckpointCompatSavpe
     alias_modules["ultralytics.nn.modules.head"].LRPCHead = _CheckpointCompatLrpcHead
     alias_modules["ultralytics.nn.modules.head"].Residual = _CheckpointCompatResidual
@@ -1223,6 +1693,12 @@ def _resolve_checkpoint_input_size(raw_imgsz: object) -> tuple[int, int]:
     if isinstance(raw_imgsz, list | tuple) and len(raw_imgsz) >= 2:
         return max(int(raw_imgsz[0]), 32), max(int(raw_imgsz[1]), 32)
     return 640, 640
+
+
+def _is_ignored_text_prompt_checkpoint_key(key: str) -> bool:
+    """判断 text/visual prompt runtime 可忽略的 fused-only checkpoint 分支。"""
+
+    return ".lrpc." in key or ".one2one_" in key
 
 
 class YoloePromptFreeRuntimeSession:
@@ -1429,10 +1905,10 @@ class YoloeTextPromptRuntimeSession:
         )
         incompatible = model.load_state_dict(artifacts.state_dict, strict=False)
         unexpected_keys = tuple(
-            key for key in incompatible.unexpected_keys if not key.startswith("model.22.lrpc.")
+            key for key in incompatible.unexpected_keys if not _is_ignored_text_prompt_checkpoint_key(key)
         )
         missing_keys = tuple(
-            key for key in incompatible.missing_keys if not key.startswith("model.22.lrpc.")
+            key for key in incompatible.missing_keys if not _is_ignored_text_prompt_checkpoint_key(key)
         )
         if unexpected_keys or missing_keys:
             raise InvalidRequestError(
@@ -1498,7 +1974,6 @@ class YoloeTextPromptRuntimeSession:
             source_text_map[index] = _build_group_source_prompt_text(group)
             positive_start = len(prompt_texts)
             prompt_texts.extend(group.positive_texts)
-            negative_start = len(prompt_texts)
             prompt_texts.extend(group.negative_texts)
             prompt_text_offsets.append(
                 (
@@ -1685,10 +2160,10 @@ class YoloeVisualPromptRuntimeSession:
         )
         incompatible = model.load_state_dict(artifacts.state_dict, strict=False)
         unexpected_keys = tuple(
-            key for key in incompatible.unexpected_keys if not key.startswith("model.22.lrpc.")
+            key for key in incompatible.unexpected_keys if not _is_ignored_text_prompt_checkpoint_key(key)
         )
         missing_keys = tuple(
-            key for key in incompatible.missing_keys if not key.startswith("model.22.lrpc.")
+            key for key in incompatible.missing_keys if not _is_ignored_text_prompt_checkpoint_key(key)
         )
         if unexpected_keys or missing_keys:
             raise InvalidRequestError(

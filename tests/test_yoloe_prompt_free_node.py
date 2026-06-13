@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
@@ -12,6 +14,16 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
     get_or_create_yoloe_prompt_free_runtime_session,
     resolve_yoloe_pretrained_variant,
 )
+from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._project_native_runtime import (
+    _is_ignored_text_prompt_checkpoint_key,
+    build_yoloe_prompt_free_segmentation_model,
+    build_yoloe_text_prompt_segmentation_model,
+    load_prompt_free_checkpoint_artifacts,
+)
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_YOLOE_PRETRAINED_ROOT = _REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "segmentation"
 
 
 def test_resolve_yoloe_pretrained_variant_reads_local_prompt_free_manifest() -> None:
@@ -175,6 +187,44 @@ def test_prompt_free_runtime_session_runs_project_native_smoke() -> None:
     assert prediction.summary["vocabulary_size"] > 1000
     assert isinstance(prediction.detections, tuple)
     assert isinstance(prediction.regions, tuple)
+
+
+def test_yoloe_pretrained_manifests_load_project_native_weights() -> None:
+    """验证本地 YOLOE 预训练权重与 project-native runtime 结构一致。"""
+
+    manifest_paths = tuple(sorted(_YOLOE_PRETRAINED_ROOT.glob("*/*/manifest.json")))
+    assert manifest_paths
+
+    for manifest_path in manifest_paths:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        checkpoint_path = manifest_path.parent / manifest["checkpoint_path"]
+        artifacts = load_prompt_free_checkpoint_artifacts(checkpoint_path=checkpoint_path)
+        upstream_mode = str(manifest.get("metadata", {}).get("upstream_mode") or "")
+        builder = (
+            build_yoloe_prompt_free_segmentation_model
+            if upstream_mode == "prompt-free"
+            else build_yoloe_text_prompt_segmentation_model
+        )
+        model = builder(
+            model_name=str(manifest["model_name"]),
+            model_scale=artifacts.model_scale,
+            num_classes=len(artifacts.class_names),
+            model_config=artifacts.model_config,
+            input_channels=int(artifacts.model_config.get("ch", 3)),
+        )
+
+        incompatible = model.load_state_dict(artifacts.state_dict, strict=False)
+        if upstream_mode == "prompt-free":
+            unexpected_keys = tuple(incompatible.unexpected_keys)
+            missing_keys = tuple(incompatible.missing_keys)
+        else:
+            unexpected_keys = tuple(
+                key for key in incompatible.unexpected_keys if not _is_ignored_text_prompt_checkpoint_key(key)
+            )
+            missing_keys = tuple(key for key in incompatible.missing_keys if not _is_ignored_text_prompt_checkpoint_key(key))
+
+        assert not unexpected_keys, f"{manifest_path} unexpected keys: {unexpected_keys[:10]}"
+        assert not missing_keys, f"{manifest_path} missing keys: {missing_keys[:10]}"
 
 
 def _build_test_png_bytes() -> bytes:
