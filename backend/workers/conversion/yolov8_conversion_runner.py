@@ -8,6 +8,10 @@ from backend.service.application.backends import (
     ConversionBackendRunRequest,
     ConversionBackendRunResult,
 )
+from backend.service.application.models.yolov8_core import (
+    build_yolov8_export_task_plan,
+    resolve_yolov8_segmentation_export_output_names,
+)
 from backend.service.application.runtime.yolov8_classification_predictor import (
     PyTorchYoloV8ClassificationRuntimeSession,
 )
@@ -50,10 +54,15 @@ class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
         "pose": PyTorchYoloV8PoseRuntimeSession,
         "obb": PyTorchYoloV8ObbRuntimeSession,
     }
+    task_export_output_names = {
+        **LocalYoloPrimaryConversionRunner.task_export_output_names,
+        "segmentation": resolve_yolov8_segmentation_export_output_names(),
+    }
     onnx_file_type = YOLOV8_ONNX_FILE
     onnx_optimized_file_type = YOLOV8_ONNX_OPTIMIZED_FILE
     openvino_ir_file_type = YOLOV8_OPENVINO_IR_FILE
     tensorrt_engine_file_type = YOLOV8_TENSORRT_ENGINE_FILE
+    export_task_plan_builder = staticmethod(build_yolov8_export_task_plan)
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
         """初始化本地 YOLOv8 转换 runner。"""

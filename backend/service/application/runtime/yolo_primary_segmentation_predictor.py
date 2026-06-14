@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -15,6 +14,10 @@ from backend.service.application.models.yolo_primary_detection_model import (
 )
 from backend.service.application.models.yolo_primary_detection_training import (
     _require_training_imports,
+)
+from backend.service.application.models.yolo_core_common.postprocess import (
+    build_segmentation_postprocess_instances,
+    normalize_segmentation_outputs,
 )
 from backend.service.application.models.yolo_primary_model_configs import (
     build_yolo_primary_model,
@@ -60,17 +63,6 @@ from backend.service.application.runtime.runtime_target import (
 )
 from backend.service.settings import get_backend_service_settings
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
-
-@dataclass(frozen=True)
-class _SegmentationPostprocessResult:
-    """描述单张图片经过后处理后的候选结果。"""
-
-    boxes_xyxy: Any
-    scores: Any
-    class_ids: Any
-    mask_coefficients: Any
-
 
 class PyTorchYoloPrimarySegmentationRuntimeSession:
     """已经加载完成并可重复推理的 PyTorch YOLO 主线 segmentation 会话。"""
@@ -185,7 +177,7 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
                 outputs = self.model(input_tensor)
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        prediction_array, proto_array = _normalize_segmentation_outputs(
+        prediction_array, proto_array = normalize_segmentation_outputs(
             outputs=outputs,
             np_module=self.imports.np,
         )
@@ -367,7 +359,7 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        prediction_array, proto_array = _normalize_segmentation_outputs(
+        prediction_array, proto_array = normalize_segmentation_outputs(
             outputs=outputs,
             np_module=self.imports.np,
         )
@@ -578,7 +570,7 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
         if raw_prediction is None or raw_proto is None:
             raise InvalidRequestError("openvino segmentation 推理输出缺少 prediction 或 proto")
 
-        prediction_array, proto_array = _normalize_segmentation_outputs(
+        prediction_array, proto_array = normalize_segmentation_outputs(
             outputs=(raw_prediction, raw_proto),
             np_module=self.imports.np,
         )
@@ -1006,7 +998,7 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        normalized_prediction_array, normalized_proto_array = _normalize_segmentation_outputs(
+        normalized_prediction_array, normalized_proto_array = normalize_segmentation_outputs(
             outputs=(prediction_array, proto_array),
             np_module=self.imports.np,
         )
@@ -1342,28 +1334,6 @@ def _resolve_proto_output_name(
     )
 
 
-def _normalize_segmentation_outputs(
-    *,
-    outputs: object,
-    np_module: Any,
-) -> tuple[Any, Any]:
-    """把 segmentation 推理输出归一为 prediction/proto 两个数组。"""
-
-    if not isinstance(outputs, list | tuple) or len(outputs) < 2:
-        raise InvalidRequestError("segmentation 推理输出缺少 prediction/proto 双输出")
-    prediction_array = np_module.asarray(outputs[0], dtype=np_module.float32)
-    proto_array = np_module.asarray(outputs[1], dtype=np_module.float32)
-    if prediction_array.ndim == 2:
-        prediction_array = np_module.expand_dims(prediction_array, axis=0)
-    if proto_array.ndim == 3:
-        proto_array = np_module.expand_dims(proto_array, axis=0)
-    if prediction_array.ndim < 3:
-        raise InvalidRequestError("segmentation prediction 输出维度不合法", details={"shape": list(prediction_array.shape)})
-    if proto_array.ndim != 4:
-        raise InvalidRequestError("segmentation proto 输出维度不合法", details={"shape": list(proto_array.shape)})
-    return prediction_array, proto_array
-
-
 def _build_segmentation_instances(
     *,
     cv2_module: Any,
@@ -1380,176 +1350,32 @@ def _build_segmentation_instances(
 ) -> tuple[SegmentationPredictionInstance, ...]:
     """把 segmentation 输出数组转换成平台实例记录。"""
 
-    postprocess_results = _postprocess_segmentation_prediction_array(
-        prediction_array=prediction_array,
-        np_module=np_module,
-        num_classes=len(labels),
-        score_threshold=score_threshold,
-    )
-    if not postprocess_results:
-        return ()
-    proto = proto_array[0]
-    resized_height = min(int(round(image_height * resize_ratio)), int(input_size[0]))
-    resized_width = min(int(round(image_width * resize_ratio)), int(input_size[1]))
-    instances: list[SegmentationPredictionInstance] = []
-    prediction = postprocess_results[0]
-    if prediction is None:
-        return ()
-    masks = _decode_segmentation_masks(
+    common_instances = build_segmentation_postprocess_instances(
         cv2_module=cv2_module,
         np_module=np_module,
-        proto=proto,
-        mask_coefficients=prediction.mask_coefficients,
-        input_size=input_size,
-        resized_width=resized_width,
-        resized_height=resized_height,
+        prediction_array=prediction_array,
+        proto_array=proto_array,
+        labels=labels,
+        score_threshold=score_threshold,
+        nms_threshold=0.65,
+        mask_threshold=mask_threshold,
+        resize_ratio=resize_ratio,
         image_width=image_width,
         image_height=image_height,
-        mask_threshold=mask_threshold,
+        input_size=input_size,
+        nms_indices_func=batched_nms_indices,
     )
-    for bbox, score, class_id, binary_mask in zip(
-        prediction.boxes_xyxy,
-        prediction.scores,
-        prediction.class_ids,
-        masks,
-        strict=True,
-    ):
-        scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
-        resolved_class_id = int(class_id)
-        class_name = labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
-        segments = _extract_mask_segments(cv2_module=cv2_module, binary_mask=binary_mask)
-        mask_area = float(np_module.count_nonzero(binary_mask))
-        instances.append(
-            SegmentationPredictionInstance(
-                bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
-                score=round(float(score), 6),
-                class_id=resolved_class_id,
-                class_name=class_name,
-                segments=segments,
-                mask_area=round(mask_area, 3),
-            )
+    return tuple(
+        SegmentationPredictionInstance(
+            bbox_xyxy=instance.bbox_xyxy,
+            score=instance.score,
+            class_id=instance.class_id,
+            class_name=instance.class_name,
+            segments=instance.segments,
+            mask_area=instance.mask_area,
         )
-    instances.sort(key=lambda item: item.score, reverse=True)
-    return tuple(instances)
-
-
-def _postprocess_segmentation_prediction_array(
-    *,
-    prediction_array: Any,
-    np_module: Any,
-    num_classes: int,
-    score_threshold: float,
-) -> list[_SegmentationPostprocessResult | None]:
-    """执行 segmentation 输出的阈值过滤与 NMS。"""
-
-    normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
-    if normalized_prediction.ndim == 2:
-        normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
-    if normalized_prediction.ndim < 3:
-        raise InvalidRequestError("segmentation 推理输出维度不合法", details={"shape": list(normalized_prediction.shape)})
-    if int(normalized_prediction.shape[2]) <= 4 + num_classes:
-        raise InvalidRequestError(
-            "segmentation 推理输出通道数不足",
-            details={"channel_count": int(normalized_prediction.shape[2]), "required_min_channels": 5 + num_classes},
-        )
-
-    results: list[_SegmentationPostprocessResult | None] = []
-    for image_prediction in normalized_prediction:
-        boxes = image_prediction[:, :4]
-        class_scores = image_prediction[:, 4 : 4 + num_classes]
-        mask_coefficients = image_prediction[:, 4 + num_classes :]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
-        keep_mask = best_scores >= score_threshold
-        boxes = boxes[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        mask_coefficients = mask_coefficients[keep_mask]
-        if int(boxes.shape[0]) <= 0:
-            results.append(None)
-            continue
-        keep_indices = batched_nms_indices(
-            boxes=boxes,
-            scores=best_scores,
-            class_ids=best_class_ids,
-            nms_threshold=0.65,
-            np_module=np_module,
-        )
-        if int(keep_indices.size) <= 0:
-            results.append(None)
-            continue
-        results.append(
-            _SegmentationPostprocessResult(
-                boxes_xyxy=boxes[keep_indices],
-                scores=best_scores[keep_indices],
-                class_ids=best_class_ids[keep_indices],
-                mask_coefficients=mask_coefficients[keep_indices],
-            )
-        )
-    return results
-
-
-def _decode_segmentation_masks(
-    *,
-    cv2_module: Any,
-    np_module: Any,
-    proto: Any,
-    mask_coefficients: Any,
-    input_size: tuple[int, int],
-    resized_width: int,
-    resized_height: int,
-    image_width: int,
-    image_height: int,
-    mask_threshold: float,
-) -> list[Any]:
-    """根据 proto 与 mask coeff 解码实例 mask。"""
-
-    proto_features = proto.reshape(int(proto.shape[0]), -1)
-    mask_logits = mask_coefficients @ proto_features
-    mask_logits = mask_logits.reshape(int(mask_coefficients.shape[0]), int(proto.shape[1]), int(proto.shape[2]))
-    masks: list[Any] = []
-    for mask_logit in mask_logits:
-        probability_mask = 1.0 / (1.0 + np_module.exp(-mask_logit))
-        resized_mask = cv2_module.resize(
-            probability_mask,
-            (int(input_size[1]), int(input_size[0])),
-            interpolation=cv2_module.INTER_LINEAR,
-        )
-        cropped_mask = resized_mask[:resized_height, :resized_width]
-        restored_mask = cv2_module.resize(
-            cropped_mask,
-            (int(image_width), int(image_height)),
-            interpolation=cv2_module.INTER_LINEAR,
-        )
-        binary_mask = (restored_mask >= mask_threshold).astype(np_module.uint8)
-        masks.append(binary_mask)
-    return masks
-
-
-def _extract_mask_segments(*, cv2_module: Any, binary_mask: Any) -> tuple[tuple[tuple[float, float], ...], ...]:
-    """从二值 mask 中提取多边形轮廓。"""
-
-    contours, _hierarchy = cv2_module.findContours(
-        binary_mask,
-        cv2_module.RETR_EXTERNAL,
-        cv2_module.CHAIN_APPROX_SIMPLE,
+        for instance in common_instances
     )
-    segments: list[tuple[tuple[float, float], ...]] = []
-    for contour in contours:
-        if contour is None or len(contour) < 3:
-            continue
-        flattened = contour.reshape(-1, 2)
-        segments.append(
-            tuple((round(float(point[0]), 3), round(float(point[1]), 3)) for point in flattened)
-        )
-    return tuple(segments)
 
 
 def _as_preview_detection(instance: SegmentationPredictionInstance):

@@ -57,9 +57,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.workers.conversion.rfdetr_conversion_runner import (
     LocalRfdetrConversionRunner,
 )
-from backend.workers.conversion.yolox_conversion_runner import (
-    _resolve_openvino_ir_build_precision,
-    _resolve_tensorrt_engine_build_precision,
+from backend.workers.conversion.yolo_conversion_common import (
+    resolve_openvino_ir_build_precision,
+    resolve_tensorrt_engine_build_precision,
 )
 
 
@@ -739,9 +739,9 @@ class SqlAlchemyRfdetrConversionTaskService:
             raise InvalidRequestError("project_id 不能为空")
         target_formats = self._resolve_target_formats(request)
         if "openvino-ir" in target_formats:
-            _resolve_openvino_ir_build_precision(dict(request.extra_options))
+            resolve_openvino_ir_build_precision(dict(request.extra_options))
         if "tensorrt-engine" in target_formats:
-            _resolve_tensorrt_engine_build_precision(dict(request.extra_options))
+            resolve_tensorrt_engine_build_precision(dict(request.extra_options))
 
     def _validate_executable_targets(self, target_formats: tuple[str, ...]) -> None:
         unsupported_formats = [

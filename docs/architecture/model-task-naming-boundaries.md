@@ -44,6 +44,9 @@
 
 - core 包按模型分类命名，例如 `yolov8_core`、`yolo11_core`、`yolo26_core`、`rfdetr_core`。
 - core 包内部的任务目录或文件按任务分类命名，例如 `detection.py`、`segmentation.py`、`classification.py`、`pose.py`、`obb.py`。
+- `yolox_core`、`yolov8_core`、`yolo11_core`、`yolo26_core`、`rfdetr_core` 的唯一目标位置是 `backend/service/application/models/`。
+- `backend/service/application/runtime/` 不能放模型 core。runtime 只保留 deployment session、predictor、backend adapter、warmup、reset 和长期驻留资源管理。
+- 当前 `runtime/yolox_core` 是历史落点，必须迁到 `models/yolox_core`，迁移完成后删除 runtime 下的旧目录。
 - 真正跨 YOLOv8 / YOLO11 / YOLO26 共用的基础工具放入 `yolo_core_common`。
 - `yolo_core_common` 只能放不关心 `model_type` 的基础函数、基础层和通用数学工具。
 - 如果某段代码需要判断 `model_type`，它不应放在 `yolo_core_common`，应放入对应的 `yolov8_core`、`yolo11_core` 或 `yolo26_core`。

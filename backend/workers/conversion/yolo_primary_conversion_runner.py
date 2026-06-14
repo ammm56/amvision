@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from typing import Any
 
 from backend.service.application.backends import (
@@ -12,17 +11,27 @@ from backend.service.application.backends import (
     ConversionBackendRunResult,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.yolo_core_common.export import (
+    YoloExportTaskPlan,
+    build_yolo_openvino_ir,
+    build_yolo_tensorrt_engine,
+    build_yolo_export_task_plan,
+    export_yolo_onnx,
+    resolve_segmentation_export_output_names,
+    validate_yolo_onnx,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.conversion.yolo_conversion_common import (
+    build_conversion_options_metadata,
+    build_output_base_name,
+    import_onnx_conversion_dependencies,
+    resolve_conversion_phase,
+    resolve_openvino_ir_build_precision,
+    resolve_tensorrt_engine_build_precision,
+    run_conversion_script,
+)
 from backend.workers.conversion.yolox_conversion_runner import (
     LocalYoloXConversionRunner,
-    _build_conversion_options_metadata,
-    _build_output_base_name,
-    _import_onnx_dependencies,
-    _normalize_model_outputs,
-    _resolve_conversion_phase,
-    _resolve_openvino_ir_build_precision,
-    _summarize_numeric_validation,
-    _resolve_tensorrt_engine_build_precision,
 )
 
 
@@ -43,11 +52,11 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
     tensorrt_engine_file_type: str | None = None
     task_export_output_names: dict[str, tuple[str, ...]] = {
         "classification": ("probabilities",),
-        "segmentation": ("predictions", "proto"),
+        "segmentation": resolve_segmentation_export_output_names(),
         "pose": ("predictions",),
         "obb": ("predictions",),
     }
-    task_export_mode_enabled: frozenset[str] = frozenset({"classification"})
+    export_task_plan_builder = staticmethod(build_yolo_export_task_plan)
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
         """初始化本地 YOLO 主线转换 runner。"""
@@ -63,22 +72,24 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
         session_cls = self._resolve_task_runtime_session_cls(request.task_type)
-        export_output_names = self._resolve_export_output_names(request.task_type)
-        export_mode_enabled = self._is_export_mode_enabled(request.task_type)
+        export_plan = self._resolve_export_task_plan(
+            task_type=request.task_type,
+            target_formats=request.target_formats,
+        )
         session = session_cls.load(
             dataset_storage=self.dataset_storage,
             runtime_target=request.source_runtime_target,
         )
-        onnx_module, onnxruntime_module, onnx_simplify = _import_onnx_dependencies()
-        base_name = _build_output_base_name(request.source_runtime_target)
+        onnx_module, onnxruntime_module, onnx_simplify = import_onnx_conversion_dependencies()
+        base_name = build_output_base_name(request.source_runtime_target)
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
         openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
         tensorrt_object_key = (
             f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
         )
-        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(request.metadata)
-        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(
+        openvino_ir_build_precision = resolve_openvino_ir_build_precision(request.metadata)
+        tensorrt_engine_build_precision = resolve_tensorrt_engine_build_precision(
             request.metadata
         )
         executed_step_kinds: list[str] = []
@@ -94,9 +105,7 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                 export_summary = self._export_onnx(
                     session=session,
                     output_object_key=onnx_object_key,
-                    onnx_module=onnx_module,
-                    output_names=export_output_names,
-                    export_mode_enabled=export_mode_enabled,
+                    export_plan=export_plan,
                 )
                 onnx_output = YoloPrimaryConversionOutput(
                     target_format="onnx",
@@ -115,8 +124,7 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
                     onnx_object_key=onnx_object_key,
                     onnx_module=onnx_module,
                     onnxruntime_module=onnxruntime_module,
-                    output_names=export_output_names,
-                    export_mode_enabled=export_mode_enabled,
+                    export_plan=export_plan,
                 )
                 if onnx_output is not None:
                     onnx_output = YoloPrimaryConversionOutput(
@@ -214,14 +222,15 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
             metadata={
-                "phase": _resolve_conversion_phase(request.target_formats),
+                "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
                 "validation_summary": validation_summary,
-                "conversion_options": _build_conversion_options_metadata(
+                "conversion_options": build_conversion_options_metadata(
                     target_formats=request.target_formats,
                     openvino_ir_build_precision=openvino_ir_build_precision,
                     tensorrt_engine_build_precision=tensorrt_engine_build_precision,
                 ),
+                "export_plan": export_plan.to_metadata(),
             },
         )
 
@@ -241,62 +250,35 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
             )
         return session_cls
 
-    def _resolve_export_output_names(self, task_type: str) -> tuple[str, ...]:
-        """按 task_type 返回 ONNX 导出输出名列表。"""
+    def _resolve_export_task_plan(
+        self,
+        *,
+        task_type: str,
+        target_formats: tuple[str, ...],
+    ) -> YoloExportTaskPlan:
+        """按 task_type 返回 core 提供的导出构建计划。"""
 
-        output_names = self.task_export_output_names.get(task_type)
-        if output_names is not None:
-            return tuple(output_names)
-        return ("predictions",)
-
-    def _is_export_mode_enabled(self, task_type: str) -> bool:
-        """返回当前 task_type 导出时是否需要打开 export 模式。"""
-
-        return task_type in self.task_export_mode_enabled
+        return self.export_task_plan_builder(
+            task_type=task_type,
+            target_formats=target_formats,
+        )
 
     def _export_onnx(
         self,
         *,
         session: object,
         output_object_key: str,
-        onnx_module: object,
-        output_names: tuple[str, ...],
-        export_mode_enabled: bool,
+        export_plan: YoloExportTaskPlan,
     ) -> dict[str, object]:
         """把 PyTorch checkpoint 导出为 ONNX。"""
 
-        del onnx_module
         output_path = self.dataset_storage.resolve(output_object_key)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        dummy_input = session.imports.torch.randn(
-            1,
-            3,
-            session.runtime_target.input_size[0],
-            session.runtime_target.input_size[1],
-            device=session.device_name,
-            dtype=session.imports.torch.float32,
+        return export_yolo_onnx(
+            session=session,
+            output_path=output_path,
+            output_object_key=output_object_key,
+            export_plan=export_plan,
         )
-        with session.imports.torch.no_grad():
-            with _using_model_export_mode(session.model, enabled=export_mode_enabled):
-                session.imports.torch.onnx.export(
-                    session.model,
-                    dummy_input,
-                    str(output_path),
-                    export_params=True,
-                    opset_version=17,
-                    do_constant_folding=True,
-                    input_names=["images"],
-                    output_names=list(output_names),
-                )
-        return {
-            "stage": "export-onnx",
-            "object_uri": output_object_key,
-            "opset_version": 17,
-            "input_size": list(session.runtime_target.input_size),
-            "exporter_mode": "legacy-torch-onnx-export",
-            "output_names": list(output_names),
-            "task_type": session.runtime_target.task_type,
-        }
 
     def _validate_onnx(
         self,
@@ -305,62 +287,53 @@ class LocalYoloPrimaryConversionRunner(LocalYoloXConversionRunner):
         onnx_object_key: str,
         onnx_module: object,
         onnxruntime_module: object,
-        output_names: tuple[str, ...],
-        export_mode_enabled: bool,
+        export_plan: YoloExportTaskPlan,
     ) -> dict[str, object]:
         """执行 ONNX 合法性和数值校验。"""
 
         onnx_path = self.dataset_storage.resolve(onnx_object_key)
-        onnx_model = onnx_module.load(str(onnx_path))
-        onnx_module.checker.check_model(onnx_model)
+        return validate_yolo_onnx(
+            session=session,
+            onnx_path=onnx_path,
+            onnx_module=onnx_module,
+            onnxruntime_module=onnxruntime_module,
+            export_plan=export_plan,
+        )
 
-        dummy_input = session.imports.torch.randn(
-            1,
-            3,
-            session.runtime_target.input_size[0],
-            session.runtime_target.input_size[1],
-            device=session.device_name,
-            dtype=session.imports.torch.float32,
-        )
-        with session.imports.torch.no_grad():
-            with _using_model_export_mode(session.model, enabled=export_mode_enabled):
-                torch_outputs = _normalize_model_outputs(
-                    session.model(dummy_input),
-                    session.imports,
-                )
-        ort_session = onnxruntime_module.InferenceSession(
-            str(onnx_path),
-            providers=["CPUExecutionProvider"],
-        )
-        ort_outputs = ort_session.run(
-            list(output_names),
-            {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
-        )
-        summary = self._summarize_numeric_validation(
-            np_module=session.imports.np,
-            torch_outputs=torch_outputs,
-            ort_outputs=ort_outputs,
-        )
-        if not bool(summary["allclose"]):
-            raise ServiceConfigurationError(
-                "ONNX 数值校验失败",
-                details=dict(summary),
-            )
-        return summary
-
-    def _summarize_numeric_validation(
+    def _build_openvino_ir(
         self,
         *,
-        np_module: object,
-        torch_outputs: list[object],
-        ort_outputs: list[object],
+        source_object_key: str,
+        output_object_key: str,
+        build_precision: str,
     ) -> dict[str, object]:
-        """计算 PyTorch 与 ONNX 输出的数值差异摘要。"""
+        """把 optimized ONNX 转换为 OpenVINO IR。"""
 
-        return _summarize_numeric_validation(
-            np_module=np_module,
-            torch_outputs=torch_outputs,
-            ort_outputs=ort_outputs,
+        return build_yolo_openvino_ir(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
+        )
+
+    def _build_tensorrt_engine(
+        self,
+        *,
+        source_object_key: str,
+        output_object_key: str,
+        build_precision: str,
+    ) -> dict[str, object]:
+        """把 optimized ONNX 转换为 TensorRT engine。"""
+
+        return build_yolo_tensorrt_engine(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
         )
 
 
@@ -375,23 +348,3 @@ def _require_runner_hook(hook_name: str, value: Any, *, model_label: str) -> Any
     return value
 
 
-@contextmanager
-def _using_model_export_mode(model: object, *, enabled: bool):
-    """临时切换模型内部 export 标志，保证导出和数值校验输出语义一致。"""
-
-    if not enabled:
-        yield
-        return
-    toggled_modules: list[tuple[object, bool]] = []
-    modules = getattr(model, "modules", None)
-    if callable(modules):
-        for module in modules():
-            export_flag = getattr(module, "export", None)
-            if isinstance(export_flag, bool):
-                toggled_modules.append((module, export_flag))
-                setattr(module, "export", True)
-    try:
-        yield
-    finally:
-        for module, original_value in toggled_modules:
-            setattr(module, "export", original_value)

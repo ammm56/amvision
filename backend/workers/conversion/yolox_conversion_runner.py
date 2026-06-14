@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
 import json
-from pathlib import Path, PurePosixPath
-import sys
+from pathlib import PurePosixPath
 
 from backend.service.application.backends import (
     ConversionBackend,
@@ -15,7 +13,6 @@ from backend.service.application.backends import (
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.yolox_detection_runtime import PyTorchYoloXRuntimeSession
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -23,12 +20,20 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.conversion.yolo_conversion_common import (
+    build_conversion_options_metadata,
+    build_output_base_name,
+    import_onnx_conversion_dependencies,
+    normalize_model_outputs,
+    optimize_onnx_model,
+    resolve_conversion_phase,
+    resolve_openvino_ir_build_precision,
+    resolve_tensorrt_engine_build_precision,
+    run_conversion_script,
+    summarize_numeric_validation,
+)
 
 
-_OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
-_SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
-_TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
-_SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
 _OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
 _TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
@@ -68,14 +73,14 @@ class LocalYoloXConversionRunner:
             dataset_storage=self.dataset_storage,
             runtime_target=request.source_runtime_target,
         )
-        onnx_module, onnxruntime_module, onnx_simplify = _import_onnx_dependencies()
-        base_name = _build_output_base_name(request.source_runtime_target)
+        onnx_module, onnxruntime_module, onnx_simplify = import_onnx_conversion_dependencies()
+        base_name = build_output_base_name(request.source_runtime_target)
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         optimized_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.optimized.onnx"
         openvino_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.openvino.xml"
         tensorrt_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
-        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(request.metadata)
-        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(request.metadata)
+        openvino_ir_build_precision = resolve_openvino_ir_build_precision(request.metadata)
+        tensorrt_engine_build_precision = resolve_tensorrt_engine_build_precision(request.metadata)
         executed_step_kinds: list[str] = []
         validation_summary: dict[str, object] = {}
         onnx_output: YoloXConversionOutput | None = None
@@ -189,10 +194,10 @@ class LocalYoloXConversionRunner:
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
             metadata={
-                "phase": _resolve_conversion_phase(request.target_formats),
+                "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
                 "validation_summary": validation_summary,
-                "conversion_options": _build_conversion_options_metadata(
+                "conversion_options": build_conversion_options_metadata(
                     target_formats=request.target_formats,
                     openvino_ir_build_precision=openvino_ir_build_precision,
                     tensorrt_engine_build_precision=tensorrt_engine_build_precision,
@@ -262,7 +267,7 @@ class LocalYoloXConversionRunner:
             dtype=session.imports.torch.float32,
         )
         with session.imports.torch.no_grad():
-            torch_outputs = _normalize_model_outputs(session.model(dummy_input), session.imports)
+            torch_outputs = normalize_model_outputs(session.model(dummy_input))
         ort_session = onnxruntime_module.InferenceSession(
             str(onnx_path),
             providers=["CPUExecutionProvider"],
@@ -271,7 +276,7 @@ class LocalYoloXConversionRunner:
             None,
             {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
         )
-        summary = _summarize_numeric_validation(
+        summary = summarize_numeric_validation(
             np_module=session.imports.np,
             torch_outputs=torch_outputs,
             ort_outputs=ort_outputs,
@@ -293,21 +298,14 @@ class LocalYoloXConversionRunner:
     ) -> dict[str, object]:
         """执行 ONNX 简化优化并写回独立输出。"""
 
-        source_path = self.dataset_storage.resolve(source_object_key)
-        optimized_path = self.dataset_storage.resolve(output_object_key)
-        optimized_path.parent.mkdir(parents=True, exist_ok=True)
-        source_model = onnx_module.load(str(source_path))
-        simplified_model, check_passed = onnx_simplify(source_model)
-        if not check_passed:
-            raise ServiceConfigurationError("ONNX simplify 校验失败")
-        onnx_module.checker.check_model(simplified_model)
-        onnx_module.save(simplified_model, str(optimized_path))
-        return {
-            "stage": "optimize-onnx",
-            "object_uri": output_object_key,
-            "source_object_uri": source_object_key,
-            "optimizer": "onnxsim",
-        }
+        return optimize_onnx_model(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            optimized_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            onnx_module=onnx_module,
+            onnx_simplify=onnx_simplify,
+        )
 
     def _build_openvino_ir(
         self,
@@ -331,7 +329,7 @@ class LocalYoloXConversionRunner:
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         compress_to_fp16 = build_precision == "fp16"
-        completed_process = _run_conversion_script(
+        completed_process = run_conversion_script(
             script_file_name=_OPENVINO_IR_BUILD_SCRIPT_FILE,
             args=[
                 str(source_path),
@@ -390,7 +388,7 @@ class LocalYoloXConversionRunner:
         source_path = self.dataset_storage.resolve(source_object_key)
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        completed_process = _run_conversion_script(
+        completed_process = run_conversion_script(
             script_file_name=_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
             args=[
                 str(source_path),
@@ -427,148 +425,10 @@ class LocalYoloXConversionRunner:
         return build_summary
 
 
-def _resolve_openvino_ir_build_precision(metadata: dict[str, object]) -> str:
-    """从 worker metadata 中解析 OpenVINO IR 构建精度策略。
-
-    参数：
-    - metadata：转换执行请求附加元数据。
-
-    返回：
-    - str：OpenVINO IR 构建精度；当前支持 fp32 或 fp16。
-    """
-
-    raw_precision = metadata.get(_OPENVINO_IR_PRECISION_OPTION_KEY)
-    if raw_precision is None:
-        return "fp32"
-    if isinstance(raw_precision, str):
-        normalized_precision = raw_precision.strip().lower()
-        if normalized_precision in _SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS:
-            return normalized_precision
-    raise InvalidRequestError(
-        "openvino_ir_precision 必须是 fp32 或 fp16",
-        details={_OPENVINO_IR_PRECISION_OPTION_KEY: raw_precision},
-    )
-
-
-def _build_conversion_options_metadata(
-    *,
-    target_formats: tuple[str, ...],
-    openvino_ir_build_precision: str,
-    tensorrt_engine_build_precision: str,
-) -> dict[str, object]:
-    """根据目标格式生成转换报告中的附加策略摘要。
-
-    参数：
-    - target_formats：当前转换目标格式列表。
-    - openvino_ir_build_precision：OpenVINO IR 构建精度策略。
-
-    返回：
-    - dict[str, object]：转换策略摘要。
-    """
-
-    metadata: dict[str, object] = {}
-    if "openvino-ir" in target_formats:
-        metadata[_OPENVINO_IR_PRECISION_OPTION_KEY] = openvino_ir_build_precision
-    if "tensorrt-engine" in target_formats:
-        metadata[_TENSORRT_ENGINE_PRECISION_OPTION_KEY] = tensorrt_engine_build_precision
-    return metadata
-
-
-def _import_onnx_dependencies() -> tuple[object, object, object]:
-    """导入 ONNX phase-1 所需依赖。"""
-
-    try:
-        import onnx
-        import onnxruntime
-        from onnxsim import simplify
-    except ImportError as error:
-        raise ServiceConfigurationError("当前环境缺少 ONNX phase-1 所需依赖") from error
-    return onnx, onnxruntime, simplify
-
-
-def _build_output_base_name(runtime_target: RuntimeTargetSnapshot) -> str:
-    """根据来源模型信息构建稳定输出文件名前缀。"""
-
-    model_name = runtime_target.model_name.replace(" ", "-").lower() or "yolox"
-    model_scale = runtime_target.model_scale.strip().lower() or "unknown"
-    return f"{model_name}-{model_scale}"
-
-
-def _resolve_conversion_phase(target_formats: tuple[str, ...]) -> str:
-    """根据目标格式集合返回当前转换阶段标识。"""
-
-    if "tensorrt-engine" in target_formats:
-        return "phase-2-tensorrt-engine"
-    if "openvino-ir" in target_formats:
-        return "phase-2-openvino-ir"
-    return "phase-1-onnx"
-
-
 def _resolve_openvino_weights_object_key(output_object_key: str) -> str:
     """根据 OpenVINO XML object key 推导同名 bin object key。"""
 
     return PurePosixPath(output_object_key).with_suffix(".bin").as_posix()
-
-
-def _resolve_tensorrt_engine_build_precision(metadata: dict[str, object]) -> str:
-    """从 worker metadata 中解析 TensorRT engine 构建精度策略。
-
-    参数：
-    - metadata：转换执行请求附加元数据。
-
-    返回：
-    - str：TensorRT engine 构建精度；当前支持 fp32 或 fp16。
-    """
-
-    raw_precision = metadata.get(_TENSORRT_ENGINE_PRECISION_OPTION_KEY)
-    if raw_precision is None:
-        return "fp32"
-    if isinstance(raw_precision, str):
-        normalized_precision = raw_precision.strip().lower()
-        if normalized_precision in _SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS:
-            return normalized_precision
-    raise InvalidRequestError(
-        "tensorrt_engine_precision 必须是 fp32 或 fp16",
-        details={_TENSORRT_ENGINE_PRECISION_OPTION_KEY: raw_precision},
-    )
-
-
-def _run_conversion_script(
-    *,
-    script_file_name: str,
-    args: list[str],
-) -> subprocess.CompletedProcess[str]:
-    """执行 conversion 隔离子进程脚本。
-
-    参数：
-    - script_file_name：脚本文件名。
-    - args：传给脚本的参数列表。
-
-    返回：
-    - subprocess.CompletedProcess[str]：子进程执行结果。
-    """
-
-    script_path = _resolve_conversion_script_path(script_file_name)
-    return subprocess.run(
-        [sys.executable, str(script_path), *args],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-
-
-def _resolve_conversion_script_path(script_file_name: str) -> Path:
-    """返回 conversion 子进程脚本文件路径。"""
-
-    script_path = Path(__file__).resolve().parent / "scripts" / script_file_name
-    if script_path.is_file():
-        return script_path
-    raise ServiceConfigurationError(
-        "conversion 子进程脚本不存在",
-        details={"script_path": str(script_path)},
-    )
 
 
 def _parse_last_json_line(stdout: str) -> dict[str, object] | None:
@@ -584,64 +444,3 @@ def _parse_last_json_line(stdout: str) -> dict[str, object] | None:
     if isinstance(payload, dict):
         return {str(key): value for key, value in payload.items()}
     return None
-
-
-def _normalize_model_outputs(model_outputs: object, imports: object) -> list[object]:
-    """把模型输出规整为 numpy 数组列表。"""
-
-    if hasattr(model_outputs, "detach"):
-        return [model_outputs.detach().cpu().numpy()]
-    if isinstance(model_outputs, (list, tuple)):
-        normalized_outputs: list[object] = []
-        for item in model_outputs:
-            if hasattr(item, "detach"):
-                normalized_outputs.append(item.detach().cpu().numpy())
-        if normalized_outputs:
-            return normalized_outputs
-    raise ServiceConfigurationError(
-        "当前模型输出格式不受支持",
-        details={"output_type": model_outputs.__class__.__name__},
-    )
-
-
-def _summarize_numeric_validation(
-    *,
-    np_module: object,
-    torch_outputs: list[object],
-    ort_outputs: list[object],
-) -> dict[str, object]:
-    """计算 PyTorch 与 ONNX 输出的数值差异摘要。"""
-
-    if len(torch_outputs) != len(ort_outputs):
-        raise ServiceConfigurationError(
-            "ONNX 输出数量与 PyTorch 不一致",
-            details={"torch_output_count": len(torch_outputs), "ort_output_count": len(ort_outputs)},
-        )
-    max_abs_diff = 0.0
-    mean_abs_diff = 0.0
-    compared_output_count = 0
-    for torch_output, ort_output in zip(torch_outputs, ort_outputs, strict=True):
-        if tuple(torch_output.shape) != tuple(ort_output.shape):
-            raise ServiceConfigurationError(
-                "ONNX 输出形状与 PyTorch 不一致",
-                details={
-                    "torch_shape": list(torch_output.shape),
-                    "ort_shape": list(ort_output.shape),
-                },
-            )
-        abs_diff = np_module.abs(torch_output - ort_output)
-        max_abs_diff = max(max_abs_diff, float(np_module.max(abs_diff)))
-        mean_abs_diff += float(np_module.mean(abs_diff))
-        compared_output_count += 1
-    mean_abs_diff = mean_abs_diff / max(1, compared_output_count)
-    allclose = all(
-        bool(np_module.allclose(torch_output, ort_output, rtol=1e-3, atol=1e-4))
-        for torch_output, ort_output in zip(torch_outputs, ort_outputs, strict=True)
-    )
-    return {
-        "stage": "validate-onnx",
-        "allclose": allclose,
-        "max_abs_diff": max_abs_diff,
-        "mean_abs_diff": mean_abs_diff,
-        "output_count": compared_output_count,
-    }

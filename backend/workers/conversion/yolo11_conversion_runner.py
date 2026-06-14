@@ -8,6 +8,10 @@ from backend.service.application.backends import (
     ConversionBackendRunRequest,
     ConversionBackendRunResult,
 )
+from backend.service.application.models.yolo11_core import (
+    build_yolo11_export_task_plan,
+    resolve_yolo11_segmentation_export_output_names,
+)
 from backend.service.application.runtime.yolo11_classification_predictor import (
     PyTorchYolo11ClassificationRuntimeSession,
 )
@@ -50,10 +54,15 @@ class LocalYolo11ConversionRunner(LocalYoloPrimaryConversionRunner):
         "pose": PyTorchYolo11PoseRuntimeSession,
         "obb": PyTorchYolo11ObbRuntimeSession,
     }
+    task_export_output_names = {
+        **LocalYoloPrimaryConversionRunner.task_export_output_names,
+        "segmentation": resolve_yolo11_segmentation_export_output_names(),
+    }
     onnx_file_type = YOLO11_ONNX_FILE
     onnx_optimized_file_type = YOLO11_ONNX_OPTIMIZED_FILE
     openvino_ir_file_type = YOLO11_OPENVINO_IR_FILE
     tensorrt_engine_file_type = YOLO11_TENSORRT_ENGINE_FILE
+    export_task_plan_builder = staticmethod(build_yolo11_export_task_plan)
 
     def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
         """初始化本地 YOLO11 转换 runner。"""

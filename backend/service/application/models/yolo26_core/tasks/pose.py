@@ -10,8 +10,8 @@ from torch import nn
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.decode import (
     build_detection_prediction,
+    decode_pose_keypoints,
 )
-from backend.service.application.models.yolo_core_common.geometry import make_anchors
 from backend.service.application.models.yolo_core_common.layers import Conv
 from backend.service.application.models.yolo_core_common.tasks.pose import Pose
 
@@ -163,7 +163,13 @@ class Pose26(Pose):
             strides=self.strides,
             dfl_decoder=self.dfl,
         )
-        kpts = self._decode_keypoints_pose26(inference_outputs)
+        kpts = decode_pose_keypoints(
+            raw_outputs=inference_outputs,
+            strides=self.strides,
+            keypoint_shape=self.kpt_shape,
+            offset_multiplier=1.0,
+            anchor_offset=0.0,
+        )
         prediction = torch.cat((prediction, kpts), dim=1)
         return prediction.transpose(1, 2).contiguous()
 
@@ -221,23 +227,3 @@ class Pose26(Pose):
                     dim=2,
                 )
         return result
-
-    def _decode_keypoints_pose26(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
-        """解码 YOLO26 关键点坐标（锚点 + 偏移 * 步幅）。"""
-
-        anchor_points, stride_tensor = make_anchors(
-            feature_maps=raw_outputs["feats"],
-            strides=self.strides,
-        )
-        kpts = raw_outputs["kpts"]
-        batch_size = int(kpts.shape[0])
-        ndim = self.kpt_shape[1]
-        decoded = kpts.view(batch_size, self.kpt_shape[0], ndim, -1).clone()
-        anchor_x = anchor_points[:, 0].view(1, 1, -1)
-        anchor_y = anchor_points[:, 1].view(1, 1, -1)
-        stride = stride_tensor.view(1, 1, -1)
-        decoded[:, :, 0, :] = (decoded[:, :, 0, :] + anchor_x) * stride
-        decoded[:, :, 1, :] = (decoded[:, :, 1, :] + anchor_y) * stride
-        if ndim == 3:
-            decoded[:, :, 2, :] = decoded[:, :, 2, :].sigmoid()
-        return decoded.view(batch_size, self.nk, -1)

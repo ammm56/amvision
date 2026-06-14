@@ -27,15 +27,17 @@ from backend.service.application.models.rfdetr_segmentation_model import (
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.workers.conversion.yolo_conversion_common import (
+    build_conversion_options_metadata,
+    build_output_base_name,
+    import_onnx_conversion_dependencies,
+    resolve_conversion_phase,
+    resolve_openvino_ir_build_precision,
+    resolve_tensorrt_engine_build_precision,
+    summarize_numeric_validation,
+)
 from backend.workers.conversion.yolox_conversion_runner import (
     LocalYoloXConversionRunner,
-    _build_conversion_options_metadata,
-    _build_output_base_name,
-    _import_onnx_dependencies,
-    _resolve_conversion_phase,
-    _resolve_openvino_ir_build_precision,
-    _resolve_tensorrt_engine_build_precision,
-    _summarize_numeric_validation,
 )
 
 
@@ -96,8 +98,8 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
 
         input_height, input_width = _resolve_input_size(runtime_target.input_size)
         dummy_input = torch.randn(1, 3, input_height, input_width, dtype=torch.float32)
-        onnx_module, onnxruntime_module, onnx_simplify = _import_onnx_dependencies()
-        base_name = _build_output_base_name(runtime_target)
+        onnx_module, onnxruntime_module, onnx_simplify = import_onnx_conversion_dependencies()
+        base_name = build_output_base_name(runtime_target)
         onnx_object_key = (
             f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
         )
@@ -110,8 +112,8 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
         tensorrt_object_key = (
             f"{request.output_object_prefix}/artifacts/builds/{base_name}.tensorrt.engine"
         )
-        openvino_ir_build_precision = _resolve_openvino_ir_build_precision(metadata)
-        tensorrt_engine_build_precision = _resolve_tensorrt_engine_build_precision(
+        openvino_ir_build_precision = resolve_openvino_ir_build_precision(metadata)
+        tensorrt_engine_build_precision = resolve_tensorrt_engine_build_precision(
             metadata
         )
         output_names = _resolve_export_output_names(task_type)
@@ -238,10 +240,10 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
             conversion_task_id=request.conversion_task_id,
             outputs=tuple(outputs),
             metadata={
-                "phase": _resolve_conversion_phase(request.target_formats),
+                "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,
                 "validation_summary": validation_summary,
-                "conversion_options": _build_conversion_options_metadata(
+                "conversion_options": build_conversion_options_metadata(
                     target_formats=request.target_formats,
                     openvino_ir_build_precision=openvino_ir_build_precision,
                     tensorrt_engine_build_precision=tensorrt_engine_build_precision,
@@ -310,7 +312,7 @@ class LocalRfdetrConversionRunner(LocalYoloXConversionRunner, ConversionBackend)
             list(output_names),
             {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
         )
-        summary = _summarize_numeric_validation(
+        summary = summarize_numeric_validation(
             np_module=__import__("numpy"),
             torch_outputs=torch_outputs,
             ort_outputs=ort_outputs,

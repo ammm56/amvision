@@ -52,11 +52,46 @@
 ```text
 repo/
 ├─ backend/
+│  ├─ alembic/
+│  │  └─ versions/
+│  ├─ bootstrap/
+│  ├─ contracts/
+│  │  ├─ buffers/
+│  │  ├─ datasets/
+│  │  │  └─ exports/
+│  │  ├─ files/
+│  │  ├─ nodes/
+│  │  ├─ plugins/
+│  │  └─ workflows/
+│  ├─ maintenance/
+│  ├─ nodes/
+│  │  ├─ core_nodes/
+│  │  └─ sam3_runtime_support/
+│  ├─ queue/
 │  ├─ service/
 │  │  ├─ api/
 │  │  ├─ application/
 │  │  │  ├─ datasets/
 │  │  │  ├─ models/
+│  │  │  │  ├─ yolox_core/
+│  │  │  │  ├─ yolov8_core/
+│  │  │  │  ├─ yolo11_core/
+│  │  │  │  ├─ yolo26_core/
+│  │  │  │  ├─ rfdetr_core/
+│  │  │  │  ├─ yolo_core_common/
+│  │  │  │  ├─ training/
+│  │  │  │  ├─ evaluation/
+│  │  │  │  ├─ inference/
+│  │  │  │  ├─ catalog/
+│  │  │  │  └─ registry/
+│  │  │  ├─ runtime/
+│  │  │  │  ├─ deployment/
+│  │  │  │  ├─ tasks/
+│  │  │  │  ├─ predictors/
+│  │  │  │  ├─ targets/
+│  │  │  │  ├─ contracts/
+│  │  │  │  ├─ serialization/
+│  │  │  │  └─ support/
 │  │  │  ├─ tasks/
 │  │  │  ├─ conversions/
 │  │  │  ├─ inference_results/
@@ -69,34 +104,19 @@ repo/
 │  │  │  ├─ tasks/
 │  │  │  └─ deployments/
 │  │  └─ infrastructure/
+│  │     ├─ db/
+│  │     ├─ integrations/
+│  │     ├─ local_buffers/
+│  │     ├─ object_store/
+│  │     └─ persistence/
 │  ├─ workers/
+│  │  ├─ conversion/
+│  │  │  └─ scripts/
+│  │  ├─ datasets/
+│  │  ├─ evaluation/
 │  │  ├─ training/
 │  │  ├─ inference/
-│  │  ├─ conversion/
-│  │  ├─ pipelines/
 │  │  └─ shared/
-│  ├─ contracts/
-│  │  ├─ api/
-│  │  ├─ events/
-│  │  ├─ datasets/
-│  │  │  ├─ schema/
-│  │  │  ├─ imports/
-│  │  │  └─ exports/
-│  │  ├─ files/
-│  │  ├─ nodes/
-│  │  └─ integrations/
-│  └─ adapters/
-│     ├─ database/
-│     ├─ object_store/
-│     │  ├─ datasets/
-│     │  │  ├─ source/
-│     │  │  ├─ versions/
-│     │  │  └─ exports/
-│     │  ├─ models/
-│     │  └─ task_runs/
-│     ├─ queue/
-│     ├─ cache/
-│     └─ protocols/
 ├─ frontend/
 │  └─ web-ui/
 │     ├─ shells/
@@ -184,14 +204,25 @@ repo/
 - docs：说明和设计文档
 - tests：边界和交互验证
 
-### backend 内部分层
+### backend 顶层目录
 
-- service：系统主入口，处理 REST API、WebSocket、任务状态 API、元数据和当前进程托管的最小后台任务宿主
-- workers：重任务执行层，跑训练、推理、转换和流程
-- contracts：放共用的 schema、事件、数据集格式、文件规则、节点和集成规则
-- adapters：接数据库、对象存储、队列、缓存和协议通信
-- custom_nodes 以 node pack 为最小分发单元，内部可按节点、协议、桥接和结果处理能力组织
-- custom_nodes 内部优先把简单 helper 和节点共享逻辑收敛到当前 pack，本地解决；确需跨 pack 复用时，依赖关系要显式记录，不通过隐式顶层 import 扩散
+`backend/` 是服务端源码根目录。这里按平台职责分层，不按某个模型、某个任务或某次临时开发拆顶层目录。
+
+- `service`：系统主入口，处理 REST API、WebSocket、任务状态 API、元数据、权限、状态流、deployment supervisor 和 workflow runtime manager。
+- `workers`：重任务执行进程，消费数据集导入/导出、训练、验证/评估、转换和异步推理任务。worker 可以调用模型 core 和 runtime，但不拥有公开 API。
+- `contracts`：放 service、workers、nodes、custom_nodes 和外部调试样例共用的稳定 schema、payload、数据集格式、文件规则、节点规则和 workflow 规则。
+- `nodes`：放平台内建节点和节点运行支持代码。它不放自定义 node pack，也不放模型训练、转换或 deployment session。
+- `queue`：放 QueueBackend 抽象和本地队列实现，只处理入队、领取、确认、重试、恢复和失败隔离，不放任务业务逻辑。
+- `bootstrap`：放服务启动前后的装配辅助、环境检查和默认初始化入口，不放业务规则。
+- `maintenance`：放维护命令和离线工具，例如 release 装配、manifest 扫描、资产检查和一次性整理脚本，不进入在线请求路径。
+- `alembic`：只放数据库迁移和迁移配置，不放应用代码。
+
+当前不再规划 `backend/adapters` 这个顶层目录。数据库、对象存储、协议接入和本地基础设施适配统一放在 `backend/service/infrastructure`；队列基础实现放在 `backend/queue`；外部协议或硬件桥接优先通过 `custom_nodes` 扩展。
+
+### custom_nodes 分层
+
+- `custom_nodes` 以 node pack 为最小分发单元，内部可按节点、协议、桥接和结果处理能力组织。
+- `custom_nodes` 内部优先把简单 helper 和节点共享逻辑收敛到当前 pack，本地解决；确需跨 pack 复用时，依赖关系要显式记录，不通过隐式顶层 import 扩散。
 
 ### backend/service 内部层级
 
@@ -214,9 +245,10 @@ repo/
 - db：SQLAlchemy engine、session、Unit of Work 和迁移相关装配，例如 session.py、unit_of_work.py
 - persistence：ORM 实体与 Repository 实现，例如 dataset_orm.py、model_orm.py、dataset_repository.py、model_repository.py
 - object_store：本地文件系统或其他 ObjectStore 的适配实现
-- queue：QueueBackend 的具体实现与调度接线
-- cache：可选缓存实现
-- protocols：外部协议接入和内部 ZeroMQ 适配
+- integrations：目录、Modbus、ZeroMQ 等外部或同机集成适配，不直接写到 API、domain 或模型 core 中
+- local_buffers：本地 buffer、文件暂存和工作流运行时需要的本地数据通道
+
+QueueBackend 的基础抽象和本地实现放在 `backend/queue`。service 只通过 application 层和 QueueBackend 接口提交任务，不把队列实现细节扩散到 route、domain 或 worker 代码里。
 
 ### backend/service 的数据与模型主干
 
@@ -230,7 +262,103 @@ repo/
 - application/conversions：处理转换任务提交、导出版本登记、兼容性和 benchmark 写回
 - application/inference_results：处理 task staging、结果提升、TTL 和清理
 - contracts/datasets：放通用数据格式、导入格式规则和数据集导出格式规则
-- adapters/object_store/datasets、models、task_runs：分别放原始导入、统一数据版本、训练导出、模型文件和任务暂存内容
+- service/infrastructure/object_store：放本地文件系统 ObjectStore 适配；数据集原始包、统一版本、训练导出、模型文件和任务暂存内容都通过 ObjectStore 规则访问，不让业务层直接拼磁盘路径
+
+### backend/service/application/models
+
+`application/models` 当前承担模型平台的应用服务和模型 core 两类职责，后续必须用子目录隔离，不能继续把几十个 `.py` 平铺在同一层。
+
+目标分层如下：
+
+- `yolox_core`、`yolov8_core`、`yolo11_core`、`yolo26_core`、`rfdetr_core`：放模型结构、配置、head、loss、assigner、matcher、target 编码、postprocess、权重加载、训练/评估核心和导出 forward。
+- `yolo_core_common`：只放 YOLOv8 / YOLO11 / YOLO26 真正共用且不判断 `model_type` 的基础层、anchor、bbox、DFL、tensor 工具和通用数学函数。
+- `training`：放训练任务应用服务、任务提交、训练参数检查、训练输出登记和任务状态回写，不放模型 loss、matcher 或增强实现。
+- `evaluation`：放验证/评估任务应用服务、评估结果登记和指标写回，不放模型 postprocess 核心实现。
+- `inference`：放推理任务应用服务、payload 组装、异步推理 gateway 和结果登记，不放 deployment session。
+- `catalog`：放预训练模型目录、模型类型支持范围和模型文件登记规则。
+- `registry`：放模型版本、模型构建、runtime target resolver 和模型能力查询。
+
+当前需要迁出的典型文件：
+
+- `rfdetr_model.py`、`rfdetr_segmentation_model.py` 的模型结构迁入 `rfdetr_core`。
+- `yolo_detection_model.py` 的模型结构、head、decode、loss、postprocess 迁入 `yolo_core_common` 和对应 `yolov8_core / yolo11_core / yolo26_core`。
+- `yolox_detection_training.py` 中的数据增强、loss、EMA、scheduler、checkpoint 和训练循环核心迁入 `yolox_core/training`。
+- `yolo_primary_*_training.py`、`pose_loss.py`、`obb_loss.py`、`rfdetr_*_training.py` 中的模型核心逻辑迁入对应 core；剩下的 service 外壳再按 `training`、`evaluation`、`inference` 分类归档。
+
+### backend/service/application/runtime
+
+`application/runtime` 只处理“部署后怎么加载和长期运行”，不处理“模型是什么结构”。当前这一层文件已经过多，后续也必须拆子目录，而不是继续平铺。
+
+目标分层如下：
+
+- `deployment`：放 `deployment_process_*`、`deployment_events`、`deployment_runtime_pool`、进程监督、事件源和长期驻留进程管理。
+- `tasks`：放 detection、classification、segmentation、pose、obb 的 runtime task 编排和 `task_prediction_runtime`。
+- `predictors`：放各模型/任务的 predictor 和 session 包装，例如 YOLO、YOLOX、RF-DETR 的 PyTorch / ONNXRuntime / OpenVINO / TensorRT 加载与推理调用。
+- `targets`：放 `runtime_target` 和各模型 runtime target 解析。
+- `contracts`：放 task runtime 输入输出 contract。
+- `serialization`：放 runtime payload 序列化与反序列化。
+- `support`：放 `safe_counter`、运行时小工具和 backend adapter 辅助。
+
+不迁入 `*_core` 的内容：
+
+- `*_predictor.py` 不迁入 core。predictor 依赖 ONNXRuntime、OpenVINO、TensorRT、CUDA buffer、session pool、输入输出序列化和 deployment 资源管理，属于 runtime。
+- `*_runtime_contracts.py` 和 `*_runtime_serialization.py` 不迁入 core。它们描述部署推理时的输入输出和传输格式，属于 runtime 边界。
+- `deployment_process_*`、`deployment_runtime_pool.py`、`deployment_events.py` 不迁入 core。它们是长期进程和部署生命周期管理。
+- `runtime_target.py` 不迁入 core。它负责把 ModelVersion、ModelBuild、runtime backend 和部署参数解析成运行目标。
+
+必须迁出 runtime 的内容：
+
+- `runtime/yolox_core` 整体迁到 `models/yolox_core`，迁移完成后删除 runtime 下的旧目录。
+- 如果 `yolox_detection_runtime.py` 中仍有模型结构、网络层、loss、训练逻辑或权重映射，应迁入 `models/yolox_core`；保留 runtime session、加载、预处理、后处理桥接和结果序列化。
+
+### backend/workers
+
+`backend/workers` 是独立 worker 进程的任务消费层。它可以调用 service application 用例、ObjectStore、QueueBackend 和模型 core，但自身不应该继续沉淀模型结构、loss、数据增强或 runtime session 的长期实现。
+
+目标分层如下：
+
+- `datasets`：消费 dataset-import、dataset-export 和数据准备任务，调用 contracts/datasets 和 application/datasets。
+- `training`：消费训练任务，做任务领取、参数读取、进度回写、artifact 登记和错误回写；实际训练循环、loss、assigner、checkpoint 规则调用对应 `*_core/training`。
+- `evaluation`：消费验证/评估任务，做任务状态和结果登记；真实评估前后处理调用对应 core 的 eval 或 postprocess。
+- `conversion`：消费转换任务，做任务状态、目标格式、产物登记和子进程隔离；ONNX/OpenVINO/TensorRT 的稳定导出入口调用对应 `*_core/export.py`。
+- `inference`：消费异步推理任务，调用 deployment runtime 或 task runtime，不直接写模型结构。
+- `shared`：只放 worker 进程共用的小工具，例如任务上下文、日志、状态回写、文件登记辅助，不放模型专属逻辑。
+
+workers 可以按模型分发任务，但不能成为模型核心实现的长期存放位置。模型相关判断应该止于“调用哪个 core 或哪个 runtime target”，不能在 worker 里重新实现 head、loss、decode 或权重加载。
+
+### backend/contracts
+
+`backend/contracts` 放跨层共享的稳定规则。这里的内容可以被 service、workers、nodes、custom_nodes、Postman 示例和后续 SDK 读取，但不能依赖 FastAPI route、SQLAlchemy ORM、worker 进程或模型内部实现。
+
+当前目录职责如下：
+
+- `buffers`：本地 buffer 和响应体传递规则。
+- `datasets`：数据集导入、导出、样本、标注和格式常量。
+- `datasets/exports`：训练可用的数据集导出格式和 manifest 规则。
+- `files`：FileRef、文件列表和文件引用规则。
+- `nodes`：节点输入输出 payload、节点 catalog 和 workflow 节点规则。
+- `workflows`：workflow payload、运行时请求、触发源和结果引用规则。
+- `plugins`：预留插件或扩展元数据规则。
+
+contracts 只表达“数据长什么样、字段怎么命名、边界怎么传递”，不表达“怎么训练、怎么推理、怎么写数据库”。
+
+### backend/nodes
+
+`backend/nodes` 放平台内建节点和节点运行支持。它和 `custom_nodes` 的关系是：core nodes 作为平台内置基础能力随主项目发布，custom node pack 作为可选扩展独立启用、禁用和升级。
+
+当前目录职责如下：
+
+- `core_nodes`：放内建节点运行代码，例如图像输入、目录批处理、视频、工业规则、OpenCV 桥接、结果输出等核心可复用节点。
+- `sam3_runtime_support`：放内建或自定义节点共用的 SAM3 运行辅助层。
+
+节点层可以调用模型 deployment 或 workflow runtime，但不应该直接依赖某个训练 service 的内部文件。节点输入输出规则优先沉淀到 `backend/contracts/nodes`。
+
+### backend/queue、bootstrap、maintenance、alembic
+
+- `backend/queue`：QueueBackend 抽象和本地实现。它只关心任务入队、领取、确认、失败重试和 lease 恢复，不关心 YOLO、RF-DETR、数据集格式或节点业务。
+- `backend/bootstrap`：服务启动装配和默认环境准备，不放模型、数据集或任务业务实现。
+- `backend/maintenance`：离线维护命令和发布装配工具，例如 release/full 生成、manifest 重建、资产检查和清理脚本。在线服务和 worker 不能依赖 maintenance 里的临时实现。
+- `backend/alembic`：数据库迁移目录，只保存 migration，不保存应用运行逻辑。
 
 ### frontend 内部分层
 
@@ -270,10 +398,14 @@ repo/
 - external systems -> backend/service
 - external systems -> sdks -> backend/service
 - backend/service -> backend/contracts
-- backend/service -> backend/adapters
-- backend/service -> backend/workers
+- backend/service -> backend/queue
+- backend/service -> backend/service/infrastructure
 - backend/workers -> backend/contracts
+- backend/workers -> backend/queue
+- backend/workers -> backend/service/application
+- backend/workers -> backend/service/application/models/*_core
 - backend/workers -> runtimes
+- backend/nodes -> backend/contracts
 - backend/workers -> custom_nodes
 - custom_nodes -> backend/contracts
 - packaging -> backend + frontend + runtimes + assets
@@ -281,7 +413,7 @@ repo/
 
 ### 关系说明
 
-- frontend 只能依赖 backend-service 暴露的版本化 REST API、WebSocket 和任务状态流，不能直接依赖 workers 或 adapters
+- frontend 只能依赖 backend-service 暴露的版本化 REST API、WebSocket 和任务状态流，不能直接依赖 workers、queue 或 service/infrastructure
 - 上位机、MES、采集系统和其他外部系统与前端一样，统一通过 backend-service 的公开通信边界接入，而不是直接调用 workers
 - SDK 是外部系统使用公开通信边界的辅助层，只封装 REST、WebSocket 和 ZeroMQ TriggerSource 协议，不成为 backend-service 的内部依赖
 - ZeroMQ 只作为同机本地部署场景下的补充通信方式，用于本地进程间低开销交互，不替代公开的 REST API 和 WebSocket 规则

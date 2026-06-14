@@ -68,11 +68,11 @@ frontend/web-ui    protocol integration boundary
                                   +------------+-------------+
                                   |                          |
                                   v                          v
-                           backend/workers           backend/adapters
+                           backend/workers     service/infrastructure
                                   |                          |
-                                                                                         | 调用运行时 / 节点包      | 接入数据库、对象存储、队列、缓存、协议通信
+                                                                                         | 调用运行时 / 节点包      | 接入数据库、对象存储和协议通信
                                   v                          v
-                               runtimes                 本地基础设施与外部系统协议端点
+                               runtimes              本地基础设施与外部系统协议端点
                                   |
                                                                                          | 高速触发入口 / 本机 Buffer 引用
                                                                                          v
@@ -96,7 +96,7 @@ frontend/web-ui    protocol integration boundary
 - 是统一后端入口，处理元数据、任务安排和对外接口
 - 管理项目、数据集、任务、模型、部署实例、集成端点、流程模板和节点包记录
 - 为浏览器前端、上位机和其他外部系统提供统一的公开通信边界
-- 协调 workers、适配器和公开接口规则，避免前端或外部直接耦合内部执行逻辑
+- 协调 workers、infrastructure、QueueBackend 和公开接口规则，避免前端或外部直接耦合内部执行逻辑
 
 ### backend/workers
 
@@ -110,9 +110,11 @@ frontend/web-ui    protocol integration boundary
 - 给后端服务、workers、节点包和前端提供共用格式
 - 这里的内容一旦公开，就尽量保持稳定
 
-### backend/adapters
+### backend/service/infrastructure 与 backend/queue
 
-- 接数据库、对象存储、队列、缓存和协议通信
+- `backend/service/infrastructure` 接数据库、对象存储、本地 buffer 和协议通信
+- `backend/queue` 提供 QueueBackend 抽象和本地队列实现
+- 二者只服务 service 和 worker 的内部边界，不作为公开 API
 - 屏蔽具体 SQLite、文件系统、本地队列、ZeroMQ 和其他通信协议实现差异
 
 ### runtimes

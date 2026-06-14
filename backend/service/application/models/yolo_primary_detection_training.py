@@ -23,9 +23,18 @@ from backend.service.application.models.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
-from backend.service.application.models.yolo_core_common import (
-    dist2bbox_xyxy as _dist2bbox_xyxy,
-    make_anchors as _make_anchors,
+from backend.service.application.models.yolo_core_common.assigners import (
+    assign_detection_targets,
+    box_iou_aligned,
+)
+from backend.service.application.models.yolo_core_common.decode import (
+    decode_detection_training_predictions,
+)
+from backend.service.application.models.yolo_core_common.losses import (
+    distribution_focal_loss,
+)
+from backend.service.application.models.yolo_core_common.targets import (
+    bbox_xyxy_to_distances,
 )
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
@@ -2448,7 +2457,7 @@ def _compute_detection_loss(
 
     torch = imports.torch
     detect_head = model.model[-1]
-    prediction_bundle = _decode_detection_training_predictions(
+    prediction_bundle = decode_detection_training_predictions(
         torch_module=torch,
         detect_head=detect_head,
         raw_outputs=raw_outputs,
@@ -2488,7 +2497,7 @@ def _compute_detection_loss(
             # 目标分配只决定标签，不参与反向传播；内部会做 top-k 与 mask 写入。
             # 如果让它挂在 autograd 图上，E2E 双分支训练会因为 in-place 更新触发 backward 版本冲突。
             with torch.no_grad():
-                assignment = _assign_detection_targets(
+                assignment = assign_detection_targets(
                     torch_module=torch,
                     pred_boxes=image_pred_boxes.detach(),
                     class_probabilities=image_class_probabilities.detach(),
@@ -2508,7 +2517,7 @@ def _compute_detection_loss(
 
                 foreground_pred_boxes = image_pred_boxes[foreground_mask]
                 foreground_gt_boxes = gt_boxes[assigned_gt_indices]
-                iou_values = _box_iou_aligned(
+                iou_values = box_iou_aligned(
                     torch_module=torch,
                     boxes1=foreground_pred_boxes,
                     boxes2=foreground_gt_boxes,
@@ -2519,7 +2528,7 @@ def _compute_detection_loss(
 
                 foreground_anchor_points = anchor_points[foreground_mask]
                 foreground_stride_tensor = stride_tensor[foreground_mask]
-                target_distances = _bbox_xyxy_to_distances(
+                target_distances = bbox_xyxy_to_distances(
                     torch_module=torch,
                     boxes_xyxy=foreground_gt_boxes,
                     anchor_points=foreground_anchor_points,
@@ -2528,7 +2537,7 @@ def _compute_detection_loss(
                 )
                 if reg_max > 1:
                     foreground_distance_logits = distance_logits[batch_index][foreground_mask].view(-1, 4, reg_max)
-                    total_dfl_loss = total_dfl_loss + _distribution_focal_loss(
+                    total_dfl_loss = total_dfl_loss + distribution_focal_loss(
                         torch_module=torch,
                         logits=foreground_distance_logits,
                         target=target_distances,
@@ -2722,276 +2731,6 @@ def _evaluate_detection_model(
             6,
         )
     return evaluation_summary
-
-
-def _decode_detection_training_predictions(
-    *,
-    torch_module: Any,
-    detect_head: Any,
-    raw_outputs: dict[str, Any],
-) -> dict[str, Any]:
-    """把训练阶段原始输出解码成 loss 可直接消费的预测结构。"""
-
-    distance_logits = raw_outputs["boxes"].permute(0, 2, 1).contiguous()
-    if int(detect_head.reg_max) > 1:
-        distances = detect_head.dfl(raw_outputs["boxes"])
-    else:
-        distances = torch_module.nn.functional.softplus(raw_outputs["boxes"])
-    anchor_points, stride_tensor = _make_anchors(
-        feature_maps=raw_outputs["feats"],
-        strides=tuple(int(item) for item in detect_head.strides),
-    )
-    decoded_boxes = _dist2bbox_xyxy(
-        distances=distances,
-        anchor_points=anchor_points.unsqueeze(0),
-        stride_tensor=stride_tensor.unsqueeze(0),
-    )
-    anchor_centers_xy = anchor_points * stride_tensor
-    return {
-        "distance_logits": distance_logits,
-        "boxes_xyxy": decoded_boxes.permute(0, 2, 1).contiguous(),
-        "class_logits": raw_outputs["scores"].permute(0, 2, 1).contiguous(),
-        "anchor_points": anchor_points,
-        "stride_tensor": stride_tensor,
-        "anchor_centers_xy": anchor_centers_xy,
-        "reg_max": int(detect_head.reg_max),
-    }
-
-
-def _assign_detection_targets(
-    *,
-    torch_module: Any,
-    pred_boxes: Any,
-    class_probabilities: Any,
-    anchor_centers_xy: Any,
-    gt_boxes: Any,
-    gt_classes: Any,
-    topk: int,
-    alpha: float,
-    beta: float,
-    topk2: int | None = None,
-) -> dict[str, Any]:
-    """按 task-aligned 规则为当前图片分配正样本 anchor。
-
-    Args:
-        topk: 每个 gt 初始选择的候选 anchor 数量。
-        topk2: 可选的二次精选参数。如果提供且 topk2 != topk，则在初始 topk 选择后
-               进一步精选到 topk2 个 anchor，用于生成更高质量的一对一标签。
-    """
-
-    num_anchors = int(pred_boxes.shape[0])
-    num_gt = int(gt_boxes.shape[0])
-    if num_gt <= 0 or num_anchors <= 0:
-        return {
-            "foreground_mask": torch_module.zeros(num_anchors, dtype=torch_module.bool, device=pred_boxes.device),
-            "assigned_gt_indices": torch_module.full(
-                (num_anchors,),
-                -1,
-                dtype=torch_module.long,
-                device=pred_boxes.device,
-            ),
-            "quality_scores": torch_module.zeros(num_anchors, dtype=pred_boxes.dtype, device=pred_boxes.device),
-        }
-
-    inside_mask = _build_anchor_inside_mask(
-        torch_module=torch_module,
-        anchor_centers_xy=anchor_centers_xy,
-        gt_boxes=gt_boxes,
-    )
-    pair_iou = _box_iou_matrix(
-        torch_module=torch_module,
-        boxes1=gt_boxes,
-        boxes2=pred_boxes,
-    ).clamp(0.0, 1.0)
-    gt_class_probabilities = class_probabilities[:, gt_classes].transpose(0, 1).clamp(0.0, 1.0)
-    alignment_metric = (gt_class_probabilities.pow(alpha) * pair_iou.pow(beta)) * inside_mask.to(pair_iou.dtype)
-    candidate_mask = torch_module.zeros_like(inside_mask)
-    gt_centers = (gt_boxes[:, 0:2] + gt_boxes[:, 2:4]) * 0.5
-    center_distances = torch_module.cdist(gt_centers, anchor_centers_xy)
-    candidate_count = min(max(1, topk), num_anchors)
-
-    for gt_index in range(num_gt):
-        gt_metric = alignment_metric[gt_index]
-        valid_indices = torch_module.nonzero(gt_metric > 0, as_tuple=False).squeeze(1)
-        if int(valid_indices.numel()) == 0:
-            fallback_index = int(torch_module.argmin(center_distances[gt_index]).item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
-            continue
-        topk_count = min(candidate_count, int(valid_indices.numel()))
-        topk_values, topk_indices = torch_module.topk(gt_metric, k=topk_count)
-        valid_topk = topk_values > 0
-        if bool(valid_topk.any()):
-            candidate_mask[gt_index, topk_indices[valid_topk]] = True
-        else:
-            fallback_index = int(valid_indices[0].item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
-
-    # 如果提供了 topk2 且与 topk 不同，执行二次精选
-    # 这是 E2E 训练中 one2one 分支的关键：从 topk 个候选中精选出 topk2 个最佳匹配
-    if topk2 is not None and topk2 != topk:
-        # 使用当前的 alignment_metric（已经过候选筛选）进行二次精选
-        refined_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-        refined_topk = min(max(1, topk2), num_anchors)
-        # 对每个 gt 重新做 topk2 选择
-        refined_candidate_mask = torch_module.zeros_like(candidate_mask)
-        for gt_index in range(num_gt):
-            gt_refined_metric = refined_metric[gt_index]
-            valid_indices = torch_module.nonzero(gt_refined_metric > 0, as_tuple=False).squeeze(1)
-            if int(valid_indices.numel()) == 0:
-                # 没有有效候选，保持原候选
-                refined_candidate_mask[gt_index] = candidate_mask[gt_index]
-                continue
-            refined_count = min(refined_topk, int(valid_indices.numel()))
-            refined_values, refined_indices = torch_module.topk(gt_refined_metric, k=refined_count)
-            valid_refined = refined_values > 0
-            if bool(valid_refined.any()):
-                refined_candidate_mask[gt_index, refined_indices[valid_refined]] = True
-            else:
-                refined_candidate_mask[gt_index] = candidate_mask[gt_index]
-        candidate_mask = refined_candidate_mask
-        # 更新 alignment_metric 以反映二次精选后的结果
-        alignment_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-
-    matched_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-    quality_scores, assigned_gt_indices = matched_metric.max(dim=0)
-    foreground_mask = quality_scores > 0
-    if bool(foreground_mask.any()):
-        matched_gt_indices = assigned_gt_indices[foreground_mask]
-        max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
-        normalized_scores = quality_scores[foreground_mask] / max_metric_per_gt[matched_gt_indices]
-        quality_scores = quality_scores.clone()
-        quality_scores[foreground_mask] = normalized_scores.clamp(0.0, 1.0)
-    assigned_gt_indices = assigned_gt_indices.to(dtype=torch_module.long)
-    assigned_gt_indices = assigned_gt_indices.where(
-        foreground_mask,
-        torch_module.full_like(assigned_gt_indices, -1),
-    )
-    return {
-        "foreground_mask": foreground_mask,
-        "assigned_gt_indices": assigned_gt_indices,
-        "quality_scores": quality_scores,
-    }
-
-
-def _build_anchor_inside_mask(
-    *,
-    torch_module: Any,
-    anchor_centers_xy: Any,
-    gt_boxes: Any,
-) -> Any:
-    """判断 anchor center 是否落在 gt bbox 内部。"""
-
-    center_x = anchor_centers_xy[:, 0].unsqueeze(0)
-    center_y = anchor_centers_xy[:, 1].unsqueeze(0)
-    return (
-        (center_x >= gt_boxes[:, 0:1])
-        & (center_x <= gt_boxes[:, 2:3])
-        & (center_y >= gt_boxes[:, 1:2])
-        & (center_y <= gt_boxes[:, 3:4])
-    )
-
-
-def _box_iou_matrix(
-    *,
-    torch_module: Any,
-    boxes1: Any,
-    boxes2: Any,
-) -> Any:
-    """计算两组 xyxy bbox 的两两 IoU。"""
-
-    if int(boxes1.shape[0]) == 0 or int(boxes2.shape[0]) == 0:
-        return torch_module.zeros(
-            (int(boxes1.shape[0]), int(boxes2.shape[0])),
-            device=boxes1.device,
-            dtype=boxes1.dtype,
-        )
-    top_left = torch_module.maximum(boxes1[:, None, 0:2], boxes2[None, :, 0:2])
-    bottom_right = torch_module.minimum(boxes1[:, None, 2:4], boxes2[None, :, 2:4])
-    overlap = (bottom_right - top_left).clamp_min(0.0)
-    intersection = overlap[..., 0] * overlap[..., 1]
-    area1 = ((boxes1[:, 2] - boxes1[:, 0]).clamp_min(0.0) * (boxes1[:, 3] - boxes1[:, 1]).clamp_min(0.0)).unsqueeze(1)
-    area2 = ((boxes2[:, 2] - boxes2[:, 0]).clamp_min(0.0) * (boxes2[:, 3] - boxes2[:, 1]).clamp_min(0.0)).unsqueeze(0)
-    union = area1 + area2 - intersection
-    return intersection / union.clamp_min(1e-6)
-
-
-def _box_iou_aligned(
-    *,
-    torch_module: Any,
-    boxes1: Any,
-    boxes2: Any,
-) -> Any:
-    """计算一一对应的两组 bbox IoU。"""
-
-    top_left = torch_module.maximum(boxes1[:, 0:2], boxes2[:, 0:2])
-    bottom_right = torch_module.minimum(boxes1[:, 2:4], boxes2[:, 2:4])
-    overlap = (bottom_right - top_left).clamp_min(0.0)
-    intersection = overlap[:, 0] * overlap[:, 1]
-    area1 = (boxes1[:, 2] - boxes1[:, 0]).clamp_min(0.0) * (boxes1[:, 3] - boxes1[:, 1]).clamp_min(0.0)
-    area2 = (boxes2[:, 2] - boxes2[:, 0]).clamp_min(0.0) * (boxes2[:, 3] - boxes2[:, 1]).clamp_min(0.0)
-    union = area1 + area2 - intersection
-    return intersection / union.clamp_min(1e-6)
-
-
-def _bbox_xyxy_to_distances(
-    *,
-    torch_module: Any,
-    boxes_xyxy: Any,
-    anchor_points: Any,
-    stride_tensor: Any,
-    reg_max: int,
-) -> Any:
-    """把正样本 gt bbox 转成 DFL 或 LTRB 回归目标。"""
-
-    stride = stride_tensor.view(-1, 1).clamp_min(1e-6)
-    scaled_boxes = boxes_xyxy / stride.repeat(1, 4)
-    left = anchor_points[:, 0] - scaled_boxes[:, 0]
-    top = anchor_points[:, 1] - scaled_boxes[:, 1]
-    right = scaled_boxes[:, 2] - anchor_points[:, 0]
-    bottom = scaled_boxes[:, 3] - anchor_points[:, 1]
-    distances = torch_module.stack((left, top, right, bottom), dim=1).clamp_min(0.0)
-    if reg_max > 1:
-        return distances.clamp(max=float(reg_max) - 1.0001)
-    return distances
-
-
-def _distribution_focal_loss(
-    *,
-    torch_module: Any,
-    logits: Any,
-    target: Any,
-) -> Any:
-    """计算 DFL 损失。"""
-
-    reg_max = int(logits.shape[2])
-    target_left = target.clamp(0, reg_max - 1 - 0.01).floor().long()
-    target_right = (target_left + 1).clamp(0, reg_max - 1)
-    weight_left = target_right.to(target.dtype) - target
-    weight_right = 1.0 - weight_left
-    flat_logits = logits.reshape(-1, reg_max)
-    loss_left = torch_module.nn.functional.cross_entropy(
-        flat_logits,
-        target_left.reshape(-1),
-        reduction="none",
-    )
-    loss_right = torch_module.nn.functional.cross_entropy(
-        flat_logits,
-        target_right.reshape(-1),
-        reduction="none",
-    )
-    combined = (
-        loss_left * weight_left.reshape(-1)
-        + loss_right * weight_right.reshape(-1)
-    )
-    return combined.view(-1, 4).sum(dim=1)
 
 
 def _evaluate_detection_validation_losses(

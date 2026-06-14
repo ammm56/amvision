@@ -20,8 +20,19 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolo_core_common import (
-    dist2bbox_xyxy as _dist2bbox_xyxy,
+from backend.service.application.models.yolo_core_common.assigners import (
+    assign_segmentation_targets,
+)
+from backend.service.application.models.yolo_core_common.losses import (
+    compute_segmentation_detection_loss,
+    compute_segmentation_mask_loss,
+)
+from backend.service.application.models.yolo_core_common.postprocess import (
+    postprocess_segmentation_prediction_array,
+)
+from backend.service.application.models.yolo_core_common.targets import (
+    rasterize_segmentation_polygons,
+    select_object_segmentation_polygons,
 )
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
@@ -126,16 +137,6 @@ class _SegResumedState:
     saved_grad_clip: float
     saved_eval_conf: float
     saved_eval_nms: float
-
-
-@dataclass(frozen=True)
-class _SegPreparedTarget:
-    batch_idx: Any
-    class_ids: Any
-    box_targets: Any
-    box_scores: Any
-    fg_mask: Any
-    mask_coeffs_target: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -320,58 +321,60 @@ def run_yolo_primary_segmentation_training(
                 device,
                 imports,
             )
-            if raw_mask_coeffs is not None:
-                pred_scores = imports.torch.cat(
-                    [raw_boxes, raw_scores, raw_mask_coeffs],
-                    dim=1,
-                )
+            seg_head = model.model[-1]
+            if int(getattr(seg_head, "reg_max", 1)) > 1:
+                decoded_distances = seg_head.dfl(raw_boxes)
             else:
-                pred_scores = imports.torch.cat([raw_boxes, raw_scores], dim=1)
+                decoded_distances = imports.torch.nn.functional.softplus(raw_boxes)
+            prediction_parts = [
+                decoded_distances.permute(0, 2, 1).contiguous(),
+                raw_scores.permute(0, 2, 1).contiguous(),
+            ]
+            if raw_mask_coeffs is not None:
+                prediction_parts.append(raw_mask_coeffs.permute(0, 2, 1).contiguous())
+            pred_scores = imports.torch.cat(prediction_parts, dim=-1)
             prepareds = [
-                _seg_prepare_target(
-                    targets,
-                    pred_scores,
-                    anchor_points,
-                    stride_tensor,
-                    assign_topk,
-                    assign_alpha,
-                    assign_beta,
-                    nc,
-                    imports,
+                assign_segmentation_targets(
+                    torch_module=imports.torch,
+                    targets=targets,
+                    prediction=pred_scores[batch_index],
+                    anchor_points=anchor_points,
+                    stride_tensor=stride_tensor,
+                    topk=assign_topk,
+                    alpha=assign_alpha,
+                    beta=assign_beta,
+                    num_classes=nc,
                 )
-                for targets in targets_list
+                for batch_index, targets in enumerate(targets_list)
             ]
             loss_cls = imports.torch.zeros(1, device=device)
             loss_box = imports.torch.zeros(1, device=device)
             loss_dfl = imports.torch.zeros(1, device=device)
             loss_mask_t = imports.torch.zeros(1, device=device)
-            for p in prepareds:
+            for batch_index, p in enumerate(prepareds):
                 if p is None:
                     continue
-                b_idx = p.batch_idx.to(device)
+                image_prediction = pred_scores[batch_index]
                 fg = p.fg_mask.to(device)
-                l_c, l_b, l_d = _seg_compute_detection_loss_per_scale(
-                    pred_scores,
-                    p,
-                    anchor_points,
-                    stride_tensor,
-                    dfl_w,
-                    imports,
-                    device,
-                    fg,
+                l_c, l_b, l_d = compute_segmentation_detection_loss(
+                    torch_module=imports.torch,
+                    prediction=image_prediction,
+                    assignment=p,
+                    anchor_points=anchor_points,
+                    stride_tensor=stride_tensor,
+                    dfl_weight=dfl_w,
+                    num_classes=nc,
                 )
                 loss_cls += l_c
                 loss_box += l_b
                 loss_dfl += l_d
                 if proto is not None and raw_mask_coeffs is not None:
                     l_m = _seg_compute_mask_loss(
-                        pred_scores,
-                        proto,
+                        image_prediction,
+                        proto[batch_index],
                         p,
-                        b_idx,
-                        mask_w,
+                        nc,
                         imports,
-                        device,
                         fg,
                     )
                     loss_mask_t += l_m
@@ -704,7 +707,10 @@ def _seg_build_batch(
         images.append(t)
         box_targets = []
         cls_targets = []
-        for bbox, cid in zip(ann.boxes_xywh, ann.class_ids, strict=True):
+        mask_targets = []
+        mask_valid = []
+        object_count = len(ann.boxes_xywh)
+        for object_index, (bbox, cid) in enumerate(zip(ann.boxes_xywh, ann.class_ids, strict=True)):
             x, y, w, h = bbox
             x1 = (x * r + dw) / tw
             y1 = (y * r + dh) / th
@@ -712,152 +718,48 @@ def _seg_build_batch(
             y2 = ((y + h) * r + dh) / th
             box_targets.append([x1, y1, x2, y2])
             cls_targets.append(cid)
-        targets.append({"boxes": box_targets, "class_ids": cls_targets})
+            polygons = select_object_segmentation_polygons(
+                ann.segmentations,
+                object_index=object_index,
+                object_count=object_count,
+            )
+            mask, valid = rasterize_segmentation_polygons(
+                cv2_module=imports.cv2,
+                np_module=imports.np,
+                polygons=polygons,
+                output_size=(tw, th),
+                resize_scale=r,
+                pad_xy=(dw, dh),
+            )
+            mask_targets.append(mask)
+            mask_valid.append(valid)
+        target_payload = {"boxes": box_targets, "class_ids": cls_targets}
+        if mask_targets:
+            target_payload["masks"] = imports.torch.from_numpy(
+                imports.np.stack(mask_targets, axis=0),
+            ).to(device)
+            target_payload["mask_valid"] = imports.torch.tensor(
+                mask_valid,
+                dtype=imports.torch.bool,
+                device=device,
+            )
+        targets.append(target_payload)
     return imports.torch.stack(images, dim=0), targets
 
 
-def _seg_prepare_target(
-    targets: dict,
-    pred_scores: Any,
-    anchor_points: Any,
-    stride_tensor: Any,
-    topk: int,
-    alpha: float,
-    beta: float,
-    nc: int,
-    imports: Any,
-) -> _SegPreparedTarget | None:
-    device = pred_scores.device
-    num_anchors = anchor_points.shape[0]
-    boxes_list = []
-    cls_list = []
-    for bbox, cid in zip(targets["boxes"], targets["class_ids"], strict=True):
-        boxes_list.append(bbox)
-        cls_list.append(cid)
-    if not boxes_list:
-        return None
-    gt_boxes = imports.torch.tensor(boxes_list, dtype=imports.torch.float32, device=device)
-    gt_cls = imports.torch.tensor(cls_list, dtype=imports.torch.long, device=device)
-    gt_boxes_full = gt_boxes.unsqueeze(1).expand(-1, num_anchors, 4)
-    anc_xyxy = imports.torch.cat(
-        [
-            anchor_points - stride_tensor / 2,
-            anchor_points + stride_tensor / 2,
-        ],
-        dim=-1,
-    )
-    anc_xyxy_exp = anc_xyxy.unsqueeze(0).expand(gt_boxes.shape[0], -1, -1)
-    px1y1, px2y2 = anc_xyxy_exp[..., :2], anc_xyxy_exp[..., 2:]
-    gt_x1y1, gt_x2y2 = gt_boxes_full[..., :2], gt_boxes_full[..., 2:]
-    inter_x1y1 = imports.torch.max(px1y1, gt_x1y1)
-    inter_x2y2 = imports.torch.min(px2y2, gt_x2y2)
-    inter_wh = (inter_x2y2 - inter_x1y1).clamp(min=0)
-    inter_area = inter_wh[..., 0] * inter_wh[..., 1]
-    anc_area = (px2y2[..., 0] - px1y1[..., 0]) * (px2y2[..., 1] - px1y1[..., 1])
-    gt_area = (gt_x2y2[..., 0] - gt_x1y1[..., 0]) * (gt_x2y2[..., 1] - gt_x1y1[..., 1])
-    union = anc_area + gt_area - inter_area + 1e-16
-    iou = inter_area / union
-    topk_vals, topk_ids = imports.torch.topk(iou, min(topk, iou.shape[1]), dim=1)
-    dynamic_k = imports.torch.clamp(topk_vals.sum(dim=1).int(), min=1)
-    fg_mask = imports.torch.zeros(num_anchors, dtype=imports.torch.bool, device=device)
-    for i in range(iou.shape[0]):
-        fg_mask[topk_ids[i, :dynamic_k[i]]] = True
-    bbox_scores = (iou * fg_mask.float().unsqueeze(0)).max(dim=0).values
-    batch_idx = imports.torch.zeros(num_anchors, dtype=imports.torch.long, device=device)
-    iou_fg = (iou * fg_mask.float().unsqueeze(0))
-    best_match = iou_fg.argmax(dim=0)
-    gt_cls_per_anchor = gt_cls[best_match]
-    gt_boxes_per_anchor = gt_boxes[best_match]
-    return _SegPreparedTarget(
-        batch_idx=batch_idx,
-        class_ids=gt_cls_per_anchor,
-        box_targets=gt_boxes_per_anchor,
-        box_scores=bbox_scores,
-        fg_mask=fg_mask,
-    )
-
-
-def _seg_compute_detection_loss_per_scale(
-    pred_scores,
-    p,
-    anchor_points,
-    stride_tensor,
-    dfl_w,
-    imports,
-    device,
-    fg_mask,
-):
-    num_fg = max(1, int(fg_mask.sum()))
-    cls_scores = pred_scores[:, 4:4 + int(p.class_ids.max()) + 1]
-    bce = imports.torch.nn.BCEWithLogitsLoss(reduction="none")
-    cls_targets = imports.torch.zeros_like(cls_scores, device=device)
-    cls_targets[imports.torch.arange(cls_targets.shape[0], device=device), p.class_ids] = 1.0
-    loss_cls_full = bce(cls_scores, cls_targets).mean(dim=-1)
-    loss_cls = (loss_cls_full * fg_mask.float()).sum() / num_fg
-    pred_boxes = _dist2bbox_xyxy(
-        pred_scores[:, :4].unsqueeze(0),
-        anchor_points.unsqueeze(0),
-    ).squeeze(0)
-    iou = _seg_bbox_iou(
-        pred_boxes[fg_mask],
-        p.box_targets[fg_mask],
-        xyxy=True,
-        imports=imports,
-    )
-    loss_box = (1.0 - iou).mean()
-    loss_dfl = imports.torch.zeros(1, device=device)
-    return loss_cls, loss_box, loss_dfl
-
-
-def _seg_bbox_iou(box1, box2, xyxy=True, imports=None, eps=1e-7):
-    if xyxy:
-        b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
-        b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
-    else:
-        b1_x1, b1_y1 = box1[:, 0] - box1[:, 2] / 2, box1[:, 1] - box1[:, 3] / 2
-        b1_x2, b1_y2 = box1[:, 0] + box1[:, 2] / 2, box1[:, 1] + box1[:, 3] / 2
-        b2_x1, b2_y1 = box2[:, 0] - box2[:, 2] / 2, box2[:, 1] - box2[:, 3] / 2
-        b2_x2, b2_y2 = box2[:, 0] + box2[:, 2] / 2, box2[:, 1] + box2[:, 3] / 2
-    inter = (
-        (imports.torch.min(b1_x2, b2_x2) - imports.torch.max(b1_x1, b2_x1)).clamp(0)
-        * (imports.torch.min(b1_y2, b2_y2) - imports.torch.max(b1_y1, b2_y1)).clamp(0)
-    )
-    area1 = (b1_x2 - b1_x1) * (b1_y2 - b1_y1)
-    area2 = (b2_x2 - b2_x1) * (b2_y2 - b2_y1)
-    return inter / (area1 + area2 - inter + eps)
-
-
-def _seg_compute_mask_loss(pred, proto, p, batch_idx, mask_w, imports, device, fg_mask):
+def _seg_compute_mask_loss(pred, proto, p, nc, imports, fg_mask):
     """在 mask_coefficients 和 proto 存在时计算 mask 损失。"""
 
-    if pred is None or proto is None:
-        return imports.torch.zeros(1, device=device)
-    if p.mask_coeffs_target is None:
-        return imports.torch.zeros(1, device=device)
-    try:
-        nc = int(pred.shape[1]) - 4 - 1
-        mask_coeffs = pred[fg_mask, 4 + nc:]
-        if mask_coeffs.shape[0] == 0:
-            return imports.torch.zeros(1, device=device)
-        proto_flat = proto.reshape(int(proto.shape[0]), int(proto.shape[1]), -1)
-        pred_masks = imports.torch.sigmoid(mask_coeffs @ proto_flat)
-        target_masks = p.mask_coeffs_target[fg_mask].float().to(device)
-        if target_masks.shape != pred_masks.shape:
-            target_masks = imports.torch.nn.functional.interpolate(
-                target_masks.unsqueeze(1),
-                size=pred_masks.shape[-1:],
-                mode="nearest",
-            ).squeeze(1)
-        return (
-            imports.torch.nn.functional.binary_cross_entropy(
-                pred_masks,
-                target_masks,
-                reduction="mean",
-            )
-            * mask_w
-        )
-    except Exception:
-        return imports.torch.zeros(1, device=device)
+    return compute_segmentation_mask_loss(
+        torch_module=imports.torch,
+        prediction=pred,
+        proto=proto,
+        foreground_mask=fg_mask,
+        target_masks=p.mask_targets,
+        target_mask_valid=p.mask_valid,
+        matched_gt_indices=p.matched_gt_indices,
+        num_classes=nc,
+    )
 
 
 def _seg_evaluate(
@@ -890,28 +792,19 @@ def _seg_evaluate(
             pred_np = _seg_tensor_to_np(raw_pred, imports)
             if pred_np.ndim < 3:
                 continue
-            boxes = pred_np[0, :, :4]
-            scores_all = pred_np[0, :, 4:4 + nc]
-            best_scores = imports.np.max(scores_all, axis=1)
-            best_ids = imports.np.argmax(scores_all, axis=1).astype(imports.np.int32)
-            keep = best_scores >= eval_conf
-            boxes, best_scores, best_ids = boxes[keep], best_scores[keep], best_ids[keep]
-            if boxes.shape[0] == 0:
-                eval_count += 1
-                continue
-            nms_keep = batched_nms_indices(
-                boxes=boxes,
-                scores=best_scores,
-                class_ids=best_ids,
-                nms_threshold=eval_nms,
+            postprocess_results = postprocess_segmentation_prediction_array(
+                prediction_array=pred_np,
                 np_module=imports.np,
+                num_classes=nc,
+                score_threshold=eval_conf,
+                nms_threshold=eval_nms,
+                nms_indices_func=batched_nms_indices,
             )
-            det_boxes = boxes[nms_keep]
-            det_scores = best_scores[nms_keep]
-            if det_boxes.shape[0] == 0:
+            prediction = postprocess_results[0] if postprocess_results else None
+            if prediction is None or int(prediction.scores.shape[0]) == 0:
                 eval_count += 1
                 continue
-            max_score = float(det_scores.max())
+            max_score = float(prediction.scores.max())
             map50_sum += max_score
             map_sum += max_score
             eval_count += 1

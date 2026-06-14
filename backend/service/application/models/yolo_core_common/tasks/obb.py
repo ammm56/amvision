@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import copy
-import math
-
 import torch
 from torch import nn
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolo_core_common.geometry import (
-    dist2rbox,
-    make_anchors,
+from backend.service.application.models.yolo_core_common.decode import (
+    OBB_ANGLE_DECODE_MODE_SIGMOID_MINUS_QUARTER_PI,
+    ObbAngleDecodeMode,
+    build_obb_prediction,
 )
 from backend.service.application.models.yolo_core_common.layers import Conv
 from backend.service.application.models.yolo_core_common.tasks.detection import Detect
@@ -19,6 +18,8 @@ from backend.service.application.models.yolo_core_common.tasks.detection import 
 
 class OBB(Detect):
     """YOLO 旋转框头的项目内实现。"""
+
+    angle_decode_mode: ObbAngleDecodeMode = OBB_ANGLE_DECODE_MODE_SIGMOID_MINUS_QUARTER_PI
 
     def __init__(
         self,
@@ -93,18 +94,10 @@ class OBB(Detect):
             inference_outputs = raw_outputs["one2one"]
         else:
             inference_outputs = raw_outputs
-        dfl_distances = self.dfl(inference_outputs["boxes"])
-        angle = self._decode_angle_logits(inference_outputs["angle"])
-        anchor_points = make_anchors(
-            feature_maps=inference_outputs["feats"],
+        prediction = build_obb_prediction(
+            raw_outputs=inference_outputs,
             strides=self.strides,
-        )[0]
-        rbox = dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
-        class_scores = inference_outputs["scores"].sigmoid()
-        prediction = torch.cat((rbox, class_scores, angle), dim=1)
+            dfl_decoder=self.dfl,
+            angle_decode_mode=self.angle_decode_mode,
+        )
         return prediction.transpose(1, 2).contiguous()
-
-    def _decode_angle_logits(self, angle_logits: torch.Tensor) -> torch.Tensor:
-        """把角度 logits 解码成旋转角。"""
-
-        return (angle_logits.sigmoid() - 0.25) * math.pi
