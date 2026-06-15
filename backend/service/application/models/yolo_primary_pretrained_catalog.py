@@ -21,7 +21,7 @@ from backend.service.application.models.model_service import PretrainedRegistrat
 from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
+from backend.service.application.models.catalog.rfdetr import SqlAlchemyRfdetrModelService
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 if TYPE_CHECKING:

@@ -15,11 +15,11 @@ from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11TrainingOutputRegistration,
 )
-from backend.service.application.models.rfdetr_model_service import (
+from backend.service.application.models.catalog.rfdetr import (
     SqlAlchemyRfdetrModelService,
     RfdetrTrainingOutputRegistration,
 )
-from backend.service.application.models.rfdetr_segmentation_training import (
+from backend.service.application.models.training.rfdetr_segmentation import (
     RFDETR_SEGMENTATION_IMPLEMENTATION_MODE,
     RfdetrSegmentationTrainingExecutionRequest,
     RfdetrSegmentationTrainingTerminatedError,
@@ -758,6 +758,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
         """构建 segmentation 训练摘要。"""
 
         input_size = self._read_input_size(payload.get("input_size"))
+        effective_input_size = self._read_input_size(
+            getattr(execution_result, "aligned_input_size", None)
+        ) or input_size
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
@@ -769,7 +772,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 payload.get("evaluation_interval")
                 or YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
             ),
-            "input_size": list(input_size) if input_size is not None else None,
+            "input_size": list(effective_input_size)
+            if effective_input_size is not None
+            else None,
             "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
@@ -795,7 +800,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             "dataset_version_id": dataset_export.dataset_version_id,
             "format_id": dataset_export.format_id,
             "category_names": list(execution_result.labels),
-            "input_size": list(input_size) if input_size is not None else None,
+            "input_size": list(effective_input_size)
+            if effective_input_size is not None
+            else None,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
             "implementation_mode": YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE,

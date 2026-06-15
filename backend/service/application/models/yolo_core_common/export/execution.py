@@ -13,6 +13,7 @@ from backend.service.application.models.yolo_core_common.export.plan import Yolo
 from backend.service.application.models.yolo_core_common.export.segmentation import (
     normalize_segmentation_export_outputs,
 )
+from backend.service.application.models.onnx_export import export_torch_model_to_onnx
 
 
 YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
@@ -37,15 +38,14 @@ def export_yolo_onnx(
             session.model,
             enabled=export_plan.export_mode_enabled,
         ):
-            session.imports.torch.onnx.export(
-                session.model,
-                dummy_input,
-                str(output_path),
-                export_params=True,
+            export_torch_model_to_onnx(
+                torch_module=session.imports.torch,
+                model=session.model,
+                model_args=(dummy_input,),
+                output_path=output_path,
                 opset_version=export_plan.onnx_opset_version,
-                do_constant_folding=True,
-                input_names=list(export_plan.input_names),
-                output_names=list(export_plan.output_names),
+                input_names=export_plan.input_names,
+                output_names=export_plan.output_names,
             )
     return {
         "stage": "export-onnx",

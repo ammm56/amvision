@@ -16,7 +16,7 @@ from backend.service.application.deployments.deployment_instance_service import 
     SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.rfdetr_runtime_target import (
+from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.yolo11_runtime_target import (

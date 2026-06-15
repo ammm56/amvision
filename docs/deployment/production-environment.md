@@ -13,7 +13,7 @@
 ## 当前推荐顺序
 
 1. 在仓库根目录执行 `assemble-release`
-2. 确认 `release/full/python/`、`release/full/frontend/`、`release/full/frontend/runtime-config.json` 和 `release/full/tools/ffmpeg/` 已经生成
+2. 确认 `release/full/python/`、`release/full/frontend/`、`release/full/frontend/runtime-config.json`、`release/full/tools/ffmpeg/` 和按需使用的 `release/full/tools/tensorrt/`、`release/full/tools/cudnn/` 已经生成
 3. 在 `release/full/` 根目录执行一键启动脚本
 4. 检查 health、OpenAPI 文档、前端静态资源和最小任务 smoke test
 
@@ -31,6 +31,10 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 - 发布目录会复制 `frontend/web-ui/dist/`，并确保 `release/full/frontend/runtime-config.json` 存在
 - 发布目录会复制 `custom_nodes/` 作为 workflow app 运行资源
 - 发布目录会复制 `runtimes/third_party/ffmpeg/` 到 `release/full/tools/ffmpeg/`
+- 如果仓库中存在 `runtimes/tensorrt_bin/`，发布目录会复制其中的 `bin/`、`python/` 和 `doc/` 到 `release/full/tools/tensorrt/`
+- 如果仓库中存在 `runtimes/cudnn_dll/`，发布目录会复制其中的 `bin/` 和 `LICENSE` 到 `release/full/tools/cudnn/`
+- 使用本地 TensorRT SDK 时，`release/full/python/` 中安装的 `tensorrt-cu12` 或本地 wheel 必须与 `tools/tensorrt/bin/` 中的 DLL 同版本
+- 目标客户机默认要求安装可支持当前 CUDA/TensorRT 版本的 NVIDIA driver；TensorRT 和 cuDNN 用户态运行库随发布目录提供，CUDA Toolkit 不整体打包，按现场系统依赖单独安装
 - 数据库文件、workflow templates/applications、预训练模型、数据集文件和其他开发数据不会随包复制；发布后的 `data/` 目录默认保持空目录
 - 其他由发布流程生成的目录和脚本仍会按当前代码重新生成
 

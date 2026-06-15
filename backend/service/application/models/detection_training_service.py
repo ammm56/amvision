@@ -22,7 +22,7 @@ from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
 )
-from backend.service.application.models.rfdetr_training_service import (
+from backend.service.application.models.training.rfdetr_detection_task_service import (
     RFDETR_TRAINING_TASK_KIND,
     RfdetrTrainingTaskRequest,
     SqlAlchemyRfdetrTrainingTaskService,

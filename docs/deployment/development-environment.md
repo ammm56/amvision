@@ -26,7 +26,13 @@
 conda activate amvision
 ```
 
-当前项目约定直接使用已经激活的 `conda amvision` 环境，不在仓库文档和配置里写死系统绝对路径。
+当前项目默认开发环境是 `conda amvision`。在当前 Windows 目标开发机上，标准 Python 解释器路径是：
+
+```powershell
+D:\software\anaconda3\envs\amvision\python.exe
+```
+
+手动在终端调试时可以先执行 `conda activate amvision`，然后继续使用 `python`。自动化回归、长链调试、Codex 执行命令和需要避免环境串错的场景，优先使用上面的显式解释器路径。
 
 如果需要确认当前 shell 正在使用哪个解释器，可执行：
 
@@ -85,9 +91,11 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 后端最小回归：
 
 ```powershell
-python -m pytest tests/test_release_assembly.py tests/test_bootstrap_chains.py tests/test_api_dependency_chain.py -k frontend_static
-python -m pytest --collect-only -q
+D:\software\anaconda3\envs\amvision\python.exe -m pytest tests/test_release_assembly.py tests/test_bootstrap_chains.py tests/test_api_dependency_chain.py -k frontend_static
+D:\software\anaconda3\envs\amvision\python.exe -m pytest --collect-only -q
 ```
+
+`pytest.ini` 已经把默认临时目录固定为仓库根目录下的 `.tmp/pytest`。常规测试不需要再手写 `--basetemp`；只有并行跑多条长链或排查 Windows 文件句柄占用时，才临时指定新的 `.tmp/<name>` 子目录。
 
 前端最小回归：
 

@@ -18,6 +18,7 @@ from backend.service.application.models.yolo11_core import (
     normalize_yolo11_segmentation_export_outputs,
     resolve_yolo11_segmentation_export_output_names,
 )
+from backend.service.application.models.onnx_export import TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION
 from backend.service.application.models.yolo26_core import (
     YOLO26_HEAD_MODULES,
     YOLO26_MODEL_CONFIGS,
@@ -150,7 +151,7 @@ def test_yolo_core_segmentation_export_entrypoints_are_model_specific(
     assert runner_cls.export_task_plan_builder is plan_func
     assert export_plan.input_names == ("images",)
     assert export_plan.output_names == output_name_func()
-    assert export_plan.onnx_opset_version == 17
+    assert export_plan.onnx_opset_version == TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION
     assert tuple(spec.step_kind for spec in export_plan.target_specs) == (
         "export-onnx",
         "optimize-onnx",

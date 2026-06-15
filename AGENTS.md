@@ -49,7 +49,9 @@
 ## 默认开发工具链
 
 - Python 环境管理：开发环境使用 conda，但项目代码不得依赖系统 Python 隐式状态
+- 当前 Windows 目标开发机默认使用 `D:\software\anaconda3\envs\amvision\python.exe`；自动化回归、Codex 执行命令和需要避免环境串错的调试命令优先使用该显式解释器
 - 代码质量：pytest、ruff、pre-commit
+- pytest 默认临时目录固定为仓库根目录 `.tmp/pytest`，由 `pytest.ini` 的 `--basetemp=.tmp/pytest` 统一配置；长链或并发测试需要隔离时只改成 `.tmp/<name>` 子目录
 - 数据库迁移：Alembic
 - 文档：Markdown 优先，后续可接 MkDocs / VitePress / Docusaurus
 - 容器化：Docker 作为可选发布形态，不强制作为本地开发唯一入口
@@ -61,6 +63,9 @@
 - 发行包默认不要求目标机器额外安装系统 Python、conda 或其他 Python 级运行时；无法内置的 GPU 驱动、推理厂商运行时或操作系统级通信依赖必须单独列明
 - Python 依赖、前端静态资源、启动脚本和必要的本地运行时配置应能一起打包，并可在 standalone、workstation、edge 形态中复用
 - `release/full/` 视为 `assemble-release` 生成结果，仓库内不得把 `release/full/app/` 当作手工维护源码面；任何发布目录代码更新都应先修改源目录，再重新执行 `python -m backend.maintenance.main assemble-release --profile-id full`
+- TensorRT 和 cuDNN 这类 GPU 用户态运行时按本地资产管理，不放进 git；开发态默认放在 `runtimes/tensorrt_bin/` 和 `runtimes/cudnn_dll/`，发布态由 `assemble-release` 复制运行所需内容到 `release/full/tools/tensorrt/` 和 `release/full/tools/cudnn/`
+- TensorRT Python wheel、TensorRT DLL 和 `trtexec` 必须使用同一版本；如果使用本地 TensorRT SDK，bundled Python 也必须安装 `runtimes/tensorrt_bin/python/` 中与 Python 版本匹配的 wheel，不能和不同版本的 pip 包混用
+- 目标客户机默认要求安装可支持当前 CUDA/TensorRT 版本的 NVIDIA driver；CUDA Toolkit 按现场系统依赖单独安装，不整体放进项目 `runtimes/`；无法随包提供的系统依赖必须单独列明
 
 ## 前端实现约定
 

@@ -18,7 +18,7 @@ from backend.service.application.runtime.segmentation_runtime_contracts import (
 )
 from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
-from backend.service.application.runtime.rfdetr_runtime_target import SqlAlchemyRfdetrRuntimeTargetResolver
+from backend.service.application.runtime.targets.rfdetr import SqlAlchemyRfdetrRuntimeTargetResolver
 from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,

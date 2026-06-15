@@ -56,7 +56,7 @@ from backend.service.application.models.yolo_primary_classification_training_ser
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
-from backend.service.application.models.rfdetr_training_service import (
+from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
 from backend.service.application.models.yolox_training_service import (

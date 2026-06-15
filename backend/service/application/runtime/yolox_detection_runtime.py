@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import sys
 from time import perf_counter
 from typing import Any, Protocol
@@ -18,6 +18,9 @@ from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
     resolve_local_file_path,
+)
+from backend.service.application.runtime.support.tensorrt_runtime import (
+    prepare_tensorrt_python_runtime,
 )
 from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionDetection,
@@ -1638,6 +1641,7 @@ def _import_openvino_module() -> Any:
 def _import_tensorrt_module() -> Any:
     """导入 TensorRT 模块并在缺失时抛出明确错误。"""
 
+    prepare_tensorrt_python_runtime()
     try:
         import tensorrt
     except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支

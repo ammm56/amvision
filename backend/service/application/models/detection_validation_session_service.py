@@ -24,7 +24,7 @@ from backend.service.application.runtime.yolo11_runtime_target import (
 from backend.service.application.runtime.yolo26_runtime_target import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
-from backend.service.application.runtime.rfdetr_runtime_target import (
+from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.yolov8_runtime_target import (
@@ -46,7 +46,7 @@ from backend.service.domain.files.detection_model_file_types import (
     YOLOV8_DETECTION_FILE_TYPES,
     YOLOX_DETECTION_FILE_TYPES,
 )
-from backend.service.application.models.rfdetr_model_service import RFDETR_DETECTION_FILE_TYPES
+from backend.service.application.models.catalog.rfdetr import RFDETR_MODEL_FILE_TYPES
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -55,6 +55,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 _VALIDATION_SESSION_STATUS_READY = "ready"
 _VALIDATION_RUNTIME_BACKEND = "pytorch"
 _SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
+_SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_INPUT_SIZE = (640, 640)
 @dataclass(frozen=True)
@@ -547,7 +548,7 @@ def _resolve_detection_file_types(model_type: str) -> DetectionModelFileTypes:
         "yolov8": YOLOV8_DETECTION_FILE_TYPES,
         "yolo11": YOLO11_DETECTION_FILE_TYPES,
         "yolo26": YOLO26_DETECTION_FILE_TYPES,
-        "rfdetr": RFDETR_DETECTION_FILE_TYPES,
+        "rfdetr": RFDETR_MODEL_FILE_TYPES,
     }
     file_types = file_types_map.get(model_type)
     if file_types is None:

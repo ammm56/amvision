@@ -88,8 +88,10 @@
 ### 当前标准开发环境
 
 - conda 环境名：`amvision`
-- 开发命令默认直接使用当前 shell 已激活的 `python`
-- 仓库配置与文档不写死任何系统绝对路径
+- 当前 Windows 目标开发机默认 Python：`D:\software\anaconda3\envs\amvision\python.exe`
+- 手动终端调试可以先 `conda activate amvision` 后使用 `python`
+- 自动化回归、Codex 执行命令和需要避免环境串错的调试命令优先使用显式解释器路径
+- pytest 默认临时目录已经固定为仓库根目录 `.tmp/pytest`，常规测试不需要再手写 `--basetemp`
 
 ### 当前最小开发入口
 

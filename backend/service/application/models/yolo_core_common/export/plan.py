@@ -5,14 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from backend.service.application.models.onnx_export import (
+    TORCH_ONNX_DYNAMO_EXPORTER_MODE,
+    TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
+)
 from backend.service.application.models.yolo_core_common.export.segmentation import (
     resolve_segmentation_export_output_names,
 )
 
 
 YOLO_EXPORT_INPUT_NAMES = ("images",)
-YOLO_EXPORT_OPSET_VERSION = 17
-YOLO_EXPORTER_MODE = "legacy-torch-onnx-export"
+YOLO_EXPORT_OPSET_VERSION = TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION
+YOLO_EXPORTER_MODE = TORCH_ONNX_DYNAMO_EXPORTER_MODE
 YOLO_EXPORT_TARGET_FORMATS = (
     "onnx",
     "onnx-optimized",

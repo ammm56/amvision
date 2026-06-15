@@ -6,7 +6,6 @@ import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
 from backend.maintenance.extension_pretrained_manifests import (
@@ -162,6 +161,9 @@ def run_command(
                     "custom_nodes": (app_root / "custom_nodes",),
                     "ffmpeg_tools": (
                         app_root / "tools" / "ffmpeg",
+                    ),
+                    "cudnn_tools": (
+                        app_root / "tools" / "cudnn",
                     ),
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (

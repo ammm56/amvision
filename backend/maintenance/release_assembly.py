@@ -27,6 +27,8 @@ SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
 SOURCE_RELEASE_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
 SOURCE_WORKER_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "worker-profiles"
 SOURCE_FFMPEG_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "third_party" / "ffmpeg"
+SOURCE_TENSORRT_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "tensorrt_bin"
+SOURCE_CUDNN_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "cudnn_dll"
 
 
 @dataclass(frozen=True)
@@ -317,6 +319,50 @@ def _copy_runtime_assets(release_dir: Path) -> None:
         release_dir / "tools" / "ffmpeg",
         ignore=_ignore_custom_nodes_copy,
     )
+    _copy_tensorrt_runtime_assets(release_dir)
+    _copy_cudnn_runtime_assets(release_dir)
+
+
+def _copy_tensorrt_runtime_assets(release_dir: Path) -> None:
+    """复制本地 TensorRT 运行时资产到发行目录。"""
+
+    target_root_dir = release_dir / "tools" / "tensorrt"
+    target_root_dir.mkdir(parents=True, exist_ok=True)
+    if not SOURCE_TENSORRT_RUNTIME_DIR.is_dir():
+        return
+
+    for subdir_name in ("bin", "python", "doc"):
+        source_subdir = SOURCE_TENSORRT_RUNTIME_DIR / subdir_name
+        if not source_subdir.is_dir():
+            continue
+        _copy_directory_tree(
+            source_subdir,
+            target_root_dir / subdir_name,
+            ignore=_ignore_custom_nodes_copy,
+        )
+
+
+def _copy_cudnn_runtime_assets(release_dir: Path) -> None:
+    """复制本地 cuDNN DLL 运行时资产到发行目录。"""
+
+    target_root_dir = release_dir / "tools" / "cudnn"
+    target_root_dir.mkdir(parents=True, exist_ok=True)
+    if not SOURCE_CUDNN_RUNTIME_DIR.is_dir():
+        return
+
+    for subdir_name in ("bin",):
+        source_subdir = SOURCE_CUDNN_RUNTIME_DIR / subdir_name
+        if not source_subdir.is_dir():
+            continue
+        _copy_directory_tree(
+            source_subdir,
+            target_root_dir / subdir_name,
+            ignore=_ignore_custom_nodes_copy,
+        )
+
+    source_license_file = SOURCE_CUDNN_RUNTIME_DIR / "LICENSE"
+    if source_license_file.is_file():
+        _copy_file(source_license_file, target_root_dir / "LICENSE")
 
 
 def _resolve_frontend_dist_dir(request: ReleaseAssemblyRequest) -> Path:

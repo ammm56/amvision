@@ -106,6 +106,7 @@ def test_yolov8_segmentation_conversion_runner_exports_onnx_and_runtime_can_pred
     """验证 segmentation checkpoint 已经可以导出 ONNX 并走 ONNXRuntime predictor。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
 

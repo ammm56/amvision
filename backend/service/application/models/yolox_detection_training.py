@@ -1440,19 +1440,19 @@ def _require_training_imports() -> _YoloXTrainingImports:
         import torch  # type: ignore[import-not-found]
         from pycocotools.coco import COCO  # type: ignore[import-not-found]
         from pycocotools.cocoeval import COCOeval  # type: ignore[import-not-found]
-        from backend.service.application.runtime.yolox_core.data import (
+        from backend.service.application.models.yolox_core.data import (
             InfiniteSampler,
             MosaicDetection,
             TrainTransform,
             YoloBatchSampler,
             worker_init_reset_seed,
         )
-        from backend.service.application.runtime.yolox_core.models import (
+        from backend.service.application.models.yolox_core.models import (
             YOLOPAFPN,
             YOLOX,
             YOLOXHead,
         )
-        from backend.service.application.runtime.yolox_core.utils import (
+        from backend.service.application.models.yolox_core.utils import (
             LRScheduler,
             ModelEMA,
             postprocess,

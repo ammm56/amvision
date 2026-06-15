@@ -69,7 +69,7 @@ release/
 
 - 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000` 这类直接启动方式为主。
 - `backend.maintenance.main assemble-release` 当前会生成 `release/full/` 目录，复制完整 backend 代码、配置、launcher、manifest，并把仓库根目录的 `requirements.txt` 复制到发行目录。
-- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并把 `runtimes/third_party/ffmpeg/` 复制到发行目录里的 `tools/ffmpeg/`。
+- 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并把 `runtimes/third_party/ffmpeg/`、`runtimes/tensorrt_bin/`、`runtimes/cudnn_dll/` 中运行需要的内容复制到发行目录里的 `tools/`。
 - 只有显式提供 bundled Python 来源目录时，当前才会重建 `python/`；如果发行目录原本没有 `python/`，则会退回空目录占位模式。
 
 ## 启动器设计
@@ -100,7 +100,7 @@ release/
 - 默认配置模板与运行时 manifest
 - 默认 custom_nodes 目录与可选节点包资产
 - 启动器与维护工具
-- 当前 full 发布目录已经包含 `tools/ffmpeg/`；如后续继续细化发布形态，再按目标平台裁剪 `ffmpeg/ffprobe` 工具目录
+- 当前 full 发布目录已经包含 `tools/ffmpeg/`、按需包含 `tools/tensorrt/` 和 `tools/cudnn/`；如后续继续细化发布形态，再按目标平台裁剪工具目录
 
 ## 发布包不默认包含的内容
 
@@ -172,12 +172,112 @@ release/
 
 系统 `PATH` 不应成为默认部署前提，只能作为诊断或临时兼容路径。
 
+## GPU 工具运行时约定
+
+### TensorRT 目录归属
+
+- TensorRT 属于 GPU 厂商运行时资产，不属于模型权重目录，也不属于业务数据目录。
+- 开发态默认把解压后的 TensorRT SDK 放在 `runtimes/tensorrt_bin/`，该目录不纳入 git。
+- 发布态由 `assemble-release` 把运行所需内容复制到 `release/full/tools/tensorrt/`。
+
+开发态目录：
+
+```text
+runtimes/
+└─ tensorrt_bin/
+   ├─ bin/
+   │  ├─ trtexec.exe
+   │  ├─ nvinfer_*.dll
+   │  ├─ nvonnxparser_*.dll
+   │  └─ 其他 TensorRT 运行时 dll
+   ├─ python/
+   │  └─ tensorrt-*-cp312-*.whl
+   ├─ doc/
+   ├─ include/
+   └─ lib/
+```
+
+发布态目录：
+
+```text
+release/
+└─ full/
+   └─ tools/
+      └─ tensorrt/
+         ├─ bin/
+         ├─ python/
+         └─ doc/
+```
+
+说明：
+
+- 普通 TensorRT engine 构建和推理运行需要 `bin/` 中的 `trtexec.exe` 与相关 DLL。
+- Python TensorRT API 需要 bundled Python 安装 `python/` 中与 Python 版本匹配的 wheel，并且 `bin/` 在 DLL 搜索路径中。
+- `include/` 和 `lib/` 只用于编译 C++ 自定义 plugin 或原生扩展，不属于默认发布运行必需内容。
+- `doc/` 不参与执行，但包含说明和第三方致谢，发布时保留，便于现场确认来源和许可信息。
+- TensorRT Python wheel、DLL 和 `trtexec` 必须同版本，不能把不同 TensorRT 小版本的 Python 包和本地 DLL 混用。
+- 目标客户机默认要求安装 NVIDIA driver 和现场指定的系统 CUDA；TensorRT SDK 的运行部分和 cuDNN DLL 随项目发布包提供。CUDA Toolkit 不整体放入 `runtimes/`，除非后续明确需要现场编译 CUDA/TensorRT plugin。
+
+### cuDNN DLL 目录归属
+
+- cuDNN 属于 GPU 用户态运行库，不属于模型权重目录，也不属于业务数据目录。
+- 开发态默认把 cuDNN DLL 放在 `runtimes/cudnn_dll/`，该目录不纳入 git。
+- 发布态由 `assemble-release` 把运行所需内容复制到 `release/full/tools/cudnn/`。
+- 当前项目默认优先使用 CUDA 12.9 对应目录；如现场需要切换，可通过 `AMVISION_CUDNN_CUDA_VERSION` 或 `AMVISION_CUDNN_BIN_DIR` 显式指定。
+
+开发态目录：
+
+```text
+runtimes/
+└─ cudnn_dll/
+   ├─ bin/
+   │  ├─ 12.9/
+   │  │  └─ x64/
+   │  │     ├─ cudnn64_9.dll
+   │  │     └─ cudnn_*.dll
+   │  └─ 13.2/
+   │     └─ x64/
+   │        ├─ cudnn64_9.dll
+   │        └─ cudnn_*.dll
+   └─ LICENSE
+```
+
+发布态目录：
+
+```text
+release/
+└─ full/
+   └─ tools/
+      └─ cudnn/
+         ├─ bin/
+         └─ LICENSE
+```
+
+说明：
+
+- 启动器会把 `tools/cudnn/bin/12.9/x64/` 加入子进程 `PATH`。
+- TensorRT runtime helper 会在当前 Python 进程和子进程里加入 cuDNN DLL 搜索路径。
+- 不把系统 CUDA Toolkit 整体复制到项目中；需要 CUDA Toolkit 的现场环境按系统依赖单独安装。
+
+### TensorRT 查找优先级
+
+运行时代码查找 TensorRT 时按如下顺序：
+
+1. `AMVISION_TENSORRT_BIN_DIR`
+2. `AMVISION_TENSORRT_ROOT_DIR/bin`
+3. 发布目录 `tools/tensorrt/bin/`
+4. 仓库目录 `runtimes/tensorrt_bin/bin/`
+5. 仓库目录 `runtimes/third_party/tensorrt/bin/`
+6. 系统 `PATH` 中的 `trtexec` 或 TensorRT DLL
+
+系统 `PATH` 只作为 fallback，不是默认部署前提。
+
 ## 打包流水线建议
 
 1. 从 conda 开发环境导出可审核的依赖基线
 2. 生成面向 bundled Python 的依赖集合和兼容性 manifest
 3. 收敛 backend、frontend、custom_nodes 和默认配置
-4. 收敛目标平台的 `ffmpeg/ffprobe` 等运行时工具目录
+4. 收敛目标平台的 `ffmpeg/ffprobe`、TensorRT 等运行时工具目录
 5. 生成服务、worker 和维护脚本的统一入口
 6. 通过 `assemble-release` 生成 `full` 发布目录
 7. 执行最小启动验证、节点目录扫描和接口健康检查

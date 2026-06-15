@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import warnings
 from pathlib import Path
 
 import cv2
@@ -16,6 +17,12 @@ from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
     SqlAlchemyRfdetrConversionTaskService,
+)
+from backend.service.application.models.rfdetr_core.config import (
+    PretrainWeightsCompatibilityWarning,
+)
+from backend.service.application.models.rfdetr_core.export._onnx import (
+    resolve_rfdetr_onnx_output_names,
 )
 from backend.service.application.deployments.segmentation_deployment_service import (
     SegmentationDeploymentInstanceCreateRequest,
@@ -34,6 +41,9 @@ from backend.service.application.runtime.segmentation_runtime_contracts import (
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetSnapshot,
 )
+from backend.service.application.runtime.support.tensorrt_runtime import (
+    resolve_trtexec_path,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -51,6 +61,7 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
     """验证 RF-DETR segmentation 的训练、转换、部署三条正式任务链可串联运行。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
 
@@ -96,10 +107,15 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
 
     task_service = SqlAlchemyTaskService(session_factory=session_factory)
     training_task_record = task_service.get_task(training_submission["task_id"]).task
-    training_result = training_service.process_training_task(
-        training_task_record,
-        model_type="rfdetr",
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            category=PretrainWeightsCompatibilityWarning,
+        )
+        training_result = training_service.process_training_task(
+            training_task_record,
+            model_type="rfdetr",
+        )
 
     updated_training_task = task_service.get_task(training_submission["task_id"]).task
     assert updated_training_task.state == "succeeded"
@@ -256,6 +272,7 @@ def test_rfdetr_segmentation_openvino_real_toolchain_smoke(
     """验证 RF-DETR segmentation 可通过真实 OpenVINO 工具链完成转换并进入部署推理。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
     pytest.importorskip("openvino")
@@ -281,10 +298,15 @@ def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
     """验证 RF-DETR segmentation 可通过真实 TensorRT 工具链完成转换并进入部署推理。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
     pytest.importorskip("tensorrt")
     pytest.importorskip("cuda")
+    try:
+        resolve_trtexec_path()
+    except Exception as exc:
+        pytest.skip(f"当前环境没有可用 trtexec，跳过 TensorRT 真实 smoke：{exc}")
 
     import torch
 
@@ -306,16 +328,7 @@ def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
     _assert_rfdetr_segmentation_instances_are_valid(execution_result.instances)
     assert (
         execution_result.runtime_session_info.metadata["engine_output_names"]
-        == [
-            "pred_logits",
-            "pred_boxes",
-            "pred_masks",
-            "input.352",
-            "input.388",
-            "2920",
-            "3021",
-            "3137",
-        ]
+        == list(resolve_rfdetr_onnx_output_names("segmentation"))
     )
 
 

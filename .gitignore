@@ -29,7 +29,9 @@ share/python-wheels/
 *.egg
 *.tmp
 *.tmp*
+.tmp/
 .pytest_tmp/
+runtimes/tensorrt_bin/
 MANIFEST
 *.lscache
 
@@ -234,6 +236,8 @@ projectsrc/
 
 # disk data
 data/
+!backend/service/application/models/yolox_core/data/
+!backend/service/application/models/yolox_core/data/*.py
 release/
 
 # frontend

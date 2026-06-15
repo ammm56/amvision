@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from backend.service.application.models.model_service import TrainingOutputRegistration
-from backend.service.application.models.rfdetr_model_service import SqlAlchemyRfdetrModelService
+from backend.service.application.models.catalog.rfdetr import SqlAlchemyRfdetrModelService
 from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
 from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService

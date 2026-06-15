@@ -1,14 +1,14 @@
-# 模型真实支持矩阵
+# 模型真实支持清单
 
 ## 文档目的
 
-本文档把当前主干代码中已经落地的模型支持情况收成一份正式矩阵，重点回答下面三个问题：
+本文档把当前主干代码中已经落地的模型支持情况收成一份正式支持清单，重点回答下面三个问题：
 
 - 哪些 `model_type × task_type` 组合已经进入平台主链
 - 这些组合在 `导入 -> 导出 -> 训练 -> 验证 -> 评估 -> 转换 -> 部署 -> 推理 -> workflow -> 前端` 各阶段做到哪里
 - 哪些能力已经有显式回归，哪些只是代码已接通但还需要继续补 smoke 或工程化收口
 
-本文档按 2026-06-12 的仓库主干代码整理，只描述本项目正式实现，不包含 `projectsrc/` 参考仓库。
+本文档按 2026-06-15 的仓库主干代码整理，只描述本项目正式实现，不包含 `projectsrc/` 参考仓库。
 
 ## 适用范围
 
@@ -35,7 +35,7 @@
 - `前端` 列表示 `frontend/web-ui` 已有真实页面、路由和构建入口可以管理这条资源链，不表示每个组合都有单独页面或 e2e。
 - `release/full` 装配、独立 worker profile、日志和排障不放在本表里，单独归到部署与发布收口。
 
-## 正式支持矩阵
+## 正式支持清单
 
 | model_type | task_type | 导入 | 导出 | 训练 | 验证 | 评估 | 转换 | 部署 | 推理 | workflow | 前端 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -50,7 +50,7 @@
 | `yolov8` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | 内部链与 ONNX 预测已有显式 smoke |
 | `yolo11` | `segmentation` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 当前 full-chain Postman 默认分割主线 |
 | `yolo26` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | task-native API 主验收组合之一 |
-| `rfdetr` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `tested` | `implemented` | 已有正式训练/转换/部署 smoke |
+| `rfdetr` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `tested` | `implemented` | full-core conversion、OpenVINO、TensorRT 和 deployment runtime pool smoke 已接通；长时间 soak 继续放到现场验收 |
 | `yolov8` | `pose` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | task-native API 主验收组合之一 |
 | `yolo11` | `pose` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | full-chain Postman 与 workflow 面已接通 |
 | `yolo26` | `pose` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 模型构建与公开主链已接通 |
@@ -69,15 +69,16 @@
 | `yolo11 + classification` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py`、`docs/api/postman/classification-full-chain.postman_collection.json` |
 | `yolov8 + segmentation` | `tests/test_yolo_primary_segmentation_chain.py` |
 | `yolo26 + segmentation` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
-| `rfdetr + segmentation` | `tests/test_rfdetr_segmentation_task_smoke.py` |
+| `rfdetr + segmentation` | `tests/test_rfdetr_segmentation_task_smoke.py`；2026-06-15 已用真实 segmentation nano checkpoint 跑通 ONNX 导出、ONNXRuntime 数值校验、ONNX simplify、OpenVINO IR、TensorRT 10.16 engine 构建和 deployment runtime pool sync / async smoke。 |
 | `yolov8 + pose` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
 | `yolo26 + obb` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
 | `task-family workflow 12-15` | `docs/api/postman/workflows/12-*` 到 `15-*`、四套 non-detection root full-chain Postman collection |
-| `non-detection training model_type matrix` | `tests/test_non_detection_training_model_type_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条是快速分发与登记回归，不代表每个组合都做过长时间真实训练。 |
-| `non-detection runtime backend matrix` | `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的真实 conversion -> runtime predict，结果为 `36 passed`。RF-DETR segmentation 仍由 `tests/test_rfdetr_segmentation_task_smoke.py` 单独覆盖。 |
+| `non-detection training model_type smoke` | `tests/test_non_detection_training_model_type_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条是快速分发与登记回归，不代表每个组合都做过长时间真实训练。 |
+| `non-detection runtime backend smoke` | `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的真实 conversion -> runtime predict，结果为 `36 passed`。RF-DETR segmentation 由 `tests/test_rfdetr_segmentation_task_smoke.py` 和 2026-06-15 的真实 checkpoint conversion / deployment runtime pool smoke 单独覆盖。 |
+| `RF-DETR full-core checkpoint / conversion / deployment runtime pool` | 2026-06-15 已显式跑通本地 RF-DETR detection `nano / s / m / l` 与 segmentation `nano / s / m / l / x` checkpoint 加载覆盖率，真实加载路径 coverage 均为 `1.0`；detection nano 与 segmentation nano 已完成 ONNX、OpenVINO IR、TensorRT 10.16 engine 的短时转换验收，并跑通 TensorRT engine 的 sync / async deployment runtime pool warmup、一次推理和 reset。 |
 | `前端控制面` | `frontend/web-ui` 真实模块页、真实路由；models / deployments / inference 调试页已从 detection-only 改为显式 task_type 选择，相关 `Detection*` 历史类型和函数名已收成 `Model* / Task*` 命名；2026-06-12 本地 `npm run build` 已通过。 |
 | `release/full 基础验收` | 2026-06-12 已执行 `assemble-release --profile-id full --force`，发布目录使用 `bundled_python_mode=preserved-existing`；`validate-layout`、发布目录 Python runtime import、`start_amvision_full.py` 一键启动、health、docs、OpenAPI 新 conversion 路由可见性和 stop 清理均已通过。当前还新增 `tests/integration/test_release_full_stack_acceptance.py`，用于显式验证 `release/full` 启动、陈旧状态文件恢复、组件日志、资源快照、短时驻留、OpenAPI 路由和 stop 回收；更长 soak 通过环境变量单独指定。stop launcher 已改为停止失败时返回非 0 并保留状态文件。 |
-| `完整默认回归` | 2026-06-12 已使用开发环境 Python 跑通默认测试集 `1290 passed`，并补跑 `ruff check`、前端 `npm run build` 和若干边界定点回归。PyTorch 2.8 legacy ONNX exporter / tracer / `cuda.cudart` deprecation warning 当前是已知非阻塞警告；本表不把这些 warning 记为功能失败。 |
+| `完整默认回归` | 2026-06-12 已使用开发环境 Python 跑通默认测试集 `1290 passed`，并补跑 `ruff check`、前端 `npm run build` 和若干边界定点回归。ONNX 导出当前优先使用 PyTorch 2.8 dynamo exporter；RF-DETR 对当前 PyTorch 2.8 不支持的 lowering 路径有显式 metadata 和受控 fallback，`tracer` 或 `cuda.cudart` deprecation warning 不单独记为功能失败。 |
 
 ## 数据集导入导出当前事实
 
@@ -113,7 +114,7 @@
 | --- | --- | --- |
 | `pytorch` | `tested` | 当前训练后验证、部署和推理主线最成熟的后端 |
 | `onnxruntime` | `tested` | detection 主线与多条 non-detection 内部链、task smoke 已覆盖 |
-| `openvino` | `tested` | 当前已补 non-detection 正式 smoke matrix；更依赖设备与驱动环境，但主线组合已经有显式 conversion -> runtime predict 回归 |
+| `openvino` | `tested` | 当前已补 non-detection 正式 smoke；更依赖设备与驱动环境，但主线组合已经有显式 conversion -> runtime predict 回归 |
 | `tensorrt` | `tested` | detection 与代表性 non-detection 组合当前都已有显式真实 smoke；仍需要在现场继续关注 CUDA、TensorRT 版本与显存边界 |
 
 ## 当前已经有真实前端页面的模块
@@ -143,7 +144,7 @@
 
 ## 建议下一步
 
-最合适的下一步不是继续扩新模型，而是按这份矩阵继续做三件事：
+最合适的下一步不是继续扩新模型，而是按这份支持清单继续做三件事：
 
 1. 在 `tests/integration/test_release_full_stack_acceptance.py` 的基础上跑更长时间的发布目录 soak，并记录资源占用、日志指标和异常恢复样例。
 2. 再回头补剩余导出格式和前端文档同步，不要让“代码已实现”和“文档还停在旧状态”继续分叉。

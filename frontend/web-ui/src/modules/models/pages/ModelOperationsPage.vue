@@ -726,6 +726,47 @@ function resolveExpectedTrainingExportFormat(taskType: ModelTaskType, modelTypeV
   return detectionTrainingFormatByModelType[normalizeText(modelTypeValue)] ?? null
 }
 
+function alignPositiveDimension(value: number, divisor: number): number {
+  const normalized = Math.max(1, Math.trunc(Number(value) || 0))
+  return Math.ceil(normalized / divisor) * divisor
+}
+
+function resolveRfdetrInputDivisor(
+  taskType: ModelTaskType,
+  modelTypeValue: string,
+  modelScaleValue: string,
+): number {
+  if (normalizeText(modelTypeValue) !== 'rfdetr') {
+    return 1
+  }
+  const scale = normalizeText(modelScaleValue)
+  if (taskType === 'detection') {
+    return scale === 'base' ? 56 : 32
+  }
+  if (taskType === 'segmentation') {
+    return scale === 'nano' ? 12 : 24
+  }
+  return 1
+}
+
+function alignTrainingInputSizeForSubmit(): { width: number; height: number } {
+  const divisor = resolveRfdetrInputDivisor(
+    selectedTaskType.value,
+    resolvedTrainingModelType.value,
+    resolvedTrainingModelScale.value,
+  )
+  if (divisor <= 1) {
+    return {
+      width: inputWidth.value,
+      height: inputHeight.value,
+    }
+  }
+  return {
+    width: alignPositiveDimension(inputWidth.value, divisor),
+    height: alignPositiveDimension(inputHeight.value, divisor),
+  }
+}
+
 function setPrecision(value: SelectValue): void {
   precision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
 }
@@ -967,6 +1008,9 @@ async function submitTraining(): Promise<void> {
   trainingSubmitting.value = true
   errorMessage.value = null
   try {
+    const alignedInputSize = alignTrainingInputSizeForSubmit()
+    inputWidth.value = alignedInputSize.width
+    inputHeight.value = alignedInputSize.height
     lastTrainingSubmission.value = await createModelTrainingTask({
       taskType: selectedTaskType.value,
       projectId: selectedProjectId.value,
@@ -982,8 +1026,8 @@ async function submitTraining(): Promise<void> {
       batchSize: batchSize.value,
       gpuCount: trainingSupportsGpuCount.value ? gpuCount.value : undefined,
       precision: precision.value,
-      inputWidth: inputWidth.value,
-      inputHeight: inputHeight.value,
+      inputWidth: alignedInputSize.width,
+      inputHeight: alignedInputSize.height,
       displayName: trainingDisplayName.value.trim(),
       extraOptions: buildTrainingExtraOptions(
         selectedTaskType.value,

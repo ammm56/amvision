@@ -7,7 +7,7 @@ from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
 )
-from backend.service.application.models.rfdetr_training import (
+from backend.service.application.models.training.rfdetr_detection import (
     RfdetrTrainingExecutionRequest,
     run_rfdetr_training,
 )
@@ -110,5 +110,13 @@ class SqlAlchemyRfdetrTrainerRunner:
             summary={
                 "model_scale": model_scale,
                 "labels": list(result.labels),
+                "input_size": list(result.aligned_input_size),
+                "training_config": {
+                    "input_size": list(result.aligned_input_size),
+                    "model_scale": model_scale,
+                    "batch_size": int(payload.get("batch_size", 2)),
+                    "max_epochs": int(payload.get("max_epochs", 1)),
+                    "precision": payload.get("precision", "fp32"),
+                },
             },
         )

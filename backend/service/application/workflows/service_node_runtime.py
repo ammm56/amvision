@@ -123,7 +123,7 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
 )
-from backend.service.application.models.rfdetr_training_service import (
+from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
 from backend.service.application.models.detection_async_inference_gateway import (

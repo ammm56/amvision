@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.model_type_support import require_platform_model_type
-from backend.service.application.runtime.rfdetr_runtime_target import (
+from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (

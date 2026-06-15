@@ -32,13 +32,14 @@
 2026-06-12 已完成一轮 `release/full` 基础验收：
 
 - `assemble-release --profile-id full --release-root .\release --force --output text` 通过，`bundled_python_mode=preserved-existing`。
-- `validate-layout` 通过，`frontend/`、`custom_nodes/`、`tools/ffmpeg/`、`python/python.exe` 和 worker profile 目录均存在。
+- `validate-layout` 通过，`frontend/`、`custom_nodes/`、`tools/ffmpeg/`、`tools/cudnn/`、`python/python.exe` 和 worker profile 目录均存在。
 - `release/full/python/python.exe` 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`。
 - `start_amvision_full.py` 可拉起 `backend-service` 与 `dataset-import / dataset-export / training / conversion / evaluation / inference` 六个 worker profile。
 - `/api/v1/system/health`、`/docs` 和 `/openapi.json` 均可访问；OpenAPI 中可见 `classification/conversion-tasks/{task_id}/result` 这类 non-detection conversion result 路由。
 - `stop-amvision-full.bat` 可清理 `logs/full-stack/runtime-state.json`；当前 stop launcher 已改为停止失败时返回非 0，并保留状态文件用于排查，不再把“停止超时”伪装成成功。
 - 仓库侧已补 `tests/integration/test_release_full_stack_acceptance.py`，用于显式启动 `release/full`、检查 health/docs/OpenAPI/worker profile、陈旧状态文件恢复、组件日志文件、资源快照、短时驻留并调用 stop 脚本回收。默认驻留时间较短，长时 soak 需要单独设置 `AMVISION_RELEASE_FULL_SOAK_SECONDS`。
-- 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入初始和结束时的组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间，可作为后续现场基线的最小记录。
+- 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间。当前文件包含 `initial`、`final`、`samples` 和 `summary` 四段：`samples` 用于长时 soak 过程采样，`summary` 用于直接查看 RSS、CPU 和线程数变化。
+- 2026-06-15 已在本机重新装配 `release/full` 并复跑一次短时启停验收：使用 `release/full/python/python.exe`、端口 `18080`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`，结果为 `1 passed`。本次验收确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和 `resource-baseline.json` 写入正常；这仍是短时空载验收，不替代现场长时间负载 soak。
 
 ## 常见问题
 
@@ -139,11 +140,16 @@
 - 驱动版本
 - GPU / NPU 是否真的可用
 - 发布目录里模型构建产物是否齐全
-- `tools/ffmpeg/`、`python/`、厂商 runtime 是否来自同一套打包
+- `tools/ffmpeg/`、`tools/cudnn/`、`python/`、厂商 runtime 是否来自同一套打包
+- `tools/tensorrt/bin/trtexec.exe` 是否存在
+- `tools/cudnn/bin/12.9/x64/` 是否存在当前打包的 cuDNN DLL
+- `python/` 中安装的 TensorRT wheel 是否与 `tools/tensorrt/bin/` 中的 DLL 同版本
 
 当前判断原则：
 
 - 如果 `onnxruntime` 能跑、`openvino/tensorrt` 不能跑，优先查现场 runtime 环境
+- 不要把不同版本的 TensorRT Python 包和 TensorRT DLL 混用；本地开发环境和 `release/full/python/` 中的 TensorRT 版本应与 `tools/tensorrt/bin/` 中的 DLL 同版本
+- 目标客户机默认安装 NVIDIA driver 和现场要求的系统 CUDA；如果报 DLL 缺失，优先检查发布目录 `tools/tensorrt/bin/`、`tools/cudnn/bin/12.9/x64/` 和启动脚本 PATH，而不是把整套 CUDA Toolkit 复制进项目
 - 如果三条 backend 都不能跑，再回头查模型构建、labels、部署绑定和 API 入参
 
 ### 6. `release/full/python` 看起来存在，但一 `import torch` 就直接崩
@@ -228,7 +234,17 @@ release/full 长时 soak 入口示例：
 
 ```powershell
 $env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
+$env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
 D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
+
+长时 soak 完成后先看：
+
+- `release/full/logs/<logs-subdir>/resource-baseline.json`
+- `summary[*].rss_delta_bytes`
+- `summary[*].cpu_delta_seconds`
+- `samples` 中是否有某个组件持续单调增长
+
+如果只想跑短时启停，不需要设置 `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS`。
 
 `Windows + OpenVINO` 下如果临时目录句柄占用导致清理失败，优先换一个新的 `--basetemp`，不要直接把这种现象判断成模型主链错误。

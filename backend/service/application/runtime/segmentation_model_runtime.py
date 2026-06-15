@@ -31,7 +31,7 @@ from backend.service.application.runtime.yolov8_segmentation_predictor import (
     PyTorchYoloV8SegmentationRuntimeSession,
     TensorRTYoloV8SegmentationRuntimeSession,
 )
-from backend.service.application.runtime.rfdetr_segmentation_predictor import (
+from backend.service.application.runtime.predictors.rfdetr_segmentation import (
     OnnxRuntimeRfdetrSegmentationRuntimeSession,
     OpenVINORfdetrSegmentationRuntimeSession,
     PyTorchRfdetrSegmentationRuntimeSession,

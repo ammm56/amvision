@@ -21,7 +21,7 @@ from backend.service.application.models.yolo_core_common.export import (
     validate_yolo_onnx,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_conversion_common import (
+from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     import_onnx_conversion_dependencies,

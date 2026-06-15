@@ -18,13 +18,17 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SegmentationDeploymentInstanceCreateRequest,
     SqlAlchemySegmentationDeploymentService,
 )
-from backend.service.application.models.rfdetr_model_service import (
-    RFDETR_DETECTION_FILE_TYPES,
+from backend.service.application.models.catalog.rfdetr import (
+    RFDETR_MODEL_FILE_TYPES,
     RfdetrTrainingOutputRegistration,
     SqlAlchemyRfdetrModelService,
 )
-from backend.service.application.models.rfdetr_segmentation_model import (
-    build_rfdetr_segmentation_model,
+from backend.service.application.models.rfdetr_core.detection import build_rfdetr_model
+from backend.service.application.models.rfdetr_core.factory import (
+    build_rfdetr_full_core_model,
+)
+from backend.service.domain.models.model_task_types import (
+    SEGMENTATION_TASK_TYPE,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
@@ -38,6 +42,121 @@ from backend.workers.conversion.rfdetr_conversion_runner import (
     LocalRfdetrConversionRunner,
 )
 from tests.yolox_test_support import create_yolox_test_runtime
+
+
+def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(tmp_path: Path) -> None:
+    """验证 RF-DETR detection full core 可以走 conversion worker 导出 ONNX。"""
+
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxsim")
+
+    session_factory, dataset_storage, queue_backend = _create_test_runtime(tmp_path)
+    source_model_version_id = _seed_rfdetr_detection_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    service = SqlAlchemyRfdetrConversionTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+    )
+
+    submission = service.submit_conversion_task(
+        RfdetrConversionTaskRequest(
+            project_id="project-1",
+            source_model_version_id=source_model_version_id,
+            target_formats=("onnx",),
+            task_type="detection",
+        )
+    )
+    worker = RfdetrConversionQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+    )
+
+    assert worker.run_once() is True
+
+    task_detail = SqlAlchemyTaskService(session_factory).get_task(
+        submission.task_id,
+        include_events=True,
+    )
+    result = task_detail.task.result
+    report_payload = json.loads(
+        dataset_storage.resolve(result["report_object_key"]).read_text(encoding="utf-8")
+    )
+
+    assert task_detail.task.state == "succeeded"
+    assert tuple(result["produced_formats"]) == ("onnx",)
+    assert report_payload["phase"] == "phase-1-onnx"
+    assert len(result["builds"]) == 1
+    assert result["builds"][0]["build_format"] == "onnx"
+    assert dataset_storage.resolve(result["builds"][0]["build_file_uri"]).is_file()
+
+
+def test_rfdetr_segmentation_conversion_worker_exports_full_core_onnx(
+    tmp_path: Path,
+) -> None:
+    """验证 RF-DETR segmentation full core 可以走 conversion worker 导出 ONNX。"""
+
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxsim")
+
+    session_factory, dataset_storage, queue_backend = _create_test_runtime(tmp_path)
+    source_model_version_id = _seed_rfdetr_segmentation_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    service = SqlAlchemyRfdetrConversionTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+    )
+
+    submission = service.submit_conversion_task(
+        RfdetrConversionTaskRequest(
+            project_id="project-1",
+            source_model_version_id=source_model_version_id,
+            target_formats=("onnx",),
+            task_type="segmentation",
+        )
+    )
+    worker = RfdetrConversionQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+    )
+
+    assert worker.run_once() is True
+
+    task_detail = SqlAlchemyTaskService(session_factory).get_task(
+        submission.task_id,
+        include_events=True,
+    )
+    result = task_detail.task.result
+    report_payload = json.loads(
+        dataset_storage.resolve(result["report_object_key"]).read_text(encoding="utf-8")
+    )
+
+    assert task_detail.task.state == "succeeded"
+    assert tuple(result["produced_formats"]) == ("onnx",)
+    assert report_payload["phase"] == "phase-1-onnx"
+    assert report_payload["builds"][0]["metadata"]["output_names"] == [
+        "pred_boxes",
+        "pred_logits",
+        "pred_masks",
+    ]
+    assert len(result["builds"]) == 1
+    assert result["builds"][0]["build_format"] == "onnx"
+    assert dataset_storage.resolve(result["builds"][0]["build_file_uri"]).is_file()
 
 
 @pytest.mark.parametrize(
@@ -61,9 +180,9 @@ from tests.yolox_test_support import create_yolox_test_runtime
             "phase-2-openvino-ir",
             {"openvino_ir_precision": "fp16"},
             {
-                RFDETR_DETECTION_FILE_TYPES.onnx_file_type,
-                RFDETR_DETECTION_FILE_TYPES.onnx_optimized_file_type,
-                RFDETR_DETECTION_FILE_TYPES.openvino_ir_file_type,
+                RFDETR_MODEL_FILE_TYPES.onnx_file_type,
+                RFDETR_MODEL_FILE_TYPES.onnx_optimized_file_type,
+                RFDETR_MODEL_FILE_TYPES.openvino_ir_file_type,
             },
             "openvino",
             "fp16",
@@ -77,9 +196,9 @@ from tests.yolox_test_support import create_yolox_test_runtime
             "phase-2-tensorrt-engine",
             {"tensorrt_engine_precision": "fp16"},
             {
-                RFDETR_DETECTION_FILE_TYPES.onnx_file_type,
-                RFDETR_DETECTION_FILE_TYPES.onnx_optimized_file_type,
-                RFDETR_DETECTION_FILE_TYPES.tensorrt_engine_file_type,
+                RFDETR_MODEL_FILE_TYPES.onnx_file_type,
+                RFDETR_MODEL_FILE_TYPES.onnx_optimized_file_type,
+                RFDETR_MODEL_FILE_TYPES.tensorrt_engine_file_type,
             },
             "tensorrt",
             "fp16",
@@ -104,6 +223,7 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
     """验证 RF-DETR segmentation conversion 能产出可部署的 OpenVINO/TensorRT 构建。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
 
@@ -138,11 +258,11 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
 
     assert worker.run_once() is True
 
-    result = service.process_conversion_task(submission.task_id)
     task_detail = SqlAlchemyTaskService(session_factory).get_task(
         submission.task_id,
         include_events=True,
     )
+    result = task_detail.task.result
     report_payload = json.loads(
         dataset_storage.resolve(result["report_object_key"]).read_text(encoding="utf-8")
     )
@@ -231,7 +351,13 @@ def _seed_rfdetr_segmentation_model_version(
         "projects/project-1/models/rfdetr-segmentation/source-1/"
         "artifacts/labels.txt"
     )
-    model = build_rfdetr_segmentation_model(model_scale="nano", num_classes=2)
+    torch.manual_seed(0)
+    model = build_rfdetr_full_core_model(
+        task_type=SEGMENTATION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=2,
+        load_pretrained=False,
+    )
     buffer = io.BytesIO()
     torch.save({"model_state_dict": model.state_dict()}, buffer)
     dataset_storage.write_bytes(checkpoint_uri, buffer.getvalue())
@@ -252,6 +378,50 @@ def _seed_rfdetr_segmentation_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["segment-a", "segment-b"],
+                "input_size": [72, 72],
+                "training_config": {"input_size": [72, 72]},
+            },
+        )
+    )
+
+
+def _seed_rfdetr_detection_model_version(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+) -> str:
+    """登记一个最小 RF-DETR detection ModelVersion。"""
+
+    checkpoint_uri = (
+        "projects/project-1/models/rfdetr-detection/source-1/"
+        "artifacts/checkpoints/best.pt"
+    )
+    labels_uri = (
+        "projects/project-1/models/rfdetr-detection/source-1/"
+        "artifacts/labels.txt"
+    )
+    torch.manual_seed(0)
+    model = build_rfdetr_model(model_scale="nano", num_classes=2)
+    buffer = io.BytesIO()
+    torch.save({"model_state_dict": model.state_dict()}, buffer)
+    dataset_storage.write_bytes(checkpoint_uri, buffer.getvalue())
+    dataset_storage.write_text(labels_uri, "part-a\npart-b\n")
+
+    service = SqlAlchemyRfdetrModelService(session_factory=session_factory)
+    return service.register_training_output(
+        RfdetrTrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-rfdetr-detection-source-1",
+            model_name="rfdetr",
+            model_scale="nano",
+            dataset_version_id="dataset-version-rfdetr-detection-source-1",
+            checkpoint_file_id="checkpoint-file-rfdetr-detection-source-1",
+            checkpoint_file_uri=checkpoint_uri,
+            task_type="detection",
+            labels_file_id="labels-file-rfdetr-detection-source-1",
+            labels_file_uri=labels_uri,
+            metadata={
+                "category_names": ["part-a", "part-b"],
                 "input_size": [64, 64],
                 "training_config": {"input_size": [64, 64]},
             },

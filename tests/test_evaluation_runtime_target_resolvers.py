@@ -10,7 +10,7 @@ from backend.service.application.models.evaluation_runtime_target_resolvers impo
     get_segmentation_evaluation_runtime_target_resolver,
     get_yolo_primary_evaluation_runtime_target_resolver,
 )
-from backend.service.application.runtime.rfdetr_runtime_target import (
+from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (

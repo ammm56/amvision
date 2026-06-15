@@ -12,6 +12,11 @@ from backend.service.application.backends import (
     ConversionBackendRunResult,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.onnx_export import (
+    TORCH_ONNX_DYNAMO_EXPORTER_MODE,
+    TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
+    export_torch_model_to_onnx,
+)
 from backend.service.application.runtime.yolox_detection_runtime import PyTorchYoloXRuntimeSession
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
@@ -20,7 +25,7 @@ from backend.service.domain.files.yolox_file_types import (
     YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_conversion_common import (
+from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     import_onnx_conversion_dependencies,
@@ -226,22 +231,21 @@ class LocalYoloXConversionRunner:
             dtype=session.imports.torch.float32,
         )
         with session.imports.torch.no_grad():
-            session.imports.torch.onnx.export(
-                session.model,
-                dummy_input,
-                str(output_path),
-                export_params=True,
-                opset_version=17,
-                do_constant_folding=True,
-                input_names=["images"],
-                output_names=["predictions"],
+            export_torch_model_to_onnx(
+                torch_module=session.imports.torch,
+                model=session.model,
+                model_args=(dummy_input,),
+                output_path=output_path,
+                opset_version=TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
+                input_names=("images",),
+                output_names=("predictions",),
             )
         return {
             "stage": "export-onnx",
             "object_uri": output_object_key,
-            "opset_version": 17,
+            "opset_version": TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
             "input_size": list(session.runtime_target.input_size),
-            "exporter_mode": "legacy-torch-onnx-export",
+            "exporter_mode": TORCH_ONNX_DYNAMO_EXPORTER_MODE,
         }
 
     def _validate_onnx(

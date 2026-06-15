@@ -50,7 +50,7 @@
 ### RF-DETR 状态
 
 - RF-DETR detection 已并入统一 detection 训练/转换控制面，当前正式主链已覆盖训练、转换、推理和 deployment。
-- RF-DETR segmentation 已接通 project-native 模型、训练、`onnx / onnx-optimized / openvino-ir / tensorrt-engine` 转换和 deployment 主链；当前已补 `pytorch / onnxruntime / openvino / tensorrt` runtime session，并用端到端 smoke 验证了 `training -> conversion -> deployment -> onnxruntime infer`、`training -> conversion(openvino-ir) -> deployment(openvino) -> infer` 和 `training -> conversion(tensorrt-engine) -> deployment(tensorrt) -> infer` 三条主链。
+- RF-DETR segmentation 已接通训练和 deployment 主链；当前 builder 已切到 `rfdetr_core/models/` 下的 upstream-aligned full-core 实现，conversion 也已走 `rfdetr_core/export/_onnx` 入口。后续重点是继续补完整 RF-DETR training/export 细节、长时间 smoke 和真实权重覆盖率验证。
 
 ### 非 Detection 转换路由
 

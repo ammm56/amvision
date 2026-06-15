@@ -136,6 +136,7 @@ def run_python_module(
 
     runtime_env = os.environ.copy()
     code_root = resolve_code_root(app_root)
+    _prepare_local_runtime_paths(app_root, runtime_env)
     existing_python_path = runtime_env.get("PYTHONPATH")
     runtime_env["PYTHONPATH"] = (
         str(code_root)
@@ -153,3 +154,116 @@ def run_python_module(
         check=False,
     )
     return completed.returncode
+
+
+def _prepare_local_runtime_paths(app_root: Path, runtime_env: dict[str, str]) -> None:
+    """把发布目录或开发目录中的本地运行时加入子进程环境。"""
+
+    cudnn_bin_dir = _resolve_cudnn_bin_dir(app_root)
+    if cudnn_bin_dir is not None:
+        _prepend_env_path(runtime_env, "PATH", str(cudnn_bin_dir))
+        runtime_env.setdefault("AMVISION_CUDNN_BIN_DIR", str(cudnn_bin_dir))
+        runtime_env.setdefault("AMVISION_CUDNN_ROOT_DIR", str(_resolve_cudnn_root_dir(cudnn_bin_dir)))
+
+    tensorrt_bin_dir = _resolve_tensorrt_bin_dir(app_root)
+    if tensorrt_bin_dir is not None:
+        _prepend_env_path(runtime_env, "PATH", str(tensorrt_bin_dir))
+        runtime_env.setdefault("AMVISION_TENSORRT_BIN_DIR", str(tensorrt_bin_dir))
+        runtime_env.setdefault("AMVISION_TENSORRT_ROOT_DIR", str(tensorrt_bin_dir.parent))
+
+
+def _resolve_tensorrt_bin_dir(app_root: Path) -> Path | None:
+    """解析当前应用根目录下的 TensorRT bin 目录。"""
+
+    candidates = [
+        app_root / "tools" / "tensorrt" / "bin",
+        app_root / "runtimes" / "tensorrt_bin" / "bin",
+        app_root / "runtimes" / "third_party" / "tensorrt" / "bin",
+    ]
+    code_root = resolve_code_root(app_root)
+    candidates.extend(
+        [
+            code_root / "runtimes" / "tensorrt_bin" / "bin",
+            code_root / "runtimes" / "third_party" / "tensorrt" / "bin",
+        ]
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
+
+
+def _resolve_cudnn_bin_dir(app_root: Path) -> Path | None:
+    """解析当前应用根目录下的 cuDNN DLL 目录。"""
+
+    version = os.getenv("AMVISION_CUDNN_CUDA_VERSION", "12.9")
+    candidates: list[Path] = []
+    env_bin_dir = os.getenv("AMVISION_CUDNN_BIN_DIR")
+    if env_bin_dir:
+        candidates.append(Path(env_bin_dir))
+
+    env_root_dir = os.getenv("AMVISION_CUDNN_ROOT_DIR")
+    if env_root_dir:
+        candidates.extend(_build_cudnn_root_candidates(Path(env_root_dir), version=version))
+
+    code_root = resolve_code_root(app_root)
+    for root_dir in (
+        app_root / "tools" / "cudnn",
+        app_root / "runtimes" / "cudnn_dll",
+        code_root / "runtimes" / "cudnn_dll",
+    ):
+        candidates.extend(_build_cudnn_root_candidates(root_dir, version=version))
+
+    for candidate in _dedupe_path_candidates(candidates):
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
+
+
+def _build_cudnn_root_candidates(root_dir: Path, *, version: str) -> list[Path]:
+    """按 CUDA 版本偏好生成 cuDNN DLL 目录候选。"""
+
+    bin_dir = root_dir / "bin"
+    candidates = [
+        bin_dir / version / "x64",
+        bin_dir / "12.9" / "x64",
+        bin_dir,
+    ]
+    if bin_dir.is_dir():
+        version_dirs = sorted(child for child in bin_dir.iterdir() if child.is_dir())
+        candidates.extend(version_dir / "x64" for version_dir in version_dirs)
+    return candidates
+
+
+def _resolve_cudnn_root_dir(cudnn_bin_dir: Path) -> Path:
+    """从 cuDNN DLL 目录反推出 cuDNN 根目录。"""
+
+    if cudnn_bin_dir.name.lower() == "x64" and cudnn_bin_dir.parent.parent.name.lower() == "bin":
+        return cudnn_bin_dir.parent.parent.parent
+    if cudnn_bin_dir.name.lower() == "bin":
+        return cudnn_bin_dir.parent
+    return cudnn_bin_dir
+
+
+def _dedupe_path_candidates(paths: list[Path]) -> list[Path]:
+    """按字符串形式去重并保持原始顺序。"""
+
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        path_key = str(path)
+        if path_key in seen:
+            continue
+        seen.add(path_key)
+        result.append(path)
+    return result
+
+
+def _prepend_env_path(runtime_env: dict[str, str], key: str, path_value: str) -> None:
+    """把目录加入环境变量前面。"""
+
+    current_value = runtime_env.get(key, "")
+    path_parts = [part for part in current_value.split(os.pathsep) if part]
+    if path_value in path_parts:
+        return
+    runtime_env[key] = path_value if not current_value else os.pathsep.join((path_value, current_value))

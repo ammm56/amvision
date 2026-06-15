@@ -14,12 +14,10 @@ from backend.service.application.backends import (
 )
 from backend.service.application.conversions.rfdetr_conversion_planner import (
     DefaultRfdetrConversionPlanner,
-)
-from backend.service.application.conversions.yolox_conversion_planner import (
-    YoloXConversionPlan,
-    YoloXConversionPlanningRequest,
-    deserialize_yolox_conversion_plan,
-    serialize_yolox_conversion_plan,
+    RfdetrConversionPlan,
+    RfdetrConversionPlanningRequest,
+    deserialize_rfdetr_conversion_plan,
+    serialize_rfdetr_conversion_plan,
 )
 from backend.service.application.conversions.conversion_result_snapshot import (
     ConversionResultSnapshot as RfdetrConversionResultSnapshot,
@@ -36,10 +34,10 @@ from backend.service.application.models.detection_operation_rules import (
 from backend.service.application.models.model_service import (
     ModelBuildRegistration as RfdetrBuildRegistration,
 )
-from backend.service.application.models.rfdetr_model_service import (
+from backend.service.application.models.catalog.rfdetr import (
     SqlAlchemyRfdetrModelService,
 )
-from backend.service.application.runtime.rfdetr_runtime_target import (
+from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (
@@ -57,7 +55,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.workers.conversion.rfdetr_conversion_runner import (
     LocalRfdetrConversionRunner,
 )
-from backend.workers.conversion.yolo_conversion_common import (
+from backend.workers.conversion.model_conversion_common import (
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
 )
@@ -145,7 +143,7 @@ class SqlAlchemyRfdetrConversionTaskService:
             task_type=normalized_task_type,
         )
         plan = self.planner.build_plan(
-            YoloXConversionPlanningRequest(
+            RfdetrConversionPlanningRequest(
                 project_id=request.project_id,
                 source_model_version_id=source_model_version_id,
                 target_formats=target_formats,
@@ -169,7 +167,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                     runtime_profile_id=request.runtime_profile_id,
                     task_type=normalized_task_type,
                     extra_options=dict(request.extra_options),
-                    planned_steps=tuple(serialize_yolox_conversion_plan(plan)["steps"]),
+                    planned_steps=tuple(serialize_rfdetr_conversion_plan(plan)["steps"]),
                 ),
                 worker_pool=self.task_kind,
                 metadata={
@@ -298,7 +296,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                 },
             )
         )
-        dataset_storage.write_json(plan_object_key, serialize_yolox_conversion_plan(plan))
+        dataset_storage.write_json(plan_object_key, serialize_rfdetr_conversion_plan(plan))
 
         try:
             run_result = conversion_runner.run_conversion(
@@ -654,10 +652,10 @@ class SqlAlchemyRfdetrConversionTaskService:
             task_type=self._normalize_task_type(payload.get("task_type")),
         )
 
-    def _read_plan_from_task_record(self, task_record) -> YoloXConversionPlan:
+    def _read_plan_from_task_record(self, task_record) -> RfdetrConversionPlan:
         task_spec = _deserialize_task_spec(task_record.task_spec)
         if task_spec is not None:
-            return deserialize_yolox_conversion_plan(
+            return deserialize_rfdetr_conversion_plan(
                 {
                     "source_model_version_id": task_spec["source_model_version_id"],
                     "target_formats": list(task_spec["target_formats"]),
@@ -666,7 +664,7 @@ class SqlAlchemyRfdetrConversionTaskService:
             )
         request = self._build_request_from_task_record(task_record)
         return self.planner.build_plan(
-            YoloXConversionPlanningRequest(
+            RfdetrConversionPlanningRequest(
                 project_id=request.project_id,
                 source_model_version_id=request.source_model_version_id or "",
                 target_formats=request.target_formats,
@@ -678,7 +676,7 @@ class SqlAlchemyRfdetrConversionTaskService:
 
     def _build_backend_plan_steps(
         self,
-        plan: YoloXConversionPlan,
+        plan: RfdetrConversionPlan,
     ) -> tuple[DetectionConversionPlanStep, ...]:
         return tuple(
             DetectionConversionPlanStep(

@@ -46,11 +46,18 @@
 - core 包内部的任务目录或文件按任务分类命名，例如 `detection.py`、`segmentation.py`、`classification.py`、`pose.py`、`obb.py`。
 - `yolox_core`、`yolov8_core`、`yolo11_core`、`yolo26_core`、`rfdetr_core` 的唯一目标位置是 `backend/service/application/models/`。
 - `backend/service/application/runtime/` 不能放模型 core。runtime 只保留 deployment session、predictor、backend adapter、warmup、reset 和长期驻留资源管理。
-- 当前 `runtime/yolox_core` 是历史落点，必须迁到 `models/yolox_core`，迁移完成后删除 runtime 下的旧目录。
+- `runtime/yolox_core` 历史落点已迁到 `models/yolox_core`，runtime 下不再保留 YOLOX core 目录。
 - 真正跨 YOLOv8 / YOLO11 / YOLO26 共用的基础工具放入 `yolo_core_common`。
 - `yolo_core_common` 只能放不关心 `model_type` 的基础函数、基础层和通用数学工具。
 - 如果某段代码需要判断 `model_type`，它不应放在 `yolo_core_common`，应放入对应的 `yolov8_core`、`yolo11_core` 或 `yolo26_core`。
 - 如果某段代码需要判断 `task_type`，优先拆成对应任务文件，不要在一个大函数里用多分支混写五类任务。
+
+core 迁移顺序按模型纵向推进，不按目录横向推进：
+
+- 第一条主线是 `rfdetr_core`。先把 RF-DETR 的 core、training、evaluation、export、service 外壳、worker 调用和 runtime predictor 边界收完整。
+- 第二条主线是 `yolox_core`。YOLOX 只有 detection，继续按模型专属边界收训练、评估、导出和 runtime 外壳。
+- 第三条主线是 `yolov8_core / yolo11_core / yolo26_core`。这三类模型按普通 YOLO 主线统一规划，但 core 包、权重、训练和导出入口仍按 `model_type` 分开。
+- `models/training`、`runtime/predictors`、`runtime/contracts` 这类横向目录是最终整理形态，不是迁移优先级。不能为了目录看起来整齐，提前把不同模型还没收清的外壳混到同一层。
 
 示例：
 

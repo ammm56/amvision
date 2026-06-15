@@ -8,6 +8,10 @@ from pathlib import Path
 import platform
 import sys
 
+from backend.service.application.runtime.support.tensorrt_runtime import (
+    prepare_tensorrt_python_runtime,
+)
+
 
 def build_tensorrt_engine(
     *,
@@ -26,6 +30,7 @@ def build_tensorrt_engine(
     - dict[str, object]：TensorRT engine 构建摘要。
     """
 
+    prepare_tensorrt_python_runtime()
     import tensorrt as trt
 
     normalized_precision = build_precision.strip().lower()

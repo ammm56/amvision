@@ -27,7 +27,7 @@ from backend.service.application.models.yolo_primary_classification_evaluation_t
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YoloPrimaryClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.rfdetr_training_service import (
+from backend.service.application.models.training.rfdetr_detection_task_service import (
     RfdetrTrainingTaskRequest,
 )
 from backend.service.application.conversions.yolo_primary_conversion_task_service import (

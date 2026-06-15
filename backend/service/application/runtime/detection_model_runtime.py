@@ -34,7 +34,7 @@ from backend.service.application.runtime.yolox_detection_runtime import (
     PyTorchDetectionRuntimeSession,
     TensorRTDetectionRuntimeSession,
 )
-from backend.service.application.runtime.rfdetr_predictor import (
+from backend.service.application.runtime.predictors.rfdetr import (
     PyTorchRfdetrRuntimeSession,
     OnnxRuntimeRfdetrRuntimeSession,
     OpenVINORfdetrRuntimeSession,

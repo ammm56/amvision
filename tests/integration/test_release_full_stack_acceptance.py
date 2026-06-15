@@ -34,6 +34,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         f"integration-full-stack-{int(time.time())}",
     )
     soak_seconds = float(os.environ.get("AMVISION_RELEASE_FULL_SOAK_SECONDS", "10"))
+    sample_interval_seconds = _resolve_resource_sample_interval(soak_seconds)
     state_file = release_root / "logs" / logs_subdir / "runtime-state.json"
     resource_baseline_file = state_file.parent / "resource-baseline.json"
     component_resource_refs: list[tuple[int, float]] = []
@@ -107,20 +108,49 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             (int(item["pid"]), float(item["create_time"]))
             for item in initial_resources
         ]
+        resource_samples: list[dict[str, object]] = [
+            {
+                "elapsed_seconds": 0.0,
+                "resources": initial_resources,
+            }
+        ]
 
+        started_at = time.monotonic()
         deadline = time.monotonic() + max(0.0, soak_seconds)
+        next_sample_at = started_at + sample_interval_seconds
         while time.monotonic() < deadline:
             assert start_process.poll() is None
             _wait_for_http_json(f"http://127.0.0.1:{port}/api/v1/system/health", timeout_seconds=10)
-            time.sleep(min(2.0, max(0.1, deadline - time.monotonic())))
+            now = time.monotonic()
+            if now >= next_sample_at:
+                resource_samples.append(
+                    {
+                        "elapsed_seconds": round(now - started_at, 3),
+                        "resources": _collect_process_resources(components),
+                    }
+                )
+                next_sample_at = now + sample_interval_seconds
+            time.sleep(min(2.0, max(0.1, deadline - now)))
 
         final_resources = _collect_process_resources(components)
+        resource_samples.append(
+            {
+                "elapsed_seconds": round(time.monotonic() - started_at, 3),
+                "resources": final_resources,
+            }
+        )
         resource_baseline_file.write_text(
             json.dumps(
                 {
                     "soak_seconds": soak_seconds,
+                    "sample_interval_seconds": sample_interval_seconds,
                     "initial": initial_resources,
                     "final": final_resources,
+                    "samples": resource_samples,
+                    "summary": _summarize_resource_drift(
+                        initial_resources=initial_resources,
+                        final_resources=final_resources,
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -272,6 +302,63 @@ def _resolve_runtime_path(release_root: Path, value: str) -> Path:
     if candidate.is_absolute():
         return candidate.resolve()
     return (release_root / candidate).resolve()
+
+
+def _resolve_resource_sample_interval(soak_seconds: float) -> float:
+    """解析 release/full 资源采样间隔。"""
+
+    configured = os.environ.get("AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS")
+    if configured:
+        interval = float(configured)
+    elif soak_seconds >= 120.0:
+        interval = 30.0
+    elif soak_seconds >= 30.0:
+        interval = 10.0
+    else:
+        interval = max(1.0, soak_seconds)
+    return max(1.0, interval)
+
+
+def _summarize_resource_drift(
+    *,
+    initial_resources: list[dict[str, object]],
+    final_resources: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """汇总 release/full 组件资源变化，便于现场比较基线。"""
+
+    initial_by_name = {
+        str(item["name"]): item
+        for item in initial_resources
+    }
+    rows: list[dict[str, object]] = []
+    for final_item in final_resources:
+        name = str(final_item["name"])
+        initial_item = initial_by_name.get(name)
+        if initial_item is None:
+            continue
+        initial_rss = int(initial_item["rss_bytes"])
+        final_rss = int(final_item["rss_bytes"])
+        initial_cpu = float(initial_item["user_cpu_seconds"]) + float(
+            initial_item["system_cpu_seconds"]
+        )
+        final_cpu = float(final_item["user_cpu_seconds"]) + float(
+            final_item["system_cpu_seconds"]
+        )
+        rows.append(
+            {
+                "name": name,
+                "pid": final_item["pid"],
+                "initial_rss_bytes": initial_rss,
+                "final_rss_bytes": final_rss,
+                "rss_delta_bytes": final_rss - initial_rss,
+                "initial_cpu_seconds": round(initial_cpu, 6),
+                "final_cpu_seconds": round(final_cpu, 6),
+                "cpu_delta_seconds": round(final_cpu - initial_cpu, 6),
+                "initial_num_threads": initial_item["num_threads"],
+                "final_num_threads": final_item["num_threads"],
+            }
+        )
+    return rows
 
 
 def _wait_for_http_json(url: str, *, timeout_seconds: float) -> dict[str, object]:

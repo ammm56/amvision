@@ -6,7 +6,7 @@
 
 本文档补充 [system-overview.md](system-overview.md) 的长期架构视角，重点回答“当前代码已经做到哪里”。
 
-更细的 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 正式矩阵，现单独整理在 [model-support-matrix.md](model-support-matrix.md)。
+更细的 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 正式支持清单，现单独整理在 [model-support-matrix.md](model-support-matrix.md)。
 
 训练参数这层“公开接口支持什么、执行层真正使用什么、前端当前已经暴露什么、还缺什么”，现单独整理在 [training-parameter-support.md](training-parameter-support.md)。
 
@@ -15,14 +15,14 @@
 - backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
 - YOLOX、YOLOv8/YOLO11/YOLO26、RF-DETR、YOLOE / SAM3 与工业节点体系的已落地链路
 - `YOLOE / SAM3` project-native custom node 的当前能力边界
-- 当前公开 REST / WebSocket 资源面与主要运行时矩阵
+- 当前公开 REST / WebSocket 资源面与主要运行时支持状态
 - 下一步优先补强事项
 
 ## 当前结论
 
 - 以 YOLOX detection 为第一套参考实现的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通；YOLOv8/YOLO11/YOLO26 与 RF-DETR 也已经并入统一模型平台主链。
 - 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
-- 数据集导入导出矩阵当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
+- 数据集导入导出支持当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
 - backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
 - 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
@@ -69,7 +69,9 @@
 ### P0 修复
 
 - RF-DETR detection 已并入统一 detection 训练/转换控制面；`/models/detection/...` 正式主链现在覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
-- RF-DETR segmentation 已接通 project-native 模型、训练、`onnx / onnx-optimized / openvino-ir / tensorrt-engine` 转换、DeploymentInstance 主链与端到端 smoke；当前正式任务链已验证 `training -> conversion -> deployment -> onnxruntime infer`，并已在真实工具链环境下补通 `training -> conversion(openvino-ir) -> deployment(openvino) -> infer` 与 `training -> conversion(tensorrt-engine) -> deployment(tensorrt) -> infer` 两条 smoke，运行时已补到 `pytorch / onnxruntime / openvino / tensorrt` 四后端 session。
+- RF-DETR detection / segmentation 已接通训练、转换、DeploymentInstance 主链与端到端 smoke；当前 builder 已统一通过 `rfdetr_core/factory.py` 构建 upstream-aligned full-core 模型，`rfdetr_core/detection.py` 与 `rfdetr_core/segmentation.py` 只保留 builder 和 postprocess adapter，不再保留旧 project-native 模型类。
+- RF-DETR 公开 scale 已按真实资产和 core 收窄：detection 为 `nano / s / m / l`，segmentation 为 `nano / s / m / l / x`；模型产物文件类型已独立为 `rfdetr-*`，不再复用 YOLOv8 文件类型。
+- RF-DETR full core 现在已有显式 checkpoint 和短时 smoke：`tests/integration/test_rfdetr_full_core_soak_benchmark.py` 在显式环境变量下会读取本地 detection `nano / s / m / l` 与 segmentation `nano / s / m / l / x` 预训练权重，输出 raw coverage 与真实加载路径 coverage；同一文件还覆盖 tiny detection / segmentation backward 和 ONNX conversion 数值摘要。2026-06-15 已用真实本地预训练 checkpoint 跑通全 scale 加载覆盖率，并用 detection nano / segmentation nano 跑通 ONNX、OpenVINO IR、TensorRT 10.16 engine 的短时转换验收。真实长时间训练和 deployment 常驻 soak 继续由目标机现场任务执行，不进入默认 pytest。
 - 非 Detection 训练管理 API 已补齐：classification/segmentation/pose/obb 各有 list/detail/save/pause/terminate/resume/delete 7 个端点。
 - OBB 训练损失已从占位 MSE 替换为完整实现：probiou + 旋转框 TAL + DFL + 角度损失（`backend/service/application/models/obb_loss.py`）。
 - Pose 训练损失已从占位 MSE 替换为完整实现：detection 损失 + 关键点位置损失 + 可见性 mask（`backend/service/application/models/pose_loss.py`）。
@@ -145,7 +147,7 @@
 - DeploymentInstance 负责把 ModelVersion 或 ModelBuild 绑定到 runtime backend、device、precision 和 deployment metadata。
 - InferenceTask 与同步 `/infer` 都只绑定 DeploymentInstance，不直接暴露 checkpoint 路径。
 
-## 当前运行时与发布矩阵
+## 当前运行时与发布状态
 
 ### 训练、验证与评估
 
@@ -156,6 +158,11 @@
 ### 转换输出
 
 - 当前 conversion 已真实接通 `onnx`、`onnx-optimized`、`openvino-ir` 和 `tensorrt-engine` 四类目标。
+- 当前 ONNX 导出默认优先使用 PyTorch 2.8 新 exporter：`torch.onnx.export(..., dynamo=True)`，转换环境必须安装 `onnxscript`。当前项目新 exporter 默认 opset 为 `18`，因为当前 PyTorch 2.8 + `onnxscript` 环境下 `opset 17` 对基础 `aten.convolution` lowering 不稳定。缺少该依赖时，转换会明确报错，相关真实导出测试会显式跳过。RF-DETR 是当前唯一明确例外：它会先尝试新 exporter；遇到当前 PyTorch 2.8 尚不支持的 RF-DETR lowering 路径时，按 `rfdetr_core/export/` 的受控逻辑回退到 TorchScript exporter，并在 metadata 中写入真实 exporter 模式，避免静默误判。
+- 2026-06-14 已在安装 `onnxscript 0.7.0` 的开发环境中跑通 RF-DETR detection full-core ONNX conversion 定点回归：`tests/test_rfdetr_conversion_worker.py::test_rfdetr_detection_conversion_worker_exports_full_core_onnx`。
+- RF-DETR 导出边界已下沉到 `backend/service/application/models/rfdetr_core/export/`。当前 `_onnx/` 按 `projectsrc/rf-detr/src/rfdetr/export/_onnx` 复制适配 `exporter.py / inference.py / symbolic.py`，`execution.py` 负责 checkpoint 读取、full-core 模型构建、输入尺寸对齐、ONNX 输出名、导出和数值校验。conversion runner 已瘦身为任务执行外壳；RF-DETR conversion planner 也已改为 RF-DETR 专属 planner，不再继承 YOLOX planner。
+- RF-DETR runtime 语义已下沉到 `backend/service/application/models/rfdetr_core/runtime.py`：统一处理 deployment 使用的输入尺寸对齐、输出名解析、detection / segmentation 后处理和 segmentation mask 单通道规整。RF-DETR predictor 已迁到 `backend/service/application/runtime/predictors/rfdetr.py` 与 `rfdetr_segmentation.py`，只保留 session、backend adapter、buffer、推理执行计时和结果序列化；runtime target resolver 已迁到 `backend/service/application/runtime/targets/rfdetr.py`。
+- 2026-06-15 已复跑 RF-DETR conversion/runtime 定点回归：`tests/test_rfdetr_conversion_worker.py` 为 `4 passed`，`tests/test_rfdetr_chain.py` 已补 detection runtime contract 回归；本轮针对 `tests/test_rfdetr_chain.py` 与 RF-DETR segmentation OpenVINO / TensorRT 真实 toolchain smoke 合并跑通 `12 passed`。同日还显式跑通 RF-DETR 全 scale checkpoint coverage smoke、detection / segmentation ONNX conversion validation smoke，并用真实 TensorRT engine 跑通 detection / segmentation 的 sync / async deployment runtime pool warmup、一次推理和 reset。
 - 当前 OpenVINO IR 创建接口按 `fp32` / `fp16` 拆分。
 - 当前 TensorRT engine 创建接口按 `fp32` / `fp16` 拆分，并把 build precision 与 TensorRT 版本回写到 `ModelBuild.metadata`。
 - 当前 classification / segmentation / pose / obb 的 conversion API 已补齐 list/detail/result 和 pending result 读取；segmentation conversion 额外支持 RF-DETR，其余 non-detection conversion 支持 YOLOv8 / YOLO11 / YOLO26。
@@ -168,15 +175,15 @@
 - 当前 deployment 已真实接通 `tensorrt fp32/fp16 cuda`。
 - 当前每个 DeploymentInstance 在 sync 和 async 两个通道上各自拥有独立的 deployment 子进程监督单元，不共享会话池。
 
-### 本轮轻量 smoke matrix
+### 本轮轻量 smoke 清单
 
-- 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke matrix：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
-- 这轮矩阵结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
+- 当前已经显式复跑一轮按 `model_type × task_type` 收口的轻量 smoke 清单：`tests/test_model_profiles.py`、`tests/test_yolov8_detection_model.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolo_primary_classification_chain.py`、`tests/test_yolo_primary_segmentation_chain.py`、`tests/test_yolo_primary_pose_chain.py`、`tests/test_yolo_primary_obb_chain.py`、`tests/test_rfdetr_chain.py`、`tests/test_non_detection_training_result_registration.py`、`tests/test_non_detection_inference_api.py`、`tests/test_validation_runtime_backend_support.py`。
+- 这轮结果当前为 `78 passed`，覆盖了 detection、classification、segmentation、pose、obb 五类任务，以及 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 的当前主链组合。
 - 这轮回归同时确认了 `/models/{task_type}` 已经在控制面收平：non-detection 当前已经具备 task-native 的同步 `/infer`、异步任务创建/详情/结果读取，以及 deployment `sync/async` 的 `start / status / stop / warmup / reset` 最小动作；`tests/test_non_detection_inference_api.py` 当前已经显式覆盖 `classification / segmentation / pose / obb` 四类任务的 async 前检查、sync `/infer`、async result round-trip 和 deployment 控制基础链。
-- 在这轮基础回归之外，当前还已经补了一条显式 non-detection training model_type matrix：`tests/test_non_detection_training_model_type_matrix.py`。这条快速回归已在 2026-06-12 跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条测试验证的是分发和登记边界，不把它写成“所有组合都做过长时间真实训练”。
-- 当前还已经扩展了显式 non-detection runtime backend matrix：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的 `conversion -> runtime predict` 闭环，结果为 `36 passed`。这条测试验证的是转换产物和 runtime 预测链，不等同于所有组合都做过长时间 deployment soak；RF-DETR segmentation 仍由 `tests/test_rfdetr_segmentation_task_smoke.py` 单独覆盖。
+- 在这轮基础回归之外，当前还已经补了一条显式 non-detection training model_type smoke：`tests/test_non_detection_training_model_type_matrix.py`。这条快速回归已在 2026-06-12 跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条测试验证的是分发和登记边界，不把它写成“所有组合都做过长时间真实训练”。
+- 当前还已经扩展了显式 non-detection runtime backend smoke：`tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`。这条 integration 已在 2026-06-12 真实跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的 `conversion -> runtime predict` 闭环，结果为 `36 passed`。这条测试验证的是转换产物和 runtime 预测链，不等同于所有组合都做过长时间 deployment soak；RF-DETR segmentation 由 `tests/test_rfdetr_segmentation_task_smoke.py` 与 2026-06-15 的真实 checkpoint conversion / deployment runtime pool smoke 单独覆盖。
 - 浏览器前端当前也已把 models / deployments / inference 三个调试页从 detection-only 路径改为显式 `task_type` 选择，并要求相关创建表单显式填写 `model_type`；训练任务详情页也已切到 `/models/{task_type}/training-tasks/{task_id}` 前端路由。相关页面和 service 内部残留的 `Detection*` 历史类型、函数和 payload 命名也已收成 `Model* / Task*`，避免 task-aware 页面继续带 detection-only 误导。当前 `output-files` 和 `register-model-version` 仍只在 detection 训练详情中显示，因为这两个调试端点当前只在 detection 训练控制面公开。本轮已通过 `frontend/web-ui` 的 `npm run build`。
-- 本轮代码收口还补了一轮完整默认回归：2026-06-12 使用 `D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_full_default -q` 跑通 `1290 passed`。这轮结果验证的是默认测试集、轻量 API、节点、workflow 和运行时边界；其中 PyTorch 2.8 的 legacy ONNX exporter、tracer 和 `cuda.cudart` deprecation warning 当前属于已知非阻塞警告，不把它写成导出失败或功能缺口。
+- 本轮代码收口还补了一轮完整默认回归：2026-06-12 使用 `D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_full_default -q` 跑通 `1290 passed`。这轮结果验证的是默认测试集、轻量 API、节点、workflow 和运行时边界；ONNX 导出现在优先走 PyTorch 2.8 dynamo exporter，RF-DETR 对当前不支持的 lowering 路径有显式 metadata 记录和受控 fallback。
 - 本轮还针对收口改动补跑了 `ruff check`、前端 `npm run build`、YOLOX evaluation、validation runtime、async inference gateway、deployment supervisor、workflow executor、local buffer broker 等定点回归，并确认仓库代码里不再使用旧 `object-detection` task_type 值，前端 task-aware 模块里也不再保留历史 `Detection*` 类型和函数名。
 
 ### custom node 运行时
@@ -209,7 +216,7 @@
 
 ### 2. 补强运行时回归与 benchmark
 
-- 在当前 non-detection runtime backend matrix 已扩到 36 项并跑通后，下一步更值得继续补的是长期 soak、显存/内存基线和更贴现场组合的 benchmark，而不是再回到最小链路可用性验证。
+- 在当前 non-detection runtime backend smoke 已扩到 36 项并跑通、RF-DETR 真实 checkpoint 转换和 deployment runtime pool smoke 也已补齐后，下一步更值得继续补的是 release/full 独立进程长时间 soak、显存/内存基线、日志和异常恢复样例，而不是再回到最小链路可用性验证。模型真实长时间训练不放入 pytest，后续由现场调试通过平台训练任务产生基线。
 - 把 conversion report、evaluation report 与 deployment benchmark 的字段进一步收敛成可比较、可回滚的统一结构。
 
 ### 3. 继续压缩遗留 YOLOX 命名与平台外壳
@@ -219,6 +226,8 @@
 
 ### 4. 继续硬化工程化交付面
 
-- 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产和 `ffmpeg/ffprobe` 工具目录纳入 `release/full/`。
+- 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产、`ffmpeg/ffprobe` 工具目录和本地 TensorRT runtime 目录纳入 `release/full/`。
 - 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件；这条验收现在也已固化为显式 integration 测试，并补了资源快照、日志文件、陈旧状态恢复和停止失败返回非 0 的检查。默认短时驻留，长时 soak 需要显式指定。
-- 下一步重点应转向发布目录的更长时间 soak、资源占用记录、日志/指标/排障补充，以及 `full` 目录向现场派生变体时的裁剪规范。这里不是“缺少启动验收入口”，而是还需要按目标机器和实际负载建立更长时间基线。
+- 2026-06-15 release/full integration 已补资源过程采样：`resource-baseline.json` 现在包含 `initial / final / samples / summary`，可直接看每个组件的 RSS、CPU 和线程变化。默认仍是短时验收，长时 soak 通过 `AMVISION_RELEASE_FULL_SOAK_SECONDS` 与 `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS` 显式打开。
+- 2026-06-15 在本机重新装配 `release/full` 并用 `release/full/python/python.exe` 复跑短时启停验收：端口 `18080`、驻留 `5` 秒，`tests/integration/test_release_full_stack_acceptance.py` 结果为 `1 passed`。本次确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和资源基线写入正常；长时间负载 soak 仍保留给现场目标机按实际任务执行。
+- 下一步重点应转向发布目录的更长时间现场 soak、日志/指标/异常恢复样例，以及 `full` 目录向现场派生变体时的裁剪规范。这里不是“缺少启动验收入口”，而是还需要按目标机器和实际负载建立更长时间基线。

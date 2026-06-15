@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from backend.service.application.runtime.yolox_core.utils.boxes import postprocess
+from backend.service.application.models.yolox_core.utils.boxes import postprocess
 
 
 def test_postprocess_accepts_inference_tensor_without_inplace_error() -> None:

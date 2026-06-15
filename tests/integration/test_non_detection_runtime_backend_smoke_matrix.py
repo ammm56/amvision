@@ -449,6 +449,7 @@ def _require_runtime_backend_toolchain(runtime_backend: str) -> None:
     """按 runtime backend 检查当前环境是否具备真实 toolchain。"""
 
     pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
     pytest.importorskip("onnxruntime")
     pytest.importorskip("onnxsim")
     if runtime_backend == "openvino":

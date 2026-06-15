@@ -52,6 +52,15 @@ def test_assemble_release_materializes_full_layout(
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
     assert (release_dir / "tools" / "ffmpeg" / "linux-x64" / "ffprobe").is_file()
+    assert (release_dir / "tools" / "tensorrt" / "bin" / "trtexec.exe").is_file()
+    assert (
+        release_dir / "tools" / "tensorrt" / "python" / "tensorrt-10.16.1.11-cp312.whl"
+    ).is_file()
+    assert (release_dir / "tools" / "tensorrt" / "doc" / "README.txt").is_file()
+    assert not (release_dir / "tools" / "tensorrt" / "include").exists()
+    assert not (release_dir / "tools" / "tensorrt" / "lib").exists()
+    assert (release_dir / "tools" / "cudnn" / "bin" / "12.9" / "x64" / "cudnn64_9.dll").is_file()
+    assert (release_dir / "tools" / "cudnn" / "LICENSE").is_file()
     assert (release_dir / "frontend" / "index.html").is_file()
     assert (release_dir / "frontend" / "runtime-config.json").is_file()
     assert (release_dir / "python").is_dir()
@@ -61,7 +70,7 @@ def test_assemble_release_materializes_full_layout(
     assert "torch==2.8.0" in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
-    assert "tensorrt-cu12==10.13.2.6" in requirements_text
+    assert "tensorrt-cu12==10.16.1.11" in requirements_text
 
     expected_worker_profile_ids = (
         "dataset-import",
@@ -387,6 +396,41 @@ def _patch_release_runtime_asset_sources(
     (source_ffmpeg_runtime_dir / "linux-x64" / "ffmpeg").write_text("ffmpeg", encoding="utf-8")
     (source_ffmpeg_runtime_dir / "linux-x64" / "ffprobe").write_text("ffprobe", encoding="utf-8")
     monkeypatch.setattr(release_assembly, "SOURCE_FFMPEG_RUNTIME_DIR", source_ffmpeg_runtime_dir)
+
+    source_tensorrt_runtime_dir = tmp_path / "source-tensorrt"
+    (source_tensorrt_runtime_dir / "bin").mkdir(parents=True, exist_ok=True)
+    (source_tensorrt_runtime_dir / "python").mkdir(parents=True, exist_ok=True)
+    (source_tensorrt_runtime_dir / "doc").mkdir(parents=True, exist_ok=True)
+    (source_tensorrt_runtime_dir / "include").mkdir(parents=True, exist_ok=True)
+    (source_tensorrt_runtime_dir / "lib").mkdir(parents=True, exist_ok=True)
+    (source_tensorrt_runtime_dir / "bin" / "trtexec.exe").write_text("trtexec", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "bin" / "nvinfer_11.dll").write_text("dll", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "python" / "tensorrt-10.16.1.11-cp312.whl").write_text(
+        "wheel",
+        encoding="utf-8",
+    )
+    (source_tensorrt_runtime_dir / "doc" / "README.txt").write_text("readme", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "include" / "NvInfer.h").write_text("header", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "lib" / "nvinfer.lib").write_text("lib", encoding="utf-8")
+    monkeypatch.setattr(
+        release_assembly,
+        "SOURCE_TENSORRT_RUNTIME_DIR",
+        source_tensorrt_runtime_dir,
+    )
+
+    source_cudnn_runtime_dir = tmp_path / "source-cudnn"
+    (source_cudnn_runtime_dir / "bin" / "12.9" / "x64").mkdir(parents=True, exist_ok=True)
+    (source_cudnn_runtime_dir / "bin" / "13.2" / "x64").mkdir(parents=True, exist_ok=True)
+    (source_cudnn_runtime_dir / "bin" / "12.9" / "x64" / "cudnn64_9.dll").write_text(
+        "cudnn",
+        encoding="utf-8",
+    )
+    (source_cudnn_runtime_dir / "LICENSE").write_text("license", encoding="utf-8")
+    monkeypatch.setattr(
+        release_assembly,
+        "SOURCE_CUDNN_RUNTIME_DIR",
+        source_cudnn_runtime_dir,
+    )
 
 
 def _load_module_from_file(module_name: str, file_path: Path) -> object:
