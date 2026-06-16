@@ -1082,7 +1082,7 @@
                 "training-tasks"
               ]
             },
-            "description": "默认轻量训练示例。以 DatasetExport 为唯一输入边界创建 detection 训练任务，并保持固定尺寸与轻量数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑最小调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create Detection Training Task - Reference Augmentation 请求。"
+            "description": "默认保守训练示例。以 DatasetExport 为唯一输入边界创建 detection 训练任务，并保持固定尺寸与保守数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑短链路调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create Detection Training Task - Reference Augmentation 请求。"
           },
           "response": []
         },
@@ -1142,7 +1142,7 @@
                 "training-tasks"
               ]
             },
-            "description": "reference 风格增强训练示例。当前请求会显式启用 flip_prob=0.5、hsv_prob=1.0、mosaic_prob=1.0、enable_mixup=true、mixup_prob=1.0、multiscale_range=5，并保持 ema=true。这样会进入 Mosaic/MixUp 与动态尺寸训练链，训练速度会比默认轻量示例更慢，但更接近 reference trainer 的增强行为。顶层字段 gpu_count、precision、input_size、evaluation_interval 仍建议直接放在请求体顶层，不建议重复塞进 extra_options。若需要同时使用平台基础预训练权重，可把 warm_start_model_version_id 改成对应的 ModelVersion id，并让 model_scale 与来源 scale 保持一致。"
+            "description": "reference 风格增强训练示例。当前请求会显式启用 flip_prob=0.5、hsv_prob=1.0、mosaic_prob=1.0、enable_mixup=true、mixup_prob=1.0、multiscale_range=5，并保持 ema=true。这样会进入 Mosaic/MixUp 与动态尺寸训练链，训练速度会比默认保守示例更慢，但更接近 reference trainer 的增强行为。顶层字段 gpu_count、precision、input_size、evaluation_interval 仍建议直接放在请求体顶层，不建议重复塞进 extra_options。若需要同时使用平台基础预训练权重，可把 warm_start_model_version_id 改成对应的 ModelVersion id，并让 model_scale 与来源 scale 保持一致。"
           },
           "response": []
         },

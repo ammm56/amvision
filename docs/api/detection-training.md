@@ -103,7 +103,7 @@
 
 #### extra_options 示例
 
-默认轻量训练示例：保持固定尺寸，关闭新增重增强。
+默认保守训练示例：保持固定尺寸，关闭新增重增强。
 
 ```json
 {
@@ -578,7 +578,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前训练输出文件目录约定
 
 - 所有当前训练输出文件都落在 task-runs/training/{task_id}/artifacts 下。
-- 当前最小真实训练在训练完成时会写出：
+- 当前 YOLOX core 训练在训练完成时会写出：
   - checkpoints/best_ckpt.pth：按最佳指标选出的 checkpoint。
   - checkpoints/latest_ckpt.pth：训练完成时的最新 checkpoint。
   - reports/train-metrics.json：训练过程指标和 epoch_history。
@@ -632,7 +632,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 ## 训练后全链路：验证、评估、转换、部署与推理
 
-当前训练链已经不只是“最小真实闭环”，而是已经打通训练后验证、评估、转换、DeploymentInstance 发布和同步 / 异步推理接口。训练详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，后续链路不再依赖临时脚本或裸模型路径拼接。
+当前训练链已经从早期闭环升级为完整主链路，已经打通训练后验证、评估、转换、DeploymentInstance 发布和同步 / 异步推理接口。训练详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，后续链路不再依赖临时脚本或裸模型路径拼接。
 
 ### 当前已完成的基础衔接
 

@@ -1018,7 +1018,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         if request.precision is not None and request.precision not in {"fp8", "fp16", "fp32"}:
             raise InvalidRequestError("precision 必须是 fp8、fp16 或 fp32")
         if request.precision == "fp8":
-            raise InvalidRequestError("当前最小真实训练暂不支持 fp8，当前可用值为 fp16 或 fp32")
+            raise InvalidRequestError("当前 YOLOX core 训练暂不支持 fp8，当前可用值为 fp16 或 fp32")
         if request.input_size is not None:
             if len(request.input_size) != 2 or any(not isinstance(item, int) for item in request.input_size):
                 raise InvalidRequestError("input_size 必须是包含两个整数的尺寸")
@@ -1319,7 +1319,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         attempt_no: int,
         output_object_prefix: str,
     ) -> YoloXTrainingTaskResult:
-        """执行当前阶段的最小真实 YOLOX detection 训练流程。"""
+        """执行 YOLOX detection core 训练流程。"""
 
         dataset_storage = self._require_dataset_storage()
         require_supported_dataset_export_format(

@@ -50,7 +50,7 @@ class OpenVINOYoloXRuntimeSession:
     属性：
     - dataset_storage：本地文件存储服务。
     - runtime_target：当前会话绑定的运行时快照。
-    - imports：轻量推理依赖集合。
+    - imports：基础推理依赖集合。
     - session：已经加载完成的 OpenVINO CompiledModel。
     - device_name：当前执行 device 名称。
     - input_name：模型输入张量名称。
@@ -81,7 +81,7 @@ class OpenVINOYoloXRuntimeSession:
         参数：
         - dataset_storage：本地文件存储服务。
         - runtime_target：当前会话绑定的运行时快照。
-        - imports：轻量推理依赖集合。
+        - imports：基础推理依赖集合。
         - session：已经加载完成的 OpenVINO CompiledModel。
         - device_name：当前执行 device 名称。
         - input_name：模型输入张量名称。

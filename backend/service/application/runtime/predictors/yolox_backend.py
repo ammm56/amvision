@@ -17,7 +17,7 @@ from backend.service.application.runtime.support.tensorrt_runtime import (
 
 @dataclass(frozen=True)
 class YoloXInferenceImports:
-    """描述轻量推理路径所需的第三方依赖对象。
+    """描述基础推理路径所需的第三方依赖对象。
 
     字段：
     - cv2：OpenCV 模块。
@@ -48,7 +48,7 @@ _TENSORRT_LOGGER_SEVERITY: int | None = None
 
 
 def require_yolox_inference_imports() -> YoloXInferenceImports:
-    """按需导入轻量推理路径所需依赖。
+    """按需导入基础推理路径所需依赖。
 
     返回：
     - YoloXInferenceImports：仅包含 OpenCV 与 NumPy 的依赖集合。
@@ -403,7 +403,7 @@ def normalize_yolox_onnxruntime_outputs(*, outputs: Any, imports: Any) -> Any:
 
     参数：
     - outputs：ONNXRuntime 原始输出列表。
-    - imports：轻量推理依赖集合。
+    - imports：基础推理依赖集合。
 
     返回：
     - Any：形状为 batch x boxes x channels 的 NumPy 数组。
@@ -431,7 +431,7 @@ def normalize_yolox_openvino_outputs(
     - outputs：OpenVINO infer_new_request 返回的输出字典。
     - output_port：主输出端口对象。
     - output_name：主输出端口名称。
-    - imports：轻量推理依赖集合。
+    - imports：基础推理依赖集合。
 
     返回：
     - Any：形状为 batch x boxes x channels 的 NumPy 数组。

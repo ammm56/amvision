@@ -874,7 +874,7 @@ def _resolve_precision(
             details={"precision": precision},
         )
     if precision == "fp8":
-        raise InvalidRequestError("当前最小真实训练暂不支持 fp8，当前可用值为 fp16 或 fp32")
+        raise InvalidRequestError("当前 YOLOX core 训练暂不支持 fp8，当前可用值为 fp16 或 fp32")
     if precision == "fp16" and not device.startswith("cuda"):
         raise InvalidRequestError("fp16 训练需要 CUDA 环境")
     if precision == "fp16" and not hasattr(imports.torch, "autocast"):

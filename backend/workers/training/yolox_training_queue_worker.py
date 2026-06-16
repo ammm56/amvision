@@ -12,7 +12,7 @@ from backend.workers.training.yolox_trainer_runner import SqlAlchemyYoloXTrainer
 
 
 class YoloXTrainingQueueWorker:
-    """消费 yolox-trainings 队列任务的最小 worker。"""
+    """消费 yolox-trainings 队列任务的 worker。"""
 
     def __init__(
         self,
