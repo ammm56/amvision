@@ -39,7 +39,7 @@ from backend.service.application.models.yolo_dataset_manifest_support import (
     normalize_yolo_category_names,
 )
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
+from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

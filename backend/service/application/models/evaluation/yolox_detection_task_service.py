@@ -1,4 +1,4 @@
-"""YOLOX 数据集级评估任务服务。"""
+"""YOLOX detection 数据集级评估任务服务。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ import zipfile
 
 from backend.queue import QueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
-from backend.service.application.models.yolox_detection_evaluation import (
+from backend.service.application.models.evaluation.yolox_detection import (
     YoloXEvaluator,
     YoloXDetectionEvaluationRequest,
     YoloXDetectionEvaluationResult,
@@ -26,7 +27,6 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_LABEL_MAP_FILE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.domain.tasks.yolox_task_specs import YoloXEvaluationTaskSpec
 from backend.service.infrastructure.db.session import SessionFactory
@@ -38,6 +38,12 @@ YOLOX_EVALUATION_TASK_KIND = "yolox-evaluation"
 YOLOX_EVALUATION_QUEUE_NAME = "yolox-evaluations"
 YOLOX_EVALUATION_DEFAULT_SCORE_THRESHOLD = 0.01
 YOLOX_EVALUATION_DEFAULT_NMS_THRESHOLD = 0.65
+YOLOX_EVALUATION_SUPPORTED_FORMATS = frozenset(
+    {
+        COCO_DETECTION_DATASET_FORMAT,
+        VOC_DETECTION_DATASET_FORMAT,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -281,7 +287,7 @@ class SqlAlchemyYoloXEvaluationTaskService:
                         "percent": 5.0,
                     },
                     "metadata": {
-                        "runner_mode": "yolox-evaluation-minimal",
+                        "runner_mode": "yolox-evaluation-core",
                         "output_object_prefix": output_object_prefix,
                         "requested_score_threshold": request.score_threshold,
                         "requested_nms_threshold": request.nms_threshold,
@@ -502,12 +508,13 @@ class SqlAlchemyYoloXEvaluationTaskService:
                     "status": dataset_export.status,
                 },
             )
-        if dataset_export.format_id != COCO_DETECTION_DATASET_FORMAT:
+        if dataset_export.format_id not in YOLOX_EVALUATION_SUPPORTED_FORMATS:
             raise InvalidRequestError(
-                "当前最小评估链只支持 coco-detection-v1",
+                "YOLOX detection 评估只支持 coco-detection-v1 或 voc-detection-v1",
                 details={
                     "dataset_export_id": dataset_export.dataset_export_id,
                     "format_id": dataset_export.format_id,
+                    "supported_format_ids": sorted(YOLOX_EVALUATION_SUPPORTED_FORMATS),
                 },
             )
         if dataset_export.manifest_object_key is None or not dataset_export.manifest_object_key.strip():
@@ -682,7 +689,7 @@ class SqlAlchemyYoloXEvaluationTaskService:
         """构建评估任务摘要。"""
 
         return {
-            "implementation_mode": "yolox-evaluation-minimal",
+            "implementation_mode": "yolox-evaluation-core",
             "model_version_id": request.model_version_id,
             "dataset_export_id": dataset_export.dataset_export_id,
             "dataset_version_id": dataset_export.dataset_version_id,

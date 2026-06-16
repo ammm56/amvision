@@ -23,7 +23,7 @@ from backend.nodes.text_encoder_runtime_support import (
     get_or_create_mobileclip_blt_text_encoder,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.runtime.support.detection import (
     batched_nms_indices,
     enable_pytorch_cuda_inference_fast_path,
     preprocess_image,

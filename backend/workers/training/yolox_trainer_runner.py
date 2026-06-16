@@ -7,7 +7,7 @@ from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
 )
-from backend.service.application.models.yolox_training_service import (
+from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory

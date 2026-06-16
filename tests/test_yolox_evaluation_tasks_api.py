@@ -12,6 +12,7 @@ from backend.queue import LocalFileQueueBackend
 import backend.service.application.models.detection_evaluation_task_service as detection_evaluation_task_service_module
 from backend.service.application.models.detection_evaluation import DetectionEvaluationResult
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
@@ -70,7 +71,7 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
                 },
             ),
             report_payload={
-                "implementation_mode": "yolox-evaluation-minimal",
+                "implementation_mode": "yolox-evaluation-core",
                 "model_version_id": model_version_id,
                 "dataset_export_id": dataset_export.dataset_export_id,
                 "dataset_version_id": dataset_export.dataset_version_id,
@@ -234,7 +235,7 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
                 },
             ),
             report_payload={
-                "implementation_mode": "yolox-evaluation-minimal",
+                "implementation_mode": "yolox-evaluation-core",
                 "model_version_id": model_version_id,
                 "dataset_export_id": dataset_export.dataset_export_id,
                 "dataset_version_id": dataset_export.dataset_version_id,
@@ -310,6 +311,43 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
         session_factory.engine.dispose()
 
 
+def test_create_yolox_evaluation_task_accepts_voc_dataset_export(tmp_path: Path) -> None:
+    """验证 YOLOX evaluation 应用层允许 VOC detection DatasetExport。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-evaluation-voc",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-evaluation-voc/manifest.json"
+        ),
+        format_id=VOC_DETECTION_DATASET_FORMAT,
+    )
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/models/detection/evaluation-tasks",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "model_version_id": model_version_id,
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                },
+            )
+
+        assert response.status_code == 202
+        assert response.json()["format_id"] == VOC_DETECTION_DATASET_FORMAT
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
@@ -328,6 +366,7 @@ def _seed_completed_dataset_export(
     dataset_storage: LocalDatasetStorage,
     dataset_export_id: str,
     manifest_object_key: str,
+    format_id: str = COCO_DETECTION_DATASET_FORMAT,
 ) -> DatasetExport:
     """写入一个已完成的 DatasetExport 资源和最小 manifest 文件。"""
 
@@ -337,7 +376,7 @@ def _seed_completed_dataset_export(
         dataset_id="dataset-1",
         project_id="project-1",
         dataset_version_id=f"dataset-version-{dataset_export_id}",
-        format_id=COCO_DETECTION_DATASET_FORMAT,
+        format_id=format_id,
         task_type="detection",
         status="completed",
         created_at=datetime.now(timezone.utc).isoformat(),
@@ -359,7 +398,7 @@ def _seed_completed_dataset_export(
     dataset_storage.write_json(
         manifest_object_key,
         {
-            "format_id": COCO_DETECTION_DATASET_FORMAT,
+            "format_id": format_id,
             "dataset_version_id": dataset_export.dataset_version_id,
             "category_names": ["bolt"],
             "splits": [

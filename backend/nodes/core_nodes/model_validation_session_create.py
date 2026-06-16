@@ -28,19 +28,19 @@ from backend.nodes.core_nodes._service_node_support import (
     require_workflow_service_node_runtime,
     resolve_created_by,
 )
-from backend.service.application.models.classification_validation_session_service import (
+from backend.service.application.models.validation.classification_session_service import (
     ClassificationValidationSessionCreateRequest,
 )
-from backend.service.application.models.detection_validation_session_service import (
+from backend.service.application.models.validation.detection_session_service import (
     DetectionValidationSessionCreateRequest,
 )
-from backend.service.application.models.obb_validation_session_service import (
+from backend.service.application.models.validation.obb_session_service import (
     ObbValidationSessionCreateRequest,
 )
-from backend.service.application.models.pose_validation_session_service import (
+from backend.service.application.models.validation.pose_session_service import (
     PoseValidationSessionCreateRequest,
 )
-from backend.service.application.models.segmentation_validation_session_service import (
+from backend.service.application.models.validation.segmentation_session_service import (
     SegmentationValidationSessionCreateRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest

@@ -20,7 +20,7 @@ from backend.service.application.conversions.yolo11_conversion_task_service impo
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     SqlAlchemyRfdetrConversionTaskService,
 )
-from backend.service.application.models.classification_validation_session_service import (
+from backend.service.application.models.validation.classification_session_service import (
     LocalClassificationValidationSessionService,
 )
 from backend.service.application.models.classification_inference_task_service import (
@@ -32,7 +32,7 @@ from backend.service.application.models.detection_evaluation_task_service import
 from backend.service.application.models.detection_inference_task_service import (
     SqlAlchemyDetectionInferenceTaskService,
 )
-from backend.service.application.models.detection_validation_session_service import (
+from backend.service.application.models.validation.detection_session_service import (
     LocalDetectionValidationSessionService,
 )
 from backend.service.application.models.obb_evaluation_task_service import (
@@ -59,7 +59,7 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
-from backend.service.application.models.yolox_training_service import (
+from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
 )
 from backend.service.application.workflows.service_node_runtime import (

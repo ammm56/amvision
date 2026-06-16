@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.service.application.models import classification_validation_session_service as classification_validation
-from backend.service.application.models import detection_validation_session_service as detection_validation
-from backend.service.application.models import obb_validation_session_service as obb_validation
-from backend.service.application.models import pose_validation_session_service as pose_validation
-from backend.service.application.models import segmentation_validation_session_service as segmentation_validation
+from backend.service.application.models.validation import classification_session_service as classification_validation
+from backend.service.application.models.validation import detection_session_service as detection_validation
+from backend.service.application.models.validation import obb_session_service as obb_validation
+from backend.service.application.models.validation import pose_session_service as pose_validation
+from backend.service.application.models.validation import segmentation_session_service as segmentation_validation
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,

@@ -64,7 +64,7 @@
 
 | 组合 | 当前主证据 |
 | --- | --- |
-| `yolox + detection` | `tests/test_yolox_training_api.py`、`tests/test_yolox_conversion_tasks_api.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolox_validation_sessions_api.py` |
+| `yolox + detection` | `tests/test_yolox_training_api.py`、`tests/test_yolox_conversion_tasks_api.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolox_validation_sessions_api.py`、`tests/test_yolox_voc_dataset_support.py`；当前训练和评估输入支持 `coco-detection-v1` 与 `voc-detection-v1` |
 | `yolov8 + classification` | `tests/test_yolo_primary_classification_chain.py` |
 | `yolo11 + classification` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py`、`docs/api/postman/classification-full-chain.postman_collection.json` |
 | `yolov8 + segmentation` | `tests/test_yolo_primary_segmentation_chain.py` |

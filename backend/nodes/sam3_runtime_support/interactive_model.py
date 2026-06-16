@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.runtime.support.detection import (
     enable_pytorch_cuda_inference_fast_path,
     resolve_execution_device_name,
 )

@@ -1,4 +1,4 @@
-"""YOLOX 训练任务创建服务。"""
+"""YOLOX detection 训练任务服务。"""
 
 from __future__ import annotations
 
@@ -14,16 +14,16 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolox_detection_training import (
-    run_yolox_detection_training,
+from backend.service.application.models.training.yolox_detection import (
+    YOLOX_CORE_DEFAULT_EVALUATION_INTERVAL,
     YoloXTrainingBatchProgress,
     YoloXTrainingControlCommand,
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
-    YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL,
     YoloXDetectionTrainingExecutionRequest,
+    run_yolox_detection_training,
 )
 from backend.service.application.models.detection_training_rules import (
     DetectionTrainingOutputFiles,
@@ -815,7 +815,7 @@ class SqlAlchemyYoloXTrainingTaskService:
                         "evaluated_epochs": [],
                     },
                     "metadata": {
-                        "runner_mode": "yolox-detection-minimal",
+                        "runner_mode": "yolox-detection-core",
                         "output_object_prefix": output_object_prefix,
                         "validation_metrics_object_key": validation_metrics_object_key,
                         "requested_precision": request.precision,
@@ -1874,7 +1874,7 @@ class SqlAlchemyYoloXTrainingTaskService:
         extra_option_value = request.extra_options.get("evaluation_interval")
         if isinstance(extra_option_value, int) and extra_option_value > 0:
             return extra_option_value
-        return YOLOX_MINIMAL_DEFAULT_EVALUATION_INTERVAL
+        return YOLOX_CORE_DEFAULT_EVALUATION_INTERVAL
 
     def _build_progress_percent(
         self,

@@ -28,7 +28,7 @@ from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.yolox_detection_runtime import (
+from backend.service.application.runtime.predictors.yolox import (
     OpenVINODetectionRuntimeSession,
     OnnxRuntimeDetectionRuntimeSession,
     PyTorchDetectionRuntimeSession,

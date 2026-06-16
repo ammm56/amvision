@@ -6,25 +6,26 @@ from datetime import datetime, timezone
 import io
 from pathlib import Path
 from threading import Event, Thread
-from types import SimpleNamespace
 import torch
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.models.yolox_training_service as yolox_training_service_module
+import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
 from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.service.application.models.yolox_detection_training import (
+from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
-    _build_checkpoint_state,
-    _load_resume_checkpoint,
+)
+from backend.service.application.models.yolox_core.training import (
+    build_yolox_checkpoint_state as _build_checkpoint_state,
+    load_yolox_resume_checkpoint,
 )
 from backend.service.application.models.model_service import SqlAlchemyModelService
-from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
+from backend.service.application.models.training.yolox_detection_task_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
@@ -521,7 +522,7 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert payload["summary_object_key"].endswith("/training-summary.json")
         assert payload["evaluation_interval"] == 5
         assert payload["precision"] == "fp32"
-        assert payload["training_summary"]["implementation_mode"] == "yolox-detection-minimal"
+        assert payload["training_summary"]["implementation_mode"] == "yolox-detection-core"
         assert payload["training_summary"]["precision"] == "fp32"
         assert payload["training_summary"]["validation"]["enabled"] is True
         assert payload["training_summary"]["validation"]["evaluation_interval"] == 5
@@ -652,7 +653,7 @@ def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: P
         assert payload["file_status"] == "ready"
         assert payload["task_state"] == "succeeded"
         assert payload["object_key"].endswith("/train-metrics.json")
-        assert payload["payload"]["implementation_mode"] == "yolox-detection-minimal"
+        assert payload["payload"]["implementation_mode"] == "yolox-detection-core"
         assert payload["payload"]["evaluation_interval"] == 5
         assert isinstance(payload["payload"]["epoch_history"], list)
     finally:
@@ -787,7 +788,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
                         "validation_metrics": {"map50": 0.62, "map50_95": 0.41},
                     },
                     "metadata": {
-                        "runner_mode": "yolox-detection-minimal",
+                        "runner_mode": "yolox-detection-core",
                         "output_object_prefix": output_object_prefix,
                         "validation_metrics_object_key": validation_metrics_object_key,
                         "requested_precision": "fp16",
@@ -925,7 +926,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
         assert summary_response.status_code == 200
         summary_payload = summary_response.json()
         assert summary_payload["file_status"] == "ready"
-        assert summary_payload["payload"]["implementation_mode"] == "yolox-detection-minimal"
+        assert summary_payload["payload"]["implementation_mode"] == "yolox-detection-core"
 
         assert labels_response.status_code == 200
         labels_payload = labels_response.json()
@@ -1722,8 +1723,8 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
         assert request.resume_checkpoint_path.is_file()
         resumed_model = torch.nn.Linear(4, 2)
         resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=0.01)
-        _load_resume_checkpoint(
-            imports=SimpleNamespace(torch=torch),
+        load_yolox_resume_checkpoint(
+            torch_module=torch,
             model=resumed_model,
             optimizer=resumed_optimizer,
             checkpoint_path=request.resume_checkpoint_path,
@@ -1855,8 +1856,8 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
         assert request.resume_checkpoint_path.is_file()
         resumed_model = torch.nn.Linear(4, 2)
         resumed_optimizer = torch.optim.SGD(resumed_model.parameters(), lr=0.01)
-        _load_resume_checkpoint(
-            imports=SimpleNamespace(torch=torch),
+        load_yolox_resume_checkpoint(
+            torch_module=torch,
             model=resumed_model,
             optimizer=resumed_optimizer,
             checkpoint_path=request.resume_checkpoint_path,
@@ -2071,7 +2072,7 @@ def _build_fake_epoch_progress(
         train_metrics={"total_loss": max(0.05, 0.8 - (0.1 * epoch)), "lr": 0.001},
         validation_metrics={"map50": best_metric_value + 0.1, "map50_95": best_metric_value},
         train_metrics_snapshot={
-            "implementation_mode": "yolox-detection-minimal",
+            "implementation_mode": "yolox-detection-core",
             "device": "cpu",
             "gpu_count": 0,
             "device_ids": [],
@@ -2280,7 +2281,7 @@ def _build_fake_execution_result(
         checkpoint_bytes=b"best-final",
         latest_checkpoint_bytes=b"latest-final",
         metrics_payload={
-            "implementation_mode": "yolox-detection-minimal",
+            "implementation_mode": "yolox-detection-core",
             "device": "cpu",
             "gpu_count": 0,
             "device_ids": [],
@@ -2339,7 +2340,7 @@ def _build_fake_execution_result(
             ],
         },
         warm_start_summary={"enabled": False},
-        implementation_mode="yolox-detection-minimal",
+        implementation_mode="yolox-detection-core",
         best_metric_name="val_map50_95",
         best_metric_value=best_metric_value,
         evaluation_interval=1,

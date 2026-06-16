@@ -69,7 +69,7 @@ YOLO 系列长期按下面五层理解：
 - `backend/service/application/models/*_training_service.py`、`*_evaluation_task_service.py`、`*_inference_task_service.py` 这类文件属于应用服务层，负责任务参数、状态、产物登记和数据库交互，不属于模型 core。
 - `backend/service/application/models/*_training.py`、`*_evaluation.py` 里如果包含 loss、assigner、target 编码、数据增强或权重映射，应逐步拆入对应 `*_core/`；如果只是任务执行外壳，则保留在应用服务层或后续再按任务目录整理。
 - `backend/service/application/runtime/`：放推理后端加载、长驻会话、同步/异步推理包装、进程健康检查、warmup、reset 和资源释放。
-- `backend/service/application/runtime/*_predictor.py` 可以后续按任务或模型整理成子目录，但不应整体移动到 `*_core/`。predictor 依赖 ONNXRuntime、OpenVINO、TensorRT、CUDA buffer、session pool 和结果序列化，属于 deployment runtime 外壳。
+- `backend/service/application/runtime/predictors/*.py` 放 deployment predictor 外壳，不应整体移动到 `*_core/`。predictor 依赖 ONNXRuntime、OpenVINO、TensorRT、CUDA buffer、session pool 和结果序列化，属于 deployment runtime 外壳。
 - service / worker 层只调用 core 的正式入口，不直接理解 head、loss、assigner 内部细节。
 
 `YOLOX` core 已从历史 `backend/service/application/runtime/yolox_core/` 迁到 `backend/service/application/models/yolox_core/`。runtime 目录不再保留 YOLOX core 旧目录，只保留 YOLOX 推理加载和会话外壳。
@@ -117,7 +117,7 @@ YOLO 系列长期按下面五层理解：
 
 模型导出实现必须归属于各自模型 core，不再长期堆在单一 conversion runner 或共享 helper 文件里。
 
-- `backend/service/application/models/yolox_core/export/`：放 YOLOX detection 的 ONNX export forward、输出名、动态轴、数值校验辅助和后续 OpenVINO / TensorRT 前置规则。
+- `backend/service/application/models/yolox_core/export/`：放 YOLOX detection 的导出逻辑，`onnx.py` 负责 ONNX export / simplify / 数值校验，`openvino.py` 负责 OpenVINO IR 构建，`tensorrt.py` 负责 TensorRT engine 构建，`execution.py` 只保留薄入口。
 - `backend/service/application/models/yolov8_core/export/`：放 YOLOv8 各 task 的导出 forward、输出包装和 task-specific shape 规则。
 - `backend/service/application/models/yolo11_core/export/`：放 YOLO11 各 task 的导出 forward、输出包装和 task-specific shape 规则。
 - `backend/service/application/models/yolo26_core/export/`：放 YOLO26 各 task 的导出 forward、输出包装和 task-specific shape 规则。
@@ -246,8 +246,17 @@ backend/service/application/models/yolox_core/
 当前状态和剩余动作：
 
 - `runtime/yolox_core/models`、`runtime/yolox_core/utils` 和 `runtime/yolox_core/data` 已整体迁到 `models/yolox_core/`。
-- 继续把 `yolox_detection_training.py` 中的数据增强、训练循环、loss 调用、EMA、scheduler 和 checkpoint 逻辑下沉到 `yolox_core/training/`。
-- `yolox_detection_runtime.py` 只保留 runtime session、输入输出序列化、backend adapter 和 deployment 资源管理。
+- 已补 `yolox_core/cfg/detection.py`、`models/build.py` 和 `weights.py`：YOLOX scale profile、输入尺寸规则、模型构建、checkpoint state_dict 提取、warm start 加载和覆盖率摘要已经有正式 core 入口。
+- 已补 `yolox_core/data/datasets/`：`coco.py` 承接本项目 `coco-detection-v1` DatasetExport 读取、split 解析和 COCO ground truth 静默加载；`voc.py` 承接本项目 `voc-detection-v1` DatasetExport 读取、VOC XML annotation 解析、ImageSets split 解析和评估用 COCO ground truth 生成。`data/datasets/detection.py` 现在是 YOLOX detection 数据入口，训练和评估链都通过它按 DatasetExport format 选择 COCO 或 VOC。
+- 已补 `yolox_core/evaluators/`：`coco.py` 提供 COCO bbox mAP 和 per-class 指标工具，`pytorch.py` 承接 DatasetExport split 选择、PyTorch checkpoint 加载、DataLoader 构建和 evaluator 执行；VOC 输入会在 core 内生成评估用 COCO ground truth 后复用同一套 bbox mAP 指标。`models/evaluation/yolox_detection.py` 只保留应用层稳定入口。
+- 已补 `yolox_core/training/trainer.py` 和 `training/execution.py`：YOLOX 训练进度、batch heartbeat、pause/save 控制对象、默认训练参数、schedule/no-aug 规则、batch 预处理、optimizer、LR scheduler、ModelEMA、resume checkpoint 校验、checkpoint state 构建、序列化、训练参数解析、数据链构建、验证评估闭包和训练执行入口已经从应用层迁入 core。
+- `models/training/yolox_detection.py` 已收成薄应用入口，只保留 `run_yolox_detection_training` 稳定调用名和训练任务服务需要的公开类型导出；`models/training/yolox_detection_task_service.py` 承接 YOLOX detection 训练任务服务。
+- `models/evaluation/yolox_detection_task_service.py` 已承接 YOLOX detection 数据集级评估任务服务，新建 `models/evaluation/` 目录作为评估任务服务归类位置。
+- 旧的 YOLOX 专用 validation session 服务已删除；五类 validation session 服务已统一归类到 `models/validation/`，包括 `detection_session_service.py`、`classification_session_service.py`、`segmentation_session_service.py`、`pose_session_service.py` 和 `obb_session_service.py`。
+- 已补 `yolox_core/export/`：ONNX 导出、ONNX 数值校验、ONNX simplify、OpenVINO IR 构建和 TensorRT engine 构建前置规则已从 `yolox_conversion_runner.py` 迁入 core，并按 `onnx.py / openvino.py / tensorrt.py` 拆分；worker 只保留转换计划执行、object key 组装、文件类型登记和结果 metadata 汇总。
+- 已补 `yolox_core/postprocess/detection.py`：ONNXRuntime / OpenVINO / TensorRT 推理输出数组规范化、score / class 过滤、batched NMS 和 detection record 组装已从 YOLOX predictor 外壳迁入 core。
+- `runtime/predictors/yolox.py` 已承接 YOLOX deployment predictor 外壳，保留 session、backend adapter、CUDA buffer、图片预处理和结果序列化；YOLOX detection 预览画框已拆到 `yolox_core/postprocess/preview.py`，runtime 只按推理请求里的 `save_result_image` 参数决定是否调用。独立 detection 推理服务默认输出带框预览，workflow 模型节点可以显式传 `save_result_image=false` 关闭。原平铺 `runtime/yolox_detection_runtime.py` 已删除。
+- `runtime/support/detection.py` 已承接 detection runtime 共享 helper 的路径归类；原平铺 `runtime/detection_runtime_support.py` 已删除，后续共享 helper 不再继续放到 runtime 根目录。
 - `backend/service/application/runtime/yolox_core/` 已删除，后续不得恢复旧目录。
 
 ### YOLOv8 / YOLO11 / YOLO26
@@ -771,9 +780,9 @@ Pose 专属 loss / target 编码已开始下沉到共用边界：
 - 已完成本批：`rfdetr_core/export/` 已建立导出规范入口，当前包含 detection / segmentation 输出名、参考仓库输出别名、full-core export tuple 到本项目 `pred_logits / pred_boxes / pred_masks` 的稳定转换、ONNX 数值校验、ONNX simplify、OpenVINO IR 构建和 TensorRT builder 调用。
 - 已完成本批：`rfdetr_core/runtime.py` 已承接 runtime 语义入口，统一处理 RF-DETR deployment 使用的输入尺寸对齐、输出名解析、detection / segmentation 后处理和 segmentation mask 单通道规整；runtime predictor 只保留 session、backend adapter、buffer、执行计时和结果序列化。
 - 已完成本批：`training/rfdetr_detection.py`、`training/rfdetr_segmentation.py` 已切到 `rfdetr_core/training/platform_runner.py`，旧手写 loss、matcher、mask loss 和 eval 逻辑已删除。
-- 下一批：先继续收 RF-DETR 外层代码边界；checkpoint、短时训练、ONNX conversion、真实 checkpoint OpenVINO / TensorRT 转换和 deployment runtime pool smoke 已有显式记录，接下来重点是 release/full 独立进程长时间 soak、日志/资源基线和 runtime 目录平铺结构整理。
+- 下一批：继续收 YOLOX 纵向闭环；旧 COCO DatasetExport 重复块已删除，COCO/VOC DatasetExport 训练与评估入口已统一到 `yolox_core/data/datasets/detection.py`，checkpoint state、EMA、scheduler、resume 校验、训练 loop、验证评估编排、conversion export、runtime detection 后处理和 YOLOX 预览画框已分别进入 `yolox_core/training`、`evaluators`、`export` 和 `postprocess`。YOLOX deployment session 已移到 `runtime/predictors/yolox.py`，detection 共享 helper 已移到 `runtime/support/detection.py`，下一步继续整理 task/runtime support 中剩余的通用外壳。
 - 后续批次：再按 YOLOX、YOLOv8 / YOLO11 / YOLO26 的顺序清理 service / worker / runtime 中散落的模型核心代码，只保留任务、文件、状态、产物登记、runtime session 和 deployment 外壳。
-- runtime 目录整理当前只完成 RF-DETR 第一层：`runtime/predictors/rfdetr*.py`、`runtime/targets/rfdetr.py` 和 `runtime/support/tensorrt_runtime.py` 已从平铺目录拆出；YOLOX 与 YOLOv8 / YOLO11 / YOLO26 的 predictor、target 和 serialization 平铺文件后续按模型纵向闭环再迁，不在 RF-DETR 收口阶段一次横向搬完。
+- runtime 目录整理当前已完成 RF-DETR 第一层和 YOLOX predictor 第一层：`runtime/predictors/rfdetr*.py`、`runtime/predictors/yolox.py`、`runtime/targets/rfdetr.py`、`runtime/support/tensorrt_runtime.py` 和 `runtime/support/detection.py` 已从平铺目录拆出；YOLOv8 / YOLO11 / YOLO26 的 predictor、target 和 serialization 平铺文件后续按模型纵向闭环再迁。
 - RF-DETR：不再继续把轻量实现当长期目标，后续重点转为真实使用训练调试、多 backend 部署验收、release/full 常驻基线和 runtime 目录平铺结构整理。
 - 全链路切换：每个 core 包最终必须通过数据集导入/导出、训练、验证、评估、转换、deployment sync/async、推理、workflow invoke 和前端创建任务查看结果。
 

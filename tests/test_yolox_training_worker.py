@@ -15,25 +15,39 @@ from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.errors import InvalidRequestError
-import backend.service.application.models.yolox_detection_training as yolox_detection_training_module
-from backend.service.application.models.yolox_detection_training import (
+import backend.service.application.models.yolox_core.training.execution as yolox_training_execution_module
+from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionRequest,
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
-    _LoadedResumeState,
-    _build_checkpoint_state,
-    _load_coco_ground_truth_silently,
-    _load_resume_checkpoint,
-    _release_yolox_training_runtime_resources,
-    _resolve_input_size,
     run_yolox_detection_training,
 )
-import backend.service.application.models.yolox_training_service as yolox_training_service_module
+from backend.service.application.models.yolox_core.cfg import (
+    YOLOX_SUPPORTED_MODEL_SCALES,
+    resolve_yolox_input_size,
+)
+from backend.service.application.models.yolox_core.data.datasets import (
+    load_coco_ground_truth_silently,
+)
+from backend.service.application.models.yolox_core.dependencies import (
+    require_yolox_core_dependencies,
+)
+from backend.service.application.models.yolox_core.models import build_yolox_detection_model
+from backend.service.application.models.yolox_core.training import (
+    LoadedYoloXResumeState,
+    build_yolox_checkpoint_state as _build_checkpoint_state,
+    load_yolox_resume_checkpoint,
+    release_yolox_training_runtime_resources,
+)
+from backend.service.application.models.yolox_core.weights import (
+    extract_yolox_checkpoint_state_dict,
+)
+import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
 from backend.service.application.models.model_service import (
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,
 )
-from backend.service.application.models.yolox_training_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
+from backend.service.application.models.training.yolox_detection_task_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -47,7 +61,7 @@ def test_release_yolox_training_runtime_resources_clears_cuda_cache(monkeypatch)
     """验证训练 runtime 清理会主动触发 gc 与 CUDA cache 回收。"""
 
     calls: list[str] = []
-    monkeypatch.setattr(yolox_detection_training_module.gc, "collect", lambda: calls.append("gc"))
+    monkeypatch.setattr(yolox_training_execution_module.gc, "collect", lambda: calls.append("gc"))
     cuda_module = SimpleNamespace(
         is_available=lambda: True,
         empty_cache=lambda: calls.append("empty_cache"),
@@ -56,7 +70,7 @@ def test_release_yolox_training_runtime_resources_clears_cuda_cache(monkeypatch)
     imports = SimpleNamespace(torch=SimpleNamespace(cuda=cuda_module))
     runtime = SimpleNamespace(device="cuda:0")
 
-    _release_yolox_training_runtime_resources(imports=imports, runtime=runtime)
+    release_yolox_training_runtime_resources(imports=imports, runtime=runtime)
 
     assert calls == ["gc", "empty_cache", "ipc_collect"]
 
@@ -64,7 +78,7 @@ def test_release_yolox_training_runtime_resources_clears_cuda_cache(monkeypatch)
 def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> None:
     """验证本地预训练 YOLOX checkpoint 与项目内模型结构逐 scale 严格兼容。"""
 
-    imports = yolox_detection_training_module._require_training_imports()
+    imports = require_yolox_core_dependencies()
     pretrained_root = (
         Path(__file__).resolve().parents[1]
         / "data"
@@ -76,7 +90,7 @@ def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> 
     )
     failures: list[str] = []
 
-    for model_scale in yolox_detection_training_module.YOLOX_SUPPORTED_MODEL_SCALES:
+    for model_scale in YOLOX_SUPPORTED_MODEL_SCALES:
         manifest_path = pretrained_root / model_scale / "default" / "manifest.json"
         if not manifest_path.is_file():
             failures.append(f"{model_scale}: manifest 不存在")
@@ -90,9 +104,7 @@ def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> 
 
         checkpoint_path = manifest_path.parent / checkpoint_path_value
         checkpoint_payload = imports.torch.load(str(checkpoint_path), map_location="cpu")
-        raw_state_dict = yolox_detection_training_module._extract_checkpoint_state_dict(
-            checkpoint_payload
-        )
+        raw_state_dict = extract_yolox_checkpoint_state_dict(checkpoint_payload)
         normalized_state_dict = {
             key.removeprefix("module."): value
             for key, value in raw_state_dict.items()
@@ -111,8 +123,8 @@ def test_local_pretrained_yolox_checkpoints_match_internal_model_structure() -> 
             continue
 
         num_classes = int(cls_pred_weight.shape[0])
-        model = yolox_detection_training_module._build_yolox_model(
-            imports=imports,
+        model = build_yolox_detection_model(
+            torch_module=imports.torch,
             model_scale=model_scale,
             num_classes=num_classes,
         )
@@ -204,7 +216,7 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert completed_task.task.result["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
         assert completed_task.task.result["validation_metrics_object_key"].endswith("/validation-metrics.json")
         assert completed_task.task.result["summary_object_key"].endswith("/training-summary.json")
-        assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-minimal"
+        assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-core"
         assert completed_task.task.result["summary"]["precision"] == "fp32"
         assert completed_task.task.result["summary"]["evaluation_interval"] == 5
         assert completed_task.task.result["summary"]["validation"]["enabled"] is True
@@ -353,8 +365,8 @@ def test_load_coco_ground_truth_silently_suppresses_stdout(tmp_path: Path, capsy
             print("index created!")
             return {"annotation_path": annotation_path}
 
-    result = _load_coco_ground_truth_silently(
-        imports=SimpleNamespace(COCO=_FakeCOCOFactory()),
+    result = load_coco_ground_truth_silently(
+        coco_class=_FakeCOCOFactory(),
         annotation_file=annotation_file,
     )
 
@@ -533,7 +545,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
                     evaluated_epochs=(5,),
                     train_metrics={"total_loss": 0.8, "lr": 0.001},
                     train_metrics_snapshot={
-                        "implementation_mode": "fake-yolox-detection-minimal",
+                        "implementation_mode": "fake-yolox-detection-core",
                         "device": "cpu",
                         "gpu_count": 0,
                         "device_ids": [],
@@ -581,7 +593,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             checkpoint_bytes=b"best-checkpoint",
             latest_checkpoint_bytes=b"latest-checkpoint",
             metrics_payload={
-                "implementation_mode": "fake-yolox-detection-minimal",
+                "implementation_mode": "fake-yolox-detection-core",
                 "device": "cpu",
                 "gpu_count": 0,
                 "device_ids": [],
@@ -606,7 +618,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
             },
             validation_metrics_payload=validation_snapshot,
             warm_start_summary={"enabled": False},
-            implementation_mode="fake-yolox-detection-minimal",
+            implementation_mode="fake-yolox-detection-core",
             best_metric_name="val_map50_95",
             best_metric_value=0.41,
             evaluation_interval=5,
@@ -647,7 +659,7 @@ def test_training_service_writes_intermediate_validation_snapshot_on_evaluation_
 def test_real_training_default_input_size_is_640_square() -> None:
     """验证真实训练默认输入尺寸已经提升到 640x640。"""
 
-    assert _resolve_input_size(None) == (640, 640)
+    assert resolve_yolox_input_size(None) == (640, 640)
 
 
 def test_load_resume_checkpoint_rejects_mismatched_validation_configuration(
@@ -690,8 +702,8 @@ def test_load_resume_checkpoint_rejects_mismatched_validation_configuration(
         InvalidRequestError,
         match="resume checkpoint 的 evaluation_interval 与当前任务不一致",
     ):
-        _load_resume_checkpoint(
-            imports=SimpleNamespace(torch=torch),
+        load_yolox_resume_checkpoint(
+            torch_module=torch,
             model=resumed_model,
             optimizer=resumed_optimizer,
             checkpoint_path=checkpoint_path,
@@ -729,7 +741,7 @@ def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
 
     def fake_load_resume_checkpoint(**kwargs):
         captured["expected_validation_split_name"] = kwargs.get("expected_validation_split_name")
-        return _LoadedResumeState(
+        return LoadedYoloXResumeState(
             resume_epoch=1,
             epoch_history=[],
             validation_history=[],
@@ -740,7 +752,7 @@ def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
         )
 
     monkeypatch.setattr(
-        yolox_detection_training_module,
+        yolox_training_execution_module,
         "_load_resume_checkpoint",
         fake_load_resume_checkpoint,
     )

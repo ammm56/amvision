@@ -589,7 +589,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前 training_summary 重点内容
 
-- implementation_mode：当前训练执行模式，当前值为 yolox-detection-minimal。
+- implementation_mode：当前训练执行模式，当前值为 yolox-detection-core。
 - requested_gpu_count / gpu_count：请求的 GPU 数量与实际生效的 GPU 数量。
 - requested_precision / precision：请求的 precision 与实际生效的 precision。
 - device / device_ids / distributed_mode：训练运行设备信息。
@@ -762,8 +762,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前实现边界
 
-- 当前最小评估链只支持 `coco-detection-v1` 导出输入
-- 当前评估执行复用本地 PyTorch checkpoint 和项目内 detection 最小 COCO mAP 评估逻辑
+- YOLOX detection 当前支持 `coco-detection-v1` 和 `voc-detection-v1` 两种 DatasetExport 输入
+- 当前评估执行复用本地 PyTorch checkpoint 和项目内 YOLOX core bbox mAP 评估逻辑；VOC 输入会先在 core 内生成评估用 COCO ground truth
 - 当前 `per_class_metrics` 提供 `category_id`、`class_index`、`class_name`、`ground_truth_count`、`detection_count`、`ap50` 和 `ap50_95`
 - 当前 `result-package` 为 zip 文件，包含 `report.json` 和 `detections.json`
 - 当前 `save_result_package=false` 时仍会生成 report 和 detections，但不会写 zip 结果包
@@ -971,6 +971,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `return_preview_image_base64`
 - `extra_options`
 
+`save_result_image` 不传时默认 `true`，用于独立推理服务调试时直接生成带框预览图；如果只需要结构化检测结果，或由 workflow 后续节点单独渲染预览，应显式传 `false`。
+
 #### 当前 inference 输入规则
 
 - 当前正式推理支持 `application/json` 和 `multipart/form-data`
@@ -1063,7 +1065,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前已经公开按目标格式拆分的 conversion-tasks create/list/detail/result 接口，可直接把训练产出的 source ModelVersion 转成 ONNX、optimized ONNX、OpenVINO IR 或 TensorRT engine，并登记为独立 ModelBuild。
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求，并真实消费 `tensorrt-engine` ModelBuild。
-- 当前最小真实训练执行链只支持 coco-detection-v1 输入、单条 detection 训练链路；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
+- 当前 YOLOX detection 真实训练执行链支持 `coco-detection-v1` 和 `voc-detection-v1` 输入；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
 - 当前 GPU 数量控制采用单机单进程模式；gpu_count 大于 1 时使用 DataParallel，不引入 exp 文件体系或分布式脚本。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。

@@ -1,9 +1,6 @@
-"""YOLOX 转换 worker 接口与 ONNX/OpenVINO/TensorRT 实现。"""
+"""YOLOX 转换 worker 接口。"""
 
 from __future__ import annotations
-
-import json
-from pathlib import PurePosixPath
 
 from backend.service.application.backends import (
     ConversionBackend,
@@ -12,12 +9,14 @@ from backend.service.application.backends import (
     ConversionBackendRunResult,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.models.onnx_export import (
-    TORCH_ONNX_DYNAMO_EXPORTER_MODE,
-    TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
-    export_torch_model_to_onnx,
+from backend.service.application.models.yolox_core.export import (
+    build_yolox_openvino_ir,
+    build_yolox_tensorrt_engine,
+    export_yolox_onnx,
+    optimize_yolox_onnx,
+    validate_yolox_onnx,
 )
-from backend.service.application.runtime.yolox_detection_runtime import PyTorchYoloXRuntimeSession
+from backend.service.application.runtime.predictors.yolox import PyTorchYoloXRuntimeSession
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -29,18 +28,11 @@ from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     import_onnx_conversion_dependencies,
-    normalize_model_outputs,
-    optimize_onnx_model,
     resolve_conversion_phase,
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
     run_conversion_script,
-    summarize_numeric_validation,
 )
-
-
-_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
-_TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
 
 # 沿用统一转换执行规则的 YOLOX 命名导出。
@@ -99,7 +91,6 @@ class LocalYoloXConversionRunner:
                 export_summary = self._export_onnx(
                     session=session,
                     output_object_key=onnx_object_key,
-                    onnx_module=onnx_module,
                 )
                 onnx_output = YoloXConversionOutput(
                     target_format="onnx",
@@ -215,38 +206,15 @@ class LocalYoloXConversionRunner:
         *,
         session: PyTorchYoloXRuntimeSession,
         output_object_key: str,
-        onnx_module: object,
     ) -> dict[str, object]:
         """把 PyTorch checkpoint 导出为 ONNX。"""
 
-        del onnx_module
         output_path = self.dataset_storage.resolve(output_object_key)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        dummy_input = session.imports.torch.randn(
-            1,
-            3,
-            session.runtime_target.input_size[0],
-            session.runtime_target.input_size[1],
-            device=session.device_name,
-            dtype=session.imports.torch.float32,
+        return export_yolox_onnx(
+            session=session,
+            output_path=output_path,
+            output_object_key=output_object_key,
         )
-        with session.imports.torch.no_grad():
-            export_torch_model_to_onnx(
-                torch_module=session.imports.torch,
-                model=session.model,
-                model_args=(dummy_input,),
-                output_path=output_path,
-                opset_version=TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
-                input_names=("images",),
-                output_names=("predictions",),
-            )
-        return {
-            "stage": "export-onnx",
-            "object_uri": output_object_key,
-            "opset_version": TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
-            "input_size": list(session.runtime_target.input_size),
-            "exporter_mode": TORCH_ONNX_DYNAMO_EXPORTER_MODE,
-        }
 
     def _validate_onnx(
         self,
@@ -259,38 +227,12 @@ class LocalYoloXConversionRunner:
         """执行 ONNX 合法性和数值校验。"""
 
         onnx_path = self.dataset_storage.resolve(onnx_object_key)
-        onnx_model = onnx_module.load(str(onnx_path))
-        onnx_module.checker.check_model(onnx_model)
-
-        dummy_input = session.imports.torch.randn(
-            1,
-            3,
-            session.runtime_target.input_size[0],
-            session.runtime_target.input_size[1],
-            device=session.device_name,
-            dtype=session.imports.torch.float32,
+        return validate_yolox_onnx(
+            session=session,
+            onnx_path=onnx_path,
+            onnx_module=onnx_module,
+            onnxruntime_module=onnxruntime_module,
         )
-        with session.imports.torch.no_grad():
-            torch_outputs = normalize_model_outputs(session.model(dummy_input))
-        ort_session = onnxruntime_module.InferenceSession(
-            str(onnx_path),
-            providers=["CPUExecutionProvider"],
-        )
-        ort_outputs = ort_session.run(
-            None,
-            {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
-        )
-        summary = summarize_numeric_validation(
-            np_module=session.imports.np,
-            torch_outputs=torch_outputs,
-            ort_outputs=ort_outputs,
-        )
-        if not bool(summary["allclose"]):
-            raise ServiceConfigurationError(
-                "ONNX 数值校验失败",
-                details=dict(summary),
-            )
-        return summary
 
     def _optimize_onnx(
         self,
@@ -302,7 +244,7 @@ class LocalYoloXConversionRunner:
     ) -> dict[str, object]:
         """执行 ONNX 简化优化并写回独立输出。"""
 
-        return optimize_onnx_model(
+        return optimize_yolox_onnx(
             source_path=self.dataset_storage.resolve(source_object_key),
             optimized_path=self.dataset_storage.resolve(output_object_key),
             source_object_key=source_object_key,
@@ -329,47 +271,14 @@ class LocalYoloXConversionRunner:
         - dict[str, object]：OpenVINO IR 构建摘要。
         """
 
-        source_path = self.dataset_storage.resolve(source_object_key)
-        output_path = self.dataset_storage.resolve(output_object_key)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        compress_to_fp16 = build_precision == "fp16"
-        completed_process = run_conversion_script(
-            script_file_name=_OPENVINO_IR_BUILD_SCRIPT_FILE,
-            args=[
-                str(source_path),
-                str(output_path),
-                build_precision,
-            ],
+        return build_yolox_openvino_ir(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
         )
-        if completed_process.returncode != 0:
-            raise ServiceConfigurationError(
-                "OpenVINO IR 构建失败",
-                details={
-                    "source_object_uri": source_object_key,
-                    "output_object_uri": output_object_key,
-                    "stdout": completed_process.stdout.strip(),
-                    "stderr": completed_process.stderr.strip(),
-                },
-            )
-
-        weights_path = output_path.with_suffix(".bin")
-        if not output_path.is_file() or not weights_path.is_file():
-            raise ServiceConfigurationError(
-                "OpenVINO IR 构建未生成完整的 xml/bin 产物",
-                details={
-                    "output_object_uri": output_object_key,
-                    "weights_object_uri": _resolve_openvino_weights_object_key(output_object_key),
-                },
-            )
-        return {
-            "stage": "build-openvino-ir",
-            "object_uri": output_object_key,
-            "source_object_uri": source_object_key,
-            "weights_object_uri": _resolve_openvino_weights_object_key(output_object_key),
-            "build_precision": build_precision,
-            "compress_to_fp16": compress_to_fp16,
-            "execution_mode": "subprocess-openvino-convert-model",
-        }
 
     def _build_tensorrt_engine(
         self,
@@ -389,62 +298,11 @@ class LocalYoloXConversionRunner:
         - dict[str, object]：TensorRT engine 构建摘要。
         """
 
-        source_path = self.dataset_storage.resolve(source_object_key)
-        output_path = self.dataset_storage.resolve(output_object_key)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        completed_process = run_conversion_script(
-            script_file_name=_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
-            args=[
-                str(source_path),
-                str(output_path),
-                build_precision,
-            ],
+        return build_yolox_tensorrt_engine(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
         )
-        if completed_process.returncode != 0:
-            raise ServiceConfigurationError(
-                "TensorRT engine 构建失败",
-                details={
-                    "source_object_uri": source_object_key,
-                    "output_object_uri": output_object_key,
-                    "stdout": completed_process.stdout.strip(),
-                    "stderr": completed_process.stderr.strip(),
-                },
-            )
-        if not output_path.is_file():
-            raise ServiceConfigurationError(
-                "TensorRT engine 构建未生成 engine 产物",
-                details={"output_object_uri": output_object_key},
-            )
-        build_summary = {
-            "stage": "build-tensorrt-engine",
-            "object_uri": output_object_key,
-            "source_object_uri": source_object_key,
-            "build_precision": build_precision,
-            "execution_mode": "subprocess-tensorrt-build-engine",
-            "engine_file_bytes": output_path.stat().st_size,
-        }
-        stdout_payload = _parse_last_json_line(completed_process.stdout)
-        if stdout_payload is not None:
-            build_summary.update(dict(stdout_payload))
-        return build_summary
-
-
-def _resolve_openvino_weights_object_key(output_object_key: str) -> str:
-    """根据 OpenVINO XML object key 推导同名 bin object key。"""
-
-    return PurePosixPath(output_object_key).with_suffix(".bin").as_posix()
-
-
-def _parse_last_json_line(stdout: str) -> dict[str, object] | None:
-    """从标准输出最后一个非空行解析 JSON 对象。"""
-
-    stdout_lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    if not stdout_lines:
-        return None
-    try:
-        payload = json.loads(stdout_lines[-1])
-    except json.JSONDecodeError:
-        return None
-    if isinstance(payload, dict):
-        return {str(key): value for key, value in payload.items()}
-    return None

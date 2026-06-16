@@ -11,7 +11,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.classification_validation_session_service import (
+from backend.service.application.models.validation.classification_session_service import (
     ClassificationValidationSessionCreateRequest,
     ClassificationValidationSessionPredictRequest,
     ClassificationValidationSessionView,

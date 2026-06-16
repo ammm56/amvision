@@ -18,7 +18,7 @@ from backend.service.application.deployments.classification_deployment_service i
 from backend.service.application.models.segmentation_inference_task_service import (
     SegmentationInferenceTaskRequest,
 )
-from backend.service.application.models.pose_validation_session_service import (
+from backend.service.application.models.validation.pose_session_service import (
     PoseValidationSessionCreateRequest,
 )
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (

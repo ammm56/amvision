@@ -22,12 +22,12 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.datasets.dataset_export_delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.yolox_evaluation_task_service import YoloXEvaluationTaskPackage
+from backend.service.application.models.evaluation.yolox_detection_task_service import YoloXEvaluationTaskPackage
 from backend.service.application.models.detection_inference_task_service import (
     DetectionInferenceExecutionResult,
 )
 from backend.service.application.deployments import PublishedInferenceResult
-from backend.service.application.models.yolox_training_service import (
+from backend.service.application.models.training.yolox_detection_task_service import (
     YoloXTrainingTaskSubmission,
 )
 from backend.service.application.workflows.execution_cleanup import (

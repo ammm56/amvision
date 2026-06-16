@@ -16,10 +16,10 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
     YoloXConversionTaskSubmission,
 )
 from backend.service.application.datasets.dataset_export import DatasetExportTaskSubmission
-from backend.service.application.models.yolox_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolox_detection_task_service import (
     YoloXEvaluationTaskSubmission,
 )
-from backend.service.application.models.yolox_training_service import YoloXTrainingTaskSubmission
+from backend.service.application.models.training.yolox_detection_task_service import YoloXTrainingTaskSubmission
 from backend.service.application.tasks.task_service import TaskDetail
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader

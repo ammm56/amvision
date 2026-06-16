@@ -10,7 +10,8 @@ from torch import nn
 import torch.nn.functional as F
 
 from backend.nodes.text_encoder_runtime_support import load_clip_simple_tokenizer
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.runtime.support.detection import (
     enable_pytorch_cuda_inference_fast_path,
     resolve_execution_device_name,
 )
@@ -508,7 +509,6 @@ class Sam3SemanticRuntimeSession:
                 raise InvalidRequestError("SAM3 semantic-segment 至少需要一条 positive 文本提示")
             positive_start = len(prompt_texts)
             prompt_texts.extend(positive_texts)
-            negative_start = len(prompt_texts)
             prompt_texts.extend(negative_texts)
             prompt_text_offsets.append((positive_start, len(positive_texts), len(negative_texts)))
             prompt_display_names.append(str(getattr(group, "display_name", "") or getattr(group, "prompt_id", "")))

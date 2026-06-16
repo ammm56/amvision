@@ -134,7 +134,7 @@
 - 当前独立 worker 已经支持通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 统一装配六类消费者，也支持通过 `runtimes/manifests/worker-profiles/*.json` 以单一职责 profile 启动独立 worker。
 - 当前 `worker-profiles` 也已经按真实能力收平：`training` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` detection 训练以及 `classification / segmentation / pose / obb` 训练；`conversion` 覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`；`evaluation` 与 `inference` 都已经覆盖 `detection / classification / segmentation / pose / obb` 五类 task，不再停留在 detection-only 描述。
 - deployment 运行时位于 `backend/service/application/runtime/`；当前通用外壳已经收口到 `deployment_process_supervisor.py`、`deployment_process_worker.py`、`deployment_runtime_pool.py` 与 `runtime_target.py`，职责是平台级 deployment process supervisor / worker，而不是只服务 YOLOX。
-- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 `*_predictor.py` 与 `*_runtime_target.py` 负责模型差异；`deployment_runtime_pool.py` 负责 deployment 子进程内会话池与健康状态汇总。
+- runtime 适配与统一预测入口当前已按任务类型拆开：`detection_model_runtime.py`、`classification_model_runtime.py`、`segmentation_model_runtime.py`、`pose_model_runtime.py` 和 `obb_model_runtime.py` 负责统一 runtime loader 注册；`yolox / yolov8 / yolo11 / yolo26 / rfdetr` 各自的 predictor 与 runtime target 负责模型差异；YOLOX detection 预览画框已拆到 `models/yolox_core/postprocess/preview.py`，独立 detection 推理服务默认按 `save_result_image=true` 输出带框预览，workflow 模型节点可显式传 `save_result_image=false` 关闭；`runtime/support/detection_preview.py` 暂作其他 detection predictor 的共享展示支持；`deployment_runtime_pool.py` 负责 deployment 子进程内会话池与健康状态汇总。
 
 ### 关键对象与执行边界
 

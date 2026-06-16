@@ -22,7 +22,7 @@ from backend.service.application.models.yolo_core_common.postprocess import (
 from backend.service.application.models.yolo_primary_model_configs import (
     build_yolo_primary_model,
 )
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.runtime.support.detection import (
     batched_nms_indices,
     build_openvino_compile_properties,
     ensure_cuda_success,

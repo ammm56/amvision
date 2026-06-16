@@ -725,6 +725,7 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
                 json={
                     "image_base64": _VALID_TEST_IMAGE_BASE64,
                     "input_transport_mode": "memory",
+                    "save_result_image": False,
                     "return_preview_image_base64": True,
                 },
             )
@@ -849,6 +850,7 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
                 headers=_build_model_read_headers(),
                 data={
                     "input_transport_mode": "memory",
+                    "save_result_image": "false",
                     "return_preview_image_base64": "true",
                 },
                 files={"input_image": ("upload.png", _build_valid_test_image_bytes(), "image/png")},

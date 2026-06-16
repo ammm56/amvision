@@ -9,7 +9,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.postprocess import (
     prepare_detection_nms_inputs_array,
 )
-from backend.service.application.runtime.detection_runtime_support import batched_nms_indices
+from backend.service.application.runtime.support.detection import batched_nms_indices
 
 
 DETECTION_POSTPROCESS_MODE_NMS = "nms"

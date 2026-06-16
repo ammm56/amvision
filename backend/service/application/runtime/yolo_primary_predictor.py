@@ -32,7 +32,7 @@ from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.runtime.support.detection import (
     DEFAULT_DETECTION_NMS_THRESHOLD,
     OpenVINODetectionRuntimeSessionBase,
     TensorRTDetectionRuntimeSessionBase,

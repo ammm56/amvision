@@ -8,6 +8,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    VOC_DETECTION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
@@ -26,7 +27,7 @@ from backend.service.domain.models.model_task_types import (
 
 
 _SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK: dict[tuple[str, str], tuple[str, ...]] = {
-    ("yolox", DETECTION_TASK_TYPE): (COCO_DETECTION_DATASET_FORMAT,),
+    ("yolox", DETECTION_TASK_TYPE): (COCO_DETECTION_DATASET_FORMAT, VOC_DETECTION_DATASET_FORMAT),
     (
         "yolov8",
         DETECTION_TASK_TYPE,

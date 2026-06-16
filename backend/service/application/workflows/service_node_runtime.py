@@ -60,7 +60,7 @@ from backend.service.application.task_type_support import (
 from backend.service.application.models.classification_inference_task_service import (
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.models.classification_validation_session_service import (
+from backend.service.application.models.validation.classification_session_service import (
     LocalClassificationValidationSessionService,
 )
 from backend.service.application.models.detection_evaluation_task_service import (
@@ -69,7 +69,7 @@ from backend.service.application.models.detection_evaluation_task_service import
 from backend.service.application.models.detection_inference_task_service import (
     SqlAlchemyDetectionInferenceTaskService,
 )
-from backend.service.application.models.detection_validation_session_service import (
+from backend.service.application.models.validation.detection_session_service import (
     LocalDetectionValidationSessionService,
 )
 from backend.service.application.models.obb_evaluation_task_service import (
@@ -78,7 +78,7 @@ from backend.service.application.models.obb_evaluation_task_service import (
 from backend.service.application.models.obb_inference_task_service import (
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.models.obb_validation_session_service import (
+from backend.service.application.models.validation.obb_session_service import (
     LocalObbValidationSessionService,
 )
 from backend.service.application.models.pose_evaluation_task_service import (
@@ -87,13 +87,13 @@ from backend.service.application.models.pose_evaluation_task_service import (
 from backend.service.application.models.pose_inference_task_service import (
     SqlAlchemyPoseInferenceTaskService,
 )
-from backend.service.application.models.pose_validation_session_service import (
+from backend.service.application.models.validation.pose_session_service import (
     LocalPoseValidationSessionService,
 )
 from backend.service.application.models.segmentation_inference_task_service import (
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.models.segmentation_validation_session_service import (
+from backend.service.application.models.validation.segmentation_session_service import (
     LocalSegmentationValidationSessionService,
 )
 from backend.service.application.models.yolo11_training_service import (
@@ -129,7 +129,7 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
 from backend.service.application.models.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.yolox_training_service import (
+from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (

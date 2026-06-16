@@ -5,7 +5,7 @@ from __future__ import annotations
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
-from backend.service.application.models.yolox_training_service import YOLOX_TRAINING_QUEUE_NAME
+from backend.service.application.models.training.yolox_detection_task_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.yolox_trainer_runner import SqlAlchemyYoloXTrainerRunner

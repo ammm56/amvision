@@ -1,5 +1,6 @@
 """项目内 YOLOX 模型核心导出。"""
 
+from .build import build_yolox_detection_model
 from .darknet import CSPDarknet, Darknet
 from .losses import IOUloss
 from .yolo_fpn import YOLOFPN
@@ -15,4 +16,5 @@ __all__ = [
 	"YOLOPAFPN",
 	"YOLOXHead",
 	"YOLOX",
+	"build_yolox_detection_model",
 ]

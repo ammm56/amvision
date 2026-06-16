@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.models.detection_validation_session_service as validation_session_service_module
+import backend.service.application.models.validation.detection_session_service as validation_session_service_module
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,

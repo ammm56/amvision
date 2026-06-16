@@ -59,7 +59,7 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
     RfdetrTrainingTaskRequest,
     SqlAlchemyRfdetrTrainingTaskService,
 )
-from backend.service.application.models.yolox_training_service import (
+from backend.service.application.models.training.yolox_detection_task_service import (
     YOLOX_TRAINING_TASK_KIND,
     SqlAlchemyYoloXTrainingTaskService,
     YoloXTrainingTaskRequest,

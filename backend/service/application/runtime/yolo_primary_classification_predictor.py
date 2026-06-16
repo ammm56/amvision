@@ -25,7 +25,7 @@ from backend.service.application.runtime.classification_runtime_contracts import
     ClassificationRuntimeSessionInfo,
     ClassificationRuntimeTensorSpec,
 )
-from backend.service.application.runtime.detection_runtime_support import (
+from backend.service.application.runtime.support.detection import (
     build_openvino_compile_properties,
     ensure_cuda_success,
     enable_pytorch_cuda_inference_fast_path,

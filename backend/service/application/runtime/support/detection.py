@@ -1,12 +1,15 @@
-"""detection 运行时共享辅助实现。"""
+"""detection 运行时共享支持工具。"""
 
 from __future__ import annotations
 
-from backend.service.application.runtime.yolox_detection_runtime import (
+from backend.service.application.models.yolox_core.postprocess import (
+    batched_yolox_nms_indices as batched_nms_indices,
+    yolox_prediction_to_numpy_array as prediction_to_numpy_array,
+)
+from backend.service.application.runtime.predictors.yolox import (
     OpenVINOYoloXRuntimeSession as OpenVINODetectionRuntimeSessionBase,
     TensorRTYoloXRuntimeSession as TensorRTDetectionRuntimeSessionBase,
     _DEFAULT_NMS_THRESHOLD as DEFAULT_DETECTION_NMS_THRESHOLD,
-    _batched_nms_indices as batched_nms_indices,
     _build_openvino_compile_properties as build_openvino_compile_properties,
     _enable_pytorch_cuda_inference_fast_path as enable_pytorch_cuda_inference_fast_path,
     _ensure_cuda_success as ensure_cuda_success,
@@ -21,9 +24,7 @@ from backend.service.application.runtime.yolox_detection_runtime import (
     _normalize_openvino_outputs as normalize_openvino_outputs,
     _normalize_tensorrt_outputs as normalize_tensorrt_outputs,
     _normalize_tensor_shape as normalize_tensor_shape,
-    _prediction_to_numpy_array as prediction_to_numpy_array,
     _preprocess_image as preprocess_image,
-    _render_preview_image as render_preview_image,
     _require_cuda_inference_imports as require_cuda_inference_imports,
     _require_inference_imports as require_inference_imports,
     _resolve_cuda_device_index as resolve_cuda_device_index,
@@ -38,6 +39,9 @@ from backend.service.application.runtime.yolox_detection_runtime import (
     _resolve_probability as resolve_probability,
     _resolve_tensorrt_dtype_name as resolve_tensorrt_dtype_name,
     _resolve_tensorrt_io_tensor_name as resolve_tensorrt_io_tensor_name,
+)
+from backend.service.application.runtime.support.detection_preview import (
+    render_detection_preview_image as render_preview_image,
 )
 
 

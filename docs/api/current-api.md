@@ -873,7 +873,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - extra_options
   - display_name
 - 当前实现会先解析 DatasetExport，再校验 ModelVersion 到 checkpoint、labels 的本地可读性，然后把任务放入 `detection-evaluations` 队列
-- 当前最小评估链只支持 `coco-detection-v1` 导出输入
+- YOLOX detection 当前支持 `coco-detection-v1` 和 `voc-detection-v1` 两种 DatasetExport 评估输入
 - 当前响应会返回：
   - task_id
   - status
@@ -1215,6 +1215,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - save_result_image
   - return_preview_image_base64
   - extra_options：JSON 字符串
+- `save_result_image` 不传时默认 `true`，独立推理调试会默认写出带框预览；如果只需要结构化结果或由 workflow 后续节点单独渲染，应显式传 `false`
 - `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 GET /api/v1/projects/{project_id}/files 或 GET /api/v1/projects/{project_id}/files/metadata 返回的 `file_id`
 - 当前同步 `/infer` 支持 `input_transport_mode=memory`：仅允许 `image_base64` 或 `input_image`，请求图片不会写入临时输入文件，而是直接以内存字节送入 deployment 子进程
 - 当同步 `/infer` 使用 `input_transport_mode=memory` 时，不支持 `input_file_id`
@@ -1253,6 +1254,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - return_preview_image_base64
   - extra_options
   - display_name
+- `save_result_image` 不传时默认 `true`，异步推理调试会默认写出带框预览；如果只需要结构化结果或由 workflow 后续节点单独渲染，应显式传 `false`
 - 当前实现会先校验 `deployment_instance_id` 属于请求 Project，再按 one-of 规则把输入归一化后放入 `detection-inferences` 队列
 - 当前支持 `application/json` 和 `multipart/form-data`
 - 输入 one-of 规则：`input_file_id`、`input_uri`、`image_base64`、`input_image` 四者必须且只能提供一个

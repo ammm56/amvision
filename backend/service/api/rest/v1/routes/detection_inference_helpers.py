@@ -18,8 +18,6 @@ from backend.service.application.models.detection_inference_payloads import (
 from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from starlette.datastructures import FormData
 
 
@@ -299,7 +297,7 @@ async def _read_detection_inference_request_payload(
             "image_base64": _read_optional_form_str(form, "image_base64"),
             "input_transport_mode": _read_optional_form_str(form, "input_transport_mode") or DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
             "score_threshold": _parse_optional_form_float(form.get("score_threshold"), field_name="score_threshold"),
-            "save_result_image": _parse_optional_form_bool(form.get("save_result_image"), field_name="save_result_image", default=False),
+            "save_result_image": _parse_optional_form_bool(form.get("save_result_image"), field_name="save_result_image", default=True),
             "return_preview_image_base64": _parse_optional_form_bool(form.get("return_preview_image_base64"), field_name="return_preview_image_base64", default=False),
             "extra_options": _parse_optional_form_json_dict(form.get("extra_options"), field_name="extra_options"),
             "display_name": _read_optional_form_str(form, "display_name") or "",
