@@ -17,17 +17,10 @@ from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYP
 
 
 class RfdetrSegmentationPostProcess(nn.Module):
-    """RF-DETR core 类：`RfdetrSegmentationPostProcess`。"""
+    """把 RF-DETR segmentation 原始输出整理成 runtime 使用的张量结构。"""
 
     def __init__(self, num_select: int = 300) -> None:
-        """执行 `__init__`。
-        
-        参数：
-        - `num_select`：传入的 `num_select` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """初始化 top-k 选择数量和 RF-DETR 原生 postprocess。"""
 
         super().__init__()
         self.num_select = num_select
@@ -38,15 +31,7 @@ class RfdetrSegmentationPostProcess(nn.Module):
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
     ) -> dict[str, Any]:
-        """执行 `forward`。
-        
-        参数：
-        - `outputs`：传入的 `outputs` 参数。
-        - `target_sizes`：传入的 `target_sizes` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """执行 segmentation 后处理前向。"""
 
         return self.postprocess(outputs, target_sizes)
 
@@ -55,15 +40,7 @@ class RfdetrSegmentationPostProcess(nn.Module):
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
     ) -> dict[str, Any]:
-        """执行 `postprocess`。
-        
-        参数：
-        - `outputs`：传入的 `outputs` 参数。
-        - `target_sizes`：传入的 `target_sizes` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """把 logits、boxes 和 masks 转成 runtime 统一输出字段。"""
 
         results = self.upstream_postprocess(outputs, target_sizes)
         top_scores = torch.stack([item["scores"] for item in results], dim=0)
@@ -85,16 +62,7 @@ def build_rfdetr_segmentation_model(
     num_classes: int = 91,
     pretrained_path: str | None = None,
 ) -> torch.nn.Module:
-    """执行 `build_rfdetr_segmentation_model`。
-    
-    参数：
-    - `model_scale`：传入的 `model_scale` 参数。
-    - `num_classes`：传入的 `num_classes` 参数。
-    - `pretrained_path`：传入的 `pretrained_path` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """构建 RF-DETR segmentation full core 模型并挂载 runtime postprocess。"""
 
     model = build_rfdetr_full_core_model(
         task_type=SEGMENTATION_TASK_TYPE,
@@ -109,27 +77,13 @@ def build_rfdetr_segmentation_model(
 def build_rfdetr_segmentation_postprocess(
     num_select: int = 300,
 ) -> RfdetrSegmentationPostProcess:
-    """执行 `build_rfdetr_segmentation_postprocess`。
-    
-    参数：
-    - `num_select`：传入的 `num_select` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """构建 segmentation runtime 使用的 RF-DETR postprocess 模块。"""
 
     return RfdetrSegmentationPostProcess(num_select=num_select)
 
 
 def mask_logits_to_xyxy(masks: torch.Tensor) -> torch.Tensor:
-    """执行 `mask_logits_to_xyxy`。
-    
-    参数：
-    - `masks`：传入的 `masks` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """根据 mask logits 的前景范围估算 xyxy box。"""
 
     binary_masks = masks > 0.0
     batch_boxes: list[torch.Tensor] = []
@@ -160,15 +114,7 @@ def masks_xyxy_to_cxcywh(
     boxes_xyxy: torch.Tensor,
     image_size: tuple[int, int],
 ) -> torch.Tensor:
-    """执行 `masks_xyxy_to_cxcywh`。
-    
-    参数：
-    - `boxes_xyxy`：传入的 `boxes_xyxy` 参数。
-    - `image_size`：传入的 `image_size` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """把像素坐标 xyxy box 转成归一化 cxcywh box。"""
 
     image_height, image_width = image_size
     x1, y1, x2, y2 = boxes_xyxy.unbind(-1)

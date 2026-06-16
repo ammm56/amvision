@@ -16,17 +16,10 @@ from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
 class RfdetrPostProcess(nn.Module):
-    """RF-DETR core 类：`RfdetrPostProcess`。"""
+    """把 RF-DETR 原始输出整理成 detection runtime 使用的张量结构。"""
 
     def __init__(self, num_select: int = 300) -> None:
-        """执行 `__init__`。
-        
-        参数：
-        - `num_select`：传入的 `num_select` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """初始化 top-k 选择数量和 RF-DETR 原生 postprocess。"""
 
         super().__init__()
         self.num_select = num_select
@@ -37,15 +30,7 @@ class RfdetrPostProcess(nn.Module):
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """执行 `forward`。
-        
-        参数：
-        - `outputs`：传入的 `outputs` 参数。
-        - `target_sizes`：传入的 `target_sizes` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """执行 detection 后处理前向。"""
 
         return self.postprocess(outputs, target_sizes)
 
@@ -54,15 +39,7 @@ class RfdetrPostProcess(nn.Module):
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """执行 `postprocess`。
-        
-        参数：
-        - `outputs`：传入的 `outputs` 参数。
-        - `target_sizes`：传入的 `target_sizes` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """把 logits 和 normalized boxes 转成分数、类别和 xyxy boxes。"""
 
         results = self.upstream_postprocess(outputs, target_sizes)
         top_scores = torch.stack([item["scores"] for item in results], dim=0)
@@ -84,16 +61,7 @@ def build_rfdetr_model(
     num_classes: int = 91,
     pretrained_path: str | None = None,
 ) -> torch.nn.Module:
-    """执行 `build_rfdetr_model`。
-    
-    参数：
-    - `model_scale`：传入的 `model_scale` 参数。
-    - `num_classes`：传入的 `num_classes` 参数。
-    - `pretrained_path`：传入的 `pretrained_path` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """构建 RF-DETR detection full core 模型并挂载 runtime postprocess。"""
 
     model = build_rfdetr_full_core_model(
         task_type=DETECTION_TASK_TYPE,
@@ -106,27 +74,13 @@ def build_rfdetr_model(
 
 
 def build_rfdetr_postprocess(num_select: int = 300) -> RfdetrPostProcess:
-    """执行 `build_rfdetr_postprocess`。
-    
-    参数：
-    - `num_select`：传入的 `num_select` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """构建 detection runtime 使用的 RF-DETR postprocess 模块。"""
 
     return RfdetrPostProcess(num_select=num_select)
 
 
 def _box_cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
-    """执行 `_box_cxcywh_to_xyxy`。
-    
-    参数：
-    - `boxes`：传入的 `boxes` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """把 cxcywh box 转成 xyxy box。"""
 
     center_x, center_y, width, height = boxes.unbind(-1)
     return torch.stack(
@@ -146,17 +100,7 @@ def sigmoid_focal_loss(
     alpha: float = 0.25,
     gamma: float = 2.0,
 ) -> torch.Tensor:
-    """执行 `sigmoid_focal_loss`。
-    
-    参数：
-    - `inputs`：传入的 `inputs` 参数。
-    - `targets`：传入的 `targets` 参数。
-    - `alpha`：传入的 `alpha` 参数。
-    - `gamma`：传入的 `gamma` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """计算 detection 分类分支使用的 sigmoid focal loss。"""
 
     prob = inputs.sigmoid()
     ce = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")

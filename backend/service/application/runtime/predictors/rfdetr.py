@@ -14,15 +14,24 @@ from backend.service.application.models.rfdetr_core.detection import (
 )
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
-    postprocess_rfdetr_runtime_outputs,
     resolve_rfdetr_runtime_input_size,
     resolve_rfdetr_runtime_output_names,
 )
+from backend.service.application.runtime.predictors.rfdetr_detection_result import (
+    build_rfdetr_detection_result,
+    build_rfdetr_detections,
+    postprocess_rfdetr_detection_outputs,
+)
+from backend.service.application.runtime.predictors.rfdetr_io import (
+    build_rfdetr_input_array,
+    load_rfdetr_runtime_input_image,
+)
+from backend.service.application.runtime.predictors.rfdetr_tensorrt import (
+    list_rfdetr_tensorrt_output_names,
+)
 from backend.service.application.runtime.detection_runtime_contracts import (
-    DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
-    DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.support.detection import (
@@ -32,10 +41,8 @@ from backend.service.application.runtime.support.detection import (
     import_onnxruntime_module,
     import_openvino_module,
     import_tensorrt_module,
-    load_prediction_image,
     measure_cuda_event_elapsed_ms,
     normalize_tensor_shape,
-    render_preview_image,
     require_cuda_inference_imports,
     resolve_cuda_device_index,
     resolve_cuda_runtime_device_name,
@@ -471,7 +478,7 @@ class TensorRTRfdetrRuntimeSession:
             fallback="images",
         )
         all_output_names = tuple(
-            _list_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
+            list_rfdetr_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
         )
         if len(all_output_names) < 2:
             raise ServiceConfigurationError(
@@ -548,13 +555,13 @@ def _predict_pytorch(
     request: DetectionPredictionRequest,
 ) -> DetectionPredictionExecutionResult:
     imports = session_obj.imports
-    image, decode_ms = _load_runtime_input_image(
+    image, decode_ms = load_rfdetr_runtime_input_image(
         cv2_module=imports.cv2,
         np_module=imports.np,
         dataset_storage=session_obj.dataset_storage,
         request=request,
     )
-    input_array, preprocess_ms = _build_input_array(
+    input_array, preprocess_ms = build_rfdetr_input_array(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -573,19 +580,19 @@ def _predict_pytorch(
         raw_outputs = session_obj.model(input_tensor)
     infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+    processed, postprocess_ms = postprocess_rfdetr_detection_outputs(
         torch_module=imports.torch,
         postprocess_model=session_obj.model,
         raw_outputs=raw_outputs,
         image_height=int(image.shape[0]),
         image_width=int(image.shape[1]),
     )
-    detections = _build_detections(
+    detections = build_rfdetr_detections(
         processed=processed,
         labels=session_obj.runtime_target.labels,
         score_threshold=request.score_threshold,
     )
-    return _build_prediction_result(
+    return build_rfdetr_detection_result(
         session_obj=session_obj,
         image=image,
         detections=detections,
@@ -624,13 +631,13 @@ def _predict_onnx(
     request: DetectionPredictionRequest,
 ) -> DetectionPredictionExecutionResult:
     imports = session_obj.imports
-    image, decode_ms = _load_runtime_input_image(
+    image, decode_ms = load_rfdetr_runtime_input_image(
         cv2_module=imports.cv2,
         np_module=imports.np,
         dataset_storage=session_obj.dataset_storage,
         request=request,
     )
-    input_array, preprocess_ms = _build_input_array(
+    input_array, preprocess_ms = build_rfdetr_input_array(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -644,7 +651,7 @@ def _predict_onnx(
     )
     infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+    processed, postprocess_ms = postprocess_rfdetr_detection_outputs(
         torch_module=imports.torch,
         postprocess_model=session_obj.postprocess_model,
         raw_outputs={
@@ -654,12 +661,12 @@ def _predict_onnx(
         image_height=int(image.shape[0]),
         image_width=int(image.shape[1]),
     )
-    detections = _build_detections(
+    detections = build_rfdetr_detections(
         processed=processed,
         labels=session_obj.runtime_target.labels,
         score_threshold=request.score_threshold,
     )
-    return _build_prediction_result(
+    return build_rfdetr_detection_result(
         session_obj=session_obj,
         image=image,
         detections=detections,
@@ -700,13 +707,13 @@ def _predict_openvino(
     request: DetectionPredictionRequest,
 ) -> DetectionPredictionExecutionResult:
     imports = session_obj.imports
-    image, decode_ms = _load_runtime_input_image(
+    image, decode_ms = load_rfdetr_runtime_input_image(
         cv2_module=imports.cv2,
         np_module=imports.np,
         dataset_storage=session_obj.dataset_storage,
         request=request,
     )
-    input_array, preprocess_ms = _build_input_array(
+    input_array, preprocess_ms = build_rfdetr_input_array(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -717,7 +724,7 @@ def _predict_openvino(
     raw_outputs = session_obj.session({session_obj.input_name: input_array})
     infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+    processed, postprocess_ms = postprocess_rfdetr_detection_outputs(
         torch_module=imports.torch,
         postprocess_model=session_obj.postprocess_model,
         raw_outputs={
@@ -727,12 +734,12 @@ def _predict_openvino(
         image_height=int(image.shape[0]),
         image_width=int(image.shape[1]),
     )
-    detections = _build_detections(
+    detections = build_rfdetr_detections(
         processed=processed,
         labels=session_obj.runtime_target.labels,
         score_threshold=request.score_threshold,
     )
-    return _build_prediction_result(
+    return build_rfdetr_detection_result(
         session_obj=session_obj,
         image=image,
         detections=detections,
@@ -770,13 +777,13 @@ def _predict_tensorrt(
     request: DetectionPredictionRequest,
 ) -> DetectionPredictionExecutionResult:
     imports = session_obj.imports
-    image, decode_ms = _load_runtime_input_image(
+    image, decode_ms = load_rfdetr_runtime_input_image(
         cv2_module=imports.cv2,
         np_module=imports.np,
         dataset_storage=session_obj.dataset_storage,
         request=request,
     )
-    input_array, preprocess_ms = _build_input_array(
+    input_array, preprocess_ms = build_rfdetr_input_array(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -947,7 +954,7 @@ def _predict_tensorrt(
                 pass
     infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-    processed, postprocess_ms = _postprocess_rfdetr_outputs(
+    processed, postprocess_ms = postprocess_rfdetr_detection_outputs(
         torch_module=imports.torch,
         postprocess_model=session_obj.postprocess_model,
         raw_outputs={
@@ -957,12 +964,12 @@ def _predict_tensorrt(
         image_height=int(image.shape[0]),
         image_width=int(image.shape[1]),
     )
-    detections = _build_detections(
+    detections = build_rfdetr_detections(
         processed=processed,
         labels=session_obj.runtime_target.labels,
         score_threshold=request.score_threshold,
     )
-    return _build_prediction_result(
+    return build_rfdetr_detection_result(
         session_obj=session_obj,
         image=image,
         detections=detections,
@@ -995,163 +1002,5 @@ def _predict_tensorrt(
     )
 
 
-def _build_prediction_result(
-    *,
-    session_obj: Any,
-    image: Any,
-    detections: tuple[DetectionPredictionDetection, ...],
-    request: DetectionPredictionRequest,
-    decode_ms: float,
-    preprocess_ms: float,
-    infer_ms: float,
-    postprocess_ms: float,
-    input_name: str,
-    output_specs: tuple[DetectionRuntimeTensorSpec, ...],
-    metadata: dict[str, object],
-) -> DetectionPredictionExecutionResult:
-    preview_image_bytes = None
-    if request.save_result_image and detections:
-        preview_image_bytes = render_preview_image(
-            cv2_module=session_obj.imports.cv2,
-            image=image,
-            detections=detections,
-        )
-    input_height, input_width = session_obj.input_size
-    return DetectionPredictionExecutionResult(
-        detections=detections,
-        latency_ms=round(decode_ms + preprocess_ms + infer_ms + postprocess_ms, 3),
-        image_width=int(image.shape[1]),
-        image_height=int(image.shape[0]),
-        preview_image_bytes=preview_image_bytes,
-        runtime_session_info=DetectionRuntimeSessionInfo(
-            backend_name=session_obj.runtime_target.runtime_backend,
-            model_uri=session_obj.runtime_target.runtime_artifact_storage_uri,
-            device_name=session_obj.device_name,
-            input_spec=DetectionRuntimeTensorSpec(
-                name=input_name,
-                shape=(1, 3, input_height, input_width),
-                dtype=getattr(session_obj, "input_dtype_name", "float32"),
-            ),
-            output_spec=output_specs[0],
-            metadata={
-                **metadata,
-                "output_specs": [
-                    {
-                        "name": output_spec.name,
-                        "shape": list(output_spec.shape),
-                        "dtype": output_spec.dtype,
-                    }
-                    for output_spec in output_specs
-                ],
-                "decode_ms": decode_ms,
-                "preprocess_ms": preprocess_ms,
-                "infer_ms": infer_ms,
-                "postprocess_ms": postprocess_ms,
-            },
-        ),
-    )
-
-
-def _load_runtime_input_image(
-    *,
-    cv2_module: Any,
-    np_module: Any,
-    dataset_storage: LocalDatasetStorage,
-    request: DetectionPredictionRequest,
-) -> tuple[Any, float]:
-    decode_started_at = perf_counter()
-    image = load_prediction_image(
-        cv2_module=cv2_module,
-        np_module=np_module,
-        dataset_storage=dataset_storage,
-        request=request,
-    )
-    decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
-    return image, decode_ms
-
-
-def _build_input_array(
-    *,
-    cv2_module: Any,
-    np_module: Any,
-    image: Any,
-    input_size: tuple[int, int],
-) -> tuple[Any, float]:
-    preprocess_started_at = perf_counter()
-    input_height, input_width = input_size
-    resized_image = cv2_module.resize(
-        image,
-        (input_width, input_height),
-        interpolation=cv2_module.INTER_LINEAR,
-    )
-    input_array = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
-    input_array = input_array / 255.0
-    input_array = np_module.expand_dims(input_array, axis=0)
-    preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
-    return input_array, preprocess_ms
-
-
-def _postprocess_rfdetr_outputs(
-    *,
-    torch_module: Any,
-    postprocess_model: Any,
-    raw_outputs: dict[str, Any],
-    image_height: int,
-    image_width: int,
-) -> tuple[dict[str, Any], float]:
-    postprocess_started_at = perf_counter()
-    processed = postprocess_rfdetr_runtime_outputs(
-        torch_module=torch_module,
-        postprocess_model=postprocess_model,
-        raw_outputs=raw_outputs,
-        image_height=image_height,
-        image_width=image_width,
-    )
-    postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
-    return processed, postprocess_ms
-
-
-def _build_detections(
-    *,
-    processed: dict[str, Any],
-    labels: tuple[str, ...],
-    score_threshold: float,
-) -> tuple[DetectionPredictionDetection, ...]:
-    scores = processed.get("scores")
-    class_ids = processed.get("labels")
-    boxes_xyxy = processed.get("boxes_xyxy")
-    if scores is None or class_ids is None or boxes_xyxy is None:
-        return ()
-    detections: list[DetectionPredictionDetection] = []
-    for index in range(int(scores.shape[1])):
-        score = float(scores[0, index])
-        if score < score_threshold:
-            continue
-        class_id = int(class_ids[0, index])
-        if class_id < 0 or class_id >= len(labels):
-            continue
-        detections.append(
-            DetectionPredictionDetection(
-                bbox_xyxy=(
-                    round(float(boxes_xyxy[0, index, 0]), 4),
-                    round(float(boxes_xyxy[0, index, 1]), 4),
-                    round(float(boxes_xyxy[0, index, 2]), 4),
-                    round(float(boxes_xyxy[0, index, 3]), 4),
-                ),
-                score=round(score, 6),
-                class_id=class_id,
-                class_name=labels[class_id],
-            )
-        )
-    return tuple(detections)
-
-
-def _list_tensorrt_output_names(engine: Any, *, tensorrt_module: Any) -> list[str]:
-    names: list[str] = []
-    for index in range(int(engine.num_io_tensors)):
-        name = engine.get_tensor_name(index)
-        if engine.get_tensor_mode(name) == tensorrt_module.TensorIOMode.OUTPUT:
-            names.append(name)
-    return names
 
 

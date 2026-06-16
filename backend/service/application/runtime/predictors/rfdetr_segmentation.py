@@ -11,13 +11,23 @@ from backend.service.application.errors import (
 )
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
-    build_rfdetr_single_channel_mask_array,
-    postprocess_rfdetr_segmentation_runtime_outputs,
     resolve_rfdetr_runtime_input_size,
     resolve_rfdetr_runtime_output_names,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
     build_rfdetr_segmentation_model,
+)
+from backend.service.application.runtime.predictors.rfdetr_io import (
+    build_rfdetr_input_array,
+    load_rfdetr_runtime_input_image,
+)
+from backend.service.application.runtime.predictors.rfdetr_segmentation_result import (
+    build_rfdetr_segmentation_instances,
+    postprocess_rfdetr_segmentation_outputs,
+    render_rfdetr_segmentation_preview,
+)
+from backend.service.application.runtime.predictors.rfdetr_tensorrt import (
+    list_rfdetr_tensorrt_output_names,
 )
 from backend.service.application.runtime.support.detection import (
     build_openvino_compile_properties,
@@ -26,10 +36,8 @@ from backend.service.application.runtime.support.detection import (
     import_onnxruntime_module,
     import_openvino_module,
     import_tensorrt_module,
-    load_prediction_image,
     measure_cuda_event_elapsed_ms,
     normalize_tensor_shape,
-    render_preview_image,
     require_cuda_inference_imports,
     resolve_cuda_device_index,
     resolve_cuda_runtime_device_name,
@@ -44,7 +52,6 @@ from backend.service.application.runtime.support.detection import (
 )
 from backend.service.application.runtime.segmentation_runtime_contracts import (
     SegmentationPredictionExecutionResult,
-    SegmentationPredictionInstance,
     SegmentationPredictionRequest,
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
@@ -141,13 +148,13 @@ class PyTorchRfdetrSegmentationRuntimeSession:
 
     def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
         imports = self.imports
-        image, decode_ms = _load_runtime_input_image(
+        image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
             np_module=imports.np,
             dataset_storage=self.dataset_storage,
             request=request,
         )
-        input_array, preprocess_ms = _build_input_array(
+        input_array, preprocess_ms = build_rfdetr_input_array(
             cv2_module=imports.cv2,
             np_module=imports.np,
             image=image,
@@ -167,14 +174,14 @@ class PyTorchRfdetrSegmentationRuntimeSession:
                 outputs = self.model(input_tensor)
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        processed, postprocess_ms = _postprocess_rfdetr_segmentation_outputs(
+        processed, postprocess_ms = postprocess_rfdetr_segmentation_outputs(
             torch_module=imports.torch,
             postprocess_model=self.model,
             raw_outputs=outputs,
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
         )
-        instances = _build_segmentation_instances(
+        instances = build_rfdetr_segmentation_instances(
             cv2_module=imports.cv2,
             scores=processed["scores"],
             labels=processed["labels"],
@@ -184,7 +191,7 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
         )
-        preview_image_bytes = _render_segmentation_preview(
+        preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,
             image=image,
             instances=instances,
@@ -331,13 +338,13 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
 
     def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
         imports = self.imports
-        image, decode_ms = _load_runtime_input_image(
+        image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
             np_module=imports.np,
             dataset_storage=self.dataset_storage,
             request=request,
         )
-        input_array, preprocess_ms = _build_input_array(
+        input_array, preprocess_ms = build_rfdetr_input_array(
             cv2_module=imports.cv2,
             np_module=imports.np,
             image=image,
@@ -351,7 +358,7 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        processed, postprocess_ms = _postprocess_rfdetr_segmentation_outputs(
+        processed, postprocess_ms = postprocess_rfdetr_segmentation_outputs(
             torch_module=imports.torch,
             postprocess_model=self.postprocess_model,
             raw_outputs={
@@ -362,7 +369,7 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
         )
-        instances = _build_segmentation_instances(
+        instances = build_rfdetr_segmentation_instances(
             cv2_module=imports.cv2,
             scores=processed["scores"],
             labels=processed["labels"],
@@ -372,7 +379,7 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
         )
-        preview_image_bytes = _render_segmentation_preview(
+        preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,
             image=image,
             instances=instances,
@@ -544,13 +551,13 @@ class OpenVINORfdetrSegmentationRuntimeSession:
 
     def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
         imports = self.imports
-        image, decode_ms = _load_runtime_input_image(
+        image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
             np_module=imports.np,
             dataset_storage=self.dataset_storage,
             request=request,
         )
-        input_array, preprocess_ms = _build_input_array(
+        input_array, preprocess_ms = build_rfdetr_input_array(
             cv2_module=imports.cv2,
             np_module=imports.np,
             image=image,
@@ -572,7 +579,7 @@ class OpenVINORfdetrSegmentationRuntimeSession:
                     details={"missing_output_name": self.output_names[index]},
                 )
             raw_tensors.append(raw_tensor)
-        processed, postprocess_ms = _postprocess_rfdetr_segmentation_outputs(
+        processed, postprocess_ms = postprocess_rfdetr_segmentation_outputs(
             torch_module=imports.torch,
             postprocess_model=self.postprocess_model,
             raw_outputs={
@@ -583,7 +590,7 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
         )
-        instances = _build_segmentation_instances(
+        instances = build_rfdetr_segmentation_instances(
             cv2_module=imports.cv2,
             scores=processed["scores"],
             labels=processed["labels"],
@@ -593,7 +600,7 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
         )
-        preview_image_bytes = _render_segmentation_preview(
+        preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,
             image=image,
             instances=instances,
@@ -788,7 +795,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             fallback="images",
         )
         all_output_names = tuple(
-            _list_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
+            list_rfdetr_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
         )
         if len(all_output_names) < 3:
             raise ServiceConfigurationError(
@@ -858,13 +865,13 @@ class TensorRTRfdetrSegmentationRuntimeSession:
 
     def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
         imports = self.imports
-        image, decode_ms = _load_runtime_input_image(
+        image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
             np_module=imports.np,
             dataset_storage=self.dataset_storage,
             request=request,
         )
-        input_array, preprocess_ms = _build_input_array(
+        input_array, preprocess_ms = build_rfdetr_input_array(
             cv2_module=imports.cv2,
             np_module=imports.np,
             image=image,
@@ -1008,7 +1015,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                     pass
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        processed, postprocess_ms = _postprocess_rfdetr_segmentation_outputs(
+        processed, postprocess_ms = postprocess_rfdetr_segmentation_outputs(
             torch_module=imports.torch,
             postprocess_model=self.postprocess_model,
             raw_outputs={
@@ -1019,7 +1026,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
         )
-        instances = _build_segmentation_instances(
+        instances = build_rfdetr_segmentation_instances(
             cv2_module=imports.cv2,
             scores=processed["scores"],
             labels=processed["labels"],
@@ -1029,7 +1036,7 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
         )
-        preview_image_bytes = _render_segmentation_preview(
+        preview_image_bytes = render_rfdetr_segmentation_preview(
             cv2_module=imports.cv2,
             image=image,
             instances=instances,
@@ -1080,154 +1087,5 @@ class TensorRTRfdetrSegmentationRuntimeSession:
         )
 
 
-def _load_runtime_input_image(
-    *,
-    cv2_module: Any,
-    np_module: Any,
-    dataset_storage: LocalDatasetStorage,
-    request: SegmentationPredictionRequest,
-) -> tuple[Any, float]:
-    decode_started_at = perf_counter()
-    image = load_prediction_image(
-        cv2_module=cv2_module,
-        np_module=np_module,
-        dataset_storage=dataset_storage,
-        request=request,
-    )
-    decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
-    return image, decode_ms
-
-
-def _build_input_array(
-    *,
-    cv2_module: Any,
-    np_module: Any,
-    image: Any,
-    input_size: tuple[int, int],
-) -> tuple[Any, float]:
-    preprocess_started_at = perf_counter()
-    input_height, input_width = input_size
-    resized_image = cv2_module.resize(
-        image,
-        (input_width, input_height),
-        interpolation=cv2_module.INTER_LINEAR,
-    )
-    input_array = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32) / 255.0
-    input_array = np_module.expand_dims(input_array, axis=0)
-    preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
-    return input_array, preprocess_ms
-
-
-def _postprocess_rfdetr_segmentation_outputs(
-    *,
-    torch_module: Any,
-    postprocess_model: Any,
-    raw_outputs: dict[str, Any],
-    image_height: int,
-    image_width: int,
-) -> tuple[dict[str, Any], float]:
-    postprocess_started_at = perf_counter()
-    processed = postprocess_rfdetr_segmentation_runtime_outputs(
-        torch_module=torch_module,
-        postprocess_model=postprocess_model,
-        raw_outputs=raw_outputs,
-        image_height=image_height,
-        image_width=image_width,
-    )
-    postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
-    return processed, postprocess_ms
-
-
-def _render_segmentation_preview(
-    *,
-    cv2_module: Any,
-    image: Any,
-    instances: tuple[SegmentationPredictionInstance, ...],
-    save_result_image: bool,
-) -> bytes | None:
-    if save_result_image is not True or not instances:
-        return None
-    return render_preview_image(
-        cv2_module=cv2_module,
-        image=image,
-        detections=tuple(_as_preview_detection(item) for item in instances),
-    )
-
-
-def _build_segmentation_instances(
-    *,
-    cv2_module: Any,
-    scores: Any,
-    labels: Any,
-    boxes_xyxy: Any,
-    masks: Any,
-    label_names: tuple[str, ...],
-    score_threshold: float,
-    mask_threshold: float,
-) -> tuple[SegmentationPredictionInstance, ...]:
-    result: list[SegmentationPredictionInstance] = []
-    if scores is None or labels is None or boxes_xyxy is None or masks is None:
-        return ()
-    for index in range(int(scores.shape[1])):
-        score = float(scores[0, index].item())
-        if score < score_threshold:
-            continue
-        class_id = int(labels[0, index].item())
-        if class_id < 0 or class_id >= len(label_names):
-            continue
-        box = boxes_xyxy[0, index]
-        binary_mask = build_rfdetr_single_channel_mask_array(
-            mask_tensor=masks[0, index],
-            mask_threshold=mask_threshold,
-        )
-        contours, _ = cv2_module.findContours(
-            binary_mask,
-            cv2_module.RETR_EXTERNAL,
-            cv2_module.CHAIN_APPROX_SIMPLE,
-        )
-        segments = []
-        for contour in contours:
-            if contour.shape[0] < 3:
-                continue
-            polygon = tuple(
-                (round(float(point[0][0]), 4), round(float(point[0][1]), 4))
-                for point in contour
-            )
-            if len(polygon) >= 3:
-                segments.append(polygon)
-        result.append(
-            SegmentationPredictionInstance(
-                bbox_xyxy=(
-                    round(float(box[0].item()), 4),
-                    round(float(box[1].item()), 4),
-                    round(float(box[2].item()), 4),
-                    round(float(box[3].item()), 4),
-                ),
-                score=round(score, 6),
-                class_id=class_id,
-                class_name=label_names[class_id],
-                segments=tuple(segments),
-                mask_area=float(binary_mask.sum()),
-            )
-        )
-    return tuple(result)
-
-
-def _as_preview_detection(instance: SegmentationPredictionInstance) -> dict[str, object]:
-    return {
-        "bbox_xyxy": list(instance.bbox_xyxy),
-        "score": instance.score,
-        "class_id": instance.class_id,
-        "class_name": instance.class_name,
-    }
-
-
-def _list_tensorrt_output_names(engine: Any, *, tensorrt_module: Any) -> list[str]:
-    names: list[str] = []
-    for index in range(int(engine.num_io_tensors)):
-        name = engine.get_tensor_name(index)
-        if engine.get_tensor_mode(name) == tensorrt_module.TensorIOMode.OUTPUT:
-            names.append(name)
-    return names
 
 

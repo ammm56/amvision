@@ -134,9 +134,11 @@ def test_rfdetr_postprocess_uses_flattened_query_class_topk() -> None:
 def test_rfdetr_detection_builder_skips_background_class() -> None:
     """验证 RF-DETR runtime 不把 background/no-object 输出为检测结果。"""
 
-    from backend.service.application.runtime.predictors.rfdetr import _build_detections
+    from backend.service.application.runtime.predictors.rfdetr_detection_result import (
+        build_rfdetr_detections,
+    )
 
-    detections = _build_detections(
+    detections = build_rfdetr_detections(
         processed={
             "scores": torch.tensor([[0.95, 0.93, 0.9]], dtype=torch.float32),
             "labels": torch.tensor([[0, 2, 1]], dtype=torch.long),
@@ -324,8 +326,8 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
     from backend.service.application.runtime.detection_runtime_contracts import (
         DetectionRuntimeTensorSpec,
     )
-    from backend.service.application.runtime.predictors.rfdetr import (
-        _build_prediction_result,
+    from backend.service.application.runtime.predictors.rfdetr_detection_result import (
+        build_rfdetr_detection_result,
     )
 
     fake_session = type(
@@ -352,7 +354,7 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
         {"save_result_image": False},
     )()
 
-    result = _build_prediction_result(
+    result = build_rfdetr_detection_result(
         session_obj=fake_session,
         image=np.zeros((32, 32, 3), dtype=np.uint8),
         detections=(),

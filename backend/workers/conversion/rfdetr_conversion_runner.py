@@ -12,6 +12,13 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.task_type_support import (
+    require_supported_platform_task_type,
+)
+from backend.service.domain.models.model_task_types import (
+    DETECTION_TASK_TYPE,
+    SEGMENTATION_TASK_TYPE,
+)
 from backend.service.application.models.rfdetr_core.export.execution import (
     build_rfdetr_tensorrt_engine_artifact,
     export_rfdetr_onnx_artifact,
@@ -68,9 +75,19 @@ class LocalRfdetrConversionRunner(ConversionBackend):
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
         metadata = dict(request.metadata or {})
-        task_type = str(
-            metadata.get("task_type") or request.task_type or "detection"
-        ).strip().lower()
+        task_type = require_supported_platform_task_type(
+            metadata.get("task_type") or request.task_type,
+            empty_message="RF-DETR conversion 必须显式传 task_type",
+            unsupported_message="RF-DETR conversion 收到了不支持的 task_type",
+        )
+        if task_type not in {DETECTION_TASK_TYPE, SEGMENTATION_TASK_TYPE}:
+            raise InvalidRequestError(
+                "RF-DETR conversion 当前只支持 detection 和 segmentation",
+                details={
+                    "task_type": task_type,
+                    "supported": [DETECTION_TASK_TYPE, SEGMENTATION_TASK_TYPE],
+                },
+            )
 
         runtime_target = request.source_runtime_target
         export_context = prepare_rfdetr_export_context(
