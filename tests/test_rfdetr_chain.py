@@ -181,6 +181,9 @@ def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
     import numpy as np
 
     from backend.service.application.runtime.predictors import rfdetr as predictor_module
+    from backend.service.application.runtime.predictors import (
+        rfdetr_tensorrt_detection as tensorrt_session_module,
+    )
     from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
     from backend.service.infrastructure.object_store.local_dataset_storage import (
         DatasetStorageSettings,
@@ -258,27 +261,27 @@ def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
     )()
 
     monkeypatch.setattr(
-        predictor_module,
+        tensorrt_session_module,
         "require_cuda_inference_imports",
         lambda: fake_cuda_imports,
     )
     monkeypatch.setattr(
-        predictor_module,
+        tensorrt_session_module,
         "import_tensorrt_module",
         lambda: _FakeTensorRT,
     )
     monkeypatch.setattr(
-        predictor_module,
+        tensorrt_session_module,
         "get_tensorrt_logger",
         lambda **kwargs: _FakeLogger(_FakeLogger.WARNING),
     )
     monkeypatch.setattr(
-        predictor_module,
+        tensorrt_session_module,
         "resolve_cuda_runtime_device_name",
         lambda **kwargs: "cuda:0",
     )
     monkeypatch.setattr(
-        predictor_module,
+        tensorrt_session_module,
         "build_rfdetr_runtime_postprocess_model",
         lambda *, task_type: object(),
     )
