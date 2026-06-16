@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import zipfile
 
 from backend.queue import QueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.models.evaluation.yolox_detection import (
     YoloXEvaluator,
     YoloXDetectionEvaluationRequest,
     YoloXDetectionEvaluationResult,
     run_yolox_detection_evaluation,
+)
+from backend.service.application.models.evaluation.yolox_detection_task_outputs import (
+    YoloXEvaluationTaskOutputsMixin,
+)
+from backend.service.application.models.evaluation.yolox_detection_task_payload import (
+    YoloXEvaluationTaskPayloadMixin,
+)
+from backend.service.application.models.evaluation.yolox_detection_task_types import (
+    YOLOX_EVALUATION_DEFAULT_NMS_THRESHOLD,
+    YOLOX_EVALUATION_DEFAULT_SCORE_THRESHOLD,
+    YOLOX_EVALUATION_QUEUE_NAME,
+    YOLOX_EVALUATION_SUPPORTED_FORMATS,
+    YOLOX_EVALUATION_TASK_KIND,
+    YoloXEvaluationTaskPackage,
+    YoloXEvaluationTaskRequest,
+    YoloXEvaluationTaskResult,
+    YoloXEvaluationTaskSubmission,
 )
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -34,86 +47,6 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-YOLOX_EVALUATION_TASK_KIND = "yolox-evaluation"
-YOLOX_EVALUATION_QUEUE_NAME = "yolox-evaluations"
-YOLOX_EVALUATION_DEFAULT_SCORE_THRESHOLD = 0.01
-YOLOX_EVALUATION_DEFAULT_NMS_THRESHOLD = 0.65
-YOLOX_EVALUATION_SUPPORTED_FORMATS = frozenset(
-    {
-        COCO_DETECTION_DATASET_FORMAT,
-        VOC_DETECTION_DATASET_FORMAT,
-    }
-)
-
-
-@dataclass(frozen=True)
-class YoloXEvaluationTaskRequest:
-    """描述一次 YOLOX 数据集级评估任务创建请求。"""
-
-    project_id: str
-    model_version_id: str
-    dataset_export_id: str | None = None
-    dataset_export_manifest_key: str | None = None
-    score_threshold: float | None = None
-    nms_threshold: float | None = None
-    save_result_package: bool = True
-    extra_options: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class YoloXEvaluationTaskSubmission:
-    """描述一次 YOLOX 评估任务提交结果。"""
-
-    task_id: str
-    status: str
-    queue_name: str
-    queue_task_id: str
-    dataset_export_id: str
-    dataset_export_manifest_key: str
-    dataset_version_id: str
-    format_id: str
-    model_version_id: str
-
-
-@dataclass(frozen=True)
-class YoloXEvaluationTaskResult:
-    """描述一次 YOLOX 评估任务处理结果。"""
-
-    task_id: str
-    status: str
-    dataset_export_id: str
-    dataset_export_manifest_key: str
-    dataset_version_id: str
-    format_id: str
-    model_version_id: str
-    output_object_prefix: str
-    report_object_key: str
-    detections_object_key: str
-    result_package_object_key: str | None
-    map50: float
-    map50_95: float
-    report_summary: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class YoloXEvaluationTaskPackage:
-    """描述一次 YOLOX 评估结果包输出。
-
-    字段：
-    - task_id：评估任务 id。
-    - package_object_key：结果包在本地文件存储中的 object key。
-    - package_file_name：结果包文件名。
-    - package_size：结果包字节大小。
-    - packaged_at：结果包最后生成时间。
-    """
-
-    task_id: str
-    package_object_key: str
-    package_file_name: str
-    package_size: int
-    packaged_at: str
-
-
 class _DefaultYoloXEvaluator:
     """通过当前模块级执行入口调用评估逻辑。"""
 
@@ -130,7 +63,10 @@ class _DefaultYoloXEvaluator:
         return run_yolox_detection_evaluation(request)
 
 
-class SqlAlchemyYoloXEvaluationTaskService:
+class SqlAlchemyYoloXEvaluationTaskService(
+    YoloXEvaluationTaskPayloadMixin,
+    YoloXEvaluationTaskOutputsMixin,
+):
     """基于 SQLAlchemy、本地队列和本地文件存储实现 YOLOX 评估任务。"""
 
     def __init__(
@@ -262,15 +198,14 @@ class SqlAlchemyYoloXEvaluationTaskService:
         dataset_export = self._resolve_dataset_export(request)
         runtime_target = self._resolve_runtime_target(request)
         attempt_no = max(1, task_record.current_attempt_no + 1)
-        output_object_prefix = self._build_output_object_prefix(task_id)
-        output_files_root = f"{output_object_prefix}/artifacts"
-        report_object_key = f"{output_files_root}/reports/evaluation-report.json"
-        detections_object_key = f"{output_files_root}/reports/detections.json"
-        result_package_object_key = (
-            self._build_result_package_object_key(task_id)
-            if request.save_result_package
-            else None
+        output_keys = self._build_evaluation_output_object_keys(
+            task_id=task_id,
+            save_result_package=request.save_result_package,
         )
+        output_object_prefix = output_keys.output_object_prefix
+        report_object_key = output_keys.report_object_key
+        detections_object_key = output_keys.detections_object_key
+        result_package_object_key = output_keys.result_package_object_key
         started_at = self._now_iso()
 
         self.task_service.append_task_event(
@@ -317,8 +252,11 @@ class SqlAlchemyYoloXEvaluationTaskService:
                     extra_options=dict(request.extra_options),
                 )
             )
-            dataset_storage.write_json(report_object_key, evaluation_result.report_payload)
-            dataset_storage.write_json(detections_object_key, evaluation_result.detections_payload)
+            self._write_evaluation_report_outputs(
+                dataset_storage=dataset_storage,
+                output_keys=output_keys,
+                evaluation_result=evaluation_result,
+            )
             if result_package_object_key is not None:
                 self._write_result_package(
                     result_package_object_key=result_package_object_key,
@@ -613,228 +551,10 @@ class SqlAlchemyYoloXEvaluationTaskService:
             )
         return task_record
 
-    def _build_request_from_task_record(self, task_record: TaskRecord) -> YoloXEvaluationTaskRequest:
-        """从 TaskRecord 反解析评估任务请求。"""
-
-        task_spec = dict(task_record.task_spec)
-        return YoloXEvaluationTaskRequest(
-            project_id=self._require_str(task_spec, "project_id"),
-            model_version_id=self._require_str(task_spec, "model_version_id"),
-            dataset_export_id=self._read_optional_str(task_spec, "dataset_export_id"),
-            dataset_export_manifest_key=(
-                self._read_optional_str(task_spec, "manifest_object_key")
-                or self._read_optional_str(task_spec, "dataset_export_manifest_key")
-            ),
-            score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            nms_threshold=self._read_optional_float(task_spec, "nms_threshold"),
-            save_result_package=self._read_optional_bool(task_spec, "save_result_package") is not False,
-            extra_options=self._read_dict(task_spec, "extra_options"),
-        )
-
-    def _build_existing_result(self, task_record: TaskRecord) -> YoloXEvaluationTaskResult | None:
-        """从已有 TaskRecord 中恢复已完成的评估结果。"""
-
-        result = dict(task_record.result)
-        report_object_key = self._read_optional_str(result, "report_object_key")
-        detections_object_key = self._read_optional_str(result, "detections_object_key")
-        if not report_object_key or not detections_object_key:
-            return None
-        map50 = self._read_optional_float(result, "map50")
-        map50_95 = self._read_optional_float(result, "map50_95")
-        return YoloXEvaluationTaskResult(
-            task_id=task_record.task_id,
-            status=task_record.state,
-            dataset_export_id=self._require_str(result, "dataset_export_id"),
-            dataset_export_manifest_key=self._require_str(result, "dataset_export_manifest_key"),
-            dataset_version_id=self._require_str(result, "dataset_version_id"),
-            format_id=self._require_str(result, "format_id"),
-            model_version_id=self._require_str(result, "model_version_id"),
-            output_object_prefix=self._require_str(result, "output_object_prefix"),
-            report_object_key=report_object_key,
-            detections_object_key=detections_object_key,
-            result_package_object_key=self._read_optional_str(result, "result_package_object_key"),
-            map50=map50 if map50 is not None else 0.0,
-            map50_95=map50_95 if map50_95 is not None else 0.0,
-            report_summary=self._read_dict(result, "report_summary"),
-        )
-
-    def _serialize_task_result(self, task_result: YoloXEvaluationTaskResult) -> dict[str, object]:
-        """把评估任务处理结果序列化为任务结果快照。"""
-
-        return {
-            "dataset_export_id": task_result.dataset_export_id,
-            "dataset_export_manifest_key": task_result.dataset_export_manifest_key,
-            "dataset_version_id": task_result.dataset_version_id,
-            "format_id": task_result.format_id,
-            "model_version_id": task_result.model_version_id,
-            "output_object_prefix": task_result.output_object_prefix,
-            "report_object_key": task_result.report_object_key,
-            "detections_object_key": task_result.detections_object_key,
-            "result_package_object_key": task_result.result_package_object_key,
-            "map50": task_result.map50,
-            "map50_95": task_result.map50_95,
-            "report_summary": dict(task_result.report_summary),
-        }
-
-    def _build_report_summary(
-        self,
-        *,
-        request: YoloXEvaluationTaskRequest,
-        dataset_export: DatasetExport,
-        evaluation_result: YoloXDetectionEvaluationResult,
-        report_object_key: str,
-        detections_object_key: str,
-        result_package_object_key: str | None,
-    ) -> dict[str, object]:
-        """构建评估任务摘要。"""
-
-        return {
-            "implementation_mode": "yolox-evaluation-core",
-            "model_version_id": request.model_version_id,
-            "dataset_export_id": dataset_export.dataset_export_id,
-            "dataset_version_id": dataset_export.dataset_version_id,
-            "dataset_export_manifest_key": dataset_export.manifest_object_key,
-            "split_name": evaluation_result.split_name,
-            "sample_count": evaluation_result.sample_count,
-            "score_threshold": self._resolve_score_threshold(request),
-            "nms_threshold": self._resolve_nms_threshold(request),
-            "save_result_package": request.save_result_package,
-            "duration_seconds": evaluation_result.duration_seconds,
-            "map50": evaluation_result.map50,
-            "map50_95": evaluation_result.map50_95,
-            "per_class_metrics": [dict(item) for item in evaluation_result.per_class_metrics],
-            "report_object_key": report_object_key,
-            "detections_object_key": detections_object_key,
-            "result_package_object_key": result_package_object_key,
-        }
-
-    def _require_packageable_result(self, task_record: TaskRecord) -> tuple[str, str]:
-        """返回评估结果包所需的 report 和 detections object key。
-
-        参数：
-        - task_record：评估任务主记录。
-
-        返回：
-        - tuple[str, str]：report 与 detections 的 object key。
-        """
-
-        if task_record.state != "succeeded":
-            raise InvalidRequestError(
-                "当前评估任务尚未成功完成，不能生成结果包",
-                details={"task_id": task_record.task_id, "state": task_record.state},
-            )
-        result = dict(task_record.result)
-        report_object_key = self._read_optional_str(result, "report_object_key")
-        detections_object_key = self._read_optional_str(result, "detections_object_key")
-        if report_object_key is None or detections_object_key is None:
-            raise InvalidRequestError(
-                "当前评估任务缺少可打包输出",
-                details={"task_id": task_record.task_id},
-            )
-
-        dataset_storage = self._require_dataset_storage()
-        for file_name, object_key in (
-            ("report", report_object_key),
-            ("detections", detections_object_key),
-        ):
-            if not dataset_storage.resolve(object_key).is_file():
-                raise ResourceNotFoundError(
-                    "当前评估任务缺少可打包输出文件",
-                    details={
-                        "task_id": task_record.task_id,
-                        "file_name": file_name,
-                        "object_key": object_key,
-                    },
-                )
-        return report_object_key, detections_object_key
-
     def _build_evaluator(self) -> YoloXEvaluator:
         """构建当前评估任务使用的 evaluator。"""
 
         return _DefaultYoloXEvaluator()
-
-    def _write_result_package(
-        self,
-        *,
-        result_package_object_key: str,
-        report_object_key: str,
-        detections_object_key: str,
-    ) -> None:
-        """把 report 和 detections 打包成评估结果包。"""
-
-        dataset_storage = self._require_dataset_storage()
-        package_path = dataset_storage.resolve(result_package_object_key)
-        package_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path = dataset_storage.resolve(report_object_key)
-        detections_path = dataset_storage.resolve(detections_object_key)
-        with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.write(report_path, arcname="report.json")
-            archive.write(detections_path, arcname="detections.json")
-
-    def _build_evaluation_task_package(
-        self,
-        *,
-        task_id: str,
-        package_object_key: str,
-    ) -> YoloXEvaluationTaskPackage:
-        """按 object key 构建评估结果包输出摘要。
-
-        参数：
-        - task_id：评估任务 id。
-        - package_object_key：结果包 object key。
-
-        返回：
-        - YoloXEvaluationTaskPackage：结果包输出摘要。
-        """
-
-        dataset_storage = self._require_dataset_storage()
-        package_path = dataset_storage.resolve(package_object_key)
-        if not package_path.is_file():
-            raise ResourceNotFoundError(
-                "评估结果包文件不存在",
-                details={"task_id": task_id, "object_key": package_object_key},
-            )
-        package_stat = package_path.stat()
-        return YoloXEvaluationTaskPackage(
-            task_id=task_id,
-            package_object_key=package_object_key,
-            package_file_name=package_path.name,
-            package_size=package_stat.st_size,
-            packaged_at=datetime.fromtimestamp(package_stat.st_mtime, tz=timezone.utc).isoformat(),
-        )
-
-    def _build_result_package_object_key(self, task_id: str) -> str:
-        """构建评估结果包默认 object key。
-
-        参数：
-        - task_id：评估任务 id。
-
-        返回：
-        - str：默认结果包 object key。
-        """
-
-        return f"{self._build_output_object_prefix(task_id)}/artifacts/packages/result-package.zip"
-
-    def _build_output_object_prefix(self, task_id: str) -> str:
-        """构建评估任务输出目录前缀。"""
-
-        return f"task-runs/evaluation/{task_id}"
-
-    @staticmethod
-    def _normalize_optional_object_key(value: str | None) -> str | None:
-        """规范化可选结果包 object key。
-
-        参数：
-        - value：原始 object key。
-
-        返回：
-        - str | None：去除空白后的 object key；空值返回 None。
-        """
-
-        if value is None:
-            return None
-        normalized = value.strip()
-        return normalized or None
 
     def _resolve_score_threshold(self, request: YoloXEvaluationTaskRequest) -> float:
         """解析当前评估任务 score threshold。"""
@@ -855,53 +575,6 @@ class SqlAlchemyYoloXEvaluationTaskService:
         if isinstance(extra_value, int | float) and 0 <= float(extra_value) <= 1:
             return float(extra_value)
         return YOLOX_EVALUATION_DEFAULT_NMS_THRESHOLD
-
-    @staticmethod
-    def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
-        """从字典中读取可选字符串字段。"""
-
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        return None
-
-    @staticmethod
-    def _read_optional_float(payload: dict[str, object], key: str) -> float | None:
-        """从字典中读取可选浮点数字段。"""
-
-        value = payload.get(key)
-        if isinstance(value, int | float):
-            return float(value)
-        return None
-
-    @staticmethod
-    def _read_optional_bool(payload: dict[str, object], key: str) -> bool | None:
-        """从字典中读取可选布尔字段。"""
-
-        value = payload.get(key)
-        if isinstance(value, bool):
-            return value
-        return None
-
-    @staticmethod
-    def _read_dict(payload: dict[str, object], key: str) -> dict[str, object]:
-        """从字典中读取可选对象字段。"""
-
-        value = payload.get(key)
-        if isinstance(value, dict):
-            return {str(item_key): item_value for item_key, item_value in value.items()}
-        return {}
-
-    def _require_str(self, payload: dict[str, object], key: str) -> str:
-        """从字典中读取必填字符串字段。"""
-
-        value = self._read_optional_str(payload, key)
-        if value is None:
-            raise InvalidRequestError(
-                "评估任务缺少必要字段",
-                details={"field": key},
-            )
-        return value
 
     @staticmethod
     def _now_iso() -> str:
