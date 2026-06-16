@@ -10,25 +10,17 @@ EncoderName: TypeAlias = Literal["dinov2_windowed_small", "dinov2_windowed_base"
 
 
 class PretrainWeightsCompatibilityWarning(UserWarning):
-    """RF-DETR core 类：`PretrainWeightsCompatibilityWarning`。"""
+    """RF-DETR 预训练权重与当前配置不匹配时发出的警告。"""
 
 
 def _project_pretrained_checkpoint_dir() -> Path:
-    """执行 `_project_pretrained_checkpoint_dir`。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """返回项目内 RF-DETR core 默认预训练权重目录。"""
     repo_root = Path(__file__).resolve().parents[5]
     return repo_root / "data" / "files" / "models" / "pretrained" / "rfdetr" / "core" / "checkpoints"
 
 
 def _detect_device() -> str:
-    """执行 `_detect_device`。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """检测当前可用的默认训练设备。"""
     accelerator = getattr(torch, "accelerator", None)
     current_accelerator = getattr(accelerator, "current_accelerator", None)
     if current_accelerator is not None:
@@ -50,7 +42,7 @@ DEVICE: str = _detect_device()
 
 
 class BaseConfig(BaseModel):
-    """RF-DETR core 类：`BaseConfig`。"""
+    """RF-DETR core 配置基类。"""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -124,11 +116,7 @@ class ModelConfig(BaseConfig):
 
     @model_validator(mode="after")
     def _warn_deprecated_model_config_fields(self) -> "ModelConfig":
-        """执行 `_warn_deprecated_model_config_fields`。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """检查已经迁移到 TrainConfig 的旧 ModelConfig 字段。"""
         if self.backbone_lora:
             raise ValueError("当前 RF-DETR core 未启用 LoRA/PEFT 微调，请不要设置 backbone_lora=True。")
         if "cls_loss_coef" in self.model_fields_set:
@@ -142,11 +130,7 @@ class ModelConfig(BaseConfig):
 
     @model_validator(mode="after")
     def _sync_pe_with_resolution(self) -> "ModelConfig":
-        """执行 `_sync_pe_with_resolution`。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """按 resolution 自动同步 positional encoding 网格尺寸。"""
         if "resolution" not in self.model_fields_set or "positional_encoding_size" in self.model_fields_set:
             return self
 
@@ -169,11 +153,7 @@ class ModelConfig(BaseConfig):
 
     @model_validator(mode="after")
     def _warn_pretrain_compatibility(self) -> "ModelConfig":
-        """执行 `_warn_pretrain_compatibility`。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """提示当前配置是否会导致官方预训练权重无法完整加载。"""
         cls = type(self)
         fields_set = self.model_fields_set
         pretrain_user_set = "pretrain_weights" in fields_set
@@ -288,14 +268,7 @@ class ModelConfig(BaseConfig):
     @field_validator("pretrain_weights", mode="after")
     @classmethod
     def expand_path(cls, v: Optional[str]) -> Optional[str]:
-        """执行 `expand_path`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """展开预训练权重路径，裸文件名默认从项目预训练目录查找。"""
         if v is None:
             return v
         expanded = Path(v).expanduser()
@@ -306,14 +279,7 @@ class ModelConfig(BaseConfig):
     @field_validator("device", mode="before")
     @classmethod
     def _normalize_device(cls, v: Any) -> str:
-        """执行 `_normalize_device`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """把字符串或 torch.device 统一成 torch 可识别的设备字符串。"""
         if isinstance(v, torch.device):
             return str(v)
         if isinstance(v, str):
@@ -325,7 +291,7 @@ class ModelConfig(BaseConfig):
 
 
 class RFDETRBaseConfig(ModelConfig):
-    """RF-DETR core 类：`RFDETRBaseConfig`。"""
+    """RF-DETR base 模型配置。"""
 
     encoder: EncoderName = "dinov2_windowed_small"
     hidden_dim: int = 256
@@ -345,7 +311,7 @@ class RFDETRBaseConfig(ModelConfig):
 
 
 class RFDETRLargeDeprecatedConfig(RFDETRBaseConfig):
-    """RF-DETR core 类：`RFDETRLargeDeprecatedConfig`。"""
+    """保留给旧 large 配置文件读取的 RF-DETR 配置。"""
 
     encoder: EncoderName = "dinov2_windowed_base"
     hidden_dim: int = 384
@@ -357,7 +323,7 @@ class RFDETRLargeDeprecatedConfig(RFDETRBaseConfig):
 
 
 class RFDETRNanoConfig(RFDETRBaseConfig):
-    """RF-DETR core 类：`RFDETRNanoConfig`。"""
+    """RF-DETR nano 模型配置。"""
 
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
@@ -369,7 +335,7 @@ class RFDETRNanoConfig(RFDETRBaseConfig):
 
 
 class RFDETRSmallConfig(RFDETRBaseConfig):
-    """RF-DETR core 类：`RFDETRSmallConfig`。"""
+    """RF-DETR small 模型配置。"""
 
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
@@ -381,7 +347,7 @@ class RFDETRSmallConfig(RFDETRBaseConfig):
 
 
 class RFDETRMediumConfig(RFDETRBaseConfig):
-    """RF-DETR core 类：`RFDETRMediumConfig`。"""
+    """RF-DETR medium 模型配置。"""
 
     out_feature_indexes: List[int] = [3, 6, 9, 12]
     num_windows: int = 2
@@ -510,7 +476,7 @@ class RFDETRSeg2XLargeConfig(RFDETRBaseConfig):
 
 
 class TrainConfig(BaseModel):
-    """RF-DETR core 类：`TrainConfig`。"""
+    """RF-DETR detection 训练配置。"""
 
     lr: float = 1e-4
     lr_encoder: float = 1.5e-4
@@ -573,11 +539,7 @@ class TrainConfig(BaseModel):
 
     @model_validator(mode="after")
     def _warn_deprecated_train_config_fields(self) -> "TrainConfig":
-        """执行 `_warn_deprecated_train_config_fields`。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """提示已经迁移到 ModelConfig 的旧 TrainConfig 字段。"""
         _deprecated = ("group_detr", "ia_bce_loss", "segmentation_head", "num_select")
         for field in _deprecated:
             if field in self.model_fields_set:
@@ -592,14 +554,7 @@ class TrainConfig(BaseModel):
     @field_validator("progress_bar", mode="before")
     @classmethod
     def _coerce_legacy_progress_bar(cls, value: Any) -> Any:
-        """执行 `_coerce_legacy_progress_bar`。
-        
-        参数：
-        - `value`：传入的 `value` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """兼容旧配置里的 progress_bar 布尔值写法。"""
         if isinstance(value, bool):
             return "tqdm" if value else None
         return value
@@ -626,14 +581,7 @@ class TrainConfig(BaseModel):
     @field_validator("batch_size", mode="after")
     @classmethod
     def validate_batch_size(cls, v: int | Literal["auto"]) -> int | Literal["auto"]:
-        """执行 `validate_batch_size`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """校验 batch_size，允许 RF-DETR auto batch 模式。"""
         if v == "auto":
             return v
         if v < 1:
@@ -645,14 +593,7 @@ class TrainConfig(BaseModel):
     )
     @classmethod
     def validate_positive_train_steps(cls, v: int) -> int:
-        """执行 `validate_positive_train_steps`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """校验训练步数类参数必须为正数。"""
         if v < 1:
             raise ValueError(
                 "grad_accum_steps, auto_batch_target_effective, and auto_batch_max_targets_per_image must be >= 1."
@@ -662,14 +603,7 @@ class TrainConfig(BaseModel):
     @field_validator("auto_batch_ema_headroom", mode="after")
     @classmethod
     def validate_ema_headroom(cls, v: float) -> float:
-        """执行 `validate_ema_headroom`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """校验 auto batch EMA 余量比例。"""
         if not (0 < v <= 1.0):
             raise ValueError("auto_batch_ema_headroom must be in (0, 1].")
         return v
@@ -677,14 +611,7 @@ class TrainConfig(BaseModel):
     @field_validator("ema_update_interval", "eval_interval", mode="after")
     @classmethod
     def validate_positive_intervals(cls, v: int) -> int:
-        """执行 `validate_positive_intervals`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """校验训练间隔类参数必须为正数。"""
         if v < 1:
             raise ValueError("Interval fields must be >= 1.")
         return v
@@ -692,14 +619,7 @@ class TrainConfig(BaseModel):
     @field_validator("prefetch_factor", mode="after")
     @classmethod
     def validate_prefetch_factor(cls, v: Optional[int]) -> Optional[int]:
-        """执行 `validate_prefetch_factor`。
-        
-        参数：
-        - `v`：传入的 `v` 参数。
-        
-        返回：
-        - 当前函数的执行结果。
-        """
+        """校验 DataLoader prefetch_factor。"""
         if v is not None and v < 1:
             raise ValueError("prefetch_factor must be >= 1 when provided.")
         return v

@@ -32,7 +32,7 @@ class RfdetrTrainingQueueWorker:
         - session_factory：数据库会话工厂。
         - dataset_storage：本地数据集文件存储服务。
         - queue_backend：任务队列后端。
-        - training_backend：可选训练执行器；测试场景可注入轻量 stub。
+        - training_backend：可选训练执行器；测试场景可注入替代执行器。
         - worker_id：当前 worker 的稳定标识。
         """
         self.session_factory = session_factory

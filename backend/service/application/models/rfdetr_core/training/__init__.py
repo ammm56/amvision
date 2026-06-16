@@ -1,4 +1,4 @@
-"""RF-DETR core 训练处理模块：`training.__init__`。"""
+"""RF-DETR training 子包的延迟导出入口。"""
 
 from __future__ import annotations
 
@@ -49,14 +49,7 @@ __all__ = sorted(_EXPORTS)
 
 
 def __getattr__(name: str) -> Any:
-    """执行 `__getattr__`。
-    
-    参数：
-    - `name`：传入的 `name` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """按需加载 RF-DETR training 子模块，避免导入时提前拉起重依赖。"""
     if name not in _EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, attr_name = _EXPORTS[name]

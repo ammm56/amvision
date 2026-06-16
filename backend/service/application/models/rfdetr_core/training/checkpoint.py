@@ -1,4 +1,4 @@
-"""RF-DETR core 训练处理模块：`training.checkpoint`。"""
+"""RF-DETR 训练 checkpoint 格式转换工具。"""
 
 from __future__ import annotations
 
@@ -13,21 +13,13 @@ __all__ = ["convert_legacy_checkpoint"]
 
 
 def convert_legacy_checkpoint(old_path: str, new_path: str) -> None:
-    """执行 `convert_legacy_checkpoint`。
-    
-    参数：
-    - `old_path`：传入的 `old_path` 参数。
-    - `new_path`：传入的 `new_path` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
+    """把 RF-DETR 早期 .pth checkpoint 转成 Lightning 可恢复格式。"""
     old: dict[str, Any] = torch.load(old_path, map_location="cpu", weights_only=False)
 
     if "model" not in old:
         raise ValueError(
             f"The checkpoint at {old_path!r} does not contain a 'model' key."
-            " Only RF-DETR legacy .pth files produced by engine.py are supported."
+            " Only RF-DETR early .pth files produced by engine.py are supported."
         )
 
     args_obj = old.get("args")
