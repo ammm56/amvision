@@ -95,7 +95,7 @@
 
 | 模型 | 主要任务 | 默认数据集导出格式 | 备选格式 | 说明 |
 | --- | --- | --- | --- | --- |
-| YOLOX | detection | coco-detection-v1 | yolo-detection-v1 | 默认优先 COCO detection，因为 YOLOX 训练接口更接近 COCO |
+| YOLOX | detection | coco-detection-v1 | voc-detection-v1 | 默认优先 COCO detection；VOC detection 也已接入训练与评估 |
 | YOLOv8/11 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
 | YOLOv8/11 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
 | YOLOv8/11 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
@@ -124,7 +124,8 @@
   - imagenet-classification-v1
   - dota-obb-v1
 - `YOLOv8 / YOLO11 / YOLO26` 的 detection 训练与评估当前已经同时接通 `yolo-detection-v1` 和 `coco-detection-v1`，其中 `yolo-detection-v1` 仍是首选默认格式。
-- `YOLOX` detection 当前仍只接 `coco-detection-v1`；`RF-DETR` detection 当前也仍只接 `coco-detection-v1`。上游参考仓库虽然还存在更多数据集变体入口，但本项目没有把这些变体全部接成正式训练输入。
+- `YOLOX` detection 当前已经接通 `coco-detection-v1` 和 `voc-detection-v1` 的训练与评估入口，其中 `coco-detection-v1` 仍是默认格式。
+- `RF-DETR` detection 当前仍只接 `coco-detection-v1`。上游参考仓库虽然还存在更多数据集变体入口，但本项目没有把这些变体全部接成正式训练输入。
 - `imagenet-classification-v1` 当前导出为 ImageNet 风格目录，同时保留 `annotations/{split}.json` 和 `manifest.json`，便于项目内训练与评估链直接消费。
 - `dota-obb-v1` 当前导出为 split 级图片目录和 DOTA polygon 风格 annotation json，不再把 OBB 数据继续塞进 detection 语义。
 - semantic segmentation 相关 `semantic-mask-dir-v1 / sam-promptable-seg-v1` 仍停留在规划和格式预留阶段，还没有正式实现。

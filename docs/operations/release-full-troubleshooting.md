@@ -40,6 +40,7 @@
 - 仓库侧已补 `tests/integration/test_release_full_stack_acceptance.py`，用于显式启动 `release/full`、检查 health/docs/OpenAPI/worker profile、陈旧状态文件恢复、组件日志文件、资源快照、短时驻留并调用 stop 脚本回收。默认驻留时间较短，长时 soak 需要单独设置 `AMVISION_RELEASE_FULL_SOAK_SECONDS`。
 - 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间。当前文件包含 `initial`、`final`、`samples` 和 `summary` 四段：`samples` 用于长时 soak 过程采样，`summary` 用于直接查看 RSS、CPU 和线程数变化。
 - 2026-06-15 已在本机重新装配 `release/full` 并复跑一次短时启停验收：使用 `release/full/python/python.exe`、端口 `18080`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`，结果为 `1 passed`。本次验收确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和 `resource-baseline.json` 写入正常；这仍是短时空载验收，不替代现场长时间负载 soak。
+- 2026-06-16 已复跑 `tests/integration/test_release_full_stack_acceptance.py`：使用端口 `18080`、`logs/integration-full-stack-codex-short`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`、资源采样间隔 `1` 秒，结果为 `1 passed`。本次资源摘要中 backend-service 与 6 个 worker profile 的 RSS、线程数和 CPU 时间在短时驻留前后无增长；这仍是短时空载验收，不替代目标机长时间负载 soak。
 
 ## 常见问题
 
