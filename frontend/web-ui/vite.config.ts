@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
@@ -12,6 +13,7 @@ const frontendVersion =
   typeof packageJson.version === 'string' && packageJson.version.trim()
     ? packageJson.version.trim()
     : '0.0.0'
+const vitestSetupFile = pathToFileURL(path.resolve(__dirname, 'vitest.setup.ts')).href
 
 export default defineConfig({
   plugins: [vue()],
@@ -31,6 +33,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./vitest.setup.ts'],
+    setupFiles: [vitestSetupFile],
   },
 })
