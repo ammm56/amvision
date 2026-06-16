@@ -6,12 +6,15 @@ from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices as batched_nms_indices,
     yolox_prediction_to_numpy_array as prediction_to_numpy_array,
 )
+from backend.service.application.models.yolox_core.utils import (
+    enable_yolox_cuda_inference_fast_path as enable_pytorch_cuda_inference_fast_path,
+    resolve_yolox_torch_device_name as resolve_execution_device_name,
+)
 from backend.service.application.runtime.predictors.yolox import (
     OpenVINOYoloXRuntimeSession as OpenVINODetectionRuntimeSessionBase,
     TensorRTYoloXRuntimeSession as TensorRTDetectionRuntimeSessionBase,
     _DEFAULT_NMS_THRESHOLD as DEFAULT_DETECTION_NMS_THRESHOLD,
     _build_openvino_compile_properties as build_openvino_compile_properties,
-    _enable_pytorch_cuda_inference_fast_path as enable_pytorch_cuda_inference_fast_path,
     _ensure_cuda_success as ensure_cuda_success,
     _get_tensorrt_logger as get_tensorrt_logger,
     _import_openvino_module as import_openvino_module,
@@ -29,7 +32,6 @@ from backend.service.application.runtime.predictors.yolox import (
     _require_inference_imports as require_inference_imports,
     _resolve_cuda_device_index as resolve_cuda_device_index,
     _resolve_cuda_runtime_device_name as resolve_cuda_runtime_device_name,
-    _resolve_execution_device_name as resolve_execution_device_name,
     _resolve_numpy_dtype as resolve_numpy_dtype,
     _resolve_onnxruntime_providers as resolve_onnxruntime_providers,
     _resolve_openvino_compiled_runtime_precision as resolve_openvino_compiled_runtime_precision,

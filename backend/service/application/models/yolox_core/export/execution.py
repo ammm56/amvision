@@ -22,6 +22,10 @@ from backend.service.application.models.yolox_core.export.tensorrt import (
     YOLOX_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
     build_yolox_tensorrt_engine,
 )
+from backend.service.application.models.yolox_core.export.session import (
+    YoloXExportSession,
+    load_yolox_export_session,
+)
 
 __all__ = [
     "YOLOX_EXPORT_INPUT_NAMES",
@@ -30,9 +34,11 @@ __all__ = [
     "YOLOX_ONNX_EXPORTER_MODE",
     "YOLOX_OPENVINO_IR_BUILD_SCRIPT_FILE",
     "YOLOX_TENSORRT_ENGINE_BUILD_SCRIPT_FILE",
+    "YoloXExportSession",
     "build_yolox_openvino_ir",
     "build_yolox_tensorrt_engine",
     "export_yolox_onnx",
+    "load_yolox_export_session",
     "normalize_yolox_export_model_outputs",
     "optimize_yolox_onnx",
     "resolve_yolox_openvino_weights_object_key",

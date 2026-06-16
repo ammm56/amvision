@@ -14,6 +14,9 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.dataset_export_format_support import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.models.training.yolox_detection import (
     YOLOX_CORE_DEFAULT_EVALUATION_INTERVAL,
     YoloXTrainingBatchProgress,
@@ -1319,17 +1322,13 @@ class SqlAlchemyYoloXTrainingTaskService:
         """执行当前阶段的最小真实 YOLOX detection 训练流程。"""
 
         dataset_storage = self._require_dataset_storage()
-        expected_dataset_format = self.spec.resolve_default_dataset_format(DETECTION_TASK_TYPE)
-        if expected_dataset_format is None:
-            raise ServiceConfigurationError("当前 YOLOX 规格缺少 detection 默认导出格式配置")
-        if dataset_export.format_id != expected_dataset_format:
-            raise InvalidRequestError(
-                "当前最小真实训练只支持当前 YOLOX 默认 detection 导出格式输入",
-                details={
-                    "format_id": dataset_export.format_id,
-                    "expected_format_id": expected_dataset_format,
-                },
-            )
+        require_supported_dataset_export_format(
+            model_type="yolox",
+            task_type=DETECTION_TASK_TYPE,
+            format_id=dataset_export.format_id,
+            dataset_export_id=dataset_export.dataset_export_id,
+            unsupported_message="YOLOX detection 训练不支持当前 DatasetExport 格式",
+        )
 
         category_names = self._read_str_tuple(manifest_payload.get("category_names"))
         split_names = self._read_manifest_split_names(manifest_payload)

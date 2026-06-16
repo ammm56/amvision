@@ -10,6 +10,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    VOC_DETECTION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
@@ -37,7 +38,11 @@ from backend.service.domain.models.yolo_model_profiles import (
 @pytest.mark.parametrize(
     ("model_type", "task_type", "expected_formats"),
     [
-        ("yolox", DETECTION_TASK_TYPE, (COCO_DETECTION_DATASET_FORMAT,)),
+        (
+            "yolox",
+            DETECTION_TASK_TYPE,
+            (COCO_DETECTION_DATASET_FORMAT, VOC_DETECTION_DATASET_FORMAT),
+        ),
         (
             "yolov8",
             DETECTION_TASK_TYPE,

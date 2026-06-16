@@ -10,13 +10,14 @@ from backend.service.application.backends import (
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolox_core.export import (
+    YoloXExportSession,
     build_yolox_openvino_ir,
     build_yolox_tensorrt_engine,
     export_yolox_onnx,
+    load_yolox_export_session,
     optimize_yolox_onnx,
     validate_yolox_onnx,
 )
-from backend.service.application.runtime.predictors.yolox import PyTorchYoloXRuntimeSession
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -66,8 +67,7 @@ class LocalYoloXConversionRunner:
 
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
-        session = PyTorchYoloXRuntimeSession.load(
-            dataset_storage=self.dataset_storage,
+        session = load_yolox_export_session(
             runtime_target=request.source_runtime_target,
         )
         onnx_module, onnxruntime_module, onnx_simplify = import_onnx_conversion_dependencies()
@@ -204,7 +204,7 @@ class LocalYoloXConversionRunner:
     def _export_onnx(
         self,
         *,
-        session: PyTorchYoloXRuntimeSession,
+        session: YoloXExportSession,
         output_object_key: str,
     ) -> dict[str, object]:
         """把 PyTorch checkpoint 导出为 ONNX。"""
@@ -219,7 +219,7 @@ class LocalYoloXConversionRunner:
     def _validate_onnx(
         self,
         *,
-        session: PyTorchYoloXRuntimeSession,
+        session: YoloXExportSession,
         onnx_object_key: str,
         onnx_module: object,
         onnxruntime_module: object,

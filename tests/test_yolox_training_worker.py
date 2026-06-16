@@ -12,6 +12,7 @@ import pytest
 import torch
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.errors import InvalidRequestError
@@ -280,6 +281,68 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         )
 
         assert worker.run_once() is False
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_yolox_training_worker_accepts_voc_dataset_export(tmp_path: Path) -> None:
+    """验证 YOLOX worker 能使用 VOC DatasetExport 完成短链路训练。"""
+
+    session_factory, dataset_storage, queue_backend = _create_worker_runtime(tmp_path)
+    _seed_completed_voc_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-worker-voc-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/dataset-export-worker-voc-1/manifest.json"
+        ),
+    )
+    service = SqlAlchemyYoloXTrainingTaskService(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    )
+    worker = YoloXTrainingQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id="test-yolox-training-worker-voc",
+    )
+    try:
+        submission = service.submit_training_task(
+            YoloXTrainingTaskRequest(
+                project_id="project-1",
+                dataset_export_id="dataset-export-worker-voc-1",
+                recipe_id="yolox-default",
+                model_scale="nano",
+                output_model_name="yolox-nano-voc",
+                max_epochs=1,
+                batch_size=1,
+                precision="fp32",
+                input_size=(64, 64),
+            ),
+            created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+        )
+
+        assert worker.run_once() is True
+
+        completed_task = SqlAlchemyTaskService(session_factory).get_task(
+            submission.task_id,
+            include_events=True,
+        )
+        assert completed_task.task.state == "succeeded"
+        assert completed_task.task.result["dataset_export_id"] == "dataset-export-worker-voc-1"
+        assert completed_task.task.result["summary"]["implementation_mode"] == "yolox-detection-core"
+        assert completed_task.task.result["summary"]["validation"]["enabled"] is True
+        assert completed_task.task.result["summary"]["validation"]["split_name"] == "val"
+        assert "map50" in completed_task.task.result["summary"]["validation"]["final_metrics"]
+        assert "map50_95" in completed_task.task.result["summary"]["validation"]["final_metrics"]
+
+        validation_metrics_payload = dataset_storage.read_json(
+            completed_task.task.result["validation_metrics_object_key"]
+        )
+        assert validation_metrics_payload["split_name"] == "val"
+        assert "map50" in validation_metrics_payload["final_metrics"]
+        assert "map50_95" in validation_metrics_payload["final_metrics"]
     finally:
         session_factory.engine.dispose()
 
@@ -930,6 +993,140 @@ def _seed_completed_dataset_export(
         _build_test_jpeg_bytes(),
     )
     return dataset_export
+
+
+def _seed_completed_voc_dataset_export(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    dataset_export_id: str,
+    manifest_object_key: str,
+) -> DatasetExport:
+    """写入一个已完成的 VOC detection DatasetExport 和最小 VOC 文件结构。"""
+
+    export_path = manifest_object_key.rsplit("/manifest.json", 1)[0]
+    dataset_export = DatasetExport(
+        dataset_export_id=dataset_export_id,
+        dataset_id="dataset-1",
+        project_id="project-1",
+        dataset_version_id=f"dataset-version-{dataset_export_id}",
+        format_id=VOC_DETECTION_DATASET_FORMAT,
+        task_type="detection",
+        status="completed",
+        created_at=datetime.now(timezone.utc).isoformat(),
+        task_id=f"task-{dataset_export_id}",
+        export_path=export_path,
+        manifest_object_key=manifest_object_key,
+        split_names=("train", "val"),
+        sample_count=2,
+        category_names=("bolt", "nut"),
+    )
+
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        unit_of_work.dataset_exports.save_dataset_export(dataset_export)
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+    dataset_storage.write_json(
+        manifest_object_key,
+        {
+            "format_id": VOC_DETECTION_DATASET_FORMAT,
+            "dataset_version_id": dataset_export.dataset_version_id,
+            "category_names": ["bolt", "nut"],
+            "splits": [
+                {
+                    "name": "train",
+                    "image_root": f"{export_path}/JPEGImages",
+                    "annotation_root": f"{export_path}/Annotations",
+                    "image_set_file": f"{export_path}/ImageSets/Main/train.txt",
+                    "sample_count": 1,
+                },
+                {
+                    "name": "val",
+                    "image_root": f"{export_path}/JPEGImages",
+                    "annotation_root": f"{export_path}/Annotations",
+                    "image_set_file": f"{export_path}/ImageSets/Main/val.txt",
+                    "sample_count": 1,
+                },
+            ],
+            "metadata": {"source_dataset_id": "dataset-1"},
+        },
+    )
+    dataset_storage.write_text(
+        f"{export_path}/ImageSets/Main/train.txt",
+        "train-1\n",
+    )
+    dataset_storage.write_text(
+        f"{export_path}/ImageSets/Main/val.txt",
+        "val-1\n",
+    )
+    dataset_storage.write_text(
+        f"{export_path}/Annotations/train-1.xml",
+        _build_voc_annotation_xml(
+            file_name="train-1.jpg",
+            class_name="bolt",
+            xmin=9,
+            ymin=9,
+            xmax=33,
+            ymax=33,
+        ),
+    )
+    dataset_storage.write_text(
+        f"{export_path}/Annotations/val-1.xml",
+        _build_voc_annotation_xml(
+            file_name="val-1.jpg",
+            class_name="nut",
+            xmin=11,
+            ymin=11,
+            xmax=27,
+            ymax=27,
+        ),
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/JPEGImages/train-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
+    dataset_storage.write_bytes(
+        f"{export_path}/JPEGImages/val-1.jpg",
+        _build_test_jpeg_bytes(),
+    )
+    return dataset_export
+
+
+def _build_voc_annotation_xml(
+    *,
+    file_name: str,
+    class_name: str,
+    xmin: int,
+    ymin: int,
+    xmax: int,
+    ymax: int,
+) -> str:
+    """构建一个最小 VOC annotation XML。"""
+
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<annotation>
+  <folder>JPEGImages</folder>
+  <filename>{file_name}</filename>
+  <size>
+    <width>64</width>
+    <height>64</height>
+    <depth>3</depth>
+  </size>
+  <object>
+    <name>{class_name}</name>
+    <difficult>0</difficult>
+    <bndbox>
+      <xmin>{xmin}</xmin>
+      <ymin>{ymin}</ymin>
+      <xmax>{xmax}</xmax>
+      <ymax>{ymax}</ymax>
+    </bndbox>
+  </object>
+</annotation>
+"""
 
 
 def _build_test_jpeg_bytes() -> bytes:

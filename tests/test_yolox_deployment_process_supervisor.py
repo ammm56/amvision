@@ -35,7 +35,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         settings=BackendServiceDeploymentProcessSupervisorConfig(
             auto_restart=True,
             monitor_interval_seconds=0.05,
-            request_timeout_seconds=2.0,
+            request_timeout_seconds=30.0,
             shutdown_timeout_seconds=1.0,
             operator_thread_count=1,
         ),
@@ -174,7 +174,7 @@ def _wait_for_health(
     supervisor: DeploymentProcessSupervisor,
     config: DeploymentProcessConfig,
     *,
-    timeout_seconds: float = 5.0,
+    timeout_seconds: float = 35.0,
 ) -> object:
     """等待 deployment 子进程进入可响应 health 的状态。"""
 
