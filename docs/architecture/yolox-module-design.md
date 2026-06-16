@@ -291,7 +291,7 @@ backend/
 
 当前仍需继续收口的内容主要包括：
 
-- `models/training/yolox_detection_task_service.py` 已把任务请求 / 结果 / 常量拆到 `yolox_detection_task_types.py`，把 save / pause / resume / terminate 控制状态工具拆到 `yolox_detection_task_control.py`。当前 service 剩余职责主要是任务状态、输出登记和 ModelVersion 登记，不再承载模型结构或训练 loop；后续可继续按输出登记、checkpoint 登记拆小。
+- `models/training/yolox_detection_task_service.py` 已把任务请求 / 结果 / 常量拆到 `yolox_detection_task_types.py`，把 save / pause / resume / terminate 控制状态工具拆到 `yolox_detection_task_control.py`，把 TaskRecord request/result 重建、manifest 统计、进度百分比和输出 id 规则拆到 `yolox_detection_task_payload.py`，把输出登记、ModelVersion 登记和 latest checkpoint 登记拆到 `yolox_detection_task_registration.py`，把训练产物 object key 与对象存储写入拆到 `yolox_detection_task_outputs.py`，把 warm start ModelVersion 解析拆到 `yolox_detection_task_warm_start.py`。当前 service 剩余职责主要是任务生命周期、训练执行编排、事务状态事件和错误收口，不再承载模型结构、训练 loop、登记细节、warm start 解析或对象存储输出细节。
 - `runtime/predictors/yolox*.py` 仍属于 deployment runtime 外壳，后续只继续清会话和 backend adapter 边界，不迁入 core。
 - `release/full` 已具备短时驻留、组件日志、资源快照和 stop 回收验收；长时间负载 soak 仍需要由目标机真实调试补齐。
 - 前端训练后验证、评估和部署运维页面还可以继续提高使用顺序和现场提示。
