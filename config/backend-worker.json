@@ -32,8 +32,22 @@
       "yolov8-conversion",
       "yolo11-conversion",
       "yolo26-conversion",
+      "classification-evaluation",
+      "segmentation-evaluation",
       "detection-evaluation",
-      "detection-inference"
+      "pose-evaluation",
+      "obb-evaluation",
+      "rfdetr-training",
+      "rfdetr-conversion",
+      "detection-inference",
+      "classification-inference",
+      "segmentation-inference",
+      "pose-inference",
+      "obb-inference",
+      "classification-training",
+      "segmentation-training",
+      "pose-training",
+      "obb-training"
     ],
     "max_concurrent_tasks": 2,
     "poll_interval_seconds": 1.0

@@ -45,9 +45,8 @@ def build_yolov8_segmentation_training_batch(
 ) -> YoloV8SegmentationTrainingBatch | None:
     """把样本列表编码为 YOLOv8 segmentation 训练 batch。
 
-    当前实现保留现有 letterbox 路径，并把 polygon 选择和 mask target
-    栅格化固定到 YOLOv8 core 内，后续 mosaic、multi-scale 和 no-aug
-    切换继续在本文件扩展。
+    本入口负责 polygon 选择、mask target 栅格化，以及当前 batch
+    的 mosaic、mixup、random affine、HSV 和 flip 增强。
     """
 
     if not samples:

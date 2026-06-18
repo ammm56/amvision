@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.service.application.models.yolo_core_common.export import (
-    YoloExportTaskPlan,
-    export_yolo_onnx,
-    validate_yolo_onnx,
+from backend.service.application.models.yolov8_core.export.execution import (
+    export_yolov8_onnx_model,
+    validate_yolov8_onnx_model,
+)
+from backend.service.application.models.yolov8_core.export.plan import (
+    YoloV8ExportTaskPlan,
 )
 
 
@@ -16,11 +18,11 @@ def export_yolov8_onnx(
     session: object,
     output_path: Path,
     output_object_key: str,
-    export_plan: YoloExportTaskPlan,
+    export_plan: YoloV8ExportTaskPlan,
 ) -> dict[str, object]:
     """把 YOLOv8 PyTorch session 导出为 ONNX。"""
 
-    return export_yolo_onnx(
+    return export_yolov8_onnx_model(
         session=session,
         output_path=output_path,
         output_object_key=output_object_key,
@@ -34,11 +36,11 @@ def validate_yolov8_onnx(
     onnx_path: Path,
     onnx_module: object,
     onnxruntime_module: object,
-    export_plan: YoloExportTaskPlan,
+    export_plan: YoloV8ExportTaskPlan,
 ) -> dict[str, object]:
     """校验 YOLOv8 ONNX 文件和 PyTorch 输出是否一致。"""
 
-    return validate_yolo_onnx(
+    return validate_yolov8_onnx_model(
         session=session,
         onnx_path=onnx_path,
         onnx_module=onnx_module,

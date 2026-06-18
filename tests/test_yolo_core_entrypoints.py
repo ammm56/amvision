@@ -731,7 +731,7 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
         dtype=np.float32,
     )
     obb_prediction_array = np.asarray(
-        [[[1.0, 1.0, 10.0, 10.0, 0.9, 0.1, 0.25]]],
+        [[[8.0, 8.0, 8.0, 8.0, 0.9, 0.1, 0.25]]],
         dtype=np.float32,
     )
     pose_instances, pose_kpt_shape = build_yolov8_pose_postprocess_instances(
@@ -811,9 +811,41 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
     assert runtime_pose_kpt_shape == (17, 3)
     assert len(obb_instances) == 1
     assert obb_instances[0].class_name == "part"
+    assert obb_instances[0].bbox_xywhr[:4] == (8.0, 8.0, 8.0, 8.0)
     assert obb_instances[0].angle == 0.25
     assert len(runtime_obb_instances) == 1
     assert runtime_obb_instances[0].class_name == "part"
+
+
+def test_yolov8_obb_postprocess_uses_class_aware_rotated_nms() -> None:
+    """验证 YOLOv8 OBB 后处理按类别使用 rotated IoU 做 NMS。"""
+
+    np = pytest.importorskip("numpy")
+    prediction_array = np.asarray(
+        [
+            [
+                [8.0, 8.0, 8.0, 8.0, 0.95, 0.05, 0.0],
+                [8.0, 8.0, 8.0, 8.0, 0.80, 0.10, 0.0],
+                [8.0, 8.0, 8.0, 8.0, 0.05, 0.90, 0.0],
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    instances = build_yolov8_obb_postprocess_instances(
+        np_module=np,
+        prediction_array=prediction_array,
+        labels=("part", "defect"),
+        score_threshold=0.1,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        nms_threshold=0.5,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert [item.class_name for item in instances] == ["part", "defect"]
+    assert [item.score for item in instances] == [0.95, 0.9]
 
 
 def test_yolov8_classification_core_data_eval_and_preview_entries(tmp_path: Path) -> None:
@@ -1388,7 +1420,7 @@ class _StaticYoloV8PoseModel(torch.nn.Module):
 
         batch_size = int(images.shape[0])
         prediction = images.new_zeros((batch_size, 1, 4 + 1 + 17 * 3))
-        prediction[:, 0, :4] = images.new_tensor([4.0, 4.0, 12.0, 12.0])
+        prediction[:, 0, :4] = images.new_tensor([8.0, 8.0, 8.0, 8.0])
         prediction[:, 0, 4] = 0.95
         prediction[:, 0, 5:] = images.new_tensor(
             [value for _ in range(17) for value in (6.0, 6.0, 0.9)]
@@ -1404,7 +1436,7 @@ class _StaticYoloV8ObbModel(torch.nn.Module):
 
         batch_size = int(images.shape[0])
         prediction = images.new_zeros((batch_size, 1, 5 + 1))
-        prediction[:, 0, :4] = images.new_tensor([4.0, 4.0, 12.0, 12.0])
+        prediction[:, 0, :4] = images.new_tensor([8.0, 8.0, 8.0, 8.0])
         prediction[:, 0, 4] = 0.95
         prediction[:, 0, 5] = 0.0
         return prediction

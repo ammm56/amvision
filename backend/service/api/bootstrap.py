@@ -822,7 +822,7 @@ def _build_async_inference_gateway_execution_handler(
         """通过 backend-service 持有的 async deployment supervisor 执行一次推理。"""
 
         execution_result = deployment_process_supervisor.run_inference(
-            process_config=process_config,
+            config=process_config,
             request=request,
         )
         return serialize_async_inference_execution_result(

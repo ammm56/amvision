@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.decode import (
-    decode_detection_training_predictions,
+from backend.service.application.models.yolov8_core.decode import (
+    decode_yolov8_detection_training_predictions,
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_detection_targets,
@@ -32,7 +32,7 @@ def compute_yolov8_detection_loss(
 ) -> dict[str, Any]:
     """按 YOLOv8 detection 规则计算分类、框回归和 DFL 损失。"""
 
-    prediction_bundle = decode_detection_training_predictions(
+    prediction_bundle = decode_yolov8_detection_training_predictions(
         torch_module=torch_module,
         detect_head=detect_head,
         raw_outputs=raw_outputs,

@@ -594,6 +594,54 @@ def test_import_dataset_zip_creates_yolo_detection_dataset_version(tmp_path: Pat
         session_factory.engine.dispose()
 
 
+def test_import_yolo_dataset_uses_unwrapped_root_when_yaml_path_repeats_root_name(
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO data.yaml 的 path 与 zip 根目录同名时不会重复拼接目录。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-named-root",
+                    "task_type": "detection",
+                    "format_type": "yolo",
+                },
+                files={
+                    "package": (
+                        "medical-pills-like.zip",
+                        _build_yolo_detection_zip_with_named_root_path_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.validation_report["split_counts"] == {"train": 1, "val": 1}
+        assert dataset_version is not None
+        assert len(dataset_version.samples) == 2
+        assert dataset_version.categories[0].name == "pill"
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: Path) -> None:
     """验证导入 YOLO instance segmentation zip 会创建 segmentation DatasetVersion。"""
 
@@ -1582,6 +1630,34 @@ def _build_yolo_detection_zip_bytes() -> bytes:
         zip_file.writestr("dataset-root/labels/train/train-1.txt", "0 0.250000 0.500000 0.300000 0.500000\n")
         zip_file.writestr("dataset-root/images/val/val-1.jpg", image_bytes)
         zip_file.writestr("dataset-root/labels/val/val-1.txt", "")
+    return buffer.getvalue()
+
+
+def _build_yolo_detection_zip_with_named_root_path_bytes() -> bytes:
+    """构建 data.yaml path 与 zip 根目录同名的 YOLO detection zip。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="JPEG", size=(100, 80))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "medical-pills/data.yaml",
+            "\n".join(
+                (
+                    "path: medical-pills",
+                    "train: images/train",
+                    "val: images/val",
+                    "names:",
+                    "  0: pill",
+                )
+            ),
+        )
+        zip_file.writestr("medical-pills/images/train/train-1.jpg", image_bytes)
+        zip_file.writestr(
+            "medical-pills/labels/train/train-1.txt",
+            "0 0.250000 0.500000 0.300000 0.500000\n",
+        )
+        zip_file.writestr("medical-pills/images/val/val-1.jpg", image_bytes)
+        zip_file.writestr("medical-pills/labels/val/val-1.txt", "")
     return buffer.getvalue()
 
 

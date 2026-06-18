@@ -4,14 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.losses import (
-    build_pose_box_area,
-    build_pose_oks_sigmas,
-    build_pose_visibility_mask,
-    compute_oks_keypoint_loss,
-    compute_visibility_loss,
-    distribution_focal_loss,
-)
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_pose_targets,
     yolov8_pose_box_iou_aligned,
@@ -20,9 +12,32 @@ from backend.service.application.models.yolov8_core.decode import (
     decode_yolov8_detection_training_predictions,
     decode_yolov8_pose_keypoints_xy,
 )
+from backend.service.application.models.yolov8_core.losses.detection import (
+    yolov8_distribution_focal_loss,
+)
 from backend.service.application.models.yolov8_core.targets import (
     normalize_yolov8_gt_keypoints_tensor,
     yolov8_bbox_xyxy_to_distances,
+)
+
+COCO_KEYPOINT_OKS_SIGMA = (
+    0.026,
+    0.025,
+    0.025,
+    0.035,
+    0.035,
+    0.079,
+    0.079,
+    0.072,
+    0.072,
+    0.062,
+    0.062,
+    0.107,
+    0.107,
+    0.087,
+    0.087,
+    0.089,
+    0.089,
 )
 
 
@@ -147,7 +162,7 @@ def compute_yolov8_pose_loss(
                     foreground_distance_logits = distance_logits[batch_index][
                         foreground_mask
                     ].view(-1, 4, reg_max)
-                    image_dfl_loss = distribution_focal_loss(
+                    image_dfl_loss = yolov8_distribution_focal_loss(
                         torch_module=torch,
                         logits=foreground_distance_logits,
                         target=target_distances,
@@ -293,5 +308,93 @@ def _accumulate_yolov8_pose_keypoint_loss(
         total_visibility_loss = total_visibility_loss + visibility_loss * foreground_count
     return total_keypoint_loss, total_visibility_loss
 
+
+def yolov8_pose_box_area(*, gt_boxes: Any) -> Any:
+    """从 matched gt boxes 构建 YOLOv8 OKS 所需面积。"""
+
+    widths = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp_min(1.0)
+    heights = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp_min(1.0)
+    return (widths * heights).view(-1, 1)
+
+
+def build_pose_box_area(*, gt_boxes: Any) -> Any:
+    """兼容当前文件内调用的 YOLOv8 pose 面积构建入口。"""
+
+    return yolov8_pose_box_area(gt_boxes=gt_boxes)
+
+
+def build_pose_oks_sigmas(
+    *,
+    torch_module: Any,
+    num_keypoints: int,
+    device: Any,
+    dtype: Any,
+) -> Any:
+    """构建 YOLOv8 pose OKS sigma。"""
+
+    if num_keypoints == len(COCO_KEYPOINT_OKS_SIGMA):
+        values = COCO_KEYPOINT_OKS_SIGMA
+    else:
+        values = tuple(1.0 / max(num_keypoints, 1) for _ in range(num_keypoints))
+    return torch_module.tensor(values, device=device, dtype=dtype).view(1, num_keypoints)
+
+
+def build_pose_visibility_mask(
+    *,
+    torch_module: Any,
+    gt_keypoints: Any,
+    keypoint_dim: int,
+) -> Any:
+    """构建 YOLOv8 pose 关键点可见性 mask。"""
+
+    if keypoint_dim > 2:
+        return gt_keypoints[..., 2] > 0
+    return torch_module.ones(
+        gt_keypoints.shape[0],
+        gt_keypoints.shape[1],
+        device=gt_keypoints.device,
+        dtype=torch_module.bool,
+    )
+
+
+def compute_oks_keypoint_loss(
+    *,
+    torch_module: Any,
+    pred_keypoints_xy: Any,
+    gt_keypoints_xy: Any,
+    keypoint_mask: Any,
+    area: Any,
+    sigmas: Any,
+) -> Any:
+    """按 YOLOv8 pose OKS 公式计算关键点位置损失。"""
+
+    distance_sq = (
+        (pred_keypoints_xy[..., 0] - gt_keypoints_xy[..., 0]).pow(2)
+        + (pred_keypoints_xy[..., 1] - gt_keypoints_xy[..., 1]).pow(2)
+    )
+    keypoint_mask_float = keypoint_mask.float()
+    visible_count = torch_module.sum(keypoint_mask_float, dim=1) + 1e-9
+    keypoint_loss_factor = keypoint_mask.shape[1] / visible_count
+    oks_denominator = ((2 * sigmas).pow(2) * (area + 1e-9) * 2).clamp_min(1e-9)
+    error = distance_sq / oks_denominator
+    return (
+        keypoint_loss_factor.view(-1, 1)
+        * ((1 - torch_module.exp(-error)) * keypoint_mask_float)
+    ).mean()
+
+
+def compute_visibility_loss(
+    *,
+    torch_module: Any,
+    pred_visibility_logits: Any,
+    keypoint_mask: Any,
+) -> Any:
+    """计算 YOLOv8 pose 关键点可见性 BCE 损失。"""
+
+    return torch_module.nn.functional.binary_cross_entropy_with_logits(
+        pred_visibility_logits,
+        keypoint_mask.float(),
+        reduction="mean",
+    )
 
 __all__ = ["compute_yolov8_pose_loss"]

@@ -5,10 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.postprocess import (
-    SegmentationPostprocessInstance,
-)
 from backend.service.application.models.yolov8_core.postprocess import (
+    SegmentationPostprocessInstance,
     build_yolov8_segmentation_postprocess_instances,
     normalize_yolov8_segmentation_outputs,
 )

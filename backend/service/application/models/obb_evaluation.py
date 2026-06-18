@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from backend.service.application.models.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
+    polygon_bounds_xyxy,
+    polygon_iou,
+    xywhr_to_polygon,
 )
 from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
@@ -358,25 +360,7 @@ def _bbox_to_polygon(bbox: list[float]) -> list[tuple[float, float]]:
 def _xywhr_to_polygon(bbox: list[float]) -> list[tuple[float, float]]:
     """把 xywhr 旋转框转为四点 polygon。"""
 
-    cx, cy, width, height, angle = (float(value) for value in bbox[:5])
-    angle_radians = math.radians(angle) if abs(angle) > math.tau else angle
-    cos_value = math.cos(angle_radians)
-    sin_value = math.sin(angle_radians)
-    half_width = width / 2.0
-    half_height = height / 2.0
-    corners = [
-        (-half_width, -half_height),
-        (half_width, -half_height),
-        (half_width, half_height),
-        (-half_width, half_height),
-    ]
-    return [
-        (
-            cx + x_offset * cos_value - y_offset * sin_value,
-            cy + x_offset * sin_value + y_offset * cos_value,
-        )
-        for x_offset, y_offset in corners
-    ]
+    return xywhr_to_polygon(bbox)
 
 
 def _polygon_to_xywhr(polygon: list[tuple[float, float]]) -> list[float]:
@@ -412,31 +396,10 @@ def _polygon_iou(
 ) -> float:
     """用 OpenCV 计算两个凸 polygon 的 IoU。"""
 
-    try:
-        import cv2
-        import numpy as np
-    except ImportError:
-        return bbox_iou_xyxy(_polygon_bounds(polygon1), _polygon_bounds(polygon2))
-
-    left = np.asarray(polygon1, dtype=np.float32)
-    right = np.asarray(polygon2, dtype=np.float32)
-    if left.shape[0] < 3 or right.shape[0] < 3:
-        return 0.0
-    left_area = float(abs(cv2.contourArea(left)))
-    right_area = float(abs(cv2.contourArea(right)))
-    if left_area <= 0.0 or right_area <= 0.0:
-        return 0.0
-    _status, intersection = cv2.intersectConvexConvex(left, right)
-    if intersection is None:
-        intersection_area = 0.0
-    else:
-        intersection_area = float(abs(cv2.contourArea(intersection)))
-    return intersection_area / max(left_area + right_area - intersection_area, 1e-8)
+    return polygon_iou(polygon1, polygon2)
 
 
 def _polygon_bounds(polygon: list[tuple[float, float]]) -> list[float]:
     """计算 polygon 外接 xyxy。"""
 
-    xs = [point[0] for point in polygon]
-    ys = [point[1] for point in polygon]
-    return [min(xs), min(ys), max(xs), max(ys)]
+    return polygon_bounds_xyxy(polygon)

@@ -1688,9 +1688,14 @@ class SqlAlchemyDatasetImportService:
             config_payload = normalized_payload
             configured_root = normalized_payload.get("path")
             if isinstance(configured_root, str) and configured_root.strip():
-                dataset_base_root = self._resolve_yolo_path(
+                resolved_configured_root = self._resolve_yolo_path(
                     yaml_path.parent,
                     configured_root,
+                )
+                dataset_base_root = self._resolve_yolo_dataset_base_root(
+                    yaml_path=yaml_path,
+                    configured_root=configured_root,
+                    resolved_configured_root=resolved_configured_root,
                 )
             else:
                 dataset_base_root = yaml_path.parent
@@ -1719,6 +1724,38 @@ class SqlAlchemyDatasetImportService:
             export_manifest_file,
             export_manifest_payload,
         )
+
+    def _resolve_yolo_dataset_base_root(
+        self,
+        *,
+        yaml_path: Path,
+        configured_root: str,
+        resolved_configured_root: Path,
+    ) -> Path:
+        """解析 YOLO data.yaml 中的 dataset root。
+
+        参数：
+        - yaml_path：当前 data.yaml 文件路径。
+        - configured_root：data.yaml 中的 path 字段原始值。
+        - resolved_configured_root：按 YAML 所在目录直接解析后的路径。
+
+        返回：
+        - 实际可用的数据集根目录。
+        """
+
+        if resolved_configured_root.exists():
+            return resolved_configured_root
+
+        normalized_root_name = Path(configured_root.strip().replace("\\", "/")).name
+        yaml_parent = yaml_path.parent
+        # 很多 YOLO zip 会把数据集目录本身打包进去，同时 data.yaml 仍保留
+        # `path: <dataset-name>`。解压并消除单目录包裹后，YAML 所在目录已经
+        # 是数据集根目录，此时不能再拼一层同名目录。
+        if normalized_root_name and yaml_parent.name == normalized_root_name:
+            return yaml_parent
+        if (yaml_parent / "images").is_dir() or (yaml_parent / "labels").is_dir():
+            return yaml_parent
+        return resolved_configured_root
 
     def _collect_yolo_yaml_paths(
         self,

@@ -4,11 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from backend.service.application.models.yolo_core_common.export import (
-    YOLO_EXPORT_TARGET_FORMATS,
-    YoloExportTaskPlan,
-    build_yolo_export_task_plan,
-)
 from backend.service.application.models.yolov8_core.export.classification import (
     normalize_yolov8_classification_export_outputs as _normalize_classification_export_outputs,
     resolve_yolov8_classification_export_output_names as _resolve_classification_export_output_names,
@@ -23,6 +18,11 @@ from backend.service.application.models.yolov8_core.export.onnx import (
 )
 from backend.service.application.models.yolov8_core.export.openvino import (
     build_yolov8_openvino_ir,
+)
+from backend.service.application.models.yolov8_core.export.plan import (
+    YOLOV8_EXPORT_TARGET_FORMATS,
+    YoloV8ExportTaskPlan,
+    build_yolov8_export_task_plan as _build_yolov8_export_task_plan,
 )
 from backend.service.application.models.yolov8_core.export.pose import (
     normalize_yolov8_pose_export_outputs as _normalize_pose_export_outputs,
@@ -107,25 +107,13 @@ def normalize_yolov8_obb_export_outputs(
 def build_yolov8_export_task_plan(
     *,
     task_type: str,
-    target_formats: Iterable[str] = YOLO_EXPORT_TARGET_FORMATS,
-) -> YoloExportTaskPlan:
+    target_formats: Iterable[str] = YOLOV8_EXPORT_TARGET_FORMATS,
+) -> YoloV8ExportTaskPlan:
     """返回 YOLOv8 指定任务的导出构建计划。"""
 
-    plan = build_yolo_export_task_plan(
+    return _build_yolov8_export_task_plan(
         task_type=task_type,
         target_formats=target_formats,
-    )
-    output_names = _resolve_yolov8_export_output_names(task_type=task_type)
-    if output_names == plan.output_names:
-        return plan
-    return YoloExportTaskPlan(
-        task_type=plan.task_type,
-        input_names=plan.input_names,
-        output_names=output_names,
-        onnx_opset_version=plan.onnx_opset_version,
-        exporter_mode=plan.exporter_mode,
-        export_mode_enabled=plan.export_mode_enabled,
-        target_specs=plan.target_specs,
     )
 
 
@@ -161,5 +149,6 @@ __all__ = [
     "resolve_yolov8_segmentation_export_output_names",
     "validate_yolov8_onnx",
     "YoloV8ExportImports",
+    "YoloV8ExportTaskPlan",
     "YoloV8ExportSourceSession",
 ]

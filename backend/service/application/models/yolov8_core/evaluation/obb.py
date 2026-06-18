@@ -6,6 +6,10 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.service.application.models.coco_style_metrics import (
+    compute_coco_style_ap,
+    rotated_iou_xywhr,
+)
 from backend.service.application.models.obb_evaluation import (
     ObbEvaluationRequest,
     ObbEvaluationResult,
@@ -67,12 +71,11 @@ def evaluate_yolov8_obb_samples(
     """对少量验证样本执行 YOLOv8 OBB 训练期评估。"""
 
     model.eval()
-    matched50 = 0
-    matched75 = 0
-    total_gt = 0
+    gt_items: list[dict[str, object]] = []
+    pred_items: list[dict[str, object]] = []
     total_predictions = 0
     with imports.torch.no_grad():
-        for sample in samples[:8]:
+        for image_index, sample in enumerate(samples[:8]):
             batch = build_yolov8_obb_training_batch(
                 samples=[sample],
                 input_size=input_size,
@@ -96,77 +99,74 @@ def evaluate_yolov8_obb_samples(
                 nms_threshold=nms_threshold,
                 nms_indices_func=batched_nms_indices,
             )
-            gt_boxes = batch.targets[0].boxes_xywhr
-            gt_classes = batch.targets[0].category_indexes
-            total_gt += len(gt_boxes)
-            total_predictions += len(instances)
-            image_matched50, image_matched75 = _count_yolov8_obb_matches(
-                predictions=instances,
-                gt_boxes=gt_boxes,
-                gt_classes=gt_classes,
+            target = batch.targets[0]
+            _append_yolov8_obb_gt_items(
+                image_index=image_index,
+                target=target,
+                gt_items=gt_items,
             )
-            matched50 += image_matched50
-            matched75 += image_matched75
+            total_predictions += len(instances)
+            pred_items.extend(
+                _build_yolov8_obb_prediction_items(
+                    image_index=image_index,
+                    predictions=instances,
+                )
+            )
     model.train()
+    rotated_metrics = compute_coco_style_ap(
+        gt_items=gt_items,
+        pred_items=pred_items,
+        category_names={index: name for index, name in enumerate(labels)},
+        similarity_func=lambda pred, gt: rotated_iou_xywhr(
+            pred["bbox_xywhr"],
+            gt["bbox_xywhr"],
+        ),
+    )
     return {
-        "map50": round(matched50 / max(1, total_gt), 6),
-        "map50_95": round(((matched50 + matched75) / 2.0) / max(1, total_gt), 6),
+        "map50": round(rotated_metrics.ap50, 6),
+        "map50_95": round(rotated_metrics.ap50_95, 6),
+        "rotated_map50": round(rotated_metrics.ap50, 6),
+        "rotated_map50_95": round(rotated_metrics.ap50_95, 6),
         "prediction_count": float(total_predictions),
     }
 
 
-def _count_yolov8_obb_matches(
+def _append_yolov8_obb_gt_items(
     *,
+    image_index: int,
+    target: Any,
+    gt_items: list[dict[str, object]],
+) -> None:
+    """把 YOLOv8 OBB target 转成 rotated AP 使用的 GT 项。"""
+
+    for box, class_id in zip(target.boxes_xywhr, target.category_indexes, strict=True):
+        gt_items.append(
+            {
+                "image_id": image_index,
+                "category_id": int(class_id),
+                "bbox_xywhr": [float(value) for value in box],
+            }
+        )
+
+
+def _build_yolov8_obb_prediction_items(
+    *,
+    image_index: int,
     predictions: tuple[Any, ...],
-    gt_boxes: list[list[float]],
-    gt_classes: list[int],
-) -> tuple[int, int]:
-    """按外接 xyxy box IoU 统计 YOLOv8 OBB 简化匹配数。"""
+) -> list[dict[str, object]]:
+    """把 YOLOv8 OBB 后处理实例转成 rotated AP 预测项。"""
 
-    used_gt: set[int] = set()
-    matched50 = 0
-    matched75 = 0
+    items: list[dict[str, object]] = []
     for prediction in predictions:
-        best_index = -1
-        best_iou = 0.0
-        for gt_index, gt_box in enumerate(gt_boxes):
-            if gt_index in used_gt or int(prediction.class_id) != int(gt_classes[gt_index]):
-                continue
-            iou = _box_iou(prediction.bbox_xyxy, _xywhr_to_xyxy(gt_box))
-            if iou > best_iou:
-                best_iou = iou
-                best_index = gt_index
-        if best_index >= 0 and best_iou >= 0.5:
-            matched50 += 1
-            used_gt.add(best_index)
-            if best_iou >= 0.75:
-                matched75 += 1
-    return matched50, matched75
-
-
-def _xywhr_to_xyxy(box: list[float]) -> tuple[float, float, float, float]:
-    """把 xywhr 近似转换为外接 xyxy box。"""
-
-    cx, cy, width, height, _angle = (float(value) for value in box)
-    return (
-        cx - width / 2.0,
-        cy - height / 2.0,
-        cx + width / 2.0,
-        cy + height / 2.0,
-    )
-
-
-def _box_iou(box1: tuple[float, float, float, float], box2: tuple[float, float, float, float]) -> float:
-    """计算两个 xyxy box 的 IoU。"""
-
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    area1 = max(0.0, box1[2] - box1[0]) * max(0.0, box1[3] - box1[1])
-    area2 = max(0.0, box2[2] - box2[0]) * max(0.0, box2[3] - box2[1])
-    return inter / max(area1 + area2 - inter, 1e-8)
+        items.append(
+            {
+                "image_id": image_index,
+                "category_id": int(prediction.class_id),
+                "bbox_xywhr": list(prediction.bbox_xywhr),
+                "score": float(prediction.score),
+            }
+        )
+    return items
 
 
 def _yolov8_evaluation_autocast(imports: Any, precision: str, device: str):

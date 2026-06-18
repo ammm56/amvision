@@ -10,6 +10,7 @@ from backend.workers.settings import SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKER_PROFILES_DIR = REPO_ROOT / "runtimes" / "manifests" / "worker-profiles"
+DEFAULT_BACKEND_WORKER_CONFIG = REPO_ROOT / "config" / "backend-worker.json"
 
 
 EXPECTED_WORKER_PROFILE_CONSUMERS: dict[str, tuple[str, ...]] = {
@@ -68,3 +69,15 @@ def test_worker_profile_manifests_only_use_supported_consumer_kinds() -> None:
         assert isinstance(enabled_consumer_kinds, list)
         assert enabled_consumer_kinds
         assert set(enabled_consumer_kinds).issubset(SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS)
+
+
+def test_default_backend_worker_config_enables_current_full_consumer_set() -> None:
+    """验证默认 backend-worker 配置覆盖当前真实使用的所有 consumer。"""
+
+    config_payload = json.loads(DEFAULT_BACKEND_WORKER_CONFIG.read_text(encoding="utf-8"))
+    enabled_consumer_kinds = tuple(config_payload["task_manager"]["enabled_consumer_kinds"])
+    expected_consumer_kinds = set().union(*EXPECTED_WORKER_PROFILE_CONSUMERS.values())
+
+    assert len(enabled_consumer_kinds) == len(set(enabled_consumer_kinds))
+    assert set(enabled_consumer_kinds) == expected_consumer_kinds
+    assert set(enabled_consumer_kinds).issubset(SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS)

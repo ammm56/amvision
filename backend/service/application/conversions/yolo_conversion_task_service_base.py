@@ -400,7 +400,10 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             )
             raise
 
-        primary_model_build_id = build_summaries[0].model_build_id if build_summaries else None
+        primary_model_build_id = _select_primary_yolo_model_build_id(
+            builds=build_summaries,
+            requested_target_formats=request.target_formats,
+        )
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
@@ -690,6 +693,12 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             return None
         if not isinstance(raw_builds, list | tuple):
             return None
+        requested_target_format_values = tuple(
+            item for item in requested_target_formats if isinstance(item, str) and item.strip()
+        )
+        produced_format_values = tuple(
+            item for item in produced_formats if isinstance(item, str) and item.strip()
+        )
         builds = tuple(
             deserialize_yolo_conversion_build_summary(item)
             for item in raw_builds
@@ -702,13 +711,15 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             output_object_prefix=output_object_prefix,
             plan_object_key=plan_object_key,
             report_object_key=report_object_key,
-            requested_target_formats=tuple(
-                item for item in requested_target_formats if isinstance(item, str) and item.strip()
+            requested_target_formats=requested_target_format_values,
+            produced_formats=produced_format_values,
+            model_build_id=(
+                model_build_id
+                or _select_primary_yolo_model_build_id(
+                    builds=builds,
+                    requested_target_formats=requested_target_format_values,
+                )
             ),
-            produced_formats=tuple(
-                item for item in produced_formats if isinstance(item, str) and item.strip()
-            ),
-            model_build_id=model_build_id or (builds[0].model_build_id if builds else None),
             builds=builds,
             report_summary=dict(report_summary) if isinstance(report_summary, dict) else {},
         )
@@ -891,6 +902,31 @@ def serialize_yolo_conversion_build_summary(summary: YoloConversionBuildSummary)
         "build_file_uri": summary.build_file_uri,
         "metadata": dict(summary.metadata),
     }
+
+
+def _select_primary_yolo_model_build_id(
+    *,
+    builds: tuple[YoloConversionBuildSummary, ...],
+    requested_target_formats: tuple[str, ...],
+) -> str | None:
+    """按请求目标格式选择转换任务的主 ModelBuild。
+
+    转换链会生成中间 ONNX / optimized ONNX 文件。对 OpenVINO 或 TensorRT
+    这类请求，主 ModelBuild 必须指向最终目标格式，避免调用方误用中间产物。
+    """
+
+    requested_formats = tuple(
+        item.strip()
+        for item in requested_target_formats
+        if isinstance(item, str) and item.strip()
+    )
+    for requested_format in reversed(requested_formats):
+        for build in builds:
+            if build.build_format == requested_format:
+                return build.model_build_id
+    if builds:
+        return builds[-1].model_build_id
+    return None
 
 
 def deserialize_yolo_conversion_build_summary(payload: dict[str, object]) -> YoloConversionBuildSummary:

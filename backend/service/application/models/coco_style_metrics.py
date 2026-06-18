@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Callable
 
 
@@ -181,3 +182,149 @@ def bbox_iou_xyxy(
     area1 = max(0.0, float(box1[2]) - float(box1[0])) * max(0.0, float(box1[3]) - float(box1[1]))
     area2 = max(0.0, float(box2[2]) - float(box2[0])) * max(0.0, float(box2[3]) - float(box2[1]))
     return intersection / max(area1 + area2 - intersection, 1e-8)
+
+
+def mask_iou(mask1: object, mask2: object) -> float:
+    """计算两个二值 mask 的 IoU。"""
+
+    import numpy as np
+
+    left = np.asarray(mask1, dtype=bool)
+    right = np.asarray(mask2, dtype=bool)
+    if left.shape != right.shape:
+        return 0.0
+    intersection = np.logical_and(left, right).sum()
+    union = np.logical_or(left, right).sum()
+    return float(intersection / max(float(union), 1.0))
+
+
+def compute_object_keypoint_similarity(
+    gt_keypoints: list[float] | tuple[float, ...],
+    pred_keypoints: list[float] | tuple[float, ...],
+    *,
+    area: float,
+    sigmas: tuple[float, ...] | None = None,
+) -> float:
+    """计算 COCO Object Keypoint Similarity。"""
+
+    if not gt_keypoints or not pred_keypoints:
+        return 0.0
+    resolved_sigmas = sigmas or default_coco_keypoint_sigmas()
+    keypoint_count = min(len(gt_keypoints) // 3, len(pred_keypoints) // 3)
+    if keypoint_count <= 0:
+        return 0.0
+
+    oks_sum = 0.0
+    visible_count = 0
+    for keypoint_index in range(keypoint_count):
+        base_index = keypoint_index * 3
+        gt_visibility = float(gt_keypoints[base_index + 2])
+        pred_visibility = float(pred_keypoints[base_index + 2])
+        if gt_visibility <= 0.0 or pred_visibility <= 0.0:
+            continue
+        dx = float(gt_keypoints[base_index]) - float(pred_keypoints[base_index])
+        dy = float(gt_keypoints[base_index + 1]) - float(pred_keypoints[base_index + 1])
+        sigma = resolved_sigmas[keypoint_index] if keypoint_index < len(resolved_sigmas) else 0.05
+        denominator = 2.0 * (sigma ** 2) * max(float(area), 1.0)
+        oks_sum += math.exp(-((dx * dx + dy * dy) / max(denominator, 1e-8)))
+        visible_count += 1
+    if visible_count <= 0:
+        return 0.0
+    return oks_sum / visible_count
+
+
+def default_coco_keypoint_sigmas() -> tuple[float, ...]:
+    """返回 COCO person 17 点默认 OKS sigma。"""
+
+    return (
+        0.026,
+        0.025,
+        0.025,
+        0.035,
+        0.035,
+        0.079,
+        0.079,
+        0.072,
+        0.072,
+        0.062,
+        0.062,
+        0.107,
+        0.107,
+        0.087,
+        0.087,
+        0.089,
+        0.089,
+    )
+
+
+def rotated_iou_xywhr(
+    box1: list[float] | tuple[float, ...],
+    box2: list[float] | tuple[float, ...],
+) -> float:
+    """按 xywhr 旋转框计算 rotated IoU。"""
+
+    return polygon_iou(
+        xywhr_to_polygon(box1),
+        xywhr_to_polygon(box2),
+    )
+
+
+def xywhr_to_polygon(
+    box: list[float] | tuple[float, ...],
+) -> list[tuple[float, float]]:
+    """把 xywhr 旋转框转换为四点 polygon。"""
+
+    cx, cy, width, height, angle = (float(value) for value in box[:5])
+    angle_radians = math.radians(angle) if abs(angle) > math.tau else angle
+    cos_value = math.cos(angle_radians)
+    sin_value = math.sin(angle_radians)
+    half_width = width / 2.0
+    half_height = height / 2.0
+    corners = (
+        (-half_width, -half_height),
+        (half_width, -half_height),
+        (half_width, half_height),
+        (-half_width, half_height),
+    )
+    return [
+        (
+            cx + x_offset * cos_value - y_offset * sin_value,
+            cy + x_offset * sin_value + y_offset * cos_value,
+        )
+        for x_offset, y_offset in corners
+    ]
+
+
+def polygon_iou(
+    polygon1: list[tuple[float, float]],
+    polygon2: list[tuple[float, float]],
+) -> float:
+    """计算两个凸 polygon 的 IoU。"""
+
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return bbox_iou_xyxy(polygon_bounds_xyxy(polygon1), polygon_bounds_xyxy(polygon2))
+
+    left = np.asarray(polygon1, dtype=np.float32)
+    right = np.asarray(polygon2, dtype=np.float32)
+    if left.shape[0] < 3 or right.shape[0] < 3:
+        return 0.0
+    left_area = float(abs(cv2.contourArea(left)))
+    right_area = float(abs(cv2.contourArea(right)))
+    if left_area <= 0.0 or right_area <= 0.0:
+        return 0.0
+    _status, intersection = cv2.intersectConvexConvex(left, right)
+    intersection_area = 0.0 if intersection is None else float(abs(cv2.contourArea(intersection)))
+    return intersection_area / max(left_area + right_area - intersection_area, 1e-8)
+
+
+def polygon_bounds_xyxy(
+    polygon: list[tuple[float, float]],
+) -> list[float]:
+    """返回 polygon 的外接 xyxy box。"""
+
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    return [min(xs), min(ys), max(xs), max(ys)]

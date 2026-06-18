@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.decode import (
-    decode_pose_keypoints,
+from backend.service.application.models.yolo_core_common.geometry import (
+    make_anchors,
 )
 
 
@@ -17,13 +17,28 @@ def decode_yolov8_pose_keypoints(
 ) -> Any:
     """把 YOLOv8 pose 关键点分支输出解码为绝对坐标。"""
 
-    return decode_pose_keypoints(
-        raw_outputs=raw_outputs,
+    anchor_points, stride_tensor = make_anchors(
+        feature_maps=raw_outputs["feats"],
         strides=strides,
-        keypoint_shape=keypoint_shape,
-        offset_multiplier=2.0,
-        anchor_offset=-0.5,
     )
+    keypoints = raw_outputs["kpts"]
+    batch_size = int(keypoints.shape[0])
+    keypoint_count = int(keypoint_shape[0])
+    keypoint_dimensions = int(keypoint_shape[1])
+    decoded = keypoints.view(
+        batch_size,
+        keypoint_count,
+        keypoint_dimensions,
+        -1,
+    ).clone()
+    anchor_x = anchor_points[:, 0].view(1, 1, -1)
+    anchor_y = anchor_points[:, 1].view(1, 1, -1)
+    stride = stride_tensor.view(1, 1, -1)
+    decoded[:, :, 0, :] = ((decoded[:, :, 0, :] * 2.0) + anchor_x - 0.5) * stride
+    decoded[:, :, 1, :] = ((decoded[:, :, 1, :] * 2.0) + anchor_y - 0.5) * stride
+    if keypoint_dimensions > 2:
+        decoded[:, :, 2:, :] = decoded[:, :, 2:, :].sigmoid()
+    return decoded.view(batch_size, keypoint_count * keypoint_dimensions, -1)
 
 
 def decode_yolov8_pose_keypoints_xy(

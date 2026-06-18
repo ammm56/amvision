@@ -381,8 +381,9 @@ class SqlAlchemyRfdetrConversionTaskService:
             )
             raise
 
-        primary_model_build_id = (
-            build_summaries[0]["model_build_id"] if build_summaries else None
+        primary_model_build_id = _select_primary_rfdetr_model_build_id(
+            builds=tuple(build_summaries),
+            requested_target_formats=request.target_formats,
         )
         result_payload = {
             "state": "succeeded",
@@ -787,6 +788,31 @@ class SqlAlchemyRfdetrConversionTaskService:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+
+def _select_primary_rfdetr_model_build_id(
+    *,
+    builds: tuple[dict[str, object], ...],
+    requested_target_formats: tuple[str, ...],
+) -> str | None:
+    """按请求目标格式选择 RF-DETR 转换任务的主 ModelBuild。"""
+
+    requested_formats = tuple(
+        item.strip()
+        for item in requested_target_formats
+        if isinstance(item, str) and item.strip()
+    )
+    for requested_format in reversed(requested_formats):
+        for build in builds:
+            build_format = build.get("build_format")
+            model_build_id = build.get("model_build_id")
+            if build_format == requested_format and isinstance(model_build_id, str) and model_build_id.strip():
+                return model_build_id
+    for build in reversed(builds):
+        model_build_id = build.get("model_build_id")
+        if isinstance(model_build_id, str) and model_build_id.strip():
+            return model_build_id
+    return None
 
 
 def _read_optional_payload_str(payload: dict[str, object], key: str) -> str | None:

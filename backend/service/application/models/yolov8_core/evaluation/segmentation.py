@@ -11,6 +11,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
+    mask_iou,
 )
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
@@ -20,6 +21,8 @@ from backend.service.application.models.yolov8_core.data import (
     build_yolov8_segmentation_training_batch,
 )
 from backend.service.application.models.yolov8_core.postprocess import (
+    build_yolov8_segmentation_postprocess_instances,
+    normalize_yolov8_segmentation_outputs,
     postprocess_yolov8_segmentation_prediction_array,
 )
 from backend.service.application.runtime.segmentation_model_runtime import (
@@ -504,13 +507,13 @@ def evaluate_yolov8_segmentation_samples(
     """对少量验证样本执行 YOLOv8 segmentation 训练期评估。"""
 
     model.eval()
-    num_classes = len(labels)
-    matched50 = 0
-    matched75 = 0
-    total_gt = 0
+    gt_bbox_items: list[dict[str, object]] = []
+    pred_bbox_items: list[dict[str, object]] = []
+    gt_mask_items: list[dict[str, object]] = []
+    pred_mask_items: list[dict[str, object]] = []
     total_predictions = 0
     with imports.torch.no_grad():
-        for sample in samples[:8]:
+        for image_index, sample in enumerate(samples[:8]):
             batch = build_yolov8_segmentation_training_batch(
                 samples=[sample],
                 input_size=input_size,
@@ -522,83 +525,186 @@ def evaluate_yolov8_segmentation_samples(
                 continue
             with _yolov8_segmentation_autocast(imports, precision, device):
                 outputs = model(batch.images)
-            raw_prediction = outputs[0] if isinstance(outputs, tuple) else outputs
-            if isinstance(raw_prediction, dict):
-                raw_prediction = raw_prediction.get("prediction", raw_prediction)
-            prediction_array = _yolov8_segmentation_tensor_to_np(raw_prediction, imports)
-            if prediction_array.ndim < 3:
-                continue
-            postprocess_results = postprocess_yolov8_segmentation_prediction_array(
-                prediction_array=prediction_array,
-                np_module=imports.np,
-                num_classes=num_classes,
+            target = batch.targets[0]
+            _append_yolov8_segmentation_gt_items(
+                image_index=image_index,
+                target=target,
+                gt_bbox_items=gt_bbox_items,
+                gt_mask_items=gt_mask_items,
+                imports=imports,
+            )
+            bbox_items, mask_items, prediction_count = _build_yolov8_segmentation_prediction_items(
+                outputs=outputs,
+                labels=labels,
+                input_size=input_size,
                 score_threshold=eval_confidence_threshold,
                 nms_threshold=eval_nms_threshold,
-                nms_indices_func=batched_nms_indices,
+                mask_threshold=0.5,
+                imports=imports,
+                image_index=image_index,
             )
-            prediction = postprocess_results[0] if postprocess_results else None
-            gt_boxes = batch.targets[0]["boxes"]
-            gt_classes = batch.targets[0]["class_ids"]
-            total_gt += len(gt_boxes)
-            if prediction is None or int(prediction.scores.shape[0]) == 0:
-                continue
-            total_predictions += int(prediction.scores.shape[0])
-            image_matched50, image_matched75 = _count_yolov8_segmentation_matches(
-                predictions=prediction,
-                gt_boxes=gt_boxes,
-                gt_classes=gt_classes,
-            )
-            matched50 += image_matched50
-            matched75 += image_matched75
+            pred_bbox_items.extend(bbox_items)
+            pred_mask_items.extend(mask_items)
+            total_predictions += prediction_count
     model.train()
+    bbox_metrics = compute_coco_style_ap(
+        gt_items=gt_bbox_items,
+        pred_items=pred_bbox_items,
+        category_names={index: name for index, name in enumerate(labels)},
+        similarity_func=lambda pred, gt: bbox_iou_xyxy(
+            pred["bbox_xyxy"],
+            gt["bbox_xyxy"],
+        ),
+    )
+    mask_metrics = compute_coco_style_ap(
+        gt_items=gt_mask_items,
+        pred_items=pred_mask_items,
+        category_names={index: name for index, name in enumerate(labels)},
+        similarity_func=lambda pred, gt: mask_iou(pred["mask"], gt["mask"]),
+    )
+    primary_metrics = mask_metrics if gt_mask_items and pred_mask_items else bbox_metrics
     return {
-        "map50": round(matched50 / max(1, total_gt), 6),
-        "map50_95": round(((matched50 + matched75) / 2.0) / max(1, total_gt), 6),
+        "map50": round(primary_metrics.ap50, 6),
+        "map50_95": round(primary_metrics.ap50_95, 6),
+        "bbox_map50": round(bbox_metrics.ap50, 6),
+        "bbox_map50_95": round(bbox_metrics.ap50_95, 6),
+        "mask_map50": round(mask_metrics.ap50, 6),
+        "mask_map50_95": round(mask_metrics.ap50_95, 6),
         "prediction_count": float(total_predictions),
     }
 
 
-def _count_yolov8_segmentation_matches(
+def _append_yolov8_segmentation_gt_items(
     *,
-    predictions: Any,
-    gt_boxes: list[list[float]],
-    gt_classes: list[int],
-) -> tuple[int, int]:
-    """按 bbox IoU 统计 YOLOv8 segmentation 简化匹配数。"""
+    image_index: int,
+    target: dict[str, Any],
+    gt_bbox_items: list[dict[str, object]],
+    gt_mask_items: list[dict[str, object]],
+    imports: Any,
+) -> None:
+    """把训练 batch target 转成 COCO-style AP 的 GT 项。"""
 
-    used_gt: set[int] = set()
-    matched50 = 0
-    matched75 = 0
-    for prediction_index, pred_box in enumerate(predictions.boxes_xyxy):
-        best_index = -1
-        best_iou = 0.0
-        pred_class_id = int(predictions.class_ids[prediction_index])
-        for gt_index, gt_box in enumerate(gt_boxes):
-            if gt_index in used_gt or pred_class_id != int(gt_classes[gt_index]):
-                continue
-            iou = _box_iou(tuple(float(value) for value in pred_box), tuple(float(value) for value in gt_box))
-            if iou > best_iou:
-                best_iou = iou
-                best_index = gt_index
-        if best_index >= 0 and best_iou >= 0.5:
-            matched50 += 1
-            used_gt.add(best_index)
-            if best_iou >= 0.75:
-                matched75 += 1
-    return matched50, matched75
+    boxes = list(target.get("boxes", []))
+    class_ids = list(target.get("class_ids", []))
+    masks = _yolov8_segmentation_tensor_to_np(target.get("masks"), imports) if target.get("masks") is not None else None
+    mask_valid = (
+        _yolov8_segmentation_tensor_to_np(target.get("mask_valid"), imports).astype(bool)
+        if target.get("mask_valid") is not None
+        else None
+    )
+    for object_index, (box, class_id) in enumerate(zip(boxes, class_ids, strict=True)):
+        gt_bbox_items.append(
+            {
+                "image_id": image_index,
+                "category_id": int(class_id),
+                "bbox_xyxy": [float(value) for value in box],
+            }
+        )
+        if masks is None:
+            continue
+        if mask_valid is not None and object_index < int(mask_valid.shape[0]) and not bool(mask_valid[object_index]):
+            continue
+        gt_mask_items.append(
+            {
+                "image_id": image_index,
+                "category_id": int(class_id),
+                "mask": masks[object_index] > 0.5,
+            }
+        )
 
 
-def _box_iou(box1: tuple[float, float, float, float], box2: tuple[float, float, float, float]) -> float:
-    """计算两个 xyxy box 的 IoU。"""
+def _build_yolov8_segmentation_prediction_items(
+    *,
+    outputs: Any,
+    labels: tuple[str, ...],
+    input_size: tuple[int, int],
+    score_threshold: float,
+    nms_threshold: float,
+    mask_threshold: float,
+    imports: Any,
+    image_index: int,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], int]:
+    """把 YOLOv8 segmentation 输出转成 bbox / mask AP 预测项。"""
 
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    area1 = max(0.0, box1[2] - box1[0]) * max(0.0, box1[3] - box1[1])
-    area2 = max(0.0, box2[2] - box2[0]) * max(0.0, box2[3] - box2[1])
-    return inter / max(area1 + area2 - inter, 1e-8)
+    bbox_items: list[dict[str, object]] = []
+    mask_items: list[dict[str, object]] = []
+    try:
+        prediction_array, proto_array = normalize_yolov8_segmentation_outputs(
+            outputs=outputs,
+            np_module=imports.np,
+        )
+        instances = build_yolov8_segmentation_postprocess_instances(
+            cv2_module=imports.cv2,
+            np_module=imports.np,
+            prediction_array=prediction_array,
+            proto_array=proto_array,
+            labels=labels,
+            score_threshold=score_threshold,
+            nms_threshold=nms_threshold,
+            mask_threshold=mask_threshold,
+            resize_ratio=1.0,
+            image_width=int(input_size[0]),
+            image_height=int(input_size[1]),
+            input_size=input_size,
+            nms_indices_func=batched_nms_indices,
+        )
+        for instance in instances:
+            bbox_items.append(
+                {
+                    "image_id": image_index,
+                    "category_id": int(instance.class_id),
+                    "bbox_xyxy": list(instance.bbox_xyxy),
+                    "score": float(instance.score),
+                }
+            )
+            mask = _build_yolov8_segmentation_instance_mask(
+                segments=instance.segments,
+                width=int(input_size[0]),
+                height=int(input_size[1]),
+            )
+            if mask is not None:
+                mask_items.append(
+                    {
+                        "image_id": image_index,
+                        "category_id": int(instance.class_id),
+                        "mask": mask,
+                        "score": float(instance.score),
+                    }
+                )
+        return bbox_items, mask_items, len(instances)
+    except Exception:
+        prediction_array = _yolov8_segmentation_tensor_to_np(
+            outputs[0] if isinstance(outputs, tuple) else outputs,
+            imports,
+        )
+    if prediction_array.ndim < 3:
+        return bbox_items, mask_items, 0
+    postprocess_results = postprocess_yolov8_segmentation_prediction_array(
+        prediction_array=prediction_array,
+        np_module=imports.np,
+        num_classes=len(labels),
+        score_threshold=score_threshold,
+        nms_threshold=nms_threshold,
+        nms_indices_func=batched_nms_indices,
+    )
+    prediction = postprocess_results[0] if postprocess_results else None
+    if prediction is None or int(prediction.scores.shape[0]) == 0:
+        return bbox_items, mask_items, 0
+    for box, score, class_id in zip(
+        prediction.boxes_xyxy,
+        prediction.scores,
+        prediction.class_ids,
+        strict=True,
+    ):
+        bbox_items.append(
+            {
+                "image_id": image_index,
+                "category_id": int(class_id),
+                "bbox_xyxy": [float(value) for value in box],
+                "score": float(score),
+            }
+        )
+    return bbox_items, mask_items, int(prediction.scores.shape[0])
 
 
 def _yolov8_segmentation_autocast(imports: Any, precision: str, device: str):

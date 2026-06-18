@@ -47,11 +47,11 @@ def assign_yolov8_obb_targets(
             ),
         }
 
-    from backend.service.application.models.yolo_core_common.losses import probiou_aligned
+    from backend.service.application.models.yolov8_core.losses.obb import yolov8_probiou_aligned
 
     gt_expanded = gt_rboxes.unsqueeze(1).expand(-1, num_anchors, -1).reshape(-1, 5)
     pred_expanded = pred_rboxes.detach().unsqueeze(0).expand(num_gt, -1, -1).reshape(-1, 5)
-    pair_iou = probiou_aligned(
+    pair_iou = yolov8_probiou_aligned(
         torch_module=torch_module,
         obb1=gt_expanded,
         obb2=pred_expanded,

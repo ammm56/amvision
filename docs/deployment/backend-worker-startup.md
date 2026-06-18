@@ -51,7 +51,7 @@
 - backend-service 当前只承担 REST / WebSocket 控制面和 sync / async deployment supervisor，不再托管任何队列消费者。
 - `config/backend-service.json` 里的 `task_manager` 字段仅保留兼容配置形态，当前 service 启动链不会再创建进程内 BackgroundTaskManager。
 - backend-worker 通过统一 `enabled_consumer_kinds` 配置和 `worker profile` manifest 接管全部队列消费者。
-- inference consumer 当前不再持有本地 async deployment supervisor；worker 只消费 `detection-inference` consumer 对应的 `detection-inferences` 队列，并通过 queue-backed async inference client 把冻结下来的 `process_config` 与 `prediction_request` 转发回创建任务时记录的 backend-service async deployment owner。
+- inference consumer 当前不再持有本地 async deployment supervisor；worker 按 `detection / classification / segmentation / pose / obb` 五类 task 分别消费对应 inference 队列，并通过 queue-backed async inference client 把冻结下来的 `process_config` 与 `prediction_request` 转发回创建任务时记录的 backend-service async deployment owner。
 - backend-service 的 async inference gateway dispatcher registry 会按 `async_inference_gateway.service_id + deployment_instance_id` 为每个 async deployment 启动专属请求队列和 dispatcher 线程，请求队列名形如 `detection-ai-gw-{service_id}-{deployment_id}`；缺少 `task_spec.async_inference_owner_id` 的 inference task 会被判定为无效任务，不会写入全局请求队列。
 - 多个 backend-service 或后续独立推理服务共享同一 `queue.root_dir` 时，必须为每个服务配置唯一 `async_inference_gateway.service_id`；同一 service 内的多个 async deployment 还会继续按 `deployment_instance_id` 隔离队列，避免一个 deployment 队列阻塞影响其他 deployment。
 

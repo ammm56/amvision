@@ -128,6 +128,11 @@ def test_yolov8_conversion_queue_worker_executes_supported_targets(
     assert result.status == "succeeded"
     assert result.requested_target_formats == target_formats
     assert result.produced_formats == expected_produced_formats
+    assert result.model_build_id == next(
+        build_summary.model_build_id
+        for build_summary in result.builds
+        if build_summary.build_format == target_formats[-1]
+    )
     assert report_payload["phase"] == expected_phase
     assert report_payload["conversion_options"] == expected_conversion_options
 

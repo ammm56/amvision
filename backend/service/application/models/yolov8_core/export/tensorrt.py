@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.export import (
-    build_yolo_tensorrt_engine,
+from backend.service.application.models.yolov8_core.export.execution import (
+    build_yolov8_tensorrt_engine_model,
 )
 
 
@@ -21,7 +21,7 @@ def build_yolov8_tensorrt_engine(
 ) -> dict[str, object]:
     """把 YOLOv8 optimized ONNX 构建为 TensorRT engine。"""
 
-    return build_yolo_tensorrt_engine(
+    return build_yolov8_tensorrt_engine_model(
         source_path=source_path,
         output_path=output_path,
         source_object_key=source_object_key,

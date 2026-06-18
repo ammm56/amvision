@@ -301,6 +301,7 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
             )
 
     assert build_file_types == expected_file_types
+    assert result["model_build_id"] == build_id_by_format[target_format]
 
     deployment_service = SqlAlchemySegmentationDeploymentService(
         session_factory=session_factory,

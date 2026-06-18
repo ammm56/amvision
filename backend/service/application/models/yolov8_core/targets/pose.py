@@ -4,10 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.targets.pose import (
-    normalize_gt_keypoints_tensor,
-)
-
 
 def normalize_yolov8_gt_keypoints_tensor(
     *,
@@ -21,15 +17,39 @@ def normalize_yolov8_gt_keypoints_tensor(
 ) -> Any:
     """把 YOLOv8 pose GT keypoints 规整为固定张量。"""
 
-    return normalize_gt_keypoints_tensor(
-        torch_module=torch_module,
-        raw_keypoints=raw_keypoints,
-        assigned_indices=assigned_indices,
-        num_keypoints=num_keypoints,
-        keypoint_dim=keypoint_dim,
+    target_width = num_keypoints * keypoint_dim
+    num_targets = int(assigned_indices.shape[0])
+    normalized = torch_module.zeros(
+        (num_targets, target_width),
         device=device,
         dtype=dtype,
     )
+
+    if isinstance(raw_keypoints, list):
+        for output_index, assigned_index in enumerate(assigned_indices.tolist()):
+            if assigned_index >= len(raw_keypoints):
+                continue
+            value = raw_keypoints[assigned_index]
+            if not isinstance(value, list | tuple) or len(value) <= 0:
+                continue
+            limited_values = [float(item) for item in value[:target_width]]
+            normalized[output_index, : len(limited_values)] = torch_module.tensor(
+                limited_values,
+                device=device,
+                dtype=dtype,
+            )
+        return normalized.view(num_targets, num_keypoints, keypoint_dim)
+
+    if isinstance(raw_keypoints, torch_module.Tensor):
+        selected = raw_keypoints[assigned_indices].to(device=device, dtype=dtype)
+        if selected.dim() == 3:
+            return selected
+        if selected.dim() == 2 and int(selected.shape[1]) == target_width:
+            return selected.view(num_targets, num_keypoints, keypoint_dim)
+        if selected.dim() == 1 and int(selected.shape[0]) == target_width:
+            return selected.view(1, num_keypoints, keypoint_dim)
+
+    return normalized.view(num_targets, num_keypoints, keypoint_dim)
 
 
 __all__ = ["normalize_yolov8_gt_keypoints_tensor"]

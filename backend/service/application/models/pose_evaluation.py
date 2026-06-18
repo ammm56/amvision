@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.coco_style_metrics import compute_coco_style_ap
+from backend.service.application.models.coco_style_metrics import (
+    compute_coco_style_ap,
+    compute_object_keypoint_similarity,
+    default_coco_keypoint_sigmas,
+)
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
@@ -331,25 +335,7 @@ def _resolve_oks_sigmas(extra_options: dict[str, object]) -> tuple[float, ...]:
     raw_sigmas = extra_options.get("oks_sigmas")
     if isinstance(raw_sigmas, list) and raw_sigmas:
         return tuple(float(value) for value in raw_sigmas)
-    return (
-        0.026,
-        0.025,
-        0.025,
-        0.035,
-        0.035,
-        0.079,
-        0.079,
-        0.072,
-        0.072,
-        0.062,
-        0.062,
-        0.107,
-        0.107,
-        0.087,
-        0.087,
-        0.089,
-        0.089,
-    )
+    return default_coco_keypoint_sigmas()
 
 
 def _compute_oks(
@@ -361,36 +347,9 @@ def _compute_oks(
 ) -> float:
     """计算 Object Keypoint Similarity。"""
 
-    if not gt_kpts or not pred_kpts:
-        return 0.0
-
-    num_kpts = min(len(gt_kpts) // 3, len(pred_kpts) // 3)
-    if num_kpts == 0:
-        return 0.0
-
-    oks_sum = 0.0
-    visible_count = 0
-
-    for i in range(num_kpts):
-        gt_x = gt_kpts[i * 3]
-        gt_y = gt_kpts[i * 3 + 1]
-        gt_v = gt_kpts[i * 3 + 2]
-
-        pred_x = pred_kpts[i * 3]
-        pred_y = pred_kpts[i * 3 + 1]
-        pred_v = pred_kpts[i * 3 + 2]
-
-        if gt_v > 0 and pred_v > 0:
-            dx = gt_x - pred_x
-            dy = gt_y - pred_y
-            sigma = sigmas[i] if i < len(sigmas) else 0.05
-            denominator = 2.0 * (sigma ** 2) * max(float(area), 1.0)
-            import math
-
-            oks_sum += math.exp(-((dx * dx + dy * dy) / max(denominator, 1e-8)))
-            visible_count += 1
-
-    if visible_count == 0:
-        return 0.0
-
-    return oks_sum / visible_count
+    return compute_object_keypoint_similarity(
+        gt_kpts,
+        pred_kpts,
+        area=area,
+        sigmas=sigmas,
+    )

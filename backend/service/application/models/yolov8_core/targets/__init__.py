@@ -10,6 +10,7 @@ from backend.service.application.models.yolov8_core.targets.obb import (
     yolov8_decode_distances_to_rboxes,
     yolov8_rbox_to_distances,
     yolov8_xywhr_to_corners,
+    yolov8_xywhr_to_xyxy,
 )
 from backend.service.application.models.yolov8_core.targets.pose import (
     normalize_yolov8_gt_keypoints_tensor,
@@ -28,4 +29,5 @@ __all__ = [
     "yolov8_decode_distances_to_rboxes",
     "yolov8_rbox_to_distances",
     "yolov8_xywhr_to_corners",
+    "yolov8_xywhr_to_xyxy",
 ]

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.models.yolo_core_common.export import (
-    build_yolo_openvino_ir,
+from backend.service.application.models.yolov8_core.export.execution import (
+    build_yolov8_openvino_ir_model,
 )
 
 
@@ -21,7 +21,7 @@ def build_yolov8_openvino_ir(
 ) -> dict[str, object]:
     """把 YOLOv8 optimized ONNX 构建为 OpenVINO IR。"""
 
-    return build_yolo_openvino_ir(
+    return build_yolov8_openvino_ir_model(
         source_path=source_path,
         output_path=output_path,
         source_object_key=source_object_key,

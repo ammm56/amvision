@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from backend.service.application.models.yolo_core_common import make_anchors
-from backend.service.application.models.yolo_core_common.losses import (
-    compute_obb_angle_loss,
-    distribution_focal_loss,
-    probiou_aligned,
+from backend.service.application.models.yolo_core_common.geometry import make_anchors
+from backend.service.application.models.yolov8_core.losses.detection import (
+    yolov8_distribution_focal_loss,
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_obb_targets,
@@ -122,7 +121,7 @@ def compute_yolov8_obb_loss(
                 foreground_pred_rboxes = image_pred_rboxes[foreground_mask]
                 foreground_gt_rboxes = gt_rboxes[assigned_indices]
 
-                iou_values = probiou_aligned(
+                iou_values = yolov8_probiou_aligned(
                     torch_module=torch,
                     obb1=foreground_pred_rboxes,
                     obb2=foreground_gt_rboxes,
@@ -142,7 +141,7 @@ def compute_yolov8_obb_loss(
                     foreground_distance_logits = distance_logits_all[batch_index][
                         foreground_mask
                     ].view(-1, 4, reg_max)
-                    image_dfl_loss = distribution_focal_loss(
+                    image_dfl_loss = yolov8_distribution_focal_loss(
                         torch_module=torch,
                         logits=foreground_distance_logits,
                         target=target_distances,
@@ -164,7 +163,7 @@ def compute_yolov8_obb_loss(
                 foreground_pred_angle = image_angle[foreground_mask].view(-1, 1)
                 foreground_gt_angle = foreground_gt_rboxes[:, 4:5]
                 foreground_gt_wh = foreground_gt_rboxes[:, 2:4]
-                image_angle_loss = compute_obb_angle_loss(
+                image_angle_loss = compute_yolov8_obb_angle_loss(
                     torch_module=torch,
                     pred_angle=foreground_pred_angle,
                     gt_angle=foreground_gt_angle,
@@ -217,4 +216,73 @@ def _normalize_yolov8_obb_angle_tensor(
     raise ValueError(f"YOLOv8 OBB angle 输出 shape 不合法: {tuple(pred_angles.shape)}")
 
 
-__all__ = ["compute_yolov8_obb_loss"]
+def yolov8_probiou_aligned(torch_module: Any, obb1: Any, obb2: Any) -> Any:
+    """计算 YOLOv8 OBB 一一对应旋转框 probiou。"""
+
+    eps = 1e-7
+    x1, y1 = obb1[..., :2].split(1, dim=-1)
+    x2, y2 = obb2[..., :2].split(1, dim=-1)
+    a1, b1, c1 = _build_yolov8_obb_covariance(obb1)
+    a2, b2, c2 = _build_yolov8_obb_covariance(obb2)
+
+    denominator = (a1 + a2) * (b1 + b2) - (c1 + c2).pow(2) + eps
+    mean_term = (
+        ((a1 + a2) * (y1 - y2).pow(2) + (b1 + b2) * (x1 - x2).pow(2))
+        / denominator
+    ) * 0.25
+    cross_term = (((c1 + c2) * (x2 - x1) * (y1 - y2)) / denominator) * 0.5
+    det1 = (a1 * b1 - c1.pow(2)).clamp_min(0.0)
+    det2 = (a2 * b2 - c2.pow(2)).clamp_min(0.0)
+    det_sum = (a1 + a2) * (b1 + b2) - (c1 + c2).pow(2)
+    scale_term = (det_sum / (4.0 * (det1 * det2).sqrt() + eps) + eps).log() * 0.5
+
+    bd = (mean_term + cross_term + scale_term).clamp(eps, 100.0)
+    hd = (1.0 - (-bd).exp() + eps).sqrt()
+    return (1.0 - hd).clamp(0.0, 1.0).squeeze(-1)
+
+
+def _build_yolov8_obb_covariance(rboxes: Any) -> tuple[Any, Any, Any]:
+    """把 YOLOv8 xywhr 旋转框转换为 probiou 协方差三元组。"""
+
+    width = rboxes[..., 2:3].clamp_min(1e-3)
+    height = rboxes[..., 3:4].clamp_min(1e-3)
+    angle = rboxes[..., 4:5]
+    a = width.pow(2) / 12.0
+    b = height.pow(2) / 12.0
+    cos = angle.cos()
+    sin = angle.sin()
+    cos2 = cos.pow(2)
+    sin2 = sin.pow(2)
+    return a * cos2 + b * sin2, a * sin2 + b * cos2, (a - b) * cos * sin
+
+
+def compute_yolov8_obb_angle_loss(
+    torch_module: Any,
+    pred_angle: Any,
+    gt_angle: Any,
+    gt_wh: Any,
+    target_scores: Any,
+) -> Any:
+    """计算 YOLOv8 OBB 角度损失。"""
+
+    if int(pred_angle.shape[0]) == 0:
+        return pred_angle.new_zeros(())
+
+    delta = pred_angle - gt_angle
+    delta = delta - (delta / math.pi).round() * math.pi
+    angle_loss = (2.0 * delta).sin() ** 2
+
+    width = gt_wh[:, 0:1].clamp_min(1e-3)
+    height = gt_wh[:, 1:2].clamp_min(1e-3)
+    log_aspect_ratio = (width / height).log()
+    scale_weight = (-(log_aspect_ratio**2) / (3.0**2)).exp()
+
+    weighted_loss = (angle_loss * scale_weight).squeeze(-1) * target_scores
+    return weighted_loss.sum() / target_scores.sum().clamp_min(1.0)
+
+
+__all__ = [
+    "compute_yolov8_obb_loss",
+    "compute_yolov8_obb_angle_loss",
+    "yolov8_probiou_aligned",
+]
