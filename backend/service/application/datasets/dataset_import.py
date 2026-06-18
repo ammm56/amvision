@@ -2991,9 +2991,7 @@ class SqlAlchemyDatasetImportService:
                 labels_root=labels_root,
                 split_name=candidate_name,
             )
-            if candidate_name != "test" and not self._looks_like_dota_label_dir(
-                current_label_dir
-            ):
+            if not self._looks_like_dota_label_dir(current_label_dir):
                 continue
             if any(self._is_image_file(candidate) for candidate in current_image_dir.iterdir()):
                 split_names.append(candidate_name)

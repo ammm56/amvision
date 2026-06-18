@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
+from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
@@ -67,9 +70,19 @@ class ClassificationTrainingQueueWorker:
             self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
             return True
         except ServiceError as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=error.message,
+            )
             self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
             return True
         except Exception as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=str(error),
+            )
             self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
             return True
 
@@ -127,9 +140,19 @@ class SegmentationTrainingQueueWorker:
             self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
             return True
         except ServiceError as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=error.message,
+            )
             self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
             return True
         except Exception as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=str(error),
+            )
             self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
             return True
 
@@ -187,9 +210,19 @@ class PoseTrainingQueueWorker:
             self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
             return True
         except ServiceError as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=error.message,
+            )
             self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
             return True
         except Exception as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=str(error),
+            )
             self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
             return True
 
@@ -247,9 +280,19 @@ class ObbTrainingQueueWorker:
             self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
             return True
         except ServiceError as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=error.message,
+            )
             self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
             return True
         except Exception as error:
+            _mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=qt.payload,
+                error_message=str(error),
+            )
             self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
             return True
 
@@ -282,3 +325,57 @@ def _read_model_type(payload: dict | str) -> str:
     if not model_type or model_type in ("s", "m", "l", "x", "nano"):
         return "yolov8"
     return model_type
+
+
+def _mark_training_task_failed(
+    *,
+    session_factory: SessionFactory,
+    payload: dict | str,
+    error_message: str,
+) -> None:
+    """在 worker 早期异常时把平台 TaskRecord 同步为 failed。
+
+    训练服务内部异常通常会自行写入失败事件；该兜底只处理 runner 或
+    worker 边界提前失败的情况，避免队列失败但页面任务仍停在 queued。
+    """
+
+    task_id = _read_optional_task_id(payload)
+    if task_id is None:
+        return
+    task_service = SqlAlchemyTaskService(session_factory=session_factory)
+    try:
+        task_record = task_service.get_task(task_id).task
+        if task_record.state in {"succeeded", "failed", "cancelled"}:
+            return
+        task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="result",
+                message="training failed",
+                payload={
+                    "state": "failed",
+                    "error_message": error_message,
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        )
+    except Exception:
+        return
+
+
+def _read_optional_task_id(payload: dict | str) -> str | None:
+    """从队列负载中读取可选 task_id。"""
+
+    import json
+
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("task_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None

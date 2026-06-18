@@ -77,7 +77,7 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
         """
         task_id = request.training_task_id
         task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
-        task = task_service.get_task(task_id)
+        task = task_service.get_task(task_id).task
 
         # 读取 model_type
         model_type = request.model_type

@@ -693,6 +693,54 @@ def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: 
         session_factory.engine.dispose()
 
 
+def test_import_dataset_zip_auto_detects_yolo_segmentation_with_test_split(
+    tmp_path: Path,
+) -> None:
+    """验证只有 test split 的 YOLO segmentation 不会被误判为 DOTA。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-seg-test-only",
+                    "task_type": "segmentation",
+                },
+                files={
+                    "package": (
+                        "yolo-segmentation-test-only.zip",
+                        _build_yolo_segmentation_test_split_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        payload = response.json()
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.format_type == "yolo"
+        assert dataset_import.detected_profile["detected_candidates"] == ["yolo"]
+        assert dataset_version is not None
+        assert dataset_version.task_type == "segmentation"
+        assert dataset_import.validation_report["split_counts"] == {"test": 1}
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) -> None:
     """验证导入 YOLO pose zip 会创建 pose DatasetVersion。"""
 
@@ -1682,6 +1730,35 @@ def _build_yolo_segmentation_zip_bytes() -> bytes:
         zip_file.writestr(
             "dataset-root/labels/train/train-1.txt",
             "0 0.100000 0.200000 0.400000 0.200000 0.400000 0.600000 0.100000 0.600000\n",
+        )
+    return buffer.getvalue()
+
+
+def _build_yolo_segmentation_test_split_zip_bytes() -> bytes:
+    """构建只有 test split 的 YOLO instance segmentation zip 数据集。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="PNG", size=(512, 576))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        zip_file.writestr(
+            "package-seg/package-seg.yaml",
+            "\n".join(
+                (
+                    "path: .",
+                    "test: images/test",
+                    "names:",
+                    "  0: package",
+                )
+            ),
+        )
+        zip_file.writestr("package-seg/images/test/test-1.png", image_bytes)
+        zip_file.writestr(
+            "package-seg/labels/test/test-1.txt",
+            "0 0.3291015625 0.3611111109 0.2841796875 0.34375 "
+            "0.23828125 0.4739583328 0.236328125 0.5225694437 "
+            "0.2451171875 0.5451388890 0.2685546875 0.5659722218 "
+            "0.294921875 0.5711805562 0.3203125 0.5052083328 "
+            "0.34375 0.4045138890 0.333984375 0.390625 0.3291015625 0.3611111109\n",
         )
     return buffer.getvalue()
 

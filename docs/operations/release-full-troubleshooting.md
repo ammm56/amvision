@@ -41,6 +41,7 @@
 - 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间。当前文件包含 `initial`、`final`、`samples` 和 `summary` 四段：`samples` 用于长时 soak 过程采样，`summary` 用于直接查看 RSS、CPU 和线程数变化。
 - 2026-06-15 已在本机重新装配 `release/full` 并复跑一次短时启停验收：使用 `release/full/python/python.exe`、端口 `18080`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`，结果为 `1 passed`。本次验收确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和 `resource-baseline.json` 写入正常；这仍是短时空载验收，不替代现场长时间负载 soak。
 - 2026-06-16 已复跑 `tests/integration/test_release_full_stack_acceptance.py`：使用端口 `18080`、`logs/integration-full-stack-codex-short`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`、资源采样间隔 `1` 秒，结果为 `1 passed`。本次资源摘要中 backend-service 与 6 个 worker profile 的 RSS、线程数和 CPU 时间在短时驻留前后无增长；这仍是短时空载验收，不替代目标机长时间负载 soak。
+- 2026-06-18 已重新执行 `assemble-release --profile-id full --release-root .\release --force --output text`，发布目录继续保留既有 `release/full/python/`，并确认 `release/full/config/backend-worker.json` 已包含最新 classification / segmentation / pose / obb training 与 inference consumer。随后使用端口 `18185`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=30`、资源采样间隔 `5` 秒复跑 `tests/integration/test_release_full_stack_acceptance.py`，结果为 `1 passed`；`logs/yolov8-release-acceptance-20260618/resource-baseline.json` 记录了 backend-service 与 6 个 worker profile 的短时 RSS、CPU 和线程数基线，stop 脚本完成进程回收。
 
 ## 常见问题
 

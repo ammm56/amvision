@@ -11,6 +11,7 @@
 - 只有在明确需要真实回归时，才在 `tests/integration/` 下新增或维护对应测试。
 - `tests/integration/` 也用于真实资产、真实 runtime 和短时 benchmark；这类测试只有显式指定文件路径时才执行。
 - 训练类 integration 只允许做几分钟内的 smoke，例如 checkpoint 覆盖率、tiny backward、短时转换校验。真实长时间训练不放进 pytest，由现场调试时通过平台训练任务执行和观察。
+- 真实全链路脚本如果需要通过公开 API 串起 DatasetImport、DatasetExport、training、conversion、deployment 和 inference，应放在 `tests/integration/`，不要放进 `backend/maintenance` 或业务代码目录；这类脚本不加 `test_` 前缀，避免默认 pytest 自动收集。
 - `docs/examples/workflows/`、`docs/api/examples/workflows/` 与 Postman/样例 JSON 的规则校验，当前主要放在常规测试集里的 `tests/test_workflow_example_documents.py` 与 `tests/test_workflow_api_document_examples.py`；`tests/integration/` 只负责真实资产、真实 runtime、真实子进程和更重闭环。
 - 当前 non-detection runtime backend 组合验证会覆盖 YOLOv8、YOLO11、YOLO26 在 classification、segmentation、pose、obb 四类任务下的真实 conversion -> runtime predict；RF-DETR segmentation 保持在独立测试文件中验证。
 - RF-DETR full core 短时 smoke / benchmark 放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，必须通过环境变量显式打开。
@@ -35,6 +36,10 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 
 ```powershell
 D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolov8_full_chain_smoke --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
 ```
 
 ```powershell
