@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from contextlib import nullcontext
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
+import torch
 
 from backend.contracts.datasets.exports.dataset_formats import YOLO_DETECTION_DATASET_FORMAT
 from backend.queue.local_file_queue import LocalFileQueueBackend, LocalFileQueueSettings
@@ -19,6 +22,22 @@ from backend.service.application.models.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
     YoloV8TrainingOutputRegistration,
+)
+from backend.service.application.models.yolov8_core.data import (
+    YoloV8DetectionAugmentationOptions,
+    build_yolov8_detection_training_batch,
+    load_yolov8_detection_training_samples,
+    resolve_yolov8_detection_splits,
+    resolve_yolov8_detection_train_split,
+)
+from backend.service.application.models.yolov8_core.training import (
+    build_yolov8_detection_epoch_checkpoint_update,
+    build_yolov8_detection_training_savepoint_payload,
+    decode_yolov8_detection_checkpoint_state,
+    plan_yolov8_detection_training_dataloader,
+    plan_yolov8_detection_training_samples,
+    resolve_yolov8_detection_epoch_control,
+    run_yolov8_detection_training_epoch,
 )
 from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
@@ -223,7 +242,7 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     assert task_detail.task.error_message is None
     assert task_detail.task.result["checkpoint_object_key"].endswith("/best.pt")
     assert task_detail.task.result["latest_checkpoint_object_key"].endswith("/latest.pt")
-    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection"
+    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection-core"
     assert task_detail.task.result["summary"]["dataset_export_id"] == "dataset-export-1"
     assert task_detail.task.result["summary"]["dataset_version_id"] == "dataset-version-1"
     assert task_detail.task.result["summary"]["training_config"]["recipe_id"] == "recipe-1"
@@ -243,6 +262,258 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     model_version = model_service.get_model_version(task_detail.task.result["model_version_id"])
     assert model_version is not None
     assert model_version.training_task_id == submission.task_id
+
+
+def test_yolov8_detection_epoch_control_rules_are_explicit() -> None:
+    """验证 YOLOv8 detection epoch 控制规则只表达纯训练循环动作。"""
+
+    idle_decision = resolve_yolov8_detection_epoch_control(
+        save_checkpoint_requested=False,
+        pause_training_requested=False,
+        terminate_training_requested=False,
+    )
+    save_decision = resolve_yolov8_detection_epoch_control(
+        save_checkpoint_requested=True,
+        pause_training_requested=False,
+        terminate_training_requested=False,
+    )
+    pause_decision = resolve_yolov8_detection_epoch_control(
+        save_checkpoint_requested=False,
+        pause_training_requested=True,
+        terminate_training_requested=False,
+    )
+    terminate_decision = resolve_yolov8_detection_epoch_control(
+        save_checkpoint_requested=False,
+        pause_training_requested=False,
+        terminate_training_requested=True,
+    )
+
+    assert idle_decision.save_checkpoint is False
+    assert idle_decision.pause_training is False
+    assert idle_decision.terminate_training is False
+    assert save_decision.save_checkpoint is True
+    assert save_decision.pause_training is False
+    assert pause_decision.save_checkpoint is True
+    assert pause_decision.pause_training is True
+    assert terminate_decision.save_checkpoint is False
+    assert terminate_decision.terminate_training is True
+
+
+def test_yolov8_detection_savepoint_payload_falls_back_to_latest_checkpoint() -> None:
+    """验证 YOLOv8 detection savepoint payload 不依赖应用层补齐 best checkpoint。"""
+
+    payload = build_yolov8_detection_training_savepoint_payload(
+        epoch=3,
+        latest_checkpoint_bytes=b"latest",
+        best_checkpoint_bytes=None,
+        best_metric_name="train_loss",
+        best_metric_value=float("inf"),
+        has_validation=False,
+    )
+
+    assert payload.epoch == 3
+    assert payload.latest_checkpoint_bytes == b"latest"
+    assert payload.best_checkpoint_bytes == b"latest"
+    assert payload.best_metric_name == "train_loss"
+    assert payload.best_metric_value is None
+
+
+def test_yolov8_detection_epoch_checkpoint_update_builds_best_and_latest() -> None:
+    """验证 YOLOv8 detection epoch checkpoint 更新由 core 统一生成。"""
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+    scaler = _NoopGradScaler()
+
+    update = build_yolov8_detection_epoch_checkpoint_update(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        model_type="yolov8",
+        model_scale="n",
+        category_names=("defect",),
+        input_size=(640, 640),
+        batch_size=1,
+        max_epochs=1,
+        epoch=1,
+        precision="fp32",
+        validation_split_name="val",
+        evaluation_interval=1,
+        evaluation_confidence_threshold=0.01,
+        evaluation_nms_threshold=0.65,
+        learning_rate=0.1,
+        weight_decay=0.0,
+        class_loss_weight=0.5,
+        box_loss_weight=7.5,
+        dfl_loss_weight=1.5,
+        assign_topk=10,
+        assign_alpha=0.5,
+        assign_beta=6.0,
+        min_lr_ratio=0.1,
+        grad_clip_norm=10.0,
+        metrics_history=[{"epoch": 1, "loss": 1.0}],
+        validation_history=[{"epoch": 1, "map50_95": 0.5}],
+        evaluated_epochs=(1,),
+        warm_start_summary={},
+        implementation_mode="yolov8-detection-core",
+        augmentation_options={"mosaic_prob": 0.0},
+        best_metric_name="map50_95",
+        candidate_best_metric_value=0.5,
+        previous_best_checkpoint_bytes=b"",
+        improved_best=True,
+    )
+
+    latest_state = decode_yolov8_detection_checkpoint_state(
+        torch_module=torch,
+        checkpoint_bytes=update.latest_checkpoint_bytes,
+    )
+    best_state = decode_yolov8_detection_checkpoint_state(
+        torch_module=torch,
+        checkpoint_bytes=update.best_checkpoint_bytes,
+    )
+
+    assert update.best_metric_value == 0.5
+    assert latest_state["best_metric_value"] == 0.5
+    assert isinstance(latest_state["best_checkpoint_state"], dict)
+    assert best_state["best_checkpoint_state"] is None
+
+
+def test_yolov8_detection_dataloader_plan_tracks_resume_iteration() -> None:
+    """验证 YOLOv8 detection dataloader 计划统一计算 batch 和 resume iteration。"""
+
+    plan = plan_yolov8_detection_training_dataloader(
+        train_sample_count=5,
+        batch_size=2,
+        max_epochs=4,
+        resume_epoch=2,
+    )
+
+    assert plan.train_sample_count == 5
+    assert plan.batch_size == 2
+    assert plan.max_epochs == 4
+    assert plan.resume_epoch == 2
+    assert plan.batches_per_epoch == 3
+    assert plan.total_iterations == 12
+    assert plan.initial_global_iteration == 6
+
+
+def test_yolov8_detection_sample_plan_validates_categories() -> None:
+    """验证 YOLOv8 detection 样本计划会拦截 train / validation 类别映射错误。"""
+
+    plan = plan_yolov8_detection_training_samples(
+        category_names=("defect",),
+        category_ids=(1,),
+        train_sample_count=2,
+        validation_sample_count=1,
+        validation_category_names=("defect",),
+        validation_category_ids=(1,),
+        validation_split_name="val",
+    )
+
+    assert plan.has_validation is True
+    assert plan.category_names == ("defect",)
+    assert plan.category_ids == (1,)
+
+    with pytest.raises(InvalidRequestError, match="categories"):
+        plan_yolov8_detection_training_samples(
+            category_names=("defect",),
+            category_ids=(1,),
+            train_sample_count=2,
+            validation_sample_count=1,
+            validation_category_names=("scratch",),
+            validation_category_ids=(1,),
+            validation_split_name="val",
+        )
+
+
+def test_yolov8_detection_data_resolves_export_and_builds_batch(tmp_path: Path) -> None:
+    """验证 YOLOv8 detection data 层能解析 DatasetExport 并构造训练 batch。"""
+
+    dataset_storage = _create_dataset_storage(tmp_path)
+    _write_completed_dataset_export_files(dataset_storage)
+    manifest_payload = json.loads(
+        dataset_storage.resolve("exports/dataset-export-1/manifest.json").read_text(
+            encoding="utf-8",
+        )
+    )
+
+    resolved_splits = resolve_yolov8_detection_splits(
+        dataset_storage=dataset_storage,
+        cv2_module=cv2,
+        manifest_payload=manifest_payload,
+    )
+    train_split = resolve_yolov8_detection_train_split(resolved_splits)
+    samples, category_names, category_ids = load_yolov8_detection_training_samples(
+        split=train_split,
+    )
+    images, targets = build_yolov8_detection_training_batch(
+        imports=_DetectionDataImports,
+        samples=list(samples),
+        input_size=(64, 64),
+        device="cpu",
+        runtime_precision="fp32",
+        augment_training=True,
+        available_samples=samples,
+        augmentation_options=YoloV8DetectionAugmentationOptions(
+            flip_prob=0.0,
+            hsv_prob=0.0,
+            mosaic_prob=0.0,
+            mixup_prob=0.0,
+            enable_mixup=False,
+            degrees=0.0,
+            translate=0.0,
+            shear=0.0,
+            mosaic_scale=(1.0, 1.0),
+            mixup_scale=(1.0, 1.0),
+        ),
+    )
+
+    assert category_names == ("part",)
+    assert category_ids == (0,)
+    assert len(samples) == 1
+    assert tuple(images.shape) == (1, 3, 64, 64)
+    assert len(targets) == 1
+    assert targets[0].category_indexes == (0,)
+    assert targets[0].boxes_xyxy[0] == (18.0, 12.0, 40.0, 36.0)
+
+
+def test_yolov8_detection_training_epoch_runner_updates_model() -> None:
+    """验证 YOLOv8 detection 单轮训练执行器会推进 batch 并更新参数。"""
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    scaler = _NoopGradScaler()
+    progress_events = []
+    initial_weight = model.weight.detach().clone()
+
+    result = run_yolov8_detection_training_epoch(
+        torch_module=torch,
+        model=model,
+        samples=(0.0, 1.0),
+        batch_size=1,
+        input_size=(1, 1),
+        epoch=1,
+        max_epochs=1,
+        global_iteration=0,
+        total_iterations=2,
+        optimizer=optimizer,
+        scaler=scaler,
+        autocast_context=nullcontext,
+        build_batch=_build_linear_training_batch,
+        unwrap_outputs=lambda output: {"prediction": output},
+        compute_loss=_compute_linear_training_loss,
+        grad_clip_norm=10.0,
+        batch_callback=progress_events.append,
+    )
+
+    assert result.global_iteration == 2
+    assert set(result.train_metrics) == {"loss", "class_loss", "box_loss", "dfl_loss"}
+    assert len(progress_events) == 2
+    assert progress_events[-1].global_iteration == 2
+    assert torch.equal(model.weight.detach(), initial_weight) is False
 
 
 def test_yolov8_training_task_service_rejects_unsupported_model_scale(tmp_path: Path) -> None:
@@ -265,6 +536,75 @@ def test_yolov8_training_task_service_rejects_unsupported_model_scale(tmp_path: 
                 output_model_name="invalid-yolov8",
             )
         )
+
+
+class _NoopGradScaler:
+    """测试用 GradScaler，CPU 下直接执行反向传播和 optimizer step。"""
+
+    def scale(self, loss: torch.Tensor) -> torch.Tensor:
+        """返回原始 loss。"""
+
+        return loss
+
+    def unscale_(self, optimizer: torch.optim.Optimizer) -> None:
+        """CPU 测试不需要 unscale。"""
+
+    def step(self, optimizer: torch.optim.Optimizer) -> None:
+        """执行 optimizer step。"""
+
+        optimizer.step()
+
+    def update(self) -> None:
+        """CPU 测试不需要更新缩放状态。"""
+
+    def state_dict(self) -> dict[str, object]:
+        """返回空的 scaler 状态。"""
+
+        return {}
+
+    def load_state_dict(self, state_dict: dict[str, object]) -> None:
+        """加载空的 scaler 状态。"""
+
+        del state_dict
+
+
+class _DetectionDataImports:
+    """测试用 YOLOv8 detection data 依赖容器。"""
+
+    cv2 = cv2
+    np = np
+    torch = torch
+
+
+def _build_linear_training_batch(
+    sample_batch: list[float],
+    available_samples: tuple[float, ...],
+) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
+    """构建线性模型测试 batch。"""
+
+    del available_samples
+    inputs = torch.tensor([[sample_batch[0]]], dtype=torch.float32)
+    targets = (torch.tensor([[sample_batch[0] + 1.0]], dtype=torch.float32),)
+    return inputs, targets
+
+
+def _compute_linear_training_loss(
+    *,
+    model: torch.nn.Module,
+    raw_outputs: dict[str, torch.Tensor],
+    batch_targets: tuple[torch.Tensor, ...],
+) -> dict[str, torch.Tensor]:
+    """计算线性模型测试 loss。"""
+
+    del model
+    loss = torch.nn.functional.mse_loss(raw_outputs["prediction"], batch_targets[0])
+    zero = loss * 0.0
+    return {
+        "loss": loss,
+        "class_loss": loss,
+        "box_loss": zero,
+        "dfl_loss": zero,
+    }
 
 
 def _create_session_factory() -> SessionFactory:

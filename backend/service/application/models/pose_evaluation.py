@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.coco_style_metrics import compute_coco_style_ap
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
@@ -25,12 +26,14 @@ class PoseEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
+    oks_thresholds: tuple[float, ...] = (0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95)
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class PoseEvaluationResult:
     """Pose 评估结果。"""
+
     sample_count: int
     oks_ap50: float
     oks_ap50_95: float
@@ -38,6 +41,7 @@ class PoseEvaluationResult:
     report_object_key: str
     per_class_metrics: list[dict] = field(default_factory=list)
     predictions_payload: list[dict] = field(default_factory=list)
+    report_payload: dict[str, object] = field(default_factory=dict)
 
 
 def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
@@ -48,6 +52,10 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
 
     model_runtime = DefaultPoseModelRuntime()
+    session = model_runtime.load_session(
+        dataset_storage=dataset_storage,
+        runtime_target=request.runtime_target,
+    )
 
     started_at = datetime.now(timezone.utc)
 
@@ -70,12 +78,15 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
         image_bytes = resolved.read_bytes()
         pred_request = PosePredictionRequest(
             score_threshold=score_threshold,
+            keypoint_confidence_threshold=_resolve_keypoint_confidence_threshold(
+                request.extra_options,
+            ),
             save_result_image=False,
             input_image_bytes=image_bytes,
         )
 
         try:
-            result = model_runtime.predict(pred_request)
+            result = session.predict(pred_request)
         except Exception:
             continue
 
@@ -87,52 +98,42 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
                 continue
             kpts = gt_ann.get("keypoints", [])
             if kpts:
-                all_gts.append({
-                    "image_id": image_index,
-                    "category_id": gt_ann.get("category_id", 0),
-                    "keypoints": kpts,
-                    "num_keypoints": gt_ann.get("num_keypoints", len(kpts) // 3),
-                })
+                all_gts.append(
+                    {
+                        "image_id": image_index,
+                        "category_id": gt_ann.get("category_id", 0),
+                        "keypoints": kpts,
+                        "num_keypoints": gt_ann.get("num_keypoints", len(kpts) // 3),
+                        "area": _resolve_pose_annotation_area(gt_ann),
+                    },
+                )
 
         # 收集预测 keypoints
-        for det in result.detections:
+        for det in _iter_pose_prediction_instances(result):
             all_preds.append({
                 "image_id": image_index,
                 "category_id": det.class_id,
-                "keypoints": det.keypoints,
+                "keypoints": _flatten_pose_keypoints(det.keypoints),
                 "score": det.score,
             })
 
-    # 简化版 OKS AP 计算（按类别）
-    per_class_metrics = []
-    all_ap50 = []
-    all_ap50_95 = []
-
-    for cat in categories:
-        cat_id = int(cat.get("id", 0))
-        cat_name = str(cat.get("name", cat_id))
-        cat_gts = [g for g in all_gts if g["category_id"] == cat_id]
-        cat_preds = [p for p in all_preds if p["category_id"] == cat_id]
-
-        if not cat_gts:
-            continue
-
-        # 简化 AP 计算（使用关键点匹配）
-        ap50, ap50_95 = _compute_keypoint_ap(cat_gts, cat_preds)
-        all_ap50.append(ap50)
-        all_ap50_95.append(ap50_95)
-
-        per_class_metrics.append({
-            "category_id": cat_id,
-            "category_name": cat_name,
-            "gt_count": len(cat_gts),
-            "pred_count": len(cat_preds),
-            "ap50": ap50,
-            "ap50_95": ap50_95,
-        })
-
-    oks_ap50 = sum(all_ap50) / max(len(all_ap50), 1)
-    oks_ap50_95 = sum(all_ap50_95) / max(len(all_ap50_95), 1)
+    category_names = {
+        int(cat.get("id", 0)): str(cat.get("name", cat.get("id", 0)))
+        for cat in categories
+    }
+    oks_sigmas = _resolve_oks_sigmas(request.extra_options)
+    oks_metrics = compute_coco_style_ap(
+        gt_items=all_gts,
+        pred_items=all_preds,
+        category_names=category_names,
+        iou_thresholds=request.oks_thresholds,
+        similarity_func=lambda pred, gt: _compute_oks(
+            gt["keypoints"],
+            pred["keypoints"],
+            area=float(gt.get("area", 1.0)),
+            sigmas=oks_sigmas,
+        ),
+    )
 
     finished_at = datetime.now(timezone.utc)
     duration = (finished_at - started_at).total_seconds()
@@ -141,10 +142,10 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     report_key = f"{output_prefix}/reports/pose_evaluation.json"
     report = {
         "sample_count": processed_count,
-        "oks_ap50": oks_ap50,
-        "oks_ap50_95": oks_ap50_95,
+        "oks_ap50": oks_metrics.ap50,
+        "oks_ap50_95": oks_metrics.ap50_95,
         "duration_seconds": duration,
-        "per_class_metrics": per_class_metrics,
+        "per_class_metrics": oks_metrics.per_class_metrics,
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
     }
@@ -152,12 +153,13 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
 
     return PoseEvaluationResult(
         sample_count=processed_count,
-        oks_ap50=oks_ap50,
-        oks_ap50_95=oks_ap50_95,
+        oks_ap50=oks_metrics.ap50,
+        oks_ap50_95=oks_metrics.ap50_95,
         duration_seconds=duration,
         report_object_key=report_key,
-        per_class_metrics=per_class_metrics,
+        per_class_metrics=oks_metrics.per_class_metrics,
         predictions_payload=all_preds,
+        report_payload=report,
     )
 
 
@@ -275,63 +277,98 @@ def _normalize_pose_categories(categories_payload: object) -> list[dict[str, Any
     return categories
 
 
-def _compute_keypoint_ap(gts: list[dict], preds: list[dict], sigma: float = 0.05) -> tuple[float, float]:
-    """简化版关键点 AP 计算。"""
-    if not gts or not preds:
-        return 0.0, 0.0
+def _resolve_keypoint_confidence_threshold(extra_options: dict[str, object]) -> float:
+    """解析 pose 评估的 keypoint confidence 阈值。"""
 
-    # 按 score 降序排列预测
-    preds_sorted = sorted(preds, key=lambda p: p["score"], reverse=True)
-
-    tp50 = 0
-    tp50_95 = 0
-    matched_gts = set()
-
-    for pred in preds_sorted:
-        best_oks = 0.0
-        best_gt_idx = -1
-
-        for gt_idx, gt in enumerate(gts):
-            if gt_idx in matched_gts:
-                continue
-            if gt["image_id"] != pred["image_id"]:
-                continue
-
-            oks = _compute_oks(gt["keypoints"], pred["keypoints"], sigma)
-            if oks > best_oks:
-                best_oks = oks
-                best_gt_idx = gt_idx
-
-        if best_oks >= 0.5:
-            tp50 += 1
-            matched_gts.add(best_gt_idx)
-        if best_oks >= 0.5 and best_oks < 0.95:
-            tp50_95 += 1
-        elif best_oks >= 0.95:
-            tp50_95 += 1
-
-    precision50 = tp50 / max(len(preds_sorted), 1)
-    recall50 = tp50 / max(len(gts), 1)
-    ap50 = precision50 * recall50
-
-    precision50_95 = tp50_95 / max(len(preds_sorted), 1)
-    recall50_95 = tp50_95 / max(len(gts), 1)
-    ap50_95 = precision50_95 * recall50_95
-
-    return ap50, ap50_95
+    value = extra_options.get("keypoint_confidence_threshold")
+    if value is None:
+        return 0.25
+    return float(value)
 
 
-def _compute_oks(gt_kpts: list[float], pred_kpts: list[float], sigma: float = 0.05) -> float:
+def _iter_pose_prediction_instances(result: object):
+    """返回当前 runtime contract 下的 pose instance 列表。"""
+
+    instances = getattr(result, "instances", None)
+    if instances is not None:
+        return instances
+    return getattr(result, "detections", ())
+
+
+def _flatten_pose_keypoints(keypoints: object) -> list[float]:
+    """把 pose keypoint 对象归一化为 COCO 风格扁平列表。"""
+
+    if not isinstance(keypoints, (list, tuple)):
+        return []
+    flattened: list[float] = []
+    for keypoint in keypoints:
+        if isinstance(keypoint, (int, float)):
+            flattened.append(float(keypoint))
+            continue
+        x = float(getattr(keypoint, "x", 0.0))
+        y = float(getattr(keypoint, "y", 0.0))
+        confidence = getattr(keypoint, "confidence", None)
+        visibility = 2.0 if confidence is None else float(confidence)
+        flattened.extend([x, y, visibility])
+    return flattened
+
+
+def _resolve_pose_annotation_area(annotation: dict[str, object]) -> float:
+    """解析 pose 标注面积，缺失时用 bbox 面积兜底。"""
+
+    area = annotation.get("area")
+    if area is not None:
+        return max(float(area), 1.0)
+    bbox = annotation.get("bbox")
+    if isinstance(bbox, list) and len(bbox) >= 4:
+        return max(float(bbox[2]) * float(bbox[3]), 1.0)
+    return 1.0
+
+
+def _resolve_oks_sigmas(extra_options: dict[str, object]) -> tuple[float, ...]:
+    """解析 OKS sigma 配置，默认使用 COCO person 17 点 sigma。"""
+
+    raw_sigmas = extra_options.get("oks_sigmas")
+    if isinstance(raw_sigmas, list) and raw_sigmas:
+        return tuple(float(value) for value in raw_sigmas)
+    return (
+        0.026,
+        0.025,
+        0.025,
+        0.035,
+        0.035,
+        0.079,
+        0.079,
+        0.072,
+        0.072,
+        0.062,
+        0.062,
+        0.107,
+        0.107,
+        0.087,
+        0.087,
+        0.089,
+        0.089,
+    )
+
+
+def _compute_oks(
+    gt_kpts: list[float],
+    pred_kpts: list[float],
+    *,
+    area: float,
+    sigmas: tuple[float, ...],
+) -> float:
     """计算 Object Keypoint Similarity。"""
+
     if not gt_kpts or not pred_kpts:
         return 0.0
 
-    # 确保长度一致
     num_kpts = min(len(gt_kpts) // 3, len(pred_kpts) // 3)
     if num_kpts == 0:
         return 0.0
 
-    sum_dist_sq = 0.0
+    oks_sum = 0.0
     visible_count = 0
 
     for i in range(num_kpts):
@@ -346,13 +383,14 @@ def _compute_oks(gt_kpts: list[float], pred_kpts: list[float], sigma: float = 0.
         if gt_v > 0 and pred_v > 0:
             dx = gt_x - pred_x
             dy = gt_y - pred_y
-            dist_sq = dx * dx + dy * dy
-            sum_dist_sq += dist_sq / (sigma * sigma)
+            sigma = sigmas[i] if i < len(sigmas) else 0.05
+            denominator = 2.0 * (sigma ** 2) * max(float(area), 1.0)
+            import math
+
+            oks_sum += math.exp(-((dx * dx + dy * dy) / max(denominator, 1e-8)))
             visible_count += 1
 
     if visible_count == 0:
         return 0.0
 
-    import math
-    oks = math.exp(-sum_dist_sq / (2.0 * visible_count))
-    return oks
+    return oks_sum / visible_count

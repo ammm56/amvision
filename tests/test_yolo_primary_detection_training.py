@@ -14,6 +14,7 @@ import torch
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
 )
+from backend.service.application.models.yolov8_core import build_yolov8_model
 from backend.service.application.models.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_END2END_TOPK,
     DETECTION_POSTPROCESS_MODE_NMS,
@@ -23,12 +24,13 @@ from backend.service.application.models.yolo_primary_detection_training import (
     _PreparedTrainingTarget,
     _ResolvedTrainingAnnotation,
     _ResolvedTrainingSample,
-    _build_training_batch,
+    _build_non_yolov8_training_batch,
+    _compute_detection_loss,
     _compute_e2e_detection_loss,
     _load_coco_ground_truth_silently,
-    _load_training_samples,
+    _load_non_yolov8_training_samples,
     _resolve_detection_augmentation_options,
-    _resolve_detection_splits,
+    _resolve_non_yolov8_detection_splits,
     _unwrap_e2e_detection_outputs,
 )
 from backend.service.application.runtime.yolo_primary_predictor import (
@@ -51,7 +53,7 @@ def test_build_training_batch_flip_prob_one_flips_bbox_horizontally(
         color=(60, 120, 180),
         bbox_xyxy=(10.0, 20.0, 30.0, 50.0),
     )
-    images, batch_targets = _build_training_batch(
+    images, batch_targets = _build_non_yolov8_training_batch(
         imports=SimpleNamespace(cv2=cv2, np=np, torch=torch),
         samples=[sample],
         input_size=(64, 64),
@@ -97,7 +99,7 @@ def test_build_training_batch_mosaic_mixup_keeps_boxes_in_bounds(
         for index in range(4)
     )
     random.seed(0)
-    images, batch_targets = _build_training_batch(
+    images, batch_targets = _build_non_yolov8_training_batch(
         imports=SimpleNamespace(cv2=cv2, np=np, torch=torch),
         samples=[samples[0], samples[1]],
         input_size=(64, 64),
@@ -183,6 +185,50 @@ def test_yolo26_e2e_loss_path_runs_with_dual_branch_outputs() -> None:
     assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
 
 
+def test_yolov8_detection_loss_uses_yolov8_core_and_backpropagates() -> None:
+    """验证 YOLOv8 detection loss 已接到 yolov8_core 边界。"""
+
+    model = build_yolov8_model(
+        task_type="detection",
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.train()
+    raw_outputs = model(torch.randn(1, 3, 64, 64))
+
+    loss_components = _compute_detection_loss(
+        imports=SimpleNamespace(torch=torch),
+        model=model,
+        raw_outputs=raw_outputs,
+        batch_targets=(
+            _PreparedTrainingTarget(
+                image_id=1,
+                image_width=64,
+                image_height=64,
+                boxes_xyxy=((10.0, 10.0, 30.0, 30.0),),
+                category_indexes=(1,),
+            ),
+        ),
+        num_classes=2,
+        class_loss_weight=0.5,
+        box_loss_weight=7.5,
+        dfl_loss_weight=1.5,
+        assign_topk=10,
+        assign_alpha=0.5,
+        assign_beta=6.0,
+    )
+
+    assert torch.isfinite(loss_components["loss"]).item() is True
+    assert torch.isfinite(loss_components["class_loss"]).item() is True
+    assert torch.isfinite(loss_components["box_loss"]).item() is True
+    assert torch.isfinite(loss_components["dfl_loss"]).item() is True
+
+    loss_components["loss"].backward()
+    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    assert grad_tensors
+    assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
+
+
 def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_boxes() -> None:
     """验证 end-to-end detection 后处理会使用 top-k，而不是通用 NMS。"""
 
@@ -253,7 +299,7 @@ def test_resolve_detection_splits_supports_yolo_detection_manifest(
     label_path.write_text("0 0.5 0.5 0.2 0.4\n", encoding="utf-8")
 
     dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(storage_root)))
-    resolved_splits = _resolve_detection_splits(
+    resolved_splits = _resolve_non_yolov8_detection_splits(
         dataset_storage=dataset_storage,
         imports=SimpleNamespace(cv2=cv2, np=np, torch=torch, COCO=None, COCOeval=None),
         manifest_payload={
@@ -274,7 +320,7 @@ def test_resolve_detection_splits_supports_yolo_detection_manifest(
     assert resolved_split.annotation_file is None
     assert resolved_split.sample_count == 1
 
-    samples, category_names, category_ids = _load_training_samples(
+    samples, category_names, category_ids = _load_non_yolov8_training_samples(
         imports=SimpleNamespace(),
         split=resolved_split,
     )

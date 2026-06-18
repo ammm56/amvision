@@ -7,6 +7,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
 
+from backend.service.application.models.yolov8_model_service import (
+    SqlAlchemyYoloV8ModelService,
+    YoloV8TrainingOutputRegistration,
+)
+from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_OPENVINO_IR_FILE,
@@ -671,6 +676,97 @@ def test_sync_and_async_runtime_pools_are_isolated(
         session_factory.engine.dispose()
 
 
+def test_yolov8_detection_deployment_sync_async_control_plane_smoke(tmp_path: Path) -> None:
+    """验证 YOLOv8 detection 可以走 deployment sync / async 控制面。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_yolov8_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    sync_supervisor = client.app.state.detection_sync_deployment_process_supervisor
+    async_supervisor = client.app.state.detection_async_deployment_process_supervisor
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolov8",
+                    "model_version_id": model_version_id,
+                    "runtime_backend": "pytorch",
+                    "device_name": "cpu",
+                    "display_name": "yolov8 detection deployment",
+                },
+            )
+            assert create_response.status_code == 201
+            deployment_instance_id = create_response.json()["deployment_instance_id"]
+
+            sync_start_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
+                headers=_build_headers(),
+            )
+            assert sync_start_response.status_code == 200
+            assert sync_start_response.json()["runtime_mode"] == "sync"
+
+            sync_warmup_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/warmup",
+                headers=_build_headers(),
+            )
+            assert sync_warmup_response.status_code == 200
+            assert sync_warmup_response.json()["warmed_instance_count"] == 1
+
+            infer_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
+                headers=build_test_headers(scopes="models:read"),
+                json={
+                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg==",
+                    "save_result_image": True,
+                },
+            )
+            assert infer_response.status_code == 200
+            assert sync_supervisor.load_calls == [
+                "projects/project-1/models/yolov8-deployment-source/artifacts/checkpoints/best.pt"
+            ]
+            assert sync_supervisor.inference_requests[-1].save_result_image is True
+
+            async_start_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
+                headers=_build_headers(),
+            )
+            assert async_start_response.status_code == 200
+            assert async_start_response.json()["runtime_mode"] == "async"
+
+            async_warmup_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/warmup",
+                headers=_build_headers(),
+            )
+            assert async_warmup_response.status_code == 200
+            assert async_warmup_response.json()["warmed_instance_count"] == 1
+            assert async_supervisor.load_calls == [
+                "projects/project-1/models/yolov8-deployment-source/artifacts/checkpoints/best.pt"
+            ]
+
+        session = session_factory.create_session()
+        try:
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
+                deployment_instance_id
+            )
+        finally:
+            session.close()
+
+        assert saved_instance is not None
+        snapshot = saved_instance.metadata.get("runtime_target_snapshot")
+        assert isinstance(snapshot, dict)
+        assert snapshot["model_type"] == "yolov8"
+        assert snapshot["task_type"] == "detection"
+        assert snapshot["runtime_artifact_file_type"] == YOLOV8_DETECTION_FILE_TYPES.checkpoint_file_type
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:
@@ -721,6 +817,39 @@ def _seed_model_build(
         build_format=build_format,
         build_uri=build_uri,
         metadata=metadata,
+    )
+
+
+def _seed_yolov8_model_version(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+) -> str:
+    """写入一个 YOLOv8 detection 测试用 ModelVersion。"""
+
+    checkpoint_uri = "projects/project-1/models/yolov8-deployment-source/artifacts/checkpoints/best.pt"
+    labels_uri = "projects/project-1/models/yolov8-deployment-source/artifacts/labels.txt"
+    dataset_storage.write_bytes(checkpoint_uri, b"fake-yolov8-checkpoint")
+    dataset_storage.write_text(labels_uri, "bolt\n")
+
+    service = SqlAlchemyYoloV8ModelService(session_factory=session_factory)
+    return service.register_training_output(
+        YoloV8TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-yolov8-deployment-source",
+            model_name="yolov8-s-deployment",
+            model_scale="s",
+            dataset_version_id="dataset-version-yolov8-deployment-source",
+            checkpoint_file_id="checkpoint-file-yolov8-deployment-source",
+            checkpoint_file_uri=checkpoint_uri,
+            labels_file_id="labels-file-yolov8-deployment-source",
+            labels_file_uri=labels_uri,
+            metadata={
+                "category_names": ["bolt"],
+                "input_size": [64, 64],
+                "training_config": {"input_size": [64, 64]},
+            },
+        )
     )
 
 

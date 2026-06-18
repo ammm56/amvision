@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -92,6 +92,7 @@ class RuntimeTargetSnapshot:
     - checkpoint_storage_uri：来源 ModelVersion 的 checkpoint 存储 URI。
     - checkpoint_path：来源 ModelVersion 的 checkpoint 本地绝对路径。
     - labels_storage_uri：labels 文件存储 URI。
+    - model_config：模型运行时必要配置，例如 pose kpt_shape。
     """
 
     project_id: str
@@ -117,6 +118,7 @@ class RuntimeTargetSnapshot:
     checkpoint_storage_uri: str | None = None
     checkpoint_path: Path | None = None
     labels_storage_uri: str | None = None
+    model_config: dict[str, object] = field(default_factory=dict)
 
 
 def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[str, object]:
@@ -151,6 +153,7 @@ def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[s
         "checkpoint_file_id": snapshot.checkpoint_file_id,
         "checkpoint_storage_uri": snapshot.checkpoint_storage_uri,
         "labels_storage_uri": snapshot.labels_storage_uri,
+        "model_config": dict(snapshot.model_config),
     }
 
 
@@ -225,6 +228,7 @@ def deserialize_runtime_target_snapshot(
         checkpoint_storage_uri=checkpoint_storage_uri,
         checkpoint_path=checkpoint_path,
         labels_storage_uri=labels_storage_uri,
+        model_config=_read_payload_dict(payload, "model_config"),
     )
 
 
@@ -460,6 +464,7 @@ class SqlAlchemyRuntimeTargetResolver:
             checkpoint_storage_uri=checkpoint_storage_uri,
             checkpoint_path=checkpoint_path,
             labels_storage_uri=labels_storage_uri,
+            model_config=resolve_model_config(model_version.metadata),
         )
 
 
@@ -574,6 +579,25 @@ def resolve_input_size(model_version_metadata: dict[str, object]) -> tuple[int, 
             if resolved[0] > 0 and resolved[1] > 0:
                 return resolved
     return _DEFAULT_INPUT_SIZE
+
+
+def resolve_model_config(model_version_metadata: dict[str, object]) -> dict[str, object]:
+    """从 ModelVersion metadata 中解析模型运行时配置。"""
+
+    model_config: dict[str, object] = {}
+    for candidate in (
+        model_version_metadata.get("kpt_shape"),
+        _read_nested_value(model_version_metadata, "training_config", "kpt_shape"),
+    ):
+        if isinstance(candidate, list | tuple) and len(candidate) == 2:
+            try:
+                keypoint_shape = [int(candidate[0]), int(candidate[1])]
+            except (TypeError, ValueError):
+                continue
+            if keypoint_shape[0] > 0 and keypoint_shape[1] in {2, 3}:
+                model_config["kpt_shape"] = keypoint_shape
+                break
+    return model_config
 
 
 def resolve_local_file_path(
@@ -869,6 +893,15 @@ def _read_payload_optional_str(payload: dict[str, object], key: str) -> str | No
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _read_payload_dict(payload: dict[str, object], key: str) -> dict[str, object]:
+    """从快照字典中读取可选字典字段。"""
+
+    value = payload.get(key)
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
 
 
 def _require_payload_input_size(payload: dict[str, object]) -> tuple[int, int]:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -12,9 +14,11 @@ from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     optimize_onnx_model,
+    resolve_conversion_project_root,
     resolve_conversion_phase,
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
+    run_conversion_script,
 )
 
 
@@ -97,6 +101,59 @@ def test_model_conversion_common_rejects_failed_onnx_simplify(tmp_path: Path) ->
             onnx_module=_FakeOnnxModule(),
             onnx_simplify=lambda model: (model, False),
         )
+
+
+def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 conversion 子进程会带项目根目录，避免脚本无法导入 backend。"""
+
+    project_root = resolve_conversion_project_root()
+    captured: dict[str, object] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        encoding: str,
+        errors: str,
+        check: bool,
+        cwd: str,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        """记录 subprocess.run 调用参数。"""
+
+        captured.update(
+            {
+                "command": command,
+                "capture_output": capture_output,
+                "text": text,
+                "encoding": encoding,
+                "errors": errors,
+                "check": check,
+                "cwd": cwd,
+                "env": env,
+            }
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setenv("PYTHONPATH", "existing-path")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = run_conversion_script(
+        script_file_name="build_openvino_ir.py",
+        args=["source.onnx", "target.xml", "fp32"],
+    )
+
+    assert result.returncode == 0
+    assert captured["cwd"] == str(project_root)
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[1].endswith("backend\\workers\\conversion\\scripts\\build_openvino_ir.py")
+    env = captured["env"]
+    assert isinstance(env, dict)
+    python_path_parts = env["PYTHONPATH"].split(os.pathsep)
+    assert python_path_parts[0] == str(project_root)
+    assert "existing-path" in python_path_parts
 
 
 class _FakeOnnxModule:

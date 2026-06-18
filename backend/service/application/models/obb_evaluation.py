@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from backend.service.application.models.coco_style_metrics import (
+    bbox_iou_xyxy,
+    compute_coco_style_ap,
+)
 from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -18,12 +23,14 @@ class ObbEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
+    iou_thresholds: tuple[float, ...] = (0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95)
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ObbEvaluationResult:
     """OBB 评估结果。"""
+
     sample_count: int
     map50: float
     map50_95: float
@@ -31,6 +38,7 @@ class ObbEvaluationResult:
     report_object_key: str
     per_class_metrics: list[dict] = field(default_factory=list)
     predictions_payload: list[dict] = field(default_factory=list)
+    report_payload: dict[str, object] = field(default_factory=dict)
 
 
 def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
@@ -40,9 +48,13 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
 
-    # 加载模型运行时
     from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
+
     model_runtime = DefaultObbModelRuntime()
+    session = model_runtime.load_session(
+        dataset_storage=dataset_storage,
+        runtime_target=request.runtime_target,
+    )
 
     started_at = datetime.now(timezone.utc)
 
@@ -58,7 +70,11 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
         img_id = ann["image_id"]
         gt_by_image.setdefault(img_id, []).append(ann)
 
-    # 收集预测
+    gt_items: list[dict[str, object]] = []
+    for annotation in annotations:
+        gt_item = _build_obb_gt_item(annotation)
+        if gt_item is not None:
+            gt_items.append(gt_item)
     all_preds: list[dict] = []
     processed_count = 0
 
@@ -79,50 +95,39 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
         )
 
         try:
-            result = model_runtime.predict(pred_request)
+            result = session.predict(pred_request)
         except Exception:
             continue
 
         processed_count += 1
 
         # 收集预测
-        for det in result.detections:
+        for det in _iter_obb_prediction_instances(result):
+            bbox = _build_obb_prediction_bbox(det)
             all_preds.append({
                 "image_id": img_id,
                 "category_id": det.class_id,
-                "bbox": det.bbox,  # OBB: [x, y, w, h, angle]
+                "bbox": bbox,
+                "polygon": _xywhr_to_polygon(bbox),
                 "score": det.score,
             })
 
-    # 计算 AP
-    per_class_metrics = []
-    all_ap50 = []
-    all_ap50_95 = []
-
-    for cat in categories:
-        cat_id = cat["id"]
-        cat_name = cat["name"]
-        cat_gts = [a for a in annotations if a["category_id"] == cat_id]
-        cat_preds = [p for p in all_preds if p["category_id"] == cat_id]
-
-        if not cat_gts:
-            continue
-
-        ap50, ap50_95 = _compute_obb_ap(cat_gts, cat_preds)
-        all_ap50.append(ap50)
-        all_ap50_95.append(ap50_95)
-
-        per_class_metrics.append({
-            "category_id": cat_id,
-            "category_name": cat_name,
-            "gt_count": len(cat_gts),
-            "pred_count": len(cat_preds),
-            "ap50": ap50,
-            "ap50_95": ap50_95,
-        })
-
-    map50 = sum(all_ap50) / max(len(all_ap50), 1)
-    map50_95 = sum(all_ap50_95) / max(len(all_ap50_95), 1)
+    category_names = {
+        int(category.get("id", 0)): str(category.get("name", category.get("id", 0)))
+        for category in categories
+    }
+    obb_metrics = compute_coco_style_ap(
+        gt_items=gt_items,
+        pred_items=all_preds,
+        category_names=category_names,
+        iou_thresholds=request.iou_thresholds,
+        similarity_func=lambda pred, gt: _compute_obb_iou(
+            pred.get("polygon"),
+            gt.get("polygon"),
+            pred.get("bbox"),
+            gt.get("bbox"),
+        ),
+    )
 
     finished_at = datetime.now(timezone.utc)
     duration = (finished_at - started_at).total_seconds()
@@ -131,10 +136,10 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     report_key = f"{output_prefix}/reports/obb_evaluation.json"
     report = {
         "sample_count": processed_count,
-        "map50": map50,
-        "map50_95": map50_95,
+        "map50": obb_metrics.ap50,
+        "map50_95": obb_metrics.ap50_95,
         "duration_seconds": duration,
-        "per_class_metrics": per_class_metrics,
+        "per_class_metrics": obb_metrics.per_class_metrics,
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
     }
@@ -142,12 +147,13 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
 
     return ObbEvaluationResult(
         sample_count=processed_count,
-        map50=map50,
-        map50_95=map50_95,
+        map50=obb_metrics.ap50,
+        map50_95=obb_metrics.ap50_95,
         duration_seconds=duration,
         report_object_key=report_key,
-        per_class_metrics=per_class_metrics,
+        per_class_metrics=obb_metrics.per_class_metrics,
         predictions_payload=all_preds,
+        report_payload=report,
     )
 
 
@@ -239,81 +245,198 @@ def _parse_obb_manifest_payload(
     return images, annotations, categories
 
 
-def _compute_obb_ap(gts: list[dict], preds: list[dict]) -> tuple[float, float]:
-    """计算旋转框 AP（简化版）。"""
-    if not gts or not preds:
-        return 0.0, 0.0
+def _iter_obb_prediction_instances(result: object):
+    """返回当前 runtime contract 下的 OBB instance 列表。"""
 
-    # 按 score 降序排列
-    preds_sorted = sorted(preds, key=lambda p: p["score"], reverse=True)
-
-    tp50 = 0
-    tp50_95 = 0
-    matched_gts = set()
-
-    for pred in preds_sorted:
-        best_iou = 0.0
-        best_gt_idx = -1
-
-        for gt_idx, gt in enumerate(gts):
-            if gt_idx in matched_gts:
-                continue
-            if gt["image_id"] != pred["image_id"]:
-                continue
-
-            iou = _compute_obb_iou(gt["bbox"], pred["bbox"])
-            if iou > best_iou:
-                best_iou = iou
-                best_gt_idx = gt_idx
-
-        if best_iou >= 0.5:
-            tp50 += 1
-            matched_gts.add(best_gt_idx)
-        if best_iou >= 0.5 and best_iou < 0.95:
-            tp50_95 += 1
-        elif best_iou >= 0.95:
-            tp50_95 += 1
-
-    precision50 = tp50 / max(len(preds_sorted), 1)
-    recall50 = tp50 / max(len(gts), 1)
-    ap50 = precision50 * recall50
-
-    precision50_95 = tp50_95 / max(len(preds_sorted), 1)
-    recall50_95 = tp50_95 / max(len(gts), 1)
-    ap50_95 = precision50_95 * recall50_95
-
-    return ap50, ap50_95
+    instances = getattr(result, "instances", None)
+    if instances is not None:
+        return instances
+    return getattr(result, "detections", ())
 
 
-def _compute_obb_iou(obb1: list[float], obb2: list[float]) -> float:
-    """计算两个旋转框的 IoU（简化版：使用轴对齐近似）。"""
-    if len(obb1) < 4 or len(obb2) < 4:
+def _build_obb_prediction_bbox(instance: object) -> list[float]:
+    """把 OBB prediction instance 归一化为 xywhr。"""
+
+    bbox = getattr(instance, "bbox", None)
+    if isinstance(bbox, (list, tuple)) and len(bbox) >= 5:
+        return [float(value) for value in bbox[:5]]
+    bbox_xyxy = getattr(instance, "bbox_xyxy", None)
+    if isinstance(bbox_xyxy, (list, tuple)) and len(bbox_xyxy) >= 4:
+        x1, y1, x2, y2 = (float(value) for value in bbox_xyxy[:4])
+        return [
+            (x1 + x2) / 2.0,
+            (y1 + y2) / 2.0,
+            max(0.0, x2 - x1),
+            max(0.0, y2 - y1),
+            float(getattr(instance, "angle", 0.0) or 0.0),
+        ]
+    return [0.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def _build_obb_gt_item(annotation: dict) -> dict[str, object] | None:
+    """把 OBB annotation 归一化为 COCO-style AP 使用的 GT 项。"""
+
+    polygon = _normalize_obb_polygon(annotation.get("poly") or annotation.get("polygon"))
+    bbox = _normalize_obb_bbox(annotation.get("bbox"))
+    if polygon is None and bbox is not None:
+        polygon = _bbox_to_polygon(bbox)
+    if polygon is None and bbox is None:
+        return None
+    if bbox is None and polygon is not None:
+        bbox = _polygon_to_xywhr(polygon)
+    return {
+        "image_id": int(annotation.get("image_id", -1)),
+        "category_id": int(annotation.get("category_id", 0)),
+        "bbox": bbox,
+        "polygon": polygon,
+    }
+
+
+def _compute_obb_iou(
+    polygon1: object,
+    polygon2: object,
+    bbox1: object,
+    bbox2: object,
+) -> float:
+    """计算两个 OBB 的 rotated IoU。"""
+
+    left_polygon = _normalize_obb_polygon(polygon1)
+    right_polygon = _normalize_obb_polygon(polygon2)
+    if left_polygon is not None and right_polygon is not None:
+        return _polygon_iou(left_polygon, right_polygon)
+
+    left_bbox = _normalize_obb_bbox(bbox1)
+    right_bbox = _normalize_obb_bbox(bbox2)
+    if left_bbox is None or right_bbox is None:
         return 0.0
+    return bbox_iou_xyxy(_bbox_to_xyxy(left_bbox), _bbox_to_xyxy(right_bbox))
 
-    # 简化：忽略旋转角度，使用轴对齐框计算
-    x1, y1, w1, h1 = obb1[:4]
-    x2, y2, w2, h2 = obb2[:4]
 
-    # 转换为 xyxy 格式
-    left1, top1, right1, bottom1 = x1 - w1/2, y1 - h1/2, x1 + w1/2, y1 + h1/2
-    left2, top2, right2, bottom2 = x2 - w2/2, y2 - h2/2, x2 + w2/2, y2 + h2/2
+def _normalize_obb_bbox(value: object) -> list[float] | None:
+    """归一化 OBB bbox，支持 xywhr 或 xywh。"""
 
-    # 计算交集
-    inter_left = max(left1, left2)
-    inter_top = max(top1, top2)
-    inter_right = min(right1, right2)
-    inter_bottom = min(bottom1, bottom2)
+    if not isinstance(value, (list, tuple)) or len(value) < 4:
+        return None
+    numbers = [float(item) for item in value[:5]]
+    if len(numbers) >= 5:
+        return numbers[:5]
+    x, y, width, height = numbers[:4]
+    return [x + width / 2.0, y + height / 2.0, width, height, 0.0]
 
-    inter_w = max(0, inter_right - inter_left)
-    inter_h = max(0, inter_bottom - inter_top)
-    inter_area = inter_w * inter_h
 
-    # 计算并集
-    area1 = w1 * h1
-    area2 = w2 * h2
-    union_area = area1 + area2 - inter_area
+def _normalize_obb_polygon(value: object) -> list[tuple[float, float]] | None:
+    """归一化 OBB polygon。"""
 
-    if union_area <= 0:
+    if not isinstance(value, (list, tuple)):
+        return None
+    if len(value) == 8 and all(isinstance(item, (int, float)) for item in value):
+        return [
+            (float(value[index]), float(value[index + 1]))
+            for index in range(0, 8, 2)
+        ]
+    points: list[tuple[float, float]] = []
+    for point in value:
+        if isinstance(point, (list, tuple)) and len(point) >= 2:
+            points.append((float(point[0]), float(point[1])))
+    return points if len(points) >= 3 else None
+
+
+def _bbox_to_polygon(bbox: list[float]) -> list[tuple[float, float]]:
+    """把 xywhr bbox 转为四点 polygon。"""
+
+    if len(bbox) >= 5:
+        return _xywhr_to_polygon(bbox)
+    x, y, width, height = (float(value) for value in bbox[:4])
+    return [
+        (x, y),
+        (x + width, y),
+        (x + width, y + height),
+        (x, y + height),
+    ]
+
+
+def _xywhr_to_polygon(bbox: list[float]) -> list[tuple[float, float]]:
+    """把 xywhr 旋转框转为四点 polygon。"""
+
+    cx, cy, width, height, angle = (float(value) for value in bbox[:5])
+    angle_radians = math.radians(angle) if abs(angle) > math.tau else angle
+    cos_value = math.cos(angle_radians)
+    sin_value = math.sin(angle_radians)
+    half_width = width / 2.0
+    half_height = height / 2.0
+    corners = [
+        (-half_width, -half_height),
+        (half_width, -half_height),
+        (half_width, half_height),
+        (-half_width, half_height),
+    ]
+    return [
+        (
+            cx + x_offset * cos_value - y_offset * sin_value,
+            cy + x_offset * sin_value + y_offset * cos_value,
+        )
+        for x_offset, y_offset in corners
+    ]
+
+
+def _polygon_to_xywhr(polygon: list[tuple[float, float]]) -> list[float]:
+    """用 polygon 外接矩形生成保底 xywhr。"""
+
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
+    return [
+        (min_x + max_x) / 2.0,
+        (min_y + max_y) / 2.0,
+        max_x - min_x,
+        max_y - min_y,
+        0.0,
+    ]
+
+
+def _bbox_to_xyxy(bbox: list[float]) -> list[float]:
+    """把 xywhr bbox 的外接矩形转换为 xyxy。"""
+
+    polygon = _bbox_to_polygon(bbox)
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def _polygon_iou(
+    polygon1: list[tuple[float, float]],
+    polygon2: list[tuple[float, float]],
+) -> float:
+    """用 OpenCV 计算两个凸 polygon 的 IoU。"""
+
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return bbox_iou_xyxy(_polygon_bounds(polygon1), _polygon_bounds(polygon2))
+
+    left = np.asarray(polygon1, dtype=np.float32)
+    right = np.asarray(polygon2, dtype=np.float32)
+    if left.shape[0] < 3 or right.shape[0] < 3:
         return 0.0
+    left_area = float(abs(cv2.contourArea(left)))
+    right_area = float(abs(cv2.contourArea(right)))
+    if left_area <= 0.0 or right_area <= 0.0:
+        return 0.0
+    _status, intersection = cv2.intersectConvexConvex(left, right)
+    if intersection is None:
+        intersection_area = 0.0
+    else:
+        intersection_area = float(abs(cv2.contourArea(intersection)))
+    return intersection_area / max(left_area + right_area - intersection_area, 1e-8)
 
-    return inter_area / union_area
+
+def _polygon_bounds(polygon: list[tuple[float, float]]) -> list[float]:
+    """计算 polygon 外接 xyxy。"""
+
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    return [min(xs), min(ys), max(xs), max(ys)]

@@ -12,10 +12,8 @@ from backend.service.application.models.yolo_core_common.losses.obb import (
 from backend.service.application.models.yolo_core_common.losses.pose import (
     build_pose_box_area,
     build_pose_oks_sigmas,
-    build_pose_rle_weights,
     build_pose_visibility_mask,
     compute_oks_keypoint_loss,
-    compute_rle_loss,
     compute_visibility_loss,
     decode_pose_keypoints_xy,
 )
@@ -29,11 +27,9 @@ from backend.service.application.models.yolo_core_common.losses.segmentation imp
 __all__ = [
     "build_pose_box_area",
     "build_pose_oks_sigmas",
-    "build_pose_rle_weights",
     "build_pose_visibility_mask",
     "compute_obb_angle_loss",
     "compute_oks_keypoint_loss",
-    "compute_rle_loss",
     "compute_segmentation_detection_loss",
     "compute_segmentation_mask_loss",
     "compute_visibility_loss",

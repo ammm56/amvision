@@ -25,7 +25,7 @@ from backend.service.application.runtime.yolo26_classification_predictor import 
     PyTorchYolo26ClassificationRuntimeSession,
     TensorRTYolo26ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.yolov8_classification_predictor import (
+from backend.service.application.runtime.predictors.yolov8_classification import (
     OnnxRuntimeYoloV8ClassificationRuntimeSession,
     OpenVINOYoloV8ClassificationRuntimeSession,
     PyTorchYoloV8ClassificationRuntimeSession,

@@ -19,6 +19,10 @@ from backend.service.application.models.yolo_core_common.postprocess import (
     build_segmentation_postprocess_instances,
     normalize_segmentation_outputs,
 )
+from backend.service.application.models.yolov8_core.inference import (
+    build_yolov8_segmentation_inference_instances,
+    normalize_yolov8_segmentation_inference_outputs,
+)
 from backend.service.application.models.yolo_primary_model_configs import (
     build_yolo_primary_model,
 )
@@ -177,7 +181,8 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
                 outputs = self.model(input_tensor)
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        prediction_array, proto_array = normalize_segmentation_outputs(
+        prediction_array, proto_array = _normalize_segmentation_outputs(
+            model_type=self.model_type,
             outputs=outputs,
             np_module=self.imports.np,
         )
@@ -194,6 +199,7 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
             image_width=int(image.shape[1]),
             image_height=int(image.shape[0]),
             input_size=self.runtime_target.input_size,
+            model_type=self.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -359,7 +365,8 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        prediction_array, proto_array = normalize_segmentation_outputs(
+        prediction_array, proto_array = _normalize_segmentation_outputs(
+            model_type=self.model_type,
             outputs=outputs,
             np_module=self.imports.np,
         )
@@ -376,6 +383,7 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
             image_width=int(image.shape[1]),
             image_height=int(image.shape[0]),
             input_size=self.runtime_target.input_size,
+            model_type=self.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -570,7 +578,8 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
         if raw_prediction is None or raw_proto is None:
             raise InvalidRequestError("openvino segmentation 推理输出缺少 prediction 或 proto")
 
-        prediction_array, proto_array = normalize_segmentation_outputs(
+        prediction_array, proto_array = _normalize_segmentation_outputs(
+            model_type=self.model_type,
             outputs=(raw_prediction, raw_proto),
             np_module=self.imports.np,
         )
@@ -587,6 +596,7 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
             image_width=int(image.shape[1]),
             image_height=int(image.shape[0]),
             input_size=self.runtime_target.input_size,
+            model_type=self.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -998,7 +1008,8 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        normalized_prediction_array, normalized_proto_array = normalize_segmentation_outputs(
+        normalized_prediction_array, normalized_proto_array = _normalize_segmentation_outputs(
+            model_type=self.model_type,
             outputs=(prediction_array, proto_array),
             np_module=self.imports.np,
         )
@@ -1015,6 +1026,7 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             image_width=int(image.shape[1]),
             image_height=int(image.shape[0]),
             input_size=self.runtime_target.input_size,
+            model_type=self.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -1347,10 +1359,16 @@ def _build_segmentation_instances(
     image_width: int,
     image_height: int,
     input_size: tuple[int, int],
+    model_type: str,
 ) -> tuple[SegmentationPredictionInstance, ...]:
     """把 segmentation 输出数组转换成平台实例记录。"""
 
-    common_instances = build_segmentation_postprocess_instances(
+    postprocess_builder = (
+        build_yolov8_segmentation_inference_instances
+        if model_type == "yolov8"
+        else build_segmentation_postprocess_instances
+    )
+    common_instances = postprocess_builder(
         cv2_module=cv2_module,
         np_module=np_module,
         prediction_array=prediction_array,
@@ -1375,6 +1393,25 @@ def _build_segmentation_instances(
             mask_area=instance.mask_area,
         )
         for instance in common_instances
+    )
+
+
+def _normalize_segmentation_outputs(
+    *,
+    model_type: str,
+    outputs: object,
+    np_module: Any,
+) -> tuple[Any, Any]:
+    """按模型 core 归一化 segmentation 输出。"""
+
+    if model_type == "yolov8":
+        return normalize_yolov8_segmentation_inference_outputs(
+            outputs=outputs,
+            np_module=np_module,
+        )
+    return normalize_segmentation_outputs(
+        outputs=outputs,
+        np_module=np_module,
     )
 
 

@@ -36,6 +36,30 @@ from backend.service.application.models.yolo_core_common.losses import (
 from backend.service.application.models.yolo_core_common.targets import (
     bbox_xyxy_to_distances,
 )
+from backend.service.application.models.yolov8_core.data import (
+    build_yolov8_detection_training_batch,
+)
+from backend.service.application.models.yolov8_core.training import (
+    YoloV8DetectionResumeValidationRequest,
+    YoloV8DetectionTrainingBatchProgress,
+    build_yolov8_detection_checkpoint_state,
+    build_yolov8_detection_epoch_checkpoint_update,
+    build_yolov8_detection_training_savepoint_payload,
+    build_yolov8_detection_training_runtime,
+    compute_yolov8_detection_training_loss,
+    encode_yolov8_detection_checkpoint_state,
+    evaluate_yolov8_detection_validation_losses,
+    is_yolov8_detection_core_model,
+    move_yolov8_optimizer_state_to_device,
+    resolve_yolov8_detection_best_metric_update,
+    resolve_yolov8_detection_epoch_control,
+    serialize_yolov8_detection_best_metric_value,
+    should_run_yolov8_detection_validation,
+    plan_yolov8_detection_training_execution,
+    prepare_yolov8_detection_training_data_context,
+    run_yolov8_detection_training_epoch,
+    validate_yolov8_detection_resume_checkpoint,
+)
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
@@ -283,13 +307,58 @@ def run_yolo_primary_detection_training(
 
     imports = _require_training_imports()
     manifest_payload = dict(request.manifest_payload)
-    resolved_splits = _resolve_detection_splits(
-        dataset_storage=request.dataset_storage,
-        imports=imports,
-        manifest_payload=manifest_payload,
-    )
-    train_split = _resolve_train_split(resolved_splits)
-    validation_split = _resolve_validation_split(resolved_splits)
+    yolov8_data_context = None
+    if request.model_type == "yolov8":
+        yolov8_data_context = prepare_yolov8_detection_training_data_context(
+            dataset_storage=request.dataset_storage,
+            cv2_module=imports.cv2,
+            manifest_payload=manifest_payload,
+        )
+        resolved_splits = yolov8_data_context.resolved_splits
+        train_split = yolov8_data_context.train_split
+        validation_split = yolov8_data_context.validation_split
+        train_samples = yolov8_data_context.train_samples
+        category_names = yolov8_data_context.category_names
+        category_ids = yolov8_data_context.category_ids
+        validation_samples = yolov8_data_context.validation_samples
+        validation_category_names = yolov8_data_context.validation_category_names
+        validation_category_ids = yolov8_data_context.validation_category_ids
+    else:
+        resolved_splits = _resolve_non_yolov8_detection_splits(
+            dataset_storage=request.dataset_storage,
+            imports=imports,
+            manifest_payload=manifest_payload,
+        )
+        train_split = _resolve_non_yolov8_train_split(resolved_splits)
+        validation_split = _resolve_non_yolov8_validation_split(resolved_splits)
+        train_samples, category_names, category_ids = _load_non_yolov8_training_samples(
+            imports=imports,
+            split=train_split,
+        )
+        validation_samples: tuple[_ResolvedTrainingSample, ...] = ()
+        validation_category_ids: tuple[int, ...] = ()
+        validation_category_names: tuple[str, ...] | None = None
+        if validation_split is not None:
+            validation_samples, validation_category_names, validation_category_ids = _load_non_yolov8_training_samples(
+                imports=imports,
+                split=validation_split,
+            )
+            if validation_category_names != category_names:
+                raise InvalidRequestError(
+                    "验证 split 的 categories 与训练 split 不一致",
+                    details={
+                        "train_categories": list(category_names),
+                        "validation_categories": list(validation_category_names),
+                    },
+                )
+            if validation_category_ids != category_ids:
+                raise InvalidRequestError(
+                    "验证 split 的 category_id 映射与训练 split 不一致",
+                    details={
+                        "train_category_ids": list(category_ids),
+                        "validation_category_ids": list(validation_category_ids),
+                    },
+                )
     input_size = _resolve_input_size(request.input_size)
     batch_size = max(1, int(request.batch_size or YOLO_PRIMARY_DEFAULT_BATCH_SIZE))
     max_epochs = max(1, int(request.max_epochs or YOLO_PRIMARY_DEFAULT_MAX_EPOCHS))
@@ -298,35 +367,7 @@ def run_yolo_primary_detection_training(
         int(request.evaluation_interval or YOLO_PRIMARY_DEFAULT_EVALUATION_INTERVAL),
     )
     extra_options = dict(request.extra_options or {})
-
-    train_samples, category_names, category_ids = _load_training_samples(
-        imports=imports,
-        split=train_split,
-    )
-    validation_samples: tuple[_ResolvedTrainingSample, ...] = ()
-    validation_category_ids: tuple[int, ...] = ()
-    if validation_split is not None:
-        validation_samples, validation_category_names, validation_category_ids = _load_training_samples(
-            imports=imports,
-            split=validation_split,
-        )
-        if validation_category_names != category_names:
-            raise InvalidRequestError(
-                "验证 split 的 categories 与训练 split 不一致",
-                details={
-                    "train_categories": list(category_names),
-                    "validation_categories": list(validation_category_names),
-                },
-            )
-        if validation_category_ids != category_ids:
-            raise InvalidRequestError(
-                "验证 split 的 category_id 映射与训练 split 不一致",
-                details={
-                    "train_category_ids": list(category_ids),
-                    "validation_category_ids": list(validation_category_ids),
-                },
-            )
-    if not train_samples:
+    if request.model_type != "yolov8" and not train_samples:
         raise InvalidRequestError("训练 split 不包含可用样本")
 
     device, gpu_count, device_ids, distributed_mode, runtime_precision = _resolve_runtime(
@@ -437,23 +478,38 @@ def run_yolo_primary_detection_training(
         int(parameter.numel())
         for parameter in model.parameters()
     )
-    optimizer = imports.torch.optim.AdamW(
-        model.parameters(),
-        lr=learning_rate,
-        weight_decay=weight_decay,
-    )
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=max_epochs,
-        eta_min=learning_rate * min_lr_ratio,
-    )
-    scaler_enabled = device.startswith("cuda") and runtime_precision == "fp16"
-    amp_module = getattr(imports.torch, "amp", None)
-    grad_scaler_cls = getattr(amp_module, "GradScaler", None) if amp_module is not None else None
-    if grad_scaler_cls is not None:
-        scaler = grad_scaler_cls("cuda", enabled=scaler_enabled)
+    if request.model_type == "yolov8":
+        training_runtime = build_yolov8_detection_training_runtime(
+            torch_module=imports.torch,
+            model=model,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            max_epochs=max_epochs,
+            min_lr_ratio=min_lr_ratio,
+            device=device,
+            runtime_precision=runtime_precision,
+        )
+        optimizer = training_runtime.optimizer
+        scheduler = training_runtime.scheduler
+        scaler = training_runtime.scaler
     else:
-        scaler = imports.torch.cuda.amp.GradScaler(enabled=scaler_enabled)
+        optimizer = imports.torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=weight_decay,
+        )
+        scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max_epochs,
+            eta_min=learning_rate * min_lr_ratio,
+        )
+        scaler_enabled = device.startswith("cuda") and runtime_precision == "fp16"
+        amp_module = getattr(imports.torch, "amp", None)
+        grad_scaler_cls = getattr(amp_module, "GradScaler", None) if amp_module is not None else None
+        if grad_scaler_cls is not None:
+            scaler = grad_scaler_cls("cuda", enabled=scaler_enabled)
+        else:
+            scaler = imports.torch.cuda.amp.GradScaler(enabled=scaler_enabled)
     resume_state: _LoadedResumeState | None = None
     if request.resume_checkpoint_path is not None:
         resume_state = _load_resume_checkpoint(
@@ -499,13 +555,15 @@ def run_yolo_primary_detection_training(
     if runtime_precision == "fp16":
         model.half()
     if resume_state is not None:
-        _move_optimizer_state_to_device(optimizer=optimizer, device=device)
+        if request.model_type == "yolov8":
+            move_yolov8_optimizer_state_to_device(optimizer=optimizer, device=device)
+        else:
+            _move_optimizer_state_to_device(optimizer=optimizer, device=device)
     autocast_context = _build_autocast_context(
         imports=imports,
         device=device,
         runtime_precision=runtime_precision,
     )
-    total_iterations = max_epochs * max(1, (len(train_samples) + batch_size - 1) // batch_size)
     metrics_history: list[dict[str, object]] = (
         [dict(item) for item in resume_state.epoch_history]
         if resume_state is not None
@@ -521,16 +579,45 @@ def run_yolo_primary_detection_training(
         if resume_state is not None
         else []
     )
-    best_metric_name = (
-        resume_state.best_metric_name
-        if resume_state is not None and resume_state.best_metric_name.strip()
-        else ("map50_95" if validation_split is not None else "train_loss")
-    )
-    best_metric_value = (
-        resume_state.best_metric_value
-        if resume_state is not None and resume_state.best_metric_value is not None
-        else (float("-inf") if validation_split is not None else float("inf"))
-    )
+    if request.model_type == "yolov8":
+        if yolov8_data_context is None:
+            raise ServiceConfigurationError("YOLOv8 detection 训练缺少 data context")
+        execution_plan = plan_yolov8_detection_training_execution(
+            data_context=yolov8_data_context,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            resume_epoch=resume_state.resume_epoch if resume_state is not None else 0,
+            resume_best_metric_name=(resume_state.best_metric_name if resume_state is not None else None),
+            resume_best_metric_value=(resume_state.best_metric_value if resume_state is not None else None),
+        )
+        has_validation = execution_plan.has_validation
+        best_metric_name = execution_plan.best_metric_name
+        best_metric_value = execution_plan.best_metric_value
+        total_iterations = execution_plan.total_iterations
+        global_iteration = execution_plan.initial_global_iteration
+    else:
+        has_validation = validation_split is not None and bool(validation_samples)
+        best_metric_name = (
+            resume_state.best_metric_name
+            if resume_state is not None and resume_state.best_metric_name.strip()
+            else ("map50_95" if has_validation else "train_loss")
+        )
+        best_metric_value = (
+            resume_state.best_metric_value
+            if resume_state is not None and resume_state.best_metric_value is not None
+            else (float("-inf") if has_validation else float("inf"))
+        )
+        total_iterations = max_epochs * max(1, (len(train_samples) + batch_size - 1) // batch_size)
+        resume_epoch_for_iterations = resume_state.resume_epoch if resume_state is not None else 0
+        if resume_epoch_for_iterations >= max_epochs:
+            raise InvalidRequestError(
+                "resume checkpoint 已经达到或超过本次训练请求的最大 epoch",
+                details={"resume_epoch": resume_epoch_for_iterations, "max_epochs": max_epochs},
+            )
+        global_iteration = resume_epoch_for_iterations * max(
+            1,
+            (len(train_samples) + batch_size - 1) // batch_size,
+        )
     latest_checkpoint_bytes = b""
     best_checkpoint_bytes = (
         _build_checkpoint_bytes_from_state(
@@ -541,127 +628,201 @@ def run_yolo_primary_detection_training(
         else b""
     )
     resume_epoch = resume_state.resume_epoch if resume_state is not None else 0
-    if resume_epoch >= max_epochs:
-        raise InvalidRequestError(
-            "resume checkpoint 已经达到或超过本次训练请求的最大 epoch",
-            details={"resume_epoch": resume_epoch, "max_epochs": max_epochs},
-        )
-    global_iteration = resume_epoch * max(1, (len(train_samples) + batch_size - 1) // batch_size)
 
     for epoch in range(resume_epoch + 1, max_epochs + 1):
         # 更新端到端训练权重
         if is_end2end:
             update_e2e_weights(epoch - 1, max_epochs)
         
-        shuffled_samples = list(train_samples)
-        random.shuffle(shuffled_samples)
-        epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-        if is_end2end:
-            epoch_losses["one2many_loss"] = 0.0
-            epoch_losses["one2one_loss"] = 0.0
-        max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
-        model.train()
+        if request.model_type == "yolov8":
+            def on_yolov8_batch_progress(
+                progress: YoloV8DetectionTrainingBatchProgress,
+            ) -> None:
+                """把 YOLOv8 core batch 进度转成平台训练进度对象。"""
 
-        for iteration, sample_batch in enumerate(_iter_batches(shuffled_samples, batch_size), start=1):
-            global_iteration += 1
-            images, batch_targets = _build_training_batch(
-                imports=imports,
-                samples=sample_batch,
-                input_size=input_size,
-                device=device,
-                runtime_precision=runtime_precision,
-                augment_training=True,
-                available_samples=tuple(shuffled_samples),
-                augmentation_options=augmentation_options,
-            )
-            optimizer.zero_grad(set_to_none=True)
-            with autocast_context():
-                model_outputs = model(images)
-                
-                if is_end2end:
-                    # 端到端训练：使用双分支损失
-                    e2e_outputs = _unwrap_e2e_detection_outputs(model_outputs)
-                    loss_components = _compute_e2e_detection_loss(
-                        imports=imports,
-                        model=model,
-                        raw_outputs=e2e_outputs,
-                        batch_targets=batch_targets,
-                        num_classes=len(category_names),
-                        class_loss_weight=class_loss_weight,
-                        box_loss_weight=box_loss_weight,
-                        dfl_loss_weight=dfl_loss_weight,
-                        assign_topk=assign_topk,
-                        assign_alpha=assign_alpha,
-                        assign_beta=assign_beta,
-                        e2e_o2m_weight=e2e_o2m_weight,
-                        e2e_o2o_weight=e2e_o2o_weight,
-                    )
-                else:
-                    # 标准训练：使用单分支损失
-                    raw_outputs = _unwrap_detection_outputs(model_outputs)
-                    loss_components = _compute_detection_loss(
-                        imports=imports,
-                        model=model,
-                        raw_outputs=raw_outputs,
-                        batch_targets=batch_targets,
-                        num_classes=len(category_names),
-                        class_loss_weight=class_loss_weight,
-                        box_loss_weight=box_loss_weight,
-                        dfl_loss_weight=dfl_loss_weight,
-                        assign_topk=assign_topk,
-                        assign_alpha=assign_alpha,
-                        assign_beta=assign_beta,
-                    )
-                loss = loss_components["loss"]
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            if grad_clip_norm > 0:
-                imports.torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
-            scaler.step(optimizer)
-            scaler.update()
-
-            for key in epoch_losses:
-                if key in loss_components:
-                    epoch_losses[key] += float(loss_components[key].detach().item())
-
-            if request.batch_callback is not None:
-                train_metrics_batch = {
-                    "loss": float(loss_components["loss"].detach().item()),
-                    "class_loss": float(loss_components["class_loss"].detach().item()),
-                    "box_loss": float(loss_components["box_loss"].detach().item()),
-                    "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
-                }
-                if is_end2end:
-                    train_metrics_batch["one2many_loss"] = float(loss_components["one2many_loss"].detach().item())
-                    train_metrics_batch["one2one_loss"] = float(loss_components["one2one_loss"].detach().item())
-                    train_metrics_batch["e2e_o2m_weight"] = e2e_o2m_weight
-                    train_metrics_batch["e2e_o2o_weight"] = e2e_o2o_weight
-                
+                if request.batch_callback is None:
+                    return
                 request.batch_callback(
                     YoloPrimaryTrainingBatchProgress(
-                        epoch=epoch,
-                        max_epochs=max_epochs,
-                        iteration=iteration,
-                        max_iterations=max_iterations,
-                        global_iteration=global_iteration,
-                        total_iterations=total_iterations,
-                        input_size=input_size,
-                        learning_rate=float(optimizer.param_groups[0]["lr"]),
-                        train_metrics=train_metrics_batch,
+                        epoch=progress.epoch,
+                        max_epochs=progress.max_epochs,
+                        iteration=progress.iteration,
+                        max_iterations=progress.max_iterations,
+                        global_iteration=progress.global_iteration,
+                        total_iterations=progress.total_iterations,
+                        input_size=progress.input_size,
+                        learning_rate=progress.learning_rate,
+                        train_metrics=progress.train_metrics,
                     )
                 )
 
-        train_metrics = {
-            key: round(value / max_iterations, 6)
-            for key, value in epoch_losses.items()
-        }
+            epoch_result = run_yolov8_detection_training_epoch(
+                torch_module=imports.torch,
+                model=model,
+                samples=train_samples,
+                batch_size=batch_size,
+                input_size=input_size,
+                epoch=epoch,
+                max_epochs=max_epochs,
+                global_iteration=global_iteration,
+                total_iterations=total_iterations,
+                optimizer=optimizer,
+                scaler=scaler,
+                autocast_context=autocast_context,
+                build_batch=lambda sample_batch, available_samples: build_yolov8_detection_training_batch(
+                    imports=imports,
+                    samples=sample_batch,
+                    input_size=input_size,
+                    device=device,
+                    runtime_precision=runtime_precision,
+                    augment_training=True,
+                    available_samples=available_samples,
+                    augmentation_options=augmentation_options,
+                ),
+                unwrap_outputs=_unwrap_detection_outputs,
+                compute_loss=lambda **kwargs: _compute_detection_loss(
+                    imports=imports,
+                    num_classes=len(category_names),
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    assign_topk=assign_topk,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    **kwargs,
+                ),
+                grad_clip_norm=grad_clip_norm,
+                batch_callback=(
+                    on_yolov8_batch_progress
+                    if request.batch_callback is not None
+                    else None
+                ),
+            )
+            global_iteration = epoch_result.global_iteration
+            train_metrics = dict(epoch_result.train_metrics)
+        else:
+            shuffled_samples = list(train_samples)
+            random.shuffle(shuffled_samples)
+            epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+            if is_end2end:
+                epoch_losses["one2many_loss"] = 0.0
+                epoch_losses["one2one_loss"] = 0.0
+            max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
+            model.train()
+
+            for iteration, sample_batch in enumerate(_iter_batches(shuffled_samples, batch_size), start=1):
+                global_iteration += 1
+                images, batch_targets = _build_non_yolov8_training_batch(
+                    imports=imports,
+                    samples=sample_batch,
+                    input_size=input_size,
+                    device=device,
+                    runtime_precision=runtime_precision,
+                    augment_training=True,
+                    available_samples=tuple(shuffled_samples),
+                    augmentation_options=augmentation_options,
+                )
+                optimizer.zero_grad(set_to_none=True)
+                with autocast_context():
+                    model_outputs = model(images)
+
+                    if is_end2end:
+                        # 端到端训练：使用双分支损失
+                        e2e_outputs = _unwrap_e2e_detection_outputs(model_outputs)
+                        loss_components = _compute_e2e_detection_loss(
+                            imports=imports,
+                            model=model,
+                            raw_outputs=e2e_outputs,
+                            batch_targets=batch_targets,
+                            num_classes=len(category_names),
+                            class_loss_weight=class_loss_weight,
+                            box_loss_weight=box_loss_weight,
+                            dfl_loss_weight=dfl_loss_weight,
+                            assign_topk=assign_topk,
+                            assign_alpha=assign_alpha,
+                            assign_beta=assign_beta,
+                            e2e_o2m_weight=e2e_o2m_weight,
+                            e2e_o2o_weight=e2e_o2o_weight,
+                        )
+                    else:
+                        # 标准训练：使用单分支损失
+                        raw_outputs = _unwrap_detection_outputs(model_outputs)
+                        loss_components = _compute_detection_loss(
+                            imports=imports,
+                            model=model,
+                            raw_outputs=raw_outputs,
+                            batch_targets=batch_targets,
+                            num_classes=len(category_names),
+                            class_loss_weight=class_loss_weight,
+                            box_loss_weight=box_loss_weight,
+                            dfl_loss_weight=dfl_loss_weight,
+                            assign_topk=assign_topk,
+                            assign_alpha=assign_alpha,
+                            assign_beta=assign_beta,
+                        )
+                    loss = loss_components["loss"]
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                if grad_clip_norm > 0:
+                    imports.torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                scaler.step(optimizer)
+                scaler.update()
+
+                for key in epoch_losses:
+                    if key in loss_components:
+                        epoch_losses[key] += float(loss_components[key].detach().item())
+
+                if request.batch_callback is not None:
+                    train_metrics_batch = {
+                        "loss": float(loss_components["loss"].detach().item()),
+                        "class_loss": float(loss_components["class_loss"].detach().item()),
+                        "box_loss": float(loss_components["box_loss"].detach().item()),
+                        "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
+                    }
+                    if is_end2end:
+                        train_metrics_batch["one2many_loss"] = float(
+                            loss_components["one2many_loss"].detach().item()
+                        )
+                        train_metrics_batch["one2one_loss"] = float(
+                            loss_components["one2one_loss"].detach().item()
+                        )
+                        train_metrics_batch["e2e_o2m_weight"] = e2e_o2m_weight
+                        train_metrics_batch["e2e_o2o_weight"] = e2e_o2o_weight
+
+                    request.batch_callback(
+                        YoloPrimaryTrainingBatchProgress(
+                            epoch=epoch,
+                            max_epochs=max_epochs,
+                            iteration=iteration,
+                            max_iterations=max_iterations,
+                            global_iteration=global_iteration,
+                            total_iterations=total_iterations,
+                            input_size=input_size,
+                            learning_rate=float(optimizer.param_groups[0]["lr"]),
+                            train_metrics=train_metrics_batch,
+                        )
+                    )
+
+            train_metrics = {
+                key: round(value / max_iterations, 6)
+                for key, value in epoch_losses.items()
+            }
         train_metrics["epoch"] = epoch
         metrics_history.append(train_metrics)
 
         validation_ran = (
-            validation_split is not None
-            and bool(validation_samples)
-            and (epoch == max_epochs or epoch % evaluation_interval == 0)
+            should_run_yolov8_detection_validation(
+                epoch=epoch,
+                max_epochs=max_epochs,
+                evaluation_interval=evaluation_interval,
+                validation_sample_count=len(validation_samples),
+            )
+            if request.model_type == "yolov8"
+            else (
+                validation_split is not None
+                and bool(validation_samples)
+                and (epoch == max_epochs or epoch % evaluation_interval == 0)
+            )
         )
         validation_snapshot: dict[str, object] | None = None
         validation_metrics: dict[str, float] = {}
@@ -687,6 +848,7 @@ def run_yolo_primary_detection_training(
                 assign_beta=assign_beta,
                 confidence_threshold=evaluation_confidence_threshold,
                 nms_threshold=evaluation_nms_threshold,
+                use_yolov8_core_data=request.model_type == "yolov8",
             )
             validation_history.append(validation_snapshot)
             validation_metrics = {
@@ -697,82 +859,142 @@ def run_yolo_primary_detection_training(
             evaluated_epochs.append(epoch)
             current_metric_value = validation_metrics[best_metric_name]
 
-        improved_best = False
-        candidate_best_metric_value = best_metric_value
-        if validation_ran and current_metric_value is not None:
-            if current_metric_value >= best_metric_value:
+        if request.model_type == "yolov8":
+            best_metric_update = resolve_yolov8_detection_best_metric_update(
+                validation_ran=validation_ran,
+                current_metric_value=current_metric_value,
+                train_loss=float(train_metrics["loss"]),
+                best_metric_value=best_metric_value,
+            )
+            improved_best = best_metric_update.improved
+            candidate_best_metric_value = best_metric_update.candidate_value
+        else:
+            improved_best = False
+            candidate_best_metric_value = best_metric_value
+            if validation_ran and current_metric_value is not None:
+                if current_metric_value >= best_metric_value:
+                    improved_best = True
+                    candidate_best_metric_value = current_metric_value
+            elif train_metrics["loss"] <= best_metric_value:
                 improved_best = True
-                candidate_best_metric_value = current_metric_value
-        elif train_metrics["loss"] <= best_metric_value:
-            improved_best = True
-            candidate_best_metric_value = train_metrics["loss"]
+                candidate_best_metric_value = train_metrics["loss"]
 
         scheduler.step()
-        previous_best_checkpoint_state = (
-            _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
-            if best_checkpoint_bytes
-            else None
-        )
-        current_checkpoint_state = _build_checkpoint_state(
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            model_type=request.model_type,
-            model_scale=request.model_scale,
-            category_names=category_names,
-            input_size=input_size,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            epoch=epoch,
-            precision=runtime_precision,
-            validation_split_name=validation_split_name,
-            evaluation_interval=evaluation_interval,
-            evaluation_confidence_threshold=(
-                evaluation_confidence_threshold
-                if validation_split is not None and bool(validation_samples)
-                else None
-            ),
-            evaluation_nms_threshold=(
-                evaluation_nms_threshold
-                if validation_split is not None and bool(validation_samples)
-                else None
-            ),
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            min_lr_ratio=min_lr_ratio,
-            grad_clip_norm=grad_clip_norm,
-            metrics_history=metrics_history,
-            validation_history=validation_history,
-            evaluated_epochs=tuple(evaluated_epochs),
-            warm_start_summary=warm_start_summary,
-            implementation_mode=request.implementation_mode,
-            augmentation_options=_serialize_detection_augmentation_options(
-                augmentation_options
-            ),
-            best_metric_name=best_metric_name,
-            best_metric_value=candidate_best_metric_value,
-            best_checkpoint_state=previous_best_checkpoint_state,
-        )
-        if improved_best:
-            current_best_checkpoint_state = dict(current_checkpoint_state)
-            current_best_checkpoint_state["best_checkpoint_state"] = None
-            current_checkpoint_state["best_checkpoint_state"] = current_best_checkpoint_state
-            best_metric_value = candidate_best_metric_value
-            best_checkpoint_bytes = _build_checkpoint_bytes_from_state(
-                imports=imports,
-                checkpoint_state=current_best_checkpoint_state,
+        if request.model_type == "yolov8":
+            checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
+                torch_module=imports.torch,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                model_type=request.model_type,
+                model_scale=request.model_scale,
+                category_names=category_names,
+                input_size=input_size,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                epoch=epoch,
+                precision=runtime_precision,
+                validation_split_name=validation_split_name,
+                evaluation_interval=evaluation_interval,
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if has_validation else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if has_validation else None
+                ),
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                min_lr_ratio=min_lr_ratio,
+                grad_clip_norm=grad_clip_norm,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                evaluated_epochs=tuple(evaluated_epochs),
+                warm_start_summary=warm_start_summary,
+                implementation_mode=request.implementation_mode,
+                augmentation_options=_serialize_detection_augmentation_options(
+                    augmentation_options
+                ),
+                best_metric_name=best_metric_name,
+                candidate_best_metric_value=candidate_best_metric_value,
+                previous_best_checkpoint_bytes=best_checkpoint_bytes,
+                improved_best=improved_best,
             )
-        latest_checkpoint_bytes = _build_checkpoint_bytes_from_state(
-            imports=imports,
-            checkpoint_state=current_checkpoint_state,
-        )
+            latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
+            best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
+            best_metric_value = checkpoint_update.best_metric_value
+        else:
+            previous_best_checkpoint_state = (
+                _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
+                if best_checkpoint_bytes
+                else None
+            )
+            current_checkpoint_state = _build_checkpoint_state(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                model_type=request.model_type,
+                model_scale=request.model_scale,
+                category_names=category_names,
+                input_size=input_size,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                epoch=epoch,
+                precision=runtime_precision,
+                validation_split_name=validation_split_name,
+                evaluation_interval=evaluation_interval,
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold
+                    if validation_split is not None and bool(validation_samples)
+                    else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold
+                    if validation_split is not None and bool(validation_samples)
+                    else None
+                ),
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                min_lr_ratio=min_lr_ratio,
+                grad_clip_norm=grad_clip_norm,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                evaluated_epochs=tuple(evaluated_epochs),
+                warm_start_summary=warm_start_summary,
+                implementation_mode=request.implementation_mode,
+                augmentation_options=_serialize_detection_augmentation_options(
+                    augmentation_options
+                ),
+                best_metric_name=best_metric_name,
+                best_metric_value=candidate_best_metric_value,
+                best_checkpoint_state=previous_best_checkpoint_state,
+            )
+            if improved_best:
+                current_best_checkpoint_state = dict(current_checkpoint_state)
+                current_best_checkpoint_state["best_checkpoint_state"] = None
+                current_checkpoint_state["best_checkpoint_state"] = current_best_checkpoint_state
+                best_metric_value = candidate_best_metric_value
+                best_checkpoint_bytes = _build_checkpoint_bytes_from_state(
+                    imports=imports,
+                    checkpoint_state=current_best_checkpoint_state,
+                )
+            latest_checkpoint_bytes = _build_checkpoint_bytes_from_state(
+                imports=imports,
+                checkpoint_state=current_checkpoint_state,
+            )
 
         control_command = None
         if request.epoch_callback is not None:
@@ -794,6 +1016,69 @@ def run_yolo_primary_detection_training(
                     current_metric_value=current_metric_value,
                     best_metric_name=best_metric_name,
                     best_metric_value=(
+                        serialize_yolov8_detection_best_metric_value(
+                            has_validation=has_validation,
+                            best_metric_value=best_metric_value,
+                        )
+                        if request.model_type == "yolov8"
+                        else (
+                            None
+                            if (
+                                (validation_split is not None and best_metric_value == float("-inf"))
+                                or (validation_split is None and best_metric_value == float("inf"))
+                            )
+                            else round(best_metric_value, 6)
+                        )
+                    ),
+                )
+            )
+        if request.model_type == "yolov8":
+            control_decision = resolve_yolov8_detection_epoch_control(
+                save_checkpoint_requested=(
+                    control_command.save_checkpoint if control_command is not None else False
+                ),
+                pause_training_requested=(
+                    control_command.pause_training if control_command is not None else False
+                ),
+                terminate_training_requested=(
+                    control_command.terminate_training if control_command is not None else False
+                ),
+            )
+            should_write_savepoint = control_decision.save_checkpoint
+            should_pause_training = control_decision.pause_training
+            should_terminate_training = control_decision.terminate_training
+        else:
+            should_write_savepoint = control_command is not None and (
+                control_command.save_checkpoint or control_command.pause_training
+            )
+            should_pause_training = control_command is not None and control_command.pause_training
+            should_terminate_training = (
+                control_command is not None and control_command.terminate_training
+            )
+        if should_write_savepoint:
+            if request.model_type == "yolov8":
+                savepoint_payload = build_yolov8_detection_training_savepoint_payload(
+                    epoch=epoch,
+                    latest_checkpoint_bytes=latest_checkpoint_bytes,
+                    best_checkpoint_bytes=best_checkpoint_bytes,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=best_metric_value,
+                    has_validation=has_validation,
+                )
+                savepoint = YoloPrimaryTrainingSavePoint(
+                    epoch=savepoint_payload.epoch,
+                    latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
+                    best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
+                    best_metric_name=savepoint_payload.best_metric_name,
+                    best_metric_value=savepoint_payload.best_metric_value,
+                )
+            else:
+                savepoint = YoloPrimaryTrainingSavePoint(
+                    epoch=epoch,
+                    latest_checkpoint_bytes=latest_checkpoint_bytes,
+                    best_checkpoint_bytes=best_checkpoint_bytes or latest_checkpoint_bytes,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=(
                         None
                         if (
                             (validation_split is not None and best_metric_value == float("-inf"))
@@ -802,29 +1087,11 @@ def run_yolo_primary_detection_training(
                         else round(best_metric_value, 6)
                     ),
                 )
-            )
-        if control_command is not None and (
-            control_command.save_checkpoint or control_command.pause_training
-        ):
-            savepoint = YoloPrimaryTrainingSavePoint(
-                epoch=epoch,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
-                best_checkpoint_bytes=best_checkpoint_bytes or latest_checkpoint_bytes,
-                best_metric_name=best_metric_name,
-                best_metric_value=(
-                    None
-                    if (
-                        (validation_split is not None and best_metric_value == float("-inf"))
-                        or (validation_split is None and best_metric_value == float("inf"))
-                    )
-                    else round(best_metric_value, 6)
-                ),
-            )
             if request.savepoint_callback is not None:
                 request.savepoint_callback(savepoint)
-            if control_command.pause_training:
+            if should_pause_training:
                 raise YoloPrimaryTrainingPausedError(savepoint)
-        if control_command is not None and control_command.terminate_training:
+        if should_terminate_training:
             raise YoloPrimaryTrainingTerminatedError()
 
     if not best_checkpoint_bytes:
@@ -992,33 +1259,33 @@ def _require_training_imports() -> _TrainingImports:
     return _TrainingImports(cv2=cv2, np=np, torch=torch, COCO=COCO, COCOeval=COCOeval)
 
 
-def _resolve_detection_splits(
+def _resolve_non_yolov8_detection_splits(
     *,
     dataset_storage: LocalDatasetStorage,
     imports: _TrainingImports,
     manifest_payload: dict[str, object],
 ) -> tuple[_ResolvedDetectionSplit, ...]:
-    """从导出 manifest 里解析可用的 detection split。"""
+    """从导出 manifest 里解析非 YOLOv8 暂存路径使用的 detection split。"""
 
     format_id = str(manifest_payload.get("format_id") or COCO_DETECTION_DATASET_FORMAT).strip()
     if format_id == YOLO_DETECTION_DATASET_FORMAT:
-        return _resolve_yolo_detection_splits(
+        return _resolve_non_yolov8_yolo_detection_splits(
             dataset_storage=dataset_storage,
             imports=imports,
             manifest_payload=manifest_payload,
         )
-    return _resolve_coco_detection_splits(
+    return _resolve_non_yolov8_coco_detection_splits(
         dataset_storage=dataset_storage,
         manifest_payload=manifest_payload,
     )
 
 
-def _resolve_coco_detection_splits(
+def _resolve_non_yolov8_coco_detection_splits(
     *,
     dataset_storage: LocalDatasetStorage,
     manifest_payload: dict[str, object],
 ) -> tuple[_ResolvedDetectionSplit, ...]:
-    """从导出 manifest 里解析可用的 COCO detection split。"""
+    """从导出 manifest 里解析非 YOLOv8 暂存路径使用的 COCO detection split。"""
 
     splits_payload = manifest_payload.get("splits")
     if not isinstance(splits_payload, list):
@@ -1061,27 +1328,23 @@ def _resolve_coco_detection_splits(
     return tuple(resolved_splits)
 
 
-def _resolve_yolo_detection_splits(
+def _resolve_non_yolov8_yolo_detection_splits(
     *,
     dataset_storage: LocalDatasetStorage,
     imports: _TrainingImports,
     manifest_payload: dict[str, object],
 ) -> tuple[_ResolvedDetectionSplit, ...]:
-    """从导出 manifest 里解析可用的 YOLO detection split。"""
+    """从导出 manifest 里解析非 YOLOv8 暂存路径使用的 YOLO detection split。"""
 
     splits_payload = manifest_payload.get("splits")
     if not isinstance(splits_payload, list):
         raise InvalidRequestError("训练输入 manifest 缺少 splits 定义")
     category_names_payload = manifest_payload.get("category_names")
-    if not isinstance(category_names_payload, list | tuple):
-        raise InvalidRequestError("YOLO detection 训练输入 manifest 缺少 category_names")
     category_names = tuple(
         normalized_name
-        for item in category_names_payload
+        for item in (category_names_payload if isinstance(category_names_payload, list | tuple) else ())
         if (normalized_name := str(item).strip())
     )
-    if not category_names:
-        raise InvalidRequestError("YOLO detection 训练输入缺少有效的 category_names")
 
     resolved_splits: list[_ResolvedDetectionSplit] = []
     for split_item in splits_payload:
@@ -1089,10 +1352,40 @@ def _resolve_yolo_detection_splits(
             continue
         split_name = str(split_item.get("name") or "").strip()
         image_root = str(split_item.get("image_root") or "").strip()
+        annotation_file = str(split_item.get("annotation_file") or "").strip()
         label_root = str(split_item.get("label_root") or "").strip()
-        if not split_name or not image_root or not label_root:
+        if not split_name or not image_root:
             continue
         image_root_path = dataset_storage.resolve(image_root)
+        if annotation_file:
+            annotation_path = dataset_storage.resolve(annotation_file)
+            if not annotation_path.is_file():
+                raise InvalidRequestError(
+                    "训练输入 split 缺少 annotation 文件",
+                    details={"split_name": split_name, "annotation_file": annotation_file},
+                )
+            if not image_root_path.is_dir():
+                raise InvalidRequestError(
+                    "训练输入 split 缺少图片目录",
+                    details={"split_name": split_name, "image_root": image_root},
+                )
+            annotation_payload = json.loads(annotation_path.read_text(encoding="utf-8"))
+            image_items = annotation_payload.get("images", [])
+            sample_count = len(image_items) if isinstance(image_items, list) else 0
+            resolved_splits.append(
+                _ResolvedDetectionSplit(
+                    name=split_name,
+                    image_root=image_root_path,
+                    sample_count=sample_count,
+                    annotation_payload=annotation_payload,
+                    annotation_file=annotation_path,
+                )
+            )
+            continue
+        if not label_root:
+            continue
+        if not category_names:
+            raise InvalidRequestError("YOLO detection 训练输入缺少有效的 category_names")
         label_root_path = dataset_storage.resolve(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
@@ -1126,10 +1419,10 @@ def _resolve_yolo_detection_splits(
     return tuple(resolved_splits)
 
 
-def _resolve_train_split(
+def _resolve_non_yolov8_train_split(
     resolved_splits: tuple[_ResolvedDetectionSplit, ...],
 ) -> _ResolvedDetectionSplit:
-    """优先解析 train split。"""
+    """优先解析非 YOLOv8 暂存路径使用的 train split。"""
 
     for split in resolved_splits:
         if split.name.lower() == "train":
@@ -1137,10 +1430,10 @@ def _resolve_train_split(
     return resolved_splits[0]
 
 
-def _resolve_validation_split(
+def _resolve_non_yolov8_validation_split(
     resolved_splits: tuple[_ResolvedDetectionSplit, ...],
 ) -> _ResolvedDetectionSplit | None:
-    """解析验证 split。"""
+    """解析非 YOLOv8 暂存路径使用的验证 split。"""
 
     validation_names = {"val", "valid", "validation", "test"}
     for split in resolved_splits:
@@ -1149,12 +1442,12 @@ def _resolve_validation_split(
     return None
 
 
-def _load_training_samples(
+def _load_non_yolov8_training_samples(
     *,
     imports: _TrainingImports,
     split: _ResolvedDetectionSplit,
 ) -> tuple[tuple[_ResolvedTrainingSample, ...], tuple[str, ...], tuple[int, ...]]:
-    """把 detection split 转成训练阶段可直接消费的样本列表。"""
+    """把非 YOLOv8 暂存路径 detection split 转成训练样本列表。"""
 
     del imports
     annotation_payload = split.annotation_payload
@@ -1626,6 +1919,35 @@ def _validate_resume_checkpoint(
 ) -> None:
     """校验恢复训练使用的 checkpoint 是否与当前请求匹配。"""
 
+    if expected_model_type == "yolov8":
+        validate_yolov8_detection_resume_checkpoint(
+            checkpoint_payload=checkpoint_payload,
+            request=YoloV8DetectionResumeValidationRequest(
+                model_type=expected_model_type,
+                model_scale=expected_model_scale,
+                num_classes=expected_num_classes,
+                input_size=expected_input_size,
+                batch_size=expected_batch_size,
+                max_epochs=expected_max_epochs,
+                precision=expected_precision,
+                validation_split_name=expected_validation_split_name,
+                evaluation_interval=expected_evaluation_interval,
+                evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
+                evaluation_nms_threshold=expected_evaluation_nms_threshold,
+                learning_rate=expected_learning_rate,
+                weight_decay=expected_weight_decay,
+                class_loss_weight=expected_class_loss_weight,
+                box_loss_weight=expected_box_loss_weight,
+                dfl_loss_weight=expected_dfl_loss_weight,
+                assign_topk=expected_assign_topk,
+                assign_alpha=expected_assign_alpha,
+                assign_beta=expected_assign_beta,
+                min_lr_ratio=expected_min_lr_ratio,
+                grad_clip_norm=expected_grad_clip_norm,
+            ),
+        )
+        return
+
     checkpoint_model_type = checkpoint_payload.get("model_type")
     checkpoint_model_scale = checkpoint_payload.get("model_scale")
     checkpoint_category_names = checkpoint_payload.get("category_names")
@@ -1872,7 +2194,7 @@ def _iter_batches(
         yield samples[batch_start : batch_start + batch_size]
 
 
-def _build_training_batch(
+def _build_non_yolov8_training_batch(
     *,
     imports: _TrainingImports,
     samples: list[_ResolvedTrainingSample],
@@ -1883,7 +2205,7 @@ def _build_training_batch(
     available_samples: tuple[_ResolvedTrainingSample, ...] | None = None,
     augmentation_options: _DetectionAugmentationOptions | None = None,
 ) -> tuple[Any, tuple[_PreparedTrainingTarget, ...]]:
-    """把一组样本拼成训练 batch。"""
+    """把非 YOLOv8 暂存路径样本拼成训练 batch。"""
 
     np_module = imports.np
     torch = imports.torch
@@ -2457,6 +2779,21 @@ def _compute_detection_loss(
 
     torch = imports.torch
     detect_head = model.model[-1]
+    if is_yolov8_detection_core_model(model):
+        return compute_yolov8_detection_training_loss(
+            torch_module=torch,
+            model=model,
+            raw_outputs=raw_outputs,
+            batch_targets=batch_targets,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            assign_topk2=assign_topk2,
+        )
+
     prediction_bundle = decode_detection_training_predictions(
         torch_module=torch,
         detect_head=detect_head,
@@ -2678,6 +3015,7 @@ def _evaluate_detection_model(
     assign_beta: float,
     confidence_threshold: float,
     nms_threshold: float,
+    use_yolov8_core_data: bool = False,
 ) -> dict[str, object]:
     """在验证 split 上执行真实 detection loss 与 COCO mAP 评估。"""
 
@@ -2710,6 +3048,7 @@ def _evaluate_detection_model(
         annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
+        use_yolov8_core_data=use_yolov8_core_data,
     )
     evaluation_summary = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
@@ -2761,11 +3100,45 @@ def _evaluate_detection_validation_losses(
         device=device,
         runtime_precision=runtime_precision,
     )
+    is_end2end = bool(getattr(model, "end2end", False))
+    if is_yolov8_detection_core_model(model) and not is_end2end:
+        return evaluate_yolov8_detection_validation_losses(
+            torch_module=torch,
+            model=model,
+            samples=samples,
+            batch_size=batch_size,
+            build_batch=lambda batch_samples: build_yolov8_detection_training_batch(
+                imports=imports,
+                samples=batch_samples,
+                input_size=input_size,
+                device=device,
+                runtime_precision=runtime_precision,
+                augment_training=False,
+            ),
+            unwrap_outputs=_unwrap_detection_outputs,
+            compute_loss=lambda **kwargs: _compute_detection_loss(
+                imports=imports,
+                num_classes=num_classes,
+                **kwargs,
+            ),
+            autocast_context=autocast_context,
+            freeze_batch_norm=lambda: _freeze_batch_norm_modules(
+                imports=imports,
+                model=model,
+            ),
+            restore_batch_norm=_restore_batch_norm_modules,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+        )
+
     previous_training_mode = bool(model.training)
     model.train()
     batch_norm_states = _freeze_batch_norm_modules(imports=imports, model=model)
     epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    is_end2end = bool(getattr(model, "end2end", False))
     if is_end2end:
         epoch_totals["one2many_loss"] = 0.0
         epoch_totals["one2one_loss"] = 0.0
@@ -2773,7 +3146,7 @@ def _evaluate_detection_validation_losses(
     try:
         with torch.no_grad():
             for batch_samples in _iter_batches(list(samples), batch_size):
-                images, batch_targets = _build_training_batch(
+                images, batch_targets = _build_non_yolov8_training_batch(
                     imports=imports,
                     samples=batch_samples,
                     input_size=input_size,
@@ -2842,6 +3215,7 @@ def _evaluate_validation_map(
     annotation_payload: dict[str, object] | None,
     confidence_threshold: float,
     nms_threshold: float,
+    use_yolov8_core_data: bool = False,
 ) -> dict[str, float]:
     """执行一次真实 COCO mAP 评估。"""
 
@@ -2867,14 +3241,24 @@ def _evaluate_validation_map(
     try:
         with torch.no_grad():
             for batch_samples in _iter_batches(list(samples), batch_size):
-                images, batch_targets = _build_training_batch(
-                    imports=imports,
-                    samples=batch_samples,
-                    input_size=input_size,
-                    device=device,
-                    runtime_precision=runtime_precision,
-                    augment_training=False,
-                )
+                if use_yolov8_core_data:
+                    images, batch_targets = build_yolov8_detection_training_batch(
+                        imports=imports,
+                        samples=batch_samples,
+                        input_size=input_size,
+                        device=device,
+                        runtime_precision=runtime_precision,
+                        augment_training=False,
+                    )
+                else:
+                    images, batch_targets = _build_non_yolov8_training_batch(
+                        imports=imports,
+                        samples=batch_samples,
+                        input_size=input_size,
+                        device=device,
+                        runtime_precision=runtime_precision,
+                        augment_training=False,
+                    )
                 prediction_tensor = model(images)
                 detections.extend(
                     _convert_primary_predictions_to_coco_detections(
@@ -3084,6 +3468,45 @@ def _build_checkpoint_state(
 ) -> dict[str, object]:
     """构建一个可直接序列化保存的项目内训练 checkpoint 状态。"""
 
+    if model_type == "yolov8":
+        return build_yolov8_detection_checkpoint_state(
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            model_type=model_type,
+            model_scale=model_scale,
+            category_names=category_names,
+            input_size=input_size,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            epoch=epoch,
+            precision=precision,
+            validation_split_name=validation_split_name,
+            evaluation_interval=evaluation_interval,
+            evaluation_confidence_threshold=evaluation_confidence_threshold,
+            evaluation_nms_threshold=evaluation_nms_threshold,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            min_lr_ratio=min_lr_ratio,
+            grad_clip_norm=grad_clip_norm,
+            metrics_history=metrics_history,
+            validation_history=validation_history,
+            evaluated_epochs=evaluated_epochs,
+            warm_start_summary=warm_start_summary,
+            implementation_mode=implementation_mode,
+            augmentation_options=augmentation_options,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            best_checkpoint_state=best_checkpoint_state,
+        )
+
     return {
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
@@ -3201,6 +3624,11 @@ def _build_checkpoint_bytes(
         best_metric_value=best_metric_value,
         best_checkpoint_state=best_checkpoint_state,
     )
+    if model_type == "yolov8":
+        return encode_yolov8_detection_checkpoint_state(
+            torch_module=imports.torch,
+            checkpoint_state=checkpoint_state,
+        )
     buffer = io.BytesIO()
     imports.torch.save(checkpoint_state, buffer)
     return buffer.getvalue()
@@ -3213,6 +3641,11 @@ def _build_checkpoint_bytes_from_state(
 ) -> bytes:
     """把已缓存的 checkpoint 状态重新编码成二进制。"""
 
+    if isinstance(checkpoint_state, dict) and checkpoint_state.get("model_type") == "yolov8":
+        return encode_yolov8_detection_checkpoint_state(
+            torch_module=imports.torch,
+            checkpoint_state=checkpoint_state,
+        )
     if checkpoint_state is None:
         return b""
     buffer = io.BytesIO()

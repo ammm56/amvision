@@ -10,6 +10,10 @@ import time
 from dataclasses import dataclass, field
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.coco_style_metrics import (
+    bbox_iou_xyxy,
+    compute_coco_style_ap,
+)
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
@@ -75,13 +79,12 @@ def run_yolo_primary_segmentation_evaluation(
     )
 
     started = time.monotonic()
-    all_gt_boxes: list[list[float]] = []
-    all_gt_classes: list[int] = []
-    all_pred_boxes: list[list[float]] = []
-    all_pred_classes: list[int] = []
-    all_pred_scores: list[float] = []
-    all_image_ids: list[int] = []
+    gt_bbox_items: list[dict[str, object]] = []
+    pred_bbox_items: list[dict[str, object]] = []
+    gt_mask_items: list[dict[str, object]] = []
+    pred_mask_items: list[dict[str, object]] = []
     predictions_out: list[dict[str, object]] = []
+    category_names = {index: name for index, name in enumerate(label_names)}
 
     for img_idx, sample in enumerate(samples):
         image_path = sample["image_path"]
@@ -89,14 +92,6 @@ def run_yolo_primary_segmentation_evaluation(
         resolved = dataset_storage.resolve(image_path) if image_path else None
         if resolved is None or not resolved.is_file():
             continue
-
-        for ann in gt_annotations:
-            bbox = ann.get("bbox")
-            if isinstance(bbox, list) and len(bbox) == 4:
-                x, y, w, h = bbox
-                all_gt_boxes.append([x, y, x + w, y + h])
-                all_gt_classes.append(int(ann.get("category_id", 0)))
-                all_image_ids.append(img_idx)
 
         image_bytes = resolved.read_bytes()
         pred_request = SegmentationPredictionRequest(
@@ -110,10 +105,57 @@ def run_yolo_primary_segmentation_evaluation(
         except Exception:
             continue
 
+        image_width = int(result.image_width)
+        image_height = int(result.image_height)
+        for ann in gt_annotations:
+            bbox = ann.get("bbox")
+            category_id = int(ann.get("category_id", 0))
+            if isinstance(bbox, list) and len(bbox) == 4:
+                x, y, w, h = (float(value) for value in bbox)
+                gt_bbox_items.append(
+                    {
+                        "image_id": img_idx,
+                        "category_id": category_id,
+                        "bbox_xyxy": [x, y, x + w, y + h],
+                    },
+                )
+            mask = _build_segmentation_annotation_mask(
+                annotation=ann,
+                width=image_width,
+                height=image_height,
+            )
+            if mask is not None:
+                gt_mask_items.append(
+                    {
+                        "image_id": img_idx,
+                        "category_id": category_id,
+                        "mask": mask,
+                    },
+                )
+
         for inst in result.instances:
-            all_pred_boxes.append(list(inst.bbox_xyxy))
-            all_pred_classes.append(inst.class_id)
-            all_pred_scores.append(inst.score)
+            pred_bbox_items.append(
+                {
+                    "image_id": img_idx,
+                    "category_id": int(inst.class_id),
+                    "bbox_xyxy": list(inst.bbox_xyxy),
+                    "score": float(inst.score),
+                },
+            )
+            mask = _build_segmentation_instance_mask(
+                segments=inst.segments,
+                width=image_width,
+                height=image_height,
+            )
+            if mask is not None:
+                pred_mask_items.append(
+                    {
+                        "image_id": img_idx,
+                        "category_id": int(inst.class_id),
+                        "mask": mask,
+                        "score": float(inst.score),
+                    },
+                )
 
         predictions_out.append({
             "image_index": img_idx,
@@ -126,11 +168,26 @@ def run_yolo_primary_segmentation_evaluation(
     duration = time.monotonic() - started
     total_images = len(predictions_out)
 
-    # 简化版 bbox AP 计算
-    map50, map50_95 = _compute_bbox_ap(
-        all_gt_boxes, all_gt_classes, all_pred_boxes, all_pred_classes,
-        all_pred_scores, all_image_ids, label_names,
+    bbox_metrics = compute_coco_style_ap(
+        gt_items=gt_bbox_items,
+        pred_items=pred_bbox_items,
+        category_names=category_names,
         iou_thresholds=request.iou_thresholds,
+        similarity_func=lambda pred, gt: bbox_iou_xyxy(
+            pred["bbox_xyxy"],
+            gt["bbox_xyxy"],
+        ),
+    )
+    mask_metrics = compute_coco_style_ap(
+        gt_items=gt_mask_items,
+        pred_items=pred_mask_items,
+        category_names=category_names,
+        iou_thresholds=request.iou_thresholds,
+        similarity_func=lambda pred, gt: _mask_iou(pred["mask"], gt["mask"]),
+    )
+    per_class_metrics = _merge_segmentation_per_class_metrics(
+        bbox_metrics=bbox_metrics.per_class_metrics,
+        mask_metrics=mask_metrics.per_class_metrics,
     )
 
     report = {
@@ -139,17 +196,20 @@ def run_yolo_primary_segmentation_evaluation(
         "split_name": split_name,
         "sample_count": total_images,
         "duration_seconds": round(duration, 3),
-        "map50": round(map50, 6),
-        "map50_95": round(map50_95, 6),
-        "mask_map50": 0.0,
-        "mask_map50_95": 0.0,
+        "map50": round(bbox_metrics.ap50, 6),
+        "map50_95": round(bbox_metrics.ap50_95, 6),
+        "mask_map50": round(mask_metrics.ap50, 6),
+        "mask_map50_95": round(mask_metrics.ap50_95, 6),
         "score_threshold": request.score_threshold,
         "mask_threshold": request.mask_threshold,
+        "per_class_metrics": per_class_metrics,
     }
 
     return SegmentationEvaluationResult(
         split_name=split_name, sample_count=total_images, duration_seconds=duration,
-        map50=map50, map50_95=map50_95, mask_map50=0.0, mask_map50_95=0.0,
+        map50=bbox_metrics.ap50, map50_95=bbox_metrics.ap50_95,
+        mask_map50=mask_metrics.ap50, mask_map50_95=mask_metrics.ap50_95,
+        per_class_metrics=per_class_metrics,
         report_payload=report, predictions_payload=predictions_out,
     )
 
@@ -248,77 +308,119 @@ def _build_segmentation_samples(
     return samples
 
 
-def _compute_bbox_ap(
-    gt_boxes: list[list[float]],
-    gt_classes: list[int],
-    pred_boxes: list[list[float]],
-    pred_classes: list[int],
-    pred_scores: list[float],
-    image_ids: list[int],
-    label_names: tuple[str, ...],
-    iou_thresholds: tuple[float, ...] = (0.5, 0.75),
-) -> tuple[float, float]:
-    """简化版 bbox AP 计算（按类别分别计算 AP 再平均）。"""
-    if not gt_boxes or not pred_boxes:
-        return 0.0, 0.0
+def _build_segmentation_annotation_mask(
+    *,
+    annotation: dict,
+    width: int,
+    height: int,
+):
+    """把 COCO polygon segmentation 标注转换为二值 mask。"""
 
-    all_classes = sorted(set(gt_classes + pred_classes))
-    ap_at_50: list[float] = []
-    ap_at_all: list[float] = []
+    segmentation = annotation.get("segmentation")
+    polygons = _normalize_segmentation_polygons(segmentation)
+    if not polygons:
+        return None
+    return _rasterize_polygons(polygons=polygons, width=width, height=height)
 
-    for cls_id in all_classes:
-        cls_gt_indices = [i for i, c in enumerate(gt_classes) if c == cls_id]
-        cls_pred_indices = [i for i, c in enumerate(pred_classes) if c == cls_id]
-        if not cls_gt_indices:
+
+def _build_segmentation_instance_mask(
+    *,
+    segments: object,
+    width: int,
+    height: int,
+):
+    """把预测 segments 转换为二值 mask。"""
+
+    polygons: list[list[tuple[float, float]]] = []
+    if isinstance(segments, (list, tuple)):
+        for segment in segments:
+            if not isinstance(segment, (list, tuple)):
+                continue
+            polygon: list[tuple[float, float]] = []
+            for point in segment:
+                if isinstance(point, (list, tuple)) and len(point) >= 2:
+                    polygon.append((float(point[0]), float(point[1])))
+            if len(polygon) >= 3:
+                polygons.append(polygon)
+    if not polygons:
+        return None
+    return _rasterize_polygons(polygons=polygons, width=width, height=height)
+
+
+def _normalize_segmentation_polygons(segmentation: object) -> list[list[tuple[float, float]]]:
+    """归一化 COCO polygon segmentation。"""
+
+    polygons: list[list[tuple[float, float]]] = []
+    if not isinstance(segmentation, list):
+        return polygons
+    raw_polygons = segmentation
+    if raw_polygons and all(isinstance(value, (int, float)) for value in raw_polygons):
+        raw_polygons = [raw_polygons]
+    for raw_polygon in raw_polygons:
+        if not isinstance(raw_polygon, list) or len(raw_polygon) < 6:
             continue
-
-        cls_pred_scores = [pred_scores[i] for i in cls_pred_indices]
-        sorted_pred = sorted(zip(cls_pred_scores, cls_pred_indices), reverse=True)
-
-        for iou_thresh in iou_thresholds:
-            matched = set()
-            tp = 0
-            fp = 0
-            for _, pred_idx in sorted_pred:
-                pred_box = pred_boxes[pred_idx]
-                best_iou = 0.0
-                best_gt = -1
-                for gt_idx in cls_gt_indices:
-                    if gt_idx in matched:
-                        continue
-                    gt_box = gt_boxes[gt_idx]
-                    iou = _box_iou(pred_box, gt_box)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_gt = gt_idx
-                if best_iou >= iou_thresh and best_gt >= 0:
-                    tp += 1
-                    matched.add(best_gt)
-                else:
-                    fp += 1
-
-            fn = len(cls_gt_indices) - tp
-            precision = tp / max(tp + fp, 1)
-            recall = tp / max(tp + fn, 1)
-            ap = precision * recall  # 简化 AP
-
-            if abs(iou_thresh - 0.5) < 0.01:
-                ap_at_50.append(ap)
-            ap_at_all.append(ap)
-
-    map50 = sum(ap_at_50) / max(len(ap_at_50), 1) if ap_at_50 else 0.0
-    map50_95 = sum(ap_at_all) / max(len(ap_at_all), 1) if ap_at_all else 0.0
-    return map50, map50_95
+        polygon = [
+            (float(raw_polygon[index]), float(raw_polygon[index + 1]))
+            for index in range(0, len(raw_polygon) - 1, 2)
+        ]
+        if len(polygon) >= 3:
+            polygons.append(polygon)
+    return polygons
 
 
-def _box_iou(box1: list[float], box2: list[float]) -> float:
-    """计算两个 xyxy 框的 IoU。"""
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-    inter = max(0, x2 - x1) * max(0, y2 - y1)
-    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
-    union = area1 + area2 - inter
-    return inter / max(union, 1e-6)
+def _rasterize_polygons(*, polygons: list[list[tuple[float, float]]], width: int, height: int):
+    """用 Pillow 把 polygon 列表栅格化为 NumPy bool mask。"""
+
+    from PIL import Image, ImageDraw
+    import numpy as np
+
+    mask_image = Image.new("1", (max(1, int(width)), max(1, int(height))), 0)
+    draw = ImageDraw.Draw(mask_image)
+    for polygon in polygons:
+        draw.polygon(polygon, outline=1, fill=1)
+    return np.asarray(mask_image, dtype=bool)
+
+
+def _mask_iou(mask1: object, mask2: object) -> float:
+    """计算两个二值 mask 的 IoU。"""
+
+    import numpy as np
+
+    left = np.asarray(mask1, dtype=bool)
+    right = np.asarray(mask2, dtype=bool)
+    if left.shape != right.shape:
+        return 0.0
+    intersection = np.logical_and(left, right).sum()
+    union = np.logical_or(left, right).sum()
+    return float(intersection / max(float(union), 1.0))
+
+
+def _merge_segmentation_per_class_metrics(
+    *,
+    bbox_metrics: list[dict[str, object]],
+    mask_metrics: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """合并 bbox AP 和 mask AP 的 per-class 摘要。"""
+
+    mask_by_category = {
+        int(item["category_id"]): item
+        for item in mask_metrics
+        if "category_id" in item
+    }
+    merged: list[dict[str, object]] = []
+    for bbox_item in bbox_metrics:
+        category_id = int(bbox_item["category_id"])
+        mask_item = mask_by_category.get(category_id, {})
+        merged.append(
+            {
+                "category_id": category_id,
+                "category_name": bbox_item.get("category_name", str(category_id)),
+                "gt_count": bbox_item.get("gt_count", 0),
+                "pred_count": bbox_item.get("pred_count", 0),
+                "bbox_ap50": bbox_item.get("ap50", 0.0),
+                "bbox_ap50_95": bbox_item.get("ap50_95", 0.0),
+                "mask_ap50": mask_item.get("ap50", 0.0),
+                "mask_ap50_95": mask_item.get("ap50_95", 0.0),
+            },
+        )
+    return merged

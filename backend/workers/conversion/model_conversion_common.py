@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import subprocess
 import sys
 
@@ -128,6 +129,13 @@ def run_conversion_script(
     """执行 conversion 隔离子进程脚本。"""
 
     script_path = resolve_conversion_script_path(script_file_name)
+    project_root = resolve_conversion_project_root()
+    process_env = dict(os.environ)
+    python_path_parts = [str(project_root)]
+    current_python_path = process_env.get("PYTHONPATH")
+    if current_python_path:
+        python_path_parts.append(current_python_path)
+    process_env["PYTHONPATH"] = os.pathsep.join(python_path_parts)
     return subprocess.run(
         [sys.executable, str(script_path), *args],
         capture_output=True,
@@ -135,6 +143,8 @@ def run_conversion_script(
         encoding="utf-8",
         errors="replace",
         check=False,
+        cwd=str(project_root),
+        env=process_env,
     )
 
 
@@ -148,6 +158,12 @@ def resolve_conversion_script_path(script_file_name: str) -> Path:
         "conversion 子进程脚本不存在",
         details={"script_path": str(script_path)},
     )
+
+
+def resolve_conversion_project_root() -> Path:
+    """返回 conversion 子进程应使用的项目根目录。"""
+
+    return Path(__file__).resolve().parents[3]
 
 
 def normalize_model_outputs(model_outputs: object) -> list[object]:

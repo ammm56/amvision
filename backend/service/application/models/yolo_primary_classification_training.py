@@ -14,6 +14,15 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
 )
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolov8_core.data import (
+    build_yolov8_classification_training_batch,
+)
+from backend.service.application.models.yolov8_core.evaluation import (
+    evaluate_yolov8_classification_samples,
+)
+from backend.service.application.models.yolov8_core.losses import (
+    compute_yolov8_classification_loss,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -247,8 +256,6 @@ def run_yolo_primary_classification_training(
         start_epoch = resume_state.epoch
         global_iteration = resume_state.global_iteration
 
-    criterion = imports.torch.nn.CrossEntropyLoss()
-
     for epoch in range(start_epoch, max_epochs):
         model.train()
         train_loss_sum = 0.0
@@ -257,42 +264,40 @@ def run_yolo_primary_classification_training(
         epoch_iterations = 0
         for batch_start in range(0, len(train_annotations), batch_size):
             batch_annotations = train_annotations[batch_start : batch_start + batch_size]
-            images_list: list[Any] = []
-            targets: list[int] = []
-            for ann in batch_annotations:
-                img = _load_and_preprocess_classification_image(
-                    ann.image_path,
-                    input_size,
-                    imports.cv2,
+            if request.model_type == "yolov8":
+                batch = build_yolov8_classification_training_batch(
+                    samples=batch_annotations,
+                    input_size=input_size,
+                    device=device_name,
+                    precision=precision,
+                    imports=imports,
                 )
-                img_tensor = imports.torch.from_numpy(img).to(device_name).float()
-                if precision == "fp16":
-                    img_tensor = img_tensor.half()
-                images_list.append(img_tensor)
-                targets.append(ann.class_id)
-            batch_images = imports.torch.stack(images_list, dim=0)
-            batch_targets = imports.torch.tensor(
-                targets,
-                dtype=imports.torch.long,
-                device=device_name,
-            )
+                if batch is None:
+                    continue
+                batch_images = batch.images
+                batch_targets = batch.targets
+            else:
+                batch_images, batch_targets = _build_classification_batch(
+                    batch_annotations=batch_annotations,
+                    input_size=input_size,
+                    device_name=device_name,
+                    precision=precision,
+                    imports=imports,
+                )
             with _autocast_context(imports, precision, device_name):
                 outputs = model(batch_images)
-                logits: Any = None
-                probabilities: Any = None
-                if isinstance(outputs, tuple):
-                    logits = outputs[0] if outputs else None
-                    probabilities = outputs[1] if len(outputs) >= 2 else logits
-                elif isinstance(outputs, dict):
-                    logits = outputs.get("logits")
-                    probabilities = outputs.get("probabilities", logits)
+                if request.model_type == "yolov8":
+                    loss, probabilities = compute_yolov8_classification_loss(
+                        torch_module=imports.torch,
+                        outputs=outputs,
+                        targets=batch_targets,
+                    )
                 else:
-                    probabilities = outputs
-                if logits is None and probabilities is not None:
-                    logits = _logit_from_prob(probabilities, imports)
-                if logits is None:
-                    raise InvalidRequestError("classification 训练无法从模型输出中提取 logits")
-                loss = criterion(logits, batch_targets)
+                    loss, probabilities = _compute_classification_loss(
+                        torch_module=imports.torch,
+                        outputs=outputs,
+                        targets=batch_targets,
+                    )
             _, predicted = imports.torch.max(probabilities, 1)
             train_correct += int((predicted == batch_targets).sum().item())
             train_total += int(batch_targets.size(0))
@@ -319,16 +324,28 @@ def run_yolo_primary_classification_training(
             and epoch % evaluation_interval == 0
         ) or epoch == max_epochs - 1
         if should_evaluate:
-            val_metrics = _evaluate_classification_model(
-                model=model,
-                val_annotations=val_annotations,
-                labels=labels,
-                batch_size=batch_size,
-                input_size=input_size,
-                device_name=device_name,
-                precision=precision,
-                imports=imports,
-            )
+            if request.model_type == "yolov8":
+                val_metrics = evaluate_yolov8_classification_samples(
+                    model=model,
+                    samples=val_annotations,
+                    labels=labels,
+                    batch_size=batch_size,
+                    input_size=input_size,
+                    device=device_name,
+                    precision=precision,
+                    imports=imports,
+                )
+            else:
+                val_metrics = _evaluate_classification_model(
+                    model=model,
+                    val_annotations=val_annotations,
+                    labels=labels,
+                    batch_size=batch_size,
+                    input_size=input_size,
+                    device_name=device_name,
+                    precision=precision,
+                    imports=imports,
+                )
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
         is_best = current_val_metric > best_metric_value
@@ -395,6 +412,39 @@ def _load_and_preprocess_classification_image(
     tensor = resized[:, :, ::-1].transpose(2, 0, 1)
     tensor = tensor.astype(float) / 255.0
     return tensor
+
+
+def _build_classification_batch(
+    *,
+    batch_annotations: list[_ResolvedClassificationTrainingAnnotation],
+    input_size: tuple[int, int],
+    device_name: str,
+    precision: str,
+    imports: Any,
+) -> tuple[Any, Any]:
+    """构建非 YOLOv8 classification 训练 batch。"""
+
+    images_list: list[Any] = []
+    targets: list[int] = []
+    for ann in batch_annotations:
+        img = _load_and_preprocess_classification_image(
+            ann.image_path,
+            input_size,
+            imports.cv2,
+        )
+        img_tensor = imports.torch.from_numpy(img).to(device_name).float()
+        if precision == "fp16":
+            img_tensor = img_tensor.half()
+        images_list.append(img_tensor)
+        targets.append(ann.class_id)
+    return (
+        imports.torch.stack(images_list, dim=0),
+        imports.torch.tensor(
+            targets,
+            dtype=imports.torch.long,
+            device=device_name,
+        ),
+    )
 
 
 def _load_classification_manifest(
@@ -573,9 +623,44 @@ def _autocast_context(imports: Any, precision: str, device_name: str):
     return nullcontext()
 
 
-def _logit_from_prob(probabilities: Any, imports: Any) -> Any:
-    clamped = imports.torch.clamp(probabilities, 1e-12, 1.0 - 1e-12)
-    return imports.torch.log(clamped / (1.0 - clamped))
+def _compute_classification_loss(
+    *,
+    torch_module: Any,
+    outputs: object,
+    targets: Any,
+) -> tuple[Any, Any | None]:
+    """计算非 YOLOv8 主线 classification 损失。"""
+
+    logits: Any = None
+    probabilities: Any = None
+    if isinstance(outputs, tuple):
+        logits = outputs[0] if outputs else None
+        probabilities = outputs[1] if len(outputs) >= 2 else logits
+    elif isinstance(outputs, dict):
+        logits = outputs.get("logits")
+        probabilities = outputs.get("probabilities", logits)
+    else:
+        probabilities = outputs
+    if logits is None and probabilities is not None:
+        logits = _logit_from_probability_tensor(
+            torch_module=torch_module,
+            probabilities=probabilities,
+        )
+    if logits is None:
+        raise InvalidRequestError("classification 训练无法从模型输出中提取 logits")
+    loss = torch_module.nn.functional.cross_entropy(logits, targets)
+    return loss, probabilities
+
+
+def _logit_from_probability_tensor(
+    *,
+    torch_module: Any,
+    probabilities: Any,
+) -> Any:
+    """把概率张量转换为 BCE 风格 logits。"""
+
+    clamped = torch_module.clamp(probabilities, 1e-12, 1.0 - 1e-12)
+    return torch_module.log(clamped / (1.0 - clamped))
 
 
 def _build_checkpoint_bytes(

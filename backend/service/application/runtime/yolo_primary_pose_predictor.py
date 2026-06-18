@@ -11,6 +11,13 @@ from backend.service.application.model_type_support import normalize_optional_pl
 from backend.service.application.models.yolo_primary_detection_model import load_yolo_primary_checkpoint
 from backend.service.application.models.yolo_primary_detection_training import _require_training_imports
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolov8_core.postprocess import (
+    render_yolov8_detection_preview_image,
+)
+from backend.service.application.models.yolov8_core.inference import (
+    build_yolov8_pose_inference_instances,
+    normalize_yolov8_pose_inference_outputs,
+)
 from backend.service.application.runtime.support.detection import (
     batched_nms_indices, build_openvino_compile_properties, ensure_cuda_success,
     enable_pytorch_cuda_inference_fast_path, get_tensorrt_logger,
@@ -98,10 +105,15 @@ class PyTorchYoloPrimaryPoseRuntimeSession:
             with self.imports.torch.no_grad():
                 outputs = self.model(input_tensor)
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-        prediction_array = _normalize_pytorch_prediction(outputs, np_module=self.imports.np)
+        prediction_array = _normalize_pytorch_prediction(
+            outputs,
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         postprocess_started_at = perf_counter()
         instances, kpt_shape = _build_pose_instances(
             np_module=self.imports.np, prediction_array=prediction_array,
+            model_type=self.runtime_target.model_type,
             labels=self.runtime_target.labels, score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             resize_ratio=resize_ratio, image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -111,8 +123,12 @@ class PyTorchYoloPrimaryPoseRuntimeSession:
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
         preview_image_bytes = None
         if request.save_result_image:
-            preview_detections = tuple(_as_preview_detection(inst) for inst in instances)
-            preview_image_bytes = render_preview_image(cv2_module=self.imports.cv2, image=image, detections=preview_detections)
+            preview_image_bytes = _render_pose_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                instances=instances,
+                model_type=self.runtime_target.model_type,
+            )
         output_dtype = "float16" if self.runtime_precision == "fp16" else "float32"
         return PosePredictionExecutionResult(
             instances=instances, latency_ms=round(latency_ms, 3),
@@ -177,10 +193,15 @@ class OnnxRuntimeYoloPrimaryPoseRuntimeSession:
         infer_started_at = perf_counter()
         outputs = self.session.run(list(self.output_names), {self.input_name: input_tensor})
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-        prediction_array = _normalize_onnx_prediction(outputs, np_module=self.imports.np)
+        prediction_array = _normalize_onnx_prediction(
+            outputs,
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         postprocess_started_at = perf_counter()
         instances, kpt_shape = _build_pose_instances(
             np_module=self.imports.np, prediction_array=prediction_array,
+            model_type=self.runtime_target.model_type,
             labels=self.runtime_target.labels, score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             resize_ratio=resize_ratio, image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -190,8 +211,12 @@ class OnnxRuntimeYoloPrimaryPoseRuntimeSession:
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
         preview_image_bytes = None
         if request.save_result_image:
-            preview_detections = tuple(_as_preview_detection(inst) for inst in instances)
-            preview_image_bytes = render_preview_image(cv2_module=self.imports.cv2, image=image, detections=preview_detections)
+            preview_image_bytes = _render_pose_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                instances=instances,
+                model_type=self.runtime_target.model_type,
+            )
         return PosePredictionExecutionResult(
             instances=instances, latency_ms=round(latency_ms, 3),
             image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -270,10 +295,15 @@ class OpenVINOYoloPrimaryPoseRuntimeSession:
             raw_output = values[0] if values else None
         if raw_output is None:
             raise InvalidRequestError("openvino pose 推理输出为空")
-        prediction_array = _normalize_onnx_prediction([raw_output], np_module=self.imports.np)
+        prediction_array = _normalize_onnx_prediction(
+            [raw_output],
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         postprocess_started_at = perf_counter()
         instances, kpt_shape = _build_pose_instances(
             np_module=self.imports.np, prediction_array=prediction_array,
+            model_type=self.runtime_target.model_type,
             labels=self.runtime_target.labels, score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             resize_ratio=resize_ratio, image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -283,8 +313,12 @@ class OpenVINOYoloPrimaryPoseRuntimeSession:
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
         preview_image_bytes = None
         if request.save_result_image:
-            preview_detections = tuple(_as_preview_detection(inst) for inst in instances)
-            preview_image_bytes = render_preview_image(cv2_module=self.imports.cv2, image=image, detections=preview_detections)
+            preview_image_bytes = _render_pose_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                instances=instances,
+                model_type=self.runtime_target.model_type,
+            )
         return PosePredictionExecutionResult(
             instances=instances, latency_ms=round(latency_ms, 3),
             image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -411,10 +445,15 @@ class TensorRTYoloPrimaryPoseRuntimeSession:
         ensure_cuda_success(self.imports.cudart.cudaStreamSynchronize(self.stream), operation_name="TensorRT pose runtime 同步 CUDA stream", details={"device_name": self.device_name})
         infer_execute_gpu_ms = measure_cuda_event_elapsed_ms(cudart_module=self.imports.cudart, start_event=self.execute_start_event, end_event=self.execute_end_event, device_name=self.device_name)
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-        prediction_array = _normalize_onnx_prediction([output_array], np_module=self.imports.np)
+        prediction_array = _normalize_onnx_prediction(
+            [output_array],
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         postprocess_started_at = perf_counter()
         instances, kpt_shape = _build_pose_instances(
             np_module=self.imports.np, prediction_array=prediction_array,
+            model_type=self.runtime_target.model_type,
             labels=self.runtime_target.labels, score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
             resize_ratio=resize_ratio, image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -424,8 +463,12 @@ class TensorRTYoloPrimaryPoseRuntimeSession:
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
         preview_image_bytes = None
         if request.save_result_image:
-            preview_detections = tuple(_as_preview_detection(inst) for inst in instances)
-            preview_image_bytes = render_preview_image(cv2_module=self.imports.cv2, image=image, detections=preview_detections)
+            preview_image_bytes = _render_pose_preview_image(
+                cv2_module=self.imports.cv2,
+                image=image,
+                instances=instances,
+                model_type=self.runtime_target.model_type,
+            )
         return PosePredictionExecutionResult(
             instances=instances, latency_ms=round(latency_ms, 3),
             image_width=int(image.shape[1]), image_height=int(image.shape[0]),
@@ -531,7 +574,12 @@ class TensorRTYoloPrimaryPoseRuntimeSession:
 
 # -- shared helpers --
 
-def _normalize_pytorch_prediction(outputs: object, *, np_module: Any) -> Any:
+def _normalize_pytorch_prediction(outputs: object, *, np_module: Any, model_type: str) -> Any:
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return normalize_yolov8_pose_inference_outputs(
+            outputs=outputs,
+            np_module=np_module,
+        )
     if hasattr(outputs, "detach"):
         outputs = outputs.detach()
     if hasattr(outputs, "cpu"):
@@ -546,7 +594,12 @@ def _normalize_pytorch_prediction(outputs: object, *, np_module: Any) -> Any:
     return prediction
 
 
-def _normalize_onnx_prediction(outputs: object, *, np_module: Any) -> Any:
+def _normalize_onnx_prediction(outputs: object, *, np_module: Any, model_type: str) -> Any:
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return normalize_yolov8_pose_inference_outputs(
+            outputs=outputs,
+            np_module=np_module,
+        )
     if not isinstance(outputs, list) or not outputs:
         raise InvalidRequestError("onnxruntime pose 推理输出为空")
     prediction = np_module.asarray(outputs[0], dtype=np_module.float32)
@@ -558,11 +611,47 @@ def _normalize_onnx_prediction(outputs: object, *, np_module: Any) -> Any:
 
 
 def _build_pose_instances(
-    *, np_module: Any, prediction_array: Any, labels: tuple[str, ...],
+    *, np_module: Any, prediction_array: Any, model_type: str, labels: tuple[str, ...],
     score_threshold: float, keypoint_confidence_threshold: float,
     resize_ratio: float, image_width: int, image_height: int,
     input_size: tuple[int, int], default_kpt_shape: tuple[int, int],
 ) -> tuple[tuple[PosePredictionInstance, ...], tuple[int, int]]:
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        core_instances, core_kpt_shape = build_yolov8_pose_inference_instances(
+            np_module=np_module,
+            prediction_array=prediction_array,
+            labels=labels,
+            score_threshold=score_threshold,
+            keypoint_confidence_threshold=keypoint_confidence_threshold,
+            resize_ratio=resize_ratio,
+            image_width=image_width,
+            image_height=image_height,
+            input_size=input_size,
+            default_kpt_shape=default_kpt_shape,
+            nms_threshold=_DEFAULT_NMS_THRESHOLD,
+            nms_indices_func=batched_nms_indices,
+        )
+        return (
+            tuple(
+                PosePredictionInstance(
+                    bbox_xyxy=instance.bbox_xyxy,
+                    score=instance.score,
+                    class_id=instance.class_id,
+                    class_name=instance.class_name,
+                    keypoints=tuple(
+                        PosePredictionKeypoint(
+                            x=keypoint.x,
+                            y=keypoint.y,
+                            confidence=keypoint.confidence,
+                        )
+                        for keypoint in instance.keypoints
+                    ),
+                    kpt_shape=instance.kpt_shape,
+                )
+                for instance in core_instances
+            ),
+            core_kpt_shape,
+        )
     normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if normalized_prediction.ndim == 2:
         normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
@@ -625,6 +714,29 @@ def _infer_kpt_shape(runtime_target: RuntimeTargetSnapshot) -> tuple[int, int]:
 def _as_preview_detection(instance: PosePredictionInstance):
     from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionDetection
     return DetectionPredictionDetection(bbox_xyxy=instance.bbox_xyxy, score=instance.score, class_id=instance.class_id, class_name=instance.class_name)
+
+
+def _render_pose_preview_image(
+    *,
+    cv2_module: Any,
+    image: Any,
+    instances: tuple[PosePredictionInstance, ...],
+    model_type: str,
+) -> bytes:
+    """按模型分类渲染 pose 预览图。"""
+
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return render_yolov8_detection_preview_image(
+            cv2_module=cv2_module,
+            image=image,
+            instances=instances,
+        )
+    preview_detections = tuple(_as_preview_detection(instance) for instance in instances)
+    return render_preview_image(
+        cv2_module=cv2_module,
+        image=image,
+        detections=preview_detections,
+    )
 
 
 def _require_primary_model_type(model_type: str, model_label: str) -> str:

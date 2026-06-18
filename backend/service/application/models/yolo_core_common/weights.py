@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 import types
-from typing import Any
+from typing import Any, Callable
 
 from torch import nn
 
@@ -109,12 +109,14 @@ def load_yolo_checkpoint_file(
     model: nn.Module,
     checkpoint_path: Path,
     minimum_loadable_ratio: float = 1.0,
+    pickle_class_binders: tuple[Callable[..., None], ...] = (),
 ) -> YoloStateDictLoadResult:
     """读取 checkpoint 文件、提取 state_dict 并加载到 YOLO 模型。"""
 
     checkpoint_payload = load_yolo_checkpoint_payload(
         torch_module=torch_module,
         checkpoint_path=checkpoint_path,
+        pickle_class_binders=pickle_class_binders,
     )
     source_state_dict = extract_yolo_checkpoint_state_dict(checkpoint_payload)
     load_result = load_yolo_state_dict(
@@ -136,6 +138,7 @@ def load_yolo_checkpoint_payload(
     *,
     torch_module: Any,
     checkpoint_path: Path,
+    pickle_class_binders: tuple[Callable[..., None], ...] = (),
 ) -> object:
     """读取 YOLO checkpoint 原始载荷。
 
@@ -163,6 +166,7 @@ def load_yolo_checkpoint_payload(
         return _load_pickle_checkpoint_payload(
             torch_module=torch_module,
             checkpoint_path=checkpoint_path,
+            pickle_class_binders=pickle_class_binders,
         )
     except Exception as error:
         load_errors.append(str(error))
@@ -204,10 +208,13 @@ def _load_pickle_checkpoint_payload(
     *,
     torch_module: Any,
     checkpoint_path: Path,
+    pickle_class_binders: tuple[Callable[..., None], ...],
 ) -> object:
     """读取需要旧模块路径映射的完整模型 pickle checkpoint。"""
 
-    with _temporary_pickle_checkpoint_modules():
+    with _temporary_pickle_checkpoint_modules(
+        pickle_class_binders=pickle_class_binders,
+    ):
         return torch_module.load(
             str(checkpoint_path),
             map_location="cpu",
@@ -216,7 +223,10 @@ def _load_pickle_checkpoint_payload(
 
 
 @contextmanager
-def _temporary_pickle_checkpoint_modules():
+def _temporary_pickle_checkpoint_modules(
+    *,
+    pickle_class_binders: tuple[Callable[..., None], ...],
+):
     """临时注册完整模型 pickle 反序列化需要的旧模块路径。"""
 
     previous_modules = {
@@ -244,6 +254,7 @@ def _temporary_pickle_checkpoint_modules():
         conv_module=conv_module,
         head_module=head_module,
         tasks_module=tasks_module,
+        pickle_class_binders=pickle_class_binders,
     )
 
     try:
@@ -269,16 +280,10 @@ def _bind_pickle_checkpoint_classes(
     conv_module: types.ModuleType,
     head_module: types.ModuleType,
     tasks_module: types.ModuleType,
+    pickle_class_binders: tuple[Callable[..., None], ...],
 ) -> None:
     """把旧 checkpoint 中的类名映射到项目内 YOLO core 实现。"""
 
-    from backend.service.application.models.yolo26_core.tasks import (
-        OBB26,
-        Pose26,
-        Proto26,
-        RealNVP,
-        Segment26,
-    )
     from backend.service.application.models.yolo_core_common import (
         Classify,
         Conv,
@@ -314,7 +319,6 @@ def _bind_pickle_checkpoint_classes(
     block_module.DFL = DistributionFocalLossDecoder
     block_module.PSABlock = PSABlock
     block_module.Proto = Proto
-    block_module.Proto26 = Proto26
     block_module.SPPF = SPPF
     conv_module.Concat = Concat
     conv_module.Conv = Conv
@@ -322,17 +326,20 @@ def _bind_pickle_checkpoint_classes(
     head_module.Classify = Classify
     head_module.Detect = Detect
     head_module.OBB = OBB
-    head_module.OBB26 = OBB26
     head_module.Pose = Pose
-    head_module.Pose26 = Pose26
-    head_module.RealNVP = RealNVP
     head_module.Segment = Segment
-    head_module.Segment26 = Segment26
     tasks_module.ClassificationModel = YoloDetectionModel
     tasks_module.DetectionModel = YoloDetectionModel
     tasks_module.OBBModel = YoloDetectionModel
     tasks_module.PoseModel = YoloDetectionModel
     tasks_module.SegmentationModel = YoloDetectionModel
+    for binder in pickle_class_binders:
+        binder(
+            block_module=block_module,
+            conv_module=conv_module,
+            head_module=head_module,
+            tasks_module=tasks_module,
+        )
 
 
 def _build_loadable_state_dict(

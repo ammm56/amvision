@@ -599,13 +599,18 @@ class SqlAlchemyDatasetExporter:
                 )
                 for split_name, samples in split_samples
             )
+            pose_keypoint_shape = _resolve_pose_keypoint_shape(split_samples)
+            pose_metadata = {
+                **metadata,
+                "kpt_shape": [pose_keypoint_shape[0], pose_keypoint_shape[1]],
+            }
             return (
                 YoloPoseExportManifest(
                     format_id=request.format_id,
                     dataset_version_id=request.dataset_version_id,
                     category_names=category_names,
                     splits=yolo_splits,
-                    metadata=metadata,
+                    metadata=pose_metadata,
                 ),
                 self._build_coco_detection_payloads(
                     dataset_version=dataset_version,
@@ -1520,6 +1525,25 @@ def _dataset_export_format_matches_task_type(
         DOTA_OBB_DATASET_FORMAT: {"obb"},
     }
     return task_type in format_to_task_types.get(format_id, set())
+
+
+def _resolve_pose_keypoint_shape(
+    split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
+) -> tuple[int, int]:
+    """从 PoseAnnotation 中解析 YOLO pose 导出需要的 kpt_shape。"""
+
+    for _split_name, samples in split_samples:
+        for sample in samples:
+            for annotation in sample.annotations:
+                if not isinstance(annotation, PoseAnnotation):
+                    continue
+                keypoints = annotation.keypoints
+                if not isinstance(keypoints, list) or not keypoints:
+                    continue
+                if len(keypoints) % 3 != 0:
+                    continue
+                return (len(keypoints) // 3, 3)
+    return (17, 3)
 
 
 class SqlAlchemyDatasetExportTaskService:

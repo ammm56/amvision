@@ -10,7 +10,7 @@ from backend.service.application.models.yolo_primary_detection_training import (
     run_yolo_primary_detection_training,
 )
 
-YOLOV8_IMPLEMENTATION_MODE = "yolov8-detection"
+YOLOV8_IMPLEMENTATION_MODE = "yolov8-detection-core"
 run_yolov8_detection_training = run_yolo_primary_detection_training
 
 

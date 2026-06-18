@@ -25,7 +25,7 @@ from backend.service.application.runtime.yolo26_obb_predictor import (
     PyTorchYolo26ObbRuntimeSession,
     TensorRTYolo26ObbRuntimeSession,
 )
-from backend.service.application.runtime.yolov8_obb_predictor import (
+from backend.service.application.runtime.predictors.yolov8_obb import (
     OnnxRuntimeYoloV8ObbRuntimeSession,
     OpenVINOYoloV8ObbRuntimeSession,
     PyTorchYoloV8ObbRuntimeSession,

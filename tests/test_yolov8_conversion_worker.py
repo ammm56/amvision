@@ -27,11 +27,27 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
 from backend.workers.conversion.yolov8_conversion_runner import (
+    LocalYoloV8ConversionRunner,
     YoloV8ConversionOutput,
     YoloV8ConversionRunRequest,
     YoloV8ConversionRunResult,
 )
 from tests.yolox_test_support import create_yolox_test_runtime
+
+
+def test_yolov8_conversion_runner_uses_core_export_source_session() -> None:
+    """确认 YOLOv8 conversion runner 不再依赖 runtime predictor 构建导出源模型。"""
+
+    session_classes = LocalYoloV8ConversionRunner.task_runtime_session_classes
+
+    assert set(session_classes) == {
+        "detection",
+        "classification",
+        "segmentation",
+        "pose",
+        "obb",
+    }
+    assert all(cls.__module__.endswith("yolov8_core.export.source") for cls in session_classes.values())
 
 
 @pytest.mark.parametrize(

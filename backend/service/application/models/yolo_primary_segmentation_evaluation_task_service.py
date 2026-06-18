@@ -20,6 +20,10 @@ from backend.service.application.models.yolo_primary_segmentation_evaluation imp
     SegmentationEvaluationRequest,
     run_yolo_primary_segmentation_evaluation,
 )
+from backend.service.application.models.yolov8_core.evaluation import (
+    YoloV8SegmentationEvaluationRequest,
+    run_yolov8_segmentation_evaluation,
+)
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest, RuntimeTargetSnapshot,
 )
@@ -162,10 +166,14 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
                      "progress": {"stage": "evaluating", "percent": 5.0}}))
         try:
             manifest = dataset_storage.read_json(dataset_export.manifest_object_key or "")
-            eval_result = run_yolo_primary_segmentation_evaluation(SegmentationEvaluationRequest(
-                dataset_storage=dataset_storage, runtime_target=runtime_target, manifest_payload=manifest,
-                score_threshold=request.score_threshold or 0.01, mask_threshold=request.mask_threshold or 0.5,
-                extra_options=dict(request.extra_options)))
+            eval_result = _run_segmentation_evaluation_for_runtime_target(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest=manifest,
+                score_threshold=request.score_threshold or 0.01,
+                mask_threshold=request.mask_threshold or 0.5,
+                extra_options=dict(request.extra_options),
+            )
             dataset_storage.write_json(report_key, eval_result.report_payload)
             dataset_storage.write_json(predictions_key, eval_result.predictions_payload)
             if package_key:
@@ -304,3 +312,37 @@ class SqlAlchemyYoloPrimarySegmentationEvaluationTaskService:
         with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(ds.resolve(report_key), arcname="report.json")
             archive.write(ds.resolve(predictions_key), arcname="predictions.json")
+
+
+def _run_segmentation_evaluation_for_runtime_target(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    manifest: dict[str, object],
+    score_threshold: float,
+    mask_threshold: float,
+    extra_options: dict[str, object],
+):
+    """按 model_type 选择 segmentation 数据集级评估入口。"""
+
+    if runtime_target.model_type == "yolov8":
+        return run_yolov8_segmentation_evaluation(
+            YoloV8SegmentationEvaluationRequest(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest_payload=manifest,
+                score_threshold=score_threshold,
+                mask_threshold=mask_threshold,
+                extra_options=extra_options,
+            ),
+        )
+    return run_yolo_primary_segmentation_evaluation(
+        SegmentationEvaluationRequest(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            manifest_payload=manifest,
+            score_threshold=score_threshold,
+            mask_threshold=mask_threshold,
+            extra_options=extra_options,
+        ),
+    )

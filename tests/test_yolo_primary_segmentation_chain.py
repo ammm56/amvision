@@ -26,7 +26,7 @@ from backend.service.application.runtime.segmentation_model_runtime import (
 from backend.service.application.runtime.segmentation_runtime_contracts import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.yolov8_segmentation_predictor import (
+from backend.service.application.runtime.predictors.yolov8_segmentation import (
     PyTorchYoloV8SegmentationRuntimeSession,
 )
 from backend.service.application.runtime.yolov8_runtime_target import (

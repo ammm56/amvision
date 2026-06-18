@@ -1,8 +1,8 @@
-"""YOLOv8 core head 与 decode 入口。"""
+"""YOLOv8 core head 入口。"""
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_core_common.tasks import (
+from backend.service.application.models.yolov8_core.nn.tasks import (
     Classify,
     Detect,
     OBB,

@@ -3,7 +3,7 @@
 复用 detection 的分类、框和 DFL 损失，并补齐：
 - OKS 风格关键点位置损失
 - 关键点可见性 BCE 损失
-- Pose26 的 RLE（Residual Log-likelihood Estimation）损失
+- YOLO26 pose 的 RLE（Residual Log-likelihood Estimation）损失
 """
 
 from __future__ import annotations
@@ -41,10 +41,8 @@ def compute_pose_loss(
     from backend.service.application.models.yolo_core_common.losses import (
         build_pose_box_area,
         build_pose_oks_sigmas,
-        build_pose_rle_weights,
         build_pose_visibility_mask,
         compute_oks_keypoint_loss,
-        compute_rle_loss,
         compute_visibility_loss,
         decode_pose_keypoints_xy,
         distribution_focal_loss,
@@ -216,17 +214,22 @@ def compute_pose_loss(
                             torch_module=torch,
                             pred_visibility_logits=pred_kpts_reshaped[..., 2],
                             keypoint_mask=kpt_mask,
-                        )
+                    )
 
                     if is_pose26 and pred_kpts_sigma is not None and total_rle_loss is not None:
+                        from backend.service.application.models.yolo26_core.losses import (
+                            build_yolo26_pose_rle_weights,
+                            compute_yolo26_rle_loss,
+                        )
+
                         fg_pred_sigma = pred_kpts_sigma[bi][fg_mask].view(num_fg, nk, 2)
-                        rle_target_weights = build_pose_rle_weights(
+                        rle_target_weights = build_yolo26_pose_rle_weights(
                             torch_module=torch,
                             num_keypoints=nk,
                             device=fg_pred_kpts.device,
                             dtype=fg_pred_kpts.dtype,
                         )
-                        total_rle_loss = total_rle_loss + compute_rle_loss(
+                        total_rle_loss = total_rle_loss + compute_yolo26_rle_loss(
                             torch_module=torch,
                             flow_model=pose_head.flow_model,
                             pred_keypoints_xy=decoded_kpts_xy,

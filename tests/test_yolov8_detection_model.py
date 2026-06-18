@@ -15,6 +15,7 @@ from backend.service.application.models.yolo_primary_detection_model import (
     load_yolo_primary_checkpoint,
 )
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolov8_core.model import build_yolov8_model
 
 
 def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
@@ -97,6 +98,29 @@ def test_yolov8_detection_model_uses_legacy_class_head() -> None:
     detect_head = model.model[-1]
 
     assert detect_head.cv3[0][0].__class__.__name__ == "Conv"
+
+
+def test_yolov8_segmentation_proto_width_scales_with_model_scale() -> None:
+    """验证 YOLOv8 segmentation proto 宽度会按 scale 缩放。"""
+
+    expected_width_by_scale = {
+        "nano": 64,
+        "s": 128,
+        "m": 192,
+        "l": 256,
+        "x": 320,
+    }
+
+    for model_scale, expected_width in expected_width_by_scale.items():
+        model = build_yolov8_model(
+            task_type="segmentation",
+            model_scale=model_scale,
+            num_classes=80,
+        )
+        segment_head = model.model[-1]
+
+        assert segment_head.npr == expected_width
+        assert segment_head.proto.cv1.conv.out_channels == expected_width
 
 
 def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:

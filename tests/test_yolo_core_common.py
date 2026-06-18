@@ -40,11 +40,9 @@ from backend.service.application.models.yolo_core_common.export import (
 from backend.service.application.models.yolo_core_common.losses import (
     build_pose_box_area,
     build_pose_oks_sigmas,
-    build_pose_rle_weights,
     build_pose_visibility_mask,
     compute_obb_angle_loss,
     compute_oks_keypoint_loss,
-    compute_rle_loss,
     compute_segmentation_detection_loss,
     compute_segmentation_mask_loss,
     compute_visibility_loss,
@@ -53,6 +51,10 @@ from backend.service.application.models.yolo_core_common.losses import (
     distribution_focal_loss,
     probiou_aligned,
     segmentation_bbox_iou_aligned,
+)
+from backend.service.application.models.yolo26_core.losses import (
+    build_yolo26_pose_rle_weights,
+    compute_yolo26_rle_loss,
 )
 from backend.service.application.models.yolo_core_common.postprocess import (
     build_segmentation_postprocess_instances,
@@ -359,8 +361,8 @@ def test_common_pose_decode_supports_standard_and_yolo26_offsets() -> None:
     assert torch.allclose(yolo26, torch.tensor([[[12.0], [20.0], [0.5]]]))
 
 
-def test_common_pose_losses_compute_keypoint_visibility_and_rle() -> None:
-    """验证 pose 专属 loss 辅助函数可以脱离训练 service 独立工作。"""
+def test_common_pose_losses_compute_keypoint_and_visibility() -> None:
+    """验证 common pose loss 辅助函数可以脱离训练 service 独立工作。"""
 
     pred_xy = torch.tensor([[[0.0, 0.0], [2.0, 2.0]]])
     gt_keypoints = torch.tensor([[[0.0, 0.0, 2.0], [4.0, 2.0, 1.0]]])
@@ -390,20 +392,6 @@ def test_common_pose_losses_compute_keypoint_visibility_and_rle() -> None:
         pred_visibility_logits=torch.zeros(1, 2),
         keypoint_mask=keypoint_mask,
     )
-    rle_loss = compute_rle_loss(
-        torch_module=torch,
-        flow_model=_DummyPoseFlowModel(),
-        pred_keypoints_xy=pred_xy,
-        pred_sigma_logits=torch.zeros(1, 2, 2),
-        gt_keypoints_xy=gt_keypoints[..., :2],
-        keypoint_mask=keypoint_mask,
-        target_weights=build_pose_rle_weights(
-            torch_module=torch,
-            num_keypoints=2,
-            device=pred_xy.device,
-            dtype=pred_xy.dtype,
-        ),
-    )
     standard_xy = decode_pose_keypoints_xy(
         pred_xy=torch.ones(1, 2, 2),
         anchors_xy=torch.tensor([[4.0, 8.0]]),
@@ -420,9 +408,36 @@ def test_common_pose_losses_compute_keypoint_visibility_and_rle() -> None:
     assert keypoint_mask.tolist() == [[True, True]]
     assert torch.isfinite(keypoint_loss).item() is True
     assert torch.isfinite(visibility_loss).item() is True
-    assert torch.isfinite(rle_loss).item() is True
     assert torch.allclose(standard_xy, torch.tensor([[[8.0, 12.0], [8.0, 12.0]]]))
     assert torch.allclose(pose26_xy, torch.tensor([[[6.0, 10.0], [6.0, 10.0]]]))
+
+
+def test_yolo26_pose_rle_loss_lives_in_yolo26_core() -> None:
+    """验证 YOLO26 pose RLE loss 留在 yolo26_core 边界内。"""
+
+    pred_xy = torch.tensor([[[0.0, 0.0], [2.0, 2.0]]])
+    gt_keypoints = torch.tensor([[[0.0, 0.0, 2.0], [4.0, 2.0, 1.0]]])
+    keypoint_mask = build_pose_visibility_mask(
+        torch_module=torch,
+        gt_keypoints=gt_keypoints,
+        keypoint_dim=3,
+    )
+    rle_loss = compute_yolo26_rle_loss(
+        torch_module=torch,
+        flow_model=_DummyPoseFlowModel(),
+        pred_keypoints_xy=pred_xy,
+        pred_sigma_logits=torch.zeros(1, 2, 2),
+        gt_keypoints_xy=gt_keypoints[..., :2],
+        keypoint_mask=keypoint_mask,
+        target_weights=build_yolo26_pose_rle_weights(
+            torch_module=torch,
+            num_keypoints=2,
+            device=pred_xy.device,
+            dtype=pred_xy.dtype,
+        ),
+    )
+
+    assert torch.isfinite(rle_loss).item() is True
 
 
 def test_common_pose_target_normalizes_list_and_tensor_keypoints() -> None:

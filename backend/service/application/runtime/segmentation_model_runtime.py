@@ -25,7 +25,7 @@ from backend.service.application.runtime.yolo26_segmentation_predictor import (
     PyTorchYolo26SegmentationRuntimeSession,
     TensorRTYolo26SegmentationRuntimeSession,
 )
-from backend.service.application.runtime.yolov8_segmentation_predictor import (
+from backend.service.application.runtime.predictors.yolov8_segmentation import (
     OnnxRuntimeYoloV8SegmentationRuntimeSession,
     OpenVINOYoloV8SegmentationRuntimeSession,
     PyTorchYoloV8SegmentationRuntimeSession,

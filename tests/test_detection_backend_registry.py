@@ -10,7 +10,7 @@ from backend.service.application.detection_backend_registry import (
     DETECTION_BACKEND_STATUS_ACTIVE,
     get_detection_backend_registration,
 )
-import backend.service.application.runtime.yolov8_predictor as yolov8_predictor_module
+import backend.service.application.runtime.predictors.yolov8_detection as yolov8_detection_module
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
@@ -78,7 +78,7 @@ def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
         return sentinel_session
 
     monkeypatch.setattr(
-        yolov8_predictor_module.OnnxRuntimeYoloV8RuntimeSession,
+        yolov8_detection_module.OnnxRuntimeYoloV8RuntimeSession,
         "load",
         staticmethod(_fake_load),
     )
@@ -120,7 +120,7 @@ def test_default_detection_model_runtime_routes_yolov8_专用_backends(
         return sentinel_session
 
     monkeypatch.setattr(
-        getattr(yolov8_predictor_module, loader_name),
+        getattr(yolov8_detection_module, loader_name),
         "load",
         staticmethod(_fake_load),
     )

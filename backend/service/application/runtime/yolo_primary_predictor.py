@@ -25,6 +25,10 @@ from backend.service.application.models.yolo_primary_model_configs import (
 from backend.service.application.models.yolo_primary_detection_training import (
     _require_training_imports,
 )
+from backend.service.application.models.yolov8_core.postprocess import (
+    build_yolov8_detection_records,
+    render_yolov8_detection_preview_image,
+)
 from backend.service.application.runtime.detection_runtime_contracts import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
@@ -214,6 +218,7 @@ class PyTorchYoloPrimaryRuntimeSession:
             is_end2end=bool(getattr(self.model, "end2end", False)),
         )
         detections = _build_yolo_primary_detection_records(
+            model_type=self.runtime_target.model_type,
             np_module=self.imports.np,
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
@@ -234,7 +239,8 @@ class PyTorchYoloPrimaryRuntimeSession:
 
         preview_image_bytes = None
         if request.save_result_image:
-            preview_image_bytes = render_preview_image(
+            preview_image_bytes = _render_yolo_primary_detection_preview_image(
+                model_type=self.runtime_target.model_type,
                 cv2_module=self.imports.cv2,
                 image=image,
                 detections=detections,
@@ -393,6 +399,7 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
             model_type=self.runtime_target.model_type,
         )
         detections = _build_yolo_primary_detection_records(
+            model_type=self.runtime_target.model_type,
             np_module=self.imports.np,
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
@@ -409,7 +416,8 @@ class OnnxRuntimeYoloPrimaryRuntimeSession:
 
         preview_image_bytes = None
         if request.save_result_image:
-            preview_image_bytes = render_preview_image(
+            preview_image_bytes = _render_yolo_primary_detection_preview_image(
+                model_type=self.runtime_target.model_type,
                 cv2_module=self.imports.cv2,
                 image=image,
                 detections=detections,
@@ -567,6 +575,7 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINODetectionRuntimeSessionBase):
             model_type=self.runtime_target.model_type,
         )
         detections = _build_yolo_primary_detection_records(
+            model_type=self.runtime_target.model_type,
             np_module=self.imports.np,
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
@@ -583,7 +592,8 @@ class OpenVINOYoloPrimaryRuntimeSession(OpenVINODetectionRuntimeSessionBase):
 
         preview_image_bytes = None
         if request.save_result_image:
-            preview_image_bytes = render_preview_image(
+            preview_image_bytes = _render_yolo_primary_detection_preview_image(
+                model_type=self.runtime_target.model_type,
                 cv2_module=self.imports.cv2,
                 image=image,
                 detections=detections,
@@ -900,6 +910,7 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
             model_type=self.runtime_target.model_type,
         )
         detections = _build_yolo_primary_detection_records(
+            model_type=self.runtime_target.model_type,
             np_module=self.imports.np,
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
@@ -916,7 +927,8 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
 
         preview_image_bytes = None
         if request.save_result_image:
-            preview_image_bytes = render_preview_image(
+            preview_image_bytes = _render_yolo_primary_detection_preview_image(
+                model_type=self.runtime_target.model_type,
                 cv2_module=self.imports.cv2,
                 image=image,
                 detections=detections,
@@ -973,6 +985,7 @@ class TensorRTYoloPrimaryRuntimeSession(TensorRTDetectionRuntimeSessionBase):
 
 def _build_yolo_primary_detection_records(
     *,
+    model_type: str,
     np_module: Any,
     prediction_array: Any,
     labels: tuple[str, ...],
@@ -985,6 +998,18 @@ def _build_yolo_primary_detection_records(
     max_detections: int | None = None,
 ) -> tuple[DetectionPredictionDetection, ...]:
     """把 YOLO 主线输出数组转换成平台 detection 记录。"""
+
+    if _require_primary_model_type(model_type, "YOLO primary") == "yolov8":
+        return build_yolov8_detection_records(
+            np_module=np_module,
+            prediction_array=prediction_array,
+            labels=labels,
+            score_threshold=score_threshold,
+            nms_threshold=nms_threshold,
+            resize_ratio=resize_ratio,
+            image_width=image_width,
+            image_height=image_height,
+        )
 
     postprocess_results = postprocess_detection_prediction_array(
         prediction_array=prediction_array,
@@ -1026,6 +1051,28 @@ def _build_yolo_primary_detection_records(
     if postprocess_mode == DETECTION_POSTPROCESS_MODE_NMS:
         detections.sort(key=lambda item: item.score, reverse=True)
     return tuple(detections)
+
+
+def _render_yolo_primary_detection_preview_image(
+    *,
+    model_type: str,
+    cv2_module: Any,
+    image: Any,
+    detections: tuple[DetectionPredictionDetection, ...],
+) -> bytes:
+    """按模型类型渲染 detection 调试预览图。"""
+
+    if _require_primary_model_type(model_type, "YOLO primary") == "yolov8":
+        return render_yolov8_detection_preview_image(
+            cv2_module=cv2_module,
+            image=image,
+            instances=detections,
+        )
+    return render_preview_image(
+        cv2_module=cv2_module,
+        image=image,
+        detections=detections,
+    )
 
 
 def _resolve_yolo_primary_postprocess_strategy(

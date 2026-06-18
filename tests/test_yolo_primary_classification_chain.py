@@ -26,7 +26,7 @@ from backend.service.application.runtime.classification_model_runtime import (
 from backend.service.application.runtime.classification_runtime_contracts import (
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.yolov8_classification_predictor import (
+from backend.service.application.runtime.predictors.yolov8_classification import (
     PyTorchYoloV8ClassificationRuntimeSession,
 )
 from backend.service.application.runtime.yolov8_runtime_target import (

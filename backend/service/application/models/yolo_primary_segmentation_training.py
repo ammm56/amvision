@@ -34,6 +34,26 @@ from backend.service.application.models.yolo_core_common.targets import (
     rasterize_segmentation_polygons,
     select_object_segmentation_polygons,
 )
+from backend.service.application.models.yolov8_core.assigners import (
+    assign_yolov8_segmentation_targets,
+)
+from backend.service.application.models.yolov8_core.data import (
+    build_yolov8_segmentation_training_batch,
+    build_yolov8_task_augmentation_options,
+    resolve_yolov8_task_augmentation_for_epoch,
+    resolve_yolov8_task_batch_input_size,
+)
+from backend.service.application.models.yolov8_core.evaluation import (
+    evaluate_yolov8_segmentation_samples,
+)
+from backend.service.application.models.yolov8_core.losses import (
+    compute_yolov8_segmentation_detection_loss,
+    compute_yolov8_segmentation_mask_loss,
+)
+from backend.service.application.models.yolov8_core.targets import (
+    rasterize_yolov8_segmentation_polygons,
+    select_yolov8_object_segmentation_polygons,
+)
 from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
@@ -207,6 +227,7 @@ def run_yolo_primary_segmentation_training(
         model_scale=request.model_scale,
         num_classes=len(labels),
     )
+    use_yolov8_segmentation_core = request.model_type == "yolov8"
     resume = None
     if request.resume_checkpoint_path is not None and request.resume_checkpoint_path.is_file():
         resume = _seg_load_resume(request, imports)
@@ -228,6 +249,11 @@ def run_yolo_primary_segmentation_training(
     grad_clip = max(0.0, float(extra.get("grad_clip_norm", _SEG_DEFAULT_GRAD_CLIP)))
     eval_conf = float(extra.get("evaluation_confidence_threshold", _SEG_DEFAULT_EVAL_CONF))
     eval_nms = float(extra.get("evaluation_nms_threshold", _SEG_DEFAULT_EVAL_NMS))
+    yolov8_augmentation_options = (
+        build_yolov8_task_augmentation_options(extra)
+        if use_yolov8_segmentation_core
+        else None
+    )
 
     if resume is not None:
         _seg_validate_resume(
@@ -286,14 +312,34 @@ def run_yolo_primary_segmentation_training(
         ep_loss = 0.0
         ep_cls_loss, ep_box_loss, ep_dfl_loss, ep_mask_loss = 0.0, 0.0, 0.0, 0.0
         ep_iters = 0
+        effective_yolov8_augmentation_options = (
+            resolve_yolov8_task_augmentation_for_epoch(
+                augmentation_options=yolov8_augmentation_options,
+                epoch_index=epoch,
+                max_epochs=me,
+            )
+            if use_yolov8_segmentation_core
+            else None
+        )
         for b_start in range(0, len(train_anns), bs):
             batch_annotations = train_anns[b_start : b_start + bs]
+            batch_input_size = (
+                resolve_yolov8_task_batch_input_size(
+                    base_input_size=input_size,
+                    augmentation_options=effective_yolov8_augmentation_options,
+                )
+                if use_yolov8_segmentation_core
+                else input_size
+            )
             batch = _seg_build_batch(
                 batch_annotations,
-                input_size,
+                batch_input_size,
                 device,
                 precision,
                 imports,
+                use_yolov8_segmentation_core=use_yolov8_segmentation_core,
+                yolov8_augmentation_options=effective_yolov8_augmentation_options,
+                yolov8_available_samples=train_anns,
             )
             if batch is None:
                 continue
@@ -333,8 +379,14 @@ def run_yolo_primary_segmentation_training(
             if raw_mask_coeffs is not None:
                 prediction_parts.append(raw_mask_coeffs.permute(0, 2, 1).contiguous())
             pred_scores = imports.torch.cat(prediction_parts, dim=-1)
+            distance_logits = raw_boxes.permute(0, 2, 1).contiguous()
+            assigner = (
+                assign_yolov8_segmentation_targets
+                if use_yolov8_segmentation_core
+                else assign_segmentation_targets
+            )
             prepareds = [
-                assign_segmentation_targets(
+                assigner(
                     torch_module=imports.torch,
                     targets=targets,
                     prediction=pred_scores[batch_index],
@@ -356,7 +408,12 @@ def run_yolo_primary_segmentation_training(
                     continue
                 image_prediction = pred_scores[batch_index]
                 fg = p.fg_mask.to(device)
-                l_c, l_b, l_d = compute_segmentation_detection_loss(
+                detection_loss_func = (
+                    compute_yolov8_segmentation_detection_loss
+                    if use_yolov8_segmentation_core
+                    else compute_segmentation_detection_loss
+                )
+                l_c, l_b, l_d = detection_loss_func(
                     torch_module=imports.torch,
                     prediction=image_prediction,
                     assignment=p,
@@ -364,6 +421,14 @@ def run_yolo_primary_segmentation_training(
                     stride_tensor=stride_tensor,
                     dfl_weight=dfl_w,
                     num_classes=nc,
+                    **(
+                        {
+                            "distance_logits": distance_logits[batch_index],
+                            "reg_max": int(getattr(seg_head, "reg_max", 1)),
+                        }
+                        if use_yolov8_segmentation_core
+                        else {}
+                    ),
                 )
                 loss_cls += l_c
                 loss_box += l_b
@@ -376,6 +441,7 @@ def run_yolo_primary_segmentation_training(
                         nc,
                         imports,
                         fg,
+                        use_yolov8_segmentation_core=use_yolov8_segmentation_core,
                     )
                     loss_mask_t += l_m
             total_loss = (
@@ -384,6 +450,8 @@ def run_yolo_primary_segmentation_training(
                 + dfl_w * loss_dfl
                 + mask_w * loss_mask_t
             )
+            if not total_loss.requires_grad:
+                total_loss = raw_scores.sum() * 0.0
             optimizer.zero_grad()
             if scaler is not None:
                 scaler.scale(total_loss).backward()
@@ -434,17 +502,30 @@ def run_yolo_primary_segmentation_training(
 
         val_metrics: dict[str, float] = {}
         if (len(val_anns) > 0 and epoch > 0 and epoch % eval_interval == 0) or epoch == me - 1:
-            val_metrics = _seg_evaluate(
-                model,
-                val_anns,
-                labels,
-                input_size,
-                device,
-                precision,
-                eval_conf,
-                eval_nms,
-                imports,
-            )
+            if use_yolov8_segmentation_core:
+                val_metrics = evaluate_yolov8_segmentation_samples(
+                    model=model,
+                    samples=val_anns,
+                    labels=labels,
+                    input_size=input_size,
+                    device=device,
+                    precision=precision,
+                    eval_confidence_threshold=eval_conf,
+                    eval_nms_threshold=eval_nms,
+                    imports=imports,
+                )
+            else:
+                val_metrics = _seg_evaluate(
+                    model,
+                    val_anns,
+                    labels,
+                    input_size,
+                    device,
+                    precision,
+                    eval_conf,
+                    eval_nms,
+                    imports,
+                )
             v_hist.append({"epoch": epoch, **val_metrics})
         current_val = float(val_metrics.get("map50_95", 0.0))
         if current_val > best_val:
@@ -684,7 +765,27 @@ def _seg_build_batch(
     device: str,
     precision: str,
     imports: Any,
+    *,
+    use_yolov8_segmentation_core: bool = False,
+    yolov8_augmentation_options: Any | None = None,
+    yolov8_available_samples: list[_SegTrainingAnnotation] | None = None,
 ) -> tuple[Any, list[dict[str, Any]]] | None:
+    """构造 segmentation 训练 batch，并按模型 core 选择 mask target 编码。"""
+
+    if use_yolov8_segmentation_core:
+        batch = build_yolov8_segmentation_training_batch(
+            samples=anns,
+            input_size=input_size,
+            device=device,
+            precision=precision,
+            imports=imports,
+            augmentation_options=yolov8_augmentation_options,
+            available_samples=yolov8_available_samples,
+        )
+        if batch is None:
+            return None
+        return batch.images, batch.targets
+
     if not anns:
         return None
     images, targets = [], []
@@ -718,18 +819,20 @@ def _seg_build_batch(
             y2 = ((y + h) * r + dh) / th
             box_targets.append([x1, y1, x2, y2])
             cls_targets.append(cid)
-            polygons = select_object_segmentation_polygons(
+            polygons = _seg_select_object_polygons(
                 ann.segmentations,
                 object_index=object_index,
                 object_count=object_count,
+                use_yolov8_segmentation_core=use_yolov8_segmentation_core,
             )
-            mask, valid = rasterize_segmentation_polygons(
+            mask, valid = _seg_rasterize_polygons(
                 cv2_module=imports.cv2,
                 np_module=imports.np,
                 polygons=polygons,
                 output_size=(tw, th),
                 resize_scale=r,
                 pad_xy=(dw, dh),
+                use_yolov8_segmentation_core=use_yolov8_segmentation_core,
             )
             mask_targets.append(mask)
             mask_valid.append(valid)
@@ -747,10 +850,73 @@ def _seg_build_batch(
     return imports.torch.stack(images, dim=0), targets
 
 
-def _seg_compute_mask_loss(pred, proto, p, nc, imports, fg_mask):
+def _seg_select_object_polygons(
+    segmentations: Any,
+    *,
+    object_index: int,
+    object_count: int,
+    use_yolov8_segmentation_core: bool,
+) -> list[list[float]] | None:
+    """按模型 core 选择 segmentation polygon 编码入口。"""
+
+    if use_yolov8_segmentation_core:
+        return select_yolov8_object_segmentation_polygons(
+            segmentations,
+            object_index=object_index,
+            object_count=object_count,
+        )
+    return select_object_segmentation_polygons(
+        segmentations,
+        object_index=object_index,
+        object_count=object_count,
+    )
+
+
+def _seg_rasterize_polygons(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    polygons: list[list[float]] | None,
+    output_size: tuple[int, int],
+    resize_scale: float,
+    pad_xy: tuple[int, int],
+    use_yolov8_segmentation_core: bool,
+) -> tuple[Any, bool]:
+    """按模型 core 选择 segmentation mask rasterize 入口。"""
+
+    rasterizer = (
+        rasterize_yolov8_segmentation_polygons
+        if use_yolov8_segmentation_core
+        else rasterize_segmentation_polygons
+    )
+    return rasterizer(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        polygons=polygons,
+        output_size=output_size,
+        resize_scale=resize_scale,
+        pad_xy=pad_xy,
+    )
+
+
+def _seg_compute_mask_loss(
+    pred,
+    proto,
+    p,
+    nc,
+    imports,
+    fg_mask,
+    *,
+    use_yolov8_segmentation_core: bool = False,
+):
     """在 mask_coefficients 和 proto 存在时计算 mask 损失。"""
 
-    return compute_segmentation_mask_loss(
+    mask_loss_func = (
+        compute_yolov8_segmentation_mask_loss
+        if use_yolov8_segmentation_core
+        else compute_segmentation_mask_loss
+    )
+    return mask_loss_func(
         torch_module=imports.torch,
         prediction=pred,
         proto=proto,
@@ -759,6 +925,7 @@ def _seg_compute_mask_loss(pred, proto, p, nc, imports, fg_mask):
         target_mask_valid=p.mask_valid,
         matched_gt_indices=p.matched_gt_indices,
         num_classes=nc,
+        **({"target_boxes": p.box_targets} if use_yolov8_segmentation_core else {}),
     )
 
 
@@ -780,7 +947,13 @@ def _seg_evaluate(
     eval_count = 0
     with imports.torch.no_grad():
         for ann in val_anns[:8]:
-            batch_r = _seg_build_batch([ann], input_size, device, precision, imports)
+            batch_r = _seg_build_batch(
+                [ann],
+                input_size,
+                device,
+                precision,
+                imports,
+            )
             if batch_r is None:
                 continue
             images, _ = batch_r

@@ -22,6 +22,10 @@ from backend.service.application.models.pose_evaluation import (
     PoseEvaluationRequest,
     run_pose_evaluation,
 )
+from backend.service.application.models.yolov8_core.evaluation import (
+    YoloV8PoseEvaluationRequest,
+    run_yolov8_pose_evaluation,
+)
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
@@ -178,11 +182,13 @@ class SqlAlchemyPoseEvaluationTaskService:
 
         try:
             manifest = dataset_storage.read_json(dataset_export.manifest_object_key or "")
-            eval_result = run_pose_evaluation(PoseEvaluationRequest(
-                dataset_storage=dataset_storage, runtime_target=runtime_target,
-                manifest_payload=manifest, score_threshold=request.score_threshold,
+            eval_result = _run_pose_evaluation_for_runtime_target(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest=manifest,
+                score_threshold=request.score_threshold,
                 extra_options=dict(request.extra_options),
-            ))
+            )
             dataset_storage.write_json(report_key, eval_result.report_payload)
             dataset_storage.write_json(predictions_key, eval_result.predictions_payload)
             if package_key:
@@ -316,3 +322,34 @@ class SqlAlchemyPoseEvaluationTaskService:
         with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(ds.resolve(report_key), arcname="report.json")
             archive.write(ds.resolve(predictions_key), arcname="predictions.json")
+
+
+def _run_pose_evaluation_for_runtime_target(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    manifest: dict[str, object],
+    score_threshold: float,
+    extra_options: dict[str, object],
+):
+    """按 model_type 选择 pose 数据集级评估入口。"""
+
+    if runtime_target.model_type == "yolov8":
+        return run_yolov8_pose_evaluation(
+            YoloV8PoseEvaluationRequest(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest_payload=manifest,
+                score_threshold=score_threshold,
+                extra_options=extra_options,
+            ),
+        )
+    return run_pose_evaluation(
+        PoseEvaluationRequest(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            manifest_payload=manifest,
+            score_threshold=score_threshold,
+            extra_options=extra_options,
+        ),
+    )

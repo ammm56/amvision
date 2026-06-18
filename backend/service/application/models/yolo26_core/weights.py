@@ -58,4 +58,30 @@ def load_yolo26_checkpoint_file(
         model=model,
         checkpoint_path=checkpoint_path,
         minimum_loadable_ratio=minimum_loadable_ratio,
+        pickle_class_binders=(_bind_yolo26_pickle_checkpoint_classes,),
     )
+
+
+def _bind_yolo26_pickle_checkpoint_classes(
+    *,
+    block_module: Any,
+    conv_module: Any,
+    head_module: Any,
+    tasks_module: Any,
+) -> None:
+    """把 YOLO26 专属旧 pickle 类名绑定到项目内 YOLO26 core。"""
+
+    del conv_module, tasks_module
+    from backend.service.application.models.yolo26_core.tasks import (
+        OBB26,
+        Pose26,
+        Proto26,
+        RealNVP,
+        Segment26,
+    )
+
+    block_module.Proto26 = Proto26
+    head_module.OBB26 = OBB26
+    head_module.Pose26 = Pose26
+    head_module.RealNVP = RealNVP
+    head_module.Segment26 = Segment26

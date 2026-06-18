@@ -24,6 +24,10 @@ from backend.service.application.models.detection_evaluation import (
     DetectionEvaluationRequest,
     run_detection_evaluation,
 )
+from backend.service.application.models.yolov8_core.evaluation import (
+    YoloV8DetectionEvaluationRequest,
+    run_yolov8_detection_evaluation,
+)
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
 )
@@ -227,13 +231,25 @@ class SqlAlchemyDetectionEvaluationTaskService:
 
         try:
             manifest = dataset_storage.read_json(dataset_export.manifest_object_key or "")
-            eval_result = run_detection_evaluation(DetectionEvaluationRequest(
-                dataset_storage=dataset_storage, runtime_target=runtime_target,
-                manifest_payload=manifest,
-                score_threshold=request.score_threshold or 0.01,
-                nms_threshold=request.nms_threshold or 0.65,
-                extra_options=dict(request.extra_options),
-            ))
+            if runtime_target.model_type == "yolov8":
+                eval_result = run_yolov8_detection_evaluation(
+                    YoloV8DetectionEvaluationRequest(
+                        dataset_storage=dataset_storage,
+                        runtime_target=runtime_target,
+                        manifest_payload=manifest,
+                        score_threshold=request.score_threshold or 0.01,
+                        nms_threshold=request.nms_threshold or 0.65,
+                        extra_options=dict(request.extra_options),
+                    )
+                )
+            else:
+                eval_result = run_detection_evaluation(DetectionEvaluationRequest(
+                    dataset_storage=dataset_storage, runtime_target=runtime_target,
+                    manifest_payload=manifest,
+                    score_threshold=request.score_threshold or 0.01,
+                    nms_threshold=request.nms_threshold or 0.65,
+                    extra_options=dict(request.extra_options),
+                ))
             dataset_storage.write_json(report_key, eval_result.report_payload)
             dataset_storage.write_json(detections_key, eval_result.detections_payload)
             if package_key:

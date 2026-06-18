@@ -153,7 +153,7 @@
 
 - 当前真实训练链路基于 PyTorch checkpoint，训练期 validation 已在训练任务内部接通。
 - 当前正式 `/models/{task_type}/validation-sessions` 已覆盖 `detection / classification / segmentation / pose / obb` 五类任务，并统一支持 `pytorch / onnxruntime / openvino / tensorrt` 四类 runtime backend；session 持久化已显式保存 `model_build_id` 与 `runtime_artifact_*` 字段，旧 session 数据仍可回退到 checkpoint 语义读取。
-- 当前 `evaluation-tasks` 用于数据集级回归评估，最小执行边界为 `coco-detection-v1` DatasetExport。
+- 当前 `evaluation-tasks` 用于数据集级回归评估。detection 已接通 `coco-detection-v1` 主链；YOLOv8 segmentation / pose / OBB 也已接入各自 core 的数据集级 evaluation wrapper，并通过对应 task service 按 `model_type == yolov8` 分发。当前 segmentation 已用 COCO-style AP 插值计算 bbox AP 与 mask IoU AP，pose 已用 OKS AP，OBB 已用 polygon / rotated box IoU AP；这些已经替代原来的 `precision * recall` 过渡统计，但仍不是完整 `pycocotools` COCO mask / keypoint 或专门 rotated box evaluator 的等价实现。
 
 ### 转换输出
 

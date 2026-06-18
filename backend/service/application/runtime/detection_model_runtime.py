@@ -40,7 +40,7 @@ from backend.service.application.runtime.predictors.rfdetr import (
     OpenVINORfdetrRuntimeSession,
     TensorRTRfdetrRuntimeSession,
 )
-from backend.service.application.runtime.yolov8_predictor import (
+from backend.service.application.runtime.predictors.yolov8_detection import (
     OpenVINOYoloV8RuntimeSession,
     OnnxRuntimeYoloV8RuntimeSession,
     PyTorchYoloV8RuntimeSession,

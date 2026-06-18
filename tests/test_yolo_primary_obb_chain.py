@@ -71,7 +71,7 @@ def test_obb_prediction_array_postprocess():
     prediction[:, :, :4] = np.abs(prediction[:, :, :4]) * 300
     prediction[:, :, 4] = 0.9
     prediction[:, :, 5] = 0.0
-    instances = _build_obb_instances(np_module=np, prediction_array=prediction, labels=labels, score_threshold=0.3, resize_ratio=1.0, image_width=256, image_height=256)
+    instances = _build_obb_instances(np_module=np, prediction_array=prediction, model_type="yolov8", labels=labels, score_threshold=0.3, resize_ratio=1.0, image_width=256, image_height=256)
     assert isinstance(instances, tuple)
     for inst in instances:
         assert len(inst.bbox_xyxy) == 4

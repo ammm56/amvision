@@ -18,6 +18,10 @@ from backend.service.application.models.yolo_primary_detection_training import (
 from backend.service.application.models.yolo_primary_model_configs import (
     build_yolo_primary_model,
 )
+from backend.service.application.models.yolov8_core.inference import (
+    build_yolov8_classification_inference_categories,
+    normalize_yolov8_classification_inference_outputs,
+)
 from backend.service.application.runtime.classification_runtime_contracts import (
     ClassificationPredictionCategory,
     ClassificationPredictionExecutionResult,
@@ -178,6 +182,7 @@ class PyTorchYoloPrimaryClassificationRuntimeSession:
         probabilities, logits = _normalize_pytorch_classification_outputs(
             outputs=outputs,
             np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
         )
         categories = _build_classification_categories(
             np_module=self.imports.np,
@@ -185,6 +190,7 @@ class PyTorchYoloPrimaryClassificationRuntimeSession:
             logits=logits,
             labels=self.runtime_target.labels,
             top_k=top_k,
+            model_type=self.runtime_target.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -351,6 +357,7 @@ class OnnxRuntimeYoloPrimaryClassificationRuntimeSession:
         probabilities, logits = _normalize_onnxruntime_classification_outputs(
             outputs=outputs,
             np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
         )
         categories = _build_classification_categories(
             np_module=self.imports.np,
@@ -358,6 +365,7 @@ class OnnxRuntimeYoloPrimaryClassificationRuntimeSession:
             logits=logits,
             labels=self.runtime_target.labels,
             top_k=top_k,
+            model_type=self.runtime_target.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -542,13 +550,18 @@ class OpenVINOYoloPrimaryClassificationRuntimeSession:
             raise InvalidRequestError("openvino classification 推理输出为空")
 
         postprocess_started_at = perf_counter()
-        probabilities = _ensure_probability_array(raw_output, np_module=self.imports.np)
+        probabilities, logits = _normalize_single_classification_output(
+            output=raw_output,
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         categories = _build_classification_categories(
             np_module=self.imports.np,
             probabilities=probabilities,
-            logits=None,
+            logits=logits,
             labels=self.runtime_target.labels,
             top_k=top_k,
+            model_type=self.runtime_target.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -899,13 +912,18 @@ class TensorRTYoloPrimaryClassificationRuntimeSession:
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
         postprocess_started_at = perf_counter()
-        probabilities = _ensure_probability_array(output_array, np_module=self.imports.np)
+        probabilities, logits = _normalize_single_classification_output(
+            output=output_array,
+            np_module=self.imports.np,
+            model_type=self.runtime_target.model_type,
+        )
         categories = _build_classification_categories(
             np_module=self.imports.np,
             probabilities=probabilities,
-            logits=None,
+            logits=logits,
             labels=self.runtime_target.labels,
             top_k=top_k,
+            model_type=self.runtime_target.model_type,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -1117,9 +1135,15 @@ def _normalize_pytorch_classification_outputs(
     *,
     outputs: object,
     np_module: Any,
+    model_type: str,
 ) -> tuple[Any, Any | None]:
     """把 PyTorch classification 输出归一为 probabilities/logits。"""
 
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return normalize_yolov8_classification_inference_outputs(
+            outputs=outputs,
+            np_module=np_module,
+        )
     if isinstance(outputs, list | tuple):
         if len(outputs) >= 2:
             probabilities = _tensor_to_numpy_array(outputs[0], np_module=np_module)
@@ -1135,9 +1159,15 @@ def _normalize_onnxruntime_classification_outputs(
     *,
     outputs: object,
     np_module: Any,
+    model_type: str,
 ) -> tuple[Any, Any | None]:
     """把 ONNXRuntime classification 输出归一为 probabilities/logits。"""
 
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return normalize_yolov8_classification_inference_outputs(
+            outputs=outputs,
+            np_module=np_module,
+        )
     if not isinstance(outputs, list) or not outputs:
         raise InvalidRequestError("onnxruntime classification 推理输出为空")
     probabilities = _ensure_probability_array(outputs[0], np_module=np_module)
@@ -1145,6 +1175,22 @@ def _normalize_onnxruntime_classification_outputs(
     if len(outputs) >= 2:
         logits = _tensor_to_numpy_array(outputs[1], np_module=np_module)
     return probabilities, logits
+
+
+def _normalize_single_classification_output(
+    *,
+    output: object,
+    np_module: Any,
+    model_type: str,
+) -> tuple[Any, Any | None]:
+    """把单输出 backend 的 classification 输出归一为 probabilities/logits。"""
+
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return normalize_yolov8_classification_inference_outputs(
+            outputs=[output],
+            np_module=np_module,
+        )
+    return _ensure_probability_array(output, np_module=np_module), None
 
 
 def _tensor_to_numpy_array(value: object, *, np_module: Any) -> Any:
@@ -1191,9 +1237,18 @@ def _build_classification_categories(
     logits: Any | None,
     labels: tuple[str, ...],
     top_k: int,
+    model_type: str,
 ) -> tuple[ClassificationPredictionCategory, ...]:
     """把 probabilities/logits 转换成平台 classification 结果。"""
 
+    if normalize_optional_platform_model_type(model_type) == "yolov8":
+        return build_yolov8_classification_inference_categories(
+            np_module=np_module,
+            probabilities=probabilities,
+            logits=logits,
+            labels=labels,
+            top_k=top_k,
+        )
     if int(probabilities.shape[0]) <= 0:
         return ()
     probability_row = probabilities[0]

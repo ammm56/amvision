@@ -96,6 +96,7 @@ def test_pose_prediction_array_postprocess():
     prediction[:, :, 4] = 0.9
     instances, kpt_shape = _build_pose_instances(
         np_module=np, prediction_array=prediction, labels=labels,
+        model_type="yolov8",
         score_threshold=0.3, keypoint_confidence_threshold=0.5,
         resize_ratio=1.0, image_width=256, image_height=256,
         input_size=(256, 256), default_kpt_shape=(17, 3),

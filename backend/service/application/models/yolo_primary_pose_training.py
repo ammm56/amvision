@@ -19,6 +19,15 @@ from backend.service.application.models.yolo_dataset_manifest_support import (
     normalize_yolo_category_names,
 )
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolov8_core.data import (
+    build_yolov8_pose_training_batch,
+    build_yolov8_task_augmentation_options,
+    resolve_yolov8_task_augmentation_for_epoch,
+    resolve_yolov8_task_batch_input_size,
+)
+from backend.service.application.models.yolov8_core.evaluation import (
+    evaluate_yolov8_pose_samples,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 YOLO_PRIMARY_POSE_IMPLEMENTATION_MODE = "yolo-primary-pose"
@@ -149,11 +158,16 @@ def run_yolo_primary_pose_training(
 
     labels, train_anns, val_anns = _load_pose_manifest(request.dataset_storage, request.manifest_payload)
     num_classes = len(labels)
-    kpt_shape = _POSE_DEF_KPT_SHAPE
+    kpt_shape = _resolve_pose_keypoint_shape_from_annotations(
+        manifest=request.manifest_payload,
+        train_annotations=train_anns,
+        val_annotations=val_anns,
+    )
 
     model = build_yolo_primary_model(
         model_type=request.model_type, task_type="pose",
         model_scale=request.model_scale, num_classes=num_classes,
+        model_config_overrides={"kpt_shape": kpt_shape},
     )
     model.to(device)
     trainable_params = [p for p in model.parameters() if p.requires_grad]
@@ -172,6 +186,11 @@ def run_yolo_primary_pose_training(
     assign_alpha = float(extra.get("assign_alpha", _POSE_DEF_ASSIGN_A))
     assign_beta = float(extra.get("assign_beta", _POSE_DEF_ASSIGN_B))
     grad_clip = max(0.0, float(extra.get("grad_clip_norm", _POSE_DEF_GRAD_CLIP)))
+    yolov8_augmentation_options = (
+        build_yolov8_task_augmentation_options(extra)
+        if request.model_type == "yolov8"
+        else None
+    )
 
     optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     iterations_per_epoch = max(1, (len(train_anns) + bs - 1) // bs)
@@ -198,11 +217,21 @@ def run_yolo_primary_pose_training(
     best_metric_value = 0.0
     best_metric_name = "val_map50_95"
     ckpt_bytes = b""
+    validation_history: list[dict[str, object]] = []
 
     for epoch in range(start_epoch, max_epochs):
         model.train()
         epoch_losses: dict[str, float] = {}
         epoch_iters = 0
+        effective_yolov8_augmentation_options = (
+            resolve_yolov8_task_augmentation_for_epoch(
+                augmentation_options=yolov8_augmentation_options,
+                epoch_index=epoch,
+                max_epochs=max_epochs,
+            )
+            if request.model_type == "yolov8"
+            else None
+        )
 
         import random
         indices = list(range(len(train_anns)))
@@ -211,9 +240,28 @@ def run_yolo_primary_pose_training(
 
         for batch_start in range(0, len(shuffled), bs):
             batch_anns = shuffled[batch_start:batch_start + bs]
-            images, targets = _build_pose_batch(batch_anns, input_size, device, precision, cv2, np, torch)
-            if images is None:
-                continue
+            if request.model_type == "yolov8":
+                batch_input_size = resolve_yolov8_task_batch_input_size(
+                    base_input_size=input_size,
+                    augmentation_options=effective_yolov8_augmentation_options,
+                )
+                batch = build_yolov8_pose_training_batch(
+                    samples=batch_anns,
+                    input_size=batch_input_size,
+                    device=device,
+                    precision=precision,
+                    imports=_build_yolov8_training_imports(cv2, np, torch),
+                    augmentation_options=effective_yolov8_augmentation_options,
+                    available_samples=shuffled,
+                )
+                if batch is None:
+                    continue
+                images = batch.images
+                targets = batch.targets
+            else:
+                images, targets = _build_pose_batch(batch_anns, input_size, device, precision, cv2, np, torch)
+                if images is None:
+                    continue
 
             autocast_ctx = torch.amp.autocast("cuda", enabled=use_amp) if use_amp else nullcontext()
             with autocast_ctx:
@@ -223,24 +271,48 @@ def run_yolo_primary_pose_training(
                 else:
                     raw_for_loss = raw_outputs
 
-                from backend.service.application.models.pose_loss import compute_pose_loss
-                loss_dict = compute_pose_loss(
-                    torch=torch,
-                    model=model,
-                    raw_outputs=raw_for_loss,
-                    batch_targets=targets,
-                    num_classes=num_classes,
-                    kpt_shape=kpt_shape,
-                    class_loss_weight=cls_w,
-                    box_loss_weight=box_w,
-                    dfl_loss_weight=dfl_w,
-                    kpt_loss_weight=kpt_w,
-                    assign_topk=assign_topk,
-                    assign_alpha=assign_alpha,
-                    assign_beta=assign_beta,
-                )
+                if request.model_type == "yolov8":
+                    from backend.service.application.models.yolov8_core.losses import (
+                        compute_yolov8_pose_loss,
+                    )
+
+                    loss_dict = compute_yolov8_pose_loss(
+                        torch=torch,
+                        model=model,
+                        raw_outputs=raw_for_loss,
+                        batch_targets=targets,
+                        num_classes=num_classes,
+                        kpt_shape=kpt_shape,
+                        class_loss_weight=cls_w,
+                        box_loss_weight=box_w,
+                        dfl_loss_weight=dfl_w,
+                        kpt_loss_weight=kpt_w,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
+                    )
+                else:
+                    from backend.service.application.models.pose_loss import compute_pose_loss
+
+                    loss_dict = compute_pose_loss(
+                        torch=torch,
+                        model=model,
+                        raw_outputs=raw_for_loss,
+                        batch_targets=targets,
+                        num_classes=num_classes,
+                        kpt_shape=kpt_shape,
+                        class_loss_weight=cls_w,
+                        box_loss_weight=box_w,
+                        dfl_loss_weight=dfl_w,
+                        kpt_loss_weight=kpt_w,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
+                    )
 
             total_loss = loss_dict["loss"]
+            if not total_loss.requires_grad:
+                total_loss = _build_pose_zero_grad_loss(raw_for_loss, torch)
             optimizer.zero_grad()
             if scaler is not None:
                 scaler.scale(total_loss).backward()
@@ -277,6 +349,32 @@ def run_yolo_primary_pose_training(
         if cmd and cmd.terminate_training:
             raise YoloPrimaryPoseTrainingTerminatedError()
 
+        val_metrics: dict[str, float] = {}
+        should_evaluate = (
+            request.model_type == "yolov8"
+            and len(val_anns) > 0
+            and ((epoch > 0 and epoch % request.evaluation_interval == 0) or epoch == max_epochs - 1)
+        )
+        if should_evaluate:
+            val_metrics = evaluate_yolov8_pose_samples(
+                model=model,
+                samples=val_anns,
+                labels=labels,
+                input_size=input_size,
+                device=device,
+                precision=precision,
+                score_threshold=float(extra.get("eval_confidence_threshold", 0.01)),
+                nms_threshold=float(extra.get("eval_nms_threshold", 0.65)),
+                keypoint_confidence_threshold=float(extra.get("keypoint_confidence_threshold", 0.25)),
+                kpt_shape=kpt_shape,
+                imports=_build_yolov8_training_imports(cv2, np, torch),
+            )
+            validation_history.append({"epoch": epoch, **val_metrics})
+            current_metric = float(val_metrics.get("map50_95", 0.0))
+            if current_metric > best_metric_value:
+                best_metric_value = current_metric
+                best_metric_name = "val_map50_95"
+
         # 保存 checkpoint
         buf = io.BytesIO()
         torch.save({
@@ -286,6 +384,7 @@ def run_yolo_primary_pose_training(
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
             "metrics_history": metrics_history,
+            "validation_history": validation_history,
         }, buf)
         ckpt_bytes = buf.getvalue()
 
@@ -293,7 +392,7 @@ def run_yolo_primary_pose_training(
             request.savepoint_callback(YoloPrimaryPoseTrainingSavePoint(
                 latest_checkpoint_bytes=ckpt_bytes,
                 train_metrics=avg_metrics,
-                validation_metrics={},
+                validation_metrics=val_metrics,
                 best_metric_value=best_metric_value,
                 best_metric_name=best_metric_name,
                 epoch=epoch + 1,
@@ -307,10 +406,61 @@ def run_yolo_primary_pose_training(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=ckpt_bytes,
-        metrics_payload={"final_metrics": metrics_history[-1] if metrics_history else {}, "epoch_history": metrics_history},
-        validation_metrics_payload={"epoch_history": []},
+        metrics_payload={
+            "final_metrics": metrics_history[-1] if metrics_history else {},
+            "epoch_history": metrics_history,
+            "kpt_shape": list(kpt_shape),
+        },
+        validation_metrics_payload={
+            "final_metrics": validation_history[-1] if validation_history else {},
+            "epoch_history": validation_history,
+        },
         labels=labels,
     )
+
+
+def _build_yolov8_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
+    """构建 YOLOv8 core data/evaluation 使用的依赖对象。"""
+
+    from types import SimpleNamespace
+
+    return SimpleNamespace(cv2=cv2, np=np, torch=torch)
+
+
+def _build_pose_zero_grad_loss(raw_outputs: Any, torch: Any) -> Any:
+    """用模型输出构建可反传的零损失。"""
+
+    if torch.is_tensor(raw_outputs):
+        return raw_outputs.sum() * 0.0
+    if isinstance(raw_outputs, dict):
+        tensors = [
+            _build_pose_zero_grad_loss(value, torch)
+            for value in raw_outputs.values()
+            if _contains_pose_tensor(value, torch)
+        ]
+    elif isinstance(raw_outputs, list | tuple):
+        tensors = [
+            _build_pose_zero_grad_loss(value, torch)
+            for value in raw_outputs
+            if _contains_pose_tensor(value, torch)
+        ]
+    else:
+        tensors = []
+    if tensors:
+        return sum(tensors)
+    return torch.zeros((), requires_grad=True)
+
+
+def _contains_pose_tensor(value: Any, torch: Any) -> bool:
+    """判断输出结构里是否包含 torch Tensor。"""
+
+    if torch.is_tensor(value):
+        return True
+    if isinstance(value, dict):
+        return any(_contains_pose_tensor(item, torch) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_contains_pose_tensor(item, torch) for item in value)
+    return False
 
 
 def _load_pose_manifest(
@@ -357,6 +507,7 @@ def _load_pose_manifest(
                 image_root=image_root_path,
                 label_root=label_root_path,
                 category_names=yolo_category_names,
+                pose_shape=_read_pose_keypoint_shape_from_manifest(manifest),
             )
         else:
             annotation_file = str(split.get("annotation_file", ""))
@@ -423,6 +574,58 @@ def _load_pose_manifest(
         ]
 
     return labels, remap(train_anns), remap(val_anns)
+
+
+def _resolve_pose_keypoint_shape_from_manifest(
+    manifest: dict[str, object],
+) -> tuple[int, int]:
+    """从 pose manifest metadata 中读取 kpt_shape，缺省时回退到 COCO pose。"""
+
+    return _read_pose_keypoint_shape_from_manifest(manifest) or _POSE_DEF_KPT_SHAPE
+
+
+def _read_pose_keypoint_shape_from_manifest(
+    manifest: dict[str, object],
+) -> tuple[int, int] | None:
+    """从 pose manifest metadata 中读取可选 kpt_shape。"""
+
+    metadata = manifest.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    raw_shape = metadata.get("kpt_shape")
+    if (
+        not isinstance(raw_shape, list)
+        and not isinstance(raw_shape, tuple)
+    ):
+        return None
+    if len(raw_shape) < 2:
+        return None
+    try:
+        keypoint_count = int(raw_shape[0])
+        point_dimensions = int(raw_shape[1])
+    except (TypeError, ValueError):
+        return None
+    if keypoint_count <= 0 or point_dimensions not in {2, 3}:
+        return None
+    return (keypoint_count, point_dimensions)
+
+
+def _resolve_pose_keypoint_shape_from_annotations(
+    *,
+    manifest: dict[str, object],
+    train_annotations: list[_PoseAnnotation],
+    val_annotations: list[_PoseAnnotation],
+) -> tuple[int, int]:
+    """从 manifest 或已解析标注中推断 pose keypoint shape。"""
+
+    manifest_shape = _read_pose_keypoint_shape_from_manifest(manifest)
+    if manifest_shape is not None:
+        return manifest_shape
+    for annotation in (*train_annotations, *val_annotations):
+        for keypoints in annotation.keypoints or []:
+            if len(keypoints) > 0 and len(keypoints) % 3 == 0:
+                return (len(keypoints) // 3, 3)
+    return _POSE_DEF_KPT_SHAPE
 
 
 def _build_pose_batch(
