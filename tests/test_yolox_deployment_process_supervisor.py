@@ -12,7 +12,7 @@ from backend.service.application.runtime.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
 from backend.service.application.runtime.safe_counter import JSON_SAFE_INTEGER_MAX
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig

@@ -61,7 +61,7 @@ from backend.service.application.runtime.support.detection import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.application.runtime.pose_runtime_contracts import (
+from backend.service.application.runtime.contracts.pose import (
     PosePredictionExecutionResult,
     PosePredictionInstance,
     PosePredictionKeypoint,
@@ -1392,7 +1392,7 @@ def _infer_kpt_shape(runtime_target: RuntimeTargetSnapshot) -> tuple[int, int]:
 
 
 def _as_preview_detection(instance: PosePredictionInstance):
-    from backend.service.application.runtime.detection_runtime_contracts import (
+    from backend.service.application.runtime.contracts.detection import (
         DetectionPredictionDetection,
     )
 

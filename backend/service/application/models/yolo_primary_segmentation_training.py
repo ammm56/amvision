@@ -220,9 +220,9 @@ def run_yolo_primary_segmentation_training(
 ) -> YoloPrimarySegmentationTrainingExecutionResult:
     """执行一次 YOLO 主线 segmentation 训练。"""
 
-    if request.model_type == "yolo11":
+    if request.model_type in {"yolo11", "yolo26"}:
         raise InvalidRequestError(
-            "YOLO11 segmentation 训练已切到 yolo11_segmentation_training.py",
+            "YOLO11 / YOLO26 segmentation 训练已切到各自专属训练入口",
             details={"model_type": request.model_type},
         )
 

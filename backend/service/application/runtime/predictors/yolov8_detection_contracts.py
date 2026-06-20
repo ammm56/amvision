@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,

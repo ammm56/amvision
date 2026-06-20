@@ -14,7 +14,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )

@@ -1,0 +1,329 @@
+"""YOLO26 训练入口。"""
+
+from __future__ import annotations
+
+from backend.service.application.models.yolo26_core.training.classification_checkpoint import (
+    Yolo26ClassificationResumeState,
+    build_yolo26_classification_checkpoint_bytes,
+    load_yolo26_classification_model_state,
+    load_yolo26_classification_resume_state,
+    validate_yolo26_classification_resume_parameters,
+)
+from backend.service.application.models.yolo26_core.training.classification_defaults import (
+    YOLO26_CLASSIFICATION_DEFAULT_INPUT_SIZE,
+    YOLO26_CLASSIFICATION_DEFAULT_LR,
+    YOLO26_CLASSIFICATION_DEFAULT_MIN_LR_RATIO,
+    YOLO26_CLASSIFICATION_DEFAULT_WEIGHT_DECAY,
+)
+from backend.service.application.models.yolo26_core.training.classification_imports import (
+    Yolo26ClassificationTrainingImports,
+    require_yolo26_classification_training_imports,
+)
+from backend.service.application.models.yolo26_core.training.classification_runtime import (
+    Yolo26ClassificationTrainingRuntime,
+    build_yolo26_classification_autocast_context,
+    build_yolo26_classification_training_runtime,
+    move_yolo26_classification_optimizer_state_to_device,
+    resolve_yolo26_classification_training_device,
+)
+from backend.service.application.models.yolo26_core.training.classification_trainer import (
+    Yolo26ClassificationTrainingControlCommand,
+    Yolo26ClassificationTrainingEpochProgress,
+    Yolo26ClassificationTrainingLoopResult,
+    Yolo26ClassificationTrainingPausedError,
+    Yolo26ClassificationTrainingSavePoint,
+    Yolo26ClassificationTrainingTerminatedError,
+    run_yolo26_classification_training_loop,
+)
+from backend.service.application.models.yolo26_core.training.checkpoint import (
+    Yolo26DetectionEpochCheckpointUpdate,
+    build_yolo26_detection_checkpoint_state,
+    build_yolo26_detection_epoch_checkpoint_update,
+    decode_yolo26_detection_checkpoint_state,
+    encode_yolo26_detection_checkpoint_state,
+)
+from backend.service.application.models.yolo26_core.training.control import (
+    Yolo26DetectionEpochControlDecision,
+    resolve_yolo26_detection_epoch_control,
+)
+from backend.service.application.models.yolo26_core.training.data_context import (
+    Yolo26DetectionTrainingDataContext,
+    prepare_yolo26_detection_training_data_context,
+)
+from backend.service.application.models.yolo26_core.training.detection import (
+    compute_yolo26_detection_training_loss,
+    is_yolo26_detection_core_model,
+)
+from backend.service.application.models.yolo26_core.training.detection_support import (
+    YOLO26_DETECTION_DEFAULT_ASSIGN_ALPHA,
+    YOLO26_DETECTION_DEFAULT_ASSIGN_BETA,
+    YOLO26_DETECTION_DEFAULT_ASSIGN_TOPK,
+    YOLO26_DETECTION_DEFAULT_BATCH_SIZE,
+    YOLO26_DETECTION_DEFAULT_BOX_LOSS_WEIGHT,
+    YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT,
+    YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
+    YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
+    YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
+    YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL,
+    YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM,
+    YOLO26_DETECTION_DEFAULT_INPUT_SIZE,
+    YOLO26_DETECTION_DEFAULT_MAX_EPOCHS,
+    YOLO26_DETECTION_DEFAULT_MIN_LR_RATIO,
+    Yolo26DetectionTrainingImports,
+    read_yolo26_float_option,
+    read_yolo26_int_option,
+    require_yolo26_detection_training_imports,
+    resolve_yolo26_detection_input_size,
+    resolve_yolo26_detection_runtime,
+    unwrap_yolo26_detection_outputs,
+)
+from backend.service.application.models.yolo26_core.training.epoch import (
+    resolve_yolo26_detection_best_metric_name,
+    resolve_yolo26_detection_best_metric_update,
+    resolve_yolo26_detection_initial_best_metric_value,
+    serialize_yolo26_detection_best_metric_value,
+    should_run_yolo26_detection_validation,
+)
+from backend.service.application.models.yolo26_core.training.execution import (
+    YOLO26_DETECTION_CORE_IMPLEMENTATION_MODE,
+    Yolo26DetectionTrainingExecutionPlan,
+    Yolo26DetectionTrainingRuntime,
+    build_yolo26_autocast_context,
+    build_yolo26_detection_training_runtime,
+    move_yolo26_optimizer_state_to_device,
+    plan_yolo26_detection_training_execution,
+)
+from backend.service.application.models.yolo26_core.training.resume import (
+    Yolo26DetectionResumeValidationRequest,
+    validate_yolo26_detection_resume_checkpoint,
+)
+from backend.service.application.models.yolo26_core.training.runner import (
+    Yolo26DetectionTrainingBatchProgress,
+    Yolo26DetectionTrainingEpochResult,
+    run_yolo26_detection_training_epoch,
+)
+from backend.service.application.models.yolo26_core.training.savepoint import (
+    Yolo26DetectionTrainingSavepointPayload,
+    build_yolo26_detection_training_savepoint_payload,
+)
+from backend.service.application.models.yolo26_core.training.segmentation_anchors import (
+    build_yolo26_segmentation_anchors_from_features,
+)
+from backend.service.application.models.yolo26_core.training.segmentation_checkpoint import (
+    Yolo26SegmentationResumeState,
+    build_yolo26_segmentation_checkpoint_bytes,
+    load_yolo26_segmentation_model_state,
+    load_yolo26_segmentation_resume_state,
+    restore_yolo26_segmentation_training_state,
+    validate_yolo26_segmentation_resume_parameters,
+)
+from backend.service.application.models.yolo26_core.training.segmentation_imports import (
+    Yolo26SegmentationTrainingImports,
+    build_yolo26_segmentation_autocast_context,
+    require_yolo26_segmentation_training_imports,
+    resolve_yolo26_segmentation_training_device,
+)
+from backend.service.application.models.yolo26_core.training.segmentation_manifest import (
+    Yolo26SegmentationTrainingAnnotation,
+    Yolo26SegmentationTrainingManifest,
+    load_yolo26_segmentation_training_manifest,
+)
+from backend.service.application.models.yolo26_core.training.pose_checkpoint import (
+    Yolo26PoseResumeState,
+    build_yolo26_pose_checkpoint_bytes,
+    load_yolo26_pose_resume_state,
+    restore_yolo26_pose_training_state,
+    validate_yolo26_pose_resume_parameters,
+)
+from backend.service.application.models.yolo26_core.training.pose_imports import (
+    Yolo26PoseTrainingImports,
+    build_yolo26_pose_autocast_context,
+    require_yolo26_pose_training_imports,
+    resolve_yolo26_pose_training_device,
+)
+from backend.service.application.models.yolo26_core.training.pose_manifest import (
+    Yolo26PoseTrainingAnnotation,
+    Yolo26PoseTrainingManifest,
+    load_yolo26_pose_training_manifest,
+)
+from backend.service.application.models.yolo26_core.training.pose_trainer import (
+    Yolo26PoseTrainingControlCommand,
+    Yolo26PoseTrainingEpochProgress,
+    Yolo26PoseTrainingLoopResult,
+    Yolo26PoseTrainingPausedError,
+    Yolo26PoseTrainingSavePoint,
+    Yolo26PoseTrainingTerminatedError,
+    run_yolo26_pose_training_loop,
+)
+from backend.service.application.models.yolo26_core.training.obb_checkpoint import (
+    Yolo26ObbResumeState,
+    build_yolo26_obb_checkpoint_bytes,
+    load_yolo26_obb_resume_state,
+    restore_yolo26_obb_training_state,
+    validate_yolo26_obb_resume_parameters,
+)
+from backend.service.application.models.yolo26_core.training.obb_imports import (
+    Yolo26ObbTrainingImports,
+    build_yolo26_obb_autocast_context,
+    require_yolo26_obb_training_imports,
+    resolve_yolo26_obb_training_device,
+)
+from backend.service.application.models.yolo26_core.training.obb_manifest import (
+    Yolo26ObbTrainingAnnotation,
+    Yolo26ObbTrainingManifest,
+    load_yolo26_obb_training_manifest,
+)
+from backend.service.application.models.yolo26_core.training.obb_trainer import (
+    Yolo26ObbTrainingControlCommand,
+    Yolo26ObbTrainingEpochProgress,
+    Yolo26ObbTrainingLoopResult,
+    Yolo26ObbTrainingPausedError,
+    Yolo26ObbTrainingSavePoint,
+    Yolo26ObbTrainingTerminatedError,
+    run_yolo26_obb_training_loop,
+)
+from backend.service.application.models.yolo26_core.training.trainer import (
+    Yolo26DetectionTrainerEpochProgress,
+    Yolo26DetectionTrainingLoopResult,
+    Yolo26DetectionTrainingPausedError,
+    Yolo26DetectionTrainingTerminatedError,
+    run_yolo26_detection_training_loop,
+)
+from backend.service.application.models.yolo26_core.training.validation import (
+    evaluate_yolo26_detection_validation_losses,
+)
+
+__all__ = [
+    "YOLO26_CLASSIFICATION_DEFAULT_INPUT_SIZE",
+    "YOLO26_CLASSIFICATION_DEFAULT_LR",
+    "YOLO26_CLASSIFICATION_DEFAULT_MIN_LR_RATIO",
+    "YOLO26_CLASSIFICATION_DEFAULT_WEIGHT_DECAY",
+    "YOLO26_DETECTION_CORE_IMPLEMENTATION_MODE",
+    "YOLO26_DETECTION_DEFAULT_ASSIGN_ALPHA",
+    "YOLO26_DETECTION_DEFAULT_ASSIGN_BETA",
+    "YOLO26_DETECTION_DEFAULT_ASSIGN_TOPK",
+    "YOLO26_DETECTION_DEFAULT_BATCH_SIZE",
+    "YOLO26_DETECTION_DEFAULT_BOX_LOSS_WEIGHT",
+    "YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT",
+    "YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT",
+    "YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD",
+    "YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD",
+    "YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL",
+    "YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM",
+    "YOLO26_DETECTION_DEFAULT_INPUT_SIZE",
+    "YOLO26_DETECTION_DEFAULT_MAX_EPOCHS",
+    "YOLO26_DETECTION_DEFAULT_MIN_LR_RATIO",
+    "Yolo26ClassificationResumeState",
+    "Yolo26ClassificationTrainingControlCommand",
+    "Yolo26ClassificationTrainingEpochProgress",
+    "Yolo26ClassificationTrainingImports",
+    "Yolo26ClassificationTrainingLoopResult",
+    "Yolo26ClassificationTrainingPausedError",
+    "Yolo26ClassificationTrainingRuntime",
+    "Yolo26ClassificationTrainingSavePoint",
+    "Yolo26ClassificationTrainingTerminatedError",
+    "Yolo26DetectionEpochCheckpointUpdate",
+    "Yolo26DetectionEpochControlDecision",
+    "Yolo26DetectionResumeValidationRequest",
+    "Yolo26DetectionTrainerEpochProgress",
+    "Yolo26DetectionTrainingBatchProgress",
+    "Yolo26DetectionTrainingDataContext",
+    "Yolo26DetectionTrainingEpochResult",
+    "Yolo26DetectionTrainingExecutionPlan",
+    "Yolo26DetectionTrainingImports",
+    "Yolo26DetectionTrainingLoopResult",
+    "Yolo26DetectionTrainingPausedError",
+    "Yolo26DetectionTrainingRuntime",
+    "Yolo26DetectionTrainingSavepointPayload",
+    "Yolo26DetectionTrainingTerminatedError",
+    "Yolo26ObbResumeState",
+    "Yolo26ObbTrainingAnnotation",
+    "Yolo26ObbTrainingControlCommand",
+    "Yolo26ObbTrainingEpochProgress",
+    "Yolo26ObbTrainingImports",
+    "Yolo26ObbTrainingLoopResult",
+    "Yolo26ObbTrainingManifest",
+    "Yolo26ObbTrainingPausedError",
+    "Yolo26ObbTrainingSavePoint",
+    "Yolo26ObbTrainingTerminatedError",
+    "Yolo26PoseResumeState",
+    "Yolo26PoseTrainingAnnotation",
+    "Yolo26PoseTrainingControlCommand",
+    "Yolo26PoseTrainingEpochProgress",
+    "Yolo26PoseTrainingImports",
+    "Yolo26PoseTrainingLoopResult",
+    "Yolo26PoseTrainingManifest",
+    "Yolo26PoseTrainingPausedError",
+    "Yolo26PoseTrainingSavePoint",
+    "Yolo26PoseTrainingTerminatedError",
+    "Yolo26SegmentationResumeState",
+    "Yolo26SegmentationTrainingAnnotation",
+    "Yolo26SegmentationTrainingImports",
+    "Yolo26SegmentationTrainingManifest",
+    "build_yolo26_autocast_context",
+    "build_yolo26_classification_autocast_context",
+    "build_yolo26_classification_checkpoint_bytes",
+    "build_yolo26_classification_training_runtime",
+    "build_yolo26_detection_checkpoint_state",
+    "build_yolo26_detection_epoch_checkpoint_update",
+    "build_yolo26_detection_training_runtime",
+    "build_yolo26_detection_training_savepoint_payload",
+    "build_yolo26_obb_autocast_context",
+    "build_yolo26_obb_checkpoint_bytes",
+    "build_yolo26_pose_autocast_context",
+    "build_yolo26_pose_checkpoint_bytes",
+    "build_yolo26_segmentation_anchors_from_features",
+    "build_yolo26_segmentation_autocast_context",
+    "build_yolo26_segmentation_checkpoint_bytes",
+    "compute_yolo26_detection_training_loss",
+    "decode_yolo26_detection_checkpoint_state",
+    "encode_yolo26_detection_checkpoint_state",
+    "evaluate_yolo26_detection_validation_losses",
+    "is_yolo26_detection_core_model",
+    "load_yolo26_classification_model_state",
+    "load_yolo26_classification_resume_state",
+    "load_yolo26_segmentation_model_state",
+    "load_yolo26_segmentation_resume_state",
+    "load_yolo26_segmentation_training_manifest",
+    "load_yolo26_obb_resume_state",
+    "load_yolo26_obb_training_manifest",
+    "load_yolo26_pose_resume_state",
+    "load_yolo26_pose_training_manifest",
+    "move_yolo26_classification_optimizer_state_to_device",
+    "move_yolo26_optimizer_state_to_device",
+    "plan_yolo26_detection_training_execution",
+    "prepare_yolo26_detection_training_data_context",
+    "read_yolo26_float_option",
+    "read_yolo26_int_option",
+    "require_yolo26_classification_training_imports",
+    "require_yolo26_detection_training_imports",
+    "require_yolo26_obb_training_imports",
+    "require_yolo26_pose_training_imports",
+    "require_yolo26_segmentation_training_imports",
+    "resolve_yolo26_pose_training_device",
+    "resolve_yolo26_segmentation_training_device",
+    "resolve_yolo26_classification_training_device",
+    "resolve_yolo26_detection_best_metric_name",
+    "resolve_yolo26_detection_best_metric_update",
+    "resolve_yolo26_detection_epoch_control",
+    "resolve_yolo26_detection_initial_best_metric_value",
+    "resolve_yolo26_detection_input_size",
+    "resolve_yolo26_detection_runtime",
+    "resolve_yolo26_obb_training_device",
+    "run_yolo26_classification_training_loop",
+    "run_yolo26_detection_training_epoch",
+    "run_yolo26_detection_training_loop",
+    "run_yolo26_obb_training_loop",
+    "run_yolo26_pose_training_loop",
+    "serialize_yolo26_detection_best_metric_value",
+    "should_run_yolo26_detection_validation",
+    "unwrap_yolo26_detection_outputs",
+    "validate_yolo26_classification_resume_parameters",
+    "validate_yolo26_detection_resume_checkpoint",
+    "restore_yolo26_obb_training_state",
+    "restore_yolo26_pose_training_state",
+    "restore_yolo26_segmentation_training_state",
+    "validate_yolo26_obb_resume_parameters",
+    "validate_yolo26_pose_resume_parameters",
+    "validate_yolo26_segmentation_resume_parameters",
+]

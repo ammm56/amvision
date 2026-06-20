@@ -18,11 +18,11 @@ from backend.service.application.models.detection_inference_payloads import (
     normalize_detection_inference_input as normalize_pose_inference_input,
     serialize_detection_normalized_inference_input as serialize_pose_normalized_inference_input,
 )
-from backend.service.application.runtime.pose_runtime_contracts import (
+from backend.service.application.runtime.contracts.pose import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
 )
-from backend.service.application.runtime.pose_runtime_serialization import (
+from backend.service.application.runtime.serialization.pose import (
     serialize_pose_instance,
     serialize_pose_runtime_session_info,
 )

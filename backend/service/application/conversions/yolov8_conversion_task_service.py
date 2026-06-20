@@ -22,7 +22,7 @@ from backend.service.application.models.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 

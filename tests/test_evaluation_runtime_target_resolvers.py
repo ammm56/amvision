@@ -16,13 +16,13 @@ from backend.service.application.runtime.targets.rfdetr import (
 from backend.service.application.runtime.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo26_runtime_target import (
+from backend.service.application.runtime.targets.yolo26 import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 

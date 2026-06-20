@@ -326,7 +326,7 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
 
     import numpy as np
 
-    from backend.service.application.runtime.detection_runtime_contracts import (
+    from backend.service.application.runtime.contracts.detection import (
         DetectionRuntimeTensorSpec,
     )
     from backend.service.application.runtime.predictors.rfdetr_detection_result import (

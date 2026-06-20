@@ -22,7 +22,7 @@ from backend.service.application.models.yolov8_core.inference import (
     build_yolov8_classification_inference_categories,
     normalize_yolov8_classification_inference_outputs,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionCategory,
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,

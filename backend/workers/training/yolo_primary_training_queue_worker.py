@@ -11,11 +11,23 @@ from backend.service.application.tasks.task_service import AppendTaskEventReques
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
+from backend.service.application.models.yolo26_classification_training_service import (
+    YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
+)
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
 )
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
+)
 from backend.service.application.models.yolo_primary_pose_training_service import (
     POSE_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.yolo26_pose_training_service import (
+    YOLO26_POSE_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.yolo26_obb_training_service import (
+    YOLO26_OBB_TRAINING_QUEUE_NAME,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -46,8 +58,12 @@ class ClassificationTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 classification 训练任务。"""
-        qt = self.queue_backend.claim_next(
-            queue_name=YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
+        qt = _claim_next_training_queue(
+            self.queue_backend,
+            queue_names=(
+                YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
+                YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
+            ),
             worker_id=self.worker_id,
         )
         if qt is None:
@@ -95,6 +111,24 @@ class ClassificationTrainingQueueWorker:
         return True
 
 
+def _claim_next_training_queue(
+    queue_backend: QueueBackend,
+    *,
+    queue_names: tuple[str, ...],
+    worker_id: str,
+) -> QueueMessage | None:
+    """按顺序从多个训练队列中领取一条任务。"""
+
+    for queue_name in queue_names:
+        queue_task = queue_backend.claim_next(
+            queue_name=queue_name,
+            worker_id=worker_id,
+        )
+        if queue_task is not None:
+            return queue_task
+    return None
+
+
 class SegmentationTrainingQueueWorker:
     """消费 segmentation 训练队列。"""
 
@@ -116,8 +150,12 @@ class SegmentationTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 segmentation 训练任务。"""
-        qt = self.queue_backend.claim_next(
-            queue_name=YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
+        qt = _claim_next_training_queue(
+            self.queue_backend,
+            queue_names=(
+                YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
+                YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
+            ),
             worker_id=self.worker_id,
         )
         if qt is None:
@@ -186,8 +224,12 @@ class PoseTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 pose 训练任务。"""
-        qt = self.queue_backend.claim_next(
-            queue_name=POSE_TRAINING_QUEUE_NAME,
+        qt = _claim_next_training_queue(
+            self.queue_backend,
+            queue_names=(
+                POSE_TRAINING_QUEUE_NAME,
+                YOLO26_POSE_TRAINING_QUEUE_NAME,
+            ),
             worker_id=self.worker_id,
         )
         if qt is None:
@@ -256,8 +298,12 @@ class ObbTrainingQueueWorker:
 
     def run_once(self) -> bool:
         """消费并执行一条 obb 训练任务。"""
-        qt = self.queue_backend.claim_next(
-            queue_name=OBB_TRAINING_QUEUE_NAME,
+        qt = _claim_next_training_queue(
+            self.queue_backend,
+            queue_names=(
+                OBB_TRAINING_QUEUE_NAME,
+                YOLO26_OBB_TRAINING_QUEUE_NAME,
+            ),
             worker_id=self.worker_id,
         )
         if qt is None:

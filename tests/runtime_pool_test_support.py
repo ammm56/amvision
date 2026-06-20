@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,

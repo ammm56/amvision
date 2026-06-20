@@ -28,6 +28,9 @@ from backend.service.application.models.yolo_primary_classification_training_ser
 from backend.service.application.models.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
+from backend.service.application.models.yolo26_classification_training_service import (
+    SqlAlchemyYolo26ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     OBB_TRAINING_CONTROL_METADATA_KEY,
     OBB_TRAINING_QUEUE_NAME,
@@ -36,6 +39,14 @@ from backend.service.application.models.yolo_primary_obb_training_service import
 )
 from backend.service.application.models.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
+)
+from backend.service.application.models.training.yolo26_obb_task_control import (
+    YOLO26_OBB_TRAINING_CONTROL_METADATA_KEY,
+)
+from backend.service.application.models.yolo26_obb_training_service import (
+    YOLO26_OBB_TRAINING_QUEUE_NAME,
+    YOLO26_OBB_TRAINING_TASK_KIND,
+    SqlAlchemyYolo26ObbTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
     POSE_TRAINING_CONTROL_METADATA_KEY,
@@ -46,6 +57,14 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
 from backend.service.application.models.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
 )
+from backend.service.application.models.training.yolo26_pose_task_control import (
+    YOLO26_POSE_TRAINING_CONTROL_METADATA_KEY,
+)
+from backend.service.application.models.yolo26_pose_training_service import (
+    YOLO26_POSE_TRAINING_QUEUE_NAME,
+    YOLO26_POSE_TRAINING_TASK_KIND,
+    SqlAlchemyYolo26PoseTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
@@ -54,6 +73,14 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 )
 from backend.service.application.models.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
+)
+from backend.service.application.models.training.yolo26_segmentation_task_control import (
+    YOLO26_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
+)
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
+    YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
+    SqlAlchemyYolo26SegmentationTrainingTaskService,
 )
 from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
@@ -71,12 +98,31 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 TASK_KIND_TO_TASK_TYPE: dict[str, str] = {
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND: "classification",
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND: "segmentation",
+    YOLO26_SEGMENTATION_TRAINING_TASK_KIND: "segmentation",
     POSE_TRAINING_TASK_KIND: "pose",
+    YOLO26_POSE_TRAINING_TASK_KIND: "pose",
     OBB_TRAINING_TASK_KIND: "obb",
+    YOLO26_OBB_TRAINING_TASK_KIND: "obb",
 }
 
+TASK_TYPE_TO_TASK_KINDS: dict[str, tuple[str, ...]] = {
+    "classification": (YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,),
+    "segmentation": (
+        YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+        YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
+    ),
+    "pose": (
+        POSE_TRAINING_TASK_KIND,
+        YOLO26_POSE_TRAINING_TASK_KIND,
+    ),
+    "obb": (
+        OBB_TRAINING_TASK_KIND,
+        YOLO26_OBB_TRAINING_TASK_KIND,
+    ),
+}
 TASK_TYPE_TO_TASK_KIND: dict[str, str] = {
-    v: k for k, v in TASK_KIND_TO_TASK_TYPE.items()
+    task_type: task_kinds[0]
+    for task_type, task_kinds in TASK_TYPE_TO_TASK_KINDS.items()
 }
 
 ALL_NON_DETECTION_TRAINING_TASK_KINDS: tuple[str, ...] = tuple(
@@ -86,14 +132,20 @@ ALL_NON_DETECTION_TRAINING_TASK_KINDS: tuple[str, ...] = tuple(
 _TASK_KIND_TO_QUEUE_NAME: dict[str, str] = {
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND: YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND: YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
+    YOLO26_SEGMENTATION_TRAINING_TASK_KIND: YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
     POSE_TRAINING_TASK_KIND: POSE_TRAINING_QUEUE_NAME,
+    YOLO26_POSE_TRAINING_TASK_KIND: YOLO26_POSE_TRAINING_QUEUE_NAME,
     OBB_TRAINING_TASK_KIND: OBB_TRAINING_QUEUE_NAME,
+    YOLO26_OBB_TRAINING_TASK_KIND: YOLO26_OBB_TRAINING_QUEUE_NAME,
 }
 _TASK_KIND_TO_CONTROL_METADATA_KEY: dict[str, str] = {
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND: YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND: YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
+    YOLO26_SEGMENTATION_TRAINING_TASK_KIND: YOLO26_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
     POSE_TRAINING_TASK_KIND: POSE_TRAINING_CONTROL_METADATA_KEY,
+    YOLO26_POSE_TRAINING_TASK_KIND: YOLO26_POSE_TRAINING_CONTROL_METADATA_KEY,
     OBB_TRAINING_TASK_KIND: OBB_TRAINING_CONTROL_METADATA_KEY,
+    YOLO26_OBB_TRAINING_TASK_KIND: YOLO26_OBB_TRAINING_CONTROL_METADATA_KEY,
 }
 
 
@@ -383,16 +435,15 @@ def list_training_tasks(
     """列出非 detection 训练任务。"""
     if task_type is not None:
         normalized_task_type = task_type.strip().lower()
-        task_kind = TASK_TYPE_TO_TASK_KIND.get(normalized_task_type)
-        if task_kind is None:
+        task_kinds = TASK_TYPE_TO_TASK_KINDS.get(normalized_task_type)
+        if task_kinds is None:
             raise InvalidRequestError(
                 "不支持的训练任务类型",
                 details={
                     "task_type": task_type,
-                    "supported": list(TASK_TYPE_TO_TASK_KIND.keys()),
+                    "supported": list(TASK_TYPE_TO_TASK_KINDS.keys()),
                 },
             )
-        task_kinds = (task_kind,)
     else:
         normalized_task_type = None
         task_kinds = ALL_NON_DETECTION_TRAINING_TASK_KINDS
@@ -653,10 +704,14 @@ def _build_service_for_task(
     """按 task_kind 构造对应的训练服务实例。"""
     kind = task.task_kind
     if kind == YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND:
-        service_cls = (
-            SqlAlchemyYolo11ClassificationTrainingTaskService
-            if _resolve_model_type_from_metadata(task) == "yolo11"
-            else SqlAlchemyYoloPrimaryClassificationTrainingTaskService
+        model_type = _resolve_model_type_from_metadata(task)
+        service_cls_by_model_type = {
+            "yolo11": SqlAlchemyYolo11ClassificationTrainingTaskService,
+            "yolo26": SqlAlchemyYolo26ClassificationTrainingTaskService,
+        }
+        service_cls = service_cls_by_model_type.get(
+            model_type,
+            SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
         )
         return service_cls(
             session_factory=session_factory,
@@ -664,34 +719,62 @@ def _build_service_for_task(
             dataset_storage=dataset_storage,
         )
     if kind == YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND:
-        service_cls = (
-            SqlAlchemyYolo11SegmentationTrainingTaskService
-            if _resolve_model_type_from_metadata(task) == "yolo11"
-            else SqlAlchemyYoloPrimarySegmentationTrainingTaskService
+        service_cls_by_model_type = {
+            "yolo11": SqlAlchemyYolo11SegmentationTrainingTaskService,
+            "yolo26": SqlAlchemyYolo26SegmentationTrainingTaskService,
+        }
+        service_cls = service_cls_by_model_type.get(
+            _resolve_model_type_from_metadata(task),
+            SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
         )
+        return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
+    if kind == YOLO26_SEGMENTATION_TRAINING_TASK_KIND:
+        service_cls = SqlAlchemyYolo26SegmentationTrainingTaskService
         return service_cls(
             session_factory=session_factory,
             queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == POSE_TRAINING_TASK_KIND:
-        service_cls = (
-            SqlAlchemyYolo11PoseTrainingTaskService
-            if _resolve_model_type_from_metadata(task) == "yolo11"
-            else SqlAlchemyYoloPrimaryPoseTrainingTaskService
+        service_cls_by_model_type = {
+            "yolo11": SqlAlchemyYolo11PoseTrainingTaskService,
+            "yolo26": SqlAlchemyYolo26PoseTrainingTaskService,
+        }
+        service_cls = service_cls_by_model_type.get(
+            _resolve_model_type_from_metadata(task),
+            SqlAlchemyYoloPrimaryPoseTrainingTaskService,
         )
         return service_cls(
             session_factory=session_factory,
             queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
+    if kind == YOLO26_POSE_TRAINING_TASK_KIND:
+        return SqlAlchemyYolo26PoseTrainingTaskService(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
     if kind == OBB_TRAINING_TASK_KIND:
-        service_cls = (
-            SqlAlchemyYolo11ObbTrainingTaskService
-            if _resolve_model_type_from_metadata(task) == "yolo11"
-            else SqlAlchemyYoloPrimaryObbTrainingTaskService
+        service_cls_by_model_type = {
+            "yolo11": SqlAlchemyYolo11ObbTrainingTaskService,
+            "yolo26": SqlAlchemyYolo26ObbTrainingTaskService,
+        }
+        service_cls = service_cls_by_model_type.get(
+            _resolve_model_type_from_metadata(task),
+            SqlAlchemyYoloPrimaryObbTrainingTaskService,
         )
         return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
+    if kind == YOLO26_OBB_TRAINING_TASK_KIND:
+        return SqlAlchemyYolo26ObbTrainingTaskService(
             session_factory=session_factory,
             queue_backend=queue_backend,
             dataset_storage=dataset_storage,

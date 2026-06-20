@@ -9,7 +9,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.obb_runtime_contracts import (
+from backend.service.application.runtime.contracts.obb import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
 )
@@ -19,7 +19,7 @@ from backend.service.application.runtime.predictors.yolo11_obb import (
     PyTorchYolo11ObbRuntimeSession,
     TensorRTYolo11ObbRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_obb_predictor import (
+from backend.service.application.runtime.predictors.yolo26_obb import (
     OnnxRuntimeYolo26ObbRuntimeSession,
     OpenVINOYolo26ObbRuntimeSession,
     PyTorchYolo26ObbRuntimeSession,

@@ -18,7 +18,7 @@ from backend.service.application.models import (
     yolo_primary_pose_training_service as pose_service_module,
 )
 from backend.service.application.models import (
-    yolo_primary_obb_training_service as obb_service_module,
+    yolo26_obb_training_service as yolo26_obb_service_module,
 )
 from backend.service.application.models import (
     yolo_primary_segmentation_training_service as segmentation_service_module,
@@ -46,12 +46,12 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     YoloPrimaryPoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_obb_training import (
-    YoloPrimaryObbTrainingExecutionResult,
+from backend.service.application.models.yolo26_obb_training import (
+    Yolo26ObbTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_obb_training_service import (
-    SqlAlchemyYoloPrimaryObbTrainingTaskService,
-    YoloPrimaryObbTrainingTaskRequest,
+from backend.service.application.models.yolo26_obb_training_service import (
+    SqlAlchemyYolo26ObbTrainingTaskService,
+    Yolo26ObbTrainingTaskRequest,
 )
 from backend.service.application.models.yolo_primary_segmentation_training import (
     YoloPrimarySegmentationTrainingExecutionResult,
@@ -60,14 +60,16 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
+)
+from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo26_runtime_target import (
+from backend.service.application.runtime.targets.yolo26 import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -408,7 +410,7 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
 
     def _fake_run(request):
         assert request.model_type == "yolo26"
-        return YoloPrimaryObbTrainingExecutionResult(
+        return Yolo26ObbTrainingExecutionResult(
             best_metric_value=0.29,
             best_metric_name="val_loss",
             latest_checkpoint_bytes=b"obb-checkpoint",
@@ -418,18 +420,18 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
         )
 
     monkeypatch.setattr(
-        obb_service_module,
-        "run_yolo_primary_obb_training",
+        yolo26_obb_service_module,
+        "run_yolo26_obb_service_training_execution",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloPrimaryObbTrainingTaskService(
+    service = SqlAlchemyYolo26ObbTrainingTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloPrimaryObbTrainingTaskRequest(
+        Yolo26ObbTrainingTaskRequest(
             project_id="project-1",
             recipe_id="recipe-1",
             model_type="yolo26",

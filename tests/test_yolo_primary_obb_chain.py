@@ -80,7 +80,7 @@ def test_obb_prediction_array_postprocess():
 
 
 def test_obb_runtime_contracts_importable():
-    from backend.service.application.runtime.obb_runtime_contracts import (
+    from backend.service.application.runtime.contracts.obb import (
         ObbPredictionExecutionResult, ObbPredictionInstance,
         ObbPredictionRequest, ObbRuntimeSessionInfo, ObbRuntimeTensorSpec,
     )

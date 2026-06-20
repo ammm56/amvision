@@ -113,17 +113,26 @@ from backend.service.application.models.yolo_primary_classification_training_ser
 from backend.service.application.models.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
+from backend.service.application.models.yolo26_classification_training_service import (
+    SqlAlchemyYolo26ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
 )
 from backend.service.application.models.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
 )
+from backend.service.application.models.yolo26_obb_training_service import (
+    SqlAlchemyYolo26ObbTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
 from backend.service.application.models.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
+)
+from backend.service.application.models.yolo26_pose_training_service import (
+    SqlAlchemyYolo26PoseTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
@@ -133,6 +142,9 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 )
 from backend.service.application.models.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    SqlAlchemyYolo26SegmentationTrainingTaskService,
 )
 from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
@@ -196,9 +208,16 @@ _TRAINING_SERVICE_BY_TASK_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
         CLASSIFICATION_TASK_TYPE,
         "yolo11",
     ): SqlAlchemyYolo11ClassificationTrainingTaskService,
+    (
+        CLASSIFICATION_TASK_TYPE,
+        "yolo26",
+    ): SqlAlchemyYolo26ClassificationTrainingTaskService,
     (SEGMENTATION_TASK_TYPE, "yolo11"): SqlAlchemyYolo11SegmentationTrainingTaskService,
+    (SEGMENTATION_TASK_TYPE, "yolo26"): SqlAlchemyYolo26SegmentationTrainingTaskService,
     (POSE_TASK_TYPE, "yolo11"): SqlAlchemyYolo11PoseTrainingTaskService,
+    (POSE_TASK_TYPE, "yolo26"): SqlAlchemyYolo26PoseTrainingTaskService,
     (OBB_TASK_TYPE, "yolo11"): SqlAlchemyYolo11ObbTrainingTaskService,
+    (OBB_TASK_TYPE, "yolo26"): SqlAlchemyYolo26ObbTrainingTaskService,
 }
 _VALIDATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     DETECTION_TASK_TYPE: LocalDetectionValidationSessionService,

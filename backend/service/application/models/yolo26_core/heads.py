@@ -1,9 +1,14 @@
-"""YOLO26 core head 与 decode 入口。"""
+"""YOLO26 core head 入口。"""
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_core_common.tasks import Classify, Detect
-from backend.service.application.models.yolo26_core.tasks import OBB26, Pose26, Segment26
+from backend.service.application.models.yolo26_core.nn.tasks import (
+    Classify,
+    Detect,
+    OBB26,
+    Pose26,
+    Segment26,
+)
 
 
 YOLO26_HEAD_MODULES = {

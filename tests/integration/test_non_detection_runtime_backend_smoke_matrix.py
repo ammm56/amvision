@@ -30,17 +30,17 @@ from backend.service.application.models.yolo26_model_service import SqlAlchemyYo
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.classification_model_runtime import DefaultClassificationModelRuntime
-from backend.service.application.runtime.classification_runtime_contracts import ClassificationPredictionRequest
+from backend.service.application.runtime.contracts.classification import ClassificationPredictionRequest
 from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
-from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
+from backend.service.application.runtime.contracts.obb import ObbPredictionRequest
 from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
-from backend.service.application.runtime.pose_runtime_contracts import PosePredictionRequest
+from backend.service.application.runtime.contracts.pose import PosePredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest
 from backend.service.application.runtime.segmentation_model_runtime import DefaultSegmentationModelRuntime
-from backend.service.application.runtime.segmentation_runtime_contracts import SegmentationPredictionRequest
-from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
-from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
-from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
+from backend.service.application.runtime.contracts.segmentation import SegmentationPredictionRequest
+from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
+from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
+from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,

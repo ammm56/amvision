@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo26_model_service import (
-    SqlAlchemyYolo26ModelService,
-    Yolo26TrainingOutputRegistration,
-)
 from backend.service.application.models.yolo_primary_obb_training import (
     YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE,
     YoloPrimaryObbTrainingExecutionResult,
@@ -22,7 +18,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP: dict[str, tuple[type, type]] = {
     "yolov8": (SqlAlchemyYoloV8ModelService, YoloV8TrainingOutputRegistration),
-    "yolo26": (SqlAlchemyYolo26ModelService, Yolo26TrainingOutputRegistration),
 }
 
 

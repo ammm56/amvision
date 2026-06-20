@@ -28,7 +28,7 @@ from backend.service.application.models.yolov8_core.postprocess import (
 from backend.service.application.runtime.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot

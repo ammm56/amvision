@@ -13,9 +13,9 @@ from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
 from backend.service.application.pose_backend_registry import get_pose_backend_registration
-from backend.service.application.runtime.yolo11_runtime_target import SqlAlchemyYolo11RuntimeTargetResolver
-from backend.service.application.runtime.yolo26_runtime_target import SqlAlchemyYolo26RuntimeTargetResolver
-from backend.service.application.runtime.yolov8_runtime_target import SqlAlchemyYoloV8RuntimeTargetResolver
+from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
+from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
+from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
 from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 

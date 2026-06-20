@@ -30,7 +30,7 @@ from backend.service.application.runtime.deployment_process_worker import (
 from backend.service.application.runtime.deployment_runtime_pool import (
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 

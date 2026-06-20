@@ -24,11 +24,11 @@ from backend.service.application.models.yolo26_model_service import (
     Yolo26BuildRegistration,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.targets.yolo11 import (
     RuntimeTargetResolveRequest as Yolo11RuntimeTargetResolveRequest,
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo26_runtime_target import (
+from backend.service.application.runtime.targets.yolo26 import (
     RuntimeTargetResolveRequest as Yolo26RuntimeTargetResolveRequest,
     SqlAlchemyYolo26RuntimeTargetResolver,
 )

@@ -9,7 +9,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.pose_runtime_contracts import (
+from backend.service.application.runtime.contracts.pose import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
 )
@@ -19,7 +19,7 @@ from backend.service.application.runtime.predictors.yolo11_pose import (
     PyTorchYolo11PoseRuntimeSession,
     TensorRTYolo11PoseRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_pose_predictor import (
+from backend.service.application.runtime.predictors.yolo26_pose import (
     OnnxRuntimeYolo26PoseRuntimeSession,
     OpenVINOYolo26PoseRuntimeSession,
     PyTorchYolo26PoseRuntimeSession,

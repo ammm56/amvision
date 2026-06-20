@@ -13,7 +13,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionRequest,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot

@@ -12,6 +12,13 @@ from backend.service.application.models.coco_style_metrics import (
     rotated_iou_xywhr,
     xywhr_to_polygon,
 )
+from backend.service.application.models.yolo_core_common.postprocess import (
+    select_top_scoring_candidate_indices,
+)
+
+
+MAX_YOLO11_OBB_PRE_NMS_CANDIDATES = 300
+MAX_YOLO11_OBB_DETECTIONS = 300
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,16 @@ def build_yolo11_obb_postprocess_instances(
         best_scores = best_scores[keep_mask]
         best_class_ids = best_class_ids[keep_mask]
         angles = angles[keep_mask]
+        top_indices = select_top_scoring_candidate_indices(
+            np_module=np_module,
+            scores=best_scores,
+            max_candidate_count=MAX_YOLO11_OBB_PRE_NMS_CANDIDATES,
+        )
+        if top_indices is not None:
+            boxes_xywh = boxes_xywh[top_indices]
+            best_scores = best_scores[top_indices]
+            best_class_ids = best_class_ids[top_indices]
+            angles = angles[top_indices]
         boxes_xywhr = _build_yolo11_obb_boxes_xywhr(
             np_module=np_module,
             boxes_xywh=boxes_xywh,
@@ -117,7 +134,7 @@ def build_yolo11_obb_postprocess_instances(
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
-    return tuple(results)
+    return tuple(results[:MAX_YOLO11_OBB_DETECTIONS])
 
 
 def _build_yolo11_obb_instance(

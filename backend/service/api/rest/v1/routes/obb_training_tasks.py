@@ -34,6 +34,10 @@ from backend.service.application.models.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
     Yolo11ObbTrainingTaskRequest,
 )
+from backend.service.application.models.yolo26_obb_training_service import (
+    SqlAlchemyYolo26ObbTrainingTaskService,
+    Yolo26ObbTrainingTaskRequest,
+)
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.service.domain.models.platform_model_support import (
     build_platform_model_type_field_description,
@@ -101,16 +105,7 @@ def create_obb_training_task(
         model_type=body.model_type,
         unsupported_message="obb 训练不支持该模型分类",
     )
-    service_cls = (
-        SqlAlchemyYolo11ObbTrainingTaskService
-        if mt == "yolo11"
-        else SqlAlchemyYoloPrimaryObbTrainingTaskService
-    )
-    request_cls = (
-        Yolo11ObbTrainingTaskRequest
-        if mt == "yolo11"
-        else YoloPrimaryObbTrainingTaskRequest
-    )
+    service_cls, request_cls = _resolve_obb_training_service_and_request(mt)
     svc = service_cls(
         session_factory=session_factory,
         queue_backend=queue_backend,
@@ -141,6 +136,16 @@ def create_obb_training_task(
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
     )
+
+
+def _resolve_obb_training_service_and_request(model_type: str):
+    """按 model_type 返回 OBB 训练 service 与请求 DTO。"""
+
+    if model_type == "yolo11":
+        return SqlAlchemyYolo11ObbTrainingTaskService, Yolo11ObbTrainingTaskRequest
+    if model_type == "yolo26":
+        return SqlAlchemyYolo26ObbTrainingTaskService, Yolo26ObbTrainingTaskRequest
+    return SqlAlchemyYoloPrimaryObbTrainingTaskService, YoloPrimaryObbTrainingTaskRequest
 
 
 # ── 训练任务管理端点 ──

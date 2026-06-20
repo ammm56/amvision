@@ -9,7 +9,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
 )
@@ -19,7 +19,7 @@ from backend.service.application.runtime.predictors.yolo11_classification import
     PyTorchYolo11ClassificationRuntimeSession,
     TensorRTYolo11ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_classification_predictor import (
+from backend.service.application.runtime.predictors.yolo26_classification import (
     OnnxRuntimeYolo26ClassificationRuntimeSession,
     OpenVINOYolo26ClassificationRuntimeSession,
     PyTorchYolo26ClassificationRuntimeSession,

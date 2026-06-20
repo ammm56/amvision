@@ -19,11 +19,11 @@ from backend.service.application.models.detection_inference_payloads import (
     serialize_detection_normalized_inference_input as serialize_segmentation_normalized_inference_input,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.segmentation_runtime_serialization import (
+from backend.service.application.runtime.serialization.segmentation import (
     serialize_segmentation_instance,
     serialize_segmentation_runtime_session_info,
 )

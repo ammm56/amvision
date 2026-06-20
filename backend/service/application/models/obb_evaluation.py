@@ -12,7 +12,7 @@ from backend.service.application.models.coco_style_metrics import (
     polygon_iou,
     xywhr_to_polygon,
 )
-from backend.service.application.runtime.obb_runtime_contracts import ObbPredictionRequest
+from backend.service.application.runtime.contracts.obb import ObbPredictionRequest
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 

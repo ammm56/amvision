@@ -8,7 +8,7 @@ from backend.service.application.runtime.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
 from backend.service.domain.files.yolox_file_types import YOLOX_OPENVINO_IR_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,

@@ -61,7 +61,7 @@ from backend.service.application.runtime.support.detection import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionInstance,
     SegmentationPredictionRequest,
@@ -1558,7 +1558,7 @@ def _normalize_segmentation_outputs(
 def _as_preview_detection(instance: SegmentationPredictionInstance):
     """把 segmentation 实例转换为预览绘制用 detection 记录。"""
 
-    from backend.service.application.runtime.detection_runtime_contracts import (
+    from backend.service.application.runtime.contracts.detection import (
         DetectionPredictionDetection,
     )
 

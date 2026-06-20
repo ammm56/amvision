@@ -18,11 +18,11 @@ from backend.service.application.models.detection_inference_payloads import (
     normalize_detection_inference_input as normalize_classification_inference_input,
     serialize_detection_normalized_inference_input as serialize_classification_normalized_inference_input,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.classification_runtime_serialization import (
+from backend.service.application.runtime.serialization.classification import (
     serialize_classification_category,
     serialize_classification_runtime_session_info,
 )

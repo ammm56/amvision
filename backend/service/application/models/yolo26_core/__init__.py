@@ -7,6 +7,8 @@ from backend.service.application.models.yolo26_core.config import (
 from backend.service.application.models.yolo26_core.export import (
     build_yolo26_export_task_plan,
     normalize_yolo26_segmentation_export_outputs,
+    resolve_yolo26_obb_export_output_names,
+    resolve_yolo26_pose_export_output_names,
     resolve_yolo26_segmentation_export_output_names,
 )
 from backend.service.application.models.yolo26_core.heads import YOLO26_HEAD_MODULES
@@ -27,5 +29,7 @@ __all__ = [
     "load_yolo26_checkpoint_file",
     "load_yolo26_state_dict",
     "normalize_yolo26_segmentation_export_outputs",
+    "resolve_yolo26_obb_export_output_names",
+    "resolve_yolo26_pose_export_output_names",
     "resolve_yolo26_segmentation_export_output_names",
 ]

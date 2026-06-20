@@ -8,7 +8,7 @@ from backend.service.application.models.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionDetection,
 )
 

@@ -19,6 +19,18 @@ def resolve_yolo26_segmentation_export_output_names() -> tuple[str, str]:
     return resolve_segmentation_export_output_names()
 
 
+def resolve_yolo26_pose_export_output_names() -> tuple[str]:
+    """返回 YOLO26 pose 导出输出名。"""
+
+    return ("predictions",)
+
+
+def resolve_yolo26_obb_export_output_names() -> tuple[str]:
+    """返回 YOLO26 OBB 导出输出名。"""
+
+    return ("predictions",)
+
+
 def normalize_yolo26_segmentation_export_outputs(
     *,
     outputs: list[Any] | tuple[Any, ...],
@@ -39,3 +51,12 @@ def build_yolo26_export_task_plan(
         task_type=task_type,
         target_formats=target_formats,
     )
+
+
+__all__ = [
+    "build_yolo26_export_task_plan",
+    "normalize_yolo26_segmentation_export_outputs",
+    "resolve_yolo26_obb_export_output_names",
+    "resolve_yolo26_pose_export_output_names",
+    "resolve_yolo26_segmentation_export_output_names",
+]

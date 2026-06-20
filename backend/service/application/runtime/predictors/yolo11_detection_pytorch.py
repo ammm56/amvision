@@ -17,7 +17,7 @@ from backend.service.application.models.yolo11_core import (
 from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_detection_records,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,

@@ -38,6 +38,18 @@ from backend.service.application.models import (
 from backend.service.application.models import (
     yolo11_obb_training_service as yolo11_obb_service_module,
 )
+from backend.service.application.models import (
+    yolo26_classification_training_service as yolo26_classification_service_module,
+)
+from backend.service.application.models import (
+    yolo26_segmentation_training_service as yolo26_segmentation_service_module,
+)
+from backend.service.application.models import (
+    yolo26_pose_training_service as yolo26_pose_service_module,
+)
+from backend.service.application.models import (
+    yolo26_obb_training_service as yolo26_obb_service_module,
+)
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
 )
@@ -59,6 +71,34 @@ from backend.service.application.models.yolo11_segmentation_training_service imp
 )
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
+)
+from backend.service.application.models.yolo26_classification_training import (
+    Yolo26ClassificationTrainingExecutionResult,
+)
+from backend.service.application.models.yolo26_classification_training_service import (
+    SqlAlchemyYolo26ClassificationTrainingTaskService,
+    Yolo26ClassificationTrainingTaskRequest,
+)
+from backend.service.application.models.yolo26_obb_training import (
+    Yolo26ObbTrainingExecutionResult,
+)
+from backend.service.application.models.yolo26_obb_training_service import (
+    SqlAlchemyYolo26ObbTrainingTaskService,
+    Yolo26ObbTrainingTaskRequest,
+)
+from backend.service.application.models.yolo26_pose_training import (
+    Yolo26PoseTrainingExecutionResult,
+)
+from backend.service.application.models.yolo26_pose_training_service import (
+    SqlAlchemyYolo26PoseTrainingTaskService,
+    Yolo26PoseTrainingTaskRequest,
+)
+from backend.service.application.models.yolo26_segmentation_training import (
+    Yolo26SegmentationTrainingExecutionResult,
+)
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    SqlAlchemyYolo26SegmentationTrainingTaskService,
+    Yolo26SegmentationTrainingTaskRequest,
 )
 from backend.service.application.models.yolo_primary_classification_training import (
     YoloPrimaryClassificationTrainingExecutionResult,
@@ -94,13 +134,13 @@ from backend.service.application.models.yolov8_model_service import (
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo26_runtime_target import (
+from backend.service.application.runtime.targets.yolo26 import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -198,6 +238,37 @@ _YOLO11_TASK_SERVICE_STACKS = {
     ),
 }
 
+_YOLO26_TASK_STACKS = {
+    "classification": (
+        yolo26_classification_service_module,
+        "run_yolo26_classification_service_training_execution",
+        SqlAlchemyYolo26ClassificationTrainingTaskService,
+        Yolo26ClassificationTrainingTaskRequest,
+        Yolo26ClassificationTrainingExecutionResult,
+    ),
+    "segmentation": (
+        yolo26_segmentation_service_module,
+        "run_yolo26_segmentation_service_training_execution",
+        SqlAlchemyYolo26SegmentationTrainingTaskService,
+        Yolo26SegmentationTrainingTaskRequest,
+        Yolo26SegmentationTrainingExecutionResult,
+    ),
+    "pose": (
+        yolo26_pose_service_module,
+        "run_yolo26_pose_service_training_execution",
+        SqlAlchemyYolo26PoseTrainingTaskService,
+        Yolo26PoseTrainingTaskRequest,
+        Yolo26PoseTrainingExecutionResult,
+    ),
+    "obb": (
+        yolo26_obb_service_module,
+        "run_yolo26_obb_service_training_execution",
+        SqlAlchemyYolo26ObbTrainingTaskService,
+        Yolo26ObbTrainingTaskRequest,
+        Yolo26ObbTrainingExecutionResult,
+    ),
+}
+
 
 def _build_training_matrix_specs() -> tuple[_TrainingMatrixSpec, ...]:
     """构建非 detection 训练入口矩阵。"""
@@ -209,15 +280,26 @@ def _build_training_matrix_specs() -> tuple[_TrainingMatrixSpec, ...]:
             request_cls = stack[3]
             if model_type == "yolo11":
                 service_cls, request_cls = _YOLO11_TASK_SERVICE_STACKS[task_type]
+            service_module = stack[0]
+            runner_name = stack[1]
+            result_cls = stack[4]
+            if model_type == "yolo26":
+                (
+                    service_module,
+                    runner_name,
+                    service_cls,
+                    request_cls,
+                    result_cls,
+                ) = _YOLO26_TASK_STACKS[task_type]
             specs.append(
                 _TrainingMatrixSpec(
                     task_type=task_type,
                     model_type=model_type,
-                    service_module=stack[0],
-                    runner_name=stack[1],
+                    service_module=service_module,
+                    runner_name=runner_name,
                     service_cls=service_cls,
                     request_cls=request_cls,
-                    result_cls=stack[4],
+                    result_cls=result_cls,
                     dataset_format=stack[5],
                     best_metric_name=stack[6],
                     category_names=stack[7],

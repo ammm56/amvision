@@ -29,7 +29,7 @@ from backend.service.application.models.yolov8_core.postprocess import (
     build_yolov8_detection_records,
     render_yolov8_detection_preview_image,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,

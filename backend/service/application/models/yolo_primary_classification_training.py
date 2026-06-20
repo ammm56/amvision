@@ -168,6 +168,11 @@ def run_yolo_primary_classification_training(
             "YOLO11 classification 训练必须使用 yolo11_classification_training 入口",
             details={"model_type": request.model_type},
         )
+    if request.model_type == "yolo26":
+        raise InvalidRequestError(
+            "YOLO26 classification 训练必须使用 yolo26_classification_training 入口",
+            details={"model_type": request.model_type},
+        )
 
     imports = _require_training_imports()
     device_name = _resolve_training_device(request.extra_options)

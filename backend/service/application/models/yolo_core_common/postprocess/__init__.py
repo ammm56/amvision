@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.yolo_core_common.postprocess.candidates import (
+    select_top_scoring_candidate_indices,
+)
 from backend.service.application.models.yolo_core_common.postprocess.detection import (
     DetectionNmsInputArrays,
     DetectionNmsInputTensors,
@@ -30,4 +33,5 @@ __all__ = [
     "prepare_detection_nms_inputs_array",
     "prepare_detection_nms_inputs_tensor",
     "prepare_segmentation_nms_inputs_array",
+    "select_top_scoring_candidate_indices",
 ]

@@ -43,7 +43,7 @@ from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     RuntimeTargetResolveRequest,
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )

@@ -1,11 +1,12 @@
-"""YOLO26 专用任务 head。"""
+"""YOLO26 专用任务 head 兼容入口。"""
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo26_core.tasks.obb import OBB26
-from backend.service.application.models.yolo26_core.tasks.pose import Pose26, RealNVP
-from backend.service.application.models.yolo26_core.tasks.segmentation import (
+from backend.service.application.models.yolo26_core.nn.tasks import (
+    OBB26,
+    Pose26,
     Proto26,
+    RealNVP,
     Segment26,
 )
 

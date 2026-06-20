@@ -18,13 +18,13 @@ from backend.service.application.runtime.predictors.yolo11_detection import (
     PyTorchYolo11RuntimeSession,
     TensorRTYolo11RuntimeSession,
 )
-from backend.service.application.runtime.yolo26_predictor import (
+from backend.service.application.runtime.predictors.yolo26_detection import (
     OnnxRuntimeYolo26RuntimeSession,
     OpenVINOYolo26RuntimeSession,
     PyTorchYolo26RuntimeSession,
     TensorRTYolo26RuntimeSession,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
 )

@@ -12,11 +12,11 @@ from backend.service.application.task_type_support import (
 from backend.service.application.runtime.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.classification_runtime_serialization import (
+from backend.service.application.runtime.serialization.classification import (
     deserialize_classification_categories,
     deserialize_classification_category,
     deserialize_classification_runtime_session_info,
@@ -26,33 +26,33 @@ from backend.service.application.runtime.classification_runtime_serialization im
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.detection_runtime_serialization import (
+from backend.service.application.runtime.serialization.detection import (
     deserialize_detection_items,
     deserialize_runtime_session_info,
     serialize_detection,
     serialize_runtime_session_info,
 )
 from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
-from backend.service.application.runtime.obb_runtime_contracts import (
+from backend.service.application.runtime.contracts.obb import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
 )
-from backend.service.application.runtime.obb_runtime_serialization import (
+from backend.service.application.runtime.serialization.obb import (
     deserialize_obb_instances,
     deserialize_obb_runtime_session_info,
     serialize_obb_instance,
     serialize_obb_runtime_session_info,
 )
 from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
-from backend.service.application.runtime.pose_runtime_contracts import (
+from backend.service.application.runtime.contracts.pose import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
 )
-from backend.service.application.runtime.pose_runtime_serialization import (
+from backend.service.application.runtime.serialization.pose import (
     deserialize_pose_instances,
     deserialize_pose_runtime_session_info,
     serialize_pose_instance,
@@ -62,11 +62,11 @@ from backend.service.application.runtime.runtime_target import RuntimeTargetSnap
 from backend.service.application.runtime.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.segmentation_runtime_serialization import (
+from backend.service.application.runtime.serialization.segmentation import (
     deserialize_segmentation_instances,
     deserialize_segmentation_runtime_session_info,
     serialize_segmentation_instance,

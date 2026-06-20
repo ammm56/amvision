@@ -9,7 +9,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionRequest,
 )
@@ -19,7 +19,7 @@ from backend.service.application.runtime.predictors.yolo11_segmentation import (
     PyTorchYolo11SegmentationRuntimeSession,
     TensorRTYolo11SegmentationRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_segmentation_predictor import (
+from backend.service.application.runtime.predictors.yolo26_segmentation import (
     OnnxRuntimeYolo26SegmentationRuntimeSession,
     OpenVINOYolo26SegmentationRuntimeSession,
     PyTorchYolo26SegmentationRuntimeSession,

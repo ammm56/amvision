@@ -10,21 +10,25 @@ from backend.service.application.backends import (
 )
 from backend.service.application.models.yolo26_core import (
     build_yolo26_export_task_plan,
+    resolve_yolo26_obb_export_output_names,
+    resolve_yolo26_pose_export_output_names,
     resolve_yolo26_segmentation_export_output_names,
 )
-from backend.service.application.runtime.yolo26_classification_predictor import (
+from backend.service.application.runtime.predictors.yolo26_classification import (
     PyTorchYolo26ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_obb_predictor import (
+from backend.service.application.runtime.predictors.yolo26_obb import (
     PyTorchYolo26ObbRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_pose_predictor import (
+from backend.service.application.runtime.predictors.yolo26_pose import (
     PyTorchYolo26PoseRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_segmentation_predictor import (
+from backend.service.application.runtime.predictors.yolo26_segmentation import (
     PyTorchYolo26SegmentationRuntimeSession,
 )
-from backend.service.application.runtime.yolo26_predictor import PyTorchYolo26RuntimeSession
+from backend.service.application.runtime.predictors.yolo26_detection import (
+    PyTorchYolo26RuntimeSession,
+)
 from backend.service.domain.files.yolo26_file_types import (
     YOLO26_ONNX_FILE,
     YOLO26_ONNX_OPTIMIZED_FILE,
@@ -57,6 +61,8 @@ class LocalYolo26ConversionRunner(LocalYoloPrimaryConversionRunner):
     task_export_output_names = {
         **LocalYoloPrimaryConversionRunner.task_export_output_names,
         "segmentation": resolve_yolo26_segmentation_export_output_names(),
+        "pose": resolve_yolo26_pose_export_output_names(),
+        "obb": resolve_yolo26_obb_export_output_names(),
     }
     onnx_file_type = YOLO26_ONNX_FILE
     onnx_optimized_file_type = YOLO26_ONNX_OPTIMIZED_FILE

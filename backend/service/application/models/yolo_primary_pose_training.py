@@ -150,9 +150,9 @@ def run_yolo_primary_pose_training(
 ) -> YoloPrimaryPoseTrainingExecutionResult:
     """执行 Pose 训练。"""
 
-    if request.model_type == "yolo11":
+    if request.model_type in {"yolo11", "yolo26"}:
         raise InvalidRequestError(
-            "YOLO11 pose 训练必须通过 yolo11_pose_training 执行入口",
+            "YOLO11 / YOLO26 pose 训练必须通过各自专属执行入口",
             details={"model_type": request.model_type},
         )
 

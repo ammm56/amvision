@@ -13,21 +13,21 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolo26_runtime_target import (
+from backend.service.application.runtime.targets.yolo26 import (
     SqlAlchemyYolo26RuntimeTargetResolver,
 )
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.yolov8_runtime_target import (
+from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
 from backend.service.application.runtime.runtime_target import (

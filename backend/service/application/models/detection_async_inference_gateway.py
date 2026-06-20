@@ -17,10 +17,10 @@ from backend.service.application.models.inference_gateway import (
     normalize_async_inference_owner_id,
     serialize_async_inference_execution_result,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionExecutionResult,
 )
-from backend.service.application.runtime.detection_runtime_serialization import (
+from backend.service.application.runtime.serialization.detection import (
     deserialize_detection,
     deserialize_runtime_session_info,
 )

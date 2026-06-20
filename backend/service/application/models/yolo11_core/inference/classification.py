@@ -9,7 +9,7 @@ from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_classification_categories,
     ensure_yolo11_probability_array,
 )
-from backend.service.application.runtime.classification_runtime_contracts import (
+from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionCategory,
 )
 

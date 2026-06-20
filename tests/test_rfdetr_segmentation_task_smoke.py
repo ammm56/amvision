@@ -35,7 +35,7 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 from backend.service.application.runtime.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
-from backend.service.application.runtime.segmentation_runtime_contracts import (
+from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.runtime_target import (

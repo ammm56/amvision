@@ -34,6 +34,10 @@ from backend.service.application.models.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
     Yolo11PoseTrainingTaskRequest,
 )
+from backend.service.application.models.yolo26_pose_training_service import (
+    SqlAlchemyYolo26PoseTrainingTaskService,
+    Yolo26PoseTrainingTaskRequest,
+)
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 from backend.service.domain.models.platform_model_support import (
     build_platform_model_type_field_description,
@@ -101,16 +105,18 @@ def create_pose_training_task(
         model_type=body.model_type,
         unsupported_message="pose 训练不支持该模型分类",
     )
-    service_cls = (
-        SqlAlchemyYolo11PoseTrainingTaskService
-        if mt == "yolo11"
-        else SqlAlchemyYoloPrimaryPoseTrainingTaskService
+    service_cls_by_model_type = {
+        "yolo11": SqlAlchemyYolo11PoseTrainingTaskService,
+        "yolo26": SqlAlchemyYolo26PoseTrainingTaskService,
+    }
+    request_cls_by_model_type = {
+        "yolo11": Yolo11PoseTrainingTaskRequest,
+        "yolo26": Yolo26PoseTrainingTaskRequest,
+    }
+    service_cls = service_cls_by_model_type.get(
+        mt, SqlAlchemyYoloPrimaryPoseTrainingTaskService
     )
-    request_cls = (
-        Yolo11PoseTrainingTaskRequest
-        if mt == "yolo11"
-        else YoloPrimaryPoseTrainingTaskRequest
-    )
+    request_cls = request_cls_by_model_type.get(mt, YoloPrimaryPoseTrainingTaskRequest)
     svc = service_cls(
         session_factory=session_factory,
         queue_backend=queue_backend,

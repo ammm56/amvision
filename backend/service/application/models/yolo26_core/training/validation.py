@@ -1,0 +1,90 @@
+"""YOLO26 detection 验证损失执行入口。"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from typing import Any
+
+
+def evaluate_yolo26_detection_validation_losses(
+    *,
+    torch_module: Any,
+    model: Any,
+    samples: tuple[Any, ...],
+    batch_size: int,
+    build_batch: Callable[[list[Any]], tuple[Any, tuple[Any, ...]]],
+    unwrap_outputs: Callable[[Any], dict[str, Any]],
+    compute_loss: Callable[..., dict[str, Any]],
+    autocast_context: Callable[[], Any],
+    freeze_batch_norm: Callable[[], tuple[object, ...]],
+    restore_batch_norm: Callable[[tuple[object, ...]], None],
+    class_loss_weight: float,
+    box_loss_weight: float,
+    dfl_loss_weight: float,
+    assign_topk: int,
+    assign_alpha: float,
+    assign_beta: float,
+) -> dict[str, float]:
+    """在验证集上统计 YOLO26 detection loss。"""
+
+    if not samples:
+        return _empty_yolo26_detection_validation_losses()
+
+    previous_training_mode = bool(model.training)
+    model.train()
+    batch_norm_states = freeze_batch_norm()
+    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    batch_count = 0
+    try:
+        with torch_module.no_grad():
+            for batch_samples in _iter_yolo26_validation_batches(samples, batch_size):
+                images, batch_targets = build_batch(batch_samples)
+                with autocast_context():
+                    raw_outputs = unwrap_outputs(model(images))
+                    loss_components = compute_loss(
+                        model=model,
+                        raw_outputs=raw_outputs,
+                        batch_targets=batch_targets,
+                        class_loss_weight=class_loss_weight,
+                        box_loss_weight=box_loss_weight,
+                        dfl_loss_weight=dfl_loss_weight,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
+                    )
+                batch_count += 1
+                for metric_name in epoch_totals:
+                    epoch_totals[metric_name] += float(
+                        loss_components[metric_name].detach().item()
+                    )
+    finally:
+        restore_batch_norm(batch_norm_states)
+        model.train(previous_training_mode)
+
+    if batch_count <= 0:
+        return _empty_yolo26_detection_validation_losses()
+    return {
+        metric_name: round(metric_total / batch_count, 6)
+        for metric_name, metric_total in epoch_totals.items()
+    }
+
+
+def _iter_yolo26_validation_batches(
+    samples: tuple[Any, ...],
+    batch_size: int,
+) -> Iterable[list[Any]]:
+    """按 batch size 迭代 YOLO26 validation 样本。"""
+
+    resolved_batch_size = max(1, int(batch_size))
+    sample_list = list(samples)
+    for start in range(0, len(sample_list), resolved_batch_size):
+        yield sample_list[start : start + resolved_batch_size]
+
+
+def _empty_yolo26_detection_validation_losses() -> dict[str, float]:
+    """返回空验证集的 YOLO26 detection loss 摘要。"""
+
+    return {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+
+
+__all__ = ["evaluate_yolo26_detection_validation_losses"]

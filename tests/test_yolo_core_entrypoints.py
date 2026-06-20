@@ -49,7 +49,51 @@ from backend.service.application.models.yolo26_core import (
     load_yolo26_checkpoint_file,
     load_yolo26_state_dict,
     normalize_yolo26_segmentation_export_outputs,
+    resolve_yolo26_obb_export_output_names,
+    resolve_yolo26_pose_export_output_names,
     resolve_yolo26_segmentation_export_output_names,
+)
+from backend.service.application.models.yolo26_core.data import (
+    build_yolo26_detection_training_batch,
+    build_yolo26_task_augmentation_options,
+    serialize_yolo26_detection_augmentation_options,
+)
+from backend.service.application.models.yolo26_core.losses import (
+    compute_yolo26_detection_loss,
+    compute_yolo26_obb_loss,
+    compute_yolo26_pose_loss,
+)
+from backend.service.application.models.yolo26_core.training import (
+    build_yolo26_classification_checkpoint_bytes,
+    build_yolo26_classification_training_runtime,
+    build_yolo26_obb_autocast_context,
+    build_yolo26_obb_checkpoint_bytes,
+    build_yolo26_pose_autocast_context,
+    build_yolo26_pose_checkpoint_bytes,
+    build_yolo26_segmentation_anchors_from_features,
+    build_yolo26_segmentation_autocast_context,
+    build_yolo26_segmentation_checkpoint_bytes,
+    load_yolo26_obb_resume_state,
+    load_yolo26_obb_training_manifest,
+    load_yolo26_pose_resume_state,
+    load_yolo26_pose_training_manifest,
+    load_yolo26_segmentation_resume_state,
+    load_yolo26_segmentation_training_manifest,
+    require_yolo26_obb_training_imports,
+    require_yolo26_pose_training_imports,
+    require_yolo26_segmentation_training_imports,
+    resolve_yolo26_obb_training_device,
+    resolve_yolo26_pose_training_device,
+    resolve_yolo26_segmentation_training_device,
+    restore_yolo26_obb_training_state,
+    restore_yolo26_pose_training_state,
+    restore_yolo26_segmentation_training_state,
+    run_yolo26_classification_training_loop,
+    run_yolo26_obb_training_loop,
+    run_yolo26_pose_training_loop,
+    validate_yolo26_obb_resume_parameters,
+    validate_yolo26_pose_resume_parameters,
+    validate_yolo26_segmentation_resume_parameters,
 )
 from backend.service.application.models.yolov8_core import (
     YOLOV8_HEAD_MODULES,
@@ -130,6 +174,23 @@ from backend.service.application.models.yolo11_detection_training import (
     Yolo11TrainingBatchProgress,
     run_yolo11_detection_training,
 )
+from backend.service.application.models.yolo26_detection_training import (
+    Yolo26DetectionTrainingExecutionRequest,
+    Yolo26TrainingBatchProgress,
+    run_yolo26_detection_training,
+)
+from backend.service.application.models.yolo26_classification_training import (
+    run_yolo26_classification_training,
+)
+from backend.service.application.models.yolo26_segmentation_training import (
+    run_yolo26_segmentation_training,
+)
+from backend.service.application.models.yolo26_pose_training import (
+    run_yolo26_pose_training,
+)
+from backend.service.application.models.yolo26_obb_training import (
+    run_yolo26_obb_training,
+)
 from backend.service.application.models.yolo11_classification_training import (
     run_yolo11_classification_training,
 )
@@ -144,6 +205,18 @@ from backend.service.application.models.yolo11_obb_training import (
 )
 from backend.service.application.models.training.yolo11_classification_task_execution import (
     run_yolo11_classification_training_from_task_request,
+)
+from backend.service.application.models.training.yolo26_classification_task_execution import (
+    run_yolo26_classification_training_from_task_request,
+)
+from backend.service.application.models.training.yolo26_segmentation_task_execution import (
+    run_yolo26_segmentation_training_from_task_request,
+)
+from backend.service.application.models.training.yolo26_pose_task_execution import (
+    run_yolo26_pose_training_from_task_request,
+)
+from backend.service.application.models.training.yolo26_obb_task_execution import (
+    run_yolo26_obb_training_from_task_request,
 )
 from backend.service.application.models.training.yolo11_segmentation_task_execution import (
     run_yolo11_segmentation_training_from_task_request,
@@ -162,6 +235,10 @@ from backend.service.application.models.training.yolo11_obb_task_registration im
     register_yolo11_obb_training_output_model_version,
     resolve_yolo11_obb_implementation_mode,
 )
+from backend.service.application.models.training.yolo26_obb_task_registration import (
+    register_yolo26_obb_training_output_model_version,
+    resolve_yolo26_obb_implementation_mode,
+)
 from backend.service.application.models.training.yolo_primary_pose_task_registration import (
     YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP,
 )
@@ -170,6 +247,26 @@ from backend.service.application.models.training.yolo_primary_obb_task_registrat
 )
 from backend.service.application.models.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
+from backend.service.application.models.yolo26_classification_training_service import (
+    SqlAlchemyYolo26ClassificationTrainingTaskService,
+    YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
+    YOLO26_CLASSIFICATION_TRAINING_TASK_KIND,
+)
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    SqlAlchemyYolo26SegmentationTrainingTaskService,
+    YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
+    YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
+)
+from backend.service.application.models.yolo26_pose_training_service import (
+    SqlAlchemyYolo26PoseTrainingTaskService,
+    YOLO26_POSE_TRAINING_QUEUE_NAME,
+    YOLO26_POSE_TRAINING_TASK_KIND,
+)
+from backend.service.application.models.yolo26_obb_training_service import (
+    SqlAlchemyYolo26ObbTrainingTaskService,
+    YOLO26_OBB_TRAINING_QUEUE_NAME,
+    YOLO26_OBB_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
@@ -207,6 +304,33 @@ from backend.service.application.runtime.predictors.yolo11_classification import
     PyTorchYolo11ClassificationRuntimeSession,
     TensorRTYolo11ClassificationRuntimeSession,
 )
+from backend.service.application.runtime.predictors.yolo26_classification import (
+    OnnxRuntimeYolo26ClassificationRuntimeSession,
+    OpenVINOYolo26ClassificationRuntimeSession,
+    PyTorchYolo26ClassificationRuntimeSession,
+    TensorRTYolo26ClassificationRuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo26_segmentation import (
+    OnnxRuntimeYolo26SegmentationRuntimeSession,
+    OpenVINOYolo26SegmentationRuntimeSession,
+    PyTorchYolo26SegmentationRuntimeSession,
+    TensorRTYolo26SegmentationRuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo26_pose import (
+    OnnxRuntimeYolo26PoseRuntimeSession,
+    OpenVINOYolo26PoseRuntimeSession,
+    PyTorchYolo26PoseRuntimeSession,
+    TensorRTYolo26PoseRuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo26_obb import (
+    OnnxRuntimeYolo26ObbRuntimeSession,
+    OpenVINOYolo26ObbRuntimeSession,
+    PyTorchYolo26ObbRuntimeSession,
+    TensorRTYolo26ObbRuntimeSession,
+)
+from backend.workers.training.yolo_primary_trainer_runner import (
+    _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE,
+)
 from backend.service.application.models.yolo11_training_service import (
     SqlAlchemyYolo11TrainingTaskService,
 )
@@ -240,10 +364,23 @@ from backend.service.application.models.yolo11_core.inference import (
     normalize_yolo11_pose_inference_outputs,
     normalize_yolo11_segmentation_inference_outputs,
 )
+from backend.service.application.models.yolo26_core.inference import (
+    build_yolo26_obb_inference_instances,
+    build_yolo26_pose_inference_instances,
+    build_yolo26_segmentation_inference_instances,
+    normalize_yolo26_obb_inference_outputs,
+    normalize_yolo26_pose_inference_outputs,
+    normalize_yolo26_segmentation_inference_outputs,
+)
 from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_obb_postprocess_instances,
     build_yolo11_pose_postprocess_instances,
     build_yolo11_segmentation_postprocess_instances,
+)
+from backend.service.application.models.yolo26_core.postprocess import (
+    build_yolo26_obb_postprocess_instances,
+    build_yolo26_pose_postprocess_instances,
+    build_yolo26_segmentation_postprocess_instances,
 )
 from backend.service.application.models.yolov8_core.data import (
     YoloV8TaskAugmentationOptions,
@@ -477,6 +614,89 @@ def test_yolo11_detection_data_core_builds_training_batch(tmp_path: Path) -> Non
     assert serialized_options["enable_mixup"] is False
 
 
+def test_yolo26_detection_loss_supports_backward() -> None:
+    """验证 YOLO26 detection core loss 可以完成一次反向传播。"""
+
+    model = build_yolo26_model(
+        task_type=DETECTION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.train()
+    raw_outputs = model(torch.randn(1, 3, 64, 64))
+    target = SimpleNamespace(
+        boxes_xyxy=[(8.0, 8.0, 40.0, 40.0)],
+        category_indexes=[0],
+    )
+
+    loss_components = compute_yolo26_detection_loss(
+        torch_module=torch,
+        detect_head=model.model[-1],
+        raw_outputs=raw_outputs["one2many"],
+        batch_targets=(target,),
+        class_loss_weight=0.5,
+        box_loss_weight=7.5,
+        dfl_loss_weight=1.5,
+        assign_topk=10,
+        assign_alpha=0.5,
+        assign_beta=6.0,
+    )
+    loss_components["loss"].backward()
+
+    assert float(loss_components["loss"].detach()) > 0.0
+    assert compute_yolo26_detection_loss.__module__.endswith(
+        "yolo26_core.losses.detection"
+    )
+
+
+def test_yolo26_detection_data_core_builds_training_batch(tmp_path: Path) -> None:
+    """验证 YOLO26 detection data core 能独立构造训练 batch。"""
+
+    image_path = tmp_path / "sample.jpg"
+    image = np.full((18, 20, 3), 127, dtype=np.uint8)
+    cv2.imwrite(str(image_path), image)
+    sample = SimpleNamespace(
+        image_id=1,
+        image_path=image_path,
+        image_width=20,
+        image_height=18,
+        annotations=(
+            SimpleNamespace(
+                category_index=0,
+                category_id=1,
+                bbox_xyxy=(2.0, 3.0, 12.0, 15.0),
+            ),
+        ),
+    )
+    augmentation_options = build_yolo26_task_augmentation_options(
+        {"disable_augmentation": True}
+    )
+
+    images, targets = build_yolo26_detection_training_batch(
+        imports=SimpleNamespace(cv2=cv2, np=np, torch=torch),
+        samples=[sample],
+        input_size=(32, 32),
+        device="cpu",
+        runtime_precision="fp32",
+        augment_training=False,
+        augmentation_options=augmentation_options,
+    )
+
+    assert images.shape == (1, 3, 32, 32)
+    assert len(targets) == 1
+    assert targets[0].image_id == 1
+    assert targets[0].boxes_xyxy
+    assert targets[0].category_indexes == (0,)
+    assert build_yolo26_detection_training_batch.__module__.endswith(
+        "yolo26_core.data.detection"
+    )
+    serialized_options = serialize_yolo26_detection_augmentation_options(
+        augmentation_options
+    )
+    assert serialized_options["mosaic_prob"] == 0.0
+    assert serialized_options["enable_mixup"] is False
+
+
 @pytest.mark.parametrize(
     ("task_type", "loss_func", "target"),
     (
@@ -610,6 +830,25 @@ def test_yolo11_detection_training_service_uses_model_specific_runner() -> None:
     )
 
 
+def test_yolo26_detection_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO26 detection 训练服务不再回到 YOLO primary 共享执行入口。"""
+
+    assert SqlAlchemyYolo26TrainingTaskService.__bases__ == (
+        SqlAlchemyYoloDetectionTrainingTaskService,
+    )
+    assert (
+        SqlAlchemyYolo26TrainingTaskService.training_runner
+        is run_yolo26_detection_training
+    )
+    assert (
+        Yolo26DetectionTrainingExecutionRequest is YoloDetectionTrainingExecutionRequest
+    )
+    assert Yolo26TrainingBatchProgress is YoloDetectionTrainingBatchProgress
+    assert run_yolo26_detection_training.__module__.endswith(
+        "models.yolo26_detection_training"
+    )
+
+
 def test_yolo_detection_training_services_use_neutral_base_service() -> None:
     """验证 YOLOv8 / YOLO11 / YOLO26 detection 训练服务统一走中性 service。"""
 
@@ -640,6 +879,38 @@ def test_yolo11_classification_training_service_uses_model_specific_runner() -> 
     )
     assert run_yolo11_classification_training.__module__.endswith(
         "models.yolo11_classification_training"
+    )
+
+
+def test_yolo26_classification_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO26 classification 训练不再回到 YOLO primary 共享执行入口。"""
+
+    assert SqlAlchemyYolo26ClassificationTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo26ClassificationTrainingTaskService,
+        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+    )
+    assert SqlAlchemyYolo26ClassificationTrainingTaskService._run_training_execution.__module__.endswith(
+        "models.yolo26_classification_training_service"
+    )
+    assert run_yolo26_classification_training_from_task_request.__module__.endswith(
+        "models.training.yolo26_classification_task_execution"
+    )
+    assert run_yolo26_classification_training.__module__.endswith(
+        "models.yolo26_classification_training"
+    )
+    assert YOLO26_CLASSIFICATION_TRAINING_TASK_KIND == "yolo26-classification-training"
+    assert (
+        YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME
+        == "yolo26-classification-trainings"
+    )
+    assert "primary" not in YOLO26_CLASSIFICATION_TRAINING_TASK_KIND
+    assert "primary" not in YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME
+    assert (
+        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+            (YOLO26_CLASSIFICATION_TRAINING_TASK_KIND, "yolo26")
+        ]
+        is SqlAlchemyYolo26ClassificationTrainingTaskService
     )
 
 
@@ -692,6 +963,191 @@ def test_yolo11_segmentation_training_helpers_are_in_core() -> None:
     assert build_yolo11_segmentation_checkpoint_bytes.__module__.endswith(
         "yolo11_core.training.segmentation_checkpoint"
     )
+
+
+def test_yolo26_segmentation_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO26 segmentation 训练不再由 primary service 兜底执行。"""
+
+    assert SqlAlchemyYolo26SegmentationTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo26SegmentationTrainingTaskService,
+        SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+    )
+    assert SqlAlchemyYolo26SegmentationTrainingTaskService._run_segmentation_training_execution.__module__.endswith(
+        "models.yolo26_segmentation_training_service"
+    )
+    assert run_yolo26_segmentation_training_from_task_request.__module__.endswith(
+        "models.training.yolo26_segmentation_task_execution"
+    )
+    assert run_yolo26_segmentation_training.__module__.endswith(
+        "models.yolo26_segmentation_training"
+    )
+    assert YOLO26_SEGMENTATION_TRAINING_TASK_KIND == "yolo26-segmentation-training"
+    assert YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME == "yolo26-segmentation-trainings"
+    assert "primary" not in YOLO26_SEGMENTATION_TRAINING_TASK_KIND
+    assert "primary" not in YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME
+    assert (
+        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+            (YOLO26_SEGMENTATION_TRAINING_TASK_KIND, "yolo26")
+        ]
+        is SqlAlchemyYolo26SegmentationTrainingTaskService
+    )
+
+
+def test_yolo26_segmentation_training_helpers_are_in_core() -> None:
+    """验证 YOLO26 segmentation 训练 helper 已收进 yolo26_core/training。"""
+
+    assert require_yolo26_segmentation_training_imports.__module__.endswith(
+        "yolo26_core.training.segmentation_imports"
+    )
+    assert resolve_yolo26_segmentation_training_device.__module__.endswith(
+        "yolo26_core.training.segmentation_imports"
+    )
+    assert build_yolo26_segmentation_autocast_context.__module__.endswith(
+        "yolo26_core.training.segmentation_imports"
+    )
+    assert load_yolo26_segmentation_training_manifest.__module__.endswith(
+        "yolo26_core.training.segmentation_manifest"
+    )
+    assert build_yolo26_segmentation_anchors_from_features.__module__.endswith(
+        "yolo26_core.training.segmentation_anchors"
+    )
+    assert load_yolo26_segmentation_resume_state.__module__.endswith(
+        "yolo26_core.training.segmentation_checkpoint"
+    )
+    assert restore_yolo26_segmentation_training_state.__module__.endswith(
+        "yolo26_core.training.segmentation_checkpoint"
+    )
+    assert validate_yolo26_segmentation_resume_parameters.__module__.endswith(
+        "yolo26_core.training.segmentation_checkpoint"
+    )
+    assert build_yolo26_segmentation_checkpoint_bytes.__module__.endswith(
+        "yolo26_core.training.segmentation_checkpoint"
+    )
+
+
+def test_yolo26_pose_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO26 pose 训练不再由 primary service 兜底执行。"""
+
+    assert SqlAlchemyYolo26PoseTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo26PoseTrainingTaskService,
+        SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+    )
+    assert SqlAlchemyYolo26PoseTrainingTaskService._run_pose_training_execution.__module__.endswith(
+        "models.yolo26_pose_training_service"
+    )
+    assert run_yolo26_pose_training_from_task_request.__module__.endswith(
+        "models.training.yolo26_pose_task_execution"
+    )
+    assert run_yolo26_pose_training.__module__.endswith(
+        "models.yolo26_pose_training"
+    )
+    assert YOLO26_POSE_TRAINING_TASK_KIND == "yolo26-pose-training"
+    assert YOLO26_POSE_TRAINING_QUEUE_NAME == "yolo26-pose-trainings"
+    assert "primary" not in YOLO26_POSE_TRAINING_TASK_KIND
+    assert "primary" not in YOLO26_POSE_TRAINING_QUEUE_NAME
+    assert (
+        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+            (YOLO26_POSE_TRAINING_TASK_KIND, "yolo26")
+        ]
+        is SqlAlchemyYolo26PoseTrainingTaskService
+    )
+
+
+def test_yolo26_pose_training_helpers_are_in_core() -> None:
+    """验证 YOLO26 pose 训练 helper 已收进 yolo26_core/training。"""
+
+    assert require_yolo26_pose_training_imports.__module__.endswith(
+        "yolo26_core.training.pose_imports"
+    )
+    assert resolve_yolo26_pose_training_device.__module__.endswith(
+        "yolo26_core.training.pose_imports"
+    )
+    assert build_yolo26_pose_autocast_context.__module__.endswith(
+        "yolo26_core.training.pose_imports"
+    )
+    assert load_yolo26_pose_training_manifest.__module__.endswith(
+        "yolo26_core.training.pose_manifest"
+    )
+    assert run_yolo26_pose_training_loop.__module__.endswith(
+        "yolo26_core.training.pose_trainer"
+    )
+    assert load_yolo26_pose_resume_state.__module__.endswith(
+        "yolo26_core.training.pose_checkpoint"
+    )
+    assert restore_yolo26_pose_training_state.__module__.endswith(
+        "yolo26_core.training.pose_checkpoint"
+    )
+    assert validate_yolo26_pose_resume_parameters.__module__.endswith(
+        "yolo26_core.training.pose_checkpoint"
+    )
+    assert build_yolo26_pose_checkpoint_bytes.__module__.endswith(
+        "yolo26_core.training.pose_checkpoint"
+    )
+    assert compute_yolo26_pose_loss.__module__.endswith("yolo26_core.losses.pose")
+
+
+def test_yolo26_obb_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO26 OBB 训练不再由 primary service 兜底执行。"""
+
+    assert SqlAlchemyYolo26ObbTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo26ObbTrainingTaskService,
+        SqlAlchemyYoloPrimaryObbTrainingTaskService,
+    )
+    assert SqlAlchemyYolo26ObbTrainingTaskService._run_obb_training_execution.__module__.endswith(
+        "models.yolo26_obb_training_service"
+    )
+    assert run_yolo26_obb_training_from_task_request.__module__.endswith(
+        "models.training.yolo26_obb_task_execution"
+    )
+    assert run_yolo26_obb_training.__module__.endswith(
+        "models.yolo26_obb_training"
+    )
+    assert YOLO26_OBB_TRAINING_TASK_KIND == "yolo26-obb-training"
+    assert YOLO26_OBB_TRAINING_QUEUE_NAME == "yolo26-obb-trainings"
+    assert "primary" not in YOLO26_OBB_TRAINING_TASK_KIND
+    assert "primary" not in YOLO26_OBB_TRAINING_QUEUE_NAME
+    assert (
+        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+            (YOLO26_OBB_TRAINING_TASK_KIND, "yolo26")
+        ]
+        is SqlAlchemyYolo26ObbTrainingTaskService
+    )
+
+
+def test_yolo26_obb_training_helpers_are_in_core() -> None:
+    """验证 YOLO26 OBB 训练 helper 已收进 yolo26_core/training。"""
+
+    assert require_yolo26_obb_training_imports.__module__.endswith(
+        "yolo26_core.training.obb_imports"
+    )
+    assert resolve_yolo26_obb_training_device.__module__.endswith(
+        "yolo26_core.training.obb_imports"
+    )
+    assert build_yolo26_obb_autocast_context.__module__.endswith(
+        "yolo26_core.training.obb_imports"
+    )
+    assert load_yolo26_obb_training_manifest.__module__.endswith(
+        "yolo26_core.training.obb_manifest"
+    )
+    assert run_yolo26_obb_training_loop.__module__.endswith(
+        "yolo26_core.training.obb_trainer"
+    )
+    assert load_yolo26_obb_resume_state.__module__.endswith(
+        "yolo26_core.training.obb_checkpoint"
+    )
+    assert restore_yolo26_obb_training_state.__module__.endswith(
+        "yolo26_core.training.obb_checkpoint"
+    )
+    assert validate_yolo26_obb_resume_parameters.__module__.endswith(
+        "yolo26_core.training.obb_checkpoint"
+    )
+    assert build_yolo26_obb_checkpoint_bytes.__module__.endswith(
+        "yolo26_core.training.obb_checkpoint"
+    )
+    assert compute_yolo26_obb_loss.__module__.endswith("yolo26_core.losses.obb")
 
 
 def test_yolo11_pose_and_obb_training_services_use_model_specific_runner() -> None:
@@ -774,11 +1230,29 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
             )
         )
     with pytest.raises(InvalidRequestError):
+        run_yolo_primary_pose_training(
+            YoloPrimaryPoseTrainingExecutionRequest(
+                dataset_storage=fake_storage,
+                manifest_payload={},
+                model_type="yolo26",
+                model_scale="nano",
+            )
+        )
+    with pytest.raises(InvalidRequestError):
         run_yolo_primary_obb_training(
             YoloPrimaryObbTrainingExecutionRequest(
                 dataset_storage=fake_storage,
                 manifest_payload={},
                 model_type="yolo11",
+                model_scale="nano",
+            )
+        )
+    with pytest.raises(InvalidRequestError):
+        run_yolo_primary_obb_training(
+            YoloPrimaryObbTrainingExecutionRequest(
+                dataset_storage=fake_storage,
+                manifest_payload={},
+                model_type="yolo26",
                 model_scale="nano",
             )
         )
@@ -789,14 +1263,19 @@ def test_yolo11_pose_and_obb_training_registration_is_model_specific() -> None:
 
     assert "yolo11" not in YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP
     assert "yolo11" not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP
+    assert "yolo26" not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP
     assert register_yolo11_pose_training_output_model_version.__module__.endswith(
         "models.training.yolo11_pose_task_registration"
     )
     assert register_yolo11_obb_training_output_model_version.__module__.endswith(
         "models.training.yolo11_obb_task_registration"
     )
+    assert register_yolo26_obb_training_output_model_version.__module__.endswith(
+        "models.training.yolo26_obb_task_registration"
+    )
     assert resolve_yolo11_pose_implementation_mode() == "yolo11-pose-core"
     assert resolve_yolo11_obb_implementation_mode() == "yolo11-obb-core"
+    assert resolve_yolo26_obb_implementation_mode() == "yolo26-obb-core"
 
 
 def test_yolo11_classification_runtime_uses_model_specific_sessions() -> None:
@@ -816,6 +1295,74 @@ def test_yolo11_classification_runtime_uses_model_specific_sessions() -> None:
     )
 
 
+def test_yolo26_classification_runtime_uses_model_specific_sessions() -> None:
+    """验证 YOLO26 classification runtime 入口不再来自旧 primary predictor。"""
+
+    assert PyTorchYolo26ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_classification_pytorch"
+    )
+    assert OnnxRuntimeYolo26ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_classification_onnxruntime"
+    )
+    assert OpenVINOYolo26ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_classification_openvino"
+    )
+    assert TensorRTYolo26ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_classification_tensorrt"
+    )
+
+
+def test_yolo26_segmentation_runtime_uses_model_specific_sessions() -> None:
+    """验证 YOLO26 segmentation runtime 入口不再来自旧 primary predictor。"""
+
+    assert PyTorchYolo26SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_segmentation_pytorch"
+    )
+    assert OnnxRuntimeYolo26SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_segmentation_onnxruntime"
+    )
+    assert OpenVINOYolo26SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_segmentation_openvino"
+    )
+    assert TensorRTYolo26SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_segmentation_tensorrt"
+    )
+
+
+def test_yolo26_pose_runtime_uses_model_specific_sessions() -> None:
+    """验证 YOLO26 pose runtime 入口不再来自旧 primary predictor。"""
+
+    assert PyTorchYolo26PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_pose_pytorch"
+    )
+    assert OnnxRuntimeYolo26PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_pose_onnxruntime"
+    )
+    assert OpenVINOYolo26PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_pose_openvino"
+    )
+    assert TensorRTYolo26PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_pose_tensorrt"
+    )
+
+
+def test_yolo26_obb_runtime_uses_model_specific_sessions() -> None:
+    """验证 YOLO26 OBB runtime 入口不再来自旧 primary predictor。"""
+
+    assert PyTorchYolo26ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_obb_pytorch"
+    )
+    assert OnnxRuntimeYolo26ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_obb_onnxruntime"
+    )
+    assert OpenVINOYolo26ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_obb_openvino"
+    )
+    assert TensorRTYolo26ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo26_obb_tensorrt"
+    )
+
+
 def test_yolo11_classification_training_loop_lives_in_core() -> None:
     """验证 YOLO11 classification 训练 loop、checkpoint、runtime 已进入 core。"""
 
@@ -827,6 +1374,20 @@ def test_yolo11_classification_training_loop_lives_in_core() -> None:
     )
     assert build_yolo11_classification_checkpoint_bytes.__module__.endswith(
         "yolo11_core.training.classification_checkpoint"
+    )
+
+
+def test_yolo26_classification_training_loop_lives_in_core() -> None:
+    """验证 YOLO26 classification 训练 loop、checkpoint、runtime 已进入 core。"""
+
+    assert run_yolo26_classification_training_loop.__module__.endswith(
+        "yolo26_core.training.classification_trainer"
+    )
+    assert build_yolo26_classification_training_runtime.__module__.endswith(
+        "yolo26_core.training.classification_runtime"
+    )
+    assert build_yolo26_classification_checkpoint_bytes.__module__.endswith(
+        "yolo26_core.training.classification_checkpoint"
     )
 
 
@@ -1141,6 +1702,205 @@ def test_yolo11_segmentation_core_inference_and_postprocess_entries() -> None:
             image_width=16,
             image_height=16,
             input_size=(16, 16),
+            nms_indices_func=batched_nms_indices,
+        )
+    ) == len(instances)
+
+
+def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
+    """验证 YOLO26 segmentation inference 和 postprocess 已有模型专属 core 入口。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    prediction = torch.zeros(1, 6, 8)
+    prediction[0, 0, 0] = 8.0
+    prediction[0, 1, 0] = 8.0
+    prediction[0, 2, 0] = 8.0
+    prediction[0, 3, 0] = 8.0
+    prediction[0, 4, 0] = 0.95
+    prediction[0, 5, 0] = 8.0
+    proto = torch.ones(1, 1, 4, 4)
+
+    normalized_prediction, normalized_proto = (
+        normalize_yolo26_segmentation_inference_outputs(
+            outputs=(prediction, proto),
+            np_module=np,
+        )
+    )
+    instances = build_yolo26_segmentation_inference_instances(
+        cv2_module=cv2,
+        np_module=np,
+        prediction_array=normalized_prediction,
+        proto_array=normalized_proto,
+        labels=("scratch",),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        mask_threshold=0.5,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        input_size=(16, 16),
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert normalize_yolo26_segmentation_inference_outputs.__module__.endswith(
+        "yolo26_core.inference.segmentation"
+    )
+    assert build_yolo26_segmentation_inference_instances.__module__.endswith(
+        "yolo26_core.inference.segmentation"
+    )
+    assert build_yolo26_segmentation_postprocess_instances.__module__.endswith(
+        "yolo26_core.postprocess.segmentation"
+    )
+    assert normalized_prediction.shape == (1, 8, 6)
+    assert len(instances) == 1
+    assert instances[0].class_name == "scratch"
+    assert instances[0].mask_area > 0.0
+    assert len(
+        build_yolo26_segmentation_postprocess_instances(
+            cv2_module=cv2,
+            np_module=np,
+            prediction_array=normalized_prediction,
+            proto_array=normalized_proto,
+            labels=("scratch",),
+            score_threshold=0.1,
+            nms_threshold=0.65,
+            mask_threshold=0.5,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            input_size=(16, 16),
+            nms_indices_func=batched_nms_indices,
+        )
+    ) == len(instances)
+
+
+def test_yolo26_pose_core_inference_postprocess_and_export_entries() -> None:
+    """验证 YOLO26 pose inference、postprocess 和 export 已有模型专属 core 入口。"""
+
+    np = pytest.importorskip("numpy")
+    prediction = torch.zeros(1, 1, 56)
+    prediction[0, 0, 0] = 8.0
+    prediction[0, 0, 1] = 8.0
+    prediction[0, 0, 2] = 8.0
+    prediction[0, 0, 3] = 8.0
+    prediction[0, 0, 4] = 0.95
+    for keypoint_index in range(17):
+        base = 5 + keypoint_index * 3
+        prediction[0, 0, base] = 8.0
+        prediction[0, 0, base + 1] = 8.0
+        prediction[0, 0, base + 2] = 0.9
+
+    normalized = normalize_yolo26_pose_inference_outputs(
+        outputs=(prediction,),
+        np_module=np,
+    )
+    instances, shape = build_yolo26_pose_inference_instances(
+        np_module=np,
+        prediction_array=normalized,
+        labels=("person",),
+        score_threshold=0.1,
+        keypoint_confidence_threshold=0.2,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        input_size=(16, 16),
+        default_kpt_shape=(17, 3),
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert normalize_yolo26_pose_inference_outputs.__module__.endswith(
+        "yolo26_core.inference.pose"
+    )
+    assert build_yolo26_pose_inference_instances.__module__.endswith(
+        "yolo26_core.inference.pose"
+    )
+    assert build_yolo26_pose_postprocess_instances.__module__.endswith(
+        "yolo26_core.postprocess.pose"
+    )
+    assert resolve_yolo26_pose_export_output_names() == ("predictions",)
+    assert LocalYolo26ConversionRunner.task_export_output_names["pose"] == (
+        "predictions",
+    )
+    assert normalized.shape == (1, 1, 56)
+    assert shape == (17, 3)
+    assert len(instances) == 1
+    assert len(instances[0].keypoints) == 17
+    assert len(
+        build_yolo26_pose_postprocess_instances(
+            np_module=np,
+            prediction_array=normalized,
+            labels=("person",),
+            score_threshold=0.1,
+            keypoint_confidence_threshold=0.2,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            input_size=(16, 16),
+            default_kpt_shape=(17, 3),
+            nms_threshold=0.65,
+            nms_indices_func=batched_nms_indices,
+        )[0]
+    ) == len(instances)
+
+
+def test_yolo26_obb_core_inference_postprocess_and_export_entries() -> None:
+    """验证 YOLO26 OBB inference、postprocess 和 export 已有模型专属 core 入口。"""
+
+    np = pytest.importorskip("numpy")
+    prediction = torch.zeros(1, 1, 6)
+    prediction[0, 0, 0] = 8.0
+    prediction[0, 0, 1] = 8.0
+    prediction[0, 0, 2] = 6.0
+    prediction[0, 0, 3] = 4.0
+    prediction[0, 0, 4] = 0.95
+    prediction[0, 0, 5] = 0.1
+
+    normalized = normalize_yolo26_obb_inference_outputs(
+        outputs=(prediction,),
+        np_module=np,
+    )
+    instances = build_yolo26_obb_inference_instances(
+        np_module=np,
+        prediction_array=normalized,
+        labels=("part",),
+        score_threshold=0.1,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert normalize_yolo26_obb_inference_outputs.__module__.endswith(
+        "yolo26_core.inference.obb"
+    )
+    assert build_yolo26_obb_inference_instances.__module__.endswith(
+        "yolo26_core.inference.obb"
+    )
+    assert build_yolo26_obb_postprocess_instances.__module__.endswith(
+        "yolo26_core.postprocess.obb"
+    )
+    assert resolve_yolo26_obb_export_output_names() == ("predictions",)
+    assert LocalYolo26ConversionRunner.task_export_output_names["obb"] == (
+        "predictions",
+    )
+    assert normalized.shape == (1, 1, 6)
+    assert len(instances) == 1
+    assert instances[0].class_name == "part"
+    assert instances[0].score == pytest.approx(0.95)
+    assert instances[0].angle == pytest.approx(0.1)
+    assert len(
+        build_yolo26_obb_postprocess_instances(
+            np_module=np,
+            prediction_array=normalized,
+            labels=("part",),
+            score_threshold=0.1,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
         )
     ) == len(instances)

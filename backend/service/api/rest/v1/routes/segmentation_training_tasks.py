@@ -41,6 +41,10 @@ from backend.service.application.models.yolo11_segmentation_training_service imp
     SqlAlchemyYolo11SegmentationTrainingTaskService,
     Yolo11SegmentationTrainingTaskRequest,
 )
+from backend.service.application.models.yolo26_segmentation_training_service import (
+    SqlAlchemyYolo26SegmentationTrainingTaskService,
+    Yolo26SegmentationTrainingTaskRequest,
+)
 
 segmentation_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
@@ -97,15 +101,22 @@ def create_segmentation_training_task(
         model_type=body.model_type,
         unsupported_message="当前 segmentation 训练不支持指定模型分类",
     )
-    service_cls = (
-        SqlAlchemyYolo11SegmentationTrainingTaskService
-        if n == "yolo11"
-        else SqlAlchemyYoloPrimarySegmentationTrainingTaskService
-    )
-    request_cls = (
-        Yolo11SegmentationTrainingTaskRequest
-        if n == "yolo11"
-        else YoloPrimarySegmentationTrainingTaskRequest
+    service_and_request_by_model_type = {
+        "yolo11": (
+            SqlAlchemyYolo11SegmentationTrainingTaskService,
+            Yolo11SegmentationTrainingTaskRequest,
+        ),
+        "yolo26": (
+            SqlAlchemyYolo26SegmentationTrainingTaskService,
+            Yolo26SegmentationTrainingTaskRequest,
+        ),
+    }
+    service_cls, request_cls = service_and_request_by_model_type.get(
+        n,
+        (
+            SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+            YoloPrimarySegmentationTrainingTaskRequest,
+        ),
     )
     svc = service_cls(
         session_factory=session_factory,

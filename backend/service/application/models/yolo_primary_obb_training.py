@@ -131,9 +131,9 @@ def run_yolo_primary_obb_training(
 ) -> YoloPrimaryObbTrainingExecutionResult:
     """执行 OBB 训练。"""
 
-    if request.model_type == "yolo11":
+    if request.model_type in {"yolo11", "yolo26"}:
         raise InvalidRequestError(
-            "YOLO11 OBB 训练必须通过 yolo11_obb_training 执行入口",
+            "YOLO11 / YOLO26 OBB 训练必须通过各自专属执行入口",
             details={"model_type": request.model_type},
         )
 

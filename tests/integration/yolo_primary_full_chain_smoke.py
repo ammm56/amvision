@@ -214,20 +214,28 @@ def main(argv: list[str] | None = None) -> int:
             cases = build_default_task_cases()
             selected_cases = [cases[task_type] for task_type in args.tasks]
             for case in selected_cases:
-                result["tasks"][case.task_type] = run_task_case(
-                    client=client,
-                    case=case,
-                    run_dir=run_dir,
-                    project_id=args.project_id,
-                    model_type=args.model_type,
-                    model_scale=args.model_scale,
-                    target_formats=args.target_formats,
-                    max_epochs=args.max_epochs,
-                    batch_size=args.batch_size,
-                    timeout_seconds=args.task_timeout_seconds,
-                    skip_deployment=args.skip_deployment,
-                    max_images_per_split=args.max_images_per_split,
-                )
+                try:
+                    result["tasks"][case.task_type] = run_task_case(
+                        client=client,
+                        case=case,
+                        run_dir=run_dir,
+                        project_id=args.project_id,
+                        model_type=args.model_type,
+                        model_scale=args.model_scale,
+                        target_formats=args.target_formats,
+                        max_epochs=args.max_epochs,
+                        batch_size=args.batch_size,
+                        timeout_seconds=args.task_timeout_seconds,
+                        skip_deployment=args.skip_deployment,
+                        max_images_per_split=args.max_images_per_split,
+                    )
+                except Exception as error:
+                    result["tasks"][case.task_type] = {
+                        "status": "failed",
+                        "finished_at": datetime.now().isoformat(timespec="seconds"),
+                        "error": str(error),
+                    }
+                    raise
         finally:
             client.close()
 
@@ -311,7 +319,6 @@ def start_service_processes(
 
     process_env = os.environ.copy()
     process_env.setdefault("AMVISION_TASK_MANAGER__ENABLED", "false")
-    process_env.setdefault("AMVISION_WORKER_TASK_MANAGER__MAX_CONCURRENT_TASKS", "1")
     service_log = run_dir / "backend-service.log"
     worker_log = run_dir / "backend-worker.log"
     processes: list[ManagedProcess] = []

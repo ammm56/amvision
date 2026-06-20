@@ -113,9 +113,9 @@ def test_yolo_detection_model_uses_common_task_heads() -> None:
 def test_yolo26_heads_live_in_yolo26_core() -> None:
     """验证 YOLO26 专用 head 留在 yolo26_core 边界内。"""
 
-    assert Segment26.__module__.endswith("yolo26_core.tasks.segmentation")
-    assert Pose26.__module__.endswith("yolo26_core.tasks.pose")
-    assert OBB26.__module__.endswith("yolo26_core.tasks.obb")
+    assert Segment26.__module__.endswith("yolo26_core.nn.tasks.segmentation")
+    assert Pose26.__module__.endswith("yolo26_core.nn.tasks.pose")
+    assert OBB26.__module__.endswith("yolo26_core.nn.tasks.obb")
     assert not hasattr(Pose26, "_decode_keypoints_pose26")
     assert not hasattr(OBB26, "_decode_angle_logits")
 

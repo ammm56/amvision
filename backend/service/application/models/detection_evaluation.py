@@ -14,7 +14,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.detection_runtime_contracts import (
+from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
@@ -70,7 +70,6 @@ def run_detection_evaluation(
         )
 
     label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories)
-    cat_id_to_index = {int(c.get("id", i)): i for i, c in enumerate(categories)}
 
     runtime = DefaultDetectionModelRuntime()
     session = runtime.load_session(

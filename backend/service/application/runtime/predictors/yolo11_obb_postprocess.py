@@ -10,7 +10,7 @@ from backend.service.application.models.yolox_core.postprocess import (
 from backend.service.application.models.yolo11_core.inference import (
     build_yolo11_obb_inference_instances,
 )
-from backend.service.application.runtime.obb_runtime_contracts import (
+from backend.service.application.runtime.contracts.obb import (
     ObbPredictionInstance,
 )
 from backend.service.application.runtime.predictors.yolo11_obb_contracts import (

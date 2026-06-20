@@ -33,6 +33,10 @@ from backend.service.application.models.yolo11_classification_training_service i
     SqlAlchemyYolo11ClassificationTrainingTaskService,
     Yolo11ClassificationTrainingTaskRequest,
 )
+from backend.service.application.models.yolo26_classification_training_service import (
+    SqlAlchemyYolo26ClassificationTrainingTaskService,
+    Yolo26ClassificationTrainingTaskRequest,
+)
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import (
     build_platform_model_type_field_description,
@@ -99,15 +103,21 @@ def create_classification_training_task(
         model_type=body.model_type,
         unsupported_message="当前 classification 训练不支持指定模型分类",
     )
-    service_cls = (
-        SqlAlchemyYolo11ClassificationTrainingTaskService
-        if n == "yolo11"
-        else SqlAlchemyYoloPrimaryClassificationTrainingTaskService
+    service_cls_by_model_type = {
+        "yolo11": SqlAlchemyYolo11ClassificationTrainingTaskService,
+        "yolo26": SqlAlchemyYolo26ClassificationTrainingTaskService,
+    }
+    request_cls_by_model_type = {
+        "yolo11": Yolo11ClassificationTrainingTaskRequest,
+        "yolo26": Yolo26ClassificationTrainingTaskRequest,
+    }
+    service_cls = service_cls_by_model_type.get(
+        n,
+        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     )
-    request_cls = (
-        Yolo11ClassificationTrainingTaskRequest
-        if n == "yolo11"
-        else YoloPrimaryClassificationTrainingTaskRequest
+    request_cls = request_cls_by_model_type.get(
+        n,
+        YoloPrimaryClassificationTrainingTaskRequest,
     )
     svc = service_cls(
         session_factory=session_factory,

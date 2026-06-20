@@ -12,16 +12,14 @@ from backend.service.application.conversions.yolo11_conversion_planner import (
 from backend.service.application.conversions.yolo_primary_conversion_task_service import (
     SqlAlchemyYoloPrimaryConversionTaskService,
     YoloPrimaryConversionBuildSummary as Yolo11ConversionBuildSummary,
-    YoloPrimaryConversionResultSnapshot as Yolo11ConversionResultSnapshot,
     YoloPrimaryConversionTaskRequest as Yolo11ConversionTaskRequest,
     YoloPrimaryConversionTaskResult as Yolo11ConversionTaskResult,
-    YoloPrimaryConversionTaskSubmission as Yolo11ConversionTaskSubmission,
 )
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11BuildRegistration,
 )
-from backend.service.application.runtime.yolo11_runtime_target import (
+from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
 

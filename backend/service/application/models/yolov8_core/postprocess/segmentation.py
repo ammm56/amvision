@@ -255,6 +255,7 @@ def decode_yolov8_segmentation_masks(
     )
     masks: list[Any] = []
     for mask_logit in mask_logits:
+        mask_logit = np_module.clip(mask_logit, -60.0, 60.0)
         probability_mask = 1.0 / (1.0 + np_module.exp(-mask_logit))
         resized_mask = cv2_module.resize(
             probability_mask,

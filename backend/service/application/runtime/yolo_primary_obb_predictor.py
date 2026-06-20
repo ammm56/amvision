@@ -59,7 +59,7 @@ from backend.service.application.runtime.support.detection import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.application.runtime.obb_runtime_contracts import (
+from backend.service.application.runtime.contracts.obb import (
     ObbPredictionExecutionResult,
     ObbPredictionInstance,
     ObbPredictionRequest,
@@ -1211,7 +1211,7 @@ def _build_obb_instances(
 
 
 def _as_preview_detection(instance):
-    from backend.service.application.runtime.detection_runtime_contracts import (
+    from backend.service.application.runtime.contracts.detection import (
         DetectionPredictionDetection,
     )
 
