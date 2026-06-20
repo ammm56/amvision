@@ -1,4 +1,4 @@
-"""YOLO11 detection 单图推理实现。"""
+"""YOLO11 detection 运行时会话入口。"""
 
 from __future__ import annotations
 

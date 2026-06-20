@@ -296,7 +296,7 @@ from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
 )
 from backend.service.application.runtime.support.detection import batched_nms_indices
-from backend.service.application.runtime.yolo11_predictor import (
+from backend.service.application.runtime.predictors.yolo11_detection import (
     OnnxRuntimeYolo11RuntimeSession,
     OpenVINOYolo11RuntimeSession,
     PyTorchYolo11RuntimeSession,

@@ -378,7 +378,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.runtime.predictors.yolo11_classification_pytorch",
     "backend.service.application.runtime.predictors.yolo11_classification_tensorrt",
     "backend.service.application.runtime.predictors.yolo11_classification_timing",
-    "backend.service.application.runtime.yolo11_predictor",
+    "backend.service.application.runtime.predictors.yolo11_detection",
     "backend.service.application.runtime.predictors.yolo11_obb",
     "backend.service.application.runtime.predictors.yolo11_obb_onnxruntime",
     "backend.service.application.runtime.predictors.yolo11_obb_openvino",

@@ -12,7 +12,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.yolo11_predictor import (
+from backend.service.application.runtime.predictors.yolo11_detection import (
     OnnxRuntimeYolo11RuntimeSession,
     OpenVINOYolo11RuntimeSession,
     PyTorchYolo11RuntimeSession,
@@ -47,7 +47,9 @@ from backend.service.application.runtime.predictors.yolov8_detection import (
     TensorRTYoloV8RuntimeSession,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 DetectionRuntimeLoader = Callable[
@@ -59,7 +61,9 @@ DetectionRuntimeLoader = Callable[
 class DetectionModelRuntimeSession(Protocol):
     """定义 detection 模型会话需要满足的最小协议。"""
 
-    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
+    def predict(
+        self, request: DetectionPredictionRequest
+    ) -> DetectionPredictionExecutionResult:
         """执行一次 detection 预测并返回结果。"""
 
         ...
@@ -87,12 +91,16 @@ class DetectionModelRuntimeRegistry:
 
     runtime_loaders: dict[str, DetectionRuntimeLoader] = field(default_factory=dict)
 
-    def register_runtime_loader(self, model_type: str, loader: DetectionRuntimeLoader) -> None:
+    def register_runtime_loader(
+        self, model_type: str, loader: DetectionRuntimeLoader
+    ) -> None:
         """登记指定模型分类对应的 detection 运行时加载器。"""
 
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
-            raise ServiceConfigurationError("登记 detection runtime loader 时 model_type 不能为空")
+            raise ServiceConfigurationError(
+                "登记 detection runtime loader 时 model_type 不能为空"
+            )
         self.runtime_loaders[normalized_model_type] = loader
 
     def resolve_runtime_loader(self, model_type: str) -> DetectionRuntimeLoader:
@@ -100,7 +108,9 @@ class DetectionModelRuntimeRegistry:
 
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
-            raise ServiceConfigurationError("当前 detection runtime 缺少有效 model_type")
+            raise ServiceConfigurationError(
+                "当前 detection runtime 缺少有效 model_type"
+            )
 
         runtime_loader = self.runtime_loaders.get(normalized_model_type)
         if runtime_loader is not None:
@@ -126,10 +136,14 @@ class DetectionModelRuntimeRegistry:
 class DefaultDetectionModelRuntime:
     """根据模型分类与 runtime backend 分发 detection 会话加载。"""
 
-    def __init__(self, runtime_registry: DetectionModelRuntimeRegistry | None = None) -> None:
+    def __init__(
+        self, runtime_registry: DetectionModelRuntimeRegistry | None = None
+    ) -> None:
         """初始化 detection 运行时加载器。"""
 
-        self.runtime_registry = runtime_registry or build_default_detection_model_runtime_registry()
+        self.runtime_registry = (
+            runtime_registry or build_default_detection_model_runtime_registry()
+        )
 
     def load_session(
         self,
@@ -141,7 +155,9 @@ class DefaultDetectionModelRuntime:
     ) -> DetectionModelRuntimeSession:
         """按模型分类和 runtime backend 加载 detection 模型会话。"""
 
-        runtime_loader = self.runtime_registry.resolve_runtime_loader(runtime_target.model_type)
+        runtime_loader = self.runtime_registry.resolve_runtime_loader(
+            runtime_target.model_type
+        )
         return runtime_loader(
             dataset_storage,
             runtime_target,
@@ -304,14 +320,24 @@ def _load_rfdetr_detection_session(
 
     del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
-        return PyTorchRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+        return PyTorchRfdetrRuntimeSession.load(
+            dataset_storage=dataset_storage, runtime_target=runtime_target
+        )
     if runtime_target.runtime_backend == "onnxruntime":
-        return OnnxRuntimeRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+        return OnnxRuntimeRfdetrRuntimeSession.load(
+            dataset_storage=dataset_storage, runtime_target=runtime_target
+        )
     if runtime_target.runtime_backend == "openvino":
-        return OpenVINORfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
+        return OpenVINORfdetrRuntimeSession.load(
+            dataset_storage=dataset_storage, runtime_target=runtime_target
+        )
     if runtime_target.runtime_backend == "tensorrt":
-        return TensorRTRfdetrRuntimeSession.load(dataset_storage=dataset_storage, runtime_target=runtime_target)
-    raise ValueError(f"unsupported rfdetr runtime backend: {runtime_target.runtime_backend}")
+        return TensorRTRfdetrRuntimeSession.load(
+            dataset_storage=dataset_storage, runtime_target=runtime_target
+        )
+    raise ValueError(
+        f"unsupported rfdetr runtime backend: {runtime_target.runtime_backend}"
+    )
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:
