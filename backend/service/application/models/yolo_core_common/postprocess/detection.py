@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
 from backend.service.application.errors import InvalidRequestError
+
+DetectionBoxFormat = Literal["xyxy", "xywh"]
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ def prepare_detection_nms_inputs_array(
     np_module: Any,
     num_classes: int,
     score_threshold: float,
+    box_format: DetectionBoxFormat = "xyxy",
 ) -> DetectionNmsInputArrays | None:
     """从单张 detection 预测数组中筛出进入 NMS 的候选框。"""
 
@@ -42,10 +45,16 @@ def prepare_detection_nms_inputs_array(
         channel_count=int(image_prediction.shape[1]),
         num_classes=num_classes,
     )
-    boxes = image_prediction[:, :4]
+    boxes = _normalize_detection_boxes_array(
+        boxes=image_prediction[:, :4],
+        np_module=np_module,
+        box_format=box_format,
+    )
     class_scores = image_prediction[:, 4 : 4 + num_classes]
     best_scores = np_module.max(class_scores, axis=1)
-    best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
+    best_class_ids = np_module.argmax(class_scores, axis=1).astype(
+        np_module.int32, copy=False
+    )
     keep_mask = best_scores >= score_threshold
     boxes = boxes[keep_mask]
     best_scores = best_scores[keep_mask]
@@ -64,6 +73,7 @@ def prepare_detection_nms_inputs_tensor(
     prediction_tensor: torch.Tensor,
     num_classes: int,
     score_threshold: float,
+    box_format: DetectionBoxFormat = "xyxy",
 ) -> DetectionNmsInputTensors | None:
     """从批量 detection 预测 tensor 中筛出进入 NMS 的候选框。"""
 
@@ -76,7 +86,10 @@ def prepare_detection_nms_inputs_tensor(
         channel_count=int(prediction_tensor.shape[2]),
         num_classes=num_classes,
     )
-    boxes = prediction_tensor[..., :4]
+    boxes = _normalize_detection_boxes_tensor(
+        boxes=prediction_tensor[..., :4],
+        box_format=box_format,
+    )
     class_scores = prediction_tensor[..., 4 : 4 + num_classes]
     best_scores, best_class_ids = class_scores.max(dim=2)
     keep_mask = best_scores >= float(score_threshold)
@@ -90,6 +103,69 @@ def prepare_detection_nms_inputs_tensor(
         scores=best_scores[batch_indices, anchor_indices],
         class_ids=best_class_ids[batch_indices, anchor_indices],
         batch_indices=batch_indices,
+    )
+
+
+def _normalize_detection_boxes_array(
+    *,
+    boxes: Any,
+    np_module: Any,
+    box_format: DetectionBoxFormat,
+) -> Any:
+    """把 detection box 数组统一转换为 NMS 使用的 xyxy。"""
+
+    if box_format == "xyxy":
+        return boxes
+    if box_format == "xywh":
+        center_x = boxes[:, 0]
+        center_y = boxes[:, 1]
+        width = boxes[:, 2]
+        height = boxes[:, 3]
+        half_width = width / 2.0
+        half_height = height / 2.0
+        return np_module.stack(
+            (
+                center_x - half_width,
+                center_y - half_height,
+                center_x + half_width,
+                center_y + half_height,
+            ),
+            axis=1,
+        )
+    raise InvalidRequestError(
+        "当前 detection box 格式不受支持",
+        details={"box_format": box_format},
+    )
+
+
+def _normalize_detection_boxes_tensor(
+    *,
+    boxes: torch.Tensor,
+    box_format: DetectionBoxFormat,
+) -> torch.Tensor:
+    """把 detection box tensor 统一转换为 NMS 使用的 xyxy。"""
+
+    if box_format == "xyxy":
+        return boxes
+    if box_format == "xywh":
+        center_x = boxes[..., 0]
+        center_y = boxes[..., 1]
+        width = boxes[..., 2]
+        height = boxes[..., 3]
+        half_width = width / 2.0
+        half_height = height / 2.0
+        return torch.stack(
+            (
+                center_x - half_width,
+                center_y - half_height,
+                center_x + half_width,
+                center_y + half_height,
+            ),
+            dim=-1,
+        )
+    raise InvalidRequestError(
+        "当前 detection box 格式不受支持",
+        details={"box_format": box_format},
     )
 
 

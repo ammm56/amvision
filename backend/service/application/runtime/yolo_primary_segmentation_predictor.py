@@ -5,7 +5,10 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
@@ -22,6 +25,10 @@ from backend.service.application.models.yolo_core_common.postprocess import (
 from backend.service.application.models.yolov8_core.inference import (
     build_yolov8_segmentation_inference_instances,
     normalize_yolov8_segmentation_inference_outputs,
+)
+from backend.service.application.models.yolo11_core.postprocess import (
+    build_yolo11_segmentation_postprocess_instances,
+    normalize_yolo11_segmentation_outputs,
 )
 from backend.service.application.models.yolo_primary_model_configs import (
     build_yolo_primary_model,
@@ -66,7 +73,10 @@ from backend.service.application.runtime.runtime_target import (
     describe_runtime_execution_mode,
 )
 from backend.service.settings import get_backend_service_settings
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+
 
 class PyTorchYoloPrimarySegmentationRuntimeSession:
     """已经加载完成并可重复推理的 PyTorch YOLO 主线 segmentation 会话。"""
@@ -146,7 +156,9 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         """执行一次 PyTorch segmentation 预测。"""
 
         decode_started_at = perf_counter()
@@ -165,7 +177,11 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
             image=image,
             input_size=self.runtime_target.input_size,
         )
-        input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
+        input_tensor = (
+            self.imports.torch.from_numpy(input_tensor)
+            .unsqueeze(0)
+            .to(self.device_name)
+        )
         input_tensor = input_tensor.float()
         if self.runtime_precision == "fp16":
             input_tensor = input_tensor.half()
@@ -185,6 +201,7 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
             model_type=self.model_type,
             outputs=outputs,
             np_module=self.imports.np,
+            labels=self.runtime_target.labels,
         )
         postprocess_started_at = perf_counter()
         instances = _build_segmentation_instances(
@@ -207,8 +224,7 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
         preview_image_bytes = None
         if request.save_result_image:
             preview_detections = tuple(
-                _as_preview_detection(instance)
-                for instance in instances
+                _as_preview_detection(instance) for instance in instances
             )
             preview_image_bytes = render_preview_image(
                 cv2_module=self.imports.cv2,
@@ -228,19 +244,28 @@ class PyTorchYoloPrimarySegmentationRuntimeSession:
                 device_name=self.device_name,
                 input_spec=SegmentationRuntimeTensorSpec(
                     name="images",
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
                     dtype="float16" if self.runtime_precision == "fp16" else "float32",
                 ),
                 output_specs=(
                     SegmentationRuntimeTensorSpec(
                         name="predictions",
                         shape=tuple(int(item) for item in prediction_array.shape),
-                        dtype="float16" if self.runtime_precision == "fp16" else "float32",
+                        dtype="float16"
+                        if self.runtime_precision == "fp16"
+                        else "float32",
                     ),
                     SegmentationRuntimeTensorSpec(
                         name="proto",
                         shape=tuple(int(item) for item in proto_array.shape),
-                        dtype="float16" if self.runtime_precision == "fp16" else "float32",
+                        dtype="float16"
+                        if self.runtime_precision == "fp16"
+                        else "float32",
                     ),
                 ),
                 metadata={
@@ -336,7 +361,9 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
             output_names=tuple(item.name for item in session.get_outputs()),
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         """执行一次 ONNXRuntime segmentation 预测。"""
 
         decode_started_at = perf_counter()
@@ -355,7 +382,9 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
             image=image,
             input_size=self.runtime_target.input_size,
         )
-        input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(self.imports.np.float32, copy=False)
+        input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
+            self.imports.np.float32, copy=False
+        )
         preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
 
         infer_started_at = perf_counter()
@@ -369,6 +398,7 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
             model_type=self.model_type,
             outputs=outputs,
             np_module=self.imports.np,
+            labels=self.runtime_target.labels,
         )
         postprocess_started_at = perf_counter()
         instances = _build_segmentation_instances(
@@ -391,8 +421,7 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
         preview_image_bytes = None
         if request.save_result_image:
             preview_detections = tuple(
-                _as_preview_detection(instance)
-                for instance in instances
+                _as_preview_detection(instance) for instance in instances
             )
             preview_image_bytes = render_preview_image(
                 cv2_module=self.imports.cv2,
@@ -412,12 +441,19 @@ class OnnxRuntimeYoloPrimarySegmentationRuntimeSession:
                 device_name=self.device_name,
                 input_spec=SegmentationRuntimeTensorSpec(
                     name=self.input_name,
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
                     dtype="float32",
                 ),
                 output_specs=tuple(
                     SegmentationRuntimeTensorSpec(
-                        name=self.output_names[index] if index < len(self.output_names) else f"output-{index}",
+                        name=self.output_names[index]
+                        if index < len(self.output_names)
+                        else f"output-{index}",
                         shape=tuple(int(item) for item in array.shape),
                         dtype="float32",
                     )
@@ -543,7 +579,9 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
             ),
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         """执行一次 OpenVINO segmentation 预测。"""
 
         decode_started_at = perf_counter()
@@ -562,7 +600,9 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
             image=image,
             input_size=self.runtime_target.input_size,
         )
-        input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(self.imports.np.float32, copy=False)
+        input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
+            self.imports.np.float32, copy=False
+        )
         preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
 
         infer_started_at = perf_counter()
@@ -576,12 +616,15 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
         if raw_proto is None:
             raw_proto = outputs.get(self.output_names[1])
         if raw_prediction is None or raw_proto is None:
-            raise InvalidRequestError("openvino segmentation 推理输出缺少 prediction 或 proto")
+            raise InvalidRequestError(
+                "openvino segmentation 推理输出缺少 prediction 或 proto"
+            )
 
         prediction_array, proto_array = _normalize_segmentation_outputs(
             model_type=self.model_type,
             outputs=(raw_prediction, raw_proto),
             np_module=self.imports.np,
+            labels=self.runtime_target.labels,
         )
         postprocess_started_at = perf_counter()
         instances = _build_segmentation_instances(
@@ -604,8 +647,7 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
         preview_image_bytes = None
         if request.save_result_image:
             preview_detections = tuple(
-                _as_preview_detection(instance)
-                for instance in instances
+                _as_preview_detection(instance) for instance in instances
             )
             preview_image_bytes = render_preview_image(
                 cv2_module=self.imports.cv2,
@@ -625,19 +667,30 @@ class OpenVINOYoloPrimarySegmentationRuntimeSession:
                 device_name=self.device_name,
                 input_spec=SegmentationRuntimeTensorSpec(
                     name=self.input_name,
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
-                    dtype=resolve_openvino_port_dtype(self.input_port, fallback="float32"),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
+                    dtype=resolve_openvino_port_dtype(
+                        self.input_port, fallback="float32"
+                    ),
                 ),
                 output_specs=(
                     SegmentationRuntimeTensorSpec(
                         name=self.output_names[0],
                         shape=tuple(int(item) for item in prediction_array.shape),
-                        dtype=resolve_openvino_port_dtype(self.prediction_port, fallback="float32"),
+                        dtype=resolve_openvino_port_dtype(
+                            self.prediction_port, fallback="float32"
+                        ),
                     ),
                     SegmentationRuntimeTensorSpec(
                         name=self.output_names[1],
                         shape=tuple(int(item) for item in proto_array.shape),
-                        dtype=resolve_openvino_port_dtype(self.proto_port, fallback="float32"),
+                        dtype=resolve_openvino_port_dtype(
+                            self.proto_port, fallback="float32"
+                        ),
                     ),
                 ),
                 metadata={
@@ -696,7 +749,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
     ) -> None:
         """初始化 TensorRT segmentation 会话。"""
 
-        deployment_settings = get_backend_service_settings().deployment_process_supervisor
+        deployment_settings = (
+            get_backend_service_settings().deployment_process_supervisor
+        )
         if pinned_output_buffer_enabled is None:
             pinned_output_buffer_enabled = bool(
                 deployment_settings.tensorrt_pinned_output_buffer_enabled
@@ -724,7 +779,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         self.execute_start_event = execute_start_event
         self.execute_end_event = execute_end_event
         self.pinned_output_buffer_enabled = bool(pinned_output_buffer_enabled)
-        self.pinned_output_buffer_max_bytes = max(0, int(pinned_output_buffer_max_bytes))
+        self.pinned_output_buffer_max_bytes = max(
+            0, int(pinned_output_buffer_max_bytes)
+        )
         self.input_device_ptr: int | None = None
         self.prediction_device_ptr: int | None = None
         self.proto_device_ptr: int | None = None
@@ -778,7 +835,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             severity=tensorrt_module.Logger.WARNING,
         )
         runtime = tensorrt_module.Runtime(logger)
-        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        engine = runtime.deserialize_cuda_engine(
+            runtime_target.runtime_artifact_path.read_bytes()
+        )
         if engine is None:
             raise ServiceConfigurationError(
                 "TensorRT segmentation engine 反序列化失败",
@@ -817,10 +876,16 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             io_mode=tensorrt_module.TensorIOMode.OUTPUT,
             fallback="predictions",
         )
-        output_names = _list_tensorrt_output_names(engine, tensorrt_module=tensorrt_module)
+        output_names = _list_tensorrt_output_names(
+            engine, tensorrt_module=tensorrt_module
+        )
         if len(output_names) < 1:
             raise ServiceConfigurationError("TensorRT segmentation engine 缺少输出")
-        prediction_name = output_names[0] if any(name == "predictions" for name in output_names) else output_names[0]
+        prediction_name = (
+            output_names[0]
+            if any(name == "predictions" for name in output_names)
+            else output_names[0]
+        )
         proto_name = (
             output_names[1]
             if len(output_names) >= 2
@@ -866,7 +931,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         """执行一次 TensorRT segmentation 预测。"""
 
         decode_started_at = perf_counter()
@@ -886,7 +953,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             input_size=self.runtime_target.input_size,
         )
         input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
-            resolve_numpy_dtype(np_module=self.imports.np, dtype_name=self.input_dtype_name),
+            resolve_numpy_dtype(
+                np_module=self.imports.np, dtype_name=self.input_dtype_name
+            ),
             copy=False,
         )
         requested_input_shape = tuple(int(dim) for dim in input_array.shape)
@@ -894,17 +963,26 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
 
         infer_started_at = perf_counter()
         ensure_cuda_success(
-            self.imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+            self.imports.cudart.cudaSetDevice(
+                resolve_cuda_device_index(self.device_name)
+            ),
             operation_name="TensorRT segmentation runtime 绑定 CUDA device",
             details={"device_name": self.device_name},
         )
-        engine_input_shape = normalize_tensor_shape(self.engine.get_tensor_shape(self.input_name))
+        engine_input_shape = normalize_tensor_shape(
+            self.engine.get_tensor_shape(self.input_name)
+        )
         if any(dim < 0 for dim in engine_input_shape):
-            shape_set_result = self.context.set_input_shape(self.input_name, requested_input_shape)
+            shape_set_result = self.context.set_input_shape(
+                self.input_name, requested_input_shape
+            )
             if shape_set_result is not True:
                 raise ServiceConfigurationError(
                     "TensorRT segmentation execution context 设置输入 shape 失败",
-                    details={"input_name": self.input_name, "requested_input_shape": list(requested_input_shape)},
+                    details={
+                        "input_name": self.input_name,
+                        "requested_input_shape": list(requested_input_shape),
+                    },
                 )
         elif engine_input_shape != requested_input_shape:
             raise InvalidRequestError(
@@ -914,17 +992,29 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
                     "requested_input_shape": list(requested_input_shape),
                 },
             )
-        resolved_prediction_shape = normalize_tensor_shape(self.context.get_tensor_shape(self.prediction_name))
-        resolved_proto_shape = normalize_tensor_shape(self.context.get_tensor_shape(self.proto_name))
-        if not resolved_prediction_shape or any(dim <= 0 for dim in resolved_prediction_shape):
+        resolved_prediction_shape = normalize_tensor_shape(
+            self.context.get_tensor_shape(self.prediction_name)
+        )
+        resolved_proto_shape = normalize_tensor_shape(
+            self.context.get_tensor_shape(self.proto_name)
+        )
+        if not resolved_prediction_shape or any(
+            dim <= 0 for dim in resolved_prediction_shape
+        ):
             raise ServiceConfigurationError(
                 "TensorRT segmentation execution context 返回了无效 prediction shape",
-                details={"output_name": self.prediction_name, "output_shape": list(resolved_prediction_shape)},
+                details={
+                    "output_name": self.prediction_name,
+                    "output_shape": list(resolved_prediction_shape),
+                },
             )
         if not resolved_proto_shape or any(dim <= 0 for dim in resolved_proto_shape):
             raise ServiceConfigurationError(
                 "TensorRT segmentation execution context 返回了无效 proto shape",
-                details={"output_name": self.proto_name, "output_shape": list(resolved_proto_shape)},
+                details={
+                    "output_name": self.proto_name,
+                    "output_shape": list(resolved_proto_shape),
+                },
             )
 
         prediction_array, proto_array = self._ensure_io_buffers(
@@ -941,19 +1031,33 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT segmentation runtime 拷贝输入到显存",
-            details={"input_name": self.input_name, "byte_size": int(input_array.nbytes)},
+            details={
+                "input_name": self.input_name,
+                "byte_size": int(input_array.nbytes),
+            },
         )
-        if self.context.set_tensor_address(self.input_name, int(self.input_device_ptr)) is not True:
+        if (
+            self.context.set_tensor_address(self.input_name, int(self.input_device_ptr))
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT segmentation execution context 绑定输入张量失败",
                 details={"input_name": self.input_name},
             )
-        if self.context.set_tensor_address(self.prediction_name, int(self.prediction_device_ptr)) is not True:
+        if (
+            self.context.set_tensor_address(
+                self.prediction_name, int(self.prediction_device_ptr)
+            )
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT segmentation execution context 绑定 prediction 输出张量失败",
                 details={"output_name": self.prediction_name},
             )
-        if self.context.set_tensor_address(self.proto_name, int(self.proto_device_ptr)) is not True:
+        if (
+            self.context.set_tensor_address(self.proto_name, int(self.proto_device_ptr))
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT segmentation execution context 绑定 proto 输出张量失败",
                 details={"output_name": self.proto_name},
@@ -982,7 +1086,10 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT segmentation runtime 拷贝 prediction 到主存",
-            details={"output_name": self.prediction_name, "byte_size": int(prediction_array.nbytes)},
+            details={
+                "output_name": self.prediction_name,
+                "byte_size": int(prediction_array.nbytes),
+            },
         )
         ensure_cuda_success(
             self.imports.cudart.cudaMemcpyAsync(
@@ -993,7 +1100,10 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT segmentation runtime 拷贝 proto 到主存",
-            details={"output_name": self.proto_name, "byte_size": int(proto_array.nbytes)},
+            details={
+                "output_name": self.proto_name,
+                "byte_size": int(proto_array.nbytes),
+            },
         )
         ensure_cuda_success(
             self.imports.cudart.cudaStreamSynchronize(self.stream),
@@ -1008,10 +1118,13 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        normalized_prediction_array, normalized_proto_array = _normalize_segmentation_outputs(
-            model_type=self.model_type,
-            outputs=(prediction_array, proto_array),
-            np_module=self.imports.np,
+        normalized_prediction_array, normalized_proto_array = (
+            _normalize_segmentation_outputs(
+                model_type=self.model_type,
+                outputs=(prediction_array, proto_array),
+                np_module=self.imports.np,
+                labels=self.runtime_target.labels,
+            )
         )
         postprocess_started_at = perf_counter()
         instances = _build_segmentation_instances(
@@ -1034,8 +1147,7 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         preview_image_bytes = None
         if request.save_result_image:
             preview_detections = tuple(
-                _as_preview_detection(instance)
-                for instance in instances
+                _as_preview_detection(instance) for instance in instances
             )
             preview_image_bytes = render_preview_image(
                 cv2_module=self.imports.cv2,
@@ -1097,7 +1209,9 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
 
         try:
             ensure_cuda_success(
-                self.imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+                self.imports.cudart.cudaSetDevice(
+                    resolve_cuda_device_index(self.device_name)
+                ),
                 operation_name="TensorRT segmentation runtime 清理前绑定 CUDA device",
                 details={"device_name": self.device_name},
             )
@@ -1146,7 +1260,10 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
         if self.prediction_host_array is not None:
             prediction_host_buffer_bytes = int(self.prediction_host_array.nbytes)
         prediction_host_pinned_bytes = 0
-        if self.prediction_host_memory_kind == "pinned" and self.prediction_host_ptr is not None:
+        if (
+            self.prediction_host_memory_kind == "pinned"
+            and self.prediction_host_ptr is not None
+        ):
             prediction_host_pinned_bytes = int(self.prediction_host_capacity_bytes)
         proto_host_buffer_bytes = 0
         if self.proto_host_array is not None:
@@ -1183,8 +1300,14 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             dtype_name=self.proto_dtype_name,
         )
         input_nbytes = int(input_array.nbytes)
-        prediction_nbytes = int(self.imports.np.empty(resolved_prediction_shape, dtype=prediction_dtype).nbytes)
-        proto_nbytes = int(self.imports.np.empty(resolved_proto_shape, dtype=proto_dtype).nbytes)
+        prediction_nbytes = int(
+            self.imports.np.empty(
+                resolved_prediction_shape, dtype=prediction_dtype
+            ).nbytes
+        )
+        proto_nbytes = int(
+            self.imports.np.empty(resolved_proto_shape, dtype=proto_dtype).nbytes
+        )
 
         if self.input_device_ptr is None or input_nbytes > self.input_capacity_bytes:
             if self.input_device_ptr is not None:
@@ -1196,7 +1319,10 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
             )[0]
             self.input_capacity_bytes = input_nbytes
 
-        if self.prediction_device_ptr is None or prediction_nbytes > self.prediction_capacity_bytes:
+        if (
+            self.prediction_device_ptr is None
+            or prediction_nbytes > self.prediction_capacity_bytes
+        ):
             if self.prediction_device_ptr is not None:
                 self.imports.cudart.cudaFree(self.prediction_device_ptr)
             self.prediction_device_ptr = ensure_cuda_success(
@@ -1278,7 +1404,10 @@ class TensorRTYoloPrimarySegmentationRuntimeSession:
                 or host_array.dtype != dtype
             ):
                 host_array = self.imports.np.ctypeslib.as_array(
-                    (self.imports.np.ctypeslib.as_ctypes_type(dtype) * int(self.imports.np.prod(resolved_shape))).from_address(int(host_ptr))
+                    (
+                        self.imports.np.ctypeslib.as_ctypes_type(dtype)
+                        * int(self.imports.np.prod(resolved_shape))
+                    ).from_address(int(host_ptr))
                 ).reshape(resolved_shape)
             host_memory_kind = "pinned"
         else:
@@ -1336,7 +1465,10 @@ def _resolve_proto_output_name(
     fallback_name = fallback
     for index in range(int(engine.num_io_tensors)):
         name = engine.get_tensor_name(index)
-        if engine.get_tensor_mode(name) == tensorrt_module.TensorIOMode.OUTPUT and name != exclude_name:
+        if (
+            engine.get_tensor_mode(name) == tensorrt_module.TensorIOMode.OUTPUT
+            and name != exclude_name
+        ):
             return name
     if fallback_name != exclude_name:
         return fallback_name
@@ -1363,11 +1495,12 @@ def _build_segmentation_instances(
 ) -> tuple[SegmentationPredictionInstance, ...]:
     """把 segmentation 输出数组转换成平台实例记录。"""
 
-    postprocess_builder = (
-        build_yolov8_segmentation_inference_instances
-        if model_type == "yolov8"
-        else build_segmentation_postprocess_instances
-    )
+    if model_type == "yolov8":
+        postprocess_builder = build_yolov8_segmentation_inference_instances
+    elif model_type == "yolo11":
+        postprocess_builder = build_yolo11_segmentation_postprocess_instances
+    else:
+        postprocess_builder = build_segmentation_postprocess_instances
     common_instances = postprocess_builder(
         cv2_module=cv2_module,
         np_module=np_module,
@@ -1401,6 +1534,7 @@ def _normalize_segmentation_outputs(
     model_type: str,
     outputs: object,
     np_module: Any,
+    labels: tuple[str, ...],
 ) -> tuple[Any, Any]:
     """按模型 core 归一化 segmentation 输出。"""
 
@@ -1408,6 +1542,12 @@ def _normalize_segmentation_outputs(
         return normalize_yolov8_segmentation_inference_outputs(
             outputs=outputs,
             np_module=np_module,
+        )
+    if model_type == "yolo11":
+        return normalize_yolo11_segmentation_outputs(
+            outputs=outputs,
+            np_module=np_module,
+            num_classes=len(labels),
         )
     return normalize_segmentation_outputs(
         outputs=outputs,
@@ -1418,7 +1558,9 @@ def _normalize_segmentation_outputs(
 def _as_preview_detection(instance: SegmentationPredictionInstance):
     """把 segmentation 实例转换为预览绘制用 detection 记录。"""
 
-    from backend.service.application.runtime.detection_runtime_contracts import DetectionPredictionDetection
+    from backend.service.application.runtime.detection_runtime_contracts import (
+        DetectionPredictionDetection,
+    )
 
     return DetectionPredictionDetection(
         bbox_xyxy=instance.bbox_xyxy,

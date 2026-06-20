@@ -13,7 +13,7 @@ from backend.service.application.runtime.obb_runtime_contracts import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
 )
-from backend.service.application.runtime.yolo11_obb_predictor import (
+from backend.service.application.runtime.predictors.yolo11_obb import (
     OnnxRuntimeYolo11ObbRuntimeSession,
     OpenVINOYolo11ObbRuntimeSession,
     PyTorchYolo11ObbRuntimeSession,
@@ -32,7 +32,9 @@ from backend.service.application.runtime.predictors.yolov8_obb import (
     TensorRTYoloV8ObbRuntimeSession,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 ObbRuntimeLoader = Callable[
@@ -42,8 +44,9 @@ ObbRuntimeLoader = Callable[
 
 
 class ObbModelRuntimeSession(Protocol):
-    def predict(self, request: ObbPredictionRequest) -> ObbPredictionExecutionResult:
-        ...
+    def predict(
+        self, request: ObbPredictionRequest
+    ) -> ObbPredictionExecutionResult: ...
 
 
 @dataclass
@@ -53,7 +56,9 @@ class ObbModelRuntimeRegistry:
     def register_runtime_loader(self, model_type, loader):
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
-            raise ServiceConfigurationError("登记 obb runtime loader 时 model_type 不能为空")
+            raise ServiceConfigurationError(
+                "登记 obb runtime loader 时 model_type 不能为空"
+            )
         self.runtime_loaders[normalized_model_type] = loader
 
     def resolve_runtime_loader(self, model_type):
@@ -71,7 +76,9 @@ class ObbModelRuntimeRegistry:
 
 class DefaultObbModelRuntime:
     def __init__(self, runtime_registry=None):
-        self.runtime_registry = runtime_registry or build_default_obb_model_runtime_registry()
+        self.runtime_registry = (
+            runtime_registry or build_default_obb_model_runtime_registry()
+        )
 
     def load_session(
         self,
@@ -100,11 +107,17 @@ def build_default_obb_model_runtime_registry():
 
 def _load_yolov8_obb(ds, rt, pe, pm):
     if rt.runtime_backend == "pytorch":
-        return PyTorchYoloV8ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return PyTorchYoloV8ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "onnxruntime":
-        return OnnxRuntimeYoloV8ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OnnxRuntimeYoloV8ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "openvino":
-        return OpenVINOYoloV8ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OpenVINOYoloV8ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYoloV8ObbRuntimeSession.load(
             dataset_storage=ds,
@@ -117,11 +130,17 @@ def _load_yolov8_obb(ds, rt, pe, pm):
 
 def _load_yolo11_obb(ds, rt, pe, pm):
     if rt.runtime_backend == "pytorch":
-        return PyTorchYolo11ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return PyTorchYolo11ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "onnxruntime":
-        return OnnxRuntimeYolo11ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OnnxRuntimeYolo11ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "openvino":
-        return OpenVINOYolo11ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OpenVINOYolo11ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYolo11ObbRuntimeSession.load(
             dataset_storage=ds,
@@ -134,11 +153,17 @@ def _load_yolo11_obb(ds, rt, pe, pm):
 
 def _load_yolo26_obb(ds, rt, pe, pm):
     if rt.runtime_backend == "pytorch":
-        return PyTorchYolo26ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return PyTorchYolo26ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "onnxruntime":
-        return OnnxRuntimeYolo26ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OnnxRuntimeYolo26ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "openvino":
-        return OpenVINOYolo26ObbRuntimeSession.load(dataset_storage=ds, runtime_target=rt)
+        return OpenVINOYolo26ObbRuntimeSession.load(
+            dataset_storage=ds, runtime_target=rt
+        )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYolo26ObbRuntimeSession.load(
             dataset_storage=ds,

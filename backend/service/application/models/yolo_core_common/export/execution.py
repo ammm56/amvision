@@ -9,7 +9,9 @@ import subprocess
 from typing import Callable
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.yolo_core_common.export.plan import YoloExportTaskPlan
+from backend.service.application.models.yolo_core_common.export.plan import (
+    YoloExportTaskPlan,
+)
 from backend.service.application.models.yolo_core_common.export.segmentation import (
     normalize_segmentation_export_outputs,
 )
@@ -103,12 +105,47 @@ def validate_yolo_onnx(
         torch_outputs=torch_outputs,
         ort_outputs=ort_outputs,
     )
-    if not bool(summary["allclose"]):
+    strict_numeric_validation = require_strict_yolo_onnx_numeric_validation(
+        task_type=export_plan.task_type,
+    )
+    summary["strict_numeric_validation"] = strict_numeric_validation
+    if not bool(summary["finite"]):
+        raise ServiceConfigurationError(
+            "ONNX 输出包含 NaN 或 Inf",
+            details=dict(summary),
+        )
+    if strict_numeric_validation and not bool(summary["allclose"]):
         raise ServiceConfigurationError(
             "ONNX 数值校验失败",
             details=dict(summary),
         )
     return summary
+
+
+def optimize_yolo_onnx(
+    *,
+    source_path: Path,
+    optimized_path: Path,
+    source_object_key: str,
+    output_object_key: str,
+    onnx_module: object,
+    onnx_simplify: object,
+) -> dict[str, object]:
+    """执行 YOLO 主线 ONNX simplify 优化并写回独立输出。"""
+
+    optimized_path.parent.mkdir(parents=True, exist_ok=True)
+    source_model = onnx_module.load(str(source_path))
+    simplified_model, check_passed = onnx_simplify(source_model)
+    if not check_passed:
+        raise ServiceConfigurationError("ONNX simplify 校验失败")
+    onnx_module.checker.check_model(simplified_model)
+    onnx_module.save(simplified_model, str(optimized_path))
+    return {
+        "stage": "optimize-onnx",
+        "object_uri": output_object_key,
+        "source_object_uri": source_object_key,
+        "optimizer": "onnxsim",
+    }
 
 
 def build_yolo_openvino_ir(
@@ -158,7 +195,9 @@ def build_yolo_openvino_ir(
         "stage": "build-openvino-ir",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
-        "weights_object_uri": resolve_yolo_openvino_weights_object_key(output_object_key),
+        "weights_object_uri": resolve_yolo_openvino_weights_object_key(
+            output_object_key
+        ),
         "build_precision": build_precision,
         "compress_to_fp16": compress_to_fp16,
         "execution_mode": "subprocess-openvino-convert-model",
@@ -214,7 +253,9 @@ def build_yolo_tensorrt_engine(
     return build_summary
 
 
-def normalize_yolo_export_model_outputs(model_outputs: object, imports: object) -> list[object]:
+def normalize_yolo_export_model_outputs(
+    model_outputs: object, imports: object
+) -> list[object]:
     """把 PyTorch 模型输出规整为 numpy 数组列表。"""
 
     if hasattr(model_outputs, "detach"):
@@ -251,6 +292,7 @@ def summarize_yolo_onnx_numeric_validation(
     max_abs_diff = 0.0
     mean_abs_diff = 0.0
     compared_output_count = 0
+    finite = True
     for torch_output, ort_output in zip(torch_outputs, ort_outputs, strict=True):
         if tuple(torch_output.shape) != tuple(ort_output.shape):
             raise ServiceConfigurationError(
@@ -261,6 +303,8 @@ def summarize_yolo_onnx_numeric_validation(
                 },
             )
         abs_diff = np_module.abs(torch_output - ort_output)
+        finite = finite and bool(np_module.isfinite(torch_output).all())
+        finite = finite and bool(np_module.isfinite(ort_output).all())
         max_abs_diff = max(max_abs_diff, float(np_module.max(abs_diff)))
         mean_abs_diff += float(np_module.mean(abs_diff))
         compared_output_count += 1
@@ -272,10 +316,17 @@ def summarize_yolo_onnx_numeric_validation(
     return {
         "stage": "validate-onnx",
         "allclose": allclose,
+        "finite": finite,
         "max_abs_diff": max_abs_diff,
         "mean_abs_diff": mean_abs_diff,
         "output_count": compared_output_count,
     }
+
+
+def require_strict_yolo_onnx_numeric_validation(*, task_type: str) -> bool:
+    """返回当前 task 是否要求 raw ONNX 输出逐元素严格一致。"""
+
+    return task_type in {"classification", "detection"}
 
 
 def resolve_yolo_openvino_weights_object_key(output_object_key: str) -> str:

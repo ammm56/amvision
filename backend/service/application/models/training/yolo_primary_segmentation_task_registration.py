@@ -11,10 +11,6 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.models.training.rfdetr_segmentation import (
     RFDETR_SEGMENTATION_IMPLEMENTATION_MODE,
 )
-from backend.service.application.models.yolo11_model_service import (
-    SqlAlchemyYolo11ModelService,
-    Yolo11TrainingOutputRegistration,
-)
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
@@ -34,7 +30,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 YOLO_PRIMARY_SEGMENTATION_MODEL_SERVICE_MAP: dict[str, tuple[type, type]] = {
     "yolov8": (SqlAlchemyYoloV8ModelService, YoloV8TrainingOutputRegistration),
-    "yolo11": (SqlAlchemyYolo11ModelService, Yolo11TrainingOutputRegistration),
     "yolo26": (SqlAlchemyYolo26ModelService, Yolo26TrainingOutputRegistration),
     "rfdetr": (SqlAlchemyRfdetrModelService, RfdetrTrainingOutputRegistration),
 }
@@ -69,7 +64,9 @@ def register_yolo_primary_segmentation_training_output_model_version(
 ) -> str:
     """把 segmentation 训练输出登记为 ModelVersion。"""
 
-    service_cls, registration_cls = YOLO_PRIMARY_SEGMENTATION_MODEL_SERVICE_MAP[model_type]
+    service_cls, registration_cls = YOLO_PRIMARY_SEGMENTATION_MODEL_SERVICE_MAP[
+        model_type
+    ]
     model_service = service_cls(session_factory=session_factory)
     return model_service.register_training_output(
         registration_cls(

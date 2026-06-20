@@ -32,11 +32,11 @@ from backend.service.application.models.training.yolo_primary_obb_task_payload i
 )
 from backend.service.application.models.training.yolo_primary_obb_task_registration import (
     YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP,
+    resolve_yolo_primary_obb_implementation_mode,
     register_yolo_primary_obb_training_output_model_version,
 )
 from backend.service.application.models.yolo_primary_obb_training import (
     YOLO_PRIMARY_OBB_DEFAULT_EVALUATION_INTERVAL,
-    YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE,
     YoloPrimaryObbTrainingControlCommand,
     YoloPrimaryObbTrainingEpochProgress,
     YoloPrimaryObbTrainingPausedError,
@@ -62,6 +62,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 OBB_TRAINING_TASK_KIND = "obb-training"
 OBB_TRAINING_QUEUE_NAME = "obb-trainings"
 OBB_TRAINING_CONTROL_METADATA_KEY = "obb_training_control"
+OBB_TRAINING_SUPPORTED_MODEL_TYPES = (
+    *tuple(YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP.keys()),
+)
 
 
 @dataclass(frozen=True)
@@ -119,12 +122,12 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             dataset_export_manifest_key=request.dataset_export_manifest_key,
             model_type=model_type,
         )
-        task_spec = build_yolo_primary_obb_task_spec(
+        task_spec = self._build_task_spec(
             request=request,
             dataset_export=dataset_export,
             model_type=model_type,
         )
-        metadata = build_yolo_primary_obb_create_task_metadata(
+        metadata = self._build_create_task_metadata(
             request=request,
             dataset_export=dataset_export,
             model_type=model_type,
@@ -142,7 +145,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
         )
         queue_task = self.queue_backend.enqueue(
             queue_name=self.training_queue_name,
-            payload=build_yolo_primary_obb_queue_payload(
+            payload=self._build_queue_payload(
                 task_id=created_task.task_id,
                 task_kind=self.training_task_kind,
                 task_spec=task_spec,
@@ -168,8 +171,10 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
     ) -> dict[str, object]:
         """执行 OBB 训练工作负载。"""
 
-        payload = read_yolo_primary_obb_task_payload(task_record)
-        resolved_model_type = self._normalize_model_type(payload.get("model_type", model_type))
+        payload = self._read_task_payload(task_record)
+        resolved_model_type = self._normalize_model_type(
+            payload.get("model_type", model_type)
+        )
         dataset_export = self._resolve_dataset_export(
             project_id=task_record.project_id,
             dataset_export_id=self._read_optional_str(payload.get("dataset_export_id")),
@@ -196,7 +201,9 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
         temporary_best_checkpoint_path = self.dataset_storage.resolve(
             f"{output_prefix}/best-checkpoint.pt"
         )
-        latest_checkpoint_object_key = f"{output_prefix}/output-files/latest-checkpoint.pt"
+        latest_checkpoint_object_key = (
+            f"{output_prefix}/output-files/latest-checkpoint.pt"
+        )
         checkpoint_object_key = f"{output_prefix}/output-files/best-checkpoint.pt"
         train_metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
         validation_metrics_object_key = (
@@ -241,7 +248,10 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             validation_metric = float(
                 savepoint.validation_metrics.get("loss", savepoint.best_metric_value)
             )
-            if validation_metric <= savepoint.best_metric_value or savepoint.best_metric_value == 0.0:
+            if (
+                validation_metric <= savepoint.best_metric_value
+                or savepoint.best_metric_value == 0.0
+            ):
                 self.dataset_storage.write_bytes(
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
@@ -266,8 +276,8 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             savepoint_callback=on_savepoint,
         )
         try:
-            execution_result = run_yolo_primary_obb_training(request)
-        except YoloPrimaryObbTrainingTerminatedError:
+            execution_result = self._run_obb_training_execution(request)
+        except self._terminated_error_types():
             cancelled_result = self._build_interrupted_result(
                 status="cancelled",
                 task_record=task_record,
@@ -290,7 +300,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
                 )
             )
             return cancelled_result
-        except YoloPrimaryObbTrainingPausedError:
+        except self._paused_error_types():
             paused_result = self._build_interrupted_result(
                 status="paused",
                 task_record=task_record,
@@ -381,8 +391,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             validation_metrics_object_key=validation_metrics_object_key,
             summary_object_key=summary_object_key,
         )
-        model_version_id = register_yolo_primary_obb_training_output_model_version(
-            session_factory=self.session_factory,
+        model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,
             payload=payload,
@@ -445,15 +454,87 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
         """把模型分类名称规范化为受支持值。"""
 
         normalized = str(model_type or "yolov8").strip().lower()
-        if normalized not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP:
+        if normalized not in OBB_TRAINING_SUPPORTED_MODEL_TYPES:
             raise InvalidRequestError(
                 "当前 obb 训练不支持指定模型分类",
                 details={
                     "model_type": normalized,
-                    "supported": tuple(YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP.keys()),
+                    "supported": OBB_TRAINING_SUPPORTED_MODEL_TYPES,
                 },
             )
         return normalized
+
+    def _build_task_spec(
+        self,
+        *,
+        request: YoloPrimaryObbTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        model_type: str,
+    ) -> dict[str, object]:
+        """构建 OBB 训练任务规格快照。"""
+
+        return build_yolo_primary_obb_task_spec(
+            request=request,
+            dataset_export=dataset_export,
+            model_type=model_type,
+        )
+
+    def _build_create_task_metadata(
+        self,
+        *,
+        request: YoloPrimaryObbTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        model_type: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 OBB 训练 TaskRecord metadata。"""
+
+        return build_yolo_primary_obb_create_task_metadata(
+            request=request,
+            dataset_export=dataset_export,
+            model_type=model_type,
+            task_spec=task_spec,
+        )
+
+    def _build_queue_payload(
+        self,
+        *,
+        task_id: str,
+        task_kind: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 OBB 训练队列负载。"""
+
+        return build_yolo_primary_obb_queue_payload(
+            task_id=task_id,
+            task_kind=task_kind,
+            task_spec=task_spec,
+        )
+
+    def _read_task_payload(self, task_record: TaskRecord) -> dict[str, object]:
+        """从任务记录中解析 OBB 训练负载。"""
+
+        return read_yolo_primary_obb_task_payload(task_record)
+
+    def _run_obb_training_execution(
+        self,
+        request: YoloPrimaryObbTrainingExecutionRequest,
+    ) -> YoloPrimaryObbTrainingExecutionResult:
+        """执行 primary OBB 训练。"""
+
+        return run_yolo_primary_obb_training(request)
+
+    @staticmethod
+    def _terminated_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按取消处理的 OBB 训练异常类型。"""
+
+        return (YoloPrimaryObbTrainingTerminatedError,)
+
+    @staticmethod
+    def _paused_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按暂停处理的 OBB 训练异常类型。"""
+
+        return (YoloPrimaryObbTrainingPausedError,)
 
     def _resolve_dataset_export(
         self,
@@ -546,7 +627,7 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             "input_size": list(input_size) if input_size is not None else None,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
-            "implementation_mode": YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE,
+            "implementation_mode": self._resolve_implementation_mode(model_type),
             "training_config": training_config,
             "metrics_summary": metrics_summary,
             "output_files": output_files,
@@ -554,6 +635,40 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             "validation_metrics_payload": execution_result.validation_metrics_payload,
             "output_prefix": output_prefix,
         }
+
+    def _register_training_output_model_version(
+        self,
+        *,
+        task_record: TaskRecord,
+        dataset_export: DatasetExport,
+        payload: dict[str, object],
+        model_type: str,
+        execution_result: YoloPrimaryObbTrainingExecutionResult,
+        checkpoint_object_key: str,
+        labels_object_key: str,
+        train_metrics_object_key: str,
+        summary: dict[str, object],
+    ) -> str:
+        """按模型分类登记 OBB 训练输出。"""
+
+        return register_yolo_primary_obb_training_output_model_version(
+            session_factory=self.session_factory,
+            task_record=task_record,
+            dataset_export=dataset_export,
+            payload=payload,
+            model_type=model_type,
+            execution_result=execution_result,
+            checkpoint_object_key=checkpoint_object_key,
+            labels_object_key=labels_object_key,
+            train_metrics_object_key=train_metrics_object_key,
+            summary=summary,
+        )
+
+    @staticmethod
+    def _resolve_implementation_mode(model_type: str) -> str:
+        """按模型分类返回 OBB 训练实现标记。"""
+
+        return resolve_yolo_primary_obb_implementation_mode(model_type)
 
     def _build_interrupted_result(
         self,
@@ -572,15 +687,23 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
     ) -> dict[str, object]:
         """构建 paused 或 cancelled 状态下的任务结果。"""
 
-        if self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/latest-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 latest_checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/latest-checkpoint.pt"
+                ).read_bytes(),
             )
-        if self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/best-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/best-checkpoint.pt"
+                ).read_bytes(),
             )
         return {
             "status": status,
@@ -636,7 +759,9 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
             return
         self.task_service.update_task_metadata(task_id, updated_metadata)
 
-    def _set_control_flag(self, task_record: TaskRecord, flag: str, value: bool) -> None:
+    def _set_control_flag(
+        self, task_record: TaskRecord, flag: str, value: bool
+    ) -> None:
         """设置训练控制标记。"""
 
         metadata = dict(task_record.metadata) if task_record.metadata else {}
@@ -648,7 +773,9 @@ class SqlAlchemyYoloPrimaryObbTrainingTaskService:
         )
         self.task_service.update_task_metadata(task_record.task_id, updated_metadata)
 
-    def _write_labels_text(self, *, labels_object_key: str, labels: tuple[str, ...]) -> None:
+    def _write_labels_text(
+        self, *, labels_object_key: str, labels: tuple[str, ...]
+    ) -> None:
         """按一行一个类别名写出 labels.txt。"""
 
         content = "\n".join(labels)

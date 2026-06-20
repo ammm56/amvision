@@ -42,6 +42,9 @@ from backend.service.application.runtime.predictors.yolox import (
     _resolve_tensorrt_dtype_name as resolve_tensorrt_dtype_name,
     _resolve_tensorrt_io_tensor_name as resolve_tensorrt_io_tensor_name,
 )
+from backend.service.application.runtime.predictors.yolox_backend import (
+    release_yolox_cuda_resource as release_cuda_resource,
+)
 from backend.service.application.runtime.support.detection_preview import (
     render_detection_preview_image as render_preview_image,
 )
@@ -71,6 +74,7 @@ __all__ = [
     "render_preview_image",
     "require_cuda_inference_imports",
     "require_inference_imports",
+    "release_cuda_resource",
     "resolve_cuda_device_index",
     "resolve_cuda_runtime_device_name",
     "resolve_execution_device_name",

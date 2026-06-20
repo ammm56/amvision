@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import cv2
+import numpy as np
 import pytest
 import torch
 
@@ -14,12 +16,30 @@ from backend.service.application.models.yolo11_core import (
     analyze_yolo11_state_dict_coverage,
     build_yolo11_export_task_plan,
     build_yolo11_model,
+    compute_yolo11_detection_loss,
+    compute_yolo11_obb_loss,
+    compute_yolo11_pose_loss,
     load_yolo11_checkpoint_file,
     load_yolo11_state_dict,
     normalize_yolo11_segmentation_export_outputs,
     resolve_yolo11_segmentation_export_output_names,
 )
-from backend.service.application.models.onnx_export import TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION
+from backend.service.application.models.yolo11_core.export import (
+    Yolo11ExportSourceSession,
+)
+from backend.service.application.models.yolo11_core.evaluation import (
+    Yolo11DetectionEvaluationRequest,
+    Yolo11ObbEvaluationRequest,
+    Yolo11PoseEvaluationRequest,
+    evaluate_yolo11_obb_samples,
+    evaluate_yolo11_pose_samples,
+    run_yolo11_detection_evaluation,
+    run_yolo11_obb_evaluation,
+    run_yolo11_pose_evaluation,
+)
+from backend.service.application.models.onnx_export import (
+    TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
+)
 from backend.service.application.models.yolo26_core import (
     YOLO26_HEAD_MODULES,
     YOLO26_MODEL_CONFIGS,
@@ -53,6 +73,177 @@ from backend.service.application.models.yolov8_core import (
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_segmentation_targets,
+)
+from backend.service.application.models.yolo11_core.assigners import (
+    assign_yolo11_obb_targets,
+    assign_yolo11_pose_targets,
+)
+from backend.service.application.models.yolo11_core.targets import (
+    normalize_yolo11_gt_keypoints_tensor,
+    yolo11_decode_distances_to_rboxes,
+)
+from backend.service.application.models.yolo11_core.training import (
+    build_yolo11_classification_training_runtime,
+    build_yolo11_classification_checkpoint_bytes,
+    build_yolo11_detection_epoch_checkpoint_update,
+    build_yolo11_autocast_context,
+    build_yolo11_detection_training_runtime,
+    build_yolo11_detection_training_savepoint_payload,
+    build_yolo11_segmentation_anchors_from_features,
+    build_yolo11_segmentation_autocast_context,
+    build_yolo11_segmentation_checkpoint_bytes,
+    build_yolo11_pose_checkpoint_bytes,
+    build_yolo11_obb_checkpoint_bytes,
+    encode_yolo11_detection_checkpoint_state,
+    evaluate_yolo11_detection_validation_losses,
+    load_yolo11_segmentation_resume_state,
+    load_yolo11_segmentation_training_manifest,
+    load_yolo11_pose_resume_state,
+    load_yolo11_pose_training_manifest,
+    load_yolo11_obb_resume_state,
+    load_yolo11_obb_training_manifest,
+    move_yolo11_optimizer_state_to_device,
+    plan_yolo11_detection_training_execution,
+    prepare_yolo11_detection_training_data_context,
+    require_yolo11_segmentation_training_imports,
+    restore_yolo11_segmentation_training_state,
+    restore_yolo11_pose_training_state,
+    restore_yolo11_obb_training_state,
+    resolve_yolo11_detection_best_metric_update,
+    resolve_yolo11_detection_epoch_control,
+    resolve_yolo11_segmentation_training_device,
+    run_yolo11_detection_training_loop,
+    run_yolo11_classification_training_loop,
+    run_yolo11_pose_training_loop,
+    run_yolo11_obb_training_loop,
+    run_yolo11_detection_training_epoch,
+    should_run_yolo11_detection_validation,
+    validate_yolo11_detection_resume_checkpoint,
+    validate_yolo11_segmentation_resume_parameters,
+    validate_yolo11_pose_resume_parameters,
+    validate_yolo11_obb_resume_parameters,
+    Yolo11DetectionTrainingPausedError,
+    Yolo11DetectionTrainingTerminatedError,
+)
+from backend.service.application.models.yolo11_detection_training import (
+    Yolo11DetectionTrainingExecutionRequest,
+    Yolo11TrainingBatchProgress,
+    run_yolo11_detection_training,
+)
+from backend.service.application.models.yolo11_classification_training import (
+    run_yolo11_classification_training,
+)
+from backend.service.application.models.yolo11_segmentation_training import (
+    run_yolo11_segmentation_training,
+)
+from backend.service.application.models.yolo11_pose_training import (
+    run_yolo11_pose_training,
+)
+from backend.service.application.models.yolo11_obb_training import (
+    run_yolo11_obb_training,
+)
+from backend.service.application.models.training.yolo11_classification_task_execution import (
+    run_yolo11_classification_training_from_task_request,
+)
+from backend.service.application.models.training.yolo11_segmentation_task_execution import (
+    run_yolo11_segmentation_training_from_task_request,
+)
+from backend.service.application.models.training.yolo11_pose_task_execution import (
+    run_yolo11_pose_training_from_task_request,
+)
+from backend.service.application.models.training.yolo11_obb_task_execution import (
+    run_yolo11_obb_training_from_task_request,
+)
+from backend.service.application.models.training.yolo11_pose_task_registration import (
+    register_yolo11_pose_training_output_model_version,
+    resolve_yolo11_pose_implementation_mode,
+)
+from backend.service.application.models.training.yolo11_obb_task_registration import (
+    register_yolo11_obb_training_output_model_version,
+    resolve_yolo11_obb_implementation_mode,
+)
+from backend.service.application.models.training.yolo_primary_pose_task_registration import (
+    YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP,
+)
+from backend.service.application.models.training.yolo_primary_obb_task_registration import (
+    YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP,
+)
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
+from backend.service.application.models.yolo_primary_classification_training_service import (
+    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo_primary_segmentation_training_service import (
+    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
+)
+from backend.service.application.models.yolo_primary_pose_training_service import (
+    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
+)
+from backend.service.application.models.yolo_primary_obb_training_service import (
+    SqlAlchemyYoloPrimaryObbTrainingTaskService,
+)
+from backend.service.application.models.yolo_primary_pose_training import (
+    YoloPrimaryPoseTrainingExecutionRequest,
+    run_yolo_primary_pose_training,
+)
+from backend.service.application.models.yolo_primary_obb_training import (
+    YoloPrimaryObbTrainingExecutionRequest,
+    run_yolo_primary_obb_training,
+)
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.runtime.predictors.yolo11_classification import (
+    OnnxRuntimeYolo11ClassificationRuntimeSession,
+    OpenVINOYolo11ClassificationRuntimeSession,
+    PyTorchYolo11ClassificationRuntimeSession,
+    TensorRTYolo11ClassificationRuntimeSession,
+)
+from backend.service.application.models.yolo11_training_service import (
+    SqlAlchemyYolo11TrainingTaskService,
+)
+from backend.service.application.models.yolo26_training_service import (
+    SqlAlchemyYolo26TrainingTaskService,
+)
+from backend.service.application.models.yolo_detection_training_control import (
+    YoloDetectionTrainingBatchProgress,
+)
+from backend.service.application.models.yolo_detection_training_execution import (
+    YoloDetectionTrainingExecutionRequest,
+)
+from backend.service.application.models.yolo_detection_training_service import (
+    SqlAlchemyYoloDetectionTrainingTaskService,
+)
+from backend.service.application.models.yolov8_training_service import (
+    SqlAlchemyYoloV8TrainingTaskService,
+)
+from backend.service.application.models.yolo11_core.data import (
+    build_yolo11_detection_training_batch,
+    build_yolo11_obb_training_batch,
+    build_yolo11_pose_training_batch,
+    build_yolo11_task_augmentation_options,
+    serialize_yolo11_detection_augmentation_options,
+)
+from backend.service.application.models.yolo11_core.inference import (
+    build_yolo11_obb_inference_instances,
+    build_yolo11_pose_inference_instances,
+    build_yolo11_segmentation_inference_instances,
+    normalize_yolo11_obb_inference_outputs,
+    normalize_yolo11_pose_inference_outputs,
+    normalize_yolo11_segmentation_inference_outputs,
+)
+from backend.service.application.models.yolo11_core.postprocess import (
+    build_yolo11_obb_postprocess_instances,
+    build_yolo11_pose_postprocess_instances,
+    build_yolo11_segmentation_postprocess_instances,
 )
 from backend.service.application.models.yolov8_core.data import (
     YoloV8TaskAugmentationOptions,
@@ -105,9 +296,45 @@ from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
 )
 from backend.service.application.runtime.support.detection import batched_nms_indices
-from backend.workers.conversion.yolo11_conversion_runner import LocalYolo11ConversionRunner
-from backend.workers.conversion.yolo26_conversion_runner import LocalYolo26ConversionRunner
-from backend.workers.conversion.yolov8_conversion_runner import LocalYoloV8ConversionRunner
+from backend.service.application.runtime.yolo11_predictor import (
+    OnnxRuntimeYolo11RuntimeSession,
+    OpenVINOYolo11RuntimeSession,
+    PyTorchYolo11RuntimeSession,
+    TensorRTYolo11RuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo11_obb import (
+    OnnxRuntimeYolo11ObbRuntimeSession,
+    OpenVINOYolo11ObbRuntimeSession,
+    PyTorchYolo11ObbRuntimeSession,
+    TensorRTYolo11ObbRuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo11_pose import (
+    OnnxRuntimeYolo11PoseRuntimeSession,
+    OpenVINOYolo11PoseRuntimeSession,
+    PyTorchYolo11PoseRuntimeSession,
+    TensorRTYolo11PoseRuntimeSession,
+)
+from backend.service.application.runtime.predictors.yolo11_segmentation import (
+    OnnxRuntimeYolo11SegmentationRuntimeSession,
+    OpenVINOYolo11SegmentationRuntimeSession,
+    PyTorchYolo11SegmentationRuntimeSession,
+    TensorRTYolo11SegmentationRuntimeSession,
+)
+from backend.workers.conversion.yolo11_conversion_runner import (
+    LocalYolo11ConversionRunner,
+)
+from backend.workers.conversion.yolo26_conversion_runner import (
+    LocalYolo26ConversionRunner,
+)
+from backend.workers.conversion.yolo_model_conversion_runner import (
+    LocalYoloModelConversionRunner,
+)
+from backend.workers.conversion.yolo_primary_conversion_runner import (
+    LocalYoloPrimaryConversionRunner,
+)
+from backend.workers.conversion.yolov8_conversion_runner import (
+    LocalYoloV8ConversionRunner,
+)
 
 
 @pytest.mark.parametrize(
@@ -170,6 +397,755 @@ def test_yolo_core_head_module_maps_are_model_specific() -> None:
     assert YOLO26_HEAD_MODULES["OBB26"].__name__ == "OBB26"
 
 
+def test_yolo11_detection_loss_supports_backward() -> None:
+    """验证 YOLO11 detection core loss 可以完成一次反向传播。"""
+
+    model = build_yolo11_model(
+        task_type=DETECTION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.train()
+    raw_outputs = model(torch.randn(1, 3, 64, 64))
+    target = SimpleNamespace(
+        boxes_xyxy=[(8.0, 8.0, 40.0, 40.0)],
+        category_indexes=[0],
+    )
+
+    loss_components = compute_yolo11_detection_loss(
+        torch_module=torch,
+        detect_head=model.model[-1],
+        raw_outputs=raw_outputs,
+        batch_targets=(target,),
+        class_loss_weight=0.5,
+        box_loss_weight=7.5,
+        dfl_loss_weight=1.5,
+        assign_topk=10,
+        assign_alpha=0.5,
+        assign_beta=6.0,
+    )
+    loss_components["loss"].backward()
+
+    assert float(loss_components["loss"].detach()) > 0.0
+
+
+def test_yolo11_detection_data_core_builds_training_batch(tmp_path: Path) -> None:
+    """验证 YOLO11 detection data core 能独立构造训练 batch。"""
+
+    image_path = tmp_path / "sample.jpg"
+    image = np.full((18, 20, 3), 127, dtype=np.uint8)
+    cv2.imwrite(str(image_path), image)
+    sample = SimpleNamespace(
+        image_id=1,
+        image_path=image_path,
+        image_width=20,
+        image_height=18,
+        annotations=(
+            SimpleNamespace(
+                category_index=0,
+                category_id=1,
+                bbox_xyxy=(2.0, 3.0, 12.0, 15.0),
+            ),
+        ),
+    )
+    augmentation_options = build_yolo11_task_augmentation_options(
+        {"disable_augmentation": True}
+    )
+
+    images, targets = build_yolo11_detection_training_batch(
+        imports=SimpleNamespace(cv2=cv2, np=np, torch=torch),
+        samples=[sample],
+        input_size=(32, 32),
+        device="cpu",
+        runtime_precision="fp32",
+        augment_training=False,
+        augmentation_options=augmentation_options,
+    )
+
+    assert images.shape == (1, 3, 32, 32)
+    assert len(targets) == 1
+    assert targets[0].image_id == 1
+    assert targets[0].boxes_xyxy
+    assert targets[0].category_indexes == (0,)
+    assert build_yolo11_detection_training_batch.__module__.endswith(
+        "yolo11_core.data.detection"
+    )
+    serialized_options = serialize_yolo11_detection_augmentation_options(
+        augmentation_options
+    )
+    assert serialized_options["mosaic_prob"] == 0.0
+    assert serialized_options["enable_mixup"] is False
+
+
+@pytest.mark.parametrize(
+    ("task_type", "loss_func", "target"),
+    (
+        (
+            POSE_TASK_TYPE,
+            compute_yolo11_pose_loss,
+            SimpleNamespace(
+                boxes_xyxy=[(8.0, 8.0, 40.0, 40.0)],
+                category_indexes=[0],
+                keypoints=[[20.0, 20.0, 2.0] * 17],
+            ),
+        ),
+        (
+            OBB_TASK_TYPE,
+            compute_yolo11_obb_loss,
+            SimpleNamespace(
+                boxes_xywhr=[(24.0, 24.0, 24.0, 16.0, 0.0)],
+                category_indexes=[0],
+            ),
+        ),
+    ),
+)
+def test_yolo11_pose_and_obb_losses_support_backward(
+    task_type: str,
+    loss_func,
+    target: SimpleNamespace,
+) -> None:
+    """验证 YOLO11 pose / OBB 训练侧 loss 已有模型专属 core 入口。"""
+
+    model = build_yolo11_model(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.train()
+    raw_outputs = model(torch.randn(1, 3, 64, 64))
+    loss_components = loss_func(
+        torch=torch,
+        model=model,
+        raw_outputs=raw_outputs,
+        batch_targets=(target,),
+        num_classes=2,
+    )
+    loss_components["loss"].backward()
+
+    assert float(loss_components["loss"].detach()) > 0.0
+
+
+def test_yolo11_pose_and_obb_training_side_entries_are_model_specific() -> None:
+    """验证 YOLO11 pose / OBB 的 assigner 和 target 不再落回旧 primary/common。"""
+
+    assert compute_yolo11_pose_loss.__module__.endswith("yolo11_core.losses.pose")
+    assert compute_yolo11_obb_loss.__module__.endswith("yolo11_core.losses.obb")
+    assert assign_yolo11_pose_targets.__module__.endswith("yolo11_core.assigners.pose")
+    assert assign_yolo11_obb_targets.__module__.endswith("yolo11_core.assigners.obb")
+    assert normalize_yolo11_gt_keypoints_tensor.__module__.endswith(
+        "yolo11_core.targets.pose"
+    )
+    assert yolo11_decode_distances_to_rboxes.__module__.endswith(
+        "yolo11_core.targets.obb"
+    )
+    assert evaluate_yolo11_detection_validation_losses.__module__.endswith(
+        "yolo11_core.training.validation"
+    )
+    assert run_yolo11_detection_training_epoch.__module__.endswith(
+        "yolo11_core.training.runner"
+    )
+    assert should_run_yolo11_detection_validation.__module__.endswith(
+        "yolo11_core.training.epoch"
+    )
+    assert resolve_yolo11_detection_best_metric_update.__module__.endswith(
+        "yolo11_core.training.epoch"
+    )
+    assert resolve_yolo11_detection_epoch_control.__module__.endswith(
+        "yolo11_core.training.control"
+    )
+    assert build_yolo11_detection_training_savepoint_payload.__module__.endswith(
+        "yolo11_core.training.savepoint"
+    )
+    assert build_yolo11_detection_epoch_checkpoint_update.__module__.endswith(
+        "yolo11_core.training.checkpoint"
+    )
+    assert encode_yolo11_detection_checkpoint_state.__module__.endswith(
+        "yolo11_core.training.checkpoint"
+    )
+    assert validate_yolo11_detection_resume_checkpoint.__module__.endswith(
+        "yolo11_core.training.resume"
+    )
+    assert plan_yolo11_detection_training_execution.__module__.endswith(
+        "yolo11_core.training.plan"
+    )
+    assert build_yolo11_detection_training_runtime.__module__.endswith(
+        "yolo11_core.training.runtime"
+    )
+    assert build_yolo11_autocast_context.__module__.endswith(
+        "yolo11_core.training.runtime"
+    )
+    assert move_yolo11_optimizer_state_to_device.__module__.endswith(
+        "yolo11_core.training.runtime"
+    )
+    assert run_yolo11_detection_training_loop.__module__.endswith(
+        "yolo11_core.training.trainer"
+    )
+    assert prepare_yolo11_detection_training_data_context.__module__.endswith(
+        "yolo11_core.training.data_context"
+    )
+    assert Yolo11DetectionTrainingPausedError.__module__.endswith(
+        "yolo11_core.training.trainer"
+    )
+    assert Yolo11DetectionTrainingTerminatedError.__module__.endswith(
+        "yolo11_core.training.trainer"
+    )
+
+
+def test_yolo11_detection_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO11 detection 训练服务不再回到 YOLO primary 共享执行入口。"""
+
+    assert SqlAlchemyYolo11TrainingTaskService.__bases__ == (
+        SqlAlchemyYoloDetectionTrainingTaskService,
+    )
+    assert (
+        SqlAlchemyYolo11TrainingTaskService.training_runner
+        is run_yolo11_detection_training
+    )
+    assert (
+        Yolo11DetectionTrainingExecutionRequest is YoloDetectionTrainingExecutionRequest
+    )
+    assert Yolo11TrainingBatchProgress is YoloDetectionTrainingBatchProgress
+    assert run_yolo11_detection_training.__module__.endswith(
+        "models.yolo11_detection_training"
+    )
+
+
+def test_yolo_detection_training_services_use_neutral_base_service() -> None:
+    """验证 YOLOv8 / YOLO11 / YOLO26 detection 训练服务统一走中性 service。"""
+
+    assert SqlAlchemyYoloV8TrainingTaskService.__bases__ == (
+        SqlAlchemyYoloDetectionTrainingTaskService,
+    )
+    assert SqlAlchemyYolo11TrainingTaskService.__bases__ == (
+        SqlAlchemyYoloDetectionTrainingTaskService,
+    )
+    assert SqlAlchemyYolo26TrainingTaskService.__bases__ == (
+        SqlAlchemyYoloDetectionTrainingTaskService,
+    )
+
+
+def test_yolo11_classification_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO11 classification 训练不再回到 YOLO primary 共享执行入口。"""
+
+    assert SqlAlchemyYolo11ClassificationTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo11ClassificationTrainingTaskService,
+        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+    )
+    assert SqlAlchemyYolo11ClassificationTrainingTaskService._run_training_execution.__module__.endswith(
+        "models.yolo11_classification_training_service"
+    )
+    assert run_yolo11_classification_training_from_task_request.__module__.endswith(
+        "models.training.yolo11_classification_task_execution"
+    )
+    assert run_yolo11_classification_training.__module__.endswith(
+        "models.yolo11_classification_training"
+    )
+
+
+def test_yolo11_segmentation_training_service_uses_model_specific_runner() -> None:
+    """验证 YOLO11 segmentation 训练不再由 service 直接交给 primary 执行入口。"""
+
+    assert SqlAlchemyYolo11SegmentationTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo11SegmentationTrainingTaskService,
+        SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+    )
+    assert SqlAlchemyYolo11SegmentationTrainingTaskService._run_segmentation_training_execution.__module__.endswith(
+        "models.yolo11_segmentation_training_service"
+    )
+    assert run_yolo11_segmentation_training_from_task_request.__module__.endswith(
+        "models.training.yolo11_segmentation_task_execution"
+    )
+    assert run_yolo11_segmentation_training.__module__.endswith(
+        "models.yolo11_segmentation_training"
+    )
+
+
+def test_yolo11_segmentation_training_helpers_are_in_core() -> None:
+    """验证 YOLO11 segmentation 训练 helper 已收进 yolo11_core/training。"""
+
+    assert require_yolo11_segmentation_training_imports.__module__.endswith(
+        "yolo11_core.training.segmentation_imports"
+    )
+    assert resolve_yolo11_segmentation_training_device.__module__.endswith(
+        "yolo11_core.training.segmentation_imports"
+    )
+    assert build_yolo11_segmentation_autocast_context.__module__.endswith(
+        "yolo11_core.training.segmentation_imports"
+    )
+    assert load_yolo11_segmentation_training_manifest.__module__.endswith(
+        "yolo11_core.training.segmentation_manifest"
+    )
+    assert build_yolo11_segmentation_anchors_from_features.__module__.endswith(
+        "yolo11_core.training.segmentation_anchors"
+    )
+    assert load_yolo11_segmentation_resume_state.__module__.endswith(
+        "yolo11_core.training.segmentation_checkpoint"
+    )
+    assert restore_yolo11_segmentation_training_state.__module__.endswith(
+        "yolo11_core.training.segmentation_checkpoint"
+    )
+    assert validate_yolo11_segmentation_resume_parameters.__module__.endswith(
+        "yolo11_core.training.segmentation_checkpoint"
+    )
+    assert build_yolo11_segmentation_checkpoint_bytes.__module__.endswith(
+        "yolo11_core.training.segmentation_checkpoint"
+    )
+
+
+def test_yolo11_pose_and_obb_training_services_use_model_specific_runner() -> None:
+    """验证 YOLO11 pose / OBB 训练服务已进入模型专属执行入口。"""
+
+    assert SqlAlchemyYolo11PoseTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo11PoseTrainingTaskService,
+        SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+    )
+    assert SqlAlchemyYolo11ObbTrainingTaskService.__bases__ == (object,)
+    assert not issubclass(
+        SqlAlchemyYolo11ObbTrainingTaskService,
+        SqlAlchemyYoloPrimaryObbTrainingTaskService,
+    )
+    assert SqlAlchemyYolo11PoseTrainingTaskService._run_pose_training_execution.__module__.endswith(
+        "models.yolo11_pose_training_service"
+    )
+    assert SqlAlchemyYolo11ObbTrainingTaskService._run_obb_training_execution.__module__.endswith(
+        "models.yolo11_obb_training_service"
+    )
+    assert run_yolo11_pose_training_from_task_request.__module__.endswith(
+        "models.training.yolo11_pose_task_execution"
+    )
+    assert run_yolo11_obb_training_from_task_request.__module__.endswith(
+        "models.training.yolo11_obb_task_execution"
+    )
+    assert run_yolo11_pose_training.__module__.endswith("models.yolo11_pose_training")
+    assert run_yolo11_obb_training.__module__.endswith("models.yolo11_obb_training")
+
+
+def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
+    """验证 YOLO11 pose / OBB 的 manifest、checkpoint 和 loop 已下沉到 core。"""
+
+    assert load_yolo11_pose_training_manifest.__module__.endswith(
+        "yolo11_core.training.pose_manifest"
+    )
+    assert load_yolo11_obb_training_manifest.__module__.endswith(
+        "yolo11_core.training.obb_manifest"
+    )
+    assert run_yolo11_pose_training_loop.__module__.endswith(
+        "yolo11_core.training.pose_trainer"
+    )
+    assert run_yolo11_obb_training_loop.__module__.endswith(
+        "yolo11_core.training.obb_trainer"
+    )
+    assert load_yolo11_pose_resume_state.__module__.endswith(
+        "yolo11_core.training.pose_checkpoint"
+    )
+    assert load_yolo11_obb_resume_state.__module__.endswith(
+        "yolo11_core.training.obb_checkpoint"
+    )
+    assert restore_yolo11_pose_training_state.__module__.endswith(
+        "yolo11_core.training.pose_checkpoint"
+    )
+    assert restore_yolo11_obb_training_state.__module__.endswith(
+        "yolo11_core.training.obb_checkpoint"
+    )
+    assert validate_yolo11_pose_resume_parameters.__module__.endswith(
+        "yolo11_core.training.pose_checkpoint"
+    )
+    assert validate_yolo11_obb_resume_parameters.__module__.endswith(
+        "yolo11_core.training.obb_checkpoint"
+    )
+    assert build_yolo11_pose_checkpoint_bytes.__module__.endswith(
+        "yolo11_core.training.pose_checkpoint"
+    )
+    assert build_yolo11_obb_checkpoint_bytes.__module__.endswith(
+        "yolo11_core.training.obb_checkpoint"
+    )
+
+    fake_storage = object()
+    with pytest.raises(InvalidRequestError):
+        run_yolo_primary_pose_training(
+            YoloPrimaryPoseTrainingExecutionRequest(
+                dataset_storage=fake_storage,
+                manifest_payload={},
+                model_type="yolo11",
+                model_scale="nano",
+            )
+        )
+    with pytest.raises(InvalidRequestError):
+        run_yolo_primary_obb_training(
+            YoloPrimaryObbTrainingExecutionRequest(
+                dataset_storage=fake_storage,
+                manifest_payload={},
+                model_type="yolo11",
+                model_scale="nano",
+            )
+        )
+
+
+def test_yolo11_pose_and_obb_training_registration_is_model_specific() -> None:
+    """验证 YOLO11 pose / OBB 成果登记不再挂在 primary registration map 下。"""
+
+    assert "yolo11" not in YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP
+    assert "yolo11" not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP
+    assert register_yolo11_pose_training_output_model_version.__module__.endswith(
+        "models.training.yolo11_pose_task_registration"
+    )
+    assert register_yolo11_obb_training_output_model_version.__module__.endswith(
+        "models.training.yolo11_obb_task_registration"
+    )
+    assert resolve_yolo11_pose_implementation_mode() == "yolo11-pose-core"
+    assert resolve_yolo11_obb_implementation_mode() == "yolo11-obb-core"
+
+
+def test_yolo11_classification_runtime_uses_model_specific_sessions() -> None:
+    """验证 YOLO11 classification runtime 入口不再来自旧 primary predictor。"""
+
+    assert PyTorchYolo11ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_classification_pytorch"
+    )
+    assert OnnxRuntimeYolo11ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_classification_onnxruntime"
+    )
+    assert OpenVINOYolo11ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_classification_openvino"
+    )
+    assert TensorRTYolo11ClassificationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_classification_tensorrt"
+    )
+
+
+def test_yolo11_classification_training_loop_lives_in_core() -> None:
+    """验证 YOLO11 classification 训练 loop、checkpoint、runtime 已进入 core。"""
+
+    assert run_yolo11_classification_training_loop.__module__.endswith(
+        "yolo11_core.training.classification_trainer"
+    )
+    assert build_yolo11_classification_training_runtime.__module__.endswith(
+        "yolo11_core.training.classification_runtime"
+    )
+    assert build_yolo11_classification_checkpoint_bytes.__module__.endswith(
+        "yolo11_core.training.classification_checkpoint"
+    )
+
+
+def test_yolo11_conversion_runner_uses_core_export_source_session() -> None:
+    """确认 YOLO11 conversion runner 不再依赖 runtime predictor 构建导出源模型。"""
+
+    session_classes = LocalYolo11ConversionRunner.task_runtime_session_classes
+
+    assert issubclass(LocalYolo11ConversionRunner, LocalYoloModelConversionRunner)
+    assert not issubclass(LocalYolo11ConversionRunner, LocalYoloPrimaryConversionRunner)
+    assert set(session_classes) == {
+        "detection",
+        "classification",
+        "segmentation",
+        "pose",
+        "obb",
+    }
+    assert all(cls is Yolo11ExportSourceSession for cls in session_classes.values())
+    assert Yolo11ExportSourceSession.__module__.endswith("yolo11_core.export.source")
+
+
+def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:
+    """确认 YOLO11 runtime 后端不再继承旧 yolo_primary predictor。"""
+
+    assert PyTorchYolo11RuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_detection_pytorch"
+    )
+    assert OnnxRuntimeYolo11RuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_detection_onnxruntime"
+    )
+    assert OpenVINOYolo11RuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_detection_openvino"
+    )
+    assert TensorRTYolo11RuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_detection_tensorrt"
+    )
+    assert PyTorchYolo11SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_segmentation_pytorch"
+    )
+    assert OnnxRuntimeYolo11SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_segmentation_onnxruntime"
+    )
+    assert OpenVINOYolo11SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_segmentation_openvino"
+    )
+    assert TensorRTYolo11SegmentationRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_segmentation_tensorrt"
+    )
+    assert PyTorchYolo11PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_pose_pytorch"
+    )
+    assert OnnxRuntimeYolo11PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_pose_onnxruntime"
+    )
+    assert OpenVINOYolo11PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_pose_openvino"
+    )
+    assert TensorRTYolo11PoseRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_pose_tensorrt"
+    )
+    assert PyTorchYolo11ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_obb_pytorch"
+    )
+    assert OnnxRuntimeYolo11ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_obb_onnxruntime"
+    )
+    assert OpenVINOYolo11ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_obb_openvino"
+    )
+    assert TensorRTYolo11ObbRuntimeSession.__module__.endswith(
+        "runtime.predictors.yolo11_obb_tensorrt"
+    )
+    for session_class in (
+        PyTorchYolo11PoseRuntimeSession,
+        OnnxRuntimeYolo11PoseRuntimeSession,
+        OpenVINOYolo11PoseRuntimeSession,
+        TensorRTYolo11PoseRuntimeSession,
+        PyTorchYolo11SegmentationRuntimeSession,
+        OnnxRuntimeYolo11SegmentationRuntimeSession,
+        OpenVINOYolo11SegmentationRuntimeSession,
+        TensorRTYolo11SegmentationRuntimeSession,
+        PyTorchYolo11ObbRuntimeSession,
+        OnnxRuntimeYolo11ObbRuntimeSession,
+        OpenVINOYolo11ObbRuntimeSession,
+        TensorRTYolo11ObbRuntimeSession,
+    ):
+        assert all(
+            "YoloPrimary" not in base_class.__name__
+            for base_class in session_class.__mro__
+        )
+
+
+def test_yolo11_detection_evaluation_has_core_entrypoint() -> None:
+    """确认 YOLO11 detection / pose / OBB evaluation 有 core 侧正式入口。"""
+
+    assert Yolo11DetectionEvaluationRequest.__module__.endswith(
+        "yolo11_core.evaluation.detection"
+    )
+    assert run_yolo11_detection_evaluation.__module__.endswith(
+        "yolo11_core.evaluation.detection"
+    )
+    assert Yolo11PoseEvaluationRequest.__module__.endswith(
+        "yolo11_core.evaluation.pose"
+    )
+    assert run_yolo11_pose_evaluation.__module__.endswith("yolo11_core.evaluation.pose")
+    assert Yolo11ObbEvaluationRequest.__module__.endswith("yolo11_core.evaluation.obb")
+    assert run_yolo11_obb_evaluation.__module__.endswith("yolo11_core.evaluation.obb")
+
+
+def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO11 pose / OBB 的 data、eval 和 inference 已有 core 入口。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image_path = tmp_path / "yolo11-task.jpg"
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
+    imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
+    keypoints = [value for _ in range(17) for value in (6.0, 6.0, 2.0)]
+    pose_sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywh=[[4.0, 4.0, 8.0, 8.0]],
+        class_ids=[0],
+        keypoints=[keypoints],
+    )
+    obb_sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywhr=[[8.0, 8.0, 8.0, 8.0, 0.0]],
+        class_ids=[0],
+    )
+
+    pose_batch = build_yolo11_pose_training_batch(
+        samples=[pose_sample],
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        imports=imports,
+    )
+    obb_batch = build_yolo11_obb_training_batch(
+        samples=[obb_sample],
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        imports=imports,
+    )
+    pose_metrics = evaluate_yolo11_pose_samples(
+        model=_StaticYoloV8PoseModel(),
+        samples=[pose_sample],
+        labels=("person",),
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        keypoint_confidence_threshold=0.2,
+        kpt_shape=(17, 3),
+        imports=imports,
+    )
+    obb_metrics = evaluate_yolo11_obb_samples(
+        model=_StaticYoloV8ObbModel(),
+        samples=[obb_sample],
+        labels=("part",),
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        imports=imports,
+    )
+    pose_prediction = torch.zeros(1, 1, 4 + 1 + 17 * 3)
+    pose_prediction[:, 0, 4] = 0.95
+    pose_prediction[:, 0, 5:] = torch.tensor(
+        [value for _ in range(17) for value in (6.0, 6.0, 0.9)]
+    )
+    obb_prediction = torch.zeros(1, 1, 5 + 1)
+    obb_prediction[:, 0, 4] = 0.95
+
+    normalized_pose = normalize_yolo11_pose_inference_outputs(
+        outputs=pose_prediction,
+        np_module=np,
+    )
+    normalized_obb = normalize_yolo11_obb_inference_outputs(
+        outputs=obb_prediction,
+        np_module=np,
+    )
+    pose_instances, _ = build_yolo11_pose_inference_instances(
+        np_module=np,
+        prediction_array=normalized_pose,
+        labels=("person",),
+        score_threshold=0.1,
+        keypoint_confidence_threshold=0.2,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        input_size=(16, 16),
+        default_kpt_shape=(17, 3),
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+    obb_instances = build_yolo11_obb_inference_instances(
+        np_module=np,
+        prediction_array=normalized_obb,
+        labels=("part",),
+        score_threshold=0.1,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert pose_batch is not None
+    assert obb_batch is not None
+    assert tuple(pose_batch.images.shape) == (1, 3, 16, 16)
+    assert tuple(obb_batch.images.shape) == (1, 3, 16, 16)
+    assert pose_metrics["map50"] == 1.0
+    assert obb_metrics["map50"] == 1.0
+    assert len(
+        build_yolo11_pose_postprocess_instances(
+            np_module=np,
+            prediction_array=normalized_pose,
+            labels=("person",),
+            score_threshold=0.1,
+            keypoint_confidence_threshold=0.2,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            input_size=(16, 16),
+            default_kpt_shape=(17, 3),
+            nms_threshold=0.65,
+            nms_indices_func=batched_nms_indices,
+        )[0]
+    ) == len(pose_instances)
+    assert len(
+        build_yolo11_obb_postprocess_instances(
+            np_module=np,
+            prediction_array=normalized_obb,
+            labels=("part",),
+            score_threshold=0.1,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            nms_threshold=0.65,
+            nms_indices_func=batched_nms_indices,
+        )
+    ) == len(obb_instances)
+
+
+def test_yolo11_segmentation_core_inference_and_postprocess_entries() -> None:
+    """验证 YOLO11 segmentation inference 和 postprocess 已有模型专属 core 入口。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    prediction = torch.zeros(1, 6, 8)
+    prediction[0, 0, 0] = 8.0
+    prediction[0, 1, 0] = 8.0
+    prediction[0, 2, 0] = 8.0
+    prediction[0, 3, 0] = 8.0
+    prediction[0, 4, 0] = 0.95
+    prediction[0, 5, 0] = 8.0
+    proto = torch.ones(1, 1, 4, 4)
+
+    normalized_prediction, normalized_proto = (
+        normalize_yolo11_segmentation_inference_outputs(
+            outputs=(prediction, proto),
+            np_module=np,
+        )
+    )
+    instances = build_yolo11_segmentation_inference_instances(
+        cv2_module=cv2,
+        np_module=np,
+        prediction_array=normalized_prediction,
+        proto_array=normalized_proto,
+        labels=("scratch",),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        mask_threshold=0.5,
+        resize_ratio=1.0,
+        image_width=16,
+        image_height=16,
+        input_size=(16, 16),
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert normalize_yolo11_segmentation_inference_outputs.__module__.endswith(
+        "yolo11_core.inference.segmentation"
+    )
+    assert build_yolo11_segmentation_inference_instances.__module__.endswith(
+        "yolo11_core.inference.segmentation"
+    )
+    assert build_yolo11_segmentation_postprocess_instances.__module__.endswith(
+        "yolo11_core.postprocess.segmentation"
+    )
+    assert normalized_prediction.shape == (1, 8, 6)
+    assert len(instances) == 1
+    assert instances[0].class_name == "scratch"
+    assert instances[0].mask_area > 0.0
+    assert len(
+        build_yolo11_segmentation_postprocess_instances(
+            cv2_module=cv2,
+            np_module=np,
+            prediction_array=normalized_prediction,
+            proto_array=normalized_proto,
+            labels=("scratch",),
+            score_threshold=0.1,
+            nms_threshold=0.65,
+            mask_threshold=0.5,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            input_size=(16, 16),
+            nms_indices_func=batched_nms_indices,
+        )
+    ) == len(instances)
+
+
 @pytest.mark.parametrize(
     ("output_name_func", "normalize_func", "plan_func", "runner_cls"),
     (
@@ -203,7 +1179,9 @@ def test_yolo_core_segmentation_export_entrypoints_are_model_specific(
 
     prediction = torch.zeros(1, 84, 38)
     proto = torch.zeros(1, 32, 16, 16)
-    normalized_prediction, normalized_proto = normalize_func(outputs=(prediction, proto))
+    normalized_prediction, normalized_proto = normalize_func(
+        outputs=(prediction, proto)
+    )
     export_plan = plan_func(
         task_type=SEGMENTATION_TASK_TYPE,
         target_formats=("onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"),
@@ -692,9 +1670,11 @@ def test_yolov8_classification_core_loss_postprocess_and_export_entries() -> Non
     normalized_outputs = normalize_yolov8_classification_export_outputs(
         outputs=[probabilities.detach()],
     )
-    runtime_probabilities, runtime_logits = normalize_yolov8_classification_inference_outputs(
-        outputs=[probabilities.detach(), logits.detach()],
-        np_module=np,
+    runtime_probabilities, runtime_logits = (
+        normalize_yolov8_classification_inference_outputs(
+            outputs=[probabilities.detach(), logits.detach()],
+            np_module=np,
+        )
     )
     runtime_categories = build_yolov8_classification_inference_categories(
         np_module=np,
@@ -724,7 +1704,9 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
     normalized_pose = normalize_yolov8_pose_export_outputs(outputs=[pose_prediction])
     normalized_obb = normalize_yolov8_obb_export_outputs(outputs=[obb_prediction])
     pose_prediction_array = np.zeros((1, 1, 4 + 2 + 17 * 3), dtype=np.float32)
-    pose_prediction_array[0, 0, :4] = np.asarray([1.0, 1.0, 10.0, 10.0], dtype=np.float32)
+    pose_prediction_array[0, 0, :4] = np.asarray(
+        [1.0, 1.0, 10.0, 10.0], dtype=np.float32
+    )
     pose_prediction_array[0, 0, 4:6] = np.asarray([0.9, 0.1], dtype=np.float32)
     pose_prediction_array[0, 0, 6:] = np.asarray(
         [value for _ in range(17) for value in (4.0, 5.0, 0.8)],
@@ -767,19 +1749,21 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
         outputs=[obb_prediction_array],
         np_module=np,
     )
-    runtime_pose_instances, runtime_pose_kpt_shape = build_yolov8_pose_inference_instances(
-        np_module=np,
-        prediction_array=runtime_pose_prediction,
-        labels=("person", "defect"),
-        score_threshold=0.1,
-        keypoint_confidence_threshold=0.2,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
-        default_kpt_shape=(17, 3),
-        nms_threshold=0.65,
-        nms_indices_func=batched_nms_indices,
+    runtime_pose_instances, runtime_pose_kpt_shape = (
+        build_yolov8_pose_inference_instances(
+            np_module=np,
+            prediction_array=runtime_pose_prediction,
+            labels=("person", "defect"),
+            score_threshold=0.1,
+            keypoint_confidence_threshold=0.2,
+            resize_ratio=1.0,
+            image_width=16,
+            image_height=16,
+            input_size=(16, 16),
+            default_kpt_shape=(17, 3),
+            nms_threshold=0.65,
+            nms_indices_func=batched_nms_indices,
+        )
     )
     runtime_obb_instances = build_yolov8_obb_inference_instances(
         np_module=np,
@@ -797,10 +1781,13 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
     assert resolve_yolov8_obb_export_output_names() == ("predictions",)
     assert normalized_pose[0] is pose_prediction
     assert normalized_obb[0] is obb_prediction
-    assert resolve_yolov8_pose_prediction_channel_count(
-        class_count=2,
-        keypoint_shape=(17, 3),
-    ) == 57
+    assert (
+        resolve_yolov8_pose_prediction_channel_count(
+            class_count=2,
+            keypoint_shape=(17, 3),
+        )
+        == 57
+    )
     assert resolve_yolov8_obb_prediction_channel_count(class_count=2) == 7
     assert len(pose_instances) == 1
     assert pose_instances[0].class_name == "person"
@@ -848,13 +1835,17 @@ def test_yolov8_obb_postprocess_uses_class_aware_rotated_nms() -> None:
     assert [item.score for item in instances] == [0.95, 0.9]
 
 
-def test_yolov8_classification_core_data_eval_and_preview_entries(tmp_path: Path) -> None:
+def test_yolov8_classification_core_data_eval_and_preview_entries(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOv8 classification data/eval 和通用预览入口。"""
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "cls.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     sample = SimpleNamespace(image_path=str(image_path), class_id=1)
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
@@ -901,7 +1892,9 @@ def test_yolov8_pose_core_data_and_eval_entries(tmp_path: Path) -> None:
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "pose.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     keypoints = [value for _ in range(17) for value in (6.0, 6.0, 2.0)]
     sample = SimpleNamespace(
         image_path=str(image_path),
@@ -944,7 +1937,9 @@ def test_yolov8_obb_core_data_and_eval_entries(tmp_path: Path) -> None:
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "obb.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     sample = SimpleNamespace(
         image_path=str(image_path),
         boxes_xywhr=[[8.0, 8.0, 8.0, 8.0, 0.0]],
@@ -983,7 +1978,9 @@ def test_yolov8_obb_core_data_filters_tiny_rboxes(tmp_path: Path) -> None:
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "tiny-obb.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     sample = SimpleNamespace(
         image_path=str(image_path),
         boxes_xywhr=[[8.0, 8.0, 1.0, 1.0, 0.0], [8.0, 8.0, 2.0, 2.0, 0.0]],
@@ -1011,7 +2008,9 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "aug.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
         hsv_prob=0.0,
@@ -1098,7 +2097,9 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
         lambda low, high: high,
     )
     image_path = tmp_path / "affine.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
         hsv_prob=0.0,
@@ -1182,7 +2183,9 @@ def test_yolov8_task_mosaic_builds_segmentation_pose_and_obb_targets(
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "mosaic.jpg"
-    assert cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
         hsv_prob=0.0,
@@ -1214,11 +2217,7 @@ def test_yolov8_task_mosaic_builds_segmentation_pose_and_obb_targets(
         [10.0, 10.0, 14.0, 14.0],
     ]
 
-    keypoints = [
-        coordinate
-        for _ in range(17)
-        for coordinate in (4.0, 4.0, 2.0)
-    ]
+    keypoints = [coordinate for _ in range(17) for coordinate in (4.0, 4.0, 2.0)]
     pose_sample = SimpleNamespace(
         image_path=str(image_path),
         boxes_xywh=[[4.0, 4.0, 8.0, 8.0]],

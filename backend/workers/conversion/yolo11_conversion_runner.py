@@ -12,29 +12,26 @@ from backend.service.application.models.yolo11_core import (
     build_yolo11_export_task_plan,
     resolve_yolo11_segmentation_export_output_names,
 )
-from backend.service.application.runtime.yolo11_classification_predictor import (
-    PyTorchYolo11ClassificationRuntimeSession,
+from backend.service.application.models.yolo11_core.export import (
+    Yolo11ExportSourceSession,
+    build_yolo11_openvino_ir,
+    build_yolo11_tensorrt_engine,
+    export_yolo11_onnx,
+    validate_yolo11_onnx,
 )
-from backend.service.application.runtime.yolo11_obb_predictor import (
-    PyTorchYolo11ObbRuntimeSession,
-)
-from backend.service.application.runtime.yolo11_pose_predictor import (
-    PyTorchYolo11PoseRuntimeSession,
-)
-from backend.service.application.runtime.yolo11_segmentation_predictor import (
-    PyTorchYolo11SegmentationRuntimeSession,
-)
-from backend.service.application.runtime.yolo11_predictor import PyTorchYolo11RuntimeSession
 from backend.service.domain.files.yolo11_file_types import (
     YOLO11_ONNX_FILE,
     YOLO11_ONNX_OPTIMIZED_FILE,
     YOLO11_OPENVINO_IR_FILE,
     YOLO11_TENSORRT_ENGINE_FILE,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_primary_conversion_runner import (
-    LocalYoloPrimaryConversionRunner,
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
 )
+from backend.workers.conversion.yolo_model_conversion_runner import (
+    LocalYoloModelConversionRunner,
+)
+from backend.workers.conversion.model_conversion_common import run_conversion_script
 
 
 Yolo11ConversionRunRequest = ConversionBackendRunRequest
@@ -43,19 +40,19 @@ Yolo11ConversionRunResult = ConversionBackendRunResult
 Yolo11ConversionRunner = ConversionBackend
 
 
-class LocalYolo11ConversionRunner(LocalYoloPrimaryConversionRunner):
+class LocalYolo11ConversionRunner(LocalYoloModelConversionRunner):
     """使用本地文件存储执行 YOLO11 ONNX/OpenVINO/TensorRT 转换链。"""
 
     model_label = "YOLO11"
     task_runtime_session_classes = {
-        "detection": PyTorchYolo11RuntimeSession,
-        "classification": PyTorchYolo11ClassificationRuntimeSession,
-        "segmentation": PyTorchYolo11SegmentationRuntimeSession,
-        "pose": PyTorchYolo11PoseRuntimeSession,
-        "obb": PyTorchYolo11ObbRuntimeSession,
+        "detection": Yolo11ExportSourceSession,
+        "classification": Yolo11ExportSourceSession,
+        "segmentation": Yolo11ExportSourceSession,
+        "pose": Yolo11ExportSourceSession,
+        "obb": Yolo11ExportSourceSession,
     }
     task_export_output_names = {
-        **LocalYoloPrimaryConversionRunner.task_export_output_names,
+        **LocalYoloModelConversionRunner.task_export_output_names,
         "segmentation": resolve_yolo11_segmentation_export_output_names(),
     }
     onnx_file_type = YOLO11_ONNX_FILE
@@ -68,3 +65,74 @@ class LocalYolo11ConversionRunner(LocalYoloPrimaryConversionRunner):
         """初始化本地 YOLO11 转换 runner。"""
 
         super().__init__(dataset_storage=dataset_storage)
+
+    def _export_onnx(
+        self,
+        *,
+        session: object,
+        output_object_key: str,
+        export_plan: object,
+    ) -> dict[str, object]:
+        """通过 YOLO11 core 执行 ONNX 导出。"""
+
+        return export_yolo11_onnx(
+            session=session,
+            output_path=self.dataset_storage.resolve(output_object_key),
+            output_object_key=output_object_key,
+            export_plan=export_plan,
+        )
+
+    def _validate_onnx(
+        self,
+        *,
+        session: object,
+        onnx_object_key: str,
+        onnx_module: object,
+        onnxruntime_module: object,
+        export_plan: object,
+    ) -> dict[str, object]:
+        """通过 YOLO11 core 执行 ONNX 数值校验。"""
+
+        return validate_yolo11_onnx(
+            session=session,
+            onnx_path=self.dataset_storage.resolve(onnx_object_key),
+            onnx_module=onnx_module,
+            onnxruntime_module=onnxruntime_module,
+            export_plan=export_plan,
+        )
+
+    def _build_openvino_ir(
+        self,
+        *,
+        source_object_key: str,
+        output_object_key: str,
+        build_precision: str,
+    ) -> dict[str, object]:
+        """通过 YOLO11 core 构建 OpenVINO IR。"""
+
+        return build_yolo11_openvino_ir(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
+        )
+
+    def _build_tensorrt_engine(
+        self,
+        *,
+        source_object_key: str,
+        output_object_key: str,
+        build_precision: str,
+    ) -> dict[str, object]:
+        """通过 YOLO11 core 构建 TensorRT engine。"""
+
+        return build_yolo11_tensorrt_engine(
+            source_path=self.dataset_storage.resolve(source_object_key),
+            output_path=self.dataset_storage.resolve(output_object_key),
+            source_object_key=source_object_key,
+            output_object_key=output_object_key,
+            build_precision=build_precision,
+            run_conversion_script=run_conversion_script,
+        )

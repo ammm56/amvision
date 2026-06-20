@@ -12,7 +12,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
 )
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.models import (
-    yolo_primary_classification_training_service as classification_service_module,
+    yolo11_classification_training_service as yolo11_classification_service_module,
 )
 from backend.service.application.models import (
     yolo_primary_pose_training_service as pose_service_module,
@@ -35,9 +35,9 @@ from backend.service.application.models.yolov8_model_service import (
 from backend.service.application.models.yolo_primary_classification_training import (
     YoloPrimaryClassificationTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
-    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
-    YoloPrimaryClassificationTrainingTaskRequest,
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+    Yolo11ClassificationTrainingTaskRequest,
 )
 from backend.service.application.models.yolo_primary_pose_training import (
     YoloPrimaryPoseTrainingExecutionResult,
@@ -112,18 +112,18 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
         )
 
     monkeypatch.setattr(
-        classification_service_module,
-        "run_yolo_primary_classification_training",
+        yolo11_classification_service_module,
+        "run_yolo11_classification_service_training_execution",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloPrimaryClassificationTrainingTaskService(
+    service = SqlAlchemyYolo11ClassificationTrainingTaskService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloPrimaryClassificationTrainingTaskRequest(
+        Yolo11ClassificationTrainingTaskRequest(
             project_id="project-1",
             recipe_id="recipe-1",
             model_type="yolo11",
@@ -157,7 +157,9 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
 
     model_service = SqlAlchemyYolo11ModelService(session_factory=session_factory)
-    model_files = model_service.list_model_files(model_version_id=result["model_version_id"])
+    model_files = model_service.list_model_files(
+        model_version_id=result["model_version_id"]
+    )
     file_types = {item.file_type for item in model_files}
     assert any(item.storage_uri.endswith("/best-checkpoint.pt") for item in model_files)
     assert any(item.storage_uri.endswith("/labels.txt") for item in model_files)
@@ -257,7 +259,9 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
 
     model_service = SqlAlchemyYolo26ModelService(session_factory=session_factory)
-    model_files = model_service.list_model_files(model_version_id=result["model_version_id"])
+    model_files = model_service.list_model_files(
+        model_version_id=result["model_version_id"]
+    )
     file_types = {item.file_type for item in model_files}
     assert any(item.storage_uri.endswith("/best-checkpoint.pt") for item in model_files)
     assert any(item.storage_uri.endswith("/labels.txt") for item in model_files)
@@ -357,7 +361,9 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
 
     model_service = SqlAlchemyYoloV8ModelService(session_factory=session_factory)
-    model_files = model_service.list_model_files(model_version_id=result["model_version_id"])
+    model_files = model_service.list_model_files(
+        model_version_id=result["model_version_id"]
+    )
     file_types = {item.file_type for item in model_files}
     assert any(item.storage_uri.endswith("/best-checkpoint.pt") for item in model_files)
     assert any(item.storage_uri.endswith("/labels.txt") for item in model_files)
@@ -457,7 +463,9 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
 
     model_service = SqlAlchemyYolo26ModelService(session_factory=session_factory)
-    model_files = model_service.list_model_files(model_version_id=result["model_version_id"])
+    model_files = model_service.list_model_files(
+        model_version_id=result["model_version_id"]
+    )
     file_types = {item.file_type for item in model_files}
     assert any(item.storage_uri.endswith("/best-checkpoint.pt") for item in model_files)
     assert any(item.storage_uri.endswith("/labels.txt") for item in model_files)
@@ -484,7 +492,9 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
 def _create_session_factory() -> SessionFactory:
     """创建绑定内存数据库的 SessionFactory。"""
 
-    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
     Base.metadata.create_all(session_factory.engine)
     return session_factory
 
@@ -492,7 +502,9 @@ def _create_session_factory() -> SessionFactory:
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建测试使用的本地数据文件存储。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
 
 
 def _create_queue_backend(tmp_path: Path) -> LocalFileQueueBackend:

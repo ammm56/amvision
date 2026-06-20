@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo11_model_service import (
-    SqlAlchemyYolo11ModelService,
-    Yolo11TrainingOutputRegistration,
-)
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
@@ -26,9 +22,14 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP: dict[str, tuple[type, type]] = {
     "yolov8": (SqlAlchemyYoloV8ModelService, YoloV8TrainingOutputRegistration),
-    "yolo11": (SqlAlchemyYolo11ModelService, Yolo11TrainingOutputRegistration),
     "yolo26": (SqlAlchemyYolo26ModelService, Yolo26TrainingOutputRegistration),
 }
+
+
+def resolve_yolo_primary_obb_implementation_mode(model_type: str) -> str:
+    """按 model_type 返回 OBB 训练实现模式。"""
+
+    return YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE
 
 
 def register_yolo_primary_obb_training_output_model_version(
@@ -71,7 +72,9 @@ def register_yolo_primary_obb_training_output_model_version(
                 "metrics_summary": dict(summary["metrics_summary"]),
                 "output_files": dict(summary["output_files"]),
                 "registration_kind": "best-checkpoint",
-                "implementation_mode": YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE,
+                "implementation_mode": resolve_yolo_primary_obb_implementation_mode(
+                    model_type
+                ),
             },
         )
     )

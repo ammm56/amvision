@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_primary_model_configs import (
+    build_yolo_primary_model,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_obb_training_batch,
     build_yolov8_task_augmentation_options,
@@ -19,7 +22,9 @@ from backend.service.application.models.yolov8_core.data import (
 from backend.service.application.models.yolov8_core.evaluation import (
     evaluate_yolov8_obb_samples,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE = "yolo-primary-obb"
@@ -80,6 +85,7 @@ class YoloPrimaryObbTrainingTerminatedError(Exception):
 @dataclass(frozen=True)
 class _ObbAnnotation:
     """单张图片的 OBB 标注。"""
+
     image_path: str
     boxes_xywhr: list[list[float]]  # [[cx, cy, w, h, angle], ...]
     class_ids: list[int]
@@ -115,6 +121,7 @@ class YoloPrimaryObbTrainingExecutionResult:
 @dataclass(frozen=True)
 class _ObbPreparedTarget:
     """训练态单图目标结构。"""
+
     boxes_xywhr: list[list[float]]
     category_indexes: list[int]
 
@@ -123,6 +130,12 @@ def run_yolo_primary_obb_training(
     request: YoloPrimaryObbTrainingExecutionRequest,
 ) -> YoloPrimaryObbTrainingExecutionResult:
     """执行 OBB 训练。"""
+
+    if request.model_type == "yolo11":
+        raise InvalidRequestError(
+            "YOLO11 OBB 训练必须通过 yolo11_obb_training 执行入口",
+            details={"model_type": request.model_type},
+        )
 
     import cv2
     import numpy as np
@@ -215,11 +228,12 @@ def run_yolo_primary_obb_training(
         # 随机打乱训练顺序
         indices = list(range(len(train_annotations)))
         import random
+
         random.shuffle(indices)
         shuffled = [train_annotations[i] for i in indices]
 
         for batch_start in range(0, len(shuffled), bs):
-            batch_anns = shuffled[batch_start:batch_start + bs]
+            batch_anns = shuffled[batch_start : batch_start + bs]
             if request.model_type == "yolov8":
                 batch_input_size = resolve_yolov8_task_batch_input_size(
                     base_input_size=input_size,
@@ -230,7 +244,7 @@ def run_yolo_primary_obb_training(
                     input_size=batch_input_size,
                     device=device,
                     precision=precision,
-                    imports=_build_yolov8_training_imports(cv2, np, torch),
+                    imports=_build_yolo_task_training_imports(cv2, np, torch),
                     augmentation_options=effective_yolov8_augmentation_options,
                     available_samples=shuffled,
                 )
@@ -251,7 +265,11 @@ def run_yolo_primary_obb_training(
                 if images is None:
                     continue
 
-            autocast_ctx = torch.amp.autocast("cuda", enabled=use_amp) if use_amp else nullcontext()
+            autocast_ctx = (
+                torch.amp.autocast("cuda", enabled=use_amp)
+                if use_amp
+                else nullcontext()
+            )
             with autocast_ctx:
                 raw_outputs = model(images)
                 if isinstance(raw_outputs, dict) and "one2many" in raw_outputs:
@@ -272,7 +290,9 @@ def run_yolo_primary_obb_training(
                         num_classes=num_classes,
                     )
                 else:
-                    from backend.service.application.models.obb_loss import compute_obb_loss
+                    from backend.service.application.models.obb_loss import (
+                        compute_obb_loss,
+                    )
 
                     loss_dict = compute_obb_loss(
                         torch=torch,
@@ -300,13 +320,23 @@ def run_yolo_primary_obb_training(
                 epoch_losses[k] = epoch_losses.get(k, 0.0) + float(v.item())
             epoch_iters += 1
 
-            if request.epoch_callback and epoch_iters % max(1, iterations_per_epoch // 4) == 0:
-                avg = {k: round(v / max(epoch_iters, 1), 6) for k, v in epoch_losses.items()}
+            if (
+                request.epoch_callback
+                and epoch_iters % max(1, iterations_per_epoch // 4) == 0
+            ):
+                avg = {
+                    k: round(v / max(epoch_iters, 1), 6)
+                    for k, v in epoch_losses.items()
+                }
                 bp = YoloPrimaryObbTrainingBatchProgress(
-                    epoch=epoch, max_epochs=max_epochs,
-                    iteration=epoch_iters, max_iterations=iterations_per_epoch,
-                    global_iteration=global_iteration, total_iterations=total_iterations,
-                    input_size=input_size, learning_rate=float(scheduler.get_last_lr()[0]),
+                    epoch=epoch,
+                    max_epochs=max_epochs,
+                    iteration=epoch_iters,
+                    max_iterations=iterations_per_epoch,
+                    global_iteration=global_iteration,
+                    total_iterations=total_iterations,
+                    input_size=input_size,
+                    learning_rate=float(scheduler.get_last_lr()[0]),
                     train_metrics=avg,
                 )
                 cmd = request.epoch_callback(bp)
@@ -315,7 +345,9 @@ def run_yolo_primary_obb_training(
 
         # 计算 epoch 平均损失
         if epoch_iters > 0:
-            avg_metrics = {k: round(v / epoch_iters, 6) for k, v in epoch_losses.items()}
+            avg_metrics = {
+                k: round(v / epoch_iters, 6) for k, v in epoch_losses.items()
+            }
         else:
             avg_metrics = {"loss": 0.0}
 
@@ -336,7 +368,10 @@ def run_yolo_primary_obb_training(
         should_evaluate = (
             request.model_type == "yolov8"
             and len(val_annotations) > 0
-            and ((epoch > 0 and epoch % request.evaluation_interval == 0) or epoch == max_epochs - 1)
+            and (
+                (epoch > 0 and epoch % request.evaluation_interval == 0)
+                or epoch == max_epochs - 1
+            )
         )
         if should_evaluate:
             val_metrics = evaluate_yolov8_obb_samples(
@@ -348,7 +383,7 @@ def run_yolo_primary_obb_training(
                 precision=precision,
                 score_threshold=float(extra.get("eval_confidence_threshold", 0.01)),
                 nms_threshold=float(extra.get("eval_nms_threshold", 0.65)),
-                imports=_build_yolov8_training_imports(cv2, np, torch),
+                imports=_build_yolo_task_training_imports(cv2, np, torch),
             )
             validation_history.append({"epoch": epoch, **val_metrics})
             current_metric = float(val_metrics.get("map50_95", 0.0))
@@ -403,8 +438,8 @@ def run_yolo_primary_obb_training(
     )
 
 
-def _build_yolov8_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
-    """构建 YOLOv8 core data/evaluation 使用的依赖对象。"""
+def _build_yolo_task_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
+    """构建 YOLO task core data/evaluation 使用的依赖对象。"""
 
     from types import SimpleNamespace
 
@@ -458,7 +493,7 @@ def _load_obb_manifest(
     train_anns: list[_ObbAnnotation] = []
     val_anns: list[_ObbAnnotation] = []
 
-    for split in (splits or []):
+    for split in splits or []:
         if not isinstance(split, dict):
             continue
         split_name = str(split.get("name", ""))
@@ -474,19 +509,19 @@ def _load_obb_manifest(
             continue
 
         # 解析类别
-        for cat in (payload.get("categories") or []):
+        for cat in payload.get("categories") or []:
             if isinstance(cat, dict):
                 all_categories[int(cat.get("id", -1))] = str(cat.get("name", ""))
 
         # 解析图片映射
         image_map: dict[int, str] = {}
-        for img in (payload.get("images") or []):
+        for img in payload.get("images") or []:
             if isinstance(img, dict):
                 image_map[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
         # 解析标注
         annotations_by_image: dict[int, list[dict[str, Any]]] = {}
-        for ann in (payload.get("annotations") or []):
+        for ann in payload.get("annotations") or []:
             if not isinstance(ann, dict):
                 continue
             img_id = int(ann.get("image_id", -1))
@@ -503,11 +538,15 @@ def _load_obb_manifest(
                     boxes_xywhr.append(xywhr)
                     class_ids.append(int(ann.get("category_id", 0)))
             if boxes_xywhr:
-                records.append(_ObbAnnotation(
-                    image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
-                    boxes_xywhr=boxes_xywhr,
-                    class_ids=class_ids,
-                ))
+                records.append(
+                    _ObbAnnotation(
+                        image_path=str(
+                            dataset_storage.resolve(f"{image_root}/{file_name}")
+                        ),
+                        boxes_xywhr=boxes_xywhr,
+                        class_ids=class_ids,
+                    )
+                )
 
         if split_name == "train":
             train_anns = records
@@ -520,7 +559,9 @@ def _load_obb_manifest(
 
     def remap(anns: list[_ObbAnnotation]) -> list[_ObbAnnotation]:
         return [
-            _ObbAnnotation(a.image_path, a.boxes_xywhr, [cat_id_map.get(c, 0) for c in a.class_ids])
+            _ObbAnnotation(
+                a.image_path, a.boxes_xywhr, [cat_id_map.get(c, 0) for c in a.class_ids]
+            )
             for a in anns
         ]
 
@@ -562,6 +603,7 @@ def _parse_obb_annotation(ann: dict[str, Any]) -> list[float] | None:
 def _poly_to_xywhr(poly: list[float]) -> list[float] | None:
     """把四角点 [x1,y1,x2,y2,x3,y3,x4,y4] 转为 [cx,cy,w,h,angle]。"""
     import numpy as np
+
     pts = np.array(poly, dtype=np.float64).reshape(4, 2)
     # 按 x 排序取左两点
     order = np.argsort(pts[:, 0])
@@ -614,14 +656,9 @@ def _build_obb_batch(
         canvas = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
         pad_x = (target_w - new_w) // 2
         pad_y = (target_h - new_h) // 2
-        canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+        canvas[pad_y : pad_y + new_h, pad_x : pad_x + new_w] = resized
 
-        tensor = (
-            canvas[:, :, ::-1]
-            .transpose(2, 0, 1)
-            .astype(np.float32)
-            / 255.0
-        )
+        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
         tensor = torch.from_numpy(tensor).to(device).float()
         if precision == "fp16":
             tensor = tensor.half()

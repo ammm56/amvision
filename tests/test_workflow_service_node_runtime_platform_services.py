@@ -53,8 +53,20 @@ from backend.service.application.models.segmentation_inference_task_service impo
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
@@ -73,7 +85,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.infrastructure.persistence.base import Base
 
 
-def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Path) -> None:
+def test_workflow_runtime_can_build_platform_services_by_task_type(
+    tmp_path: Path,
+) -> None:
     """显式 task_type 时应返回正式平台 service。"""
 
     session_factory = _create_session_factory()
@@ -86,15 +100,45 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(tmp_path: Pat
     )
 
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="classification", model_type="yolov8"),
+        runtime_context.build_training_task_service(
+            task_type="classification", model_type="yolov8"
+        ),
         SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     )
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="pose", model_type="yolov8"),
+        runtime_context.build_training_task_service(
+            task_type="classification", model_type="yolo11"
+        ),
+        SqlAlchemyYolo11ClassificationTrainingTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_training_task_service(
+            task_type="segmentation", model_type="yolo11"
+        ),
+        SqlAlchemyYolo11SegmentationTrainingTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_training_task_service(
+            task_type="pose", model_type="yolo11"
+        ),
+        SqlAlchemyYolo11PoseTrainingTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_training_task_service(
+            task_type="obb", model_type="yolo11"
+        ),
+        SqlAlchemyYolo11ObbTrainingTaskService,
+    )
+    assert isinstance(
+        runtime_context.build_training_task_service(
+            task_type="pose", model_type="yolov8"
+        ),
         SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     )
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="detection", model_type="rfdetr"),
+        runtime_context.build_training_task_service(
+            task_type="detection", model_type="rfdetr"
+        ),
         SqlAlchemyRfdetrTrainingTaskService,
     )
     assert isinstance(
@@ -162,7 +206,9 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
     )
 
     assert isinstance(
-        runtime_context.build_training_task_service(task_type="detection", model_type="yolox"),
+        runtime_context.build_training_task_service(
+            task_type="detection", model_type="yolox"
+        ),
         SqlAlchemyYoloXTrainingTaskService,
     )
     assert isinstance(
@@ -190,7 +236,9 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
 def _create_session_factory() -> SessionFactory:
     """创建绑定内存数据库的 SessionFactory。"""
 
-    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
     Base.metadata.create_all(session_factory.engine)
     return session_factory
 
@@ -198,7 +246,9 @@ def _create_session_factory() -> SessionFactory:
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建测试使用的本地数据文件存储。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
 
 
 def _create_queue_backend(tmp_path: Path) -> LocalFileQueueBackend:

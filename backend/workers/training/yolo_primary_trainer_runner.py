@@ -15,21 +15,35 @@ from backend.service.application.models.yolo_primary_classification_training_ser
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
 )
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     POSE_TRAINING_TASK_KIND,
 )
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
     OBB_TRAINING_TASK_KIND,
 )
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 # 任务类型到训练服务的映射
@@ -38,6 +52,25 @@ _TASK_KIND_TO_SERVICE: dict[str, type] = {
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     POSE_TRAINING_TASK_KIND: SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     OBB_TRAINING_TASK_KIND: SqlAlchemyYoloPrimaryObbTrainingTaskService,
+}
+
+_MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
+    (
+        YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+        "yolo11",
+    ): SqlAlchemyYolo11ClassificationTrainingTaskService,
+    (
+        YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+        "yolo11",
+    ): SqlAlchemyYolo11SegmentationTrainingTaskService,
+    (
+        POSE_TRAINING_TASK_KIND,
+        "yolo11",
+    ): SqlAlchemyYolo11PoseTrainingTaskService,
+    (
+        OBB_TRAINING_TASK_KIND,
+        "yolo11",
+    ): SqlAlchemyYolo11ObbTrainingTaskService,
 }
 
 
@@ -66,7 +99,9 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
 
-    def run_training(self, request: TrainingBackendRunRequest) -> TrainingBackendRunResult:
+    def run_training(
+        self, request: TrainingBackendRunRequest
+    ) -> TrainingBackendRunResult:
         """执行训练并返回结果。
 
         参数：
@@ -87,23 +122,63 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
                 model_type = str(payload.get("model_type", "yolov8"))
             else:
                 model_type = "yolov8"
-            if not model_type or model_type in ("n", "nano", "tiny", "s", "m", "l", "x", "xx"):
+            if not model_type or model_type in (
+                "n",
+                "nano",
+                "tiny",
+                "s",
+                "m",
+                "l",
+                "x",
+                "xx",
+            ):
                 model_type = "yolov8"
 
         # 获取对应的训练服务
-        service_cls = _TASK_KIND_TO_SERVICE.get(task.task_kind)
+        normalized_model_type = str(model_type or "").strip().lower()
+        service_cls = _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
+            (task.task_kind, normalized_model_type)
+        )
+        if service_cls is None:
+            service_cls = _TASK_KIND_TO_SERVICE.get(task.task_kind)
         if service_cls is None:
             # 尝试通过 task_type 推断
             task_type = request.task_type or "classification"
             kind_map = {
-                "classification": SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
-                "segmentation": SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
-                "pose": SqlAlchemyYoloPrimaryPoseTrainingTaskService,
-                "obb": SqlAlchemyYoloPrimaryObbTrainingTaskService,
+                "classification": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
+                    (
+                        YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+                        normalized_model_type,
+                    ),
+                    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+                ),
+                "segmentation": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
+                    (
+                        YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+                        normalized_model_type,
+                    ),
+                    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+                ),
+                "pose": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
+                    (
+                        POSE_TRAINING_TASK_KIND,
+                        normalized_model_type,
+                    ),
+                    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+                ),
+                "obb": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
+                    (
+                        OBB_TRAINING_TASK_KIND,
+                        normalized_model_type,
+                    ),
+                    SqlAlchemyYoloPrimaryObbTrainingTaskService,
+                ),
             }
             service_cls = kind_map.get(task_type)
             if service_cls is None:
-                raise ValueError(f"无法确定训练服务: task_kind={task.task_kind}, task_type={request.task_type}")
+                raise ValueError(
+                    f"无法确定训练服务: task_kind={task.task_kind}, task_type={request.task_type}"
+                )
 
         # 构建服务实例
         service_kwargs = {
@@ -127,7 +202,9 @@ class SqlAlchemyYoloPrimaryTrainerRunner:
             dataset_version_id=result.get("dataset_version_id", ""),
             format_id=result.get("format_id", ""),
             output_object_prefix=output_prefix,
-            checkpoint_object_key=result.get("checkpoint_object_key", f"{output_prefix}/latest.pt"),
+            checkpoint_object_key=result.get(
+                "checkpoint_object_key", f"{output_prefix}/latest.pt"
+            ),
             latest_checkpoint_object_key=result.get("latest_checkpoint_object_key"),
             labels_object_key=result.get("labels_object_key"),
             metrics_object_key=result.get("metrics_object_key"),

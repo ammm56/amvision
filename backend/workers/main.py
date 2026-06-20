@@ -7,10 +7,15 @@ from backend.workers.consumer_registry import (
     BackgroundTaskConsumerResources,
     build_background_task_consumers,
 )
-from backend.workers.task_manager import BackgroundTaskManager, BackgroundTaskManagerConfig
+from backend.workers.task_manager import (
+    BackgroundTaskManager,
+    BackgroundTaskManagerConfig,
+)
 
 
-def build_background_task_manager(runtime: BackendWorkerRuntime) -> BackgroundTaskManager:
+def build_background_task_manager(
+    runtime: BackendWorkerRuntime,
+) -> BackgroundTaskManager:
     """根据 worker runtime 构建后台任务管理器。
 
     参数：
@@ -47,7 +52,16 @@ def run_worker_forever() -> None:
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     bootstrap.initialize(runtime)
     try:
-        build_background_task_manager(runtime).run_forever()
+        task_manager = build_background_task_manager(runtime)
+        print(
+            "backend-worker ready "
+            f"app_name={runtime.settings.app.app_name!r} "
+            f"workspace={runtime.workspace_dir} "
+            f"queue_root={runtime.queue_backend.root_dir} "
+            f"enabled_consumer_kinds={list(runtime.settings.task_manager.enabled_consumer_kinds)!r}",
+            flush=True,
+        )
+        task_manager.run_forever()
     finally:
         runtime.session_factory.engine.dispose()
 

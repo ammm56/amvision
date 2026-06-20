@@ -36,16 +36,30 @@ from backend.service.application.models.detection_training_service import (
 from backend.service.application.models.yolo_primary_classification_training_service import (
     YoloPrimaryClassificationTrainingTaskRequest,
 )
+from backend.service.application.models.yolo11_classification_training_service import (
+    Yolo11ClassificationTrainingTaskRequest,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     YoloPrimaryObbTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    Yolo11ObbTrainingTaskRequest,
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
     YoloPrimaryPoseTrainingTaskRequest,
 )
+from backend.service.application.models.yolo11_pose_training_service import (
+    Yolo11PoseTrainingTaskRequest,
+)
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    Yolo11SegmentationTrainingTaskRequest,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
@@ -61,9 +75,17 @@ _NON_DETECTION_TRAINING_REQUEST_BY_TASK_TYPE: dict[str, type] = {
     POSE_TASK_TYPE: YoloPrimaryPoseTrainingTaskRequest,
     OBB_TASK_TYPE: YoloPrimaryObbTrainingTaskRequest,
 }
+_NON_DETECTION_TRAINING_REQUEST_BY_TASK_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
+    (CLASSIFICATION_TASK_TYPE, "yolo11"): Yolo11ClassificationTrainingTaskRequest,
+    (SEGMENTATION_TASK_TYPE, "yolo11"): Yolo11SegmentationTrainingTaskRequest,
+    (POSE_TASK_TYPE, "yolo11"): Yolo11PoseTrainingTaskRequest,
+    (OBB_TASK_TYPE, "yolo11"): Yolo11ObbTrainingTaskRequest,
+}
 
 
-def _model_training_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_training_submit_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """调用统一训练任务 service。"""
 
     request = overlay_parameters_from_object_input(request)
@@ -104,8 +126,12 @@ def _build_platform_training_request(
         "model_scale": require_str_parameter(request, "model_scale"),
         "output_model_name": require_str_parameter(request, "output_model_name"),
         "dataset_export_id": get_optional_str_parameter(request, "dataset_export_id"),
-        "dataset_export_manifest_key": get_optional_str_parameter(request, "dataset_export_manifest_key"),
-        "evaluation_interval": get_optional_int_parameter(request, "evaluation_interval"),
+        "dataset_export_manifest_key": get_optional_str_parameter(
+            request, "dataset_export_manifest_key"
+        ),
+        "evaluation_interval": get_optional_int_parameter(
+            request, "evaluation_interval"
+        ),
         "max_epochs": get_optional_int_parameter(request, "max_epochs"),
         "batch_size": get_optional_int_parameter(request, "batch_size"),
         "precision": get_optional_str_parameter(request, "precision"),
@@ -126,7 +152,10 @@ def _build_platform_training_request(
             {"display_name": display_name},
         )
 
-    request_cls = _NON_DETECTION_TRAINING_REQUEST_BY_TASK_TYPE[task_type]
+    request_cls = _NON_DETECTION_TRAINING_REQUEST_BY_TASK_AND_MODEL_TYPE.get(
+        (task_type, model_type),
+        _NON_DETECTION_TRAINING_REQUEST_BY_TASK_TYPE[task_type],
+    )
     return (
         request_cls(
             **common_kwargs,
@@ -190,7 +219,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "display_name": {"type": "string"},
                 "created_by": {"type": "string"},
             },
-            "required": ["task_type", "model_type", "project_id", "recipe_id", "model_scale", "output_model_name"],
+            "required": [
+                "task_type",
+                "model_type",
+                "project_id",
+                "recipe_id",
+                "model_scale",
+                "output_model_name",
+            ],
             "allOf": build_platform_task_model_type_schema_guards(),
         },
         capability_tags=("service.model.training", "task.submit"),

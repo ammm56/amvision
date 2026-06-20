@@ -24,8 +24,17 @@ from backend.service.application.models.validation.pose_session_service import (
 from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
     YoloPrimaryClassificationEvaluationTaskRequest,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
-    YoloPrimaryClassificationTrainingTaskRequest,
+from backend.service.application.models.yolo11_classification_training_service import (
+    Yolo11ClassificationTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    Yolo11SegmentationTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_pose_training_service import (
+    Yolo11PoseTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    Yolo11ObbTrainingTaskRequest,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     RfdetrTrainingTaskRequest,
@@ -36,7 +45,9 @@ from backend.service.application.conversions.yolo_primary_conversion_task_servic
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.application.workflows.service_node_runtime import (
     WorkflowServiceNodeRuntimeContext,
 )
@@ -94,8 +105,185 @@ def test_training_service_node_routes_to_platform_training_service(
         "task_type": "classification",
         "model_type": "yolo11",
     }
-    assert isinstance(captured["request"], YoloPrimaryClassificationTrainingTaskRequest)
+    assert isinstance(captured["request"], Yolo11ClassificationTrainingTaskRequest)
     assert captured["request"].display_name == "classification training"
+    assert captured["request"].model_type == "yolo11"
+    assert captured["created_by"] == "workflow-user"
+    assert captured["submit_kwargs"] == {}
+
+
+def test_training_service_node_uses_yolo11_segmentation_request(
+    monkeypatch,
+) -> None:
+    """YOLO11 segmentation 训练节点应构造模型专属请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeTrainingService:
+        def submit_training_task(self, request, *, created_by=None, **kwargs):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["submit_kwargs"] = kwargs
+            return {"task_id": "task-segmentation-1", "status": "queued"}
+
+    def _build_training_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeTrainingService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_training_task_service",
+        _build_training_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="segmentation-training-node",
+        node_definition=training_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": "segmentation",
+            "model_type": "yolo11",
+            "project_id": "project-1",
+            "dataset_export_id": "dataset-export-1",
+            "recipe_id": "recipe-1",
+            "model_scale": "nano",
+            "output_model_name": "segmentation-model",
+            "max_epochs": 5,
+            "display_name": "segmentation training",
+            "created_by": "workflow-user",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = training_node._model_training_submit_handler(request)
+
+    assert result["body"]["task_id"] == "task-segmentation-1"
+    assert captured["service_kwargs"] == {
+        "task_type": "segmentation",
+        "model_type": "yolo11",
+    }
+    assert isinstance(captured["request"], Yolo11SegmentationTrainingTaskRequest)
+    assert captured["request"].display_name == "segmentation training"
+    assert captured["request"].model_type == "yolo11"
+    assert captured["created_by"] == "workflow-user"
+    assert captured["submit_kwargs"] == {}
+
+
+def test_training_service_node_uses_yolo11_pose_request(
+    monkeypatch,
+) -> None:
+    """YOLO11 pose 训练节点应构造模型专属请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeTrainingService:
+        def submit_training_task(self, request, *, created_by=None, **kwargs):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["submit_kwargs"] = kwargs
+            return {"task_id": "task-pose-1", "status": "queued"}
+
+    def _build_training_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeTrainingService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_training_task_service",
+        _build_training_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="pose-training-node",
+        node_definition=training_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": "pose",
+            "model_type": "yolo11",
+            "project_id": "project-1",
+            "dataset_export_id": "dataset-export-1",
+            "recipe_id": "recipe-1",
+            "model_scale": "nano",
+            "output_model_name": "pose-model",
+            "max_epochs": 5,
+            "display_name": "pose training",
+            "created_by": "workflow-user",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = training_node._model_training_submit_handler(request)
+
+    assert result["body"]["task_id"] == "task-pose-1"
+    assert captured["service_kwargs"] == {
+        "task_type": "pose",
+        "model_type": "yolo11",
+    }
+    assert isinstance(captured["request"], Yolo11PoseTrainingTaskRequest)
+    assert captured["request"].display_name == "pose training"
+    assert captured["request"].model_type == "yolo11"
+    assert captured["created_by"] == "workflow-user"
+    assert captured["submit_kwargs"] == {}
+
+
+def test_training_service_node_uses_yolo11_obb_request(
+    monkeypatch,
+) -> None:
+    """YOLO11 OBB 训练节点应构造模型专属请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeTrainingService:
+        def submit_training_task(self, request, *, created_by=None, **kwargs):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["submit_kwargs"] = kwargs
+            return {"task_id": "task-obb-1", "status": "queued"}
+
+    def _build_training_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeTrainingService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_training_task_service",
+        _build_training_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id="obb-training-node",
+        node_definition=training_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": "obb",
+            "model_type": "yolo11",
+            "project_id": "project-1",
+            "dataset_export_id": "dataset-export-1",
+            "recipe_id": "recipe-1",
+            "model_scale": "nano",
+            "output_model_name": "obb-model",
+            "max_epochs": 5,
+            "display_name": "obb training",
+            "created_by": "workflow-user",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = training_node._model_training_submit_handler(request)
+
+    assert result["body"]["task_id"] == "task-obb-1"
+    assert captured["service_kwargs"] == {
+        "task_type": "obb",
+        "model_type": "yolo11",
+    }
+    assert isinstance(captured["request"], Yolo11ObbTrainingTaskRequest)
+    assert captured["request"].display_name == "obb training"
     assert captured["request"].model_type == "yolo11"
     assert captured["created_by"] == "workflow-user"
     assert captured["submit_kwargs"] == {}
@@ -200,7 +388,10 @@ def test_training_service_node_routes_rfdetr_detection_to_platform_training_serv
     result = training_node._model_training_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-rfdetr-training-1"
-    assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
+    assert captured["service_kwargs"] == {
+        "task_type": "detection",
+        "model_type": "rfdetr",
+    }
     assert isinstance(captured["request"], RfdetrTrainingTaskRequest)
     assert captured["submit_kwargs"] == {"display_name": "rfdetr training"}
 
@@ -249,7 +440,10 @@ def test_conversion_service_node_routes_rfdetr_detection_to_platform_conversion_
     result = conversion_node._model_conversion_submit_handler(request)
 
     assert result["body"]["task_id"] == "task-rfdetr-conversion-1"
-    assert captured["service_kwargs"] == {"task_type": "detection", "model_type": "rfdetr"}
+    assert captured["service_kwargs"] == {
+        "task_type": "detection",
+        "model_type": "rfdetr",
+    }
     assert isinstance(captured["request"], RfdetrConversionTaskRequest)
     assert captured["display_name"] == "rfdetr conversion"
 
@@ -349,7 +543,9 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
 
     assert result["body"]["task_id"] == "task-evaluation-1"
     assert captured["service_kwargs"] == {"task_type": "classification"}
-    assert isinstance(captured["request"], YoloPrimaryClassificationEvaluationTaskRequest)
+    assert isinstance(
+        captured["request"], YoloPrimaryClassificationEvaluationTaskRequest
+    )
     assert captured["request"].top_k == 3
 
 
@@ -390,7 +586,9 @@ def test_deployment_create_node_uses_task_native_request(
     result = deployment_create_node._model_deployment_create_handler(request)
 
     assert result["body"]["deployment_instance_id"] == "deployment-1"
-    assert isinstance(captured["request"], ClassificationDeploymentInstanceCreateRequest)
+    assert isinstance(
+        captured["request"], ClassificationDeploymentInstanceCreateRequest
+    )
     assert captured["request"].model_type == "yolo11"
 
 
@@ -454,12 +652,12 @@ def test_inference_submit_node_uses_task_native_request(
             "input_uri": "inputs/source.jpg",
             "mask_threshold": 0.45,
         },
-            runtime_context=WorkflowServiceNodeRuntimeContext(
-                session_factory=object(),
-                dataset_storage=object(),
-                segmentation_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
-                async_inference_service_id="workflow-service",
-            ),
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+            segmentation_async_deployment_process_supervisor=_FakeAsyncSupervisor(),
+            async_inference_service_id="workflow-service",
+        ),
     )
 
     result = inference_node._model_inference_submit_handler(request)

@@ -13,7 +13,7 @@ from backend.service.application.runtime.classification_runtime_contracts import
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.yolo11_classification_predictor import (
+from backend.service.application.runtime.predictors.yolo11_classification import (
     OnnxRuntimeYolo11ClassificationRuntimeSession,
     OpenVINOYolo11ClassificationRuntimeSession,
     PyTorchYolo11ClassificationRuntimeSession,
@@ -32,7 +32,9 @@ from backend.service.application.runtime.predictors.yolov8_classification import
     TensorRTYoloV8ClassificationRuntimeSession,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 ClassificationRuntimeLoader = Callable[
@@ -44,7 +46,9 @@ ClassificationRuntimeLoader = Callable[
 class ClassificationModelRuntimeSession(Protocol):
     """定义 classification 模型会话需要满足的最小协议。"""
 
-    def predict(self, request: ClassificationPredictionRequest) -> ClassificationPredictionExecutionResult:
+    def predict(
+        self, request: ClassificationPredictionRequest
+    ) -> ClassificationPredictionExecutionResult:
         """执行一次 classification 预测并返回结果。"""
 
         ...
@@ -70,14 +74,20 @@ class ClassificationModelRuntime(Protocol):
 class ClassificationModelRuntimeRegistry:
     """按模型分类管理 classification 运行时加载器。"""
 
-    runtime_loaders: dict[str, ClassificationRuntimeLoader] = field(default_factory=dict)
+    runtime_loaders: dict[str, ClassificationRuntimeLoader] = field(
+        default_factory=dict
+    )
 
-    def register_runtime_loader(self, model_type: str, loader: ClassificationRuntimeLoader) -> None:
+    def register_runtime_loader(
+        self, model_type: str, loader: ClassificationRuntimeLoader
+    ) -> None:
         """登记指定模型分类对应的 classification 运行时加载器。"""
 
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
-            raise ServiceConfigurationError("登记 classification runtime loader 时 model_type 不能为空")
+            raise ServiceConfigurationError(
+                "登记 classification runtime loader 时 model_type 不能为空"
+            )
         self.runtime_loaders[normalized_model_type] = loader
 
     def resolve_runtime_loader(self, model_type: str) -> ClassificationRuntimeLoader:
@@ -85,7 +95,9 @@ class ClassificationModelRuntimeRegistry:
 
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
-            raise ServiceConfigurationError("当前 classification runtime 缺少有效 model_type")
+            raise ServiceConfigurationError(
+                "当前 classification runtime 缺少有效 model_type"
+            )
         runtime_loader = self.runtime_loaders.get(normalized_model_type)
         if runtime_loader is None:
             raise ServiceConfigurationError(
@@ -98,10 +110,14 @@ class ClassificationModelRuntimeRegistry:
 class DefaultClassificationModelRuntime:
     """根据模型分类与 runtime backend 分发 classification 会话加载。"""
 
-    def __init__(self, runtime_registry: ClassificationModelRuntimeRegistry | None = None) -> None:
+    def __init__(
+        self, runtime_registry: ClassificationModelRuntimeRegistry | None = None
+    ) -> None:
         """初始化 classification 运行时加载器。"""
 
-        self.runtime_registry = runtime_registry or build_default_classification_model_runtime_registry()
+        self.runtime_registry = (
+            runtime_registry or build_default_classification_model_runtime_registry()
+        )
 
     def load_session(
         self,
@@ -113,7 +129,9 @@ class DefaultClassificationModelRuntime:
     ) -> ClassificationModelRuntimeSession:
         """按模型分类和 runtime backend 加载 classification 模型会话。"""
 
-        runtime_loader = self.runtime_registry.resolve_runtime_loader(runtime_target.model_type)
+        runtime_loader = self.runtime_registry.resolve_runtime_loader(
+            runtime_target.model_type
+        )
         return runtime_loader(
             dataset_storage,
             runtime_target,
@@ -122,7 +140,9 @@ class DefaultClassificationModelRuntime:
         )
 
 
-def build_default_classification_model_runtime_registry() -> ClassificationModelRuntimeRegistry:
+def build_default_classification_model_runtime_registry() -> (
+    ClassificationModelRuntimeRegistry
+):
     """构建当前进程默认使用的 classification runtime 注册表。"""
 
     registry = ClassificationModelRuntimeRegistry()
@@ -162,7 +182,9 @@ def _load_yolov8_classification_session(
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
-    raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
+    raise ValueError(
+        f"unsupported classification runtime backend: {runtime_target.runtime_backend}"
+    )
 
 
 def _load_yolo11_classification_session(
@@ -195,7 +217,9 @@ def _load_yolo11_classification_session(
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
-    raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
+    raise ValueError(
+        f"unsupported classification runtime backend: {runtime_target.runtime_backend}"
+    )
 
 
 def _load_yolo26_classification_session(
@@ -228,7 +252,9 @@ def _load_yolo26_classification_session(
             pinned_output_buffer_enabled=pinned_output_buffer_enabled,
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
-    raise ValueError(f"unsupported classification runtime backend: {runtime_target.runtime_backend}")
+    raise ValueError(
+        f"unsupported classification runtime backend: {runtime_target.runtime_backend}"
+    )
 
 
 def _normalize_model_type(model_type: str | None) -> str | None:

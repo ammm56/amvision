@@ -24,7 +24,9 @@ from backend.service.application.conversions.rfdetr_conversion_task_service impo
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
 )
-from backend.service.application.datasets.dataset_import import SqlAlchemyDatasetImportService
+from backend.service.application.datasets.dataset_import import (
+    SqlAlchemyDatasetImportService,
+)
 from backend.service.application.datasets.dataset_export import (
     SqlAlchemyDatasetExportTaskService,
 )
@@ -108,17 +110,29 @@ from backend.service.application.models.yolo_primary_classification_evaluation_t
 from backend.service.application.models.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
 )
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+)
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
 )
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
 from backend.service.application.models.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
@@ -177,6 +191,15 @@ _TRAINING_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     POSE_TASK_TYPE: SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     OBB_TASK_TYPE: SqlAlchemyYoloPrimaryObbTrainingTaskService,
 }
+_TRAINING_SERVICE_BY_TASK_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
+    (
+        CLASSIFICATION_TASK_TYPE,
+        "yolo11",
+    ): SqlAlchemyYolo11ClassificationTrainingTaskService,
+    (SEGMENTATION_TASK_TYPE, "yolo11"): SqlAlchemyYolo11SegmentationTrainingTaskService,
+    (POSE_TASK_TYPE, "yolo11"): SqlAlchemyYolo11PoseTrainingTaskService,
+    (OBB_TASK_TYPE, "yolo11"): SqlAlchemyYolo11ObbTrainingTaskService,
+}
 _VALIDATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     DETECTION_TASK_TYPE: LocalDetectionValidationSessionService,
     CLASSIFICATION_TASK_TYPE: LocalClassificationValidationSessionService,
@@ -226,18 +249,32 @@ class WorkflowServiceNodeRuntimeContext:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: QueueBackend | None = None
-    detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    detection_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    classification_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    classification_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    segmentation_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
-    segmentation_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
+    detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = (
+        None
+    )
+    detection_async_deployment_process_supervisor: (
+        DeploymentProcessSupervisor | None
+    ) = None
+    classification_sync_deployment_process_supervisor: (
+        DeploymentProcessSupervisor | None
+    ) = None
+    classification_async_deployment_process_supervisor: (
+        DeploymentProcessSupervisor | None
+    ) = None
+    segmentation_sync_deployment_process_supervisor: (
+        DeploymentProcessSupervisor | None
+    ) = None
+    segmentation_async_deployment_process_supervisor: (
+        DeploymentProcessSupervisor | None
+    ) = None
     pose_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     pose_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     obb_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     obb_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     async_inference_service_id: str | None = None
-    async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None
+    async_inference_gateway_dispatcher_registry: (
+        DetectionAsyncInferenceGatewayDispatcherRegistry | None
+    ) = None
     classification_async_inference_gateway_dispatcher_registry: Any | None = None
     segmentation_async_inference_gateway_dispatcher_registry: Any | None = None
     pose_async_inference_gateway_dispatcher_registry: Any | None = None
@@ -263,9 +300,15 @@ class WorkflowServiceNodeRuntimeContext:
             model_type=model_type,
         )
         if normalized_task_type == DETECTION_TASK_TYPE:
-            service_cls = self._resolve_detection_training_service(normalized_model_type)
+            service_cls = self._resolve_detection_training_service(
+                normalized_model_type
+            )
         else:
-            service_cls = _TRAINING_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
+            service_cls = _TRAINING_SERVICE_BY_TASK_AND_MODEL_TYPE.get(
+                (normalized_task_type, normalized_model_type)
+            )
+            if service_cls is None:
+                service_cls = _TRAINING_SERVICE_BY_TASK_TYPE.get(normalized_task_type)
             if service_cls is None:
                 raise ServiceConfigurationError(
                     "当前 workflow 运行时不支持指定训练任务分类",
@@ -295,7 +338,9 @@ class WorkflowServiceNodeRuntimeContext:
             model_type=model_type,
         )
         if normalized_task_type == DETECTION_TASK_TYPE:
-            service_cls = self._resolve_detection_conversion_service(normalized_model_type)
+            service_cls = self._resolve_detection_conversion_service(
+                normalized_model_type
+            )
         else:
             service_cls = _YOLO_PRIMARY_CONVERSION_SERVICE_BY_MODEL_TYPE.get(
                 normalized_model_type
@@ -342,7 +387,9 @@ class WorkflowServiceNodeRuntimeContext:
             queue_backend=self.require_queue_backend(),
         )
 
-    def build_dataset_export_delivery_service(self) -> SqlAlchemyDatasetExportDeliveryService:
+    def build_dataset_export_delivery_service(
+        self,
+    ) -> SqlAlchemyDatasetExportDeliveryService:
         """构造数据集导出打包与下载辅助 service。"""
 
         return SqlAlchemyDatasetExportDeliveryService(
@@ -430,18 +477,26 @@ class WorkflowServiceNodeRuntimeContext:
             else None
         )
         if resolved_package_object_key is None:
-            resolved_package_object_key = (
-                self._read_optional_payload_str(result_payload, "result_package_object_key")
-                or self._build_default_evaluation_package_key(result_payload, task_id=task_id)
+            resolved_package_object_key = self._read_optional_payload_str(
+                result_payload, "result_package_object_key"
+            ) or self._build_default_evaluation_package_key(
+                result_payload, task_id=task_id
             )
         package_path = self.dataset_storage.resolve(resolved_package_object_key)
         if rebuild or not package_path.is_file():
             package_path.parent.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(package_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-                archive.write(self.dataset_storage.resolve(report_object_key), arcname="report.json")
+            with zipfile.ZipFile(
+                package_path, mode="w", compression=zipfile.ZIP_DEFLATED
+            ) as archive:
+                archive.write(
+                    self.dataset_storage.resolve(report_object_key),
+                    arcname="report.json",
+                )
                 archive.write(
                     self.dataset_storage.resolve(secondary_object_key),
-                    arcname="detections.json" if normalized_task_type == DETECTION_TASK_TYPE else "predictions.json",
+                    arcname="detections.json"
+                    if normalized_task_type == DETECTION_TASK_TYPE
+                    else "predictions.json",
                 )
         stat = package_path.stat()
         return WorkflowEvaluationTaskPackage(
@@ -473,7 +528,9 @@ class WorkflowServiceNodeRuntimeContext:
         if self.published_inference_gateway is not None:
             return self.published_inference_gateway
         deployment_services_by_task_type: dict[str, object] = {}
-        deployment_process_supervisors_by_task_type: dict[str, DeploymentProcessSupervisor] = {}
+        deployment_process_supervisors_by_task_type: dict[
+            str, DeploymentProcessSupervisor
+        ] = {}
         for task_type in _DEPLOYMENT_SERVICE_BY_TASK_TYPE:
             try:
                 deployment_process_supervisors_by_task_type[task_type] = (
@@ -481,7 +538,9 @@ class WorkflowServiceNodeRuntimeContext:
                 )
             except ServiceConfigurationError:
                 continue
-            deployment_services_by_task_type[task_type] = self.build_deployment_service(task_type=task_type)
+            deployment_services_by_task_type[task_type] = self.build_deployment_service(
+                task_type=task_type
+            )
         return TaskTypeDeploymentPublishedInferenceGateway(
             deployment_services_by_task_type=deployment_services_by_task_type,
             deployment_process_supervisors_by_task_type=deployment_process_supervisors_by_task_type,
@@ -505,22 +564,24 @@ class WorkflowServiceNodeRuntimeContext:
                 task_type=normalized_task_type
             ),
         }
-        async_gateway_dispatcher_registry = self._resolve_async_inference_gateway_dispatcher_registry(
-            task_type=normalized_task_type
+        async_gateway_dispatcher_registry = (
+            self._resolve_async_inference_gateway_dispatcher_registry(
+                task_type=normalized_task_type
+            )
         )
         if async_gateway_dispatcher_registry is not None:
             service_kwargs["async_inference_gateway_dispatcher_registry"] = (
                 async_gateway_dispatcher_registry
             )
-        return service_cls(
-            **service_kwargs
-        )
+        return service_cls(**service_kwargs)
 
     def require_queue_backend(self) -> QueueBackend:
         """返回提交类节点必需的队列后端。"""
 
         if self.queue_backend is None:
-            raise ServiceConfigurationError("当前 workflow 运行时缺少 QueueBackend 上下文")
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时缺少 QueueBackend 上下文"
+            )
         return self.queue_backend
 
     def require_sync_deployment_process_supervisor(
@@ -589,7 +650,9 @@ class WorkflowServiceNodeRuntimeContext:
         """返回读取 LocalBufferBroker 引用所需的 client。"""
 
         if self.local_buffer_reader is None:
-            raise ServiceConfigurationError("当前 workflow 运行时缺少 LocalBufferBroker reader")
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时缺少 LocalBufferBroker reader"
+            )
         return self.local_buffer_reader
 
     def _resolve_detection_training_service(self, model_type: str) -> type:
@@ -721,12 +784,16 @@ class WorkflowServiceNodeRuntimeContext:
     ) -> str:
         """按标准输出目录构造评估结果包默认 object key。"""
 
-        output_object_prefix = self._read_optional_payload_str(result_payload, "output_object_prefix")
+        output_object_prefix = self._read_optional_payload_str(
+            result_payload, "output_object_prefix"
+        )
         if output_object_prefix is None:
             output_object_prefix = f"task-runs/evaluation/{task_id}"
         return f"{output_object_prefix}/artifacts/packages/result-package.zip"
 
-    def _read_optional_payload_str(self, payload: dict[str, object], key: str) -> str | None:
+    def _read_optional_payload_str(
+        self, payload: dict[str, object], key: str
+    ) -> str | None:
         """从任务结果中读取可选字符串字段。"""
 
         value = payload.get(key)

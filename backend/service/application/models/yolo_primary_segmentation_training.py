@@ -58,9 +58,13 @@ from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_primary_model_configs import (
+    build_yolo_primary_model,
+)
 from backend.service.application.runtime.support.detection import batched_nms_indices
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE = "yolo-primary-segmentation"
@@ -189,11 +193,16 @@ class YoloPrimarySegmentationTrainingExecutionRequest:
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
-    epoch_callback: Callable[
-        [YoloPrimarySegmentationTrainingEpochProgress],
-        YoloPrimarySegmentationTrainingControlCommand | None,
-    ] | None = None
-    savepoint_callback: Callable[[YoloPrimarySegmentationTrainingSavePoint], None] | None = None
+    epoch_callback: (
+        Callable[
+            [YoloPrimarySegmentationTrainingEpochProgress],
+            YoloPrimarySegmentationTrainingControlCommand | None,
+        ]
+        | None
+    ) = None
+    savepoint_callback: (
+        Callable[[YoloPrimarySegmentationTrainingSavePoint], None] | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +219,12 @@ def run_yolo_primary_segmentation_training(
     request: YoloPrimarySegmentationTrainingExecutionRequest,
 ) -> YoloPrimarySegmentationTrainingExecutionResult:
     """执行一次 YOLO 主线 segmentation 训练。"""
+
+    if request.model_type == "yolo11":
+        raise InvalidRequestError(
+            "YOLO11 segmentation 训练已切到 yolo11_segmentation_training.py",
+            details={"model_type": request.model_type},
+        )
 
     imports = _seg_require_imports()
     device = _seg_resolve_device(request.extra_options)
@@ -229,7 +244,10 @@ def run_yolo_primary_segmentation_training(
     )
     use_yolov8_segmentation_core = request.model_type == "yolov8"
     resume = None
-    if request.resume_checkpoint_path is not None and request.resume_checkpoint_path.is_file():
+    if (
+        request.resume_checkpoint_path is not None
+        and request.resume_checkpoint_path.is_file()
+    ):
         resume = _seg_load_resume(request, imports)
 
     extra = dict(request.extra_options or {})
@@ -238,7 +256,9 @@ def run_yolo_primary_segmentation_training(
     min_lr = float(extra.get("min_lr_ratio", _SEG_DEFAULT_MIN_LR))
     bs = max(1, int(extra.get("batch_size", request.batch_size)))
     me = max(1, int(extra.get("max_epochs", request.max_epochs)))
-    eval_interval = max(1, int(extra.get("evaluation_interval", request.evaluation_interval)))
+    eval_interval = max(
+        1, int(extra.get("evaluation_interval", request.evaluation_interval))
+    )
     cl_w = float(extra.get("class_loss_weight", _SEG_DEFAULT_CLASS_LOSS))
     box_w = float(extra.get("box_loss_weight", _SEG_DEFAULT_BOX_LOSS))
     dfl_w = float(extra.get("dfl_loss_weight", _SEG_DEFAULT_DFL_LOSS))
@@ -247,7 +267,9 @@ def run_yolo_primary_segmentation_training(
     assign_alpha = float(extra.get("assign_alpha", _SEG_DEFAULT_ASSIGN_ALPHA))
     assign_beta = float(extra.get("assign_beta", _SEG_DEFAULT_ASSIGN_BETA))
     grad_clip = max(0.0, float(extra.get("grad_clip_norm", _SEG_DEFAULT_GRAD_CLIP)))
-    eval_conf = float(extra.get("evaluation_confidence_threshold", _SEG_DEFAULT_EVAL_CONF))
+    eval_conf = float(
+        extra.get("evaluation_confidence_threshold", _SEG_DEFAULT_EVAL_CONF)
+    )
     eval_nms = float(extra.get("evaluation_nms_threshold", _SEG_DEFAULT_EVAL_NMS))
     yolov8_augmentation_options = (
         build_yolov8_task_augmentation_options(extra)
@@ -281,8 +303,7 @@ def run_yolo_primary_segmentation_training(
     optimizer = imports.torch.optim.AdamW(trainable, lr=lr, weight_decay=wd)
     scaler = (
         imports.torch.amp.GradScaler(device, enabled=precision == "fp16")
-        if hasattr(imports.torch, "amp")
-        and hasattr(imports.torch.amp, "GradScaler")
+        if hasattr(imports.torch, "amp") and hasattr(imports.torch.amp, "GradScaler")
         else None
     )
     total_iters = me * max(1, (len(train_anns) + bs - 1) // bs)
@@ -496,12 +517,18 @@ def run_yolo_primary_segmentation_training(
             learning_rate=float(scheduler.get_last_lr()[0]),
             train_metrics=epoch_metrics,
         )
-        cmd = request.epoch_callback(ep_progress) if request.epoch_callback is not None else None
+        cmd = (
+            request.epoch_callback(ep_progress)
+            if request.epoch_callback is not None
+            else None
+        )
         if cmd is not None and cmd.terminate_training:
             raise YoloPrimarySegmentationTrainingTerminatedError()
 
         val_metrics: dict[str, float] = {}
-        if (len(val_anns) > 0 and epoch > 0 and epoch % eval_interval == 0) or epoch == me - 1:
+        if (
+            len(val_anns) > 0 and epoch > 0 and epoch % eval_interval == 0
+        ) or epoch == me - 1:
             if use_yolov8_segmentation_core:
                 val_metrics = evaluate_yolov8_segmentation_samples(
                     model=model,
@@ -616,8 +643,7 @@ def _seg_resolve_device(extra: dict[str, object] | None) -> str:
 
     requested = str((extra or {}).get("device", "cpu")).strip().lower()
     if (
-        requested == "cuda"
-        or requested.startswith("cuda:")
+        requested == "cuda" or requested.startswith("cuda:")
     ) and torch.cuda.is_available():
         return requested
     return "cpu"
@@ -640,7 +666,9 @@ def _seg_load_manifest(
     splits = manifest.get("splits")
     if not isinstance(splits, list):
         raise InvalidRequestError("segmentation 训练 manifest 缺少合法 splits")
-    format_id = str(manifest.get("format_id") or COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT).strip()
+    format_id = str(
+        manifest.get("format_id") or COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+    ).strip()
     yolo_category_names = (
         normalize_yolo_category_names(
             category_names=manifest.get("category_names"),
@@ -690,11 +718,11 @@ def _seg_load_manifest(
                 if isinstance(c, dict):
                     all_cats[int(c.get("id", -1))] = str(c.get("name", ""))
         img_map: dict[int, str] = {}
-        for im in (payload.get("images") or []):
+        for im in payload.get("images") or []:
             if isinstance(im, dict):
                 img_map[int(im.get("id", -1))] = str(im.get("file_name", ""))
         result = []
-        for ann in (payload.get("annotations") or []):
+        for ann in payload.get("annotations") or []:
             if not isinstance(ann, dict):
                 continue
             img_id = int(ann.get("image_id", -1))
@@ -724,8 +752,7 @@ def _seg_load_manifest(
             image_path=annotation.image_path,
             boxes_xywh=annotation.boxes_xywh,
             class_ids=[
-                cat_id_to_idx.get(class_id, 0)
-                for class_id in annotation.class_ids
+                cat_id_to_idx.get(class_id, 0) for class_id in annotation.class_ids
             ],
             segmentations=annotation.segmentations,
         )
@@ -736,8 +763,7 @@ def _seg_load_manifest(
             image_path=annotation.image_path,
             boxes_xywh=annotation.boxes_xywh,
             class_ids=[
-                cat_id_to_idx.get(class_id, 0)
-                for class_id in annotation.class_ids
+                cat_id_to_idx.get(class_id, 0) for class_id in annotation.class_ids
             ],
             segmentations=annotation.segmentations,
         )
@@ -800,8 +826,10 @@ def _seg_build_batch(
         resized = imports.cv2.resize(img, (nw, nh))
         canvas = imports.np.full((th, tw, 3), 114, dtype=imports.np.uint8)
         dw, dh = (tw - nw) // 2, (th - nh) // 2
-        canvas[dh:dh + nh, dw:dw + nw] = resized
-        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        canvas[dh : dh + nh, dw : dw + nw] = resized
+        tensor = (
+            canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        )
         t = imports.torch.from_numpy(tensor).to(device).float()
         if precision == "fp16":
             t = t.half()
@@ -811,7 +839,9 @@ def _seg_build_batch(
         mask_targets = []
         mask_valid = []
         object_count = len(ann.boxes_xywh)
-        for object_index, (bbox, cid) in enumerate(zip(ann.boxes_xywh, ann.class_ids, strict=True)):
+        for object_index, (bbox, cid) in enumerate(
+            zip(ann.boxes_xywh, ann.class_ids, strict=True)
+        ):
             x, y, w, h = bbox
             x1 = (x * r + dw) / tw
             y1 = (y * r + dh) / th
@@ -1090,7 +1120,9 @@ def _seg_validate_resume(
     if abs(state.saved_lr - learning_rate) > 1e-8:
         issues.append("learning_rate")
     if issues:
-        raise InvalidRequestError("resume 请求的训练参数与 checkpoint 不一致", details={"mismatches": issues})
+        raise InvalidRequestError(
+            "resume 请求的训练参数与 checkpoint 不一致", details={"mismatches": issues}
+        )
 
 
 def _seg_apply_resume(model, opt, sched, scaler, state, imports, device):
@@ -1106,9 +1138,7 @@ def _seg_apply_resume(model, opt, sched, scaler, state, imports, device):
             for p in pg.get("params", []):
                 if hasattr(p, "device") and str(p.device) != device:
                     pg["params"] = [
-                        parameter.to(device)
-                        if hasattr(parameter, "to")
-                        else parameter
+                        parameter.to(device) if hasattr(parameter, "to") else parameter
                         for parameter in pg["params"]
                     ]
     if state.scheduler_state_dict is not None and sched is not None:

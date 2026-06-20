@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import torch
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
 )
@@ -21,6 +22,7 @@ from backend.service.application.models.detection_postprocess import (
     postprocess_detection_prediction_array,
 )
 from backend.service.application.models.yolo_primary_detection_training import (
+    YoloPrimaryDetectionTrainingExecutionRequest,
     _PreparedTrainingTarget,
     _ResolvedTrainingAnnotation,
     _ResolvedTrainingSample,
@@ -32,6 +34,7 @@ from backend.service.application.models.yolo_primary_detection_training import (
     _resolve_detection_augmentation_options,
     _resolve_non_yolov8_detection_splits,
     _unwrap_e2e_detection_outputs,
+    run_yolo_primary_detection_training,
 )
 from backend.service.application.runtime.yolo_primary_predictor import (
     _resolve_yolo_primary_postprocess_strategy,
@@ -40,6 +43,23 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+
+
+def test_primary_detection_runner_rejects_yolo11(tmp_path: Path) -> None:
+    """验证 YOLO11 detection 不再走 primary detection 主训练入口。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
+    request = YoloPrimaryDetectionTrainingExecutionRequest(
+        dataset_storage=dataset_storage,
+        manifest_payload={},
+        model_scale="nano",
+        model_type="yolo11",
+    )
+
+    with pytest.raises(InvalidRequestError, match="YOLO11 detection"):
+        run_yolo_primary_detection_training(request)
 
 
 def test_build_training_batch_flip_prob_one_flips_bbox_horizontally(
@@ -180,7 +200,9 @@ def test_yolo26_e2e_loss_path_runs_with_dual_branch_outputs() -> None:
     assert torch.isfinite(loss_components["one2one_loss"]).item() is True
 
     loss_components["loss"].backward()
-    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    grad_tensors = [
+        parameter.grad for parameter in model.parameters() if parameter.grad is not None
+    ]
     assert grad_tensors
     assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
 
@@ -224,12 +246,16 @@ def test_yolov8_detection_loss_uses_yolov8_core_and_backpropagates() -> None:
     assert torch.isfinite(loss_components["dfl_loss"]).item() is True
 
     loss_components["loss"].backward()
-    grad_tensors = [parameter.grad for parameter in model.parameters() if parameter.grad is not None]
+    grad_tensors = [
+        parameter.grad for parameter in model.parameters() if parameter.grad is not None
+    ]
     assert grad_tensors
     assert all(torch.isfinite(gradient).all().item() for gradient in grad_tensors)
 
 
-def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_boxes() -> None:
+def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_boxes() -> (
+    None
+):
     """验证 end-to-end detection 后处理会使用 top-k，而不是通用 NMS。"""
 
     prediction_array = np.array(
@@ -298,7 +324,9 @@ def test_resolve_detection_splits_supports_yolo_detection_manifest(
     label_path = label_root / "sample-1.txt"
     label_path.write_text("0 0.5 0.5 0.2 0.4\n", encoding="utf-8")
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(storage_root)))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(storage_root))
+    )
     resolved_splits = _resolve_non_yolov8_detection_splits(
         dataset_storage=dataset_storage,
         imports=SimpleNamespace(cv2=cv2, np=np, torch=torch, COCO=None, COCOeval=None),
@@ -351,7 +379,9 @@ def test_load_coco_ground_truth_silently_supports_in_memory_payload() -> None:
         imports=imports,
         annotation_file=None,
         annotation_payload={
-            "images": [{"id": 1, "file_name": "sample-1.jpg", "width": 200, "height": 100}],
+            "images": [
+                {"id": 1, "file_name": "sample-1.jpg", "width": 200, "height": 100}
+            ],
             "annotations": [
                 {
                     "id": 1,

@@ -11,7 +11,10 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_optional_supported_platform_model_type,
@@ -22,11 +25,17 @@ from backend.service.application.models.yolo_primary_classification_training_ser
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_obb_training_service import (
     OBB_TRAINING_CONTROL_METADATA_KEY,
     OBB_TRAINING_QUEUE_NAME,
     OBB_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
 )
 from backend.service.application.models.yolo_primary_pose_training_service import (
     POSE_TRAINING_CONTROL_METADATA_KEY,
@@ -34,11 +43,17 @@ from backend.service.application.models.yolo_primary_pose_training_service impor
     POSE_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
+)
 from backend.service.application.models.yolo_primary_segmentation_training_service import (
     YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
 from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
@@ -46,7 +61,9 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 # ── task kind ↔ task type 映射 ──
@@ -62,7 +79,9 @@ TASK_TYPE_TO_TASK_KIND: dict[str, str] = {
     v: k for k, v in TASK_KIND_TO_TASK_TYPE.items()
 }
 
-ALL_NON_DETECTION_TRAINING_TASK_KINDS: tuple[str, ...] = tuple(TASK_KIND_TO_TASK_TYPE.keys())
+ALL_NON_DETECTION_TRAINING_TASK_KINDS: tuple[str, ...] = tuple(
+    TASK_KIND_TO_TASK_TYPE.keys()
+)
 
 _TASK_KIND_TO_QUEUE_NAME: dict[str, str] = {
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND: YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
@@ -80,6 +99,7 @@ _TASK_KIND_TO_CONTROL_METADATA_KEY: dict[str, str] = {
 
 # ── 训练服务 Protocol ──
 
+
 class _TrainingServiceWithControl(Protocol):
     """描述支持控制操作的训练服务最小接口。"""
 
@@ -91,24 +111,57 @@ class _TrainingServiceWithControl(Protocol):
 # ── 响应模型 ──
 
 TrainingTaskActionName = Literal["save", "pause", "resume", "terminate", "delete"]
-TrainingTaskControlPhase = Literal["idle", "save_requested", "pause_requested", "terminate_requested"]
+TrainingTaskControlPhase = Literal[
+    "idle", "save_requested", "pause_requested", "terminate_requested"
+]
 
 
 class TrainingTaskControlStatusResponse(BaseModel):
     """描述非 detection 训练详情中的控制状态。"""
 
     status: TrainingTaskControlPhase = Field(description="当前控制阶段")
-    pending_action: TrainingTaskActionName | None = Field(default=None, description="当前待处理的控制动作")
-    requested_at: str | None = Field(default=None, description="当前待处理动作的登记时间；当前非 detection 训练未记录该字段")
-    requested_by: str | None = Field(default=None, description="当前待处理动作的登记主体 id；当前非 detection 训练未记录该字段")
-    last_save_at: str | None = Field(default=None, description="最近一次 latest checkpoint 落盘时间；当前非 detection 训练未记录该字段")
-    last_save_epoch: int | None = Field(default=None, description="最近一次 latest checkpoint 对应 epoch；当前非 detection 训练未记录该字段")
-    last_save_reason: str | None = Field(default=None, description="最近一次 latest checkpoint 落盘原因；当前非 detection 训练未记录该字段")
-    last_save_by: str | None = Field(default=None, description="最近一次 latest checkpoint 请求主体 id；当前非 detection 训练未记录该字段")
-    last_resume_at: str | None = Field(default=None, description="最近一次 resume 请求时间；当前非 detection 训练未记录该字段")
-    last_resume_by: str | None = Field(default=None, description="最近一次 resume 请求主体 id；当前非 detection 训练未记录该字段")
-    resume_count: int = Field(default=0, description="当前任务累计 resume 次数；当前非 detection 训练未记录该字段")
-    resume_checkpoint_object_key: str | None = Field(default=None, description="当前 resume 将使用的 checkpoint object key")
+    pending_action: TrainingTaskActionName | None = Field(
+        default=None, description="当前待处理的控制动作"
+    )
+    requested_at: str | None = Field(
+        default=None,
+        description="当前待处理动作的登记时间；当前非 detection 训练未记录该字段",
+    )
+    requested_by: str | None = Field(
+        default=None,
+        description="当前待处理动作的登记主体 id；当前非 detection 训练未记录该字段",
+    )
+    last_save_at: str | None = Field(
+        default=None,
+        description="最近一次 latest checkpoint 落盘时间；当前非 detection 训练未记录该字段",
+    )
+    last_save_epoch: int | None = Field(
+        default=None,
+        description="最近一次 latest checkpoint 对应 epoch；当前非 detection 训练未记录该字段",
+    )
+    last_save_reason: str | None = Field(
+        default=None,
+        description="最近一次 latest checkpoint 落盘原因；当前非 detection 训练未记录该字段",
+    )
+    last_save_by: str | None = Field(
+        default=None,
+        description="最近一次 latest checkpoint 请求主体 id；当前非 detection 训练未记录该字段",
+    )
+    last_resume_at: str | None = Field(
+        default=None,
+        description="最近一次 resume 请求时间；当前非 detection 训练未记录该字段",
+    )
+    last_resume_by: str | None = Field(
+        default=None,
+        description="最近一次 resume 请求主体 id；当前非 detection 训练未记录该字段",
+    )
+    resume_count: int = Field(
+        default=0,
+        description="当前任务累计 resume 次数；当前非 detection 训练未记录该字段",
+    )
+    resume_checkpoint_object_key: str | None = Field(
+        default=None, description="当前 resume 将使用的 checkpoint object key"
+    )
 
 
 class TrainingTaskEventResponse(BaseModel):
@@ -140,39 +193,79 @@ class TrainingTaskSummaryResponse(BaseModel):
     result: dict[str, object] = Field(default_factory=dict, description="结果快照")
     error_message: str | None = Field(default=None, description="错误信息")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
-    task_type: str = Field(description="任务分类（classification / segmentation / pose / obb）")
+    task_type: str = Field(
+        description="任务分类（classification / segmentation / pose / obb）"
+    )
     model_type: str | None = Field(default=None, description="模型分类")
-    dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
-    dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
-    dataset_version_id: str | None = Field(default=None, description="训练输入使用的 DatasetVersion id")
+    dataset_export_id: str | None = Field(
+        default=None, description="训练输入使用的 DatasetExport id"
+    )
+    dataset_export_manifest_key: str | None = Field(
+        default=None, description="训练输入使用的导出 manifest object key"
+    )
+    dataset_version_id: str | None = Field(
+        default=None, description="训练输入使用的 DatasetVersion id"
+    )
     format_id: str | None = Field(default=None, description="训练输入导出格式 id")
     recipe_id: str | None = Field(default=None, description="训练 recipe id")
     model_scale: str | None = Field(default=None, description="训练目标的模型 scale")
-    evaluation_interval: int | None = Field(default=None, description="真实验证评估周期")
-    gpu_count: int | None = Field(default=None, description="请求参与训练的 GPU 数量；当前非 detection 训练未记录该字段")
+    evaluation_interval: int | None = Field(
+        default=None, description="真实验证评估周期"
+    )
+    gpu_count: int | None = Field(
+        default=None,
+        description="请求参与训练的 GPU 数量；当前非 detection 训练未记录该字段",
+    )
     precision: str | None = Field(default=None, description="请求使用的训练 precision")
     output_model_name: str | None = Field(default=None, description="训练输出模型名")
-    model_version_id: str | None = Field(default=None, description="训练输出登记后的 ModelVersion id")
-    latest_checkpoint_model_version_id: str | None = Field(default=None, description="自动或手动登记 latest checkpoint 得到的 ModelVersion id；当前非 detection 训练未单独记录该字段")
-    output_object_prefix: str | None = Field(default=None, description="训练输出目录前缀")
-    checkpoint_object_key: str | None = Field(default=None, description="checkpoint 文件 object key")
-    latest_checkpoint_object_key: str | None = Field(default=None, description="最新 checkpoint 文件 object key")
-    labels_object_key: str | None = Field(default=None, description="标签文件 object key")
-    metrics_object_key: str | None = Field(default=None, description="训练指标文件 object key")
-    validation_metrics_object_key: str | None = Field(default=None, description="验证指标文件 object key")
-    summary_object_key: str | None = Field(default=None, description="训练摘要文件 object key")
+    model_version_id: str | None = Field(
+        default=None, description="训练输出登记后的 ModelVersion id"
+    )
+    latest_checkpoint_model_version_id: str | None = Field(
+        default=None,
+        description="自动或手动登记 latest checkpoint 得到的 ModelVersion id；当前非 detection 训练未单独记录该字段",
+    )
+    output_object_prefix: str | None = Field(
+        default=None, description="训练输出目录前缀"
+    )
+    checkpoint_object_key: str | None = Field(
+        default=None, description="checkpoint 文件 object key"
+    )
+    latest_checkpoint_object_key: str | None = Field(
+        default=None, description="最新 checkpoint 文件 object key"
+    )
+    labels_object_key: str | None = Field(
+        default=None, description="标签文件 object key"
+    )
+    metrics_object_key: str | None = Field(
+        default=None, description="训练指标文件 object key"
+    )
+    validation_metrics_object_key: str | None = Field(
+        default=None, description="验证指标文件 object key"
+    )
+    summary_object_key: str | None = Field(
+        default=None, description="训练摘要文件 object key"
+    )
     best_metric_name: str | None = Field(default=None, description="最佳指标名称")
     best_metric_value: float | None = Field(default=None, description="最佳指标值")
-    training_summary: dict[str, object] = Field(default_factory=dict, description="训练摘要")
+    training_summary: dict[str, object] = Field(
+        default_factory=dict, description="训练摘要"
+    )
 
 
 class TrainingTaskDetailResponse(TrainingTaskSummaryResponse):
     """非 detection 训练任务详情。"""
 
-    available_actions: list[TrainingTaskActionName] = Field(description="当前建议展示的训练控制动作列表")
-    control_status: TrainingTaskControlStatusResponse = Field(description="训练控制状态")
+    available_actions: list[TrainingTaskActionName] = Field(
+        description="当前建议展示的训练控制动作列表"
+    )
+    control_status: TrainingTaskControlStatusResponse = Field(
+        description="训练控制状态"
+    )
     task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-    events: list[TrainingTaskEventResponse] = Field(default_factory=list, description="任务事件列表")
+    events: list[TrainingTaskEventResponse] = Field(
+        default_factory=list, description="任务事件列表"
+    )
 
 
 class TrainingTaskSubmissionResponse(BaseModel):
@@ -186,6 +279,7 @@ class TrainingTaskSubmissionResponse(BaseModel):
 
 # ── 辅助函数 ──
 
+
 def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
     """把 TaskRecord 转成摘要响应。"""
     task_type = _resolve_task_type(task)
@@ -193,7 +287,9 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
     result = dict(task.result) if task.result else {}
     metadata = dict(task.metadata) if task.metadata else {}
     training_summary = result.get("summary")
-    training_summary_payload = dict(training_summary) if isinstance(training_summary, dict) else {}
+    training_summary_payload = (
+        dict(training_summary) if isinstance(training_summary, dict) else {}
+    )
     return TrainingTaskSummaryResponse(
         task_id=task.task_id,
         display_name=task.display_name,
@@ -210,11 +306,15 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
         error_message=task.error_message,
         metadata=metadata,
         task_type=task_type,
-        model_type=_resolve_model_type(task, metadata=metadata, result=result, task_spec=task_spec),
+        model_type=_resolve_model_type(
+            task, metadata=metadata, result=result, task_spec=task_spec
+        ),
         dataset_export_id=_read_optional_str(task_spec.get("dataset_export_id"))
         or _read_optional_str(result.get("dataset_export_id"))
         or _read_optional_str(metadata.get("dataset_export_id")),
-        dataset_export_manifest_key=_read_optional_str(task_spec.get("dataset_export_manifest_key"))
+        dataset_export_manifest_key=_read_optional_str(
+            task_spec.get("dataset_export_manifest_key")
+        )
         or _read_optional_str(task_spec.get("manifest_object_key"))
         or _read_optional_str(result.get("dataset_export_manifest_key"))
         or _read_optional_str(metadata.get("dataset_export_manifest_key")),
@@ -232,15 +332,23 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
         or _read_optional_str(metadata.get("output_model_name")),
         model_version_id=_read_optional_str(result.get("model_version_id"))
         or _read_optional_str(training_summary_payload.get("model_version_id")),
-        latest_checkpoint_model_version_id=_read_optional_str(result.get("latest_checkpoint_model_version_id"))
-        or _read_optional_str(training_summary_payload.get("latest_checkpoint_model_version_id")),
+        latest_checkpoint_model_version_id=_read_optional_str(
+            result.get("latest_checkpoint_model_version_id")
+        )
+        or _read_optional_str(
+            training_summary_payload.get("latest_checkpoint_model_version_id")
+        ),
         output_object_prefix=_read_optional_str(result.get("output_object_prefix"))
         or _read_optional_str(result.get("output_prefix")),
         checkpoint_object_key=_read_optional_str(result.get("checkpoint_object_key")),
-        latest_checkpoint_object_key=_read_optional_str(result.get("latest_checkpoint_object_key")),
+        latest_checkpoint_object_key=_read_optional_str(
+            result.get("latest_checkpoint_object_key")
+        ),
         labels_object_key=_read_optional_str(result.get("labels_object_key")),
         metrics_object_key=_read_optional_str(result.get("metrics_object_key")),
-        validation_metrics_object_key=_read_optional_str(result.get("validation_metrics_object_key")),
+        validation_metrics_object_key=_read_optional_str(
+            result.get("validation_metrics_object_key")
+        ),
         summary_object_key=_read_optional_str(result.get("summary_object_key")),
         best_metric_name=_read_optional_str(result.get("best_metric_name")),
         best_metric_value=_read_optional_float(result.get("best_metric_value")),
@@ -279,7 +387,10 @@ def list_training_tasks(
         if task_kind is None:
             raise InvalidRequestError(
                 "不支持的训练任务类型",
-                details={"task_type": task_type, "supported": list(TASK_TYPE_TO_TASK_KIND.keys())},
+                details={
+                    "task_type": task_type,
+                    "supported": list(TASK_TYPE_TO_TASK_KIND.keys()),
+                },
             )
         task_kinds = (task_kind,)
     else:
@@ -300,9 +411,14 @@ def list_training_tasks(
     task_service = SqlAlchemyTaskService(session_factory)
     all_tasks: list[TaskRecord] = []
     for tk in task_kinds:
-        tasks = task_service.list_tasks(TaskQueryFilters(
-            project_id=project_id, task_kind=tk, state=state, limit=limit,
-        ))
+        tasks = task_service.list_tasks(
+            TaskQueryFilters(
+                project_id=project_id,
+                task_kind=tk,
+                state=state,
+                limit=limit,
+            )
+        )
         all_tasks.extend(tasks)
     if normalized_model_type is not None:
         all_tasks = [
@@ -339,18 +455,31 @@ def request_training_control(
     detail = task_service.get_task(task_id)
     task = detail.task
     _require_non_detection_training_task(task)
-    service = _build_service_for_task(task, session_factory=session_factory, dataset_storage=dataset_storage, queue_backend=queue_backend)
+    service = _build_service_for_task(
+        task,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
     if action == "save":
         if task.state != "running":
-            raise InvalidRequestError("当前训练任务不在运行中", details={"task_id": task_id, "state": task.state})
+            raise InvalidRequestError(
+                "当前训练任务不在运行中",
+                details={"task_id": task_id, "state": task.state},
+            )
         service.request_training_save(task)
     elif action == "pause":
         if task.state != "running":
-            raise InvalidRequestError("当前训练任务不在运行中", details={"task_id": task_id, "state": task.state})
+            raise InvalidRequestError(
+                "当前训练任务不在运行中",
+                details={"task_id": task_id, "state": task.state},
+            )
         service.request_training_pause(task)
     elif action == "terminate":
         if task.state in {"succeeded", "failed", "cancelled"}:
-            raise InvalidRequestError("当前训练任务已结束", details={"task_id": task_id, "state": task.state})
+            raise InvalidRequestError(
+                "当前训练任务已结束", details={"task_id": task_id, "state": task.state}
+            )
         service.request_training_terminate(task)
     else:
         raise InvalidRequestError("不支持的控制操作", details={"action": action})
@@ -370,10 +499,15 @@ def resume_training_task(
     task = detail.task
     _require_non_detection_training_task(task)
     if task.state != "paused":
-        raise InvalidRequestError("当前训练任务不处于 paused 状态", details={"task_id": task_id, "state": task.state})
+        raise InvalidRequestError(
+            "当前训练任务不处于 paused 状态",
+            details={"task_id": task_id, "state": task.state},
+        )
     queue_name = _TASK_KIND_TO_QUEUE_NAME.get(task.task_kind)
     if queue_name is None:
-        raise InvalidRequestError("找不到对应的训练队列", details={"task_kind": task.task_kind})
+        raise InvalidRequestError(
+            "找不到对应的训练队列", details={"task_kind": task.task_kind}
+        )
     queue_task = queue_backend.enqueue(
         queue_name=queue_name,
         payload={
@@ -401,7 +535,10 @@ def delete_training_task(
     task = detail.task
     _require_non_detection_training_task(task)
     if task.state in {"queued", "running"}:
-        raise InvalidRequestError("当前训练任务仍在运行中，不能删除", details={"task_id": task_id, "state": task.state})
+        raise InvalidRequestError(
+            "当前训练任务仍在运行中，不能删除",
+            details={"task_id": task_id, "state": task.state},
+        )
     task_service.delete_task(task_id)
 
 
@@ -430,10 +567,13 @@ def read_training_output_file(
 
 # ── 内部辅助 ──
 
+
 def _require_non_detection_training_task(task: TaskRecord) -> None:
     """校验任务是否属于非 detection 训练类型。"""
     if task.task_kind not in TASK_KIND_TO_TASK_TYPE:
-        raise ResourceNotFoundError("找不到指定的训练任务", details={"task_id": task.task_id})
+        raise ResourceNotFoundError(
+            "找不到指定的训练任务", details={"task_id": task.task_id}
+        )
 
 
 def build_training_task_available_actions(
@@ -513,13 +653,49 @@ def _build_service_for_task(
     """按 task_kind 构造对应的训练服务实例。"""
     kind = task.task_kind
     if kind == YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND:
-        return SqlAlchemyYoloPrimaryClassificationTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
+        service_cls = (
+            SqlAlchemyYolo11ClassificationTrainingTaskService
+            if _resolve_model_type_from_metadata(task) == "yolo11"
+            else SqlAlchemyYoloPrimaryClassificationTrainingTaskService
+        )
+        return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
     if kind == YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND:
-        return SqlAlchemyYoloPrimarySegmentationTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
+        service_cls = (
+            SqlAlchemyYolo11SegmentationTrainingTaskService
+            if _resolve_model_type_from_metadata(task) == "yolo11"
+            else SqlAlchemyYoloPrimarySegmentationTrainingTaskService
+        )
+        return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
     if kind == POSE_TRAINING_TASK_KIND:
-        return SqlAlchemyYoloPrimaryPoseTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
+        service_cls = (
+            SqlAlchemyYolo11PoseTrainingTaskService
+            if _resolve_model_type_from_metadata(task) == "yolo11"
+            else SqlAlchemyYoloPrimaryPoseTrainingTaskService
+        )
+        return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
     if kind == OBB_TRAINING_TASK_KIND:
-        return SqlAlchemyYoloPrimaryObbTrainingTaskService(session_factory=session_factory, queue_backend=queue_backend, dataset_storage=dataset_storage)
+        service_cls = (
+            SqlAlchemyYolo11ObbTrainingTaskService
+            if _resolve_model_type_from_metadata(task) == "yolo11"
+            else SqlAlchemyYoloPrimaryObbTrainingTaskService
+        )
+        return service_cls(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+        )
     raise InvalidRequestError("不支持的训练任务类型", details={"task_kind": kind})
 
 
@@ -551,22 +727,40 @@ def _resolve_model_type(
 ) -> str | None:
     """从任务记录中解析公开 model_type。"""
 
-    normalized_result = result if result is not None else (dict(task.result) if task.result else {})
-    normalized_metadata = metadata if metadata is not None else (dict(task.metadata) if task.metadata else {})
-    normalized_task_spec = task_spec if task_spec is not None else (dict(task.task_spec) if task.task_spec else {})
+    normalized_result = (
+        result if result is not None else (dict(task.result) if task.result else {})
+    )
+    normalized_metadata = (
+        metadata
+        if metadata is not None
+        else (dict(task.metadata) if task.metadata else {})
+    )
+    normalized_task_spec = (
+        task_spec
+        if task_spec is not None
+        else (dict(task.task_spec) if task.task_spec else {})
+    )
     payload = normalized_metadata.get("queue_payload", {})
     if isinstance(payload, dict):
-        normalized_payload_model_type = normalize_optional_platform_model_type(payload.get("model_type"))
+        normalized_payload_model_type = normalize_optional_platform_model_type(
+            payload.get("model_type")
+        )
         if normalized_payload_model_type is not None:
             return normalized_payload_model_type
-    normalized_task_spec_model_type = normalize_optional_platform_model_type(normalized_task_spec.get("model_type"))
+    normalized_task_spec_model_type = normalize_optional_platform_model_type(
+        normalized_task_spec.get("model_type")
+    )
     if normalized_task_spec_model_type is not None:
         return normalized_task_spec_model_type
-    normalized_result_model_type = normalize_optional_platform_model_type(normalized_result.get("model_type"))
+    normalized_result_model_type = normalize_optional_platform_model_type(
+        normalized_result.get("model_type")
+    )
     if normalized_result_model_type is not None:
         return normalized_result_model_type
     metadata = dict(task.metadata) if task.metadata else {}
-    normalized_metadata_model_type = normalize_optional_platform_model_type(metadata.get("model_type"))
+    normalized_metadata_model_type = normalize_optional_platform_model_type(
+        metadata.get("model_type")
+    )
     if normalized_metadata_model_type is not None:
         return normalized_metadata_model_type
     return None

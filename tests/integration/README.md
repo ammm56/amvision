@@ -17,6 +17,7 @@
 - RF-DETR full core 短时 smoke / benchmark 放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，必须通过环境变量显式打开。
 - RF-DETR 真实本地 checkpoint 覆盖率 smoke 也放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，只在显式指定环境变量时读取 `data/files/models/pretrained/rfdetr`。默认清单覆盖 detection `nano / s / m / l` 和 segmentation `nano / s / m / l / x`，并同时输出 raw coverage 与真实加载路径 coverage。
 - `release/full` 真实启停验收也放在本目录，默认只做短时驻留；需要更长 soak 时通过环境变量显式调大时长。该测试会检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json`。
+- `--start-processes` 会按发布态顺序启动 backend-service，等待 `/api/v1/system/health` 可用后再启动 backend-worker，避免 worker 早于数据库 schema 和 seeder 初始化。
 
 # 手动执行
 
@@ -39,7 +40,15 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolov8_full_chain_smoke --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
+D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks detection --target-formats onnx --start-processes
+```
+
+```powershell
+D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks pose obb --target-formats onnx --max-epochs 1 --batch-size 1 --max-images-per-split 2 --start-processes
 ```
 
 ```powershell

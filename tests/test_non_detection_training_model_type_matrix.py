@@ -18,6 +18,9 @@ from backend.service.application.models import (
     yolo_primary_classification_training_service as classification_service_module,
 )
 from backend.service.application.models import (
+    yolo11_classification_training_service as yolo11_classification_service_module,
+)
+from backend.service.application.models import (
     yolo_primary_obb_training_service as obb_service_module,
 )
 from backend.service.application.models import (
@@ -26,8 +29,33 @@ from backend.service.application.models import (
 from backend.service.application.models import (
     yolo_primary_segmentation_training_service as segmentation_service_module,
 )
+from backend.service.application.models import (
+    yolo11_segmentation_training_service as yolo11_segmentation_service_module,
+)
+from backend.service.application.models import (
+    yolo11_pose_training_service as yolo11_pose_service_module,
+)
+from backend.service.application.models import (
+    yolo11_obb_training_service as yolo11_obb_service_module,
+)
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
+)
+from backend.service.application.models.yolo11_classification_training_service import (
+    SqlAlchemyYolo11ClassificationTrainingTaskService,
+    Yolo11ClassificationTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
+    Yolo11ObbTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_pose_training_service import (
+    SqlAlchemyYolo11PoseTrainingTaskService,
+    Yolo11PoseTrainingTaskRequest,
+)
+from backend.service.application.models.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
+    Yolo11SegmentationTrainingTaskRequest,
 )
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
@@ -63,7 +91,9 @@ from backend.service.application.models.yolo_primary_segmentation_training_servi
 from backend.service.application.models.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest
+from backend.service.application.runtime.runtime_target import (
+    RuntimeTargetResolveRequest,
+)
 from backend.service.application.runtime.yolo11_runtime_target import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
@@ -149,25 +179,61 @@ _MODEL_STACKS = {
     "yolo26": (SqlAlchemyYolo26ModelService, SqlAlchemyYolo26RuntimeTargetResolver),
 }
 
-_TRAINING_MATRIX_SPECS = tuple(
-    _TrainingMatrixSpec(
-        task_type=task_type,
-        model_type=model_type,
-        service_module=stack[0],
-        runner_name=stack[1],
-        service_cls=stack[2],
-        request_cls=stack[3],
-        result_cls=stack[4],
-        dataset_format=stack[5],
-        best_metric_name=stack[6],
-        category_names=stack[7],
-    )
-    for task_type, stack in _TASK_STACKS.items()
-    for model_type in ("yolov8", "yolo11", "yolo26")
+_YOLO11_TASK_SERVICE_STACKS = {
+    "classification": (
+        SqlAlchemyYolo11ClassificationTrainingTaskService,
+        Yolo11ClassificationTrainingTaskRequest,
+    ),
+    "segmentation": (
+        SqlAlchemyYolo11SegmentationTrainingTaskService,
+        Yolo11SegmentationTrainingTaskRequest,
+    ),
+    "pose": (
+        SqlAlchemyYolo11PoseTrainingTaskService,
+        Yolo11PoseTrainingTaskRequest,
+    ),
+    "obb": (
+        SqlAlchemyYolo11ObbTrainingTaskService,
+        Yolo11ObbTrainingTaskRequest,
+    ),
+}
+
+
+def _build_training_matrix_specs() -> tuple[_TrainingMatrixSpec, ...]:
+    """构建非 detection 训练入口矩阵。"""
+
+    specs: list[_TrainingMatrixSpec] = []
+    for task_type, stack in _TASK_STACKS.items():
+        for model_type in ("yolov8", "yolo11", "yolo26"):
+            service_cls = stack[2]
+            request_cls = stack[3]
+            if model_type == "yolo11":
+                service_cls, request_cls = _YOLO11_TASK_SERVICE_STACKS[task_type]
+            specs.append(
+                _TrainingMatrixSpec(
+                    task_type=task_type,
+                    model_type=model_type,
+                    service_module=stack[0],
+                    runner_name=stack[1],
+                    service_cls=service_cls,
+                    request_cls=request_cls,
+                    result_cls=stack[4],
+                    dataset_format=stack[5],
+                    best_metric_name=stack[6],
+                    category_names=stack[7],
+                )
+            )
+    return tuple(specs)
+
+
+_TRAINING_MATRIX_SPECS = _build_training_matrix_specs()
+
+
+@pytest.mark.parametrize(
+    "spec",
+    _TRAINING_MATRIX_SPECS,
+    ids=lambda item: f"{item.task_type}-{item.model_type}",
 )
-
-
-@pytest.mark.parametrize("spec", _TRAINING_MATRIX_SPECS, ids=lambda item: f"{item.task_type}-{item.model_type}")
 def test_non_detection_training_result_registration_model_type_matrix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -193,13 +259,19 @@ def test_non_detection_training_result_registration_model_type_matrix(
         return spec.result_cls(
             best_metric_value=0.9,
             best_metric_name=spec.best_metric_name,
-            latest_checkpoint_bytes=f"{spec.task_type}-{spec.model_type}-checkpoint".encode("utf-8"),
+            latest_checkpoint_bytes=f"{spec.task_type}-{spec.model_type}-checkpoint".encode(
+                "utf-8"
+            ),
             metrics_payload={"final_metrics": {"loss": 0.1}},
             validation_metrics_payload={spec.best_metric_name: 0.9},
             labels=spec.category_names,
         )
 
-    monkeypatch.setattr(spec.service_module, spec.runner_name, _fake_run)
+    _patch_training_runner_for_test(
+        monkeypatch=monkeypatch,
+        spec=spec,
+        fake_runner=_fake_run,
+    )
 
     service = spec.service_cls(
         session_factory=session_factory,
@@ -265,10 +337,51 @@ def test_non_detection_training_result_registration_model_type_matrix(
     assert runtime_target.labels == spec.category_names
 
 
+def _patch_training_runner_for_test(
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    spec: _TrainingMatrixSpec,
+    fake_runner,
+) -> None:
+    """按当前模型专属拆分状态替换测试 runner。"""
+
+    if spec.model_type == "yolo11" and spec.task_type == "classification":
+        monkeypatch.setattr(
+            yolo11_classification_service_module,
+            "run_yolo11_classification_service_training_execution",
+            fake_runner,
+        )
+        return
+    if spec.model_type == "yolo11" and spec.task_type == "segmentation":
+        monkeypatch.setattr(
+            yolo11_segmentation_service_module,
+            "run_yolo11_segmentation_service_training_execution",
+            fake_runner,
+        )
+        return
+    if spec.model_type == "yolo11" and spec.task_type == "pose":
+        monkeypatch.setattr(
+            yolo11_pose_service_module,
+            "run_yolo11_pose_service_training_execution",
+            fake_runner,
+        )
+        return
+    if spec.model_type == "yolo11" and spec.task_type == "obb":
+        monkeypatch.setattr(
+            yolo11_obb_service_module,
+            "run_yolo11_obb_service_training_execution",
+            fake_runner,
+        )
+        return
+    monkeypatch.setattr(spec.service_module, spec.runner_name, fake_runner)
+
+
 def _create_session_factory() -> SessionFactory:
     """创建绑定内存数据库的 SessionFactory。"""
 
-    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
     Base.metadata.create_all(session_factory.engine)
     return session_factory
 
@@ -276,13 +389,17 @@ def _create_session_factory() -> SessionFactory:
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建测试使用的本地数据文件存储。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
 
 
 def _create_queue_backend(tmp_path: Path) -> LocalFileQueueBackend:
     """创建测试使用的本地文件队列。"""
 
-    return LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue-storage")))
+    return LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-storage"))
+    )
 
 
 def _seed_dataset_export(

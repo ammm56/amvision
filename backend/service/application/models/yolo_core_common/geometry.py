@@ -48,6 +48,22 @@ def dist2bbox_xyxy(
     return torch.cat((x1y1, x2y2), dim=1) * stride_tensor.transpose(1, 2)
 
 
+def dist2bbox_xywh(
+    *,
+    distances: torch.Tensor,
+    anchor_points: torch.Tensor,
+    stride_tensor: torch.Tensor,
+) -> torch.Tensor:
+    """把 left/top/right/bottom 距离解码成 Ultralytics 默认的 xywh 边界框。"""
+
+    left_top, right_bottom = distances.chunk(2, dim=1)
+    x1y1 = anchor_points.transpose(1, 2) - left_top
+    x2y2 = anchor_points.transpose(1, 2) + right_bottom
+    center_xy = (x1y1 + x2y2) / 2
+    width_height = x2y2 - x1y1
+    return torch.cat((center_xy, width_height), dim=1) * stride_tensor.transpose(1, 2)
+
+
 def dist2rbox(
     pred_dist: torch.Tensor,
     pred_angle: torch.Tensor,

@@ -7,17 +7,19 @@ from backend.service.application.models.yolov8_detection_training import (
     YOLOV8_IMPLEMENTATION_MODE,
     run_yolov8_detection_training,
 )
-from backend.service.application.models.yolo_primary_training_service import (
-    SqlAlchemyYoloPrimaryTrainingTaskService,
-    YoloPrimaryTrainingTaskRequest as YoloV8TrainingTaskRequest,
-    YoloPrimaryTrainingTaskResult as YoloV8TrainingTaskResult,
-    YoloPrimaryTrainingTaskSubmission as YoloV8TrainingTaskSubmission,
+from backend.service.application.models.yolo_detection_training_service import (
+    SqlAlchemyYoloDetectionTrainingTaskService,
+    YoloDetectionTrainingTaskRequest as YoloV8TrainingTaskRequest,
+    YoloDetectionTrainingTaskResult as YoloV8TrainingTaskResult,
+    YoloDetectionTrainingTaskSubmission as YoloV8TrainingTaskSubmission,
 )
 from backend.service.application.models.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )
-from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
+from backend.service.domain.files.detection_model_file_types import (
+    YOLOV8_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.models.yolov8_model_spec import (
     DEFAULT_YOLOV8_MODEL_SPEC,
 )
@@ -28,7 +30,7 @@ YOLOV8_TRAINING_TASK_KIND = "yolov8-training"
 YOLOV8_TRAINING_QUEUE_NAME = "yolov8-trainings"
 
 
-class SqlAlchemyYoloV8TrainingTaskService(SqlAlchemyYoloPrimaryTrainingTaskService):
+class SqlAlchemyYoloV8TrainingTaskService(SqlAlchemyYoloDetectionTrainingTaskService):
     """YOLOv8 detection 训练任务正式入口。"""
 
     model_type = "yolov8"

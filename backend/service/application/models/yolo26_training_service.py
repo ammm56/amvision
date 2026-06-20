@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.queue import QueueBackend
 from backend.service.application.models.yolo26_detection_training import (
+    YOLO26_IMPLEMENTATION_MODE,
     Yolo26DetectionTrainingExecutionRequest,
     run_yolo26_detection_training,
 )
@@ -11,26 +12,30 @@ from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.models.yolo_primary_training_service import (
-    SqlAlchemyYoloPrimaryTrainingTaskService,
-    YoloPrimaryTrainingTaskRequest as Yolo26TrainingTaskRequest,
-    YoloPrimaryTrainingTaskResult as Yolo26TrainingTaskResult,
+from backend.service.application.models.yolo_detection_training_service import (
+    SqlAlchemyYoloDetectionTrainingTaskService,
+    YoloDetectionTrainingTaskRequest as Yolo26TrainingTaskRequest,
+    YoloDetectionTrainingTaskResult as Yolo26TrainingTaskResult,
 )
-from backend.service.domain.files.detection_model_file_types import YOLO26_DETECTION_FILE_TYPES
+from backend.service.domain.files.detection_model_file_types import (
+    YOLO26_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.models.yolo26_model_spec import (
     DEFAULT_YOLO26_MODEL_SPEC,
     Yolo26ModelSpec,
 )
 from backend.service.domain.tasks.yolo26_task_specs import Yolo26TrainingTaskSpec
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO26_TRAINING_TASK_KIND = "yolo26-training"
 YOLO26_TRAINING_QUEUE_NAME = "yolo26-trainings"
 
 
-class SqlAlchemyYolo26TrainingTaskService(SqlAlchemyYoloPrimaryTrainingTaskService):
+class SqlAlchemyYolo26TrainingTaskService(SqlAlchemyYoloDetectionTrainingTaskService):
     """基于 detection 公共训练链的 YOLO26 训练任务适配器。"""
 
     model_type = "yolo26"
@@ -44,6 +49,7 @@ class SqlAlchemyYolo26TrainingTaskService(SqlAlchemyYoloPrimaryTrainingTaskServi
     task_result_cls = Yolo26TrainingTaskResult
     execution_request_cls = Yolo26DetectionTrainingExecutionRequest
     training_runner = staticmethod(run_yolo26_detection_training)
+    implementation_mode = YOLO26_IMPLEMENTATION_MODE
     file_types = YOLO26_DETECTION_FILE_TYPES
 
     def __init__(

@@ -13,7 +13,9 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_primary_model_configs import (
+    build_yolo_primary_model,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
 )
@@ -23,7 +25,9 @@ from backend.service.application.models.yolov8_core.evaluation import (
 from backend.service.application.models.yolov8_core.losses import (
     compute_yolov8_classification_loss,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_CLASSIFICATION_IMPLEMENTATION_MODE = "yolo-primary-classification"
@@ -132,11 +136,16 @@ class YoloPrimaryClassificationTrainingExecutionRequest:
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
-    epoch_callback: Callable[
-        [YoloPrimaryClassificationTrainingEpochProgress],
-        YoloPrimaryClassificationTrainingControlCommand | None,
-    ] | None = None
-    savepoint_callback: Callable[[YoloPrimaryClassificationTrainingSavePoint], None] | None = None
+    epoch_callback: (
+        Callable[
+            [YoloPrimaryClassificationTrainingEpochProgress],
+            YoloPrimaryClassificationTrainingControlCommand | None,
+        ]
+        | None
+    ) = None
+    savepoint_callback: (
+        Callable[[YoloPrimaryClassificationTrainingSavePoint], None] | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +162,12 @@ def run_yolo_primary_classification_training(
     request: YoloPrimaryClassificationTrainingExecutionRequest,
 ) -> YoloPrimaryClassificationTrainingExecutionResult:
     """执行一次 YOLO 主线 classification 训练。"""
+
+    if request.model_type == "yolo11":
+        raise InvalidRequestError(
+            "YOLO11 classification 训练必须使用 yolo11_classification_training 入口",
+            details={"model_type": request.model_type},
+        )
 
     imports = _require_training_imports()
     device_name = _resolve_training_device(request.extra_options)
@@ -173,11 +188,16 @@ def run_yolo_primary_classification_training(
     )
 
     resume_state: _LoadedClassificationResumeState | None = None
-    if request.resume_checkpoint_path is not None and request.resume_checkpoint_path.is_file():
+    if (
+        request.resume_checkpoint_path is not None
+        and request.resume_checkpoint_path.is_file()
+    ):
         resume_state = _load_resume_state(request, imports)
 
     extra = request.extra_options or {}
-    learning_rate = float(extra.get("learning_rate", YOLO_PRIMARY_CLASSIFICATION_DEFAULT_LR))
+    learning_rate = float(
+        extra.get("learning_rate", YOLO_PRIMARY_CLASSIFICATION_DEFAULT_LR)
+    )
     weight_decay = float(
         extra.get(
             "weight_decay",
@@ -263,7 +283,9 @@ def run_yolo_primary_classification_training(
         train_total = 0
         epoch_iterations = 0
         for batch_start in range(0, len(train_annotations), batch_size):
-            batch_annotations = train_annotations[batch_start : batch_start + batch_size]
+            batch_annotations = train_annotations[
+                batch_start : batch_start + batch_size
+            ]
             if request.model_type == "yolov8":
                 batch = build_yolov8_classification_training_batch(
                     samples=batch_annotations,
@@ -306,11 +328,17 @@ def run_yolo_primary_classification_training(
             global_iteration += 1
         train_accuracy = train_correct / max(1, train_total)
         train_loss = train_loss_sum / max(1, train_total)
-        epoch_metrics = {"loss": round(train_loss, 6), "accuracy": round(train_accuracy, 6)}
+        epoch_metrics = {
+            "loss": round(train_loss, 6),
+            "accuracy": round(train_accuracy, 6),
+        }
         metrics_history.append({"epoch": epoch, **epoch_metrics})
         epoch_progress = YoloPrimaryClassificationTrainingEpochProgress(
-            epoch=epoch, max_epochs=max_epochs, input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]), train_metrics=epoch_metrics,
+            epoch=epoch,
+            max_epochs=max_epochs,
+            input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]),
+            train_metrics=epoch_metrics,
         )
         cmd = None
         if request.epoch_callback is not None:
@@ -319,9 +347,7 @@ def run_yolo_primary_classification_training(
             raise YoloPrimaryClassificationTrainingTerminatedError()
         val_metrics: dict[str, float] = {}
         should_evaluate = (
-            len(val_annotations) > 0
-            and epoch > 0
-            and epoch % evaluation_interval == 0
+            len(val_annotations) > 0 and epoch > 0 and epoch % evaluation_interval == 0
         ) or epoch == max_epochs - 1
         if should_evaluate:
             if request.model_type == "yolov8":
@@ -353,22 +379,36 @@ def run_yolo_primary_classification_training(
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
         checkpoint_bytes = _build_checkpoint_bytes(
-            epoch=epoch, global_iteration=global_iteration,
-            model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler,
-            metrics_history=metrics_history, validation_history=validation_history,
-            best_metric_value=best_metric_value, best_metric_name=best_metric_name,
-            batch_size=batch_size, max_epochs=max_epochs,
-            learning_rate=learning_rate, weight_decay=weight_decay,
-            evaluation_interval=evaluation_interval, min_lr_ratio=min_lr_ratio,
+            epoch=epoch,
+            global_iteration=global_iteration,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            metrics_history=metrics_history,
+            validation_history=validation_history,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            evaluation_interval=evaluation_interval,
+            min_lr_ratio=min_lr_ratio,
             imports=imports,
         )
         if cmd is not None and request.savepoint_callback is not None:
-            request.savepoint_callback(YoloPrimaryClassificationTrainingSavePoint(
-                latest_checkpoint_bytes=checkpoint_bytes, train_metrics=epoch_metrics,
-                validation_metrics=val_metrics, best_metric_value=best_metric_value,
-                best_metric_name=best_metric_name, epoch=epoch + 1,
-                learning_rate=float(scheduler.get_last_lr()[0]),
-            ))
+            request.savepoint_callback(
+                YoloPrimaryClassificationTrainingSavePoint(
+                    latest_checkpoint_bytes=checkpoint_bytes,
+                    train_metrics=epoch_metrics,
+                    validation_metrics=val_metrics,
+                    best_metric_value=best_metric_value,
+                    best_metric_name=best_metric_name,
+                    epoch=epoch + 1,
+                    learning_rate=float(scheduler.get_last_lr()[0]),
+                )
+            )
         if cmd is not None and cmd.pause_training:
             raise YoloPrimaryClassificationTrainingPausedError()
     final_val_metrics = validation_history[-1] if validation_history else {}
@@ -471,7 +511,9 @@ def _load_classification_manifest(
         annotation_file = str(split.get("annotation_file", ""))
         ann_path = dataset_storage.resolve(annotation_file)
         if not ann_path.is_file():
-            raise InvalidRequestError(f"classification 标注文件不存在: {annotation_file}")
+            raise InvalidRequestError(
+                f"classification 标注文件不存在: {annotation_file}"
+            )
         ann_payload = dataset_storage.read_json(annotation_file)
         if not isinstance(ann_payload, dict):
             raise InvalidRequestError(f"classification 标注格式无效: {annotation_file}")
@@ -500,7 +542,9 @@ def _load_classification_manifest(
                 file_name = image_map.get(image_id, "")
                 if not file_name:
                     continue
-                resolved_path = str(dataset_storage.resolve(f"{image_root}/{file_name}"))
+                resolved_path = str(
+                    dataset_storage.resolve(f"{image_root}/{file_name}")
+                )
                 resolved.append(
                     _ResolvedClassificationTrainingAnnotation(
                         image_path=resolved_path,
@@ -548,7 +592,7 @@ def _evaluate_classification_model(
     total = 0
     with imports.torch.no_grad():
         for batch_start in range(0, len(val_annotations), batch_size):
-            batch = val_annotations[batch_start: batch_start + batch_size]
+            batch = val_annotations[batch_start : batch_start + batch_size]
             images_list = []
             targets = []
             for ann in batch:
@@ -752,15 +796,21 @@ def _validate_resume_parameters(
     if state.saved_max_epochs != max_epochs and max_epochs > 0:
         mismatches.append(f"max_epochs ({state.saved_max_epochs} -> {max_epochs})")
     if abs(state.saved_learning_rate - learning_rate) > 1e-8:
-        mismatches.append(f"learning_rate ({state.saved_learning_rate} -> {learning_rate})")
+        mismatches.append(
+            f"learning_rate ({state.saved_learning_rate} -> {learning_rate})"
+        )
     if abs(state.saved_weight_decay - weight_decay) > 1e-8:
-        mismatches.append(f"weight_decay ({state.saved_weight_decay} -> {weight_decay})")
+        mismatches.append(
+            f"weight_decay ({state.saved_weight_decay} -> {weight_decay})"
+        )
     if state.saved_evaluation_interval != evaluation_interval:
         mismatches.append(
             f"evaluation_interval ({state.saved_evaluation_interval} -> {evaluation_interval})"
         )
     if abs(state.saved_min_lr_ratio - min_lr_ratio) > 1e-8:
-        mismatches.append(f"min_lr_ratio ({state.saved_min_lr_ratio} -> {min_lr_ratio})")
+        mismatches.append(
+            f"min_lr_ratio ({state.saved_min_lr_ratio} -> {min_lr_ratio})"
+        )
     if mismatches:
         raise InvalidRequestError(
             "resume 请求的训练参数与 checkpoint 记录不一致，请检查配置",

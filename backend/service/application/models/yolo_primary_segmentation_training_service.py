@@ -61,13 +61,18 @@ from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND = "yolo-primary-segmentation-training"
 YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME = "yolo-primary-segmentation-trainings"
-YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY = "segmentation_training_control"
+YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY = (
+    "segmentation_training_control"
+)
 YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL = 5
+
 
 @dataclass(frozen=True)
 class YoloPrimarySegmentationTrainingTaskRequest:
@@ -87,6 +92,7 @@ class YoloPrimarySegmentationTrainingTaskRequest:
     extra_options: dict[str, object] = field(default_factory=dict)
     display_name: str = ""
     model_type: str = "yolov8"
+
 
 class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
     """管理 YOLO 主线 segmentation 训练任务的完整生命周期。"""
@@ -123,12 +129,12 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             dataset_export_manifest_key=request.dataset_export_manifest_key,
             model_type=model_type,
         )
-        task_spec = build_yolo_primary_segmentation_task_spec(
+        task_spec = self._build_task_spec(
             request=request,
             dataset_export=dataset_export,
             model_type=model_type,
         )
-        metadata = build_yolo_primary_segmentation_create_task_metadata(
+        metadata = self._build_create_task_metadata(
             request=request,
             dataset_export=dataset_export,
             model_type=model_type,
@@ -145,7 +151,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 metadata=metadata,
             )
         )
-        queue_payload = build_yolo_primary_segmentation_queue_payload(
+        queue_payload = self._build_queue_payload(
             task_id=created_task.task_id,
             task_kind=self.training_task_kind,
             task_spec=task_spec,
@@ -188,7 +194,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
     ) -> dict[str, object]:
         """执行 segmentation 训练工作负载。"""
 
-        payload = read_yolo_primary_segmentation_task_payload(task_record)
+        payload = self._read_task_payload(task_record)
         resolved_model_type = self._normalize_model_type(
             payload.get("model_type", model_type)
         )
@@ -218,7 +224,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
         temporary_best_checkpoint_path = self.dataset_storage.resolve(
             f"{output_prefix}/best-checkpoint.pt"
         )
-        latest_checkpoint_object_key = f"{output_prefix}/output-files/latest-checkpoint.pt"
+        latest_checkpoint_object_key = (
+            f"{output_prefix}/output-files/latest-checkpoint.pt"
+        )
         checkpoint_object_key = f"{output_prefix}/output-files/best-checkpoint.pt"
         train_metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
         validation_metrics_object_key = (
@@ -292,30 +300,28 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                     )
                 )
             else:
-                execution_result = run_yolo_primary_segmentation_training(
-                    YoloPrimarySegmentationTrainingExecutionRequest(
-                        dataset_storage=self.dataset_storage,
-                        manifest_payload=manifest_payload,
-                        model_type=resolved_model_type,
-                        model_scale=str(payload.get("model_scale") or "nano"),
-                        batch_size=int(payload.get("batch_size") or 1),
-                        max_epochs=int(payload.get("max_epochs") or 1),
-                        evaluation_interval=int(
-                            payload.get("evaluation_interval")
-                            or YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
-                        ),
-                        input_size=input_size,
-                        precision=str(payload.get("precision") or "fp32"),
-                        resume_checkpoint_path=resume_checkpoint_path,
-                        extra_options=dict(payload.get("extra_options") or {}),
-                        epoch_callback=on_epoch,
-                        savepoint_callback=on_savepoint,
-                    )
+                execution_request = YoloPrimarySegmentationTrainingExecutionRequest(
+                    dataset_storage=self.dataset_storage,
+                    manifest_payload=manifest_payload,
+                    model_type=resolved_model_type,
+                    model_scale=str(payload.get("model_scale") or "nano"),
+                    batch_size=int(payload.get("batch_size") or 1),
+                    max_epochs=int(payload.get("max_epochs") or 1),
+                    evaluation_interval=int(
+                        payload.get("evaluation_interval")
+                        or YOLO_PRIMARY_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
+                    ),
+                    input_size=input_size,
+                    precision=str(payload.get("precision") or "fp32"),
+                    resume_checkpoint_path=resume_checkpoint_path,
+                    extra_options=dict(payload.get("extra_options") or {}),
+                    epoch_callback=on_epoch,
+                    savepoint_callback=on_savepoint,
                 )
-        except (
-            YoloPrimarySegmentationTrainingTerminatedError,
-            RfdetrSegmentationTrainingTerminatedError,
-        ):
+                execution_result = self._run_yolo_segmentation_training_execution(
+                    execution_request
+                )
+        except self._terminated_error_types():
             cancelled_result = self._build_interrupted_result(
                 status="cancelled",
                 task_record=task_record,
@@ -337,10 +343,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 )
             )
             return cancelled_result
-        except (
-            YoloPrimarySegmentationTrainingPausedError,
-            RfdetrSegmentationTrainingPausedError,
-        ):
+        except self._paused_error_types():
             paused_result = self._build_interrupted_result(
                 status="paused",
                 task_record=task_record,
@@ -430,8 +433,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             validation_metrics_object_key=validation_metrics_object_key,
             summary_object_key=summary_object_key,
         )
-        model_version_id = register_yolo_primary_segmentation_training_output_model_version(
-            session_factory=self.session_factory,
+        model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,
             payload=payload,
@@ -475,6 +477,34 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
         )
         return task_result
 
+    def _register_training_output_model_version(
+        self,
+        *,
+        task_record: TaskRecord,
+        dataset_export: DatasetExport,
+        payload: dict[str, object],
+        model_type: str,
+        execution_result: YoloPrimarySegmentationTrainingExecutionResult,
+        checkpoint_object_key: str,
+        labels_object_key: str,
+        train_metrics_object_key: str,
+        summary: dict[str, object],
+    ) -> str:
+        """按模型分类登记 segmentation 训练输出。"""
+
+        return register_yolo_primary_segmentation_training_output_model_version(
+            session_factory=self.session_factory,
+            task_record=task_record,
+            dataset_export=dataset_export,
+            payload=payload,
+            model_type=model_type,
+            execution_result=execution_result,
+            checkpoint_object_key=checkpoint_object_key,
+            labels_object_key=labels_object_key,
+            train_metrics_object_key=train_metrics_object_key,
+            summary=summary,
+        )
+
     def request_training_save(self, task_record: TaskRecord) -> None:
         """请求 segmentation 训练保存 checkpoint。"""
 
@@ -499,10 +529,90 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
                 "当前 segmentation 训练不支持指定模型分类",
                 details={
                     "model_type": normalized,
-                    "supported": tuple(YOLO_PRIMARY_SEGMENTATION_MODEL_SERVICE_MAP.keys()),
+                    "supported": tuple(
+                        YOLO_PRIMARY_SEGMENTATION_MODEL_SERVICE_MAP.keys()
+                    ),
                 },
             )
         return normalized
+
+    def _build_task_spec(
+        self,
+        *,
+        request: YoloPrimarySegmentationTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        model_type: str,
+    ) -> dict[str, object]:
+        """构建 segmentation 训练任务规格快照。"""
+
+        return build_yolo_primary_segmentation_task_spec(
+            request=request,
+            dataset_export=dataset_export,
+            model_type=model_type,
+        )
+
+    def _build_create_task_metadata(
+        self,
+        *,
+        request: YoloPrimarySegmentationTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        model_type: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 segmentation 训练 TaskRecord metadata。"""
+
+        return build_yolo_primary_segmentation_create_task_metadata(
+            request=request,
+            dataset_export=dataset_export,
+            model_type=model_type,
+            task_spec=task_spec,
+        )
+
+    def _build_queue_payload(
+        self,
+        *,
+        task_id: str,
+        task_kind: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 segmentation 训练队列负载。"""
+
+        return build_yolo_primary_segmentation_queue_payload(
+            task_id=task_id,
+            task_kind=task_kind,
+            task_spec=task_spec,
+        )
+
+    def _read_task_payload(self, task_record: TaskRecord) -> dict[str, object]:
+        """从任务记录中解析 segmentation 训练负载。"""
+
+        return read_yolo_primary_segmentation_task_payload(task_record)
+
+    def _run_yolo_segmentation_training_execution(
+        self,
+        request: YoloPrimarySegmentationTrainingExecutionRequest,
+    ) -> YoloPrimarySegmentationTrainingExecutionResult:
+        """执行 primary segmentation 训练。"""
+
+        return run_yolo_primary_segmentation_training(request)
+
+    @staticmethod
+    def _terminated_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按取消处理的 segmentation 训练异常类型。"""
+
+        return (
+            YoloPrimarySegmentationTrainingTerminatedError,
+            RfdetrSegmentationTrainingTerminatedError,
+        )
+
+    @staticmethod
+    def _paused_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按暂停处理的 segmentation 训练异常类型。"""
+
+        return (
+            YoloPrimarySegmentationTrainingPausedError,
+            RfdetrSegmentationTrainingPausedError,
+        )
 
     def _resolve_dataset_export(
         self,
@@ -555,9 +665,10 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
         """构建 segmentation 训练摘要。"""
 
         input_size = self._read_input_size(payload.get("input_size"))
-        effective_input_size = self._read_input_size(
-            getattr(execution_result, "aligned_input_size", None)
-        ) or input_size
+        effective_input_size = (
+            self._read_input_size(getattr(execution_result, "aligned_input_size", None))
+            or input_size
+        )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
@@ -602,9 +713,7 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             else None,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
-            "implementation_mode": resolve_yolo_primary_segmentation_implementation_mode(
-                model_type
-            ),
+            "implementation_mode": self._resolve_implementation_mode(model_type),
             "training_config": training_config,
             "metrics_summary": metrics_summary,
             "output_files": output_files,
@@ -613,6 +722,12 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             "output_prefix": output_prefix,
         }
         return result
+
+    @staticmethod
+    def _resolve_implementation_mode(model_type: str) -> str:
+        """按模型分类返回 segmentation 训练实现标记。"""
+
+        return resolve_yolo_primary_segmentation_implementation_mode(model_type)
 
     def _build_interrupted_result(
         self,
@@ -630,15 +745,23 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
     ) -> dict[str, object]:
         """构建 paused 或 cancelled 状态下的任务结果。"""
 
-        if self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/latest-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 latest_checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/latest-checkpoint.pt"
+                ).read_bytes(),
             )
-        if self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/best-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/best-checkpoint.pt"
+                ).read_bytes(),
             )
         return {
             "status": status,
@@ -670,7 +793,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             "task_type": SEGMENTATION_TASK_TYPE,
         }
 
-    def _read_control_state(self, task_id: str) -> YoloPrimarySegmentationTrainingControlState:
+    def _read_control_state(
+        self, task_id: str
+    ) -> YoloPrimarySegmentationTrainingControlState:
         """从任务 metadata 中读取最新控制状态。"""
 
         task = self.task_service.get_task(task_id).task
@@ -693,7 +818,9 @@ class SqlAlchemyYoloPrimarySegmentationTrainingTaskService:
             return
         self.task_service.update_task_metadata(task_id, updated_metadata)
 
-    def _set_control_flag(self, task_record: TaskRecord, flag: str, value: bool) -> None:
+    def _set_control_flag(
+        self, task_record: TaskRecord, flag: str, value: bool
+    ) -> None:
         """设置训练控制标记。"""
 
         metadata = dict(task_record.metadata) if task_record.metadata else {}

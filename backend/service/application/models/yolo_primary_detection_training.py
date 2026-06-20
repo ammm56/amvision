@@ -16,7 +16,10 @@ from backend.contracts.datasets.exports.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.detection_postprocess import (
     DEFAULT_END2END_MAX_DETECTIONS,
     DETECTION_POSTPROCESS_MODE_END2END_TOPK,
@@ -61,10 +64,14 @@ from backend.service.application.models.yolov8_core.training import (
     validate_yolov8_detection_resume_checkpoint,
 )
 from backend.service.application.models.yolo_primary_detection_model import (
-    build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.models.yolo_primary_model_configs import (
+    build_yolo_primary_model,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_IMPLEMENTATION_MODE = "yolo-primary-detection"
@@ -168,7 +175,12 @@ class YoloPrimaryDetectionTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[YoloPrimaryTrainingBatchProgress], None] | None = None
-    epoch_callback: Callable[[YoloPrimaryTrainingEpochProgress], YoloPrimaryTrainingControlCommand | None] | None = None
+    epoch_callback: (
+        Callable[
+            [YoloPrimaryTrainingEpochProgress], YoloPrimaryTrainingControlCommand | None
+        ]
+        | None
+    ) = None
     savepoint_callback: Callable[[YoloPrimaryTrainingSavePoint], None] | None = None
 
 
@@ -305,6 +317,12 @@ def run_yolo_primary_detection_training(
 ) -> YoloPrimaryDetectionTrainingExecutionResult:
     """执行一轮项目内 YOLO 主线 detection 共享训练。"""
 
+    if request.model_type == "yolo11":
+        raise InvalidRequestError(
+            "YOLO11 detection 训练必须使用 yolo11_detection_training.py 专属入口",
+            details={"model_type": request.model_type},
+        )
+
     imports = _require_training_imports()
     manifest_payload = dict(request.manifest_payload)
     yolov8_data_context = None
@@ -339,9 +357,11 @@ def run_yolo_primary_detection_training(
         validation_category_ids: tuple[int, ...] = ()
         validation_category_names: tuple[str, ...] | None = None
         if validation_split is not None:
-            validation_samples, validation_category_names, validation_category_ids = _load_non_yolov8_training_samples(
-                imports=imports,
-                split=validation_split,
+            validation_samples, validation_category_names, validation_category_ids = (
+                _load_non_yolov8_training_samples(
+                    imports=imports,
+                    split=validation_split,
+                )
             )
             if validation_category_names != category_names:
                 raise InvalidRequestError(
@@ -370,10 +390,12 @@ def run_yolo_primary_detection_training(
     if request.model_type != "yolov8" and not train_samples:
         raise InvalidRequestError("训练 split 不包含可用样本")
 
-    device, gpu_count, device_ids, distributed_mode, runtime_precision = _resolve_runtime(
-        imports=imports,
-        requested_gpu_count=request.gpu_count,
-        requested_precision=request.precision,
+    device, gpu_count, device_ids, distributed_mode, runtime_precision = (
+        _resolve_runtime(
+            imports=imports,
+            requested_gpu_count=request.gpu_count,
+            requested_precision=request.precision,
+        )
     )
     learning_rate = _read_float_option(extra_options, "learning_rate", default=1e-3)
     weight_decay = _read_float_option(extra_options, "weight_decay", default=1e-4)
@@ -404,7 +426,9 @@ def run_yolo_primary_detection_training(
     )
     assign_topk = max(
         1,
-        _read_int_option(extra_options, "assign_topk", default=YOLO_PRIMARY_DEFAULT_ASSIGN_TOPK),
+        _read_int_option(
+            extra_options, "assign_topk", default=YOLO_PRIMARY_DEFAULT_ASSIGN_TOPK
+        ),
     )
     assign_alpha = _read_float_option(
         extra_options,
@@ -427,26 +451,29 @@ def run_yolo_primary_detection_training(
         default=YOLO_PRIMARY_DEFAULT_GRAD_CLIP_NORM,
     )
     augmentation_options = _resolve_detection_augmentation_options(extra_options)
-    validation_split_name = validation_split.name if validation_split is not None else None
+    validation_split_name = (
+        validation_split.name if validation_split is not None else None
+    )
 
-    model = build_yolo_primary_detection_model(
+    model = build_yolo_primary_model(
         model_type=request.model_type,
+        task_type="detection",
         model_scale=request.model_scale,
         num_classes=len(category_names),
     )
-    
+
     # 检测模型是否启用端到端训练
     is_end2end = getattr(model, "end2end", False)
-    
+
     # 端到端训练的权重调度器
     e2e_o2m_weight = 0.8  # one2many 初始权重
     e2e_o2o_weight = 0.2  # one2one 初始权重
     e2e_o2m_initial = 0.8
     e2e_o2m_final = 0.1
-    
+
     def update_e2e_weights(epoch: int, total_epochs: int) -> None:
         """更新端到端训练的分支权重。
-        
+
         训练初期 one2many 主导（提供充足梯度），
         训练末期 one2one 主导（确保推理精度）。
         """
@@ -457,7 +484,7 @@ def run_yolo_primary_detection_training(
             progress = epoch / (total_epochs - 1)
         e2e_o2m_weight = e2e_o2m_initial + (e2e_o2m_final - e2e_o2m_initial) * progress
         e2e_o2o_weight = 1.0 - e2e_o2m_weight
-    
+
     warm_start_summary = {
         "enabled": False,
         "source_model_version_id": None,
@@ -474,10 +501,7 @@ def run_yolo_primary_detection_training(
             source_summary=request.warm_start_source_summary or {},
         )
 
-    parameter_count = sum(
-        int(parameter.numel())
-        for parameter in model.parameters()
-    )
+    parameter_count = sum(int(parameter.numel()) for parameter in model.parameters())
     if request.model_type == "yolov8":
         training_runtime = build_yolov8_detection_training_runtime(
             torch_module=imports.torch,
@@ -505,7 +529,9 @@ def run_yolo_primary_detection_training(
         )
         scaler_enabled = device.startswith("cuda") and runtime_precision == "fp16"
         amp_module = getattr(imports.torch, "amp", None)
-        grad_scaler_cls = getattr(amp_module, "GradScaler", None) if amp_module is not None else None
+        grad_scaler_cls = (
+            getattr(amp_module, "GradScaler", None) if amp_module is not None else None
+        )
         if grad_scaler_cls is not None:
             scaler = grad_scaler_cls("cuda", enabled=scaler_enabled)
         else:
@@ -575,9 +601,7 @@ def run_yolo_primary_detection_training(
         else []
     )
     evaluated_epochs: list[int] = (
-        list(resume_state.evaluated_epochs)
-        if resume_state is not None
-        else []
+        list(resume_state.evaluated_epochs) if resume_state is not None else []
     )
     if request.model_type == "yolov8":
         if yolov8_data_context is None:
@@ -587,8 +611,12 @@ def run_yolo_primary_detection_training(
             batch_size=batch_size,
             max_epochs=max_epochs,
             resume_epoch=resume_state.resume_epoch if resume_state is not None else 0,
-            resume_best_metric_name=(resume_state.best_metric_name if resume_state is not None else None),
-            resume_best_metric_value=(resume_state.best_metric_value if resume_state is not None else None),
+            resume_best_metric_name=(
+                resume_state.best_metric_name if resume_state is not None else None
+            ),
+            resume_best_metric_value=(
+                resume_state.best_metric_value if resume_state is not None else None
+            ),
         )
         has_validation = execution_plan.has_validation
         best_metric_name = execution_plan.best_metric_name
@@ -607,12 +635,19 @@ def run_yolo_primary_detection_training(
             if resume_state is not None and resume_state.best_metric_value is not None
             else (float("-inf") if has_validation else float("inf"))
         )
-        total_iterations = max_epochs * max(1, (len(train_samples) + batch_size - 1) // batch_size)
-        resume_epoch_for_iterations = resume_state.resume_epoch if resume_state is not None else 0
+        total_iterations = max_epochs * max(
+            1, (len(train_samples) + batch_size - 1) // batch_size
+        )
+        resume_epoch_for_iterations = (
+            resume_state.resume_epoch if resume_state is not None else 0
+        )
         if resume_epoch_for_iterations >= max_epochs:
             raise InvalidRequestError(
                 "resume checkpoint 已经达到或超过本次训练请求的最大 epoch",
-                details={"resume_epoch": resume_epoch_for_iterations, "max_epochs": max_epochs},
+                details={
+                    "resume_epoch": resume_epoch_for_iterations,
+                    "max_epochs": max_epochs,
+                },
             )
         global_iteration = resume_epoch_for_iterations * max(
             1,
@@ -633,8 +668,9 @@ def run_yolo_primary_detection_training(
         # 更新端到端训练权重
         if is_end2end:
             update_e2e_weights(epoch - 1, max_epochs)
-        
+
         if request.model_type == "yolov8":
+
             def on_yolov8_batch_progress(
                 progress: YoloV8DetectionTrainingBatchProgress,
             ) -> None:
@@ -669,15 +705,17 @@ def run_yolo_primary_detection_training(
                 optimizer=optimizer,
                 scaler=scaler,
                 autocast_context=autocast_context,
-                build_batch=lambda sample_batch, available_samples: build_yolov8_detection_training_batch(
-                    imports=imports,
-                    samples=sample_batch,
-                    input_size=input_size,
-                    device=device,
-                    runtime_precision=runtime_precision,
-                    augment_training=True,
-                    available_samples=available_samples,
-                    augmentation_options=augmentation_options,
+                build_batch=lambda sample_batch, available_samples: (
+                    build_yolov8_detection_training_batch(
+                        imports=imports,
+                        samples=sample_batch,
+                        input_size=input_size,
+                        device=device,
+                        runtime_precision=runtime_precision,
+                        augment_training=True,
+                        available_samples=available_samples,
+                        augmentation_options=augmentation_options,
+                    )
                 ),
                 unwrap_outputs=_unwrap_detection_outputs,
                 compute_loss=lambda **kwargs: _compute_detection_loss(
@@ -703,14 +741,23 @@ def run_yolo_primary_detection_training(
         else:
             shuffled_samples = list(train_samples)
             random.shuffle(shuffled_samples)
-            epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+            epoch_losses = {
+                "loss": 0.0,
+                "class_loss": 0.0,
+                "box_loss": 0.0,
+                "dfl_loss": 0.0,
+            }
             if is_end2end:
                 epoch_losses["one2many_loss"] = 0.0
                 epoch_losses["one2one_loss"] = 0.0
-            max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
+            max_iterations = max(
+                1, (len(shuffled_samples) + batch_size - 1) // batch_size
+            )
             model.train()
 
-            for iteration, sample_batch in enumerate(_iter_batches(shuffled_samples, batch_size), start=1):
+            for iteration, sample_batch in enumerate(
+                _iter_batches(shuffled_samples, batch_size), start=1
+            ):
                 global_iteration += 1
                 images, batch_targets = _build_non_yolov8_training_batch(
                     imports=imports,
@@ -764,7 +811,9 @@ def run_yolo_primary_detection_training(
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 if grad_clip_norm > 0:
-                    imports.torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                    imports.torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), grad_clip_norm
+                    )
                 scaler.step(optimizer)
                 scaler.update()
 
@@ -775,7 +824,9 @@ def run_yolo_primary_detection_training(
                 if request.batch_callback is not None:
                     train_metrics_batch = {
                         "loss": float(loss_components["loss"].detach().item()),
-                        "class_loss": float(loss_components["class_loss"].detach().item()),
+                        "class_loss": float(
+                            loss_components["class_loss"].detach().item()
+                        ),
                         "box_loss": float(loss_components["box_loss"].detach().item()),
                         "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
                     }
@@ -833,8 +884,12 @@ def run_yolo_primary_detection_training(
                 model=model,
                 samples=validation_samples,
                 category_ids=category_ids,
-                annotation_file=validation_split.annotation_file if validation_split is not None else None,
-                annotation_payload=validation_split.annotation_payload if validation_split is not None else None,
+                annotation_file=validation_split.annotation_file
+                if validation_split is not None
+                else None,
+                annotation_payload=validation_split.annotation_payload
+                if validation_split is not None
+                else None,
                 input_size=input_size,
                 batch_size=batch_size,
                 device=device,
@@ -931,7 +986,9 @@ def run_yolo_primary_detection_training(
             best_metric_value = checkpoint_update.best_metric_value
         else:
             previous_best_checkpoint_state = (
-                _load_checkpoint_state_from_bytes(imports=imports, checkpoint_bytes=best_checkpoint_bytes)
+                _load_checkpoint_state_from_bytes(
+                    imports=imports, checkpoint_bytes=best_checkpoint_bytes
+                )
                 if best_checkpoint_bytes
                 else None
             )
@@ -985,7 +1042,9 @@ def run_yolo_primary_detection_training(
             if improved_best:
                 current_best_checkpoint_state = dict(current_checkpoint_state)
                 current_best_checkpoint_state["best_checkpoint_state"] = None
-                current_checkpoint_state["best_checkpoint_state"] = current_best_checkpoint_state
+                current_checkpoint_state["best_checkpoint_state"] = (
+                    current_best_checkpoint_state
+                )
                 best_metric_value = candidate_best_metric_value
                 best_checkpoint_bytes = _build_checkpoint_bytes_from_state(
                     imports=imports,
@@ -1024,8 +1083,14 @@ def run_yolo_primary_detection_training(
                         else (
                             None
                             if (
-                                (validation_split is not None and best_metric_value == float("-inf"))
-                                or (validation_split is None and best_metric_value == float("inf"))
+                                (
+                                    validation_split is not None
+                                    and best_metric_value == float("-inf")
+                                )
+                                or (
+                                    validation_split is None
+                                    and best_metric_value == float("inf")
+                                )
                             )
                             else round(best_metric_value, 6)
                         )
@@ -1035,13 +1100,19 @@ def run_yolo_primary_detection_training(
         if request.model_type == "yolov8":
             control_decision = resolve_yolov8_detection_epoch_control(
                 save_checkpoint_requested=(
-                    control_command.save_checkpoint if control_command is not None else False
+                    control_command.save_checkpoint
+                    if control_command is not None
+                    else False
                 ),
                 pause_training_requested=(
-                    control_command.pause_training if control_command is not None else False
+                    control_command.pause_training
+                    if control_command is not None
+                    else False
                 ),
                 terminate_training_requested=(
-                    control_command.terminate_training if control_command is not None else False
+                    control_command.terminate_training
+                    if control_command is not None
+                    else False
                 ),
             )
             should_write_savepoint = control_decision.save_checkpoint
@@ -1051,7 +1122,9 @@ def run_yolo_primary_detection_training(
             should_write_savepoint = control_command is not None and (
                 control_command.save_checkpoint or control_command.pause_training
             )
-            should_pause_training = control_command is not None and control_command.pause_training
+            should_pause_training = (
+                control_command is not None and control_command.pause_training
+            )
             should_terminate_training = (
                 control_command is not None and control_command.terminate_training
             )
@@ -1076,13 +1149,20 @@ def run_yolo_primary_detection_training(
                 savepoint = YoloPrimaryTrainingSavePoint(
                     epoch=epoch,
                     latest_checkpoint_bytes=latest_checkpoint_bytes,
-                    best_checkpoint_bytes=best_checkpoint_bytes or latest_checkpoint_bytes,
+                    best_checkpoint_bytes=best_checkpoint_bytes
+                    or latest_checkpoint_bytes,
                     best_metric_name=best_metric_name,
                     best_metric_value=(
                         None
                         if (
-                            (validation_split is not None and best_metric_value == float("-inf"))
-                            or (validation_split is None and best_metric_value == float("inf"))
+                            (
+                                validation_split is not None
+                                and best_metric_value == float("-inf")
+                            )
+                            or (
+                                validation_split is None
+                                and best_metric_value == float("inf")
+                            )
                         )
                         else round(best_metric_value, 6)
                     ),
@@ -1118,7 +1198,9 @@ def run_yolo_primary_detection_training(
         "split_name": validation_split.name if validation_split is not None else None,
         "sample_count": len(validation_samples),
         "confidence_threshold": (
-            evaluation_confidence_threshold if validation_split is not None and bool(validation_samples) else None
+            evaluation_confidence_threshold
+            if validation_split is not None and bool(validation_samples)
+            else None
         ),
         "nms_threshold": (
             evaluation_nms_threshold
@@ -1128,12 +1210,18 @@ def run_yolo_primary_detection_training(
             else None
         ),
         "postprocess_mode": (
-            evaluation_postprocess_mode if validation_split is not None and bool(validation_samples) else None
+            evaluation_postprocess_mode
+            if validation_split is not None and bool(validation_samples)
+            else None
         ),
         "max_detections": (
-            evaluation_max_detections if validation_split is not None and bool(validation_samples) else None
+            evaluation_max_detections
+            if validation_split is not None and bool(validation_samples)
+            else None
         ),
-        "best_metric_name": best_metric_name if validation_split is not None and bool(validation_samples) else None,
+        "best_metric_name": best_metric_name
+        if validation_split is not None and bool(validation_samples)
+        else None,
         "best_metric_value": (
             round(best_metric_value, 6)
             if validation_split is not None and bool(validation_samples)
@@ -1155,7 +1243,9 @@ def run_yolo_primary_detection_training(
         "evaluation_interval": evaluation_interval,
         "input_size": list(input_size),
         "train_split_name": train_split.name,
-        "validation_split_name": validation_split.name if validation_split is not None else None,
+        "validation_split_name": validation_split.name
+        if validation_split is not None
+        else None,
         "sample_count": sum(split.sample_count for split in resolved_splits),
         "train_sample_count": len(train_samples),
         "validation_sample_count": len(validation_samples),
@@ -1206,9 +1296,7 @@ def run_yolo_primary_detection_training(
         "gradient_control": {
             "grad_clip_norm": grad_clip_norm,
         },
-        "augmentation": _serialize_detection_augmentation_options(
-            augmentation_options
-        ),
+        "augmentation": _serialize_detection_augmentation_options(augmentation_options),
     }
     return YoloPrimaryDetectionTrainingExecutionResult(
         checkpoint_bytes=best_checkpoint_bytes,
@@ -1232,7 +1320,9 @@ def run_yolo_primary_detection_training(
         device_ids=device_ids,
         distributed_mode=distributed_mode,
         precision=runtime_precision,
-        validation_split_name=validation_split.name if validation_split is not None else None,
+        validation_split_name=validation_split.name
+        if validation_split is not None
+        else None,
         validation_sample_count=len(validation_samples),
         parameter_count=parameter_count,
     )
@@ -1267,7 +1357,9 @@ def _resolve_non_yolov8_detection_splits(
 ) -> tuple[_ResolvedDetectionSplit, ...]:
     """从导出 manifest 里解析非 YOLOv8 暂存路径使用的 detection split。"""
 
-    format_id = str(manifest_payload.get("format_id") or COCO_DETECTION_DATASET_FORMAT).strip()
+    format_id = str(
+        manifest_payload.get("format_id") or COCO_DETECTION_DATASET_FORMAT
+    ).strip()
     if format_id == YOLO_DETECTION_DATASET_FORMAT:
         return _resolve_non_yolov8_yolo_detection_splits(
             dataset_storage=dataset_storage,
@@ -1342,7 +1434,11 @@ def _resolve_non_yolov8_yolo_detection_splits(
     category_names_payload = manifest_payload.get("category_names")
     category_names = tuple(
         normalized_name
-        for item in (category_names_payload if isinstance(category_names_payload, list | tuple) else ())
+        for item in (
+            category_names_payload
+            if isinstance(category_names_payload, list | tuple)
+            else ()
+        )
         if (normalized_name := str(item).strip())
     )
 
@@ -1362,7 +1458,10 @@ def _resolve_non_yolov8_yolo_detection_splits(
             if not annotation_path.is_file():
                 raise InvalidRequestError(
                     "训练输入 split 缺少 annotation 文件",
-                    details={"split_name": split_name, "annotation_file": annotation_file},
+                    details={
+                        "split_name": split_name,
+                        "annotation_file": annotation_file,
+                    },
                 )
             if not image_root_path.is_dir():
                 raise InvalidRequestError(
@@ -1385,7 +1484,9 @@ def _resolve_non_yolov8_yolo_detection_splits(
         if not label_root:
             continue
         if not category_names:
-            raise InvalidRequestError("YOLO detection 训练输入缺少有效的 category_names")
+            raise InvalidRequestError(
+                "YOLO detection 训练输入缺少有效的 category_names"
+            )
         label_root_path = dataset_storage.resolve(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
@@ -1459,7 +1560,9 @@ def _load_non_yolov8_training_samples(
             "detection annotation 结构不合法",
             details={
                 "split_name": split.name,
-                "annotation_file": str(split.annotation_file) if split.annotation_file is not None else None,
+                "annotation_file": str(split.annotation_file)
+                if split.annotation_file is not None
+                else None,
             },
         )
     category_names: list[str] = []
@@ -1501,15 +1604,24 @@ def _load_non_yolov8_training_samples(
             "height": height,
             "annotations": [],
         }
-    for annotation_item in annotations_payload if isinstance(annotations_payload, list) else ():
+    for annotation_item in (
+        annotations_payload if isinstance(annotations_payload, list) else ()
+    ):
         if not isinstance(annotation_item, dict):
             continue
         image_id = annotation_item.get("image_id")
         category_id = annotation_item.get("category_id")
         bbox = annotation_item.get("bbox")
         image_meta = image_meta_by_id.get(image_id if isinstance(image_id, int) else -1)
-        category_index = category_id_to_index.get(category_id if isinstance(category_id, int) else -1)
-        if image_meta is None or category_index is None or not isinstance(bbox, list | tuple) or len(bbox) != 4:
+        category_index = category_id_to_index.get(
+            category_id if isinstance(category_id, int) else -1
+        )
+        if (
+            image_meta is None
+            or category_index is None
+            or not isinstance(bbox, list | tuple)
+            or len(bbox) != 4
+        ):
             continue
         x, y, w, h = bbox
         if not all(isinstance(item, int | float) for item in (x, y, w, h)):
@@ -1578,7 +1690,9 @@ def _build_coco_annotation_payload_from_yolo_detection_split(
     ]
     annotation_id = 1
     for image_id, image_path in enumerate(_iter_image_files(image_root), start=1):
-        image_height, image_width = _read_image_shape(imports=imports, image_path=image_path)
+        image_height, image_width = _read_image_shape(
+            imports=imports, image_path=image_path
+        )
         relative_image_path = image_path.relative_to(image_root)
         images_payload.append(
             {
@@ -1661,7 +1775,9 @@ def _parse_yolo_detection_label_file(
         return [], next_annotation_id
     annotation_rows: list[dict[str, object]] = []
     annotation_id = next_annotation_id
-    for line_index, raw_line in enumerate(label_path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_index, raw_line in enumerate(
+        label_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw_line.strip()
         if not line:
             continue
@@ -1851,7 +1967,11 @@ def _load_resume_checkpoint(
     scaler.load_state_dict(scaler_state_dict)
 
     raw_resume_epoch = checkpoint_payload.get("epoch")
-    resume_epoch = int(raw_resume_epoch) if isinstance(raw_resume_epoch, int) and raw_resume_epoch >= 0 else 0
+    resume_epoch = (
+        int(raw_resume_epoch)
+        if isinstance(raw_resume_epoch, int) and raw_resume_epoch >= 0
+        else 0
+    )
     raw_best_metric_name = checkpoint_payload.get("best_metric_name")
     best_metric_name = (
         str(raw_best_metric_name)
@@ -1867,9 +1987,15 @@ def _load_resume_checkpoint(
     warm_start_summary = checkpoint_payload.get("warm_start")
     return _LoadedResumeState(
         resume_epoch=resume_epoch,
-        epoch_history=_normalize_history_items(checkpoint_payload.get("metrics_history")),
-        validation_history=_normalize_history_items(checkpoint_payload.get("validation_history")),
-        evaluated_epochs=_normalize_evaluated_epochs(checkpoint_payload.get("evaluated_epochs")),
+        epoch_history=_normalize_history_items(
+            checkpoint_payload.get("metrics_history")
+        ),
+        validation_history=_normalize_history_items(
+            checkpoint_payload.get("validation_history")
+        ),
+        evaluated_epochs=_normalize_evaluated_epochs(
+            checkpoint_payload.get("evaluated_epochs")
+        ),
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
         best_checkpoint_state=(
@@ -1947,7 +2073,6 @@ def _validate_resume_checkpoint(
             ),
         )
         return
-
     checkpoint_model_type = checkpoint_payload.get("model_type")
     checkpoint_model_scale = checkpoint_payload.get("model_scale")
     checkpoint_category_names = checkpoint_payload.get("category_names")
@@ -1971,7 +2096,10 @@ def _validate_resume_checkpoint(
                 "expected_model_scale": expected_model_scale,
             },
         )
-    if not isinstance(checkpoint_category_names, list) or len(checkpoint_category_names) != expected_num_classes:
+    if (
+        not isinstance(checkpoint_category_names, list)
+        or len(checkpoint_category_names) != expected_num_classes
+    ):
         raise InvalidRequestError(
             "resume checkpoint 的类别数量与当前训练请求不一致",
             details={
@@ -2134,7 +2262,9 @@ def _assert_resume_required_float_matches(
         rel_tol=0.0,
         abs_tol=1e-12,
     ):
-        raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
+        raise InvalidRequestError(
+            f"resume checkpoint 的 {field_name} 与当前训练请求不一致"
+        )
 
 
 def _assert_resume_optional_float_matches(
@@ -2147,7 +2277,9 @@ def _assert_resume_optional_float_matches(
 
     if expected_value is None:
         if checkpoint_value is not None:
-            raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
+            raise InvalidRequestError(
+                f"resume checkpoint 的 {field_name} 与当前训练请求不一致"
+            )
         return
     _assert_resume_required_float_matches(
         checkpoint_value=checkpoint_value,
@@ -2164,8 +2296,12 @@ def _assert_resume_required_int_matches(
 ) -> None:
     """断言 resume checkpoint 中的必填整型配置与当前任务一致。"""
 
-    if not isinstance(checkpoint_value, int) or int(checkpoint_value) != int(expected_value):
-        raise InvalidRequestError(f"resume checkpoint 的 {field_name} 与当前训练请求不一致")
+    if not isinstance(checkpoint_value, int) or int(checkpoint_value) != int(
+        expected_value
+    ):
+        raise InvalidRequestError(
+            f"resume checkpoint 的 {field_name} 与当前训练请求不一致"
+        )
 
 
 def _build_autocast_context(
@@ -2223,18 +2359,22 @@ def _build_non_yolov8_training_batch(
     )
     for sample in samples:
         if augment_training:
-            prepared_image, resized_boxes, resized_categories = _prepare_augmented_detection_sample(
-                imports=imports,
-                primary_sample=sample,
-                available_samples=resolved_available_samples,
-                input_size=input_size,
-                augmentation_options=resolved_augmentation_options,
+            prepared_image, resized_boxes, resized_categories = (
+                _prepare_augmented_detection_sample(
+                    imports=imports,
+                    primary_sample=sample,
+                    available_samples=resolved_available_samples,
+                    input_size=input_size,
+                    augmentation_options=resolved_augmentation_options,
+                )
             )
         else:
-            prepared_image, resized_boxes, resized_categories = _prepare_detection_sample_without_augmentation(
-                imports=imports,
-                sample=sample,
-                input_size=input_size,
+            prepared_image, resized_boxes, resized_categories = (
+                _prepare_detection_sample_without_augmentation(
+                    imports=imports,
+                    sample=sample,
+                    input_size=input_size,
+                )
             )
         rgb_image = imports.cv2.cvtColor(prepared_image, imports.cv2.COLOR_BGR2RGB)
         image_array = rgb_image.astype(np_module.float32) / 255.0
@@ -2244,7 +2384,9 @@ def _build_non_yolov8_training_batch(
             _PreparedTrainingTarget(
                 image_id=sample.image_id,
                 image_width=(input_size[1] if augment_training else sample.image_width),
-                image_height=(input_size[0] if augment_training else sample.image_height),
+                image_height=(
+                    input_size[0] if augment_training else sample.image_height
+                ),
                 boxes_xyxy=tuple(resized_boxes),
                 category_indexes=tuple(resized_categories),
             )
@@ -2294,10 +2436,12 @@ def _prepare_augmented_detection_sample(
             augmentation_options=augmentation_options,
         )
     else:
-        image, boxes_xyxy, category_indexes = _prepare_detection_sample_without_augmentation(
-            imports=imports,
-            sample=primary_sample,
-            input_size=input_size,
+        image, boxes_xyxy, category_indexes = (
+            _prepare_detection_sample_without_augmentation(
+                imports=imports,
+                sample=primary_sample,
+                input_size=input_size,
+            )
         )
 
     if (
@@ -2380,7 +2524,9 @@ def _build_mosaic_detection_sample(
         (top_height, 0, output_height - top_height, left_width),
         (top_height, left_width, output_height - top_height, output_width - left_width),
     )
-    canvas = np_module.full((output_height, output_width, 3), 114, dtype=np_module.uint8)
+    canvas = np_module.full(
+        (output_height, output_width, 3), 114, dtype=np_module.uint8
+    )
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []
     selected_samples = [primary_sample]
@@ -2463,7 +2609,9 @@ def _build_scaled_cell_sample(
         (resized_width, resized_height),
         interpolation=imports.cv2.INTER_LINEAR,
     )
-    canvas = np_module.full((output_height, output_width, 3), 114, dtype=np_module.uint8)
+    canvas = np_module.full(
+        (output_height, output_width, 3), 114, dtype=np_module.uint8
+    )
 
     if resized_width > output_width:
         source_x = random.randint(0, resized_width - output_width)
@@ -2492,10 +2640,26 @@ def _build_scaled_cell_sample(
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []
     for annotation in sample.annotations:
-        scaled_x1 = float(annotation.bbox_xyxy[0]) * resized_scale - float(source_x) + float(target_x)
-        scaled_y1 = float(annotation.bbox_xyxy[1]) * resized_scale - float(source_y) + float(target_y)
-        scaled_x2 = float(annotation.bbox_xyxy[2]) * resized_scale - float(source_x) + float(target_x)
-        scaled_y2 = float(annotation.bbox_xyxy[3]) * resized_scale - float(source_y) + float(target_y)
+        scaled_x1 = (
+            float(annotation.bbox_xyxy[0]) * resized_scale
+            - float(source_x)
+            + float(target_x)
+        )
+        scaled_y1 = (
+            float(annotation.bbox_xyxy[1]) * resized_scale
+            - float(source_y)
+            + float(target_y)
+        )
+        scaled_x2 = (
+            float(annotation.bbox_xyxy[2]) * resized_scale
+            - float(source_x)
+            + float(target_x)
+        )
+        scaled_y2 = (
+            float(annotation.bbox_xyxy[3]) * resized_scale
+            - float(source_y)
+            + float(target_y)
+        )
         clipped_box = _clip_box_xyxy(
             box_xyxy=(scaled_x1, scaled_y1, scaled_x2, scaled_y2),
             output_size=output_size,
@@ -2641,14 +2805,26 @@ def _apply_random_affine(
     )
     affine_matrix = imports.np.eye(3, dtype=imports.np.float32)
     affine_matrix[:2, :] = rotation_matrix
-    shear_x = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
-    shear_y = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
+    shear_x = (
+        math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
+    )
+    shear_y = (
+        math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
+    )
     shear_matrix = imports.np.array(
         [[1.0, shear_x, 0.0], [shear_y, 1.0, 0.0], [0.0, 0.0, 1.0]],
         dtype=imports.np.float32,
     )
-    translate_x = random.uniform(-translate, translate) * float(output_width) if translate > 0.0 else 0.0
-    translate_y = random.uniform(-translate, translate) * float(output_height) if translate > 0.0 else 0.0
+    translate_x = (
+        random.uniform(-translate, translate) * float(output_width)
+        if translate > 0.0
+        else 0.0
+    )
+    translate_y = (
+        random.uniform(-translate, translate) * float(output_height)
+        if translate > 0.0
+        else 0.0
+    )
     translate_matrix = imports.np.array(
         [[1.0, 0.0, translate_x], [0.0, 1.0, translate_y], [0.0, 0.0, 1.0]],
         dtype=imports.np.float32,
@@ -2738,7 +2914,9 @@ def _unwrap_detection_outputs(outputs: Any) -> dict[str, Any]:
     raise ServiceConfigurationError("当前 YOLO detection 训练输出结构不合法")
 
 
-def _unwrap_e2e_detection_outputs(outputs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+def _unwrap_e2e_detection_outputs(
+    outputs: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """把端到端检测训练输出拆分为 one2many 和 one2one 两个分支。
 
     Returns:
@@ -2749,9 +2927,17 @@ def _unwrap_e2e_detection_outputs(outputs: Any) -> tuple[dict[str, Any], dict[st
         raise ServiceConfigurationError("端到端训练输出必须是字典")
     one2many = outputs.get("one2many")
     one2one = outputs.get("one2one")
-    if not isinstance(one2many, dict) or "boxes" not in one2many or "scores" not in one2many:
+    if (
+        not isinstance(one2many, dict)
+        or "boxes" not in one2many
+        or "scores" not in one2many
+    ):
         raise ServiceConfigurationError("端到端训练输出缺少有效的 one2many 分支")
-    if not isinstance(one2one, dict) or "boxes" not in one2one or "scores" not in one2one:
+    if (
+        not isinstance(one2one, dict)
+        or "boxes" not in one2one
+        or "scores" not in one2one
+    ):
         raise ServiceConfigurationError("端到端训练输出缺少有效的 one2one 分支")
     return one2many, one2one
 
@@ -2793,7 +2979,6 @@ def _compute_detection_loss(
             assign_beta=assign_beta,
             assign_topk2=assign_topk2,
         )
-
     prediction_bundle = decode_detection_training_predictions(
         torch_module=torch,
         detect_head=detect_head,
@@ -2850,7 +3035,9 @@ def _compute_detection_loss(
                 foreground_mask = assignment["foreground_mask"]
                 assigned_gt_indices = assignment["assigned_gt_indices"][foreground_mask]
                 quality_scores = assignment["quality_scores"][foreground_mask]
-                target_scores[foreground_mask, gt_classes[assigned_gt_indices]] = quality_scores
+                target_scores[foreground_mask, gt_classes[assigned_gt_indices]] = (
+                    quality_scores
+                )
 
                 foreground_pred_boxes = image_pred_boxes[foreground_mask]
                 foreground_gt_boxes = gt_boxes[assigned_gt_indices]
@@ -2873,24 +3060,37 @@ def _compute_detection_loss(
                     reg_max=reg_max,
                 )
                 if reg_max > 1:
-                    foreground_distance_logits = distance_logits[batch_index][foreground_mask].view(-1, 4, reg_max)
-                    total_dfl_loss = total_dfl_loss + distribution_focal_loss(
-                        torch_module=torch,
-                        logits=foreground_distance_logits,
-                        target=target_distances,
-                    ).sum()
+                    foreground_distance_logits = distance_logits[batch_index][
+                        foreground_mask
+                    ].view(-1, 4, reg_max)
+                    total_dfl_loss = (
+                        total_dfl_loss
+                        + distribution_focal_loss(
+                            torch_module=torch,
+                            logits=foreground_distance_logits,
+                            target=target_distances,
+                        ).sum()
+                    )
                 else:
-                    foreground_distance_logits = distance_logits[batch_index][foreground_mask].view(-1, 4)
-                    total_dfl_loss = total_dfl_loss + torch.nn.functional.smooth_l1_loss(
-                        torch.nn.functional.softplus(foreground_distance_logits),
-                        target_distances,
-                        reduction="sum",
+                    foreground_distance_logits = distance_logits[batch_index][
+                        foreground_mask
+                    ].view(-1, 4)
+                    total_dfl_loss = (
+                        total_dfl_loss
+                        + torch.nn.functional.smooth_l1_loss(
+                            torch.nn.functional.softplus(foreground_distance_logits),
+                            target_distances,
+                            reduction="sum",
+                        )
                     )
 
-        total_class_loss = total_class_loss + torch.nn.functional.binary_cross_entropy_with_logits(
-            image_class_logits,
-            target_scores,
-            reduction="sum",
+        total_class_loss = (
+            total_class_loss
+            + torch.nn.functional.binary_cross_entropy_with_logits(
+                image_class_logits,
+                target_scores,
+                reduction="sum",
+            )
         )
 
     normalizer = total_target_score.clamp_min(1.0)
@@ -3134,7 +3334,6 @@ def _evaluate_detection_validation_losses(
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
         )
-
     previous_training_mode = bool(model.training)
     model.train()
     batch_norm_states = _freeze_batch_norm_modules(imports=imports, model=model)
@@ -3189,7 +3388,9 @@ def _evaluate_detection_validation_losses(
                         )
                 batch_count += 1
                 for metric_name in epoch_totals:
-                    epoch_totals[metric_name] += float(loss_components[metric_name].detach().item())
+                    epoch_totals[metric_name] += float(
+                        loss_components[metric_name].detach().item()
+                    )
     finally:
         _restore_batch_norm_modules(batch_norm_states)
         model.train(previous_training_mode)
@@ -3222,7 +3423,9 @@ def _evaluate_validation_map(
     if not samples or annotation_payload is None:
         return {"map50": 0.0, "map50_95": 0.0}
     if imports.COCO is None or imports.COCOeval is None:
-        raise ServiceConfigurationError("当前环境缺少 pycocotools，无法执行 detection mAP 验证")
+        raise ServiceConfigurationError(
+            "当前环境缺少 pycocotools，无法执行 detection mAP 验证"
+        )
 
     torch = imports.torch
     previous_training_mode = bool(model.training)
@@ -3341,7 +3544,12 @@ def _convert_primary_predictions_to_coco_detections(
             width = max(0.0, x2 - x1)
             height = max(0.0, y2 - y1)
             resolved_class_id = int(class_id)
-            if width <= 0 or height <= 0 or resolved_class_id < 0 or resolved_class_id >= len(category_ids):
+            if (
+                width <= 0
+                or height <= 0
+                or resolved_class_id < 0
+                or resolved_class_id >= len(category_ids)
+            ):
                 continue
             detections.append(
                 {
@@ -3390,7 +3598,9 @@ def _freeze_batch_norm_modules(
     return tuple(batch_norm_states)
 
 
-def _restore_batch_norm_modules(batch_norm_states: tuple[tuple[Any, bool], ...]) -> None:
+def _restore_batch_norm_modules(
+    batch_norm_states: tuple[tuple[Any, bool], ...],
+) -> None:
     """恢复验证前 BatchNorm 的训练状态。"""
 
     for module, was_training in batch_norm_states:
@@ -3405,7 +3615,9 @@ def _normalize_history_items(value: object) -> list[dict[str, object]]:
     normalized_items: list[dict[str, object]] = []
     for item in value:
         if isinstance(item, dict):
-            normalized_items.append({str(key): current_value for key, current_value in item.items()})
+            normalized_items.append(
+                {str(key): current_value for key, current_value in item.items()}
+            )
     return normalized_items
 
 
@@ -3506,7 +3718,6 @@ def _build_checkpoint_state(
             best_metric_value=best_metric_value,
             best_checkpoint_state=best_checkpoint_state,
         )
-
     return {
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
@@ -3641,7 +3852,10 @@ def _build_checkpoint_bytes_from_state(
 ) -> bytes:
     """把已缓存的 checkpoint 状态重新编码成二进制。"""
 
-    if isinstance(checkpoint_state, dict) and checkpoint_state.get("model_type") == "yolov8":
+    if (
+        isinstance(checkpoint_state, dict)
+        and checkpoint_state.get("model_type") == "yolov8"
+    ):
         return encode_yolov8_detection_checkpoint_state(
             torch_module=imports.torch,
             checkpoint_state=checkpoint_state,

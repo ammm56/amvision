@@ -10,6 +10,8 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import BinaryIO
 
@@ -18,7 +20,7 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import is_pid_alive, load_json_file, resolve_app_root, resolve_path
+from common import is_pid_alive, load_json_file, resolve_app_root, resolve_path  # noqa: E402
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -30,14 +32,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(description="amvision full stack launcher")
     parser.add_argument("--app-root", help="应用根目录；未传入时按脚本相对位置自动解析")
-    parser.add_argument("--python-executable", help="用于启动各子进程的 Python 解释器路径")
+    parser.add_argument(
+        "--python-executable", help="用于启动各子进程的 Python 解释器路径"
+    )
     parser.add_argument(
         "--release-manifest-file",
         default="manifests/release-profiles/full.json",
         help="release manifest 路径；相对路径按应用根目录解析",
     )
     parser.add_argument("--host", default="0.0.0.0", help="backend-service 监听地址")
-    parser.add_argument("--port", type=int, default=8000, help="backend-service 监听端口")
+    parser.add_argument(
+        "--port", type=int, default=8000, help="backend-service 监听端口"
+    )
     parser.add_argument(
         "--service-log-level",
         default="info",
@@ -54,6 +60,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="service 与 worker 之间的启动间隔秒数",
+    )
+    parser.add_argument(
+        "--service-ready-timeout-seconds",
+        type=float,
+        default=120.0,
+        help="等待 backend-service health 可用的最长秒数；成功后再启动 worker",
     )
     parser.add_argument(
         "--logs-subdir",
@@ -170,7 +182,9 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
     )
 
 
-def _load_release_manifest(app_root: Path, release_manifest_file: str) -> dict[str, object]:
+def _load_release_manifest(
+    app_root: Path, release_manifest_file: str
+) -> dict[str, object]:
     """读取 release manifest。
 
     参数：
@@ -215,7 +229,8 @@ def _select_worker_entries(
     missing_profile_ids = sorted(
         profile_id
         for profile_id in requested_profile_id_set
-        if profile_id not in {str(entry.get("profile_id", "")) for entry in worker_entries}
+        if profile_id
+        not in {str(entry.get("profile_id", "")) for entry in worker_entries}
     )
     if missing_profile_ids:
         raise ValueError(
@@ -223,7 +238,9 @@ def _select_worker_entries(
         )
 
     return [
-        entry for entry in worker_entries if str(entry.get("profile_id", "")) in requested_profile_id_set
+        entry
+        for entry in worker_entries
+        if str(entry.get("profile_id", "")) in requested_profile_id_set
     ]
 
 
@@ -251,12 +268,16 @@ def _validate_required_files(
         resolve_path(app_root, str(service_entry["python_launcher"])),
     ]
     for worker_entry in worker_entries:
-        required_paths.append(resolve_path(app_root, str(worker_entry["python_launcher"])))
+        required_paths.append(
+            resolve_path(app_root, str(worker_entry["python_launcher"]))
+        )
         required_paths.append(resolve_path(app_root, str(worker_entry["manifest"])))
 
     missing_paths = [str(path) for path in required_paths if not path.exists()]
     if missing_paths:
-        raise FileNotFoundError("full 一键启动缺少必要文件: " + ", ".join(missing_paths))
+        raise FileNotFoundError(
+            "full 一键启动缺少必要文件: " + ", ".join(missing_paths)
+        )
 
 
 def _build_service_command(
@@ -284,7 +305,9 @@ def _build_service_command(
 
     service_entry = release_manifest["service"]
     assert isinstance(service_entry, dict)
-    service_launcher_path = resolve_path(app_root, str(service_entry["python_launcher"]))
+    service_launcher_path = resolve_path(
+        app_root, str(service_entry["python_launcher"])
+    )
     return [
         python_executable,
         str(service_launcher_path),
@@ -358,6 +381,53 @@ def _start_component(
         flush=True,
     )
     return process, log_handle
+
+
+def _resolve_health_host(host: str) -> str:
+    """把监听地址转换成当前机器可访问的 health 探测地址。"""
+
+    normalized_host = host.strip()
+    if normalized_host in {"", "0.0.0.0", "::"}:
+        return "127.0.0.1"
+    return normalized_host
+
+
+def _wait_for_backend_service_ready(
+    *,
+    host: str,
+    port: int,
+    timeout_seconds: float,
+    process: subprocess.Popen[bytes],
+) -> None:
+    """等待 backend-service health endpoint 可用。
+
+    说明：
+    - backend-service 负责数据库 schema 和 seeder 初始化。
+    - worker profiles 必须等该初始化完成后再启动。
+    """
+
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    health_url = f"http://{_resolve_health_host(host)}:{port}/api/v1/system/health"
+    last_error = ""
+    while time.monotonic() < deadline:
+        return_code = process.poll()
+        if return_code is not None:
+            raise RuntimeError(f"backend-service 已退出，returncode={return_code}")
+        try:
+            with urllib.request.urlopen(health_url, timeout=5.0) as response:
+                if response.status < 500:
+                    print(
+                        "backend-service health 已就绪，开始启动 worker。", flush=True
+                    )
+                    return
+                last_error = f"HTTP {response.status}"
+        except (OSError, urllib.error.URLError) as error:
+            last_error = str(error)
+        time.sleep(1.0)
+
+    raise TimeoutError(
+        f"backend-service health 未在 {timeout_seconds:.0f}s 内就绪：{last_error}"
+    )
 
 
 def _write_stack_state(
@@ -446,7 +516,9 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_argument_parser()
     args = parser.parse_args(argv)
-    app_root = resolve_app_root(script_file=Path(__file__), explicit_app_root=args.app_root)
+    app_root = resolve_app_root(
+        script_file=Path(__file__), explicit_app_root=args.app_root
+    )
     state_file_path = _resolve_stack_state_file(
         app_root,
         logs_subdir=args.logs_subdir,
@@ -479,11 +551,22 @@ def main(argv: list[str] | None = None) -> int:
             log_file_path=service_log_file_path,
         )
         components.append(
-            ("backend-service", service_process, service_log_handle, service_log_file_path)
+            (
+                "backend-service",
+                service_process,
+                service_log_handle,
+                service_log_file_path,
+            )
         )
 
         if args.startup_delay_seconds > 0:
             time.sleep(args.startup_delay_seconds)
+        _wait_for_backend_service_ready(
+            host=args.host,
+            port=args.port,
+            timeout_seconds=args.service_ready_timeout_seconds,
+            process=service_process,
+        )
 
         for worker_entry in worker_entries:
             profile_id = str(worker_entry["profile_id"])
@@ -517,8 +600,7 @@ def main(argv: list[str] | None = None) -> int:
             components=components,
         )
         print(
-            "运行状态文件已写入 "
-            f"{_format_runtime_path(app_root, state_file_path)}。",
+            f"运行状态文件已写入 {_format_runtime_path(app_root, state_file_path)}。",
             flush=True,
         )
         print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
@@ -538,7 +620,9 @@ def main(argv: list[str] | None = None) -> int:
         print("收到终止信号，正在停止全部子进程。", flush=True)
         return 0
     finally:
-        for _component_name, process, _log_handle, _log_file_path in reversed(components):
+        for _component_name, process, _log_handle, _log_file_path in reversed(
+            components
+        ):
             _stop_component(process)
         for _component_name, _process, log_handle, _log_file_path in components:
             with contextlib.suppress(Exception):

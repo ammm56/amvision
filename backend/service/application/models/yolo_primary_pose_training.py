@@ -18,7 +18,9 @@ from backend.service.application.models.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_primary_model_configs import (
+    build_yolo_primary_model,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_pose_training_batch,
     build_yolov8_task_augmentation_options,
@@ -28,7 +30,9 @@ from backend.service.application.models.yolov8_core.data import (
 from backend.service.application.models.yolov8_core.evaluation import (
     evaluate_yolov8_pose_samples,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 YOLO_PRIMARY_POSE_IMPLEMENTATION_MODE = "yolo-primary-pose"
 _POSE_DEF_INPUT_SIZE = (640, 640)
@@ -98,6 +102,7 @@ class YoloPrimaryPoseTrainingTerminatedError(Exception):
 @dataclass(frozen=True)
 class _PoseAnnotation:
     """单张图片的 Pose 标注。"""
+
     image_path: str
     boxes_xywh: list[list[float]]
     class_ids: list[int]
@@ -107,6 +112,7 @@ class _PoseAnnotation:
 @dataclass(frozen=True)
 class _PosePreparedTarget:
     """训练态单图目标结构。"""
+
     boxes_xyxy: list[list[float]]
     category_indexes: list[int]
     keypoints: list[list[float]] | None = None  # (N, K*3) 扁平
@@ -144,19 +150,31 @@ def run_yolo_primary_pose_training(
 ) -> YoloPrimaryPoseTrainingExecutionResult:
     """执行 Pose 训练。"""
 
+    if request.model_type == "yolo11":
+        raise InvalidRequestError(
+            "YOLO11 pose 训练必须通过 yolo11_pose_training 执行入口",
+            details={"model_type": request.model_type},
+        )
+
     import cv2
     import numpy as np
     import torch
 
     device = "cpu"
-    if request.extra_options and str(request.extra_options.get("device", "")).startswith("cuda") and torch.cuda.is_available():
+    if (
+        request.extra_options
+        and str(request.extra_options.get("device", "")).startswith("cuda")
+        and torch.cuda.is_available()
+    ):
         device = str(request.extra_options["device"]).strip()
 
     precision = request.precision
     input_size = request.input_size or _POSE_DEF_INPUT_SIZE
     use_amp = precision == "fp16" and device.startswith("cuda")
 
-    labels, train_anns, val_anns = _load_pose_manifest(request.dataset_storage, request.manifest_payload)
+    labels, train_anns, val_anns = _load_pose_manifest(
+        request.dataset_storage, request.manifest_payload
+    )
     num_classes = len(labels)
     kpt_shape = _resolve_pose_keypoint_shape_from_annotations(
         manifest=request.manifest_payload,
@@ -165,8 +183,10 @@ def run_yolo_primary_pose_training(
     )
 
     model = build_yolo_primary_model(
-        model_type=request.model_type, task_type="pose",
-        model_scale=request.model_scale, num_classes=num_classes,
+        model_type=request.model_type,
+        task_type="pose",
+        model_scale=request.model_scale,
+        num_classes=num_classes,
         model_config_overrides={"kpt_shape": kpt_shape},
     )
     model.to(device)
@@ -195,7 +215,9 @@ def run_yolo_primary_pose_training(
     optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     iterations_per_epoch = max(1, (len(train_anns) + bs - 1) // bs)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=max_epochs * iterations_per_epoch, eta_min=lr * min_lr,
+        optimizer,
+        T_max=max_epochs * iterations_per_epoch,
+        eta_min=lr * min_lr,
     )
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
 
@@ -204,7 +226,9 @@ def run_yolo_primary_pose_training(
     global_iteration = 0
     metrics_history: list[dict[str, object]] = []
     if request.resume_checkpoint_path and request.resume_checkpoint_path.is_file():
-        ckpt = torch.load(str(request.resume_checkpoint_path), map_location=device, weights_only=False)
+        ckpt = torch.load(
+            str(request.resume_checkpoint_path), map_location=device, weights_only=False
+        )
         model.load_state_dict(ckpt["model_state_dict"], strict=False)
         if "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -234,12 +258,13 @@ def run_yolo_primary_pose_training(
         )
 
         import random
+
         indices = list(range(len(train_anns)))
         random.shuffle(indices)
         shuffled = [train_anns[i] for i in indices]
 
         for batch_start in range(0, len(shuffled), bs):
-            batch_anns = shuffled[batch_start:batch_start + bs]
+            batch_anns = shuffled[batch_start : batch_start + bs]
             if request.model_type == "yolov8":
                 batch_input_size = resolve_yolov8_task_batch_input_size(
                     base_input_size=input_size,
@@ -250,7 +275,7 @@ def run_yolo_primary_pose_training(
                     input_size=batch_input_size,
                     device=device,
                     precision=precision,
-                    imports=_build_yolov8_training_imports(cv2, np, torch),
+                    imports=_build_yolo_task_training_imports(cv2, np, torch),
                     augmentation_options=effective_yolov8_augmentation_options,
                     available_samples=shuffled,
                 )
@@ -259,11 +284,17 @@ def run_yolo_primary_pose_training(
                 images = batch.images
                 targets = batch.targets
             else:
-                images, targets = _build_pose_batch(batch_anns, input_size, device, precision, cv2, np, torch)
+                images, targets = _build_pose_batch(
+                    batch_anns, input_size, device, precision, cv2, np, torch
+                )
                 if images is None:
                     continue
 
-            autocast_ctx = torch.amp.autocast("cuda", enabled=use_amp) if use_amp else nullcontext()
+            autocast_ctx = (
+                torch.amp.autocast("cuda", enabled=use_amp)
+                if use_amp
+                else nullcontext()
+            )
             with autocast_ctx:
                 raw_outputs = model(images)
                 if isinstance(raw_outputs, dict) and "one2many" in raw_outputs:
@@ -292,7 +323,9 @@ def run_yolo_primary_pose_training(
                         assign_beta=assign_beta,
                     )
                 else:
-                    from backend.service.application.models.pose_loss import compute_pose_loss
+                    from backend.service.application.models.pose_loss import (
+                        compute_pose_loss,
+                    )
 
                     loss_dict = compute_pose_loss(
                         torch=torch,
@@ -334,14 +367,18 @@ def run_yolo_primary_pose_training(
             epoch_iters += 1
 
         if epoch_iters > 0:
-            avg_metrics = {k: round(v / epoch_iters, 6) for k, v in epoch_losses.items()}
+            avg_metrics = {
+                k: round(v / epoch_iters, 6) for k, v in epoch_losses.items()
+            }
         else:
             avg_metrics = {"loss": 0.0}
 
         metrics_history.append({"epoch": epoch, **avg_metrics})
 
         ep_progress = YoloPrimaryPoseTrainingEpochProgress(
-            epoch=epoch, max_epochs=max_epochs, input_size=input_size,
+            epoch=epoch,
+            max_epochs=max_epochs,
+            input_size=input_size,
             learning_rate=float(scheduler.get_last_lr()[0]),
             train_metrics=avg_metrics,
         )
@@ -353,7 +390,10 @@ def run_yolo_primary_pose_training(
         should_evaluate = (
             request.model_type == "yolov8"
             and len(val_anns) > 0
-            and ((epoch > 0 and epoch % request.evaluation_interval == 0) or epoch == max_epochs - 1)
+            and (
+                (epoch > 0 and epoch % request.evaluation_interval == 0)
+                or epoch == max_epochs - 1
+            )
         )
         if should_evaluate:
             val_metrics = evaluate_yolov8_pose_samples(
@@ -365,9 +405,11 @@ def run_yolo_primary_pose_training(
                 precision=precision,
                 score_threshold=float(extra.get("eval_confidence_threshold", 0.01)),
                 nms_threshold=float(extra.get("eval_nms_threshold", 0.65)),
-                keypoint_confidence_threshold=float(extra.get("keypoint_confidence_threshold", 0.25)),
+                keypoint_confidence_threshold=float(
+                    extra.get("keypoint_confidence_threshold", 0.25)
+                ),
                 kpt_shape=kpt_shape,
-                imports=_build_yolov8_training_imports(cv2, np, torch),
+                imports=_build_yolo_task_training_imports(cv2, np, torch),
             )
             validation_history.append({"epoch": epoch, **val_metrics})
             current_metric = float(val_metrics.get("map50_95", 0.0))
@@ -377,27 +419,32 @@ def run_yolo_primary_pose_training(
 
         # 保存 checkpoint
         buf = io.BytesIO()
-        torch.save({
-            "epoch": epoch + 1,
-            "global_iteration": global_iteration,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "metrics_history": metrics_history,
-            "validation_history": validation_history,
-        }, buf)
+        torch.save(
+            {
+                "epoch": epoch + 1,
+                "global_iteration": global_iteration,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "metrics_history": metrics_history,
+                "validation_history": validation_history,
+            },
+            buf,
+        )
         ckpt_bytes = buf.getvalue()
 
         if cmd and cmd.save_checkpoint and request.savepoint_callback:
-            request.savepoint_callback(YoloPrimaryPoseTrainingSavePoint(
-                latest_checkpoint_bytes=ckpt_bytes,
-                train_metrics=avg_metrics,
-                validation_metrics=val_metrics,
-                best_metric_value=best_metric_value,
-                best_metric_name=best_metric_name,
-                epoch=epoch + 1,
-                learning_rate=float(scheduler.get_last_lr()[0]),
-            ))
+            request.savepoint_callback(
+                YoloPrimaryPoseTrainingSavePoint(
+                    latest_checkpoint_bytes=ckpt_bytes,
+                    train_metrics=avg_metrics,
+                    validation_metrics=val_metrics,
+                    best_metric_value=best_metric_value,
+                    best_metric_name=best_metric_name,
+                    epoch=epoch + 1,
+                    learning_rate=float(scheduler.get_last_lr()[0]),
+                )
+            )
 
         if cmd and cmd.pause_training:
             raise YoloPrimaryPoseTrainingPausedError()
@@ -419,8 +466,8 @@ def run_yolo_primary_pose_training(
     )
 
 
-def _build_yolov8_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
-    """构建 YOLOv8 core data/evaluation 使用的依赖对象。"""
+def _build_yolo_task_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
+    """构建 YOLO task core data/evaluation 使用的依赖对象。"""
 
     from types import SimpleNamespace
 
@@ -483,7 +530,7 @@ def _load_pose_manifest(
     train_anns: list[_PoseAnnotation] = []
     val_anns: list[_PoseAnnotation] = []
 
-    for split in (splits or []):
+    for split in splits or []:
         if not isinstance(split, dict):
             continue
         split_name = str(split.get("name", ""))
@@ -519,17 +566,17 @@ def _load_pose_manifest(
             if not isinstance(payload, dict):
                 continue
 
-        for cat in (payload.get("categories") or []):
+        for cat in payload.get("categories") or []:
             if isinstance(cat, dict):
                 all_categories[int(cat.get("id", -1))] = str(cat.get("name", ""))
 
         image_map: dict[int, str] = {}
-        for img in (payload.get("images") or []):
+        for img in payload.get("images") or []:
             if isinstance(img, dict):
                 image_map[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
         annotations_by_image: dict[int, list[dict[str, Any]]] = {}
-        for ann in (payload.get("annotations") or []):
+        for ann in payload.get("annotations") or []:
             if not isinstance(ann, dict):
                 continue
             img_id = int(ann.get("image_id", -1))
@@ -553,10 +600,16 @@ def _load_pose_manifest(
                 else:
                     keypoints.append([])
             if boxes:
-                records.append(_PoseAnnotation(
-                    image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
-                    boxes_xywh=boxes, class_ids=class_ids, keypoints=keypoints,
-                ))
+                records.append(
+                    _PoseAnnotation(
+                        image_path=str(
+                            dataset_storage.resolve(f"{image_root}/{file_name}")
+                        ),
+                        boxes_xywh=boxes,
+                        class_ids=class_ids,
+                        keypoints=keypoints,
+                    )
+                )
 
         if split_name == "train":
             train_anns = records
@@ -569,7 +622,12 @@ def _load_pose_manifest(
 
     def remap(anns: list[_PoseAnnotation]) -> list[_PoseAnnotation]:
         return [
-            _PoseAnnotation(a.image_path, a.boxes_xywh, [cat_id_map.get(c, 0) for c in a.class_ids], a.keypoints)
+            _PoseAnnotation(
+                a.image_path,
+                a.boxes_xywh,
+                [cat_id_map.get(c, 0) for c in a.class_ids],
+                a.keypoints,
+            )
             for a in anns
         ]
 
@@ -593,10 +651,7 @@ def _read_pose_keypoint_shape_from_manifest(
     if not isinstance(metadata, dict):
         return None
     raw_shape = metadata.get("kpt_shape")
-    if (
-        not isinstance(raw_shape, list)
-        and not isinstance(raw_shape, tuple)
-    ):
+    if not isinstance(raw_shape, list) and not isinstance(raw_shape, tuple):
         return None
     if len(raw_shape) < 2:
         return None
@@ -658,7 +713,7 @@ def _build_pose_batch(
         canvas = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
         pad_x = (target_w - new_w) // 2
         pad_y = (target_h - new_h) // 2
-        canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+        canvas[pad_y : pad_y + new_h, pad_x : pad_x + new_w] = resized
 
         tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
         tensor = torch.from_numpy(tensor).to(device).float()
@@ -674,10 +729,10 @@ def _build_pose_batch(
         for i, (bb, ci) in enumerate(zip(ann.boxes_xywh, ann.class_ids)):
             x, y, w, h = bb
             # xywh -> xyxy，缩放到目标坐标
-            x1 = (x * ratio + pad_x)
-            y1 = (y * ratio + pad_y)
-            x2 = ((x + w) * ratio + pad_x)
-            y2 = ((y + h) * ratio + pad_y)
+            x1 = x * ratio + pad_x
+            y1 = y * ratio + pad_y
+            x2 = (x + w) * ratio + pad_x
+            y2 = (y + h) * ratio + pad_y
             if x2 - x1 < 2 or y2 - y1 < 2:
                 continue
             boxes_xyxy.append([x1, y1, x2, y2])
@@ -697,11 +752,13 @@ def _build_pose_batch(
             else:
                 kpts_transformed.append([])
 
-        targets.append(_PosePreparedTarget(
-            boxes_xyxy=boxes_xyxy,
-            category_indexes=class_ids,
-            keypoints=kpts_transformed if kpts_transformed else None,
-        ))
+        targets.append(
+            _PosePreparedTarget(
+                boxes_xyxy=boxes_xyxy,
+                category_indexes=class_ids,
+                keypoints=kpts_transformed if kpts_transformed else None,
+            )
+        )
 
     if not images:
         return None, ()

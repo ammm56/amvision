@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo11_model_service import (
-    SqlAlchemyYolo11ModelService,
-    Yolo11TrainingOutputRegistration,
-)
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
@@ -26,7 +22,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 
 YOLO_PRIMARY_CLASSIFICATION_MODEL_SERVICE_MAP: dict[str, tuple[type, type]] = {
     "yolov8": (SqlAlchemyYoloV8ModelService, YoloV8TrainingOutputRegistration),
-    "yolo11": (SqlAlchemyYolo11ModelService, Yolo11TrainingOutputRegistration),
     "yolo26": (SqlAlchemyYolo26ModelService, Yolo26TrainingOutputRegistration),
 }
 
@@ -58,7 +53,9 @@ def register_yolo_primary_classification_training_output_model_version(
     - summary：训练摘要。
     """
 
-    service_cls, registration_cls = YOLO_PRIMARY_CLASSIFICATION_MODEL_SERVICE_MAP[model_type]
+    service_cls, registration_cls = YOLO_PRIMARY_CLASSIFICATION_MODEL_SERVICE_MAP[
+        model_type
+    ]
     model_service = service_cls(session_factory=session_factory)
     return model_service.register_training_output(
         registration_cls(

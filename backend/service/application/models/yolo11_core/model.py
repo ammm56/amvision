@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolo_detection_model import build_yolo_detection_model
-from backend.service.application.models.yolo11_core.config import get_yolo11_model_config
-from backend.service.application.models.yolo11_core.heads import YOLO11_HEAD_MODULES
+from backend.service.application.models.yolo11_core.config import (
+    get_yolo11_model_config,
+)
+from backend.service.application.models.yolo11_core.nn.model import (
+    build_yolo11_graph_model,
+)
 
 
 def build_yolo11_model(
@@ -21,10 +24,9 @@ def build_yolo11_model(
     model_config = get_yolo11_model_config(task_type=task_type)
     if model_config_overrides:
         model_config.update(model_config_overrides)
-    return build_yolo_detection_model(
+    return build_yolo11_graph_model(
         model_name=f"yolo11-{task_type}",
         model_scale=model_scale,
         num_classes=num_classes,
         model_config=model_config,
-        head_module_map=YOLO11_HEAD_MODULES,
     )

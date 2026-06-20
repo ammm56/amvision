@@ -57,12 +57,19 @@ from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND = "yolo-primary-classification-training"
-YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME = "yolo-primary-classification-trainings"
-YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY = "classification_training_control"
+YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME = (
+    "yolo-primary-classification-trainings"
+)
+YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY = (
+    "classification_training_control"
+)
+
 
 @dataclass(frozen=True)
 class YoloPrimaryClassificationTrainingTaskRequest:
@@ -125,7 +132,7 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             dataset_export=dataset_export,
             model_type=model_type,
         )
-        metadata = build_yolo_primary_classification_create_task_metadata(
+        metadata = self._build_create_task_metadata(
             request=request,
             dataset_export=dataset_export,
             model_type=model_type,
@@ -142,7 +149,7 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
                 metadata=metadata,
             )
         )
-        queue_payload = build_yolo_primary_classification_queue_payload(
+        queue_payload = self._build_queue_payload(
             task_id=created_task.task_id,
             task_kind=self.training_task_kind,
             task_spec=task_spec,
@@ -185,7 +192,8 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
         on_control_state_change: Callable[
             [YoloPrimaryClassificationTrainingControlState],
             None,
-        ] | None = None,
+        ]
+        | None = None,
     ) -> dict[str, object]:
         """执行 classification 训练工作负载。"""
 
@@ -219,7 +227,9 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
         temporary_best_checkpoint_path = self.dataset_storage.resolve(
             f"{output_prefix}/best-checkpoint.pt"
         )
-        latest_checkpoint_object_key = f"{output_prefix}/output-files/latest-checkpoint.pt"
+        latest_checkpoint_object_key = (
+            f"{output_prefix}/output-files/latest-checkpoint.pt"
+        )
         checkpoint_object_key = f"{output_prefix}/output-files/best-checkpoint.pt"
         train_metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
         validation_metrics_object_key = (
@@ -297,8 +307,8 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             savepoint_callback=on_savepoint,
         )
         try:
-            execution_result = run_yolo_primary_classification_training(request)
-        except YoloPrimaryClassificationTrainingTerminatedError:
+            execution_result = self._run_training_execution(request)
+        except self._terminated_error_types():
             cancelled_result = self._build_interrupted_result(
                 status="cancelled",
                 task_record=task_record,
@@ -321,7 +331,7 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
                 )
             )
             return cancelled_result
-        except YoloPrimaryClassificationTrainingPausedError:
+        except self._paused_error_types():
             paused_result = self._build_interrupted_result(
                 status="paused",
                 task_record=task_record,
@@ -480,7 +490,9 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
                 "当前 classification 训练不支持指定模型分类",
                 details={
                     "model_type": normalized,
-                    "supported": tuple(YOLO_PRIMARY_CLASSIFICATION_MODEL_SERVICE_MAP.keys()),
+                    "supported": tuple(
+                        YOLO_PRIMARY_CLASSIFICATION_MODEL_SERVICE_MAP.keys()
+                    ),
                 },
             )
         return normalized
@@ -500,10 +512,62 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             model_type=model_type,
         )
 
+    def _build_create_task_metadata(
+        self,
+        *,
+        request: YoloPrimaryClassificationTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        model_type: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 classification 训练 TaskRecord metadata。"""
+
+        return build_yolo_primary_classification_create_task_metadata(
+            request=request,
+            dataset_export=dataset_export,
+            model_type=model_type,
+            task_spec=task_spec,
+        )
+
+    def _build_queue_payload(
+        self,
+        *,
+        task_id: str,
+        task_kind: str,
+        task_spec: dict[str, object],
+    ) -> dict[str, object]:
+        """构建 classification 训练队列负载。"""
+
+        return build_yolo_primary_classification_queue_payload(
+            task_id=task_id,
+            task_kind=task_kind,
+            task_spec=task_spec,
+        )
+
     def _read_task_payload(self, task_record: TaskRecord) -> dict[str, object]:
         """从任务记录中解析训练负载。"""
 
         return read_yolo_primary_classification_task_payload(task_record)
+
+    def _run_training_execution(
+        self,
+        request: YoloPrimaryClassificationTrainingExecutionRequest,
+    ) -> YoloPrimaryClassificationTrainingExecutionResult:
+        """执行 primary classification 训练。"""
+
+        return run_yolo_primary_classification_training(request)
+
+    @staticmethod
+    def _terminated_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按取消处理的训练异常类型。"""
+
+        return (YoloPrimaryClassificationTrainingTerminatedError,)
+
+    @staticmethod
+    def _paused_error_types() -> tuple[type[BaseException], ...]:
+        """返回应按暂停处理的训练异常类型。"""
+
+        return (YoloPrimaryClassificationTrainingPausedError,)
 
     def _resolve_dataset_export(
         self,
@@ -596,7 +660,7 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             "input_size": list(input_size) if input_size is not None else None,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
-            "implementation_mode": YOLO_PRIMARY_CLASSIFICATION_IMPLEMENTATION_MODE,
+            "implementation_mode": self._resolve_implementation_mode(model_type),
             "training_config": training_config,
             "metrics_summary": metrics_summary,
             "output_files": output_files,
@@ -633,6 +697,12 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             summary=summary,
         )
 
+    @staticmethod
+    def _resolve_implementation_mode(model_type: str) -> str:
+        """按模型分类返回 classification 训练实现标记。"""
+
+        return YOLO_PRIMARY_CLASSIFICATION_IMPLEMENTATION_MODE
+
     def _build_interrupted_result(
         self,
         *,
@@ -650,15 +720,23 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
     ) -> dict[str, object]:
         """构建 paused 或 cancelled 状态下的任务结果。"""
 
-        if self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/latest-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 latest_checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/latest-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/latest-checkpoint.pt"
+                ).read_bytes(),
             )
-        if self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").is_file():
+        if self.dataset_storage.resolve(
+            f"{output_prefix}/best-checkpoint.pt"
+        ).is_file():
             self.dataset_storage.write_bytes(
                 checkpoint_object_key,
-                self.dataset_storage.resolve(f"{output_prefix}/best-checkpoint.pt").read_bytes(),
+                self.dataset_storage.resolve(
+                    f"{output_prefix}/best-checkpoint.pt"
+                ).read_bytes(),
             )
         return {
             "status": status,
@@ -691,7 +769,9 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             "progress_stage": finished_stage,
         }
 
-    def _read_control_state(self, task_id: str) -> YoloPrimaryClassificationTrainingControlState:
+    def _read_control_state(
+        self, task_id: str
+    ) -> YoloPrimaryClassificationTrainingControlState:
         """从任务 metadata 中读取最新控制状态。"""
 
         task = self.task_service.get_task(task_id).task
@@ -714,7 +794,9 @@ class SqlAlchemyYoloPrimaryClassificationTrainingTaskService:
             return
         self.task_service.update_task_metadata(task_id, updated_metadata)
 
-    def _set_control_flag(self, task_record: TaskRecord, flag: str, value: bool) -> None:
+    def _set_control_flag(
+        self, task_record: TaskRecord, flag: str, value: bool
+    ) -> None:
         """设置训练控制标记。"""
 
         metadata = dict(task_record.metadata) if task_record.metadata else {}
