@@ -80,14 +80,14 @@ YOLO 系列长期按下面五层理解：
 
 `backend/service/application/models/training/` 是应用层训练任务 helper 目录，不是模型 core 目录。
 
-- `yolo_primary_*` 表示普通 YOLO 旧过渡 helper，当前只允许服务尚未完全拆出的 `yolov8 / yolo26` 外层路径，不能再作为新 full core 的实现模板。
+- `yolo_primary_*` 表示普通 YOLO 旧过渡 helper，当前只允许服务尚未完全拆出的 `yolov8` 和少量历史外层路径继续使用，不能再作为新 full core 的实现模板。
 - `yolo11_*` 表示 YOLO11 已拆出的专属训练任务 helper；YOLO11 主执行路径不得再回到 `yolo_primary_*`。
 - `yolox_*` 表示 YOLOX detection 训练任务 helper，只服务 `yolox`。
 - `rfdetr_*` 表示 RF-DETR 训练任务 helper，只服务 `rfdetr`。
 - `yolo_primary_*` 可以处理 DatasetExport 校验、task payload、状态事件、输出登记、warm start 和对象存储写入，但不能实现模型结构、head、loss、assigner、decode、postprocess、export forward 或 deployment session。
 - `yolov8_core / yolo11_core / yolo26_core` 可以被训练任务 helper 调用，但不能反向 import `models/training`，避免模型 core 依赖数据库、队列、对象存储或任务状态。
 
-`yolo_primary_*` 中关于 YOLO11 的代码只能保留“明确拒绝旧入口”的防护，不得再放 YOLO11 的训练、评估、导出、postprocess 或 runtime 实现。后续 YOLO26 full core 也应按 YOLO11 的专属入口方式重写，而不是继续扩大 primary 过渡层。
+`yolo_primary_*` 中关于 YOLO11 / YOLO26 的代码只能保留“明确拒绝旧入口”的防护或历史外层兼容，不得再放模型专属训练、评估、导出、postprocess 或 runtime 实现。
 
 ## 完整 core 的含义
 
@@ -789,7 +789,7 @@ Pose 专属 loss / target 编码已开始下沉到共用边界：
 - `backend/service/application/models/yolov8_core/weights.py`、`yolo11_core/weights.py`、`yolo26_core/weights.py`：负责各模型代际的权重覆盖率、state_dict 加载和 checkpoint 文件加载正式入口。
 - `backend/service/application/models/yolo_core_common/export/plan.py`：负责 YOLO 主线 ONNX / ONNX optimized / OpenVINO IR / TensorRT engine 的导出目标和构建步骤说明。
 - `backend/service/application/models/yolo_core_common/export/execution.py`：负责 YOLO 主线 ONNX 导出执行、ONNXRuntime 数值校验、OpenVINO IR 构建产物检查和 TensorRT engine 构建产物检查。
-- `backend/service/application/models/yolov8_core/export/`：已承接 YOLOv8 自己的 export plan、ONNX 导出、ONNXRuntime 数值校验、OpenVINO IR 构建和 TensorRT engine 构建。`yolo11_core/export.py`、`yolo26_core/export.py` 仍是下一阶段过渡入口，后续按同一规则迁移为 `export/` 包。
+- `backend/service/application/models/yolov8_core/export/`、`backend/service/application/models/yolo11_core/export/`、`backend/service/application/models/yolo26_core/export/`：已分别承接各自模型的 export plan、ONNX 导出、ONNXRuntime 数值校验、OpenVINO IR 构建和 TensorRT engine 构建；各 task 的 export forward、输出名和 shape 规则放在对应 core 内，不再集中堆到 conversion runner 或单个 `export.py`。
 - `backend/workers/conversion/model_conversion_common.py`：负责 worker 侧共享的 ONNX 依赖导入、ONNX simplify、输出文件名前缀、conversion phase / options 摘要、OpenVINO / TensorRT 构建精度解析和转换脚本调用。该模块不放模型结构、head、loss 或 assigner。
 - `pose_loss.py` 继续保留完整 pose loss 组装入口，负责把 detection loss、pose loss、visibility loss 和 RLE loss 汇总成训练指标。
 
@@ -887,8 +887,8 @@ Pose 专属 loss / target 编码已开始下沉到共用边界：
 - 已完成本批：`rfdetr_core/runtime.py` 已承接 runtime 语义入口，统一处理 RF-DETR deployment 使用的输入尺寸对齐、输出名解析、detection / segmentation 后处理和 segmentation mask 单通道规整；runtime predictor 只保留 session、backend adapter、buffer、执行计时和结果序列化。
 - 已完成本批：`training/rfdetr_detection.py`、`training/rfdetr_segmentation.py` 已切到 `rfdetr_core/training/platform_runner.py`，旧手写 loss、matcher、mask loss 和 eval 逻辑已删除。
 - 已完成本批：YOLOX 纵向闭环已收成 detection full core。旧 COCO DatasetExport 重复块已删除，COCO / VOC DatasetExport 训练与评估入口已统一到 `yolox_core/data/datasets/detection.py`，checkpoint state、EMA、scheduler、resume 校验、训练 loop、验证评估编排、conversion export、runtime detection 后处理和 YOLOX 预览画框已分别进入 `yolox_core/training`、`evaluators`、`export` 和 `postprocess`。YOLOX deployment session 已拆到 `runtime/predictors/yolox*.py`，detection 共享 helper 已移到 `runtime/support/detection.py`。
-- 后续批次：YOLOv8、YOLO11 和 YOLO26 已完成五任务短链路验收，后续只继续清 service / worker / runtime 外壳与更长时间运行基线；YOLO26 已开始按 full core 模板重写，第一批已落地 `cfg`、`decode`、`nn/modules` 和 `nn/tasks`，并切断模型结构入口对 `yolo_primary_detection_model.py` 与根目录 `yolo_detection_model.py` 的依赖。YOLO26 detection、classification、segmentation、pose 和 OBB 已完成第一段纵向切断：训练执行、service、task helper、core data / loss / target / assigner / training / evaluation / inference / postprocess、conversion 输出名和 runtime backend session 都已进入 YOLO26 专属路径；classification、segmentation、pose、OBB 的 task kind / queue 已分别收为 `yolo26-*`，旧根目录 `runtime/yolo26_classification_predictor.py`、`runtime/yolo26_segmentation_predictor.py`、`runtime/yolo26_pose_predictor.py`、`runtime/yolo26_obb_predictor.py` 已删除。2026-06-20 已用真实数据跑通 YOLO26 detection / classification / segmentation / pose / OBB 的 DatasetImport、DatasetExport、1 epoch 短训练、evaluation、ONNX / OpenVINO / TensorRT 转换、deployment sync / async 推理和 stop/reset，结果记录在 `.tmp/yolo-primary-full-chain-smoke/20260620211256/result.json`；本批已继续清理 YOLO26 detection 根目录 predictor、普通 YOLO runtime target 和 serialization 平铺文件。
-- runtime 目录整理当前已完成 RF-DETR 第一层、YOLOX predictor 第一层、YOLOv8 / YOLO11 五类 predictor 拆分，以及 YOLO26 五类 predictor 拆分：`runtime/predictors/rfdetr*.py`、`runtime/predictors/yolox*.py`、`runtime/predictors/yolov8*.py`、`runtime/predictors/yolo11*.py`、`runtime/predictors/yolo26_detection.py`、`runtime/predictors/yolo26_classification*.py`、`runtime/predictors/yolo26_segmentation*.py`、`runtime/predictors/yolo26_pose*.py`、`runtime/predictors/yolo26_obb*.py`、`runtime/targets/rfdetr.py`、`runtime/targets/yolov8.py`、`runtime/targets/yolo11.py`、`runtime/targets/yolo26.py`、`runtime/contracts/*.py`、`runtime/serialization/*.py`、`runtime/support/tensorrt_runtime.py` 和 `runtime/support/detection.py` 已从平铺目录拆出；后续继续按模型纵向闭环清少量根目录过渡外壳。
+- 后续批次：YOLOv8、YOLO11 和 YOLO26 已完成五任务短链路验收，后续只继续清 service / worker / runtime 外壳与更长时间运行基线；YOLO26 已按 full core 模板完成第一轮纵向切断，`cfg`、`decode`、`nn/modules`、`nn/tasks`、data、loss、target、assigner、training、evaluation、inference、postprocess、export 和 runtime backend session 都已进入 YOLO26 专属路径，并切断模型结构入口对 `yolo_primary_detection_model.py` 与根目录 `yolo_detection_model.py` 的依赖。classification、segmentation、pose、OBB 的 task kind / queue 已分别收为 `yolo26-*`，旧根目录 `runtime/yolo26_classification_predictor.py`、`runtime/yolo26_segmentation_predictor.py`、`runtime/yolo26_pose_predictor.py`、`runtime/yolo26_obb_predictor.py` 已删除。2026-06-20 已用真实数据跑通 YOLO26 detection / classification / segmentation / pose / OBB 的 DatasetImport、DatasetExport、1 epoch 短训练、evaluation、ONNX / OpenVINO / TensorRT 转换、deployment sync / async 推理和 stop/reset，结果记录在 `.tmp/yolo-primary-full-chain-smoke/20260620211256/result.json`；随后继续完成 YOLO26 detection runtime backend 拆分、`yolo26_core/export/` 拆包和 conversion service 中性化。
+- runtime 目录整理当前已完成 RF-DETR 第一层、YOLOX predictor 第一层、YOLOv8 / YOLO11 五类 predictor 拆分，以及 YOLO26 五类 predictor拆分：`runtime/predictors/rfdetr*.py`、`runtime/predictors/yolox*.py`、`runtime/predictors/yolov8*.py`、`runtime/predictors/yolo11*.py`、`runtime/predictors/yolo26_detection*.py`、`runtime/predictors/yolo26_classification*.py`、`runtime/predictors/yolo26_segmentation*.py`、`runtime/predictors/yolo26_pose*.py`、`runtime/predictors/yolo26_obb*.py`、`runtime/targets/rfdetr.py`、`runtime/targets/yolov8.py`、`runtime/targets/yolo11.py`、`runtime/targets/yolo26.py`、`runtime/contracts/*.py`、`runtime/serialization/*.py`、`runtime/support/tensorrt_runtime.py` 和 `runtime/support/detection.py` 已从平铺目录拆出；后续继续按模型纵向闭环清少量根目录过渡外壳。
 - RF-DETR：不再继续把轻量实现当长期目标，后续重点转为真实使用训练调试、多 backend 部署验收、release/full 常驻基线和 runtime 目录平铺结构整理。
 - 全链路切换：每个 core 包最终必须通过数据集导入/导出、训练、验证、评估、转换、deployment sync/async、推理、workflow invoke 和前端创建任务查看结果。
 

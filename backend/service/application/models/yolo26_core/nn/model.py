@@ -421,7 +421,7 @@ def _resolve_model_config_argument(
     num_classes: int,
     model_config: dict[str, object],
 ) -> object:
-    """把配置里的占位参数替换成当前模型实例的真实值。"""
+    """把配置里的符号参数替换成当前模型实例的真实值。"""
 
     if value == "nc":
         return int(num_classes)

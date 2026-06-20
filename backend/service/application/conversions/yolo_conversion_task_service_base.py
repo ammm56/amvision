@@ -10,9 +10,9 @@ from uuid import uuid4
 from backend.queue import QueueBackend
 from backend.service.application.backends import ConversionBackend, DetectionConversionPlanStep
 from backend.service.application.conversions.conversion_result_snapshot import ConversionResultSnapshot
-from backend.service.application.conversions.yolox_conversion_planner import (
-    YoloXConversionPlan,
-    YoloXConversionPlanningRequest,
+from backend.service.application.conversions.yolo_model_conversion_planner import (
+    YoloModelConversionPlan,
+    YoloModelConversionTarget,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -40,13 +40,12 @@ from backend.service.application.tasks.task_service import (
     TaskQueryFilters,
 )
 from backend.service.domain.tasks.task_records import TaskRecord, TaskRecordState
-from backend.service.domain.tasks.yolox_task_specs import YoloXConversionTaskSpec, YoloXConversionTarget
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolox_conversion_runner import (
-    YoloXConversionOutput,
-    YoloXConversionRunRequest,
-    YoloXConversionRunResult,
+from backend.workers.conversion.yolo_model_conversion_runner import (
+    YoloModelConversionOutput,
+    YoloModelConversionRunRequest,
+    YoloModelConversionRunResult,
 )
 
 
@@ -63,7 +62,7 @@ class YoloConversionTaskRequest:
 
     project_id: str
     source_model_version_id: str
-    target_formats: tuple[YoloXConversionTarget, ...]
+    target_formats: tuple[YoloModelConversionTarget, ...]
     runtime_profile_id: str | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
 
@@ -77,7 +76,19 @@ class YoloConversionTaskSubmission:
     queue_name: str
     queue_task_id: str
     source_model_version_id: str
-    target_formats: tuple[YoloXConversionTarget, ...]
+    target_formats: tuple[YoloModelConversionTarget, ...]
+
+
+@dataclass(frozen=True)
+class YoloConversionTaskSpec:
+    """描述 YOLO 系列转换任务的规格。"""
+
+    project_id: str
+    source_model_version_id: str
+    target_formats: tuple[YoloModelConversionTarget, ...]
+    runtime_profile_id: str | None = None
+    planned_steps: tuple[dict[str, object], ...] = ()
+    extra_options: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -344,7 +355,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         dataset_storage.write_json(plan_object_key, self._resolve_serialize_plan()(plan))
         try:
             run_result = conversion_runner.run_conversion(
-                YoloXConversionRunRequest(
+                YoloModelConversionRunRequest(
                     conversion_task_id=task_id,
                     source_runtime_target=source_runtime_target,
                     target_formats=plan.target_formats,
@@ -572,10 +583,10 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         *,
         request: YoloConversionTaskRequest,
         plan: object,
-    ) -> YoloXConversionTaskSpec:
+    ) -> YoloConversionTaskSpec:
         """构建持久化到 TaskRecord 的转换任务规格。"""
 
-        return YoloXConversionTaskSpec(
+        return YoloConversionTaskSpec(
             project_id=request.project_id,
             source_model_version_id=request.source_model_version_id,
             target_formats=tuple(plan.target_formats),
@@ -610,7 +621,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
 
     def _build_backend_plan_steps(
         self,
-        plan: YoloXConversionPlan,
+        plan: YoloModelConversionPlan,
     ) -> tuple[DetectionConversionPlanStep, ...]:
         """把内部转换计划转换为后端执行步骤。"""
 
@@ -632,7 +643,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         source_model_version_id: str,
         runtime_profile_id: str | None,
         conversion_task_id: str,
-        outputs: tuple[YoloXConversionOutput, ...],
+        outputs: tuple[YoloModelConversionOutput, ...],
     ) -> tuple[YoloConversionBuildSummary, ...]:
         """把 runner 产出的 build 文件登记为 ModelBuild。"""
 
@@ -748,9 +759,9 @@ class SqlAlchemyYoloConversionTaskServiceBase:
     def _build_report_summary(
         self,
         *,
-        plan: YoloXConversionPlan,
+        plan: YoloModelConversionPlan,
         source_runtime_target: RuntimeTargetSnapshot,
-        run_result: YoloXConversionRunResult,
+        run_result: YoloModelConversionRunResult,
         build_summaries: tuple[YoloConversionBuildSummary, ...],
         requested_target_formats: tuple[str, ...],
         output_files: DetectionConversionOutputFiles,
@@ -854,7 +865,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         return datetime.now(timezone.utc).isoformat()
 
 
-def serialize_yolo_conversion_task_spec(task_spec: YoloXConversionTaskSpec) -> dict[str, object]:
+def serialize_yolo_conversion_task_spec(task_spec: YoloConversionTaskSpec) -> dict[str, object]:
     """把转换任务规格序列化为 TaskRecord.task_spec。"""
 
     return {
@@ -867,7 +878,7 @@ def serialize_yolo_conversion_task_spec(task_spec: YoloXConversionTaskSpec) -> d
     }
 
 
-def deserialize_yolo_conversion_task_spec(payload: dict[str, object]) -> YoloXConversionTaskSpec:
+def deserialize_yolo_conversion_task_spec(payload: dict[str, object]) -> YoloConversionTaskSpec:
     """从 TaskRecord.task_spec 恢复转换任务规格。"""
 
     project_id = _require_payload_str(payload, "project_id")
@@ -880,7 +891,7 @@ def deserialize_yolo_conversion_task_spec(payload: dict[str, object]) -> YoloXCo
         raise InvalidRequestError("转换任务缺少 planned_steps")
     runtime_profile_id = _read_optional_payload_str(payload, "runtime_profile_id")
     extra_options = payload.get("extra_options")
-    return YoloXConversionTaskSpec(
+    return YoloConversionTaskSpec(
         project_id=project_id,
         source_model_version_id=source_model_version_id,
         target_formats=tuple(

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from backend.queue.local_file_queue import LocalFileQueueSettings
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -64,7 +63,7 @@ def test_yolo_primary_training_workers_use_keyword_only_claim_next(
 
     try:
         assert worker.run_once() is False
-        assert len(queue_backend.calls) == 1
-        assert queue_backend.calls[0][1] == worker_id
+        assert len(queue_backend.calls) == 2
+        assert {call[1] for call in queue_backend.calls} == {worker_id}
     finally:
         session_factory.engine.dispose()

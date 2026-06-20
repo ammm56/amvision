@@ -9,11 +9,11 @@ from backend.service.application.conversions.yolo26_conversion_planner import (
     deserialize_yolo26_conversion_plan,
     serialize_yolo26_conversion_plan,
 )
-from backend.service.application.conversions.yolo_primary_conversion_task_service import (
-    SqlAlchemyYoloPrimaryConversionTaskService,
-    YoloPrimaryConversionBuildSummary as Yolo26ConversionBuildSummary,
-    YoloPrimaryConversionTaskRequest as Yolo26ConversionTaskRequest,
-    YoloPrimaryConversionTaskResult as Yolo26ConversionTaskResult,
+from backend.service.application.conversions.yolo_model_conversion_task_service import (
+    SqlAlchemyYoloModelConversionTaskService,
+    YoloConversionBuildSummary as Yolo26ConversionBuildSummary,
+    YoloConversionTaskRequest as Yolo26ConversionTaskRequest,
+    YoloConversionTaskResult as Yolo26ConversionTaskResult,
 )
 from backend.service.application.models.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
@@ -28,8 +28,8 @@ YOLO26_CONVERSION_TASK_KIND = "yolo26-conversion"
 YOLO26_CONVERSION_QUEUE_NAME = "yolo26-conversions"
 
 
-class SqlAlchemyYolo26ConversionTaskService(SqlAlchemyYoloPrimaryConversionTaskService):
-    """基于 detection 公共链路实现的 YOLO26 转换任务服务。"""
+class SqlAlchemyYolo26ConversionTaskService(SqlAlchemyYoloModelConversionTaskService):
+    """基于 YOLO 系列共享链路实现的 YOLO26 转换任务服务。"""
 
     model_type = "yolo26"
     model_label = "YOLO26"
