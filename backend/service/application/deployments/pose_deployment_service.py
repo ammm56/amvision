@@ -16,7 +16,7 @@ from backend.service.application.pose_backend_registry import get_pose_backend_r
 from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
 from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 
 @dataclass(frozen=True)

@@ -131,7 +131,7 @@ from backend.service.application.models.training.yolo_primary_segmentation_train
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.runtime.targets.yolo11 import (

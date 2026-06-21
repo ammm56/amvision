@@ -13,8 +13,8 @@ from backend.service.application.errors import ResourceNotFoundError
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.runtime.deployment_events import DetectionDeploymentProcessEvent
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_events import DetectionDeploymentProcessEvent
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
     DeploymentProcessKeepWarmStatus,

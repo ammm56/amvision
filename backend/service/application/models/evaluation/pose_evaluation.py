@@ -16,9 +16,9 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.pose_model_runtime import DefaultPoseModelRuntime
+from backend.service.application.runtime.tasks.pose_model_runtime import DefaultPoseModelRuntime
 from backend.service.application.runtime.contracts.pose import PosePredictionRequest
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

@@ -7,7 +7,7 @@ from threading import RLock
 
 from backend.contracts.workflows import TriggerResultContract
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.runtime.safe_counter import (
+from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,

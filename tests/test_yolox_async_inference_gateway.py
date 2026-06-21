@@ -14,13 +14,13 @@ from backend.service.application.models.inference.detection_async_inference_gate
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     QueueBackedDetectionAsyncInferenceClient,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
 from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,

@@ -16,7 +16,7 @@ from backend.service.application.models.evaluation.detection_evaluation import (
 from backend.service.application.models.yolo11_core.postprocess.detection import (
     YOLO11_DETECTION_POSTPROCESS_MODE_NMS,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )

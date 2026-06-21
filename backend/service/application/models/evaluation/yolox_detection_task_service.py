@@ -29,7 +29,7 @@ from backend.service.application.models.evaluation.yolox_detection_task_types im
     YoloXEvaluationTaskResult,
     YoloXEvaluationTaskSubmission,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     SqlAlchemyRuntimeTargetResolver,

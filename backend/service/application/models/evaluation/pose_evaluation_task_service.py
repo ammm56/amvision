@@ -30,7 +30,7 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11PoseEvaluationRequest,
     run_yolo11_pose_evaluation,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
 )

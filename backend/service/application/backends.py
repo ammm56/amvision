@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 
 
 @dataclass(frozen=True)

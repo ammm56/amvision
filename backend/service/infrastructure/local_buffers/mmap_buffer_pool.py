@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.safe_counter import (
+from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,

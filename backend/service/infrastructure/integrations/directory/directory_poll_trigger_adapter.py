@@ -14,7 +14,7 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ServiceConfigurationError,
 )
-from backend.service.application.runtime.safe_counter import (
+from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,

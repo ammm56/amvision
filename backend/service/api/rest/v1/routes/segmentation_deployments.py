@@ -34,7 +34,7 @@ from backend.service.application.models.inference.segmentation_async_inference_g
 )
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory

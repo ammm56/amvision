@@ -10,7 +10,7 @@ from uuid import uuid4
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.project_public_files import resolve_public_project_file_reference
-from backend.service.application.runtime.pose_model_runtime import (
+from backend.service.application.runtime.tasks.pose_model_runtime import (
     DefaultPoseModelRuntime,
 )
 from backend.service.application.runtime.contracts.pose import (
@@ -29,7 +29,7 @@ from backend.service.application.runtime.targets.yolo26 import (
 from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     normalize_device_name as normalize_runtime_target_device_name,

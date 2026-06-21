@@ -78,8 +78,8 @@ def test_rfdetr_imports():
     from backend.service.application.models.training.yolo_primary_segmentation_training_service import SqlAlchemyYoloPrimarySegmentationTrainingTaskService
     from backend.service.application.models.training.rfdetr_detection_task_service import SqlAlchemyRfdetrTrainingTaskService
     from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService
-    from backend.service.application.runtime.predictors.rfdetr import PyTorchRfdetrRuntimeSession
-    from backend.service.application.runtime.predictors.rfdetr_segmentation import (
+    from backend.service.application.runtime.predictors.rfdetr.detection import PyTorchRfdetrRuntimeSession
+    from backend.service.application.runtime.predictors.rfdetr.segmentation import (
         PyTorchRfdetrSegmentationRuntimeSession,
     )
     from backend.service.application.runtime.targets.rfdetr import SqlAlchemyRfdetrRuntimeTargetResolver
@@ -134,7 +134,7 @@ def test_rfdetr_postprocess_uses_flattened_query_class_topk() -> None:
 def test_rfdetr_detection_builder_skips_background_class() -> None:
     """验证 RF-DETR runtime 不把 background/no-object 输出为检测结果。"""
 
-    from backend.service.application.runtime.predictors.rfdetr_detection_result import (
+    from backend.service.application.runtime.predictors.rfdetr.detection.result import (
         build_rfdetr_detections,
     )
 
@@ -180,11 +180,11 @@ def test_rfdetr_tensorrt_runtime_load_uses_cuda_python(monkeypatch, tmp_path):
 
     import numpy as np
 
-    from backend.service.application.runtime.predictors import rfdetr as predictor_module
-    from backend.service.application.runtime.predictors import (
-        rfdetr_tensorrt_detection as tensorrt_session_module,
+    from backend.service.application.runtime.predictors.rfdetr import detection as predictor_module
+    from backend.service.application.runtime.predictors.rfdetr.detection import (
+        tensorrt as tensorrt_session_module,
     )
-    from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+    from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
     from backend.service.infrastructure.object_store.local_dataset_storage import (
         DatasetStorageSettings,
         LocalDatasetStorage,
@@ -329,7 +329,7 @@ def test_rfdetr_detection_result_uses_detection_session_info_contract() -> None:
     from backend.service.application.runtime.contracts.detection import (
         DetectionRuntimeTensorSpec,
     )
-    from backend.service.application.runtime.predictors.rfdetr_detection_result import (
+    from backend.service.application.runtime.predictors.rfdetr.detection.result import (
         build_rfdetr_detection_result,
     )
 

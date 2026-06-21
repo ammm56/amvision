@@ -35,7 +35,7 @@ from backend.service.application.models.inference.detection_inference_payloads i
     serialize_detection_normalized_inference_input,
 )
 from backend.service.application.project_public_files import resolve_public_project_file_reference
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessRuntimeBehavior,
     DeploymentProcessSupervisor,
@@ -47,7 +47,7 @@ from backend.service.application.runtime.serialization.detection import (
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,

@@ -7,7 +7,7 @@ from backend.service.application.model_type_support import require_platform_mode
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.runtime.targets.yolo11 import (

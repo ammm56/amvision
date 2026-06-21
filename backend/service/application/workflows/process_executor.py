@@ -16,7 +16,7 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError, ServiceError
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.graph_executor import (

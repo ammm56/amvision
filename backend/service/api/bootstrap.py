@@ -84,7 +84,7 @@ from backend.service.application.workflows.service_node_runtime import (
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )

@@ -20,7 +20,7 @@ from backend.service.application.local_buffers.local_buffer_client import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
 )
-from backend.service.application.runtime.safe_counter import (
+from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,

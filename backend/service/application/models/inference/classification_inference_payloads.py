@@ -26,7 +26,7 @@ from backend.service.application.runtime.serialization.classification import (
     serialize_classification_category,
     serialize_classification_runtime_session_info,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 
 
 @dataclass(frozen=True)

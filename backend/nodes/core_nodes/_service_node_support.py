@@ -11,7 +11,7 @@ from backend.service.application.deployments.deployment_instance_service import 
     DeploymentInstanceView,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessHealth,
     DeploymentProcessKeepWarmStatus,

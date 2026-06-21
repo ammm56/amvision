@@ -26,7 +26,7 @@ from backend.service.application.models.yolov8_core.evaluation import (
     YoloV8SegmentationEvaluationRequest,
     run_yolov8_segmentation_evaluation,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
 )

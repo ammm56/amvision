@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"

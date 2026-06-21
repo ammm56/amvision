@@ -36,7 +36,7 @@ from backend.service.application.models.yolov8_core.evaluation import (
     YoloV8DetectionEvaluationRequest,
     run_yolov8_detection_evaluation,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.tasks.task_service import (

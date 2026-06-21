@@ -51,7 +51,7 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory

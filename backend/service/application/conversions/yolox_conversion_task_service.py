@@ -28,7 +28,7 @@ from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.workers.conversion.yolox_conversion_runner import (

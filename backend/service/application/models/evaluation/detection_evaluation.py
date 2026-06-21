@@ -11,13 +11,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.detection_model_runtime import (
+from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
 from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

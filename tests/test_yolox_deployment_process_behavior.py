@@ -8,16 +8,16 @@ from threading import Thread
 from backend.service.application.deployments.deployment_instance_service import (
     _resolve_process_runtime_behavior,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessRuntimeBehavior,
 )
-from backend.service.application.runtime.safe_counter import (
+from backend.service.application.runtime.support.safe_counter import (
     JSON_SAFE_INTEGER_MAX,
     SafeCounterState,
     increment_safe_counter,
 )
-from backend.service.application.runtime.deployment_process_worker import (
+from backend.service.application.runtime.deployment.deployment_process_worker import (
     _DeploymentWarmupBehavior,
     _KeepWarmState,
     _LocalBufferBrokerRuntimeHealth,
@@ -27,11 +27,11 @@ from backend.service.application.runtime.deployment_process_worker import (
     _snapshot_local_buffer_health,
     _snapshot_keep_warm_state,
 )
-from backend.service.application.runtime.deployment_runtime_pool import (
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePoolConfig,
 )
 from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
 

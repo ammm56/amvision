@@ -10,13 +10,13 @@ import time
 from dataclasses import dataclass, field
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.classification_model_runtime import (
+from backend.service.application.runtime.tasks.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
 from backend.service.application.runtime.contracts.classification import (
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

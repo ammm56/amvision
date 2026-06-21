@@ -10,11 +10,11 @@ from backend.service.application.detection_backend_registry import (
     DETECTION_BACKEND_STATUS_ACTIVE,
     get_detection_backend_registration,
 )
-import backend.service.application.runtime.predictors.yolov8_detection as yolov8_detection_module
-from backend.service.application.runtime.detection_model_runtime import (
+import backend.service.application.runtime.predictors.yolov8.detection as yolov8_detection_module
+from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,

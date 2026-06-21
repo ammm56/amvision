@@ -8,7 +8,7 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolov8_core.model import build_yolov8_model
 from backend.service.application.models.yolov8_core.weights import load_yolov8_checkpoint_file
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

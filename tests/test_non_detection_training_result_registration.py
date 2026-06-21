@@ -60,7 +60,7 @@ from backend.service.application.models.training.yolo_primary_segmentation_train
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.runtime.targets.yolo11 import (

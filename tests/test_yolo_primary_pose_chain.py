@@ -9,7 +9,7 @@ import torch
 
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
 from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.runtime.predictors.yolov8_pose_postprocess import (
+from backend.service.application.runtime.predictors.yolov8.pose.postprocess import (
     build_yolov8_pose_runtime_instances,
 )
 
@@ -125,7 +125,7 @@ def test_pose_runtime_contracts_importable():
 
 
 def test_pose_predictor_classes_importable():
-    from backend.service.application.runtime.predictors.yolov8_pose import (
+    from backend.service.application.runtime.predictors.yolov8.pose import (
         OnnxRuntimeYoloV8PoseRuntimeSession,
         OpenVINOYoloV8PoseRuntimeSession,
         PyTorchYoloV8PoseRuntimeSession,
@@ -139,7 +139,7 @@ def test_pose_predictor_classes_importable():
 
 
 def test_pose_model_runtime_importable():
-    from backend.service.application.runtime.pose_model_runtime import (
+    from backend.service.application.runtime.tasks.pose_model_runtime import (
         DefaultPoseModelRuntime, PoseModelRuntimeRegistry,
     )
 

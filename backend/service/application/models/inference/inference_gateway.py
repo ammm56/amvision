@@ -10,15 +10,15 @@ from uuid import uuid4
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceError
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessRuntimeBehavior,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
 )
-from backend.service.application.runtime.task_prediction_runtime import (
+from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionRequest,
     deserialize_prediction_execution_result,
     serialize_prediction_execution_result,

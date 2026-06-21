@@ -16,7 +16,7 @@ from backend.service.application.obb_backend_registry import get_obb_backend_reg
 from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
 from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
 from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 
 @dataclass(frozen=True)

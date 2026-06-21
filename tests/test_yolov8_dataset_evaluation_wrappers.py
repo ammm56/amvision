@@ -345,7 +345,7 @@ def test_obb_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> No
             )
 
     monkeypatch.setattr(
-        "backend.service.application.runtime.obb_model_runtime.DefaultObbModelRuntime",
+        "backend.service.application.runtime.tasks.obb_model_runtime.DefaultObbModelRuntime",
         FakeRuntime,
     )
 

@@ -26,7 +26,7 @@ from backend.service.application.models.inference.task_native_inference_task_ser
 from backend.service.domain.tasks.inference_task_specs import (
     ClassificationInferenceTaskSpec,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     serialize_runtime_target_snapshot,
 )
 from backend.service.application.models.inference.detection_inference_task_service import (

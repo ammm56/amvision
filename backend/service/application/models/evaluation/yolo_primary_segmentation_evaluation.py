@@ -18,13 +18,13 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.segmentation_model_runtime import (
+from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
 from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

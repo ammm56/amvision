@@ -12,7 +12,7 @@ from backend.service.application.runtime.contracts.detection import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,

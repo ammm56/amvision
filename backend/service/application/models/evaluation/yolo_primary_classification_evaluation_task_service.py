@@ -25,7 +25,7 @@ from backend.service.application.models.evaluation.yolo_primary_classification_e
     ClassificationEvaluationRequest,
     run_yolo_primary_classification_evaluation,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
 )

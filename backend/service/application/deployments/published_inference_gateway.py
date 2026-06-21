@@ -21,7 +21,7 @@ from backend.service.application.runtime.serialization.classification import (
     serialize_classification_category,
     serialize_classification_runtime_session_info,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.contracts.detection import (

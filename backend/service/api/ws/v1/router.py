@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -26,8 +25,8 @@ from backend.service.application.project_summary import (
     get_supported_project_summary_topics,
     normalize_project_summary_topic,
 )
-from backend.service.application.runtime.deployment_event_source import DetectionDeploymentEventSource
-from backend.service.application.runtime.deployment_events import (
+from backend.service.application.runtime.deployment.deployment_event_source import DetectionDeploymentEventSource
+from backend.service.application.runtime.deployment.deployment_events import (
     DetectionDeploymentProcessEvent,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters

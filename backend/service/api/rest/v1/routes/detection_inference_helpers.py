@@ -15,7 +15,7 @@ from backend.service.application.models.inference.detection_inference_payloads i
     DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     DetectionInferenceInputSource,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from starlette.datastructures import FormData

@@ -36,10 +36,10 @@ from backend.service.application.models.inference.detection_async_inference_gate
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.deployment_event_source import DetectionDeploymentEventSource
+from backend.service.application.runtime.deployment.deployment_event_source import DetectionDeploymentEventSource
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 

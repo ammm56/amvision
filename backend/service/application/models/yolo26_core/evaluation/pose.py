@@ -21,7 +21,7 @@ from backend.service.application.models.yolo26_core.data import (
 from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_pose_postprocess_instances,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,

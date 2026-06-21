@@ -9,7 +9,7 @@ from backend.service.application.models.evaluation.detection_evaluation import (
     DetectionEvaluationResult,
     run_detection_evaluation,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

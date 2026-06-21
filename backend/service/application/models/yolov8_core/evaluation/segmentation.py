@@ -25,13 +25,13 @@ from backend.service.application.models.yolov8_core.postprocess import (
     normalize_yolov8_segmentation_outputs,
     postprocess_yolov8_segmentation_prediction_array,
 )
-from backend.service.application.runtime.segmentation_model_runtime import (
+from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
 from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 

@@ -32,7 +32,7 @@ from backend.service.application.deployments import (
     PublishedInferenceGatewayEventChannel,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event

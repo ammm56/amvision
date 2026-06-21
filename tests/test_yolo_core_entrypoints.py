@@ -308,31 +308,31 @@ from backend.service.application.models.training.yolo_primary_obb_training impor
     run_yolo_primary_obb_training,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.predictors.yolo11_classification import (
+from backend.service.application.runtime.predictors.yolo11.classification import (
     OnnxRuntimeYolo11ClassificationRuntimeSession,
     OpenVINOYolo11ClassificationRuntimeSession,
     PyTorchYolo11ClassificationRuntimeSession,
     TensorRTYolo11ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo26_classification import (
+from backend.service.application.runtime.predictors.yolo26.classification import (
     OnnxRuntimeYolo26ClassificationRuntimeSession,
     OpenVINOYolo26ClassificationRuntimeSession,
     PyTorchYolo26ClassificationRuntimeSession,
     TensorRTYolo26ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo26_segmentation import (
+from backend.service.application.runtime.predictors.yolo26.segmentation import (
     OnnxRuntimeYolo26SegmentationRuntimeSession,
     OpenVINOYolo26SegmentationRuntimeSession,
     PyTorchYolo26SegmentationRuntimeSession,
     TensorRTYolo26SegmentationRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo26_pose import (
+from backend.service.application.runtime.predictors.yolo26.pose import (
     OnnxRuntimeYolo26PoseRuntimeSession,
     OpenVINOYolo26PoseRuntimeSession,
     PyTorchYolo26PoseRuntimeSession,
     TensorRTYolo26PoseRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo26_obb import (
+from backend.service.application.runtime.predictors.yolo26.obb import (
     OnnxRuntimeYolo26ObbRuntimeSession,
     OpenVINOYolo26ObbRuntimeSession,
     PyTorchYolo26ObbRuntimeSession,
@@ -445,25 +445,25 @@ from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
 )
 from backend.service.application.runtime.support.detection import batched_nms_indices
-from backend.service.application.runtime.predictors.yolo11_detection import (
+from backend.service.application.runtime.predictors.yolo11.detection import (
     OnnxRuntimeYolo11RuntimeSession,
     OpenVINOYolo11RuntimeSession,
     PyTorchYolo11RuntimeSession,
     TensorRTYolo11RuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo11_obb import (
+from backend.service.application.runtime.predictors.yolo11.obb import (
     OnnxRuntimeYolo11ObbRuntimeSession,
     OpenVINOYolo11ObbRuntimeSession,
     PyTorchYolo11ObbRuntimeSession,
     TensorRTYolo11ObbRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo11_pose import (
+from backend.service.application.runtime.predictors.yolo11.pose import (
     OnnxRuntimeYolo11PoseRuntimeSession,
     OpenVINOYolo11PoseRuntimeSession,
     PyTorchYolo11PoseRuntimeSession,
     TensorRTYolo11PoseRuntimeSession,
 )
-from backend.service.application.runtime.predictors.yolo11_segmentation import (
+from backend.service.application.runtime.predictors.yolo11.segmentation import (
     OnnxRuntimeYolo11SegmentationRuntimeSession,
     OpenVINOYolo11SegmentationRuntimeSession,
     PyTorchYolo11SegmentationRuntimeSession,
@@ -1513,16 +1513,16 @@ def test_yolo11_classification_runtime_uses_model_specific_sessions() -> None:
     """验证 YOLO11 classification runtime 入口不再来自旧 primary predictor。"""
 
     assert PyTorchYolo11ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_classification_pytorch"
+        "runtime.predictors.yolo11.classification.pytorch"
     )
     assert OnnxRuntimeYolo11ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_classification_onnxruntime"
+        "runtime.predictors.yolo11.classification.onnxruntime"
     )
     assert OpenVINOYolo11ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_classification_openvino"
+        "runtime.predictors.yolo11.classification.openvino"
     )
     assert TensorRTYolo11ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_classification_tensorrt"
+        "runtime.predictors.yolo11.classification.tensorrt"
     )
 
 
@@ -1530,16 +1530,16 @@ def test_yolo26_classification_runtime_uses_model_specific_sessions() -> None:
     """验证 YOLO26 classification runtime 入口不再来自旧 primary predictor。"""
 
     assert PyTorchYolo26ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_classification_pytorch"
+        "runtime.predictors.yolo26.classification.pytorch"
     )
     assert OnnxRuntimeYolo26ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_classification_onnxruntime"
+        "runtime.predictors.yolo26.classification.onnxruntime"
     )
     assert OpenVINOYolo26ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_classification_openvino"
+        "runtime.predictors.yolo26.classification.openvino"
     )
     assert TensorRTYolo26ClassificationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_classification_tensorrt"
+        "runtime.predictors.yolo26.classification.tensorrt"
     )
 
 
@@ -1547,16 +1547,16 @@ def test_yolo26_segmentation_runtime_uses_model_specific_sessions() -> None:
     """验证 YOLO26 segmentation runtime 入口不再来自旧 primary predictor。"""
 
     assert PyTorchYolo26SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_segmentation_pytorch"
+        "runtime.predictors.yolo26.segmentation.pytorch"
     )
     assert OnnxRuntimeYolo26SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_segmentation_onnxruntime"
+        "runtime.predictors.yolo26.segmentation.onnxruntime"
     )
     assert OpenVINOYolo26SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_segmentation_openvino"
+        "runtime.predictors.yolo26.segmentation.openvino"
     )
     assert TensorRTYolo26SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_segmentation_tensorrt"
+        "runtime.predictors.yolo26.segmentation.tensorrt"
     )
 
 
@@ -1564,16 +1564,16 @@ def test_yolo26_pose_runtime_uses_model_specific_sessions() -> None:
     """验证 YOLO26 pose runtime 入口不再来自旧 primary predictor。"""
 
     assert PyTorchYolo26PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_pose_pytorch"
+        "runtime.predictors.yolo26.pose.pytorch"
     )
     assert OnnxRuntimeYolo26PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_pose_onnxruntime"
+        "runtime.predictors.yolo26.pose.onnxruntime"
     )
     assert OpenVINOYolo26PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_pose_openvino"
+        "runtime.predictors.yolo26.pose.openvino"
     )
     assert TensorRTYolo26PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_pose_tensorrt"
+        "runtime.predictors.yolo26.pose.tensorrt"
     )
 
 
@@ -1581,16 +1581,16 @@ def test_yolo26_obb_runtime_uses_model_specific_sessions() -> None:
     """验证 YOLO26 OBB runtime 入口不再来自旧 primary predictor。"""
 
     assert PyTorchYolo26ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_obb_pytorch"
+        "runtime.predictors.yolo26.obb.pytorch"
     )
     assert OnnxRuntimeYolo26ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_obb_onnxruntime"
+        "runtime.predictors.yolo26.obb.onnxruntime"
     )
     assert OpenVINOYolo26ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_obb_openvino"
+        "runtime.predictors.yolo26.obb.openvino"
     )
     assert TensorRTYolo26ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo26_obb_tensorrt"
+        "runtime.predictors.yolo26.obb.tensorrt"
     )
 
 
@@ -1655,52 +1655,52 @@ def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:
     """确认 YOLO11 runtime 后端不再继承旧 yolo_primary predictor。"""
 
     assert PyTorchYolo11RuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_detection_pytorch"
+        "runtime.predictors.yolo11.detection.pytorch"
     )
     assert OnnxRuntimeYolo11RuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_detection_onnxruntime"
+        "runtime.predictors.yolo11.detection.onnxruntime"
     )
     assert OpenVINOYolo11RuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_detection_openvino"
+        "runtime.predictors.yolo11.detection.openvino"
     )
     assert TensorRTYolo11RuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_detection_tensorrt"
+        "runtime.predictors.yolo11.detection.tensorrt"
     )
     assert PyTorchYolo11SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_segmentation_pytorch"
+        "runtime.predictors.yolo11.segmentation.pytorch"
     )
     assert OnnxRuntimeYolo11SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_segmentation_onnxruntime"
+        "runtime.predictors.yolo11.segmentation.onnxruntime"
     )
     assert OpenVINOYolo11SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_segmentation_openvino"
+        "runtime.predictors.yolo11.segmentation.openvino"
     )
     assert TensorRTYolo11SegmentationRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_segmentation_tensorrt"
+        "runtime.predictors.yolo11.segmentation.tensorrt"
     )
     assert PyTorchYolo11PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_pose_pytorch"
+        "runtime.predictors.yolo11.pose.pytorch"
     )
     assert OnnxRuntimeYolo11PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_pose_onnxruntime"
+        "runtime.predictors.yolo11.pose.onnxruntime"
     )
     assert OpenVINOYolo11PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_pose_openvino"
+        "runtime.predictors.yolo11.pose.openvino"
     )
     assert TensorRTYolo11PoseRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_pose_tensorrt"
+        "runtime.predictors.yolo11.pose.tensorrt"
     )
     assert PyTorchYolo11ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_obb_pytorch"
+        "runtime.predictors.yolo11.obb.pytorch"
     )
     assert OnnxRuntimeYolo11ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_obb_onnxruntime"
+        "runtime.predictors.yolo11.obb.onnxruntime"
     )
     assert OpenVINOYolo11ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_obb_openvino"
+        "runtime.predictors.yolo11.obb.openvino"
     )
     assert TensorRTYolo11ObbRuntimeSession.__module__.endswith(
-        "runtime.predictors.yolo11_obb_tensorrt"
+        "runtime.predictors.yolo11.obb.tensorrt"
     )
     for session_class in (
         PyTorchYolo11PoseRuntimeSession,

@@ -20,13 +20,13 @@ from backend.service.application.models.registry.yolov8_model_service import (
     YoloV8BuildRegistration,
     YoloV8TrainingOutputRegistration,
 )
-from backend.service.application.runtime.segmentation_model_runtime import (
+from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
 from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.predictors.yolov8_segmentation import (
+from backend.service.application.runtime.predictors.yolov8.segmentation import (
     PyTorchYoloV8SegmentationRuntimeSession,
 )
 from backend.service.application.runtime.targets.yolov8 import (

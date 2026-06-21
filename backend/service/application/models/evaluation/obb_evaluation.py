@@ -13,7 +13,7 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     xywhr_to_polygon,
 )
 from backend.service.application.runtime.contracts.obb import ObbPredictionRequest
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -50,7 +50,7 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
 
-    from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime
+    from backend.service.application.runtime.tasks.obb_model_runtime import DefaultObbModelRuntime
 
     model_runtime = DefaultObbModelRuntime()
     session = model_runtime.load_session(

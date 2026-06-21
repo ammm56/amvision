@@ -18,7 +18,7 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessExecution,
     DeploymentProcessHealth,

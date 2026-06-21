@@ -12,11 +12,11 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.models.postprocess.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessRuntimeBehavior,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     SqlAlchemyRuntimeTargetResolver,

@@ -40,7 +40,7 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
 from backend.service.application.tasks.task_service import (

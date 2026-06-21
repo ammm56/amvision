@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.service.application.runtime.deployment_runtime_pool import (
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )

@@ -13,7 +13,7 @@ from backend.service.application.models.yolo26_core.model import build_yolo26_mo
 from backend.service.application.models.yolo26_core.weights import (
     load_yolo26_checkpoint_file,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )

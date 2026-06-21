@@ -15,7 +15,7 @@ from backend.service.application.models.yolox_core.utils import (
     resolve_yolox_torch_device_name,
 )
 from backend.service.application.models.yolox_core.weights import load_yolox_warm_start_checkpoint
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 
 
 @dataclass(frozen=True)

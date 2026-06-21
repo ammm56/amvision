@@ -158,7 +158,7 @@ from backend.service.application.models.inference.detection_async_inference_gate
 from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService

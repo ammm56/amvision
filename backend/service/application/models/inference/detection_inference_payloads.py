@@ -13,7 +13,7 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import build_runtime_input_object_key
 

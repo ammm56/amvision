@@ -28,7 +28,7 @@ from backend.service.application.runtime.targets.yolo26 import (
 from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     SqlAlchemyRuntimeTargetResolver,

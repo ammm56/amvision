@@ -36,13 +36,13 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
-from backend.service.application.runtime.deployment_process_settings import DeploymentProcessSupervisorConfig
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_settings import DeploymentProcessSupervisorConfig
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
-from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry

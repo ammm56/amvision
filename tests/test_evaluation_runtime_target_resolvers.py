@@ -13,7 +13,7 @@ from backend.service.application.models.evaluation.evaluation_runtime_target_res
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.application.runtime.targets.yolo11 import (

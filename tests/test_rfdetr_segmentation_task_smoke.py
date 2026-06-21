@@ -32,13 +32,13 @@ from backend.service.application.models.training.yolo_primary_segmentation_train
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.runtime.segmentation_model_runtime import (
+from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
 from backend.service.application.runtime.contracts.segmentation import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
 from backend.service.application.runtime.support.tensorrt_runtime import (
@@ -197,7 +197,7 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
 ) -> None:
     """验证 segmentation runtime 注册表会把 RF-DETR 分发到 OpenVINO 与 TensorRT 会话。"""
 
-    from backend.service.application.runtime import segmentation_model_runtime as runtime_module
+    from backend.service.application.runtime.tasks import segmentation_model_runtime as runtime_module
 
     dataset_storage = _create_dataset_storage(tmp_path)
     artifact_path = dataset_storage.resolve("artifacts/rfdetr-segmentation/model.xml")

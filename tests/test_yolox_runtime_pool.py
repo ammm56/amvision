@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.deployment_runtime_pool import (
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )

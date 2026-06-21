@@ -7,7 +7,7 @@ from backend.service.application.models.catalog.rfdetr import (
     RFDETR_MODEL_FILE_TYPES,
     SqlAlchemyRfdetrModelService,
 )
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.infrastructure.db.session import SessionFactory

@@ -56,7 +56,7 @@ from backend.service.application.models.inference.segmentation_inference_task_se
     SegmentationInferenceTaskRequest,
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters

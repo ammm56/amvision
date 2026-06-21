@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
-from backend.service.application.runtime.runtime_target import (
+from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
     SqlAlchemyRuntimeTargetResolver,

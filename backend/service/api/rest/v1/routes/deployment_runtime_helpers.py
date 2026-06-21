@@ -12,7 +12,7 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
     DeploymentProcessKeepWarmStatus,

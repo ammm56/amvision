@@ -18,7 +18,7 @@ from backend.service.application.deployments import (
 from backend.service.application.models.inference.detection_inference_task_service import (
     run_detection_inference_task,
 )
-from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
+from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessExecution
 from backend.service.application.runtime.contracts.detection import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,

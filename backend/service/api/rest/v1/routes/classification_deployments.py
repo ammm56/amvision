@@ -34,7 +34,7 @@ from backend.service.application.models.inference.classification_async_inference
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
-from backend.service.application.runtime.deployment_process_supervisor import (
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory

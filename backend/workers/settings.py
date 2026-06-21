@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
-from backend.service.application.runtime.deployment_process_settings import (
+from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
 from backend.service.infrastructure.db.session import DatabaseSettings
