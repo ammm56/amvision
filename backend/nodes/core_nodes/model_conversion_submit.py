@@ -31,8 +31,8 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     resolve_display_name,
 )
-from backend.service.application.conversions.yolo_primary_conversion_task_service import (
-    YoloPrimaryConversionTaskRequest,
+from backend.service.application.conversions.yolo_model_conversion_task_service import (
+    YoloConversionTaskRequest,
 )
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
@@ -64,7 +64,7 @@ def _model_conversion_submit_handler(request: WorkflowNodeExecutionRequest) -> d
     elif task_type == DETECTION_TASK_TYPE and model_type == "rfdetr":
         request_cls = RfdetrConversionTaskRequest
     else:
-        request_cls = YoloPrimaryConversionTaskRequest
+        request_cls = YoloConversionTaskRequest
     request_kwargs = {
         "project_id": require_str_parameter(request, "project_id"),
         "source_model_version_id": require_str_parameter(request, "source_model_version_id"),

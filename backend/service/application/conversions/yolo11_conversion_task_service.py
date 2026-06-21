@@ -9,11 +9,11 @@ from backend.service.application.conversions.yolo11_conversion_planner import (
     deserialize_yolo11_conversion_plan,
     serialize_yolo11_conversion_plan,
 )
-from backend.service.application.conversions.yolo_primary_conversion_task_service import (
-    SqlAlchemyYoloPrimaryConversionTaskService,
-    YoloPrimaryConversionBuildSummary as Yolo11ConversionBuildSummary,
-    YoloPrimaryConversionTaskRequest as Yolo11ConversionTaskRequest,
-    YoloPrimaryConversionTaskResult as Yolo11ConversionTaskResult,
+from backend.service.application.conversions.yolo_model_conversion_task_service import (
+    SqlAlchemyYoloModelConversionTaskService,
+    YoloConversionBuildSummary as Yolo11ConversionBuildSummary,
+    YoloConversionTaskRequest as Yolo11ConversionTaskRequest,
+    YoloConversionTaskResult as Yolo11ConversionTaskResult,
 )
 from backend.service.application.models.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -28,8 +28,8 @@ YOLO11_CONVERSION_TASK_KIND = "yolo11-conversion"
 YOLO11_CONVERSION_QUEUE_NAME = "yolo11-conversions"
 
 
-class SqlAlchemyYolo11ConversionTaskService(SqlAlchemyYoloPrimaryConversionTaskService):
-    """基于 detection 公共链路实现的 YOLO11 转换任务服务。"""
+class SqlAlchemyYolo11ConversionTaskService(SqlAlchemyYoloModelConversionTaskService):
+    """基于 YOLO 系列共享链路实现的 YOLO11 转换任务服务。"""
 
     model_type = "yolo11"
     model_label = "YOLO11"

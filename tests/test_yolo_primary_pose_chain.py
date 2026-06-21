@@ -9,7 +9,9 @@ import torch
 
 from backend.service.application.models.pose_loss import compute_pose_loss
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.runtime.yolo_primary_pose_predictor import _build_pose_instances
+from backend.service.application.runtime.predictors.yolov8_pose_postprocess import (
+    build_yolov8_pose_runtime_instances,
+)
 
 
 def test_pose_model_can_build_and_forward():
@@ -94,9 +96,8 @@ def test_pose_prediction_array_postprocess():
     prediction = np.random.randn(1, 100, 4 + 1 + 17 * 3).astype(np.float32)
     prediction[:, :, :4] = np.abs(prediction[:, :, :4]) * 300
     prediction[:, :, 4] = 0.9
-    instances, kpt_shape = _build_pose_instances(
+    instances, kpt_shape = build_yolov8_pose_runtime_instances(
         np_module=np, prediction_array=prediction, labels=labels,
-        model_type="yolov8",
         score_threshold=0.3, keypoint_confidence_threshold=0.5,
         resize_ratio=1.0, image_width=256, image_height=256,
         input_size=(256, 256), default_kpt_shape=(17, 3),
@@ -124,17 +125,17 @@ def test_pose_runtime_contracts_importable():
 
 
 def test_pose_predictor_classes_importable():
-    from backend.service.application.runtime.yolo_primary_pose_predictor import (
-        OnnxRuntimeYoloPrimaryPoseRuntimeSession,
-        OpenVINOYoloPrimaryPoseRuntimeSession,
-        PyTorchYoloPrimaryPoseRuntimeSession,
-        TensorRTYoloPrimaryPoseRuntimeSession,
+    from backend.service.application.runtime.predictors.yolov8_pose import (
+        OnnxRuntimeYoloV8PoseRuntimeSession,
+        OpenVINOYoloV8PoseRuntimeSession,
+        PyTorchYoloV8PoseRuntimeSession,
+        TensorRTYoloV8PoseRuntimeSession,
     )
 
-    assert OnnxRuntimeYoloPrimaryPoseRuntimeSession
-    assert OpenVINOYoloPrimaryPoseRuntimeSession
-    assert PyTorchYoloPrimaryPoseRuntimeSession
-    assert TensorRTYoloPrimaryPoseRuntimeSession
+    assert OnnxRuntimeYoloV8PoseRuntimeSession
+    assert OpenVINOYoloV8PoseRuntimeSession
+    assert PyTorchYoloV8PoseRuntimeSession
+    assert TensorRTYoloV8PoseRuntimeSession
 
 
 def test_pose_model_runtime_importable():

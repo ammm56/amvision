@@ -53,6 +53,9 @@ from backend.service.application.models.yolo26_core import (
     resolve_yolo26_pose_export_output_names,
     resolve_yolo26_segmentation_export_output_names,
 )
+from backend.service.application.models.yolo26_core.export import (
+    Yolo26ExportSourceSession,
+)
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_detection_training_batch,
     build_yolo26_task_augmentation_options,
@@ -114,6 +117,9 @@ from backend.service.application.models.yolov8_core import (
     resolve_yolov8_obb_export_output_names,
     resolve_yolov8_pose_export_output_names,
     resolve_yolov8_segmentation_export_output_names,
+)
+from backend.service.application.models.yolov8_core.export import (
+    YoloV8ExportSourceSession,
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_segmentation_targets,
@@ -465,9 +471,6 @@ from backend.workers.conversion.yolo26_conversion_runner import (
 )
 from backend.workers.conversion.yolo_model_conversion_runner import (
     LocalYoloModelConversionRunner,
-)
-from backend.workers.conversion.yolo_primary_conversion_runner import (
-    LocalYoloPrimaryConversionRunner,
 )
 from backend.workers.conversion.yolov8_conversion_runner import (
     LocalYoloV8ConversionRunner,
@@ -1391,13 +1394,24 @@ def test_yolo26_classification_training_loop_lives_in_core() -> None:
     )
 
 
-def test_yolo11_conversion_runner_uses_core_export_source_session() -> None:
-    """确认 YOLO11 conversion runner 不再依赖 runtime predictor 构建导出源模型。"""
+@pytest.mark.parametrize(
+    ("runner_cls", "session_cls", "module_suffix"),
+    (
+        (LocalYoloV8ConversionRunner, YoloV8ExportSourceSession, "yolov8_core.export.source"),
+        (LocalYolo11ConversionRunner, Yolo11ExportSourceSession, "yolo11_core.export.source"),
+        (LocalYolo26ConversionRunner, Yolo26ExportSourceSession, "yolo26_core.export.source"),
+    ),
+)
+def test_yolo_conversion_runner_uses_core_export_source_session(
+    runner_cls: type,
+    session_cls: type,
+    module_suffix: str,
+) -> None:
+    """确认 YOLO conversion runner 不再依赖旧 runtime predictor 构建导出源模型。"""
 
-    session_classes = LocalYolo11ConversionRunner.task_runtime_session_classes
+    session_classes = runner_cls.task_runtime_session_classes
 
-    assert issubclass(LocalYolo11ConversionRunner, LocalYoloModelConversionRunner)
-    assert not issubclass(LocalYolo11ConversionRunner, LocalYoloPrimaryConversionRunner)
+    assert issubclass(runner_cls, LocalYoloModelConversionRunner)
     assert set(session_classes) == {
         "detection",
         "classification",
@@ -1405,8 +1419,8 @@ def test_yolo11_conversion_runner_uses_core_export_source_session() -> None:
         "pose",
         "obb",
     }
-    assert all(cls is Yolo11ExportSourceSession for cls in session_classes.values())
-    assert Yolo11ExportSourceSession.__module__.endswith("yolo11_core.export.source")
+    assert all(cls is session_cls for cls in session_classes.values())
+    assert session_cls.__module__.endswith(module_suffix)
 
 
 def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:

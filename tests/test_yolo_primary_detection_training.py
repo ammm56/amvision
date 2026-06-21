@@ -36,9 +36,6 @@ from backend.service.application.models.yolo_primary_detection_training import (
     _unwrap_e2e_detection_outputs,
     run_yolo_primary_detection_training,
 )
-from backend.service.application.runtime.yolo_primary_predictor import (
-    _resolve_yolo_primary_postprocess_strategy,
-)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -292,19 +289,6 @@ def test_postprocess_detection_prediction_array_end2end_topk_keeps_duplicate_box
     assert len(nms_results[0].scores) == 1
     assert len(topk_results[0].scores) == 3
     assert list(topk_results[0].scores) == pytest.approx([0.95, 0.9, 0.85])
-
-
-def test_yolo26_runtime_postprocess_strategy_uses_end2end_topk() -> None:
-    """验证 YOLO26 detection runtime 会走 end-to-end top-k 后处理。"""
-
-    assert _resolve_yolo_primary_postprocess_strategy(model_type="yolo26") == (
-        DETECTION_POSTPROCESS_MODE_END2END_TOPK,
-        300,
-    )
-    assert _resolve_yolo_primary_postprocess_strategy(model_type="yolov8") == (
-        DETECTION_POSTPROCESS_MODE_NMS,
-        None,
-    )
 
 
 def test_resolve_detection_splits_supports_yolo_detection_manifest(

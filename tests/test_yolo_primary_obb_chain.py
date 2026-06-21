@@ -9,7 +9,9 @@ import torch
 
 from backend.service.application.models.obb_loss import compute_obb_loss
 from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.runtime.yolo_primary_obb_predictor import _build_obb_instances
+from backend.service.application.runtime.predictors.yolov8_obb_postprocess import (
+    build_yolov8_obb_runtime_instances,
+)
 
 
 def test_obb_model_can_build_and_forward():
@@ -71,7 +73,15 @@ def test_obb_prediction_array_postprocess():
     prediction[:, :, :4] = np.abs(prediction[:, :, :4]) * 300
     prediction[:, :, 4] = 0.9
     prediction[:, :, 5] = 0.0
-    instances = _build_obb_instances(np_module=np, prediction_array=prediction, model_type="yolov8", labels=labels, score_threshold=0.3, resize_ratio=1.0, image_width=256, image_height=256)
+    instances = build_yolov8_obb_runtime_instances(
+        np_module=np,
+        prediction_array=prediction,
+        labels=labels,
+        score_threshold=0.3,
+        resize_ratio=1.0,
+        image_width=256,
+        image_height=256,
+    )
     assert isinstance(instances, tuple)
     for inst in instances:
         assert len(inst.bbox_xyxy) == 4

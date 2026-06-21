@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from backend.service.application.conversions.yolo_primary_conversion_task_service import (
-    SqlAlchemyYoloPrimaryConversionTaskService,
-    YoloPrimaryConversionBuildSummary as YoloV8ConversionBuildSummary,
-    YoloPrimaryConversionResultSnapshot as YoloV8ConversionResultSnapshot,
-    YoloPrimaryConversionRunRequest as YoloV8ConversionRunRequest,
-    YoloPrimaryConversionTaskRequest as YoloV8ConversionTaskRequest,
-    YoloPrimaryConversionTaskResult as YoloV8ConversionTaskResult,
-    YoloPrimaryConversionTaskSubmission as YoloV8ConversionTaskSubmission,
+from backend.service.application.conversions.yolo_model_conversion_task_service import (
+    SqlAlchemyYoloModelConversionTaskService,
+    YoloConversionBuildSummary as YoloV8ConversionBuildSummary,
+    YoloConversionResultSnapshot as YoloV8ConversionResultSnapshot,
+    YoloConversionTaskRequest as YoloV8ConversionTaskRequest,
+    YoloConversionTaskResult as YoloV8ConversionTaskResult,
+    YoloConversionTaskSubmission as YoloV8ConversionTaskSubmission,
+    YoloModelConversionRunRequest as YoloV8ConversionRunRequest,
 )
 from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,
@@ -31,8 +31,8 @@ YOLOV8_CONVERSION_TASK_KIND = "yolov8-conversion"
 YOLOV8_CONVERSION_QUEUE_NAME = "yolov8-conversions"
 
 
-class SqlAlchemyYoloV8ConversionTaskService(SqlAlchemyYoloPrimaryConversionTaskService):
-    """基于 detection 公共链路实现的 YOLOv8 转换任务服务。"""
+class SqlAlchemyYoloV8ConversionTaskService(SqlAlchemyYoloModelConversionTaskService):
+    """基于 YOLO 系列共享链路实现的 YOLOv8 转换任务服务。"""
 
     model_type = "yolov8"
     model_label = "YOLOv8"
@@ -42,6 +42,7 @@ class SqlAlchemyYoloV8ConversionTaskService(SqlAlchemyYoloPrimaryConversionTaskS
     runtime_target_resolver_cls = SqlAlchemyYoloV8RuntimeTargetResolver
     model_service_cls = SqlAlchemyYoloV8ModelService
     build_registration_cls = YoloV8BuildRegistration
+    build_summary_cls = YoloV8ConversionBuildSummary
     request_cls = YoloV8ConversionTaskRequest
     result_cls = YoloV8ConversionTaskResult
     serialize_plan = staticmethod(serialize_yolov8_conversion_plan)

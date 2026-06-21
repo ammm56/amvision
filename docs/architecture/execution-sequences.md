@@ -137,7 +137,7 @@ sequenceDiagram
 - REST 入口：[backend/service/api/rest/v1/routes/detection_conversion_tasks.py](../../backend/service/api/rest/v1/routes/detection_conversion_tasks.py)
 - 任务服务：REST 层按 `model_type` 分发到 `SqlAlchemyYoloXConversionTaskService`、`SqlAlchemyYoloV8ConversionTaskService`、`SqlAlchemyYolo11ConversionTaskService`、`SqlAlchemyYolo26ConversionTaskService` 或 `SqlAlchemyRfdetrConversionTaskService`
 - worker 入口：`backend/workers/conversion/*_conversion_queue_worker.py` 中的模型专属 worker
-- 转换 runner：YOLOX 走 `LocalYoloXConversionRunner`；YOLOv8 / YOLO11 / YOLO26 走 `LocalYoloPrimaryConversionRunner` 派生 runner；RF-DETR 走 `LocalRfdetrConversionRunner`
+- 转换 runner：YOLOX 走 `LocalYoloXConversionRunner`；YOLOv8 / YOLO11 / YOLO26 走 `LocalYoloModelConversionRunner` 派生 runner，并由各自 `*_core/export/` 提供 ONNX / OpenVINO / TensorRT 细节；RF-DETR 走 `LocalRfdetrConversionRunner`
 
 ```mermaid
 sequenceDiagram

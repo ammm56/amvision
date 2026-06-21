@@ -26,8 +26,8 @@ from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_primary_conversion_runner import (
-    LocalYoloPrimaryConversionRunner,
+from backend.workers.conversion.yolo_model_conversion_runner import (
+    LocalYoloModelConversionRunner,
 )
 from backend.workers.conversion.model_conversion_common import run_conversion_script
 
@@ -38,7 +38,7 @@ YoloV8ConversionRunResult = ConversionBackendRunResult
 YoloV8ConversionRunner = ConversionBackend
 
 
-class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
+class LocalYoloV8ConversionRunner(LocalYoloModelConversionRunner):
     """使用本地文件存储执行 YOLOv8 ONNX/OpenVINO/TensorRT 转换链。"""
 
     model_label = "YOLOv8"
@@ -50,7 +50,7 @@ class LocalYoloV8ConversionRunner(LocalYoloPrimaryConversionRunner):
         "obb": YoloV8ExportSourceSession,
     }
     task_export_output_names = {
-        **LocalYoloPrimaryConversionRunner.task_export_output_names,
+        **LocalYoloModelConversionRunner.task_export_output_names,
         "segmentation": resolve_yolov8_segmentation_export_output_names(),
     }
     onnx_file_type = YOLOV8_ONNX_FILE

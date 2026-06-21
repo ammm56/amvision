@@ -33,7 +33,7 @@
 | --- | --- | --- | --- | --- |
 | 公开控制面 | 按 `task_type` 命名 | `detection_training_tasks.py`、`detection_conversion_tasks.py`、`detection-inference`、`detection-evaluation` | 把公开 detection 路由写成 `yolox_*_tasks.py` | 这一层面对的是平台调用方、前端和 workflow 公共入口，重点是任务分类一致。 |
 | 模型实现层 | 按 `model_type` 命名 | `training/yolox_detection_task_service.py`、`yolox_training_queue_worker.py`、`yolox_conversion_task_service.py`、`rfdetr_conversion_task_service.py` | 把仍然只服务 YOLOX 的训练/转换 worker 改成 `detection-training`、`detection-conversion` | 这一层承载的是模型结构、训练/转换流程、队列和执行器差异，必须明确隔离。 |
-| 模型系列共享内部层 | 按模型系列命名 | `yolo_conversion_task_service_base.py`、`yolo_primary_conversion_task_service.py` | `detection_conversion_task_service.py` | 这一层允许多个同系列模型共用代码，但名字必须说明“共享范围只在这个系列里”，不能冒充全任务通用层。 |
+| 模型系列共享内部层 | 按模型系列命名 | `yolo_conversion_task_service_base.py`、`yolo_model_conversion_task_service.py` | `detection_conversion_task_service.py` | 这一层允许多个同系列模型共用代码，但名字必须说明“共享范围只在这个系列里”，不能冒充全任务通用层。 |
 | 模型 core 包 | 外层按 `model_type`，内部按 `task_type` | `yolov8_core/nn/tasks/detection.py`、`yolo26_core/losses/pose.py` | `yolo_core_common/detection_yolo26.py`、`detection_core.py` | core 外层表达模型代际，内部任务文件表达任务差异。 |
 | 真正通用的值对象或小工具 | 用中性通用名 | `conversion_result_snapshot.py`、`TaskRecord`、`ModelBuild` | `yolox_conversion_result_snapshot.py` | 只有当类型本身不表达模型差异时，才允许用中性名。 |
 | task kind / worker consumer / queue name | 谁执行就按谁命名 | `yolox-training`、`yolox-conversion`、`rfdetr-conversion` | 在实现未抽共享前统一改成 `detection-*` | 这些名字最终决定 worker 分发和执行归属，必须和真实实现边界一致。 |

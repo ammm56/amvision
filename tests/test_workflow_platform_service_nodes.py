@@ -39,8 +39,8 @@ from backend.service.application.models.yolo11_obb_training_service import (
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     RfdetrTrainingTaskRequest,
 )
-from backend.service.application.conversions.yolo_primary_conversion_task_service import (
-    YoloPrimaryConversionTaskRequest,
+from backend.service.application.conversions.yolo_model_conversion_task_service import (
+    YoloConversionTaskRequest,
 )
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
@@ -338,7 +338,7 @@ def test_conversion_service_node_routes_to_platform_conversion_service(
         "task_type": "segmentation",
         "model_type": "yolo26",
     }
-    assert isinstance(captured["request"], YoloPrimaryConversionTaskRequest)
+    assert isinstance(captured["request"], YoloConversionTaskRequest)
     assert captured["display_name"] == "segmentation conversion"
 
 
