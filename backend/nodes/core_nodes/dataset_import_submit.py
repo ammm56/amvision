@@ -24,7 +24,7 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     get_optional_str_parameter,
 )
-from backend.service.application.datasets.dataset_import import DatasetImportRequest
+from backend.service.application.datasets.imports import DatasetImportRequest
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.workers.datasets.dataset_import_queue_worker import DATASET_IMPORT_QUEUE_NAME

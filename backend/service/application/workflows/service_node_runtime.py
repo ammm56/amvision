@@ -24,12 +24,10 @@ from backend.service.application.conversions.rfdetr_conversion_task_service impo
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
 )
-from backend.service.application.datasets.dataset_import import (
+from backend.service.application.datasets.imports import (
     SqlAlchemyDatasetImportService,
 )
-from backend.service.application.datasets.dataset_export import (
-    SqlAlchemyDatasetExportTaskService,
-)
+from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
 from backend.service.application.datasets.dataset_export_delivery import (
     SqlAlchemyDatasetExportDeliveryService,
 )

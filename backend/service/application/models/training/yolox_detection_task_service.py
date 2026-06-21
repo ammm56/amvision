@@ -11,7 +11,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.dataset_export_format_support import (
+from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
 )
 from backend.service.application.models.training.yolox_detection import (

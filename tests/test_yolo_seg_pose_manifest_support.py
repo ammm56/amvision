@@ -12,7 +12,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
-from backend.service.application.datasets.dataset_export import (
+from backend.service.application.datasets.exports import (
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
 )

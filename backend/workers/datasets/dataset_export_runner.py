@@ -5,10 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from backend.service.application.datasets.dataset_export import (
-    DatasetExportArtifact,
-    SqlAlchemyDatasetExportTaskService,
-)
+from backend.service.application.datasets.exports import DatasetExportArtifact
+from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 

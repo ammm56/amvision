@@ -15,7 +15,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.conversions.yolox_conversion_task_service import (
     YoloXConversionTaskSubmission,
 )
-from backend.service.application.datasets.dataset_export import DatasetExportTaskSubmission
+from backend.service.application.datasets.tasks import DatasetExportTaskSubmission
 from backend.service.application.models.evaluation.yolox_detection_task_service import (
     YoloXEvaluationTaskSubmission,
 )

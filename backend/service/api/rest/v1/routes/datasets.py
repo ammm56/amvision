@@ -13,7 +13,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.application.datasets.dataset_import import (
+from backend.service.application.datasets.imports import (
 	DatasetImportRequest,
 	SqlAlchemyDatasetImportService,
 )

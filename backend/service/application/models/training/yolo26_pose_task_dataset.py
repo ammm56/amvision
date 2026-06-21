@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.dataset_export_format_support import (
+from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
 )
 from backend.service.application.errors import (

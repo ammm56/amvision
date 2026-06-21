@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.service.application.datasets.dataset_export import DatasetExportRequest
+from backend.service.application.datasets.exports import DatasetExportRequest
 from backend.service.application.datasets.dataset_export_delivery import (
     SqlAlchemyDatasetExportDeliveryService,
 )

@@ -20,7 +20,7 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     resolve_display_name,
 )
-from backend.service.application.datasets.dataset_export import DatasetExportRequest
+from backend.service.application.datasets.exports import DatasetExportRequest
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

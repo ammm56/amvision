@@ -21,10 +21,10 @@ from backend.service.application.datasets.dataset_export_delivery import (
 	DatasetExportPackage,
 	SqlAlchemyDatasetExportDeliveryService,
 )
-from backend.service.application.datasets.dataset_export import (
+from backend.service.application.datasets.exports import (
 	DatasetExportRequest,
-	SqlAlchemyDatasetExportTaskService,
 )
+from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
 from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.domain.datasets.dataset_export import DatasetExport

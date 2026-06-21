@@ -15,10 +15,12 @@ from backend.contracts.datasets.exports.dataset_formats import (
 )
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
-from backend.service.application.datasets.dataset_export import (
-    DATASET_EXPORT_QUEUE_NAME,
+from backend.service.application.datasets.exports import (
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
+)
+from backend.service.application.datasets.tasks import (
+    DATASET_EXPORT_QUEUE_NAME,
     SqlAlchemyDatasetExportTaskService,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService

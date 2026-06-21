@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.queue import QueueBackend, QueueMessage
-from backend.service.application.datasets.dataset_export import DATASET_EXPORT_QUEUE_NAME
+from backend.service.application.datasets.tasks import DATASET_EXPORT_QUEUE_NAME
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage

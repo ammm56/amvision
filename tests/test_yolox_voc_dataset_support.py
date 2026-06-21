@@ -10,7 +10,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     VOC_DETECTION_DATASET_FORMAT,
 )
-from backend.service.application.dataset_export_format_support import (
+from backend.service.application.datasets.formats import (
     resolve_supported_dataset_export_formats,
 )
 from backend.service.application.models.yolox_core.data.datasets import (

@@ -15,7 +15,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
-from backend.service.application.dataset_export_format_support import (
+from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
     resolve_supported_dataset_export_format,
     resolve_supported_dataset_export_formats,
