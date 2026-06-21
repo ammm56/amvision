@@ -11,7 +11,7 @@ from backend.service.application.models.yolo26_core.postprocess import (
     YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
     build_yolo26_detection_records,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,

@@ -9,7 +9,7 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
 )
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
 )

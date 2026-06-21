@@ -11,7 +11,7 @@ from backend.service.application.models.yolo26_core.inference import (
     build_yolo26_pose_inference_instances,
 )
 from backend.service.application.models.yolo26_core.cfg import get_yolo26_model_config
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionInstance,
     PosePredictionKeypoint,
 )

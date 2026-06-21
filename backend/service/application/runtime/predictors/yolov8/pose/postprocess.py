@@ -11,7 +11,7 @@ from backend.service.application.models.yolov8_core.inference import (
     build_yolov8_pose_inference_instances,
 )
 from backend.service.application.models.yolov8_core.cfg import get_yolov8_model_config
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionInstance,
     PosePredictionKeypoint,
 )

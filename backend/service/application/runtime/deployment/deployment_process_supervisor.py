@@ -338,6 +338,13 @@ class DeploymentProcessSupervisor:
             state.desired_running = True
             self._start_process_locked(state)
             current_status = self._build_status_from_locked_state(state)
+        if current_status.process_state == "running":
+            self._send_request(
+                state=state,
+                action="start",
+                timeout_seconds=self.settings.startup_timeout_seconds,
+            )
+            current_status = self._build_status(state)
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
                 current_status,
@@ -484,6 +491,7 @@ class DeploymentProcessSupervisor:
         state: _DeploymentProcessState,
         action: str,
         payload: dict[str, object] | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, object]:
         """向指定 deployment 子进程发送一条命令并等待响应。"""
 
@@ -508,7 +516,10 @@ class DeploymentProcessSupervisor:
                     "payload": dict(payload or {}),
                 }
             )
-        completed = pending.event.wait(timeout=max(0.1, self.settings.request_timeout_seconds))
+        effective_timeout_seconds = (
+            self.settings.request_timeout_seconds if timeout_seconds is None else timeout_seconds
+        )
+        completed = pending.event.wait(timeout=max(0.1, effective_timeout_seconds))
         if not completed:
             with state.lock:
                 state.pending_responses.pop(request_id, None)

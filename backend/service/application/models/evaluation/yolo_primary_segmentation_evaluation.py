@@ -21,7 +21,7 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot

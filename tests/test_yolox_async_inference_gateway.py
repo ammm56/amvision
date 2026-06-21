@@ -17,7 +17,7 @@ from backend.service.application.models.inference.detection_async_inference_gate
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot

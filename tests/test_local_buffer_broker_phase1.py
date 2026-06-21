@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from queue import Empty
 from threading import Thread
 from time import monotonic, sleep
-from typing import Any
 import json
 import multiprocessing
 
@@ -41,7 +39,7 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
@@ -61,6 +59,7 @@ from backend.service.settings import (
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
 )
+from tests.local_buffer_broker_fake_worker import fake_deployment_worker_records_broker_event_channel
 
 
 def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_path: Path) -> None:
@@ -582,7 +581,7 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
             operator_thread_count=1,
         ),
         local_buffer_broker_event_channel=broker_channel,
-        worker_target=_fake_deployment_worker_records_broker_event_channel,
+        worker_target=fake_deployment_worker_records_broker_event_channel,
     )
 
     supervisor.start()
@@ -685,65 +684,6 @@ def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict
         pool_name=write_result.lease.pool_name,
     )
     return {"result": {"buffer_ref": write_result.buffer_ref.model_dump(mode="json")}}
-
-
-def _fake_deployment_worker_records_broker_event_channel(
-    *,
-    config: DeploymentProcessConfig,
-    dataset_storage_root_dir: str,
-    request_queue: Any,
-    response_queue: Any,
-    operator_thread_count: int,
-    supervisor_settings: dict[str, object] | None = None,
-    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
-) -> None:
-    """记录 broker event channel 的 fake deployment worker。"""
-
-    del dataset_storage_root_dir
-    del operator_thread_count
-    del supervisor_settings
-    broker_timeout_seconds = (
-        local_buffer_broker_event_channel.request_timeout_seconds
-        if local_buffer_broker_event_channel is not None
-        else 0.0
-    )
-    while True:
-        try:
-            message = request_queue.get(timeout=0.2)
-        except Empty:
-            continue
-        request_id = str(message.get("request_id") or "")
-        action = str(message.get("action") or "")
-        if action == "shutdown":
-            response_queue.put({"request_id": request_id, "ok": True, "payload": {}})
-            return
-        if action == "infer":
-            response_queue.put(
-                {
-                    "request_id": request_id,
-                    "ok": True,
-                    "payload": {
-                        "instance_id": f"{config.deployment_instance_id}:instance-0",
-                        "execution_result": {
-                            "detections": [],
-                            "latency_ms": 1.0,
-                            "image_width": 1,
-                            "image_height": 1,
-                            "preview_image_bytes_base64": None,
-                            "runtime_session_info": {
-                                "backend_name": config.runtime_target.runtime_backend,
-                                "model_uri": config.runtime_target.runtime_artifact_storage_uri,
-                                "device_name": config.runtime_target.device_name,
-                                "input_spec": {"name": "images", "shape": [1, 3, 1, 1], "dtype": "float32"},
-                                "output_spec": {"name": "detections", "shape": [0, 7], "dtype": "float32"},
-                                "metadata": {"broker_timeout_seconds": broker_timeout_seconds},
-                            },
-                        },
-                    },
-                }
-            )
-            continue
-        response_queue.put({"request_id": request_id, "ok": True, "payload": {}})
 
 
 def _build_broker_settings(

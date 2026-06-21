@@ -24,7 +24,7 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionRequest,
     SegmentationRuntimeSessionInfo,

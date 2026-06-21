@@ -14,7 +14,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot

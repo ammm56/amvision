@@ -14,41 +14,41 @@ from backend.nodes.runtime_support import (
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceConfigurationError
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionRequest,
 )
-from backend.service.application.runtime.serialization.classification import (
+from backend.service.application.runtime.serialization.classification.prediction import (
     serialize_classification_category,
     serialize_classification_runtime_session_info,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.serialization.detection import (
+from backend.service.application.runtime.serialization.detection.prediction import (
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.application.runtime.contracts.obb import (
+from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionRequest,
 )
-from backend.service.application.runtime.serialization.obb import (
+from backend.service.application.runtime.serialization.obb.prediction import (
     serialize_obb_instance,
     serialize_obb_runtime_session_info,
 )
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionRequest,
 )
-from backend.service.application.runtime.serialization.pose import (
+from backend.service.application.runtime.serialization.pose.prediction import (
     serialize_pose_instance,
     serialize_pose_runtime_session_info,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.serialization.segmentation import (
+from backend.service.application.runtime.serialization.segmentation.prediction import (
     serialize_segmentation_instance,
     serialize_segmentation_runtime_session_info,
 )

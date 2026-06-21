@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionCategory,
     ClassificationRuntimeSessionInfo,
     ClassificationRuntimeTensorSpec,

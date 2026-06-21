@@ -13,7 +13,7 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,

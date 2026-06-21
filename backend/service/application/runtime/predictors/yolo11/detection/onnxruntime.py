@@ -12,7 +12,7 @@ from backend.service.application.models.postprocess.detection_postprocess import
 from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_detection_records,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,

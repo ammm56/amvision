@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.contracts.obb import (
+from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionInstance,
     ObbRuntimeSessionInfo,
     ObbRuntimeTensorSpec,

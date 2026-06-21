@@ -110,7 +110,7 @@ def test_pose_prediction_array_postprocess():
 
 
 def test_pose_runtime_contracts_importable():
-    from backend.service.application.runtime.contracts.pose import (
+    from backend.service.application.runtime.contracts.pose.prediction import (
         PosePredictionExecutionResult, PosePredictionInstance,
         PosePredictionKeypoint, PosePredictionRequest,
         PoseRuntimeSessionInfo, PoseRuntimeTensorSpec,

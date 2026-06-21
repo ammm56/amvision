@@ -9,7 +9,7 @@ from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_single_channel_mask_array,
     postprocess_rfdetr_segmentation_runtime_outputs,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionInstance,
 )
 from backend.service.application.runtime.support.detection import render_preview_image

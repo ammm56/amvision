@@ -9,7 +9,7 @@ from backend.service.application.models.yolov8_core.postprocess import (
     build_yolov8_classification_categories,
     ensure_yolov8_probability_array,
 )
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionCategory,
 )
 

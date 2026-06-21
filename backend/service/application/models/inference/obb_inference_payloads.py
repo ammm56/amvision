@@ -18,11 +18,11 @@ from backend.service.application.models.inference.detection_inference_payloads i
     normalize_detection_inference_input as normalize_obb_inference_input,
     serialize_detection_normalized_inference_input as serialize_obb_normalized_inference_input,
 )
-from backend.service.application.runtime.contracts.obb import (
+from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
 )
-from backend.service.application.runtime.serialization.obb import (
+from backend.service.application.runtime.serialization.obb.prediction import (
     serialize_obb_instance,
     serialize_obb_runtime_session_info,
 )

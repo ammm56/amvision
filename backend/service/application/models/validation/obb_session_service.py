@@ -13,7 +13,7 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.tasks.obb_model_runtime import (
     DefaultObbModelRuntime,
 )
-from backend.service.application.runtime.contracts.obb import (
+from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
     ObbPredictionInstance,
     ObbPredictionRequest,

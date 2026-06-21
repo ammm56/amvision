@@ -11,7 +11,7 @@ from backend.service.application.runtime.deployment.deployment_runtime_pool impo
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
 from backend.service.domain.files.yolox_file_types import YOLOX_ONNX_OPTIMIZED_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,

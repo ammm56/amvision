@@ -40,10 +40,10 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessRuntimeBehavior,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.serialization.detection import (
+from backend.service.application.runtime.serialization.detection.prediction import (
     serialize_detection,
     serialize_runtime_session_info,
 )

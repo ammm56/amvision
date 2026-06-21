@@ -11,7 +11,7 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.model_type_support import require_supported_platform_model_type
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.tasks.segmentation_model_runtime import DefaultSegmentationModelRuntime
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionInstance,
     SegmentationPredictionRequest,
     SegmentationRuntimeSessionInfo,

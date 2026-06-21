@@ -11,7 +11,7 @@ from backend.service.application.models.rfdetr_core.runtime import (
     resolve_rfdetr_runtime_input_size,
     resolve_rfdetr_runtime_output_names,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeTensorSpec,

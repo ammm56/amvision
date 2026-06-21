@@ -8,7 +8,7 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core.detection import build_rfdetr_model
 from backend.service.application.models.rfdetr_core.runtime import resolve_rfdetr_runtime_input_size
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeTensorSpec,

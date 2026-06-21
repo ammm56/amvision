@@ -24,7 +24,7 @@ from backend.service.application.runtime.predictors.yolo26.detection import (
     PyTorchYolo26RuntimeSession,
     TensorRTYolo26RuntimeSession,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
 )

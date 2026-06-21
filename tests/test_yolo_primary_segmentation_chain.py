@@ -23,7 +23,7 @@ from backend.service.application.models.registry.yolov8_model_service import (
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.predictors.yolov8.segmentation import (

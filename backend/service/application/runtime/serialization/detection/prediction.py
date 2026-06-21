@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,

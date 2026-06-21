@@ -13,7 +13,7 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.tasks.pose_model_runtime import (
     DefaultPoseModelRuntime,
 )
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionExecutionResult,
     PosePredictionInstance,
     PosePredictionKeypoint,

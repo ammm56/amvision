@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
 )
 

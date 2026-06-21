@@ -20,7 +20,7 @@ from backend.service.application.models.validation.detection_session_service imp
     DetectionValidationSessionView,
     LocalDetectionValidationSessionService,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )

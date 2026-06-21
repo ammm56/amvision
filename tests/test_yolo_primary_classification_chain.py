@@ -23,7 +23,7 @@ from backend.service.application.models.registry.yolov8_model_service import (
 from backend.service.application.runtime.tasks.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionRequest,
 )
 from backend.service.application.runtime.predictors.yolov8.classification import (

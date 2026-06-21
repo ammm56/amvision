@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.project_public_files import resolve_public_project_file_reference
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot

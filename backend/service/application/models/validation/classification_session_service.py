@@ -13,7 +13,7 @@ from backend.service.application.project_public_files import resolve_public_proj
 from backend.service.application.runtime.tasks.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionCategory,
     ClassificationPredictionExecutionResult,
     ClassificationPredictionRequest,

@@ -6,7 +6,7 @@ from typing import Protocol
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionInstance,
     SegmentationPredictionRequest,

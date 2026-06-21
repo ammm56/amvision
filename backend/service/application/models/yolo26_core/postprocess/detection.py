@@ -9,7 +9,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.postprocess.detection import (
     DetectionBoxFormat,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
 )
 

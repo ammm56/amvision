@@ -8,7 +8,7 @@ from typing import Any
 from backend.service.application.models.rfdetr_core.runtime import (
     postprocess_rfdetr_runtime_outputs,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,

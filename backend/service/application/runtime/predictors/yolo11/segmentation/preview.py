@@ -7,7 +7,7 @@ from typing import Any
 from backend.service.application.models.yolo11_core.postprocess import (
     render_yolo11_detection_preview_image,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
 )
 

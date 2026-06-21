@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionInstance,
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,

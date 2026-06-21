@@ -7,7 +7,7 @@ from typing import Any
 from backend.service.application.models.yolov8_core.postprocess import (
     render_yolov8_detection_preview_image,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
 )
 

@@ -42,6 +42,15 @@ def fake_deployment_process_worker(
         if action == "shutdown":
             response_queue.put({"request_id": request_id, "ok": True, "payload": {}})
             return
+        if action == "start":
+            response_queue.put(
+                {
+                    "request_id": request_id,
+                    "ok": True,
+                    "payload": _build_health_payload(config=config, warmed_instance_indexes=warmed_instance_indexes),
+                }
+            )
+            continue
         if action == "warmup":
             for instance_index in range(config.instance_count):
                 warmed_instance_indexes.add(instance_index)

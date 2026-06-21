@@ -19,7 +19,7 @@ from backend.service.application.models.registry.model_service import ModelBuild
 from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.tasks.detection_model_runtime import DefaultDetectionModelRuntime
-from backend.service.application.runtime.contracts.detection import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetResolveRequest
 from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory

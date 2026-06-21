@@ -26,32 +26,32 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.classification import (
+from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionCategory,
     ClassificationPredictionExecutionResult,
     ClassificationRuntimeSessionInfo,
     ClassificationRuntimeTensorSpec,
 )
-from backend.service.application.runtime.contracts.obb import (
+from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
     ObbPredictionInstance,
     ObbRuntimeSessionInfo,
     ObbRuntimeTensorSpec,
 )
-from backend.service.application.runtime.contracts.pose import (
+from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionExecutionResult,
     PosePredictionInstance,
     PosePredictionKeypoint,
     PoseRuntimeSessionInfo,
     PoseRuntimeTensorSpec,
 )
-from backend.service.application.runtime.contracts.detection import (
+from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
-from backend.service.application.runtime.contracts.segmentation import (
+from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionInstance,
     SegmentationRuntimeSessionInfo,
