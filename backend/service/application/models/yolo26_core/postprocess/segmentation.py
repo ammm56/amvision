@@ -7,11 +7,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo26_core.postprocess.detection import (
+    DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    select_yolo26_end2end_topk_indices,
+)
 
 
 @dataclass(frozen=True)
-class Yolo26SegmentationNmsInputArrays:
-    """描述单张图片进入 NMS 前的 YOLO26 segmentation 候选结果。"""
+class Yolo26SegmentationTopKInputArrays:
+    """描述单张图片 YOLO26 segmentation top-k 候选结果。"""
 
     boxes_xyxy: Any
     scores: Any
@@ -31,7 +35,7 @@ class Yolo26SegmentationPostprocessInstance:
     mask_area: float
 
 
-SegmentationNmsInputArrays = Yolo26SegmentationNmsInputArrays
+SegmentationTopKInputArrays = Yolo26SegmentationTopKInputArrays
 SegmentationPostprocessInstance = Yolo26SegmentationPostprocessInstance
 
 
@@ -154,23 +158,20 @@ def build_yolo26_segmentation_postprocess_instances(
     return tuple(instances)
 
 
-def prepare_yolo26_segmentation_nms_inputs_array(
+def prepare_yolo26_segmentation_topk_inputs_array(
     *,
     image_prediction: Any,
     np_module: Any,
     num_classes: int,
     score_threshold: float,
-) -> Yolo26SegmentationNmsInputArrays | None:
-    """筛选 YOLO26 segmentation NMS 候选。"""
+) -> Yolo26SegmentationTopKInputArrays | None:
+    """筛选 YOLO26 segmentation 候选。"""
 
     _validate_yolo26_segmentation_prediction_channel_count(
         channel_count=int(image_prediction.shape[1]),
         num_classes=num_classes,
     )
-    boxes = _convert_yolo26_xywh_to_xyxy(
-        boxes_xywh=image_prediction[:, :4],
-        np_module=np_module,
-    )
+    boxes = image_prediction[:, :4]
     class_scores = image_prediction[:, 4 : 4 + num_classes]
     mask_coefficients = image_prediction[:, 4 + num_classes :]
     best_scores = np_module.max(class_scores, axis=1)
@@ -184,35 +185,11 @@ def prepare_yolo26_segmentation_nms_inputs_array(
     mask_coefficients = mask_coefficients[keep_mask]
     if int(boxes.shape[0]) <= 0:
         return None
-    return Yolo26SegmentationNmsInputArrays(
+    return Yolo26SegmentationTopKInputArrays(
         boxes_xyxy=boxes,
         scores=best_scores,
         class_ids=best_class_ids,
         mask_coefficients=mask_coefficients,
-    )
-
-
-def _convert_yolo26_xywh_to_xyxy(
-    *,
-    boxes_xywh: Any,
-    np_module: Any,
-) -> Any:
-    """把 YOLO26 export 默认 xywh 转换为 NMS 使用的 xyxy。"""
-
-    center_x = boxes_xywh[:, 0]
-    center_y = boxes_xywh[:, 1]
-    width = boxes_xywh[:, 2]
-    height = boxes_xywh[:, 3]
-    half_width = width / 2.0
-    half_height = height / 2.0
-    return np_module.stack(
-        (
-            center_x - half_width,
-            center_y - half_height,
-            center_x + half_width,
-            center_y + half_height,
-        ),
-        axis=1,
     )
 
 
@@ -224,9 +201,10 @@ def postprocess_yolo26_segmentation_prediction_array(
     score_threshold: float,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
-) -> list[Yolo26SegmentationNmsInputArrays | None]:
-    """执行 YOLO26 segmentation 阈值过滤与 NMS。"""
+) -> list[Yolo26SegmentationTopKInputArrays | None]:
+    """执行 YOLO26 segmentation end2end top-k 后处理。"""
 
+    _ = nms_threshold, nms_indices_func
     normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if normalized_prediction.ndim == 2:
         normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)
@@ -240,38 +218,81 @@ def postprocess_yolo26_segmentation_prediction_array(
         num_classes=num_classes,
     ):
         normalized_prediction = np_module.transpose(normalized_prediction, (0, 2, 1))
+    processed_results = _postprocess_yolo26_segmentation_processed_array(
+        prediction_array=normalized_prediction,
+        np_module=np_module,
+        score_threshold=score_threshold,
+    )
+    if processed_results is not None:
+        return processed_results
     _validate_yolo26_segmentation_prediction_channel_count(
         channel_count=int(normalized_prediction.shape[2]),
         num_classes=num_classes,
     )
 
-    results: list[Yolo26SegmentationNmsInputArrays | None] = []
+    results: list[Yolo26SegmentationTopKInputArrays | None] = []
     for image_prediction in normalized_prediction:
-        nms_inputs = prepare_yolo26_segmentation_nms_inputs_array(
-            image_prediction=image_prediction,
-            np_module=np_module,
-            num_classes=num_classes,
-            score_threshold=score_threshold,
+        class_scores = image_prediction[:, 4 : 4 + int(num_classes)]
+        selected_scores, selected_class_ids, selected_anchor_indices = (
+            select_yolo26_end2end_topk_indices(
+                np_module=np_module,
+                class_scores=class_scores,
+                max_detections=DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+            )
         )
-        if nms_inputs is None:
+        if int(selected_anchor_indices.size) <= 0:
             results.append(None)
             continue
-        keep_indices = nms_indices_func(
-            boxes=nms_inputs.boxes_xyxy,
-            scores=nms_inputs.scores,
-            class_ids=nms_inputs.class_ids,
-            nms_threshold=nms_threshold,
-            np_module=np_module,
+        keep_mask = selected_scores >= float(score_threshold)
+        if not bool(np_module.any(keep_mask)):
+            results.append(None)
+            continue
+        selected_anchor_indices = selected_anchor_indices[keep_mask]
+        boxes = image_prediction[selected_anchor_indices, :4]
+        mask_start_index = 4 + int(num_classes)
+        results.append(
+            Yolo26SegmentationTopKInputArrays(
+                boxes_xyxy=boxes,
+                scores=selected_scores[keep_mask],
+                class_ids=selected_class_ids[keep_mask],
+                mask_coefficients=image_prediction[
+                    selected_anchor_indices,
+                    mask_start_index:,
+                ],
+            )
         )
-        if int(keep_indices.size) <= 0:
+    return results
+
+
+def _postprocess_yolo26_segmentation_processed_array(
+    *,
+    prediction_array: Any,
+    np_module: Any,
+    score_threshold: float,
+) -> list[Yolo26SegmentationTopKInputArrays | None] | None:
+    """解析官方 YOLO26 export processed segmentation 输出。"""
+
+    if int(prediction_array.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+        return None
+    if int(prediction_array.shape[2]) < 7:
+        return None
+
+    results: list[Yolo26SegmentationTopKInputArrays | None] = []
+    for image_prediction in prediction_array:
+        scores = image_prediction[:, 4]
+        keep_mask = scores >= float(score_threshold)
+        if not bool(np_module.any(keep_mask)):
             results.append(None)
             continue
         results.append(
-            Yolo26SegmentationNmsInputArrays(
-                boxes_xyxy=nms_inputs.boxes_xyxy[keep_indices],
-                scores=nms_inputs.scores[keep_indices],
-                class_ids=nms_inputs.class_ids[keep_indices],
-                mask_coefficients=nms_inputs.mask_coefficients[keep_indices],
+            Yolo26SegmentationTopKInputArrays(
+                boxes_xyxy=image_prediction[keep_mask, :4],
+                scores=scores[keep_mask],
+                class_ids=image_prediction[keep_mask, 5].astype(
+                    np_module.int32,
+                    copy=False,
+                ),
+                mask_coefficients=image_prediction[keep_mask, 6:],
             )
         )
     return results
@@ -379,14 +400,14 @@ def _is_yolo26_channel_first_prediction(
 
 
 __all__ = [
-    "SegmentationNmsInputArrays",
+    "SegmentationTopKInputArrays",
     "SegmentationPostprocessInstance",
-    "Yolo26SegmentationNmsInputArrays",
+    "Yolo26SegmentationTopKInputArrays",
     "Yolo26SegmentationPostprocessInstance",
     "build_yolo26_segmentation_postprocess_instances",
     "decode_yolo26_segmentation_masks",
     "extract_yolo26_mask_segments",
     "normalize_yolo26_segmentation_outputs",
     "postprocess_yolo26_segmentation_prediction_array",
-    "prepare_yolo26_segmentation_nms_inputs_array",
+    "prepare_yolo26_segmentation_topk_inputs_array",
 ]

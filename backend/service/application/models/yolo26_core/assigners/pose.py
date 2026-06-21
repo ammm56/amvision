@@ -22,6 +22,8 @@ def assign_yolo26_pose_targets(
     alpha: float,
     beta: float,
     topk2: int | None = None,
+    candidate_min_box_size: float = 0.0,
+    candidate_replace_box_size: float | None = None,
 ) -> dict[str, Any]:
     """按 YOLO26 pose 的 TaskAlignedAssigner 规则分配正样本。"""
 
@@ -36,6 +38,8 @@ def assign_yolo26_pose_targets(
         alpha=alpha,
         beta=beta,
         topk2=topk2,
+        candidate_min_box_size=candidate_min_box_size,
+        candidate_replace_box_size=candidate_replace_box_size,
     )
 
 

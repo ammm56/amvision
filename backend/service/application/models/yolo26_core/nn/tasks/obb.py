@@ -9,6 +9,9 @@ from torch import nn
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo26_core.nn.tasks.detection import Detect
+from backend.service.application.models.yolo26_core.postprocess.export import (
+    postprocess_yolo26_obb_export_tensor,
+)
 from backend.service.application.models.yolo_core_common.decode import (
     OBB_ANGLE_DECODE_MODE_RAW,
     build_obb_prediction,
@@ -96,4 +99,13 @@ class OBB26(Detect):
             dfl_decoder=self.dfl,
             angle_decode_mode=self.angle_decode_mode,
         )
-        return prediction.transpose(1, 2).contiguous()
+        normalized_prediction = prediction.transpose(1, 2).contiguous()
+        if self.export and self.end2end:
+            normalized_prediction = postprocess_yolo26_obb_export_tensor(
+                torch_module=torch,
+                prediction=normalized_prediction,
+                num_classes=self.nc,
+                angle_channels=self.ne,
+                max_detections=self.max_det,
+            )
+        return normalized_prediction

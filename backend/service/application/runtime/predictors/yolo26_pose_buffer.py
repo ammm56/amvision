@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from backend.service.application.runtime.predictors.yolov8_segmentation_buffer import (
-    build_yolov8_segmentation_numpy_array_from_host_pointer,
-    resolve_yolov8_segmentation_numpy_dtype,
-    resolve_yolov8_segmentation_tensor_byte_size,
+from backend.service.application.runtime.predictors.yolo_runtime_buffer import (
+    build_yolo_runtime_numpy_array_from_host_pointer,
+    resolve_yolo_runtime_numpy_dtype,
+    resolve_yolo_runtime_tensor_byte_size,
 )
 
 
 build_yolo26_pose_numpy_array_from_host_pointer = (
-    build_yolov8_segmentation_numpy_array_from_host_pointer
+    build_yolo_runtime_numpy_array_from_host_pointer
 )
-resolve_yolo26_pose_numpy_dtype = resolve_yolov8_segmentation_numpy_dtype
-resolve_yolo26_pose_tensor_byte_size = resolve_yolov8_segmentation_tensor_byte_size
+resolve_yolo26_pose_numpy_dtype = resolve_yolo_runtime_numpy_dtype
+resolve_yolo26_pose_tensor_byte_size = resolve_yolo_runtime_tensor_byte_size
 
 
 __all__ = [

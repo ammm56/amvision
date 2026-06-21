@@ -15,6 +15,7 @@ from backend.service.application.models.yolo_core_common.losses.obb import (
 )
 from backend.service.application.models.yolo26_core.assigners import (
     assign_yolo26_obb_targets,
+    resolve_yolo26_tal_candidate_box_sizes,
 )
 from backend.service.application.models.yolo26_core.losses.detection import (
     yolo26_distribution_focal_loss,
@@ -87,7 +88,9 @@ def compute_yolo26_obb_loss(
         1, -1, 1
     )
     anchor_centers_xy = anchor_points * stride_tensor
-    min_candidate_box_size = float(min(int(item) for item in obb_head.strides))
+    min_candidate_box_size, replace_candidate_box_size = (
+        resolve_yolo26_tal_candidate_box_sizes(stride_tensor=stride_tensor)
+    )
 
     total_class_loss = class_logits_all.new_zeros(())
     total_box_loss = class_logits_all.new_zeros(())
@@ -110,6 +113,7 @@ def compute_yolo26_obb_loss(
             reg_max=reg_max,
             num_classes=num_classes,
             min_candidate_box_size=min_candidate_box_size,
+            replace_candidate_box_size=replace_candidate_box_size,
             assign_topk=assign_topk,
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
@@ -166,6 +170,7 @@ def _compute_yolo26_obb_image_loss(
     reg_max: int,
     num_classes: int,
     min_candidate_box_size: float,
+    replace_candidate_box_size: float,
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
@@ -213,6 +218,7 @@ def _compute_yolo26_obb_image_loss(
             alpha=assign_alpha,
             beta=assign_beta,
             min_candidate_box_size=min_candidate_box_size,
+            replace_candidate_box_size=replace_candidate_box_size,
             topk2=assign_topk2,
         )
 

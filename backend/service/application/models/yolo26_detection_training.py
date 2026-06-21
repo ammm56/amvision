@@ -78,7 +78,7 @@ from backend.service.application.models.yolo26_core.evaluation.detection import 
     convert_yolo26_predictions_to_coco_detections,
 )
 from backend.service.application.models.yolo26_core.postprocess.detection import (
-    YOLO26_DETECTION_POSTPROCESS_MODE_NMS,
+    YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
 )
 
 
@@ -1128,7 +1128,9 @@ def _build_yolo26_validation_metrics_payload(
         "sample_count": validation_sample_count,
         "confidence_threshold": confidence_threshold if enabled else None,
         "nms_threshold": nms_threshold if enabled else None,
-        "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_NMS if enabled else None,
+        "postprocess_mode": (
+            YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK if enabled else None
+        ),
         "max_detections": None,
         "best_metric_name": best_metric_name if enabled else None,
         "best_metric_value": best_metric_value if enabled else None,
@@ -1213,7 +1215,7 @@ def _build_yolo26_metrics_payload(
                 if validation_sample_count > 0
                 else None
             ),
-            "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_NMS,
+            "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
             "max_detections": None,
         },
         "loss_weights": {

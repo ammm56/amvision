@@ -5,16 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.service.application.models.detection_postprocess import (
-    postprocess_detection_prediction_array,
-)
 from backend.service.application.models.detection_evaluation import (
     DetectionEvaluationRequest,
     DetectionEvaluationResult,
     run_detection_evaluation,
 )
 from backend.service.application.models.yolo26_core.postprocess.detection import (
-    YOLO26_DETECTION_POSTPROCESS_MODE_NMS,
+    postprocess_yolo26_detection_prediction_array,
 )
 from backend.service.application.runtime.runtime_target import RuntimeTargetSnapshot
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -67,14 +64,12 @@ def convert_yolo26_predictions_to_coco_detections(
     """把 YOLO26 detection 预测转换为 COCO detection 结果列表。"""
 
     prediction_array = prediction_tensor.detach().cpu().numpy()
-    postprocess_results = postprocess_detection_prediction_array(
+    _ = nms_threshold
+    postprocess_results = postprocess_yolo26_detection_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,
         num_classes=len(category_ids),
         score_threshold=confidence_threshold,
-        nms_threshold=nms_threshold,
-        postprocess_mode=YOLO26_DETECTION_POSTPROCESS_MODE_NMS,
-        max_detections=None,
     )
     detections: list[dict[str, object]] = []
     for batch_index, result in enumerate(postprocess_results):

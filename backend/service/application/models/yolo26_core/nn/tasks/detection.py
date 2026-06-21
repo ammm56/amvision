@@ -14,6 +14,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.yolo26_core.decode import (
     build_yolo26_detection_prediction,
 )
+from backend.service.application.models.yolo26_core.postprocess.export import (
+    postprocess_yolo26_detection_export_tensor,
+)
 from backend.service.application.models.yolo_core_common.layers import (
     Conv,
     DWConv,
@@ -152,9 +155,17 @@ class Detect(nn.Module):
 
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
         prediction = self._inference(inference_outputs)
+        normalized_prediction = prediction.transpose(1, 2).contiguous()
         if self.export:
+            if self.end2end:
+                return postprocess_yolo26_detection_export_tensor(
+                    torch_module=torch,
+                    prediction=normalized_prediction,
+                    num_classes=self.nc,
+                    max_detections=self.max_det,
+                )
             return prediction
-        return prediction.transpose(1, 2).contiguous()
+        return normalized_prediction
 
     def _inference(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """按 YOLO26 Detect 推理路径解码 detection 输出。"""

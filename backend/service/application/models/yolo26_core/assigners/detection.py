@@ -18,6 +18,8 @@ def assign_yolo26_detection_targets(
     alpha: float,
     beta: float,
     topk2: int | None = None,
+    candidate_min_box_size: float = 0.0,
+    candidate_replace_box_size: float | None = None,
 ) -> dict[str, Any]:
     """按 YOLO26 detection task-aligned 规则分配正样本 anchor。"""
 
@@ -43,10 +45,16 @@ def assign_yolo26_detection_targets(
             ),
         }
 
+    candidate_gt_boxes = _build_yolo26_candidate_boxes(
+        torch_module=torch_module,
+        gt_boxes=gt_boxes,
+        min_box_size=candidate_min_box_size,
+        replace_box_size=candidate_replace_box_size,
+    )
     inside_mask = _build_yolo26_anchor_inside_mask(
         torch_module=torch_module,
         anchor_centers_xy=anchor_centers_xy,
-        gt_boxes=gt_boxes,
+        gt_boxes=candidate_gt_boxes,
     )
     pair_iou = yolo26_box_iou_matrix(
         torch_module=torch_module,
@@ -62,33 +70,18 @@ def assign_yolo26_detection_targets(
         * inside_mask.to(pair_iou.dtype)
     )
     candidate_mask = torch_module.zeros_like(inside_mask)
-    gt_centers = (gt_boxes[:, 0:2] + gt_boxes[:, 2:4]) * 0.5
-    center_distances = torch_module.cdist(gt_centers, anchor_centers_xy)
     candidate_count = min(max(1, topk), num_anchors)
 
     for gt_index in range(num_gt):
         gt_metric = alignment_metric[gt_index]
         valid_indices = torch_module.nonzero(gt_metric > 0, as_tuple=False).squeeze(1)
         if int(valid_indices.numel()) == 0:
-            fallback_index = int(torch_module.argmin(center_distances[gt_index]).item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
             continue
         topk_count = min(candidate_count, int(valid_indices.numel()))
         topk_values, topk_indices = torch_module.topk(gt_metric, k=topk_count)
         valid_topk = topk_values > 0
         if bool(valid_topk.any()):
             candidate_mask[gt_index, topk_indices[valid_topk]] = True
-        else:
-            fallback_index = int(valid_indices[0].item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
 
     if topk2 is not None and topk2 != topk:
         candidate_mask = _refine_yolo26_candidate_mask(
@@ -127,6 +120,22 @@ def assign_yolo26_detection_targets(
         "assigned_gt_indices": assigned_gt_indices,
         "quality_scores": quality_scores,
     }
+
+
+def resolve_yolo26_tal_candidate_box_sizes(
+    *,
+    stride_tensor: Any,
+) -> tuple[float, float]:
+    """从 stride tensor 解析 YOLO26 TAL tiny box 候选尺寸规则。"""
+
+    values = stride_tensor.detach().reshape(-1).unique().sort().values
+    if int(values.numel()) == 0:
+        return 0.0, 0.0
+    min_box_size = float(values[0].item())
+    replace_box_size = (
+        float(values[1].item()) if int(values.numel()) > 1 else min_box_size
+    )
+    return min_box_size, replace_box_size
 
 
 def yolo26_box_iou_matrix(
@@ -234,6 +243,28 @@ def _build_yolo26_anchor_inside_mask(
         & (center_y >= gt_boxes[:, 1:2])
         & (center_y <= gt_boxes[:, 3:4])
     )
+
+
+def _build_yolo26_candidate_boxes(
+    *,
+    torch_module: Any,
+    gt_boxes: Any,
+    min_box_size: float,
+    replace_box_size: float | None,
+) -> Any:
+    """按 Ultralytics TAL 规则扩张 tiny bbox 候选筛选范围。"""
+
+    if min_box_size <= 0:
+        return gt_boxes
+    min_size = gt_boxes.new_tensor(float(min_box_size))
+    replacement = gt_boxes.new_tensor(
+        float(replace_box_size if replace_box_size is not None else min_box_size)
+    )
+    center_xy = (gt_boxes[:, 0:2] + gt_boxes[:, 2:4]) * 0.5
+    wh = (gt_boxes[:, 2:4] - gt_boxes[:, 0:2]).clamp_min(0.0)
+    candidate_wh = torch_module.where(wh < min_size, replacement, wh)
+    half_wh = candidate_wh * 0.5
+    return torch_module.cat((center_xy - half_wh, center_xy + half_wh), dim=1)
 
 
 def _refine_yolo26_candidate_mask(

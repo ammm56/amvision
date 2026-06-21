@@ -1,4 +1,4 @@
-"""YOLO26 专用任务 head 兼容入口。"""
+"""YOLO26 专用任务 head 入口。"""
 
 from __future__ import annotations
 

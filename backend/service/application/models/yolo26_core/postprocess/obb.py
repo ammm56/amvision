@@ -9,15 +9,14 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.coco_style_metrics import (
     polygon_bounds_xyxy,
-    rotated_iou_xywhr,
     xywhr_to_polygon,
 )
-from backend.service.application.models.yolo_core_common.postprocess import (
-    select_top_scoring_candidate_indices,
+from backend.service.application.models.yolo26_core.postprocess.detection import (
+    DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    select_yolo26_end2end_topk_indices,
 )
 
 
-MAX_YOLO26_OBB_PRE_NMS_CANDIDATES = 300
 MAX_YOLO26_OBB_DETECTIONS = 300
 
 
@@ -53,7 +52,7 @@ def build_yolo26_obb_postprocess_instances(
 ) -> tuple[Yolo26ObbPostprocessInstance, ...]:
     """把 YOLO26 OBB 输出转换为实例记录。"""
 
-    _ = nms_indices_func
+    _ = nms_indices_func, nms_threshold
     prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if prediction.ndim == 2:
         prediction = np_module.expand_dims(prediction, axis=0)
@@ -67,6 +66,17 @@ def build_yolo26_obb_postprocess_instances(
     required_channels = resolve_yolo26_obb_prediction_channel_count(
         class_count=class_count,
     )
+    processed_instances = _build_yolo26_obb_processed_instances(
+        np_module=np_module,
+        prediction=prediction,
+        labels=labels,
+        score_threshold=score_threshold,
+        resize_ratio=resize_ratio,
+        image_width=image_width,
+        image_height=image_height,
+    )
+    if processed_instances is not None:
+        return processed_instances
     if int(prediction.shape[2]) < required_channels:
         raise InvalidRequestError(
             "YOLO26 OBB 推理输出通道数不足",
@@ -81,44 +91,74 @@ def build_yolo26_obb_postprocess_instances(
         boxes_xywh = image_prediction[:, :4]
         class_scores = image_prediction[:, 4 : 4 + class_count]
         angles = image_prediction[:, 4 + class_count]
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(
-            np_module.int32, copy=False
+        selected_scores, selected_class_ids, selected_anchor_indices = (
+            select_yolo26_end2end_topk_indices(
+                np_module=np_module,
+                class_scores=class_scores,
+                max_detections=DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+            )
         )
-        keep_mask = best_scores >= score_threshold
+        if int(selected_anchor_indices.size) <= 0:
+            continue
+        keep_mask = selected_scores >= float(score_threshold)
         if not bool(np_module.any(keep_mask)):
             continue
-        boxes_xywh = boxes_xywh[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        angles = angles[keep_mask]
-        top_indices = select_top_scoring_candidate_indices(
-            np_module=np_module,
-            scores=best_scores,
-            max_candidate_count=MAX_YOLO26_OBB_PRE_NMS_CANDIDATES,
-        )
-        if top_indices is not None:
-            boxes_xywh = boxes_xywh[top_indices]
-            best_scores = best_scores[top_indices]
-            best_class_ids = best_class_ids[top_indices]
-            angles = angles[top_indices]
-        boxes_xywhr = _build_yolo26_obb_boxes_xywhr(
-            np_module=np_module,
-            boxes_xywh=boxes_xywh,
-            angles=angles,
-        )
-        keep_indices = _rotated_nms_indices(
-            boxes_xywhr=boxes_xywhr,
-            scores=best_scores,
-            class_ids=best_class_ids,
-            nms_threshold=nms_threshold,
-            np_module=np_module,
-        )
+        selected_anchor_indices = selected_anchor_indices[keep_mask]
+        boxes_xywh = boxes_xywh[selected_anchor_indices]
+        best_scores = selected_scores[keep_mask]
+        best_class_ids = selected_class_ids[keep_mask]
+        angles = angles[selected_anchor_indices]
         for box, score, class_id, angle in zip(
-            boxes_xywh[keep_indices],
-            best_scores[keep_indices],
-            best_class_ids[keep_indices],
-            angles[keep_indices],
+            boxes_xywh,
+            best_scores,
+            best_class_ids,
+            angles,
+            strict=True,
+        ):
+            results.append(
+                _build_yolo26_obb_instance(
+                    box_xywh=box,
+                    score=score,
+                    class_id=int(class_id),
+                    angle=float(angle),
+                    labels=labels,
+                    resize_ratio=resize_ratio,
+                    image_width=image_width,
+                    image_height=image_height,
+                )
+            )
+    results.sort(key=lambda item: item.score, reverse=True)
+    return tuple(results[:MAX_YOLO26_OBB_DETECTIONS])
+
+
+def _build_yolo26_obb_processed_instances(
+    *,
+    np_module: Any,
+    prediction: Any,
+    labels: tuple[str, ...],
+    score_threshold: float,
+    resize_ratio: float,
+    image_width: int,
+    image_height: int,
+) -> tuple[Yolo26ObbPostprocessInstance, ...] | None:
+    """解析官方 YOLO26 export processed OBB 输出。"""
+
+    if int(prediction.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+        return None
+    if int(prediction.shape[2]) != 7:
+        return None
+
+    results: list[Yolo26ObbPostprocessInstance] = []
+    for image_prediction in prediction:
+        scores = image_prediction[:, 4]
+        keep_mask = scores >= float(score_threshold)
+        if not bool(np_module.any(keep_mask)):
+            continue
+        for box, score, class_id, angle in zip(
+            image_prediction[keep_mask, :4],
+            scores[keep_mask],
+            image_prediction[keep_mask, 5].astype(np_module.int32, copy=False),
+            image_prediction[keep_mask, 6],
             strict=True,
         ):
             results.append(
@@ -176,54 +216,6 @@ def _build_yolo26_obb_instance(
         class_name=class_name,
         angle=round(float(angle), 6),
     )
-
-
-def _build_yolo26_obb_boxes_xywhr(
-    *, np_module: Any, boxes_xywh: Any, angles: Any
-) -> Any:
-    """把 YOLO26 OBB xywh 和 angle 合成 rotated NMS 使用的 xywhr。"""
-
-    boxes = [
-        [float(box[0]), float(box[1]), float(box[2]), float(box[3]), float(angle)]
-        for box, angle in zip(boxes_xywh, angles, strict=True)
-    ]
-    return np_module.asarray(boxes, dtype=np_module.float32)
-
-
-def _rotated_nms_indices(
-    *,
-    np_module: Any,
-    boxes_xywhr: Any,
-    scores: Any,
-    class_ids: Any,
-    nms_threshold: float,
-) -> Any:
-    """按类别对 YOLO26 OBB rotated IoU 做 NMS。"""
-
-    box_count = int(len(boxes_xywhr))
-    if box_count <= 0:
-        return np_module.asarray([], dtype=np_module.int64)
-    order = np_module.argsort(scores)[::-1]
-    suppressed = np_module.zeros(box_count, dtype=bool)
-    keep_indices: list[int] = []
-    for raw_index in order:
-        index = int(raw_index)
-        if bool(suppressed[index]):
-            continue
-        keep_indices.append(index)
-        for raw_compare_index in order:
-            compare_index = int(raw_compare_index)
-            if compare_index == index or bool(suppressed[compare_index]):
-                continue
-            if int(class_ids[compare_index]) != int(class_ids[index]):
-                continue
-            overlap = rotated_iou_xywhr(
-                boxes_xywhr[index].tolist(),
-                boxes_xywhr[compare_index].tolist(),
-            )
-            if overlap > float(nms_threshold):
-                suppressed[compare_index] = True
-    return np_module.asarray(keep_indices, dtype=np_module.int64)
 
 
 def _clip_yolo26_obb_bounds(

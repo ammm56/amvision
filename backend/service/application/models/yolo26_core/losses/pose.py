@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.service.application.models.yolo26_core.assigners import (
     assign_yolo26_pose_targets,
+    resolve_yolo26_tal_candidate_box_sizes,
     yolo26_pose_box_iou_aligned,
 )
 from backend.service.application.models.yolo26_core.decode import (
@@ -86,6 +87,9 @@ def compute_yolo26_pose_loss(
     anchor_points = prediction_bundle["anchor_points"]
     stride_tensor = prediction_bundle["stride_tensor"]
     anchor_centers_xy = prediction_bundle["anchor_centers_xy"]
+    candidate_min_box_size, candidate_replace_box_size = (
+        resolve_yolo26_tal_candidate_box_sizes(stride_tensor=stride_tensor)
+    )
     reg_max = int(prediction_bundle["reg_max"])
 
     raw_keypoints = raw_outputs.get("kpts")
@@ -133,6 +137,8 @@ def compute_yolo26_pose_loss(
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
             assign_topk2=assign_topk2,
+            candidate_min_box_size=candidate_min_box_size,
+            candidate_replace_box_size=candidate_replace_box_size,
         )
         total_class_loss = total_class_loss + loss_state["class_loss"]
         total_box_loss = total_box_loss + loss_state["box_loss"]
@@ -192,6 +198,8 @@ def _compute_yolo26_pose_image_loss(
     assign_alpha: float,
     assign_beta: float,
     assign_topk2: int | None,
+    candidate_min_box_size: float,
+    candidate_replace_box_size: float,
 ) -> dict[str, Any]:
     """计算单张图片的 YOLO26 pose 训练损失。"""
 
@@ -243,6 +251,8 @@ def _compute_yolo26_pose_image_loss(
             alpha=assign_alpha,
             beta=assign_beta,
             topk2=assign_topk2,
+            candidate_min_box_size=candidate_min_box_size,
+            candidate_replace_box_size=candidate_replace_box_size,
         )
 
     foreground_mask = assignment["foreground_mask"]

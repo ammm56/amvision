@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.service.application.models.yolo26_core.assigners.detection import (
     assign_yolo26_detection_targets,
+    resolve_yolo26_tal_candidate_box_sizes,
     yolo26_box_iou_aligned,
     yolo26_box_iou_matrix,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "assign_yolo26_obb_targets",
     "assign_yolo26_pose_targets",
     "assign_yolo26_segmentation_targets",
+    "resolve_yolo26_tal_candidate_box_sizes",
     "yolo26_box_iou_aligned",
     "yolo26_box_iou_matrix",
     "yolo26_pose_box_iou_aligned",

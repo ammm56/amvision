@@ -10,6 +10,9 @@ from backend.service.application.models.yolo26_core.decode import (
     build_yolo26_detection_prediction,
 )
 from backend.service.application.models.yolo26_core.nn.tasks.detection import Detect
+from backend.service.application.models.yolo26_core.postprocess.export import (
+    postprocess_yolo26_extra_export_tensor,
+)
 from backend.service.application.models.yolo_core_common.layers import Conv
 
 
@@ -184,7 +187,16 @@ class Segment26(Detect):
             dfl_decoder=self.dfl,
         )
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
-        return prediction.transpose(1, 2).contiguous(), proto
+        normalized_prediction = prediction.transpose(1, 2).contiguous()
+        if self.export and self.end2end:
+            normalized_prediction = postprocess_yolo26_extra_export_tensor(
+                torch_module=torch,
+                prediction=normalized_prediction,
+                num_classes=self.nc,
+                extra_channels=self.nm,
+                max_detections=self.max_det,
+            )
+        return normalized_prediction, proto
 
     def forward_head(
         self,

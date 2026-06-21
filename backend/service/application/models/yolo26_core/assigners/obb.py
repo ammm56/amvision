@@ -22,6 +22,7 @@ def assign_yolo26_obb_targets(
     alpha: float,
     beta: float,
     min_candidate_box_size: float = 0.0,
+    replace_candidate_box_size: float | None = None,
     topk2: int | None = None,
 ) -> dict[str, Any]:
     """按 YOLO26 OBB 的 RotatedTaskAlignedAssigner 规则分配正样本。"""
@@ -74,6 +75,7 @@ def assign_yolo26_obb_targets(
         torch_module=torch_module,
         gt_rboxes=gt_rboxes,
         min_candidate_box_size=min_candidate_box_size,
+        replace_candidate_box_size=replace_candidate_box_size,
     )
     inside_mask = yolo26_anchor_in_rotated_box(
         torch_module=torch_module,
@@ -140,7 +142,6 @@ def _select_yolo26_obb_candidates(
         dtype=torch_module.bool,
         device=alignment_metric.device,
     )
-    center_distances = torch_module.cdist(gt_rboxes[:, :2], anchor_centers_xy)
     topk_count = min(max(1, int(topk)), anchor_count)
     for gt_index in range(gt_count):
         valid_indices = torch_module.nonzero(
@@ -148,12 +149,6 @@ def _select_yolo26_obb_candidates(
             as_tuple=False,
         ).squeeze(1)
         if int(valid_indices.numel()) == 0:
-            fallback_index = int(torch_module.argmin(center_distances[gt_index]).item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = alignment_metric[
-                gt_index,
-                fallback_index,
-            ].clamp_min(1e-4)
             continue
         selected_count = min(topk_count, int(valid_indices.numel()))
         _, topk_indices = torch_module.topk(
@@ -192,7 +187,6 @@ def _refine_yolo26_obb_candidate_mask(
             as_tuple=False,
         ).squeeze(1)
         if int(valid_indices.numel()) == 0:
-            refined_mask[gt_index] = candidate_mask[gt_index]
             continue
         selected_count = min(refined_count, int(valid_indices.numel()))
         _, topk_indices = torch_module.topk(
@@ -208,16 +202,24 @@ def _build_yolo26_obb_candidate_boxes(
     torch_module: Any,
     gt_rboxes: Any,
     min_candidate_box_size: float,
+    replace_candidate_box_size: float | None,
 ) -> Any:
     """构造 YOLO26 OBB 正样本筛选使用的最小尺寸旋转框。"""
 
     if min_candidate_box_size <= 0:
         return gt_rboxes
     min_size = gt_rboxes.new_tensor(float(min_candidate_box_size))
+    replace_size = gt_rboxes.new_tensor(
+        float(
+            replace_candidate_box_size
+            if replace_candidate_box_size is not None
+            else min_candidate_box_size
+        )
+    )
     candidate_boxes = gt_rboxes.clone()
     candidate_boxes[:, 2:4] = torch_module.where(
         candidate_boxes[:, 2:4] < min_size,
-        min_size,
+        replace_size,
         candidate_boxes[:, 2:4],
     )
     return candidate_boxes

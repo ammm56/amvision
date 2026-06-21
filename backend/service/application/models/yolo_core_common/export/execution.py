@@ -22,6 +22,7 @@ YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
 YOLO_TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 
 ConversionScriptRunner = Callable[..., subprocess.CompletedProcess[str]]
+YoloOnnxValidationSummaryBuilder = Callable[..., dict[str, object]]
 
 
 def export_yolo_onnx(
@@ -68,6 +69,8 @@ def validate_yolo_onnx(
     onnx_module: object,
     onnxruntime_module: object,
     export_plan: YoloExportTaskPlan,
+    summary_builder: YoloOnnxValidationSummaryBuilder | None = None,
+    strict_numeric_validation: bool | None = None,
 ) -> dict[str, object]:
     """校验 ONNX 文件合法性并和 PyTorch 输出做数值对比。"""
 
@@ -100,21 +103,31 @@ def validate_yolo_onnx(
         task_type=export_plan.task_type,
         outputs=ort_outputs,
     )
-    summary = summarize_yolo_onnx_numeric_validation(
-        np_module=session.imports.np,
-        torch_outputs=torch_outputs,
-        ort_outputs=ort_outputs,
+    if summary_builder is None:
+        summary = summarize_yolo_onnx_numeric_validation(
+            np_module=session.imports.np,
+            torch_outputs=torch_outputs,
+            ort_outputs=ort_outputs,
+        )
+    else:
+        summary = summary_builder(
+            np_module=session.imports.np,
+            torch_outputs=torch_outputs,
+            ort_outputs=ort_outputs,
+            task_type=export_plan.task_type,
+        )
+    resolved_strict_numeric_validation = (
+        require_strict_yolo_onnx_numeric_validation(task_type=export_plan.task_type)
+        if strict_numeric_validation is None
+        else strict_numeric_validation
     )
-    strict_numeric_validation = require_strict_yolo_onnx_numeric_validation(
-        task_type=export_plan.task_type,
-    )
-    summary["strict_numeric_validation"] = strict_numeric_validation
+    summary["strict_numeric_validation"] = resolved_strict_numeric_validation
     if not bool(summary["finite"]):
         raise ServiceConfigurationError(
             "ONNX 输出包含 NaN 或 Inf",
             details=dict(summary),
         )
-    if strict_numeric_validation and not bool(summary["allclose"]):
+    if resolved_strict_numeric_validation and not bool(summary["allclose"]):
         raise ServiceConfigurationError(
             "ONNX 数值校验失败",
             details=dict(summary),

@@ -1,4 +1,4 @@
-"""YOLO26 core 任务配置兼容入口。"""
+"""YOLO26 core 任务配置入口。"""
 
 from __future__ import annotations
 

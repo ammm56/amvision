@@ -61,6 +61,10 @@ from backend.service.application.models.yolo26_core.data import (
     build_yolo26_task_augmentation_options,
     serialize_yolo26_detection_augmentation_options,
 )
+from backend.service.application.models.yolo26_core.assigners import (
+    assign_yolo26_detection_targets,
+    assign_yolo26_obb_targets,
+)
 from backend.service.application.models.yolo26_core.losses import (
     compute_yolo26_detection_loss,
     compute_yolo26_obb_loss,
@@ -384,9 +388,11 @@ from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_segmentation_postprocess_instances,
 )
 from backend.service.application.models.yolo26_core.postprocess import (
+    build_yolo26_detection_records,
     build_yolo26_obb_postprocess_instances,
     build_yolo26_pose_postprocess_instances,
     build_yolo26_segmentation_postprocess_instances,
+    postprocess_yolo26_detection_prediction_array,
 )
 from backend.service.application.models.yolov8_core.data import (
     YoloV8TaskAugmentationOptions,
@@ -652,6 +658,58 @@ def test_yolo26_detection_loss_supports_backward() -> None:
     )
 
 
+def test_yolo26_detection_assigner_expands_tiny_boxes_without_fallback() -> None:
+    """验证 YOLO26 detection TAL 使用 tiny box 扩张而不是最近 anchor fallback。"""
+
+    tiny_assignment = assign_yolo26_detection_targets(
+        torch_module=torch,
+        pred_boxes=torch.tensor([[7.5, 7.5, 7.6, 7.6]], dtype=torch.float32),
+        class_probabilities=torch.tensor([[0.95]], dtype=torch.float32),
+        anchor_centers_xy=torch.tensor([[8.0, 8.0]], dtype=torch.float32),
+        gt_boxes=torch.tensor([[7.5, 7.5, 7.6, 7.6]], dtype=torch.float32),
+        gt_classes=torch.tensor([0], dtype=torch.long),
+        topk=10,
+        alpha=0.5,
+        beta=6.0,
+        candidate_min_box_size=8.0,
+        candidate_replace_box_size=16.0,
+    )
+    assert bool(tiny_assignment["foreground_mask"][0]) is True
+
+    no_candidate_assignment = assign_yolo26_detection_targets(
+        torch_module=torch,
+        pred_boxes=torch.tensor([[0.0, 0.0, 1.0, 1.0]], dtype=torch.float32),
+        class_probabilities=torch.tensor([[0.95]], dtype=torch.float32),
+        anchor_centers_xy=torch.tensor([[0.0, 0.0]], dtype=torch.float32),
+        gt_boxes=torch.tensor([[100.0, 100.0, 101.0, 101.0]], dtype=torch.float32),
+        gt_classes=torch.tensor([0], dtype=torch.long),
+        topk=10,
+        alpha=0.5,
+        beta=6.0,
+    )
+    assert bool(no_candidate_assignment["foreground_mask"].any()) is False
+
+
+def test_yolo26_obb_assigner_does_not_force_nearest_anchor() -> None:
+    """验证 YOLO26 OBB TAL 无候选时不强制分配最近 anchor。"""
+
+    assignment = assign_yolo26_obb_targets(
+        torch_module=torch,
+        pred_rboxes=torch.tensor([[0.0, 0.0, 4.0, 4.0, 0.0]], dtype=torch.float32),
+        class_probabilities=torch.tensor([[0.95]], dtype=torch.float32),
+        anchor_centers_xy=torch.tensor([[0.0, 0.0]], dtype=torch.float32),
+        gt_rboxes=torch.tensor([[100.0, 100.0, 4.0, 4.0, 0.0]], dtype=torch.float32),
+        gt_classes=torch.tensor([0], dtype=torch.long),
+        topk=10,
+        alpha=0.5,
+        beta=6.0,
+        min_candidate_box_size=8.0,
+        replace_candidate_box_size=16.0,
+    )
+
+    assert bool(assignment["foreground_mask"].any()) is False
+
+
 def test_yolo26_detection_data_core_builds_training_batch(tmp_path: Path) -> None:
     """验证 YOLO26 detection data core 能独立构造训练 batch。"""
 
@@ -698,6 +756,176 @@ def test_yolo26_detection_data_core_builds_training_batch(tmp_path: Path) -> Non
     )
     assert serialized_options["mosaic_prob"] == 0.0
     assert serialized_options["enable_mixup"] is False
+
+
+def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
+    """验证 YOLO26 detection 后处理使用 end2end top-k，而不是普通 NMS。"""
+
+    prediction = np.asarray(
+        [
+            [
+                [8.0, 8.0, 12.0, 12.0, 0.10, 0.90],
+                [8.0, 8.0, 12.0, 12.0, 0.10, 0.85],
+                [37.0, 37.0, 43.0, 43.0, 0.70, 0.10],
+                [66.0, 66.0, 74.0, 74.0, 0.05, 0.60],
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    results = postprocess_yolo26_detection_prediction_array(
+        prediction_array=prediction,
+        np_module=np,
+        num_classes=2,
+        score_threshold=0.0,
+        max_detections=3,
+    )
+    channel_first_results = postprocess_yolo26_detection_prediction_array(
+        prediction_array=np.transpose(prediction, (0, 2, 1)),
+        np_module=np,
+        num_classes=2,
+        score_threshold=0.0,
+        max_detections=3,
+    )
+    detections = build_yolo26_detection_records(
+        np_module=np,
+        prediction_array=prediction,
+        labels=("a", "b"),
+        score_threshold=0.0,
+        nms_threshold=0.01,
+        resize_ratio=1.0,
+        image_width=128,
+        image_height=128,
+        max_detections=3,
+    )
+
+    assert results[0] is not None
+    assert channel_first_results[0] is not None
+    assert results[0].scores.tolist() == pytest.approx([0.90, 0.85, 0.70])
+    assert channel_first_results[0].scores.tolist() == pytest.approx(
+        results[0].scores.tolist()
+    )
+    assert results[0].class_ids.tolist() == [1, 1, 0]
+    assert np.allclose(
+        results[0].boxes_xyxy[:2],
+        np.asarray([[8.0, 8.0, 12.0, 12.0], [8.0, 8.0, 12.0, 12.0]]),
+    )
+    assert [item.score for item in detections] == pytest.approx([0.90, 0.85, 0.70])
+    assert [item.class_id for item in detections] == [1, 1, 0]
+
+
+@pytest.mark.parametrize(
+    ("task_type", "expected_channels"),
+    (
+        (DETECTION_TASK_TYPE, 6),
+        (SEGMENTATION_TASK_TYPE, 38),
+        (POSE_TASK_TYPE, 57),
+        (OBB_TASK_TYPE, 7),
+    ),
+)
+def test_yolo26_end2end_export_forward_uses_official_topk_layout(
+    task_type: str,
+    expected_channels: int,
+) -> None:
+    """验证 YOLO26 export forward 使用官方 end2end top-k 输出布局。"""
+
+    model = build_yolo26_model(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.eval()
+    for module in model.modules():
+        if isinstance(getattr(module, "export", None), bool):
+            module.export = True
+        if hasattr(module, "max_det"):
+            module.max_det = 5
+
+    with torch.no_grad():
+        outputs = model(torch.randn(1, 3, 64, 64))
+
+    prediction = outputs[0] if task_type == SEGMENTATION_TASK_TYPE else outputs
+    assert tuple(prediction.shape) == (1, 5, expected_channels)
+
+
+def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
+    """验证 YOLO26 官方 processed export 输出可直接进入 runtime 后处理。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+
+    detection_prediction = np.zeros((1, 300, 6), dtype=np.float32)
+    detection_prediction[0, 0] = [2.0, 3.0, 18.0, 20.0, 0.91, 1.0]
+    detections = build_yolo26_detection_records(
+        np_module=np,
+        prediction_array=detection_prediction,
+        labels=("background", "part"),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+    )
+
+    segmentation_prediction = np.zeros((1, 300, 7), dtype=np.float32)
+    segmentation_prediction[0, 0] = [2.0, 3.0, 18.0, 20.0, 0.92, 0.0, 1.0]
+    segmentation_instances = build_yolo26_segmentation_postprocess_instances(
+        cv2_module=cv2,
+        np_module=np,
+        prediction_array=segmentation_prediction,
+        proto_array=np.ones((1, 1, 4, 4), dtype=np.float32),
+        labels=("part",),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        mask_threshold=0.5,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+        input_size=(32, 32),
+        nms_indices_func=batched_nms_indices,
+    )
+
+    pose_prediction = np.zeros((1, 300, 57), dtype=np.float32)
+    pose_prediction[0, 0, :6] = [2.0, 3.0, 18.0, 20.0, 0.93, 0.0]
+    for keypoint_index in range(17):
+        base_index = 6 + keypoint_index * 3
+        pose_prediction[0, 0, base_index : base_index + 3] = [8.0, 9.0, 0.9]
+    pose_instances, _pose_shape = build_yolo26_pose_postprocess_instances(
+        np_module=np,
+        prediction_array=pose_prediction,
+        labels=("person",),
+        score_threshold=0.1,
+        keypoint_confidence_threshold=0.2,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+        input_size=(32, 32),
+        default_kpt_shape=(17, 3),
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    obb_prediction = np.zeros((1, 300, 7), dtype=np.float32)
+    obb_prediction[0, 0] = [16.0, 16.0, 10.0, 6.0, 0.94, 0.0, 0.2]
+    obb_instances = build_yolo26_obb_postprocess_instances(
+        np_module=np,
+        prediction_array=obb_prediction,
+        labels=("part",),
+        score_threshold=0.1,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+        nms_threshold=0.65,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert detections[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
+    assert detections[0].class_name == "part"
+    assert segmentation_instances[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
+    assert segmentation_instances[0].mask_area > 0.0
+    assert pose_instances[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
+    assert len(pose_instances[0].keypoints) == 17
+    assert obb_instances[0].bbox_xywhr == (16.0, 16.0, 10.0, 6.0, 0.2)
 
 
 @pytest.mark.parametrize(

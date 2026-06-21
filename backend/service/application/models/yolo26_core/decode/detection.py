@@ -59,14 +59,24 @@ def build_yolo26_detection_prediction(
     raw_outputs: dict[str, torch.Tensor],
     strides: tuple[int, ...],
     dfl_decoder: nn.Module,
+    box_format: str = "xyxy",
 ) -> torch.Tensor:
     """把 YOLO26 detection head 原始输出组装成推理预测张量。"""
 
-    decoded_boxes = decode_yolo26_detection_boxes_xywh(
-        raw_outputs=raw_outputs,
-        strides=strides,
-        dfl_decoder=dfl_decoder,
-    )
+    if box_format == "xyxy":
+        decoded_boxes = decode_yolo26_detection_boxes_xyxy(
+            raw_outputs=raw_outputs,
+            strides=strides,
+            dfl_decoder=dfl_decoder,
+        )
+    elif box_format == "xywh":
+        decoded_boxes = decode_yolo26_detection_boxes_xywh(
+            raw_outputs=raw_outputs,
+            strides=strides,
+            dfl_decoder=dfl_decoder,
+        )
+    else:
+        raise ValueError(f"不支持的 YOLO26 detection box_format: {box_format}")
     class_scores = raw_outputs["scores"].sigmoid()
     return torch.cat((decoded_boxes, class_scores), dim=1)
 

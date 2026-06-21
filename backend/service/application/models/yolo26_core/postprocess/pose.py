@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo26_core.postprocess.detection import (
+    DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    select_yolo26_end2end_topk_indices,
+)
 
 
 @dataclass(frozen=True)
@@ -57,7 +61,7 @@ def build_yolo26_pose_postprocess_instances(
 ) -> tuple[tuple[Yolo26PosePostprocessInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose 输出转换为实例记录。"""
 
-    _ = input_size
+    _ = input_size, nms_threshold, nms_indices_func
     prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if prediction.ndim == 2:
         prediction = np_module.expand_dims(prediction, axis=0)
@@ -73,6 +77,19 @@ def build_yolo26_pose_postprocess_instances(
         class_count=class_count,
         keypoint_shape=default_kpt_shape,
     )
+    processed_instances = _build_yolo26_pose_processed_instances(
+        np_module=np_module,
+        prediction=prediction,
+        labels=labels,
+        score_threshold=score_threshold,
+        keypoint_confidence_threshold=keypoint_confidence_threshold,
+        resize_ratio=resize_ratio,
+        image_width=image_width,
+        image_height=image_height,
+        default_kpt_shape=default_kpt_shape,
+    )
+    if processed_instances is not None:
+        return processed_instances, default_kpt_shape
     if int(prediction.shape[2]) < required_channels:
         raise InvalidRequestError(
             "YOLO26 pose 推理输出通道数不足",
@@ -84,34 +101,29 @@ def build_yolo26_pose_postprocess_instances(
 
     results: list[Yolo26PosePostprocessInstance] = []
     for image_prediction in prediction:
-        boxes = image_prediction[:, :4]
         class_scores = image_prediction[:, 4 : 4 + class_count]
         raw_keypoints = image_prediction[
             :, 4 + class_count : 4 + class_count + keypoint_width
         ]
-        best_scores = np_module.max(class_scores, axis=1)
-        best_class_ids = np_module.argmax(class_scores, axis=1).astype(
-            np_module.int32, copy=False
+        selected_scores, selected_class_ids, selected_anchor_indices = (
+            select_yolo26_end2end_topk_indices(
+                np_module=np_module,
+                class_scores=class_scores,
+                max_detections=DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+            )
         )
-        keep_mask = best_scores >= score_threshold
+        if int(selected_anchor_indices.size) <= 0:
+            continue
+        keep_mask = selected_scores >= float(score_threshold)
         if not bool(np_module.any(keep_mask)):
             continue
-        boxes = boxes[keep_mask]
-        best_scores = best_scores[keep_mask]
-        best_class_ids = best_class_ids[keep_mask]
-        raw_keypoints = raw_keypoints[keep_mask]
-        keep_indices = nms_indices_func(
-            boxes=boxes,
-            scores=best_scores,
-            class_ids=best_class_ids,
-            nms_threshold=nms_threshold,
-            np_module=np_module,
-        )
+        selected_anchor_indices = selected_anchor_indices[keep_mask]
+        boxes = image_prediction[selected_anchor_indices, :4]
         for box, score, class_id, keypoint_row in zip(
-            boxes[keep_indices],
-            best_scores[keep_indices],
-            best_class_ids[keep_indices],
-            raw_keypoints[keep_indices],
+            boxes,
+            selected_scores[keep_mask],
+            selected_class_ids[keep_mask],
+            raw_keypoints[selected_anchor_indices],
             strict=True,
         ):
             results.append(
@@ -131,6 +143,59 @@ def build_yolo26_pose_postprocess_instances(
             )
     results.sort(key=lambda item: item.score, reverse=True)
     return tuple(results), default_kpt_shape
+
+
+def _build_yolo26_pose_processed_instances(
+    *,
+    np_module: Any,
+    prediction: Any,
+    labels: tuple[str, ...],
+    score_threshold: float,
+    keypoint_confidence_threshold: float,
+    resize_ratio: float,
+    image_width: int,
+    image_height: int,
+    default_kpt_shape: tuple[int, int],
+) -> tuple[Yolo26PosePostprocessInstance, ...] | None:
+    """解析官方 YOLO26 export processed pose 输出。"""
+
+    keypoint_width = int(default_kpt_shape[0]) * int(default_kpt_shape[1])
+    required_channels = 6 + keypoint_width
+    if int(prediction.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+        return None
+    if int(prediction.shape[2]) < required_channels:
+        return None
+
+    results: list[Yolo26PosePostprocessInstance] = []
+    for image_prediction in prediction:
+        scores = image_prediction[:, 4]
+        keep_mask = scores >= float(score_threshold)
+        if not bool(np_module.any(keep_mask)):
+            continue
+        for box, score, class_id, keypoint_row in zip(
+            image_prediction[keep_mask, :4],
+            scores[keep_mask],
+            image_prediction[keep_mask, 5].astype(np_module.int32, copy=False),
+            image_prediction[keep_mask, 6 : 6 + keypoint_width],
+            strict=True,
+        ):
+            results.append(
+                _build_yolo26_pose_instance(
+                    np_module=np_module,
+                    box=box,
+                    score=score,
+                    class_id=int(class_id),
+                    keypoint_row=keypoint_row,
+                    labels=labels,
+                    keypoint_confidence_threshold=keypoint_confidence_threshold,
+                    resize_ratio=resize_ratio,
+                    image_width=image_width,
+                    image_height=image_height,
+                    default_kpt_shape=default_kpt_shape,
+                )
+            )
+    results.sort(key=lambda item: item.score, reverse=True)
+    return tuple(results)
 
 
 def _build_yolo26_pose_instance(

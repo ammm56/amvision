@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.service.application.models.yolo26_core.assigners.detection import (
     assign_yolo26_detection_targets,
+    resolve_yolo26_tal_candidate_box_sizes,
 )
 
 
@@ -72,6 +73,9 @@ def assign_yolo26_segmentation_targets(
         device=device,
         dtype=prediction.dtype,
     )
+    candidate_min_box_size, candidate_replace_box_size = (
+        resolve_yolo26_tal_candidate_box_sizes(stride_tensor=stride_tensor)
+    )
     assignment = assign_yolo26_detection_targets(
         torch_module=torch_module,
         pred_boxes=pred_boxes.detach(),
@@ -82,6 +86,8 @@ def assign_yolo26_segmentation_targets(
         topk=topk,
         alpha=alpha,
         beta=beta,
+        candidate_min_box_size=candidate_min_box_size,
+        candidate_replace_box_size=candidate_replace_box_size,
     )
     foreground_mask = assignment["foreground_mask"]
     matched_gt_indices = assignment["assigned_gt_indices"].clamp_min(0)

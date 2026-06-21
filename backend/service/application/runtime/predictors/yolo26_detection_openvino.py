@@ -6,10 +6,9 @@ from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.detection_postprocess import (
-    DETECTION_POSTPROCESS_MODE_NMS,
-)
 from backend.service.application.models.yolo26_core.postprocess import (
+    DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
     build_yolo26_detection_records,
 )
 from backend.service.application.runtime.contracts.detection import (
@@ -223,7 +222,7 @@ class OpenVINOYolo26RuntimeSession:
                 ),
                 output_spec=DetectionRuntimeTensorSpec(
                     name=self.output_name,
-                    shape=(-1, 4 + len(self.runtime_target.labels)),
+                    shape=(1, DEFAULT_YOLO26_END2END_MAX_DETECTIONS, 6),
                     dtype=resolve_openvino_port_dtype(
                         self.output_port, fallback="float32"
                     ),
@@ -239,8 +238,8 @@ class OpenVINOYolo26RuntimeSession:
                     ),
                     "score_threshold": request.score_threshold,
                     "nms_threshold": nms_threshold,
-                    "postprocess_mode": DETECTION_POSTPROCESS_MODE_NMS,
-                    "max_detections": None,
+                    "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+                    "max_detections": DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
                     "class_count": len(self.runtime_target.labels),
                     "decode_ms": decode_ms,
                     "preprocess_ms": preprocess_ms,

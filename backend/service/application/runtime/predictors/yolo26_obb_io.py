@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.runtime.predictors.yolov8_segmentation_io import (
-    load_yolov8_segmentation_prediction_image,
-    preprocess_yolov8_segmentation_image,
+from backend.service.application.runtime.predictors.yolo_runtime_io import (
+    load_yolo_runtime_prediction_image,
+    preprocess_yolo_runtime_letterbox_image,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -22,7 +22,7 @@ def load_yolo26_obb_prediction_image(
 ) -> Any:
     """按 storage 或 memory 模式加载本次 OBB 推理输入图片。"""
 
-    return load_yolov8_segmentation_prediction_image(
+    return load_yolo_runtime_prediction_image(
         cv2_module=cv2_module,
         np_module=np_module,
         dataset_storage=dataset_storage,
@@ -39,7 +39,7 @@ def preprocess_yolo26_obb_image(
 ) -> tuple[Any, float]:
     """按 YOLO26 OBB 推理规则构造输入张量。"""
 
-    return preprocess_yolov8_segmentation_image(
+    return preprocess_yolo_runtime_letterbox_image(
         cv2_module=cv2_module,
         np_module=np_module,
         image=image,

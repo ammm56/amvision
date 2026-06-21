@@ -12,6 +12,9 @@ from backend.service.application.models.yolo26_core.decode import (
     build_yolo26_detection_prediction,
 )
 from backend.service.application.models.yolo26_core.nn.tasks.detection import Detect
+from backend.service.application.models.yolo26_core.postprocess.export import (
+    postprocess_yolo26_extra_export_tensor,
+)
 from backend.service.application.models.yolo_core_common.decode import (
     decode_pose_keypoints,
 )
@@ -173,7 +176,16 @@ class Pose26(Detect):
             anchor_offset=0.0,
         )
         prediction = torch.cat((prediction, kpts), dim=1)
-        return prediction.transpose(1, 2).contiguous()
+        normalized_prediction = prediction.transpose(1, 2).contiguous()
+        if self.export and self.end2end:
+            normalized_prediction = postprocess_yolo26_extra_export_tensor(
+                torch_module=torch,
+                prediction=normalized_prediction,
+                num_classes=self.nc,
+                extra_channels=self.nk,
+                max_detections=self.max_det,
+            )
+        return normalized_prediction
 
     def _build_head_outputs_pose26(
         self,
