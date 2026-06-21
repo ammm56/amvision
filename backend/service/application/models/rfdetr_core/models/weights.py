@@ -10,7 +10,7 @@ from typing import Any, List
 import torch
 import torch.nn.functional as F  # noqa: N812
 
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     StateDictCoverageSummary,
     analyze_state_dict_coverage,
 )

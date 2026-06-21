@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from torch import Tensor
 
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     ModelCoreSnapshot,
     build_model_core_snapshot,
 )

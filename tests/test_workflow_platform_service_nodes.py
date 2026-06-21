@@ -15,25 +15,25 @@ from backend.nodes.core_nodes import (
 from backend.service.application.deployments.classification_deployment_service import (
     ClassificationDeploymentInstanceCreateRequest,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SegmentationInferenceTaskRequest,
 )
 from backend.service.application.models.validation.pose_session_service import (
     PoseValidationSessionCreateRequest,
 )
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
     YoloPrimaryClassificationEvaluationTaskRequest,
 )
-from backend.service.application.models.yolo11_classification_training_service import (
+from backend.service.application.models.training.yolo11_classification_training_service import (
     Yolo11ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     Yolo11SegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     Yolo11PoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_obb_training_service import (
+from backend.service.application.models.training.yolo11_obb_training_service import (
     Yolo11ObbTrainingTaskRequest,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (

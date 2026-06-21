@@ -9,7 +9,7 @@ import subprocess
 from typing import Callable
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.onnx_export import export_torch_model_to_onnx
+from backend.service.application.models.export.onnx_export import export_torch_model_to_onnx
 from backend.service.application.models.yolov8_core.export.plan import YoloV8ExportTaskPlan
 from backend.service.application.models.yolov8_core.export.segmentation import (
     normalize_yolov8_segmentation_export_outputs,

@@ -23,49 +23,49 @@ from backend.service.application.conversions.rfdetr_conversion_task_service impo
 from backend.service.application.models.validation.classification_session_service import (
     LocalClassificationValidationSessionService,
 )
-from backend.service.application.models.classification_inference_task_service import (
+from backend.service.application.models.inference.classification_inference_task_service import (
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.models.detection_evaluation_task_service import (
+from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     SqlAlchemyDetectionEvaluationTaskService,
 )
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     SqlAlchemyDetectionInferenceTaskService,
 )
 from backend.service.application.models.validation.detection_session_service import (
     LocalDetectionValidationSessionService,
 )
-from backend.service.application.models.obb_evaluation_task_service import (
+from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
-from backend.service.application.models.obb_inference_task_service import (
+from backend.service.application.models.inference.obb_inference_task_service import (
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
     SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
 )
-from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
+from backend.service.application.models.training.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
-from backend.service.application.models.yolo11_classification_training_service import (
+from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
 )
-from backend.service.application.models.yolo11_obb_training_service import (
+from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (

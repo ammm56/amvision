@@ -9,7 +9,7 @@ from typing import Any
 from torch import nn
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     StateDictCoverageSummary,
     analyze_state_dict_coverage,
 )

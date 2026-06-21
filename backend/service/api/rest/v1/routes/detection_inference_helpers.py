@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
-from backend.service.application.models.detection_inference_payloads import (
+from backend.service.application.models.inference.detection_inference_payloads import (
     DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     DetectionInferenceInputSource,
 )

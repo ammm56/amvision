@@ -53,7 +53,7 @@ from backend.service.application.models.training.yolox_detection_task_types impo
 from backend.service.application.models.training.yolox_detection_task_warm_start import (
     YoloXTrainingTaskWarmStartMixin,
 )
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
     build_detection_training_config_payload,
     build_detection_training_summary_base,

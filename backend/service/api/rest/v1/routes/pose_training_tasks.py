@@ -26,15 +26,15 @@ from backend.service.application.errors import PermissionDeniedError
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     YoloPrimaryPoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
     Yolo11PoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_pose_training_service import (
+from backend.service.application.models.training.yolo26_pose_training_service import (
     SqlAlchemyYolo26PoseTrainingTaskService,
     Yolo26PoseTrainingTaskRequest,
 )

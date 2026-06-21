@@ -12,7 +12,7 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
     SqlAlchemyYoloXConversionTaskService,
     YoloXConversionTaskRequest,
 )
-from backend.service.application.models.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,

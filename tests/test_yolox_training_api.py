@@ -24,7 +24,7 @@ from backend.service.application.models.yolox_core.training import (
     build_yolox_checkpoint_state as _build_checkpoint_state,
     load_yolox_resume_checkpoint,
 )
-from backend.service.application.models.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.application.models.training.yolox_detection_task_service import YOLOX_TRAINING_QUEUE_NAME
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport

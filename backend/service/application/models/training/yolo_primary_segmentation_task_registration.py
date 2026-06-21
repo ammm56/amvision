@@ -11,14 +11,14 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.models.training.rfdetr_segmentation import (
     RFDETR_SEGMENTATION_IMPLEMENTATION_MODE,
 )
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.models.yolo_primary_segmentation_training import (
+from backend.service.application.models.training.yolo_primary_segmentation_training import (
     YOLO_PRIMARY_SEGMENTATION_IMPLEMENTATION_MODE,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )

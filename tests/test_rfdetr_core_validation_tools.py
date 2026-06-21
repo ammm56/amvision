@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     analyze_state_dict_coverage,
     build_model_core_snapshot,
 )

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from backend.service.application.models.obb_loss import compute_obb_loss
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.losses.obb_loss import compute_obb_loss
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.runtime.predictors.yolov8_obb_postprocess import (
     build_yolov8_obb_runtime_instances,
 )

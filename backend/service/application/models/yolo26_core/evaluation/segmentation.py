@@ -8,12 +8,12 @@ import time
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.coco_style_metrics import (
+from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
     mask_iou,
 )
-from backend.service.application.models.yolo_dataset_manifest_support import (
+from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )

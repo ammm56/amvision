@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import torch
 
-from backend.service.application.models.pose_loss import compute_pose_loss
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
 
 
 def test_compute_pose_loss_exposes_visibility_loss_for_standard_pose() -> None:

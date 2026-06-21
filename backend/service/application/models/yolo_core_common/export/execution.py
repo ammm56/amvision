@@ -15,7 +15,7 @@ from backend.service.application.models.yolo_core_common.export.plan import (
 from backend.service.application.models.yolo_core_common.export.segmentation import (
     normalize_segmentation_export_outputs,
 )
-from backend.service.application.models.onnx_export import export_torch_model_to_onnx
+from backend.service.application.models.export.onnx_export import export_torch_model_to_onnx
 
 
 YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"

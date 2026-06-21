@@ -27,19 +27,19 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     resolve_display_name,
 )
-from backend.service.application.models.detection_evaluation_task_service import (
+from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DetectionEvaluationTaskRequest,
 )
-from backend.service.application.models.obb_evaluation_task_service import (
+from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     ObbEvaluationTaskRequest,
 )
-from backend.service.application.models.pose_evaluation_task_service import (
+from backend.service.application.models.evaluation.pose_evaluation_task_service import (
     PoseEvaluationTaskRequest,
 )
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
     YoloPrimaryClassificationEvaluationTaskRequest,
 )
-from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
     YoloPrimarySegmentationEvaluationTaskRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest

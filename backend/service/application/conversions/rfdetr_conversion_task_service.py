@@ -27,11 +27,11 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.detection_operation_rules import (
+from backend.service.application.models.postprocess.detection_operation_rules import (
     DetectionConversionOutputFiles,
     build_detection_conversion_report_summary,
 )
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration as RfdetrBuildRegistration,
 )
 from backend.service.application.models.catalog.rfdetr import (

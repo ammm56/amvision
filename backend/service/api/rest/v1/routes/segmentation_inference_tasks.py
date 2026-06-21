@@ -39,10 +39,10 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.segmentation_async_inference_gateway import (
+from backend.service.application.models.inference.segmentation_async_inference_gateway import (
     SegmentationAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.segmentation_inference_payloads import (
+from backend.service.application.models.inference.segmentation_inference_payloads import (
     SEGMENTATION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     SegmentationInferenceInputSource,
     attach_segmentation_inference_serialize_timing,
@@ -51,7 +51,7 @@ from backend.service.application.models.segmentation_inference_payloads import (
     normalize_segmentation_inference_input,
     serialize_segmentation_inference_payload,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SEGMENTATION_INFERENCE_TASK_KIND,
     SegmentationInferenceTaskRequest,
     SqlAlchemySegmentationInferenceTaskService,

@@ -29,7 +29,7 @@ from backend.service.application.deployments.pose_deployment_service import (
     SqlAlchemyPoseDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.pose_async_inference_gateway import (
+from backend.service.application.models.inference.pose_async_inference_gateway import (
     PoseAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE

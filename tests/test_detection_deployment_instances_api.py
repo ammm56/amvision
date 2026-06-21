@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
 
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )

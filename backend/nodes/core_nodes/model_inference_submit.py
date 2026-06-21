@@ -34,19 +34,19 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_display_name,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.classification_inference_task_service import (
+from backend.service.application.models.inference.classification_inference_task_service import (
     ClassificationInferenceTaskRequest,
 )
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     DetectionInferenceTaskRequest,
 )
-from backend.service.application.models.obb_inference_task_service import (
+from backend.service.application.models.inference.obb_inference_task_service import (
     ObbInferenceTaskRequest,
 )
-from backend.service.application.models.pose_inference_task_service import (
+from backend.service.application.models.inference.pose_inference_task_service import (
     PoseInferenceTaskRequest,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SegmentationInferenceTaskRequest,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest

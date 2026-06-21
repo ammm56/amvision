@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
 )
 from backend.service.application.runtime.runtime_target import (

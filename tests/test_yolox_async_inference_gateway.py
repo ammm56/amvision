@@ -9,7 +9,7 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.detection_async_inference_gateway import (
+from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcher,
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     QueueBackedDetectionAsyncInferenceClient,

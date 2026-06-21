@@ -8,25 +8,25 @@ from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
-from backend.service.application.models.yolo_primary_classification_training_service import (
+from backend.service.application.models.training.yolo_primary_classification_training_service import (
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo26_classification_training_service import (
+from backend.service.application.models.training.yolo26_classification_training_service import (
     YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo26_segmentation_training_service import (
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
     YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     POSE_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo26_pose_training_service import (
+from backend.service.application.models.training.yolo26_pose_training_service import (
     YOLO26_POSE_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.yolo26_obb_training_service import (
+from backend.service.application.models.training.yolo26_obb_training_service import (
     YOLO26_OBB_TRAINING_QUEUE_NAME,
 )
 from backend.service.infrastructure.db.session import SessionFactory

@@ -30,31 +30,31 @@ from backend.nodes.core_nodes._service_node_support import (
     resolve_created_by,
     resolve_display_name,
 )
-from backend.service.application.models.detection_training_service import (
+from backend.service.application.models.training.detection_training_service import (
     resolve_detection_training_service,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
+from backend.service.application.models.training.yolo_primary_classification_training_service import (
     YoloPrimaryClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_classification_training_service import (
+from backend.service.application.models.training.yolo11_classification_training_service import (
     Yolo11ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_obb_training_service import (
+from backend.service.application.models.training.yolo_primary_obb_training_service import (
     YoloPrimaryObbTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_obb_training_service import (
+from backend.service.application.models.training.yolo11_obb_training_service import (
     Yolo11ObbTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     YoloPrimaryPoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     Yolo11PoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     Yolo11SegmentationTrainingTaskRequest,
 )
 from backend.service.application.workflows.graph_executor import (

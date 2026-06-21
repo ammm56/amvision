@@ -7,7 +7,7 @@ from typing import Any
 
 from torch import nn
 
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     StateDictCoverageSummary,
 )
 from backend.service.application.models.yolo_core_common.weights import (

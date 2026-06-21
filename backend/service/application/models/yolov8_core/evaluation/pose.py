@@ -6,11 +6,11 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.service.application.models.coco_style_metrics import (
+from backend.service.application.models.evaluation.coco_style_metrics import (
     compute_coco_style_ap,
     compute_object_keypoint_similarity,
 )
-from backend.service.application.models.pose_evaluation import (
+from backend.service.application.models.evaluation.pose_evaluation import (
     PoseEvaluationRequest,
     PoseEvaluationResult,
     run_pose_evaluation,

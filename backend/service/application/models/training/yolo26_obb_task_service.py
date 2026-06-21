@@ -20,7 +20,7 @@ from backend.service.application.models.training.yolo26_obb_task_registration im
 from backend.service.application.models.training.yolo26_task_service_support import (
     require_yolo26_model_type,
 )
-from backend.service.application.models.yolo26_obb_training import (
+from backend.service.application.models.training.yolo26_obb_training import (
     Yolo26ObbTrainingPausedError,
     Yolo26ObbTrainingTerminatedError,
 )

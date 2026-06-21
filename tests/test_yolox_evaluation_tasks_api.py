@@ -9,8 +9,8 @@ import zipfile
 from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend
-import backend.service.application.models.detection_evaluation_task_service as detection_evaluation_task_service_module
-from backend.service.application.models.detection_evaluation import DetectionEvaluationResult
+import backend.service.application.models.evaluation.detection_evaluation_task_service as detection_evaluation_task_service_module
+from backend.service.application.models.evaluation.detection_evaluation import DetectionEvaluationResult
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService

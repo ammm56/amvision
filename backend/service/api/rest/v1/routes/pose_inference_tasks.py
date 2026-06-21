@@ -39,10 +39,10 @@ from backend.service.application.deployments.pose_deployment_service import (
     SqlAlchemyPoseDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.pose_async_inference_gateway import (
+from backend.service.application.models.inference.pose_async_inference_gateway import (
     PoseAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.pose_inference_payloads import (
+from backend.service.application.models.inference.pose_inference_payloads import (
     POSE_INFERENCE_INPUT_TRANSPORT_STORAGE,
     PoseInferenceInputSource,
     attach_pose_inference_serialize_timing,
@@ -51,7 +51,7 @@ from backend.service.application.models.pose_inference_payloads import (
     normalize_pose_inference_input,
     serialize_pose_inference_payload,
 )
-from backend.service.application.models.pose_inference_task_service import (
+from backend.service.application.models.inference.pose_inference_task_service import (
     POSE_INFERENCE_TASK_KIND,
     PoseInferenceTaskRequest,
     SqlAlchemyPoseInferenceTaskService,

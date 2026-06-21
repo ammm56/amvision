@@ -39,10 +39,10 @@ from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.obb_async_inference_gateway import (
+from backend.service.application.models.inference.obb_async_inference_gateway import (
     ObbAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.obb_inference_payloads import (
+from backend.service.application.models.inference.obb_inference_payloads import (
     OBB_INFERENCE_INPUT_TRANSPORT_STORAGE,
     ObbInferenceInputSource,
     attach_obb_inference_serialize_timing,
@@ -51,7 +51,7 @@ from backend.service.application.models.obb_inference_payloads import (
     normalize_obb_inference_input,
     serialize_obb_inference_payload,
 )
-from backend.service.application.models.obb_inference_task_service import (
+from backend.service.application.models.inference.obb_inference_task_service import (
     OBB_INFERENCE_TASK_KIND,
     ObbInferenceTaskRequest,
     SqlAlchemyObbInferenceTaskService,

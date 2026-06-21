@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.service.application.models.detection_postprocess import (
+from backend.service.application.models.postprocess.detection_postprocess import (
     postprocess_detection_prediction_array,
 )
-from backend.service.application.models.detection_evaluation import (
+from backend.service.application.models.evaluation.detection_evaluation import (
     DetectionEvaluationRequest,
     DetectionEvaluationResult,
     run_detection_evaluation,

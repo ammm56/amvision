@@ -23,7 +23,7 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.datasets.dataset_export_delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.evaluation.yolox_detection_task_service import YoloXEvaluationTaskPackage
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     DetectionInferenceExecutionResult,
 )
 from backend.service.application.deployments import PublishedInferenceResult

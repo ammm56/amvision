@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration as RfdetrBuildRegistration,
     PretrainedRegistrationRequest as RfdetrPretrainedRegistrationRequest,
     SqlAlchemyModelService,

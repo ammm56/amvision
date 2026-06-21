@@ -10,7 +10,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.application.models.training.yolox_detection_task_types import (
     ResolvedYoloXWarmStartReference,
     YoloXTrainingTaskRequest,

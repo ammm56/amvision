@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.service.application.models.yolo11_classification_training import (
+from backend.service.application.models.training.yolo11_classification_training import (
     Yolo11ClassificationTrainingControlCommand,
     Yolo11ClassificationTrainingEpochProgress,
     Yolo11ClassificationTrainingExecutionRequest,

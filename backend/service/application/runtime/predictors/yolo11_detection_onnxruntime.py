@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.detection_postprocess import (
+from backend.service.application.models.postprocess.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_NMS,
 )
 from backend.service.application.models.yolo11_core.postprocess import (

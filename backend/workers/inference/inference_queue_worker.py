@@ -6,26 +6,26 @@ from collections.abc import Callable
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.models.classification_inference_task_service import (
+from backend.service.application.models.inference.classification_inference_task_service import (
     CLASSIFICATION_INFERENCE_QUEUE_NAME,
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.models.inference_gateway import (
+from backend.service.application.models.inference.inference_gateway import (
     QueueBackedAsyncInferenceClient,
 )
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     DETECTION_INFERENCE_QUEUE_NAME,
     SqlAlchemyDetectionInferenceTaskService,
 )
-from backend.service.application.models.obb_inference_task_service import (
+from backend.service.application.models.inference.obb_inference_task_service import (
     OBB_INFERENCE_QUEUE_NAME,
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.models.pose_inference_task_service import (
+from backend.service.application.models.inference.pose_inference_task_service import (
     POSE_INFERENCE_QUEUE_NAME,
     SqlAlchemyPoseInferenceTaskService,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SEGMENTATION_INFERENCE_QUEUE_NAME,
     SqlAlchemySegmentationInferenceTaskService,
 )

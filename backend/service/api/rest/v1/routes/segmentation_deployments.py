@@ -29,7 +29,7 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.segmentation_async_inference_gateway import (
+from backend.service.application.models.inference.segmentation_async_inference_gateway import (
     SegmentationAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE

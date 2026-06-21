@@ -20,7 +20,7 @@ from backend.service.application.models.training.yolo26_segmentation_task_regist
 from backend.service.application.models.training.yolo26_task_service_support import (
     require_yolo26_model_type,
 )
-from backend.service.application.models.yolo26_segmentation_training import (
+from backend.service.application.models.training.yolo26_segmentation_training import (
     Yolo26SegmentationTrainingPausedError,
     Yolo26SegmentationTrainingTerminatedError,
 )

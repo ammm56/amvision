@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
+import backend.service.application.models.inference.detection_inference_task_service as detection_inference_task_service_module
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.detection_async_inference_gateway import (
+from backend.service.application.models.inference.detection_async_inference_gateway import (
     serialize_detection_async_inference_execution_result,
 )
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
     TrainingOutputRegistration,

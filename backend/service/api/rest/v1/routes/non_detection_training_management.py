@@ -19,65 +19,65 @@ from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_optional_supported_platform_model_type,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
+from backend.service.application.models.training.yolo_primary_classification_training_service import (
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY,
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_QUEUE_NAME,
     YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
 )
-from backend.service.application.models.yolo11_classification_training_service import (
+from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
-from backend.service.application.models.yolo26_classification_training_service import (
+from backend.service.application.models.training.yolo26_classification_training_service import (
     SqlAlchemyYolo26ClassificationTrainingTaskService,
 )
-from backend.service.application.models.yolo_primary_obb_training_service import (
+from backend.service.application.models.training.yolo_primary_obb_training_service import (
     OBB_TRAINING_CONTROL_METADATA_KEY,
     OBB_TRAINING_QUEUE_NAME,
     OBB_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
 )
-from backend.service.application.models.yolo11_obb_training_service import (
+from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
 )
 from backend.service.application.models.training.yolo26_obb_task_control import (
     YOLO26_OBB_TRAINING_CONTROL_METADATA_KEY,
 )
-from backend.service.application.models.yolo26_obb_training_service import (
+from backend.service.application.models.training.yolo26_obb_training_service import (
     YOLO26_OBB_TRAINING_QUEUE_NAME,
     YOLO26_OBB_TRAINING_TASK_KIND,
     SqlAlchemyYolo26ObbTrainingTaskService,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     POSE_TRAINING_CONTROL_METADATA_KEY,
     POSE_TRAINING_QUEUE_NAME,
     POSE_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
 )
 from backend.service.application.models.training.yolo26_pose_task_control import (
     YOLO26_POSE_TRAINING_CONTROL_METADATA_KEY,
 )
-from backend.service.application.models.yolo26_pose_training_service import (
+from backend.service.application.models.training.yolo26_pose_training_service import (
     YOLO26_POSE_TRAINING_QUEUE_NAME,
     YOLO26_POSE_TRAINING_TASK_KIND,
     SqlAlchemyYolo26PoseTrainingTaskService,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     YOLO_PRIMARY_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_QUEUE_NAME,
     YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
 from backend.service.application.models.training.yolo26_segmentation_task_control import (
     YOLO26_SEGMENTATION_TRAINING_CONTROL_METADATA_KEY,
 )
-from backend.service.application.models.yolo26_segmentation_training_service import (
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
     YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
     YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
     SqlAlchemyYolo26SegmentationTrainingTaskService,

@@ -10,7 +10,7 @@ from backend.service.application.deployments.detection_deployment_service import
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.models.detection_async_inference_gateway import (
+from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.deployment_events import DetectionDeploymentProcessEvent

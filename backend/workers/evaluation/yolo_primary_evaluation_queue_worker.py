@@ -3,23 +3,23 @@
 from __future__ import annotations
 
 from backend.queue import QueueBackend
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
     CLASSIFICATION_EVALUATION_QUEUE_NAME,
     SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
 )
-from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
     SEGMENTATION_EVALUATION_QUEUE_NAME,
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
 )
-from backend.service.application.models.detection_evaluation_task_service import (
+from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DETECTION_EVALUATION_QUEUE_NAME,
     SqlAlchemyDetectionEvaluationTaskService,
 )
-from backend.service.application.models.pose_evaluation_task_service import (
+from backend.service.application.models.evaluation.pose_evaluation_task_service import (
     POSE_EVALUATION_QUEUE_NAME,
     SqlAlchemyPoseEvaluationTaskService,
 )
-from backend.service.application.models.obb_evaluation_task_service import (
+from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     OBB_EVALUATION_QUEUE_NAME,
     SqlAlchemyObbEvaluationTaskService,
 )

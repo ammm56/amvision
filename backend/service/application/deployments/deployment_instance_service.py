@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
-from backend.service.application.models.detection_operation_rules import (
+from backend.service.application.models.postprocess.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.models.detection_inference_task_service as detection_inference_task_service_module
+import backend.service.application.models.inference.detection_inference_task_service as detection_inference_task_service_module
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory

@@ -39,10 +39,10 @@ from backend.service.application.deployments.classification_deployment_service i
     SqlAlchemyClassificationDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
-from backend.service.application.models.classification_async_inference_gateway import (
+from backend.service.application.models.inference.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.classification_inference_payloads import (
+from backend.service.application.models.inference.classification_inference_payloads import (
     CLASSIFICATION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     ClassificationInferenceInputSource,
     attach_classification_inference_serialize_timing,
@@ -51,7 +51,7 @@ from backend.service.application.models.classification_inference_payloads import
     normalize_classification_inference_input,
     serialize_classification_inference_payload,
 )
-from backend.service.application.models.classification_inference_task_service import (
+from backend.service.application.models.inference.classification_inference_task_service import (
     CLASSIFICATION_INFERENCE_TASK_KIND,
     ClassificationInferenceTaskRequest,
     SqlAlchemyClassificationInferenceTaskService,

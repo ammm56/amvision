@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.evaluation_runtime_target_resolvers import (
+from backend.service.application.models.evaluation.evaluation_runtime_target_resolvers import (
     get_detection_evaluation_runtime_target_resolver,
     get_segmentation_evaluation_runtime_target_resolver,
     get_yolo_primary_evaluation_runtime_target_resolver,

@@ -7,12 +7,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.pretrained_catalog import (
+from backend.service.application.models.catalog.pretrained_catalog import (
     YOLOX_PRETRAINED_CATALOG_ROOT,
     YoloXPretrainedModelCatalogSeeder,
     _load_pretrained_catalog_entry,
 )
-from backend.service.application.models.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage

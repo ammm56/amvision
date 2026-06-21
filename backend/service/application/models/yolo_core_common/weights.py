@@ -13,7 +13,7 @@ from typing import Any, Callable
 from torch import nn
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     StateDictCoverageSummary,
     analyze_state_dict_coverage,
 )
@@ -295,7 +295,7 @@ def _bind_pickle_checkpoint_classes(
         Proto,
         Segment,
     )
-    from backend.service.application.models.yolo_detection_model import (
+    from backend.service.application.models.yolo_core_common.primary.yolo_detection_model import (
         Attention,
         Bottleneck,
         C2PSA,

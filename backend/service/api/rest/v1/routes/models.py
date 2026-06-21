@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     PlatformBaseModelBuildView,
     PlatformBaseModelDetailView,
     PlatformBaseModelFileView,

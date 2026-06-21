@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_primary_obb_training import (
+from backend.service.application.models.training.yolo_primary_obb_training import (
     YOLO_PRIMARY_OBB_IMPLEMENTATION_MODE,
     YoloPrimaryObbTrainingExecutionResult,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )

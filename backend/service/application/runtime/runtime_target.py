@@ -12,7 +12,7 @@ from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
 )
-from backend.service.application.models.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory

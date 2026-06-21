@@ -34,29 +34,29 @@ from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
-from backend.service.application.models.detection_async_inference_gateway import (
+from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     normalize_detection_async_inference_owner_id,
 )
-from backend.service.application.models.classification_async_inference_gateway import (
+from backend.service.application.models.inference.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.inference_gateway import (
+from backend.service.application.models.inference.inference_gateway import (
     serialize_async_inference_execution_result,
 )
-from backend.service.application.models.segmentation_async_inference_gateway import (
+from backend.service.application.models.inference.segmentation_async_inference_gateway import (
     SegmentationAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.pose_async_inference_gateway import (
+from backend.service.application.models.inference.pose_async_inference_gateway import (
     PoseAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.obb_async_inference_gateway import (
+from backend.service.application.models.inference.obb_async_inference_gateway import (
     ObbAsyncInferenceGatewayDispatcherRegistry,
 )
-from backend.service.application.models.pretrained_catalog import (
+from backend.service.application.models.catalog.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
 )
-from backend.service.application.models.yolo_primary_pretrained_catalog import (
+from backend.service.application.models.catalog.yolo_primary_pretrained_catalog import (
     YoloPrimaryPretrainedModelCatalogSeeder,
 )
 from backend.service.application.workflows.graph_executor import (

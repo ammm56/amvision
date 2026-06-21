@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from backend.service.application.models.yolo11_classification_training import (
+from backend.service.application.models.training.yolo11_classification_training import (
     YOLO11_CLASSIFICATION_IMPLEMENTATION_MODE,
 )
-from backend.service.application.models.yolo11_model_service import (
+from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11TrainingOutputRegistration,
 )

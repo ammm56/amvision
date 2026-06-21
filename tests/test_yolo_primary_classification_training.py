@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolo_primary_classification_training import (
+from backend.service.application.models.training.yolo_primary_classification_training import (
     YoloPrimaryClassificationTrainingExecutionRequest,
     run_yolo_primary_classification_training,
 )
@@ -132,11 +132,11 @@ def test_primary_classification_runner_rejects_yolo11():
 
 def test_classification_training_imports():
     """验证分类训练模块可以被导入。"""
-    from backend.service.application.models.yolo_primary_classification_training import (
+    from backend.service.application.models.training.yolo_primary_classification_training import (
         YoloPrimaryClassificationTrainingExecutionRequest,
         run_yolo_primary_classification_training,
     )
-    from backend.service.application.models.yolo_primary_classification_training_service import (
+    from backend.service.application.models.training.yolo_primary_classification_training_service import (
         SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
         YoloPrimaryClassificationTrainingTaskRequest,
     )

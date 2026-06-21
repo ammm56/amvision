@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
     build_detection_training_config_payload,
     build_detection_training_summary_base,
     build_detection_validation_summary_payload,
 )
-from backend.service.application.models.yolo_detection_training_execution import (
+from backend.service.application.models.training.yolo_detection_training_execution import (
     YoloDetectionTrainingExecutionResult,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport

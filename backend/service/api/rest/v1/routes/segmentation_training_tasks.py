@@ -33,15 +33,15 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
     Yolo11SegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_segmentation_training_service import (
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
     SqlAlchemyYolo26SegmentationTrainingTaskService,
     Yolo26SegmentationTrainingTaskRequest,
 )

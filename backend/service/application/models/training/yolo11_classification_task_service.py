@@ -20,7 +20,7 @@ from backend.service.application.models.training.yolo11_classification_task_regi
 from backend.service.application.models.training.yolo11_task_service_support import (
     require_yolo11_model_type,
 )
-from backend.service.application.models.yolo11_classification_training import (
+from backend.service.application.models.training.yolo11_classification_training import (
     Yolo11ClassificationTrainingPausedError,
     Yolo11ClassificationTrainingTerminatedError,
 )

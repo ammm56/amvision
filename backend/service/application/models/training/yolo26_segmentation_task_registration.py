@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.models.yolo26_segmentation_training import (
+from backend.service.application.models.training.yolo26_segmentation_training import (
     YOLO26_SEGMENTATION_IMPLEMENTATION_MODE,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport

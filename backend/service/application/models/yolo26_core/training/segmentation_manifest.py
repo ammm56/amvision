@@ -9,7 +9,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolo_dataset_manifest_support import (
+from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
 )

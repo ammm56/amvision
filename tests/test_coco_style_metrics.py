@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.coco_style_metrics import (
+from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_object_keypoint_similarity,
     compute_coco_style_ap,

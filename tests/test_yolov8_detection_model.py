@@ -9,12 +9,12 @@ from types import SimpleNamespace
 
 import torch
 
-from backend.service.application.models.yolo_detection_model import YoloDetectionModel
-from backend.service.application.models.yolo_primary_detection_model import (
+from backend.service.application.models.yolo_core_common.primary.yolo_detection_model import YoloDetectionModel
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
     load_yolo_primary_checkpoint,
 )
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.application.models.yolov8_core.model import build_yolov8_model
 
 

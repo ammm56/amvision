@@ -7,27 +7,27 @@ from pathlib import Path
 
 import pytest
 
-from backend.service.application.models.yolo11_model_service import (
+from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11TrainingOutputRegistration,
 )
-from backend.service.application.models.classification_inference_task_service import (
+from backend.service.application.models.inference.classification_inference_task_service import (
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.models.obb_inference_task_service import (
+from backend.service.application.models.inference.obb_inference_task_service import (
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.models.pose_inference_task_service import (
+from backend.service.application.models.inference.pose_inference_task_service import (
     SqlAlchemyPoseInferenceTaskService,
 )
-from backend.service.application.models.segmentation_inference_task_service import (
+from backend.service.application.models.inference.segmentation_inference_task_service import (
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )

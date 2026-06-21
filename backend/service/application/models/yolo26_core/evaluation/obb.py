@@ -6,11 +6,11 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.service.application.models.coco_style_metrics import (
+from backend.service.application.models.evaluation.coco_style_metrics import (
     compute_coco_style_ap,
     rotated_iou_xywhr,
 )
-from backend.service.application.models.obb_evaluation import (
+from backend.service.application.models.evaluation.obb_evaluation import (
     ObbEvaluationRequest,
     ObbEvaluationResult,
     run_obb_evaluation,

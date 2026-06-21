@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport

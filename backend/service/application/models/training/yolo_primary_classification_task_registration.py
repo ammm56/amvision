@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26TrainingOutputRegistration,
 )
-from backend.service.application.models.yolo_primary_classification_training import (
+from backend.service.application.models.training.yolo_primary_classification_training import (
     YOLO_PRIMARY_CLASSIFICATION_IMPLEMENTATION_MODE,
     YoloPrimaryClassificationTrainingExecutionResult,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )

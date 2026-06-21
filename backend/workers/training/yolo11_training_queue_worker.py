@@ -5,7 +5,7 @@ from __future__ import annotations
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.models.yolo11_training_service import YOLO11_TRAINING_QUEUE_NAME
+from backend.service.application.models.training.yolo11_training_service import YOLO11_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.yolo11_trainer_runner import SqlAlchemyYolo11TrainerRunner

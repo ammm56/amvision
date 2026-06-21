@@ -7,7 +7,7 @@ from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
 )
-from backend.service.application.models.yolov8_training_service import (
+from backend.service.application.models.training.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory

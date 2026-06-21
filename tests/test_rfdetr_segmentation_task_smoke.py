@@ -28,7 +28,7 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SegmentationDeploymentInstanceCreateRequest,
     SqlAlchemySegmentationDeploymentService,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )

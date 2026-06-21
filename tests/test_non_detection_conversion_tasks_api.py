@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.service.application.models.model_service import TrainingOutputRegistration
+from backend.service.application.models.registry.model_service import TrainingOutputRegistration
 from backend.service.application.models.catalog.rfdetr import SqlAlchemyRfdetrModelService
-from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
-from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
+from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
+from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
+from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from tests.api_test_support import build_test_headers, create_api_test_context

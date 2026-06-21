@@ -13,7 +13,7 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
-from backend.service.application.models.yolo_primary_segmentation_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
     SEGMENTATION_EVALUATION_TASK_KIND,
     SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
     YoloPrimarySegmentationEvaluationTaskRequest,

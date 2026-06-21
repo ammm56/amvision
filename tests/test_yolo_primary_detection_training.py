@@ -12,16 +12,16 @@ import pytest
 import torch
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolo_primary_detection_model import (
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_detection_model import (
     build_yolo_primary_detection_model,
 )
 from backend.service.application.models.yolov8_core import build_yolov8_model
-from backend.service.application.models.detection_postprocess import (
+from backend.service.application.models.postprocess.detection_postprocess import (
     DETECTION_POSTPROCESS_MODE_END2END_TOPK,
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
-from backend.service.application.models.yolo_primary_detection_training import (
+from backend.service.application.models.training.yolo_primary_detection_training import (
     YoloPrimaryDetectionTrainingExecutionRequest,
     _PreparedTrainingTarget,
     _ResolvedTrainingAnnotation,

@@ -15,7 +15,7 @@ from backend.service.application.conversions.yolo_model_conversion_task_service 
     YoloConversionTaskRequest as Yolo11ConversionTaskRequest,
     YoloConversionTaskResult as Yolo11ConversionTaskResult,
 )
-from backend.service.application.models.yolo11_model_service import (
+from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
     Yolo11BuildRegistration,
 )

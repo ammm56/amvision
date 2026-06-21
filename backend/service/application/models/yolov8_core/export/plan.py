@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from backend.service.application.models.onnx_export import (
+from backend.service.application.models.export.onnx_export import (
     TORCH_ONNX_DYNAMO_EXPORTER_MODE,
     TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
 )

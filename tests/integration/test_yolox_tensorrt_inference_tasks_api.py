@@ -12,7 +12,7 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
     TrainingOutputRegistration,

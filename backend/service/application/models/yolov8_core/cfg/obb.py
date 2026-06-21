@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo_core_config_utils import clone_detection_variant
+from backend.service.application.models.support.yolo_core_config_utils import clone_detection_variant
 from backend.service.application.models.yolov8_core.cfg.detection import (
     YOLOV8_DETECTION_MODEL_CONFIG,
 )

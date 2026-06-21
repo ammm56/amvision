@@ -29,7 +29,7 @@ from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.obb_async_inference_gateway import (
+from backend.service.application.models.inference.obb_async_inference_gateway import (
     ObbAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE

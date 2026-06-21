@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.classification_async_inference_gateway import (
+from backend.service.application.models.inference.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (

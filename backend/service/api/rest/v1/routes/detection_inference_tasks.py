@@ -41,7 +41,7 @@ from backend.service.application.deployments.detection_deployment_service import
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
-from backend.service.application.models.detection_inference_payloads import (
+from backend.service.application.models.inference.detection_inference_payloads import (
     DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     attach_detection_inference_serialize_timing,
     build_detection_inference_payload,
@@ -49,13 +49,13 @@ from backend.service.application.models.detection_inference_payloads import (
     normalize_detection_inference_input,
     serialize_detection_inference_payload,
 )
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     DETECTION_INFERENCE_TASK_KIND,
     DetectionInferenceTaskRequest,
     SqlAlchemyDetectionInferenceTaskService,
     run_detection_inference_task,
 )
-from backend.service.application.models.detection_async_inference_gateway import (
+from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.runtime.deployment_process_supervisor import (

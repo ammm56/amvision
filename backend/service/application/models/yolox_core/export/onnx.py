@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.onnx_export import (
+from backend.service.application.models.export.onnx_export import (
     TORCH_ONNX_DYNAMO_EXPORTER_MODE,
     TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
     export_torch_model_to_onnx,

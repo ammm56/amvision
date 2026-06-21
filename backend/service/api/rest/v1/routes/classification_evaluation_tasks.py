@@ -13,7 +13,7 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
     CLASSIFICATION_EVALUATION_TASK_KIND,
     SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
     YoloPrimaryClassificationEvaluationTaskRequest,

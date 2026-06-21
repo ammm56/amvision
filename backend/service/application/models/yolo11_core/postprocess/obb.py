@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.coco_style_metrics import (
+from backend.service.application.models.evaluation.coco_style_metrics import (
     polygon_bounds_xyxy,
     rotated_iou_xywhr,
     xywhr_to_polygon,

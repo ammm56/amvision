@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
     build_detection_metrics_summary_payload,
     build_detection_runtime_summary_payload,
     build_detection_training_config_payload,
     build_detection_training_model_version_metadata,
 )
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )

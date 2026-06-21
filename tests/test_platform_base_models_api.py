@@ -6,12 +6,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
-from backend.service.application.models.yolo_primary_pretrained_catalog import (
+from backend.service.application.models.catalog.yolo_primary_pretrained_catalog import (
     _load_yolo_primary_catalog_entry,
 )
 from backend.service.application.errors import ServiceConfigurationError

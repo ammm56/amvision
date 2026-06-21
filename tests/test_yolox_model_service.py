@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,

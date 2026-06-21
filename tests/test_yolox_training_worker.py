@@ -44,7 +44,7 @@ from backend.service.application.models.yolox_core.weights import (
     extract_yolox_checkpoint_state_dict,
 )
 import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,
 )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
+from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.runtime.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
@@ -44,3 +44,25 @@ class SqlAlchemyYolo11RuntimeTargetResolver(SqlAlchemyRuntimeTargetResolver):
                 session_factory=current_session_factory
             ),
         )
+
+
+__all__ = [
+    "RuntimeTargetResolveRequest",
+    "RuntimeTargetSnapshot",
+    "SqlAlchemyYolo11RuntimeTargetResolver",
+    "describe_runtime_execution_mode",
+    "deserialize_runtime_target_snapshot",
+    "find_model_file",
+    "normalize_device_name",
+    "normalize_runtime_backend",
+    "normalize_runtime_precision",
+    "require_model_file",
+    "resolve_input_size",
+    "resolve_labels",
+    "resolve_local_file_path",
+    "resolve_model_build_file_type",
+    "resolve_model_build_runtime_backend",
+    "resolve_runtime_backend",
+    "resolve_runtime_precision",
+    "serialize_runtime_target_snapshot",
+]

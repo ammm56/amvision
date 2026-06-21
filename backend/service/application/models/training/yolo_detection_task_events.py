@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
-from backend.service.application.models.yolo_detection_training_control import (
+from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingBatchProgress,
     YoloDetectionTrainingEpochProgress,
 )

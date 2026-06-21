@@ -18,7 +18,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     deserialize_yolov8_conversion_plan,
     serialize_yolov8_conversion_plan,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
 )

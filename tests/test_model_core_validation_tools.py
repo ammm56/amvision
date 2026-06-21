@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 import torch
 
-from backend.service.application.models.model_core_validation import (
+from backend.service.application.models.validation.model_core_validation import (
     analyze_state_dict_coverage,
     build_model_core_snapshot,
 )
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,

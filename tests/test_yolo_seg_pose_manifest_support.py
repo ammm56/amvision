@@ -16,14 +16,14 @@ from backend.service.application.datasets.dataset_export import (
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
 )
-from backend.service.application.models.pose_evaluation import _parse_pose_manifest
-from backend.service.application.models.yolo_primary_pose_training import (
+from backend.service.application.models.evaluation.pose_evaluation import _parse_pose_manifest
+from backend.service.application.models.training.yolo_primary_pose_training import (
     _load_pose_manifest,
 )
-from backend.service.application.models.yolo_primary_segmentation_evaluation import (
+from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation import (
     _parse_segmentation_manifest,
 )
-from backend.service.application.models.yolo_primary_segmentation_training import (
+from backend.service.application.models.training.yolo_primary_segmentation_training import (
     _seg_load_manifest,
 )
 from backend.service.domain.datasets.dataset_version import (

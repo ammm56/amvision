@@ -18,7 +18,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     YoloV8ConversionPlanningRequest,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
     YoloV8TrainingOutputRegistration,
@@ -39,7 +39,7 @@ from backend.service.application.models.yolov8_core.training import (
     resolve_yolov8_detection_epoch_control,
     run_yolov8_detection_training_epoch,
 )
-from backend.service.application.models.yolov8_training_service import (
+from backend.service.application.models.training.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
 )

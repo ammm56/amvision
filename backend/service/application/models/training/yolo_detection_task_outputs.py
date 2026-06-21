@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.detection_training_rules import (
+from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
-from backend.service.application.models.yolo_detection_training_control import (
+from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingEpochProgress,
     YoloDetectionTrainingSavePoint,
 )
-from backend.service.application.models.yolo_detection_training_execution import (
+from backend.service.application.models.training.yolo_detection_training_execution import (
     YoloDetectionTrainingExecutionResult,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (

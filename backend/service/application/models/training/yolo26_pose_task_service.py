@@ -20,7 +20,7 @@ from backend.service.application.models.training.yolo26_pose_task_registration i
 from backend.service.application.models.training.yolo26_task_service_support import (
     require_yolo26_model_type,
 )
-from backend.service.application.models.yolo26_pose_training import (
+from backend.service.application.models.training.yolo26_pose_training import (
     Yolo26PoseTrainingPausedError,
     Yolo26PoseTrainingTerminatedError,
 )

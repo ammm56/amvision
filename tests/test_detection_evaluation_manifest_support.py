@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from backend.service.application.models.detection_evaluation import (
+from backend.service.application.models.evaluation.detection_evaluation import (
     _parse_detection_manifest,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (

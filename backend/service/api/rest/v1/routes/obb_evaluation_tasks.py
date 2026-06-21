@@ -13,7 +13,7 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
-from backend.service.application.models.obb_evaluation_task_service import (
+from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     OBB_EVALUATION_TASK_KIND,
     ObbEvaluationTaskRequest,
     SqlAlchemyObbEvaluationTaskService,

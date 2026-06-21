@@ -31,7 +31,7 @@ from backend.service.application.model_type_support import (
     require_optional_supported_platform_model_type,
     require_supported_platform_model_type,
 )
-from backend.service.application.models.detection_evaluation_task_service import (
+from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DETECTION_EVALUATION_TASK_KIND,
     DetectionEvaluationTaskRequest,
     SqlAlchemyDetectionEvaluationTaskService,

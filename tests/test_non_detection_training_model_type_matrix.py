@@ -14,121 +14,121 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo_primary_classification_training_service as classification_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo11_classification_training_service as yolo11_classification_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo_primary_obb_training_service as obb_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo_primary_pose_training_service as pose_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo_primary_segmentation_training_service as segmentation_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo11_segmentation_training_service as yolo11_segmentation_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo11_pose_training_service as yolo11_pose_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo11_obb_training_service as yolo11_obb_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo26_classification_training_service as yolo26_classification_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo26_segmentation_training_service as yolo26_segmentation_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo26_pose_training_service as yolo26_pose_service_module,
 )
-from backend.service.application.models import (
+from backend.service.application.models.training import (
     yolo26_obb_training_service as yolo26_obb_service_module,
 )
-from backend.service.application.models.yolo11_model_service import (
+from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
 )
-from backend.service.application.models.yolo11_classification_training_service import (
+from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
     Yolo11ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_obb_training_service import (
+from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
     Yolo11ObbTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_pose_training_service import (
+from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
     Yolo11PoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo11_segmentation_training_service import (
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
     Yolo11SegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_model_service import (
+from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
 )
-from backend.service.application.models.yolo26_classification_training import (
+from backend.service.application.models.training.yolo26_classification_training import (
     Yolo26ClassificationTrainingExecutionResult,
 )
-from backend.service.application.models.yolo26_classification_training_service import (
+from backend.service.application.models.training.yolo26_classification_training_service import (
     SqlAlchemyYolo26ClassificationTrainingTaskService,
     Yolo26ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_obb_training import (
+from backend.service.application.models.training.yolo26_obb_training import (
     Yolo26ObbTrainingExecutionResult,
 )
-from backend.service.application.models.yolo26_obb_training_service import (
+from backend.service.application.models.training.yolo26_obb_training_service import (
     SqlAlchemyYolo26ObbTrainingTaskService,
     Yolo26ObbTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_pose_training import (
+from backend.service.application.models.training.yolo26_pose_training import (
     Yolo26PoseTrainingExecutionResult,
 )
-from backend.service.application.models.yolo26_pose_training_service import (
+from backend.service.application.models.training.yolo26_pose_training_service import (
     SqlAlchemyYolo26PoseTrainingTaskService,
     Yolo26PoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_segmentation_training import (
+from backend.service.application.models.training.yolo26_segmentation_training import (
     Yolo26SegmentationTrainingExecutionResult,
 )
-from backend.service.application.models.yolo26_segmentation_training_service import (
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
     SqlAlchemyYolo26SegmentationTrainingTaskService,
     Yolo26SegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_classification_training import (
+from backend.service.application.models.training.yolo_primary_classification_training import (
     YoloPrimaryClassificationTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_classification_training_service import (
+from backend.service.application.models.training.yolo_primary_classification_training_service import (
     SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
     YoloPrimaryClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_obb_training import (
+from backend.service.application.models.training.yolo_primary_obb_training import (
     YoloPrimaryObbTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_obb_training_service import (
+from backend.service.application.models.training.yolo_primary_obb_training_service import (
     SqlAlchemyYoloPrimaryObbTrainingTaskService,
     YoloPrimaryObbTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_pose_training import (
+from backend.service.application.models.training.yolo_primary_pose_training import (
     YoloPrimaryPoseTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_pose_training_service import (
+from backend.service.application.models.training.yolo_primary_pose_training_service import (
     SqlAlchemyYoloPrimaryPoseTrainingTaskService,
     YoloPrimaryPoseTrainingTaskRequest,
 )
-from backend.service.application.models.yolo_primary_segmentation_training import (
+from backend.service.application.models.training.yolo_primary_segmentation_training import (
     YoloPrimarySegmentationTrainingExecutionResult,
 )
-from backend.service.application.models.yolo_primary_segmentation_training_service import (
+from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
     SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
     YoloPrimarySegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.yolov8_model_service import (
+from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
 from backend.service.application.runtime.runtime_target import (

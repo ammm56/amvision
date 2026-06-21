@@ -29,7 +29,7 @@ from backend.service.application.deployments.classification_deployment_service i
     SqlAlchemyClassificationDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError
-from backend.service.application.models.classification_async_inference_gateway import (
+from backend.service.application.models.inference.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE

@@ -24,11 +24,11 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,
     YoloV8ConversionPlanningRequest,
 )
-from backend.service.application.models.model_service import ModelBuildRegistration, TrainingOutputRegistration
-from backend.service.application.models.yolo11_model_service import SqlAlchemyYolo11ModelService
-from backend.service.application.models.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.yolo_primary_model_configs import build_yolo_primary_model
-from backend.service.application.models.yolov8_model_service import SqlAlchemyYoloV8ModelService
+from backend.service.application.models.registry.model_service import ModelBuildRegistration, TrainingOutputRegistration
+from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
+from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
+from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.classification_model_runtime import DefaultClassificationModelRuntime
 from backend.service.application.runtime.contracts.classification import ClassificationPredictionRequest
 from backend.service.application.runtime.obb_model_runtime import DefaultObbModelRuntime

@@ -24,7 +24,7 @@ from backend.service.application.conversions.yolox_conversion_planner import (
     deserialize_yolox_conversion_plan,
     serialize_yolox_conversion_plan,
 )
-from backend.service.application.models.model_service import (
+from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
 )

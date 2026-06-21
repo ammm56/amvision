@@ -39,17 +39,17 @@ from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_supported_platform_model_type,
 )
-from backend.service.application.models.yolo11_training_service import (
+from backend.service.application.models.training.yolo11_training_service import (
     YOLO11_TRAINING_TASK_KIND,
     SqlAlchemyYolo11TrainingTaskService,
     Yolo11TrainingTaskRequest,
 )
-from backend.service.application.models.yolo26_training_service import (
+from backend.service.application.models.training.yolo26_training_service import (
     YOLO26_TRAINING_TASK_KIND,
     SqlAlchemyYolo26TrainingTaskService,
     Yolo26TrainingTaskRequest,
 )
-from backend.service.application.models.yolov8_training_service import (
+from backend.service.application.models.training.yolov8_training_service import (
     YOLOV8_TRAINING_TASK_KIND,
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,

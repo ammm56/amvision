@@ -15,7 +15,7 @@ from backend.service.application.deployments import (
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
 )
-from backend.service.application.models.detection_inference_task_service import (
+from backend.service.application.models.inference.detection_inference_task_service import (
     run_detection_inference_task,
 )
 from backend.service.application.runtime.deployment_process_supervisor import DeploymentProcessExecution
