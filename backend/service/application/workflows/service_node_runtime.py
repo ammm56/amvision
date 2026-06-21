@@ -28,7 +28,7 @@ from backend.service.application.datasets.imports import (
     SqlAlchemyDatasetImportService,
 )
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
-from backend.service.application.datasets.dataset_export_delivery import (
+from backend.service.application.datasets.exports.delivery import (
     SqlAlchemyDatasetExportDeliveryService,
 )
 from backend.service.application.deployments import (

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.application.datasets.exports import DatasetExportRequest
-from backend.service.application.datasets.dataset_export_delivery import (
+from backend.service.application.datasets.exports.delivery import (
     SqlAlchemyDatasetExportDeliveryService,
 )
 from backend.service.domain.datasets.dataset_version import DatasetCategory, DatasetSample, DatasetVersion

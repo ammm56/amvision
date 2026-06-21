@@ -20,7 +20,7 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.datasets.dataset_export_delivery import DatasetExportPackage
+from backend.service.application.datasets.exports.delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.evaluation.yolox_detection_task_service import YoloXEvaluationTaskPackage
 from backend.service.application.models.inference.detection_inference_task_service import (

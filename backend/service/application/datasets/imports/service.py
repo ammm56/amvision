@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import BinaryIO
 from uuid import uuid4
-from xml.etree import ElementTree
-
-from PIL import Image
 
 from backend.service.application.datasets.imports.contracts import (
+    DatasetImportRequest,
+    DatasetImportResult,
     ParsedDatasetContent,
-    ParsedDatasetSample,
 )
 from backend.service.application.datasets.imports.formats.coco import CocoDatasetImportParserMixin
 from backend.service.application.datasets.imports.formats.detection import (
@@ -29,6 +26,10 @@ from backend.service.application.datasets.imports.formats.imagenet import (
 )
 from backend.service.application.datasets.imports.formats.voc import VocDatasetImportParserMixin
 from backend.service.application.datasets.imports.formats.yolo import YoloDatasetImportParserMixin
+from backend.service.application.datasets.imports.support import DatasetImportSupportMixin
+from backend.service.application.datasets.imports.version_writer import (
+    DatasetImportVersionWriterMixin,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
@@ -40,20 +41,12 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_import import (
-    DatasetFormatType,
     DatasetImport,
-    DatasetImportTaskType,
-    DatasetImportRequestedSplitStrategy,
     IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
     IMPLEMENTED_DATASET_IMPORT_TASK_TYPES,
 )
 from backend.service.domain.datasets.dataset_version import (
-    DatasetSample,
-    DatasetSplitName,
     DatasetVersion,
-    DatasetAnnotation,
-    clone_dataset_annotation,
-    serialize_dataset_annotation,
 )
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -65,53 +58,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-@dataclass(frozen=True)
-class DatasetImportRequest:
-    """描述一次数据集 zip 导入请求。
-
-    字段：
-    - project_id：所属 Project id。
-    - dataset_id：所属 Dataset id。
-    - package_file_name：上传 zip 文件名。
-    - package_bytes：上传 zip 文件内容；直接走 service 调用时可传入。
-    - format_type：显式指定的数据集格式；为空时自动识别。
-    - task_type：任务类型。
-    - split_strategy：显式指定的 split 策略。
-    - class_map：显式指定的类别映射。
-    - metadata：附加元数据。
-    """
-
-    project_id: str
-    dataset_id: str
-    package_file_name: str
-    task_type: DatasetImportTaskType
-    package_bytes: bytes | None = None
-    format_type: DatasetFormatType | None = None
-    split_strategy: DatasetImportRequestedSplitStrategy | None = None
-    class_map: dict[str, str] = field(default_factory=dict)
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DatasetImportResult:
-    """描述一次数据集导入的结果。
-
-    字段：
-    - dataset_import：最终保存的 DatasetImport 记录。
-    - dataset_version：导入生成的 DatasetVersion。
-    - sample_count：样本总数。
-    - category_count：类别总数。
-    - split_names：导入后包含的 split 列表。
-    """
-
-    dataset_import: DatasetImport
-    dataset_version: DatasetVersion
-    sample_count: int
-    category_count: int
-    split_names: tuple[str, ...]
-
-
 class SqlAlchemyDatasetImportService(
+    DatasetImportSupportMixin,
+    DatasetImportVersionWriterMixin,
     DatasetImportFormatDetectorMixin,
     CocoDatasetImportParserMixin,
     VocDatasetImportParserMixin,
@@ -830,181 +779,6 @@ class SqlAlchemyDatasetImportService(
 
 
 
-    def _resolve_requested_split(
-        self,
-        split_strategy: DatasetImportRequestedSplitStrategy | None,
-    ) -> DatasetSplitName | None:
-        """把请求中的 split_strategy 转换为强制 split。"""
-
-        if split_strategy in (None, "auto"):
-            return None
-
-        return split_strategy
-
-    def _resolve_effective_split_strategy(
-        self,
-        forced_split: DatasetSplitName | None,
-        *,
-        auto_strategy: str,
-    ) -> str:
-        """计算最终写回 DatasetImport 的 split 策略标记。"""
-
-        if forced_split is None:
-            return auto_strategy
-
-        return f"forced-{forced_split}"
-
-    def _write_version_files(
-        self,
-        *,
-        dataset_import_id: str,
-        dataset_version: DatasetVersion,
-        parsed_content: ParsedDatasetContent,
-        version_layout: DatasetVersionLayout,
-    ) -> None:
-        """把归一化后的版本内容写入 versions 目录。
-
-        参数：
-        - dataset_import_id：导入记录 id。
-        - dataset_version：生成的 DatasetVersion。
-        - parsed_content：解析后的统一结果。
-        - version_layout：版本目录布局。
-        """
-
-        split_indexes: dict[str, list[dict[str, object]]] = {"train": [], "val": [], "test": []}
-        self.dataset_storage.write_json(
-            version_layout.dataset_version_path,
-            {
-                "dataset_version_id": dataset_version.dataset_version_id,
-                "dataset_id": dataset_version.dataset_id,
-                "project_id": dataset_version.project_id,
-                "task_type": dataset_version.task_type,
-                "source_import_id": dataset_import_id,
-                "format_type": parsed_content.format_type,
-                "sample_count": len(parsed_content.samples),
-                "category_count": len(parsed_content.categories),
-                "split_counts": self._collect_split_counts(parsed_content.samples),
-            },
-        )
-        self.dataset_storage.write_json(
-            version_layout.categories_path,
-            [
-                {"category_id": category.category_id, "name": category.name}
-                for category in dataset_version.categories
-            ],
-        )
-        for parsed_sample in parsed_content.samples:
-            sample = parsed_sample.sample
-            image_object_key = f"{version_layout.images_dir}/{sample.split}/{sample.file_name}"
-            sample_object_key = f"{version_layout.samples_dir}/{sample.split}/{sample.sample_id}.json"
-            self.dataset_storage.copy_file(parsed_sample.source_image_path, image_object_key)
-            self.dataset_storage.write_json(
-                sample_object_key,
-                {
-                    "sample_id": sample.sample_id,
-                    "image_id": sample.image_id,
-                    "file_name": sample.file_name,
-                    "width": sample.width,
-                    "height": sample.height,
-                    "split": sample.split,
-                    "image_object_key": image_object_key,
-                    "source_image_ref": parsed_sample.source_image_ref,
-                    "annotations": [
-                        serialize_dataset_annotation(annotation)
-                        for annotation in sample.annotations
-                    ],
-                    "metadata": sample.metadata,
-                },
-            )
-            split_indexes[sample.split].append(
-                {
-                    "sample_id": sample.sample_id,
-                    "image_id": sample.image_id,
-                    "file_name": sample.file_name,
-                    "image_object_key": image_object_key,
-                    "sample_object_key": sample_object_key,
-                    "annotation_count": len(sample.annotations),
-                }
-            )
-
-        for split_name in ("train", "val", "test"):
-            self.dataset_storage.write_json(
-                f"{version_layout.indexes_dir}/{split_name}.json",
-                {
-                    "dataset_version_id": dataset_version.dataset_version_id,
-                    "split": split_name,
-                    "sample_count": len(split_indexes[split_name]),
-                    "samples": split_indexes[split_name],
-                },
-            )
-
-    def _assign_version_scoped_sample_ids(
-        self,
-        parsed_content: ParsedDatasetContent,
-        *,
-        dataset_version_id: str,
-    ) -> ParsedDatasetContent:
-        """为写入 DatasetVersion 的样本和标注分配 version-scoped id。
-
-        参数：
-        - parsed_content：解析后的统一结果。
-        - dataset_version_id：即将写入的 DatasetVersion id。
-
-        返回：
-        - 样本和标注 id 已被重写的新 ParsedDatasetContent。
-        """
-
-        scoped_samples: list[ParsedDatasetSample] = []
-        next_annotation_index = 1
-        for sample_index, parsed_sample in enumerate(parsed_content.samples, start=1):
-            source_sample = parsed_sample.sample
-            scoped_annotations: list[DatasetAnnotation] = []
-            for annotation in source_sample.annotations:
-                scoped_annotations.append(
-                    clone_dataset_annotation(
-                        annotation,
-                        annotation_id=f"ann-{dataset_version_id}-{next_annotation_index}",
-                        metadata_updates={
-                            "source_annotation_id": annotation.annotation_id,
-                        },
-                    )
-                )
-                next_annotation_index += 1
-
-            scoped_samples.append(
-                ParsedDatasetSample(
-                    sample=DatasetSample(
-                        sample_id=f"sample-{dataset_version_id}-{sample_index}",
-                        image_id=source_sample.image_id,
-                        file_name=source_sample.file_name,
-                        width=source_sample.width,
-                        height=source_sample.height,
-                        split=source_sample.split,
-                        annotations=tuple(scoped_annotations),
-                        metadata={
-                            **source_sample.metadata,
-                            "source_sample_id": source_sample.sample_id,
-                        },
-                    ),
-                    source_image_path=parsed_sample.source_image_path,
-                    source_image_ref=parsed_sample.source_image_ref,
-                )
-            )
-
-        return ParsedDatasetContent(
-            format_type=parsed_content.format_type,
-            task_type=parsed_content.task_type,
-            image_root=parsed_content.image_root,
-            annotation_root=parsed_content.annotation_root,
-            manifest_file=parsed_content.manifest_file,
-            split_strategy=parsed_content.split_strategy,
-            class_map=dict(parsed_content.class_map),
-            categories=parsed_content.categories,
-            samples=tuple(scoped_samples),
-            detected_profile=dict(parsed_content.detected_profile),
-            validation_report=dict(parsed_content.validation_report),
-        )
-
     def _record_failed_import(
         self,
         *,
@@ -1062,305 +836,6 @@ class SqlAlchemyDatasetImportService(
                 },
                 "progress": {"stage": "failed"},
             },
-        )
-
-
-    def _unwrap_single_directory(self, extracted_root: Path) -> Path:
-        """连续消除 zip 中的单目录包裹层级。
-
-        参数：
-        - extracted_root：zip 解压根目录。
-
-        返回：
-        - 去掉连续单目录包裹后的数据集根目录。
-        """
-
-        current_root = extracted_root
-        while True:
-            children = list(current_root.iterdir())
-            if len(children) != 1 or not children[0].is_dir():
-                return current_root
-            current_root = children[0]
-
-
-    def _normalize_split_name(
-        self,
-        raw_split_name: str | None,
-        *,
-        default: DatasetSplitName,
-    ) -> DatasetSplitName:
-        """把输入的 split 名称归一化为 train、val、test。
-
-        参数：
-        - raw_split_name：原始 split 名称。
-        - default：无法识别时回退的 split。
-
-        返回：
-        - 归一化后的 split 名称。
-        """
-
-        if raw_split_name is None or not raw_split_name.strip():
-            return default
-        normalized_name = raw_split_name.strip().lower()
-        if "train" in normalized_name:
-            return "train"
-        if "val" in normalized_name or "valid" in normalized_name:
-            return "val"
-        if "test" in normalized_name:
-            return "test"
-        return default
-
-    def _normalize_relative_file_name(self, file_name: str) -> str:
-        """校验并归一化相对文件名。
-
-        参数：
-        - file_name：原始文件名。
-
-        返回：
-        - 使用 POSIX 分隔符的相对文件名。
-        """
-
-        normalized_path = PurePosixPath(file_name.replace("\\", "/"))
-        if normalized_path.is_absolute() or ".." in normalized_path.parts or not normalized_path.name:
-            raise InvalidRequestError(
-                "数据集中存在非法文件路径",
-                details={"file_name": file_name},
-            )
-        return str(normalized_path)
-
-    def _relative_path(self, base_path: Path, target_path: Path) -> str:
-        """把目标路径转换为相对基准目录的 POSIX 路径。
-
-        参数：
-        - base_path：基准目录。
-        - target_path：目标路径。
-
-        返回：
-        - 对应的相对路径字符串。
-        """
-
-        return target_path.relative_to(base_path).as_posix()
-
-    def _relative_path_from_any(
-        self,
-        target_path: Path,
-        *base_paths: Path,
-    ) -> str:
-        """按顺序尝试多个基准目录，返回第一个可用的相对路径。"""
-
-        for base_path in base_paths:
-            try:
-                return self._relative_path(base_path, target_path)
-            except ValueError:
-                continue
-        return target_path.as_posix()
-
-    def _collect_split_counts(
-        self,
-        parsed_samples: tuple[ParsedDatasetSample, ...] | list[ParsedDatasetSample],
-    ) -> dict[str, int]:
-        """统计每个 split 的样本数量。
-
-        参数：
-        - parsed_samples：样本列表。
-
-        返回：
-        - split 到样本数量的映射。
-        """
-
-        split_counts: dict[str, int] = {"train": 0, "val": 0, "test": 0}
-        for parsed_sample in parsed_samples:
-            split_counts[parsed_sample.sample.split] += 1
-
-        return {split_name: count for split_name, count in split_counts.items() if count > 0}
-
-    def _collect_split_names(
-        self,
-        parsed_samples: tuple[ParsedDatasetSample, ...] | list[ParsedDatasetSample],
-    ) -> tuple[str, ...]:
-        """按固定顺序收集样本中出现的 split 名称。
-
-        参数：
-        - parsed_samples：样本列表。
-
-        返回：
-        - 已出现的 split 名称元组。
-        """
-
-        present_splits = {parsed_sample.sample.split for parsed_sample in parsed_samples}
-        return tuple(split_name for split_name in ("train", "val", "test") if split_name in present_splits)
-
-    def _is_image_file(self, file_path: Path) -> bool:
-        """判断文件是否是常见图片格式。"""
-
-        return file_path.is_file() and file_path.suffix.lower() in {
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".bmp",
-            ".webp",
-            ".tif",
-            ".tiff",
-        }
-
-    def _read_image_size(self, image_path: Path) -> tuple[int, int]:
-        """读取图片宽高。"""
-
-        with Image.open(image_path) as image:
-            width, height = image.size
-        return int(width), int(height)
-
-    def _common_path_prefix(self, relative_paths: list[str]) -> str:
-        """计算一组相对路径的公共目录前缀。
-
-        参数：
-        - relative_paths：相对路径列表。
-
-        返回：
-        - 公共目录前缀；不存在时返回 .。
-        """
-
-        if not relative_paths:
-            return "."
-        common_parts = list(PurePosixPath(relative_paths[0]).parts[:-1])
-        for relative_path in relative_paths[1:]:
-            path_parts = list(PurePosixPath(relative_path).parts[:-1])
-            new_common_parts: list[str] = []
-            for left_part, right_part in zip(common_parts, path_parts):
-                if left_part != right_part:
-                    break
-                new_common_parts.append(left_part)
-            common_parts = new_common_parts
-            if not common_parts:
-                return "."
-        if not common_parts:
-            return "."
-        return str(PurePosixPath(*common_parts))
-
-    def _read_bbox_xywh(self, bbox_payload: object) -> tuple[float, float, float, float]:
-        """读取 COCO bbox 并校验其格式。
-
-        参数：
-        - bbox_payload：COCO annotation 中的 bbox 字段。
-
-        返回：
-        - 归一化后的 bbox_xywh。
-        """
-
-        if not isinstance(bbox_payload, list) or len(bbox_payload) != 4:
-            raise InvalidRequestError("COCO bbox 必须是长度为 4 的数组")
-        bbox_xywh = tuple(float(value) for value in bbox_payload)
-        if bbox_xywh[2] <= 0 or bbox_xywh[3] <= 0:
-            raise InvalidRequestError("COCO bbox 必须是正面积框")
-        return bbox_xywh
-
-    def _read_int(
-        self,
-        payload: dict[str, object],
-        key: str,
-        error_message: str,
-    ) -> int:
-        """从字典对象中读取整数值。
-
-        参数：
-        - payload：源对象。
-        - key：字段名。
-        - error_message：读取失败时的错误消息。
-
-        返回：
-        - 转换后的整数值。
-        """
-
-        raw_value = payload.get(key)
-        if raw_value is None:
-            raise InvalidRequestError(error_message)
-        return int(raw_value)
-
-    def _read_xml_int(
-        self,
-        xml_node: ElementTree.Element,
-        key: str,
-        error_message: str,
-    ) -> int:
-        """从 XML 节点中读取整数值。
-
-        参数：
-        - xml_node：源 XML 节点。
-        - key：子节点名称。
-        - error_message：读取失败时的错误消息。
-
-        返回：
-        - 转换后的整数值。
-        """
-
-        raw_text = (xml_node.findtext(key) or "").strip()
-        if not raw_text:
-            raise InvalidRequestError(error_message)
-        return int(raw_text)
-
-    def _read_voc_optional_flag(
-        self,
-        xml_node: ElementTree.Element,
-        key: str,
-    ) -> int:
-        """读取 Pascal VOC 可选整数标记，非整数值按 0 处理。
-
-        参数：
-        - xml_node：源 XML 节点。
-        - key：子节点名称。
-
-        返回：
-        - 解析得到的整数值；为空或非整数时返回 0。
-        """
-
-        raw_text = (xml_node.findtext(key) or "").strip()
-        if not raw_text:
-            return 0
-        try:
-            return int(raw_text)
-        except ValueError:
-            return 0
-
-    def _category_sort_key(self, category_id: str) -> tuple[int, object]:
-        """为类别 id 提供稳定排序键。
-
-        参数：
-        - category_id：原始类别 id。
-
-        返回：
-        - 排序键。
-        """
-
-        return (0, int(category_id)) if category_id.isdigit() else (1, category_id)
-
-    def _build_import_log(
-        self,
-        *,
-        dataset_import_id: str,
-        dataset_version_id: str,
-        parsed_content: ParsedDatasetContent,
-    ) -> str:
-        """构建导入日志文本。
-
-        参数：
-        - dataset_import_id：导入记录 id。
-        - dataset_version_id：生成的 DatasetVersion id。
-        - parsed_content：解析后的统一结果。
-
-        返回：
-        - 导入日志文本。
-        """
-
-        split_counts = self._collect_split_counts(parsed_content.samples)
-        return (
-            f"dataset_import_id={dataset_import_id}\n"
-            f"dataset_version_id={dataset_version_id}\n"
-            f"status=completed\n"
-            f"format_type={parsed_content.format_type}\n"
-            f"task_type={parsed_content.task_type}\n"
-            f"sample_count={len(parsed_content.samples)}\n"
-            f"category_count={len(parsed_content.categories)}\n"
-            f"split_counts={json.dumps(split_counts, ensure_ascii=False)}\n"
         )
 
     def _save_dataset_import(self, dataset_import: DatasetImport) -> None:
@@ -1499,6 +974,5 @@ class SqlAlchemyDatasetImportService(
             raise
         finally:
             unit_of_work.close()
-
 
 

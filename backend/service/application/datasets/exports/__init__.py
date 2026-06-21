@@ -1,10 +1,12 @@
 """数据集导出应用入口。"""
 
-from backend.service.application.datasets.exports.service import (
+from backend.service.application.datasets.exports.contracts import (
     DatasetExportArtifact,
     DatasetExporter,
     DatasetExportRequest,
     DatasetExportResult,
+)
+from backend.service.application.datasets.exports.service import (
     SqlAlchemyDatasetExporter,
 )
 

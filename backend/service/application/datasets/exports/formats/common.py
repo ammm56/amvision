@@ -14,7 +14,11 @@ from backend.contracts.datasets.exports.dataset_formats import (
 )
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.service.domain.datasets.dataset_version import DatasetSample, PoseAnnotation
+from backend.service.domain.datasets.dataset_version import (
+    DatasetSample,
+    DatasetVersion,
+    PoseAnnotation,
+)
 
 
 def _build_coco_annotation_entry(annotation: CocoDetectionAnnotation) -> dict[str, object]:
@@ -37,6 +41,23 @@ def _build_coco_annotation_entry(annotation: CocoDetectionAnnotation) -> dict[st
         if "num_keypoints" in meta:
             entry["num_keypoints"] = meta["num_keypoints"]
     return entry
+
+
+def _build_version_image_relative_path(
+    *,
+    dataset_version: DatasetVersion,
+    sample: DatasetSample,
+) -> str:
+    """计算 DatasetVersion 中某张图片的相对路径。"""
+
+    image_object_key = str(
+        sample.metadata.get("image_object_key")
+        or f"images/{sample.split}/{sample.file_name}"
+    ).lstrip("/")
+    return (
+        f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"
+        f"{dataset_version.dataset_version_id}/{image_object_key}"
+    )
 
 def _dataset_export_format_matches_task_type(
     *,

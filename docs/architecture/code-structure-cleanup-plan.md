@@ -43,38 +43,55 @@
 
 ### 当前问题
 
-- `dataset_import.py` 同时包含请求对象、任务提交、格式识别、COCO/VOC/YOLO/ImageNet/DOTA 解析、版本文件写入和失败回写。
-- `dataset_export.py` 同时包含导出请求、格式 writer、文件写入、导出任务服务和 payload 反序列化。
-- 新增数据集格式时容易继续向大文件追加代码。
+- 旧 `dataset_import.py` / `dataset_export.py` 平铺入口已经删除。
+- 当前导入侧已经拆成 `imports/service.py`、`imports/contracts.py`、`imports/support.py`、`imports/version_writer.py` 和 `imports/formats/*`。
+- 当前导出侧已经拆成 `exports/service.py`、`exports/task_service.py`、`exports/contracts.py`、`exports/delivery.py` 和 `exports/formats/*`。
+- `imports/service.py` 已不再直接保存格式 parser、路径归一化、图片读取、日志构建和版本文件写入。
+- `exports/service.py` 已不再直接保存 annotation payload 构建、格式文件写入、类别名解析和版本图片路径拼装。
+- 剩余问题主要是导入任务编排仍在 `imports/service.py`，后续如果继续拆，应只按任务提交、任务执行、状态事件和持久化 helper 小步收口。
 
 ### 目标结构
 
 ```text
 backend/service/application/datasets/
 ├─ imports/
-│  ├─ requests.py
 │  ├─ service.py
-│  ├─ tasks.py
-│  ├─ detection_coco.py
-│  ├─ detection_voc.py
-│  ├─ yolo.py
-│  ├─ imagenet.py
-│  ├─ dota.py
-│  ├─ format_detection.py
-│  └─ version_writer.py
+│  ├─ contracts.py
+│  ├─ support.py
+│  ├─ version_writer.py
+│  └─ formats/
+│     ├─ coco.py
+│     ├─ voc.py
+│     ├─ imagenet.py
+│     ├─ dota.py
+│     └─ yolo/
+│        ├─ parser.py
+│        ├─ manifest.py
+│        ├─ scanner.py
+│        ├─ annotations.py
+│        ├─ detection.py
+│        ├─ segmentation.py
+│        ├─ pose.py
+│        └─ obb.py
 ├─ exports/
-│  ├─ requests.py
 │  ├─ service.py
-│  ├─ tasks.py
-│  ├─ writers/
-│  │  ├─ coco_detection.py
-│  │  ├─ coco_instance_segmentation.py
-│  │  ├─ coco_keypoints.py
-│  │  ├─ voc_detection.py
-│  │  ├─ imagenet_classification.py
-│  │  ├─ dota_obb.py
-│  │  └─ yolo.py
-│  └─ delivery.py
+│  ├─ task_service.py
+│  ├─ contracts.py
+│  ├─ delivery.py
+│  └─ formats/
+│     ├─ common.py
+│     ├─ payloads.py
+│     ├─ files.py
+│     ├─ coco.py
+│     ├─ voc.py
+│     ├─ yolo.py
+│     ├─ imagenet.py
+│     └─ dota.py
+├─ formats/
+│  └─ export_support.py
+├─ tasks/
+│  ├─ imports.py
+│  └─ exports.py
 └─ README.md
 ```
 
@@ -82,7 +99,7 @@ backend/service/application/datasets/
 
 - `imports/service.py` 只负责编排导入流程。
 - 各格式 parser 只负责把外部数据集转成平台内部 `DatasetVersion` 样本。
-- `exports/writers/*` 只负责把内部 `DatasetVersion` 写成指定格式。
+- `exports/formats/*` 只负责把内部 `DatasetVersion` 写成指定格式。
 - task service 只处理队列、状态、事件和任务 payload。
 - 迁移完成后删除旧 `dataset_import.py` / `dataset_export.py` 平铺实现，不长期保留兼容入口。
 

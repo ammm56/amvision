@@ -2,14 +2,66 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from backend.service.domain.datasets.dataset_import import DatasetFormatType, DatasetImportTaskType
+from backend.service.domain.datasets.dataset_import import (
+    DatasetFormatType,
+    DatasetImport,
+    DatasetImportRequestedSplitStrategy,
+    DatasetImportTaskType,
+)
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
+    DatasetVersion,
 )
+
+
+@dataclass(frozen=True)
+class DatasetImportRequest:
+    """描述一次数据集 zip 导入请求。
+
+    字段：
+    - project_id：所属 Project id。
+    - dataset_id：所属 Dataset id。
+    - package_file_name：上传 zip 文件名。
+    - package_bytes：上传 zip 文件内容；直接走 service 调用时可传入。
+    - format_type：显式指定的数据集格式；为空时自动识别。
+    - task_type：任务类型。
+    - split_strategy：显式指定的 split 策略。
+    - class_map：显式指定的类别映射。
+    - metadata：附加元数据。
+    """
+
+    project_id: str
+    dataset_id: str
+    package_file_name: str
+    task_type: DatasetImportTaskType
+    package_bytes: bytes | None = None
+    format_type: DatasetFormatType | None = None
+    split_strategy: DatasetImportRequestedSplitStrategy | None = None
+    class_map: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DatasetImportResult:
+    """描述一次数据集导入的结果。
+
+    字段：
+    - dataset_import：最终保存的 DatasetImport 记录。
+    - dataset_version：导入生成的 DatasetVersion。
+    - sample_count：样本总数。
+    - category_count：类别总数。
+    - split_names：导入后包含的 split 列表。
+    """
+
+    dataset_import: DatasetImport
+    dataset_version: DatasetVersion
+    sample_count: int
+    category_count: int
+    split_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)
