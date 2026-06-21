@@ -23,49 +23,55 @@
 
 显式指定路径时，`tests/integration/` 下的测试会执行，例如：
 
+以下示例默认先在当前终端执行：
+
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yolox_tensorrt_inference_tasks_api.py -q
+conda activate amvision
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_soak_benchmark.py -q
+python -m pytest tests/integration/test_yolox_tensorrt_inference_tasks_api.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q
+python -m pytest tests/integration/test_yoloe_sam3_soak_benchmark.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
+python -m pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
+python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks detection --target-formats onnx --start-processes
+python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks pose obb --target-formats onnx --max-epochs 1 --batch-size 1 --max-images-per-split 2 --start-processes
+python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks detection --target-formats onnx --start-processes
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_interactive_regression.py -q
+python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks pose obb --target-formats onnx --max-epochs 1 --batch-size 1 --max-images-per-split 2 --start-processes
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_workflow_closure.py -q
+python -m pytest tests/integration/test_sam3_video_interactive_regression.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
+python -m pytest tests/integration/test_sam3_video_workflow_closure.py -q
+```
+
+```powershell
+python -m pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
 ```
 
 ```powershell
 $env:AMVISION_RUN_RFDETR_CHECKPOINT_SMOKE="1"
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_rfdetr_checkpoint_smoke tests/integration/test_rfdetr_full_core_soak_benchmark.py -k checkpoint -q -s
+python -m pytest --basetemp .tmp/pytest_rfdetr_checkpoint_smoke tests/integration/test_rfdetr_full_core_soak_benchmark.py -k checkpoint -q -s
 ```
 
 如果只想临时验证某几个本地权重，可以设置 `AMVISION_RFDETR_CHECKPOINT_SMOKE_CASES`，格式为 `task_type:scale:checkpoint_path`，多项用分号分隔。没有设置时使用当前平台公开的全部 RF-DETR 本地预训练 scale。
@@ -73,34 +79,34 @@ D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_
 ```powershell
 $env:AMVISION_RUN_RFDETR_FULL_CORE_SOAK="1"
 $env:AMVISION_RFDETR_FULL_CORE_SOAK_ITERATIONS="50"
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_rfdetr_full_core_soak tests/integration/test_rfdetr_full_core_soak_benchmark.py -k tiny -q -s
+python -m pytest --basetemp .tmp/pytest_rfdetr_full_core_soak tests/integration/test_rfdetr_full_core_soak_benchmark.py -k tiny -q -s
 ```
 
 ```powershell
 $env:AMVISION_RUN_RFDETR_FULL_CORE_SOAK="1"
 $env:AMVISION_RUN_RFDETR_FULL_CORE_CONVERSION_SOAK="1"
 $env:AMVISION_RFDETR_FULL_CORE_CONVERSION_TASKS="detection,segmentation"
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_rfdetr_full_core_conversion_soak tests/integration/test_rfdetr_full_core_soak_benchmark.py -k onnx -q -s
+python -m pytest --basetemp .tmp/pytest_rfdetr_full_core_conversion_soak tests/integration/test_rfdetr_full_core_soak_benchmark.py -k onnx -q -s
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
+python -m pytest --basetemp .tmp/pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
+python -m pytest --basetemp .tmp/pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
+python -m pytest --basetemp .tmp/pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
 ```
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
+python -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 ```powershell
-$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
+$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; python -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 RF-DETR deployment 常驻 soak 应先创建真实 deployment 任务和真实转换产物，再结合 release/full 启停验收执行；不要用普通模型前向测试冒充 deployment soak。
