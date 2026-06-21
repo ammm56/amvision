@@ -33,6 +33,7 @@ def build_yolov8_detection_records(
         score_threshold=score_threshold,
         nms_threshold=nms_threshold,
         postprocess_mode=DETECTION_POSTPROCESS_MODE_NMS,
+        box_format="xywh",
         max_detections=None,
     )
     if not postprocess_results:

@@ -83,7 +83,10 @@ def build_yolov8_pose_postprocess_instances(
 
     results: list[YoloV8PosePostprocessInstance] = []
     for image_prediction in normalized_prediction:
-        boxes = image_prediction[:, :4]
+        boxes = _convert_yolov8_pose_xywh_to_xyxy(
+            boxes_xywh=image_prediction[:, :4],
+            np_module=np_module,
+        )
         class_scores = image_prediction[:, 4 : 4 + class_count]
         raw_keypoints = image_prediction[:, 4 + class_count : 4 + class_count + keypoint_width]
         best_scores = np_module.max(class_scores, axis=1)
@@ -128,6 +131,30 @@ def build_yolov8_pose_postprocess_instances(
             )
     results.sort(key=lambda item: item.score, reverse=True)
     return tuple(results), default_kpt_shape
+
+
+def _convert_yolov8_pose_xywh_to_xyxy(
+    *,
+    boxes_xywh: Any,
+    np_module: Any,
+) -> Any:
+    """把 YOLOv8 pose 默认 xywh box 转换为 NMS 使用的 xyxy。"""
+
+    center_x = boxes_xywh[:, 0]
+    center_y = boxes_xywh[:, 1]
+    width = boxes_xywh[:, 2]
+    height = boxes_xywh[:, 3]
+    half_width = width / 2.0
+    half_height = height / 2.0
+    return np_module.stack(
+        (
+            center_x - half_width,
+            center_y - half_height,
+            center_x + half_width,
+            center_y + half_height,
+        ),
+        axis=1,
+    )
 
 
 def _build_yolov8_pose_instance(

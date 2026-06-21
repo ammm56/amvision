@@ -9,10 +9,12 @@ from torch import nn
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.decode import (
-    build_detection_prediction,
     decode_pose_keypoints,
 )
 from backend.service.application.models.yolo_core_common.layers import Conv
+from backend.service.application.models.yolo11_core.decode import (
+    build_yolo11_detection_prediction,
+)
 from backend.service.application.models.yolo11_core.nn.tasks.detection import Detect
 
 
@@ -90,7 +92,7 @@ class Pose(Detect):
             return raw_outputs
 
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
-        prediction = build_detection_prediction(
+        prediction = build_yolo11_detection_prediction(
             raw_outputs=inference_outputs,
             strides=self.strides,
             dfl_decoder=self.dfl,

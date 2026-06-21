@@ -8,6 +8,7 @@ import torch
 from torch import nn
 
 from backend.service.application.models.yolo_core_common.geometry import (
+    dist2bbox_xywh,
     dist2bbox_xyxy,
     make_anchors,
 )
@@ -19,14 +20,14 @@ def decode_yolov8_detection_boxes(
     strides: tuple[int, ...],
     dfl_decoder: nn.Module,
 ) -> torch.Tensor:
-    """把 YOLOv8 detection head 原始 box 分布解码成 xyxy 边界框。"""
+    """把 YOLOv8 detection head 原始 box 分布解码成 Ultralytics 默认 xywh。"""
 
     anchor_points, stride_tensor = make_anchors(
         feature_maps=raw_outputs["feats"],
         strides=strides,
     )
     distances = dfl_decoder(raw_outputs["boxes"])
-    return dist2bbox_xyxy(
+    return dist2bbox_xywh(
         distances=distances,
         anchor_points=anchor_points.unsqueeze(0),
         stride_tensor=stride_tensor.unsqueeze(0),

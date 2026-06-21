@@ -155,7 +155,10 @@ def prepare_yolov8_segmentation_nms_inputs_array(
         channel_count=int(image_prediction.shape[1]),
         num_classes=num_classes,
     )
-    boxes = image_prediction[:, :4]
+    boxes = _convert_yolov8_xywh_to_xyxy(
+        boxes_xywh=image_prediction[:, :4],
+        np_module=np_module,
+    )
     class_scores = image_prediction[:, 4 : 4 + num_classes]
     mask_coefficients = image_prediction[:, 4 + num_classes :]
     best_scores = np_module.max(class_scores, axis=1)
@@ -172,6 +175,30 @@ def prepare_yolov8_segmentation_nms_inputs_array(
         scores=best_scores,
         class_ids=best_class_ids,
         mask_coefficients=mask_coefficients,
+    )
+
+
+def _convert_yolov8_xywh_to_xyxy(
+    *,
+    boxes_xywh: Any,
+    np_module: Any,
+) -> Any:
+    """把 YOLOv8 export 默认 xywh 转换为 NMS 使用的 xyxy。"""
+
+    center_x = boxes_xywh[:, 0]
+    center_y = boxes_xywh[:, 1]
+    width = boxes_xywh[:, 2]
+    height = boxes_xywh[:, 3]
+    half_width = width / 2.0
+    half_height = height / 2.0
+    return np_module.stack(
+        (
+            center_x - half_width,
+            center_y - half_height,
+            center_x + half_width,
+            center_y + half_height,
+        ),
+        axis=1,
     )
 
 

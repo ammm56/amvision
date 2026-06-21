@@ -3400,7 +3400,7 @@ class _StaticYoloV8SegmentationModel(torch.nn.Module):
         """忽略输入，返回单个高置信度 segmentation candidate。"""
 
         return images.new_tensor(
-            [[[1.0, 1.0, 12.0, 12.0, 8.0, -8.0, 1.0, 0.0, 0.0, 0.0]]]
+            [[[6.5, 6.5, 11.0, 11.0, 8.0, -8.0, 1.0, 0.0, 0.0, 0.0]]]
         )
 
 
