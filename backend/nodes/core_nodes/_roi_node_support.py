@@ -13,7 +13,7 @@ from backend.nodes.core_nodes._region_node_support import (
     resolve_region_source_image_size,
     select_best_region_item,
 )
-from backend.nodes.runtime_support import load_image_bytes_from_payload, require_image_payload
+from backend.nodes.runtime_support import load_image_bytes_from_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

@@ -31,3 +31,11 @@ class SqlAlchemyYolo26ModelService(SqlAlchemyModelService):
             spec=spec,
             file_types=YOLO26_DETECTION_FILE_TYPES,
         )
+
+
+__all__ = [
+    "SqlAlchemyYolo26ModelService",
+    "Yolo26BuildRegistration",
+    "Yolo26PretrainedRegistrationRequest",
+    "Yolo26TrainingOutputRegistration",
+]

@@ -31,3 +31,11 @@ class SqlAlchemyYoloV8ModelService(SqlAlchemyModelService):
             spec=spec,
             file_types=YOLOV8_DETECTION_FILE_TYPES,
         )
+
+
+__all__ = [
+    "SqlAlchemyYoloV8ModelService",
+    "YoloV8BuildRegistration",
+    "YoloV8PretrainedRegistrationRequest",
+    "YoloV8TrainingOutputRegistration",
+]

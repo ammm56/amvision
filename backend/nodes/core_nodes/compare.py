@@ -14,7 +14,7 @@ from backend.nodes.core_nodes._logic_node_support import (
     compare_values,
     require_value_payload,
 )
-from backend.nodes.core_nodes._service_node_support import get_optional_dict_parameter, get_optional_str_parameter, require_str_parameter
+from backend.nodes.core_nodes._service_node_support import require_str_parameter
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

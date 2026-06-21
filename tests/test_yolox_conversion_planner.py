@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from backend.service.application.conversions.yolox_conversion_planner import (
     DefaultYoloXConversionPlanner,
     YoloXConversionPlanningRequest,

@@ -27,3 +27,16 @@ class DefaultYolo11ConversionPlanner(DefaultYoloXConversionPlanner):
             file_types=YOLO11_DETECTION_FILE_TYPES,
             supported_task_types=DEFAULT_YOLO11_MODEL_SPEC.supported_tasks,
         )
+
+
+__all__ = [
+    "DefaultYolo11ConversionPlanner",
+    "Yolo11ConversionPlan",
+    "Yolo11ConversionPlanner",
+    "Yolo11ConversionPlanningRequest",
+    "Yolo11ConversionStep",
+    "deserialize_yolo11_conversion_plan",
+    "deserialize_yolo11_conversion_step",
+    "serialize_yolo11_conversion_plan",
+    "serialize_yolo11_conversion_step",
+]

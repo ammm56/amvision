@@ -15,7 +15,7 @@ from custom_nodes.barcode_protocol_nodes.backend.support import (
     normalize_optional_object_key,
     require_barcode_runtime_imports,
 )
-from custom_nodes.barcode_protocol_nodes.specs import DRAW_BARCODE_RESULTS_NODE_TYPE_ID, NODE_PACK_ID, NODE_PACK_VERSION
+from custom_nodes.barcode_protocol_nodes.specs import DRAW_BARCODE_RESULTS_NODE_TYPE_ID
 
 
 NODE_TYPE_ID = DRAW_BARCODE_RESULTS_NODE_TYPE_ID

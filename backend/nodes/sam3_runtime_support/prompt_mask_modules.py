@@ -6,7 +6,6 @@ import math
 
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 from .nn_common import LayerNorm2d, MLP, MLPBlock
 

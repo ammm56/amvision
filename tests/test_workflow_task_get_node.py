@@ -19,8 +19,6 @@ from backend.service.application.workflows.runtime_service import (
     WorkflowRuntimeService,
 )
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
-from backend.service.settings import BackendServiceSettings
-from tests.test_workflow_runtime_sanitization import _FakeWorkerManager
 from tests.test_workflow_runtime_sanitization import _build_runtime_service as _build_base_runtime_service
 
 

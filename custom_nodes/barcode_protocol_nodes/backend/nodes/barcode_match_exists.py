@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.barcode_protocol_nodes.backend.support import filter_barcode_results_payload
-from custom_nodes.barcode_protocol_nodes.specs import NODE_PACK_ID, NODE_PACK_VERSION
 
 
 NODE_TYPE_ID = "custom.barcode.match-exists"

@@ -64,7 +64,7 @@ class RfdetrConversionQueueWorker:
                 conversion_runner=self.conversion_runner,
             )
             task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
-            task = task_service.get_task(task_id)
+            task_service.get_task(task_id)
             result_payload = service.process_conversion_task(task_id)
 
         except ServiceError as error:

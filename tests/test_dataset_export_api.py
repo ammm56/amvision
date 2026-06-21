@@ -11,7 +11,6 @@ from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECT
 from backend.contracts.datasets.exports.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
     IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
-    SUPPORTED_DATASET_EXPORT_FORMATS,
 )
 from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
