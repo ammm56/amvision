@@ -126,7 +126,7 @@ def yolov8_distribution_focal_loss(
         reduction="none",
     )
     combined = loss_left * weight_left.reshape(-1) + loss_right * weight_right.reshape(-1)
-    return combined.view(-1, 4).sum(dim=1)
+    return combined.view(-1, 4).mean(dim=1)
 
 
 def _compute_yolov8_image_detection_loss(

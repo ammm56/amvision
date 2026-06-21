@@ -18,6 +18,8 @@ def assign_yolov8_detection_targets(
     alpha: float,
     beta: float,
     topk2: int | None = None,
+    min_stride: float = 8.0,
+    tiny_box_stride: float = 16.0,
 ) -> dict[str, Any]:
     """按 YOLOv8 detection task-aligned 规则分配正样本 anchor。"""
 
@@ -47,6 +49,8 @@ def assign_yolov8_detection_targets(
         torch_module=torch_module,
         anchor_centers_xy=anchor_centers_xy,
         gt_boxes=gt_boxes,
+        min_stride=min_stride,
+        tiny_box_stride=tiny_box_stride,
     )
     pair_iou = yolov8_box_iou_matrix(
         torch_module=torch_module,
@@ -60,33 +64,15 @@ def assign_yolov8_detection_targets(
         * inside_mask.to(pair_iou.dtype)
     )
     candidate_mask = torch_module.zeros_like(inside_mask)
-    gt_centers = (gt_boxes[:, 0:2] + gt_boxes[:, 2:4]) * 0.5
-    center_distances = torch_module.cdist(gt_centers, anchor_centers_xy)
     candidate_count = min(max(1, topk), num_anchors)
 
     for gt_index in range(num_gt):
         gt_metric = alignment_metric[gt_index]
-        valid_indices = torch_module.nonzero(gt_metric > 0, as_tuple=False).squeeze(1)
-        if int(valid_indices.numel()) == 0:
-            fallback_index = int(torch_module.argmin(center_distances[gt_index]).item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
-            continue
-        topk_count = min(candidate_count, int(valid_indices.numel()))
-        topk_values, topk_indices = torch_module.topk(gt_metric, k=topk_count)
-        valid_topk = topk_values > 0
-        if bool(valid_topk.any()):
-            candidate_mask[gt_index, topk_indices[valid_topk]] = True
-        else:
-            fallback_index = int(valid_indices[0].item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = torch_module.maximum(
-                alignment_metric[gt_index, fallback_index],
-                alignment_metric.new_tensor(1e-4),
-            )
+        topk_count = min(candidate_count, int(gt_metric.numel()))
+        _, topk_indices = torch_module.topk(gt_metric, k=topk_count)
+        candidate_mask[gt_index, topk_indices] = True
+
+    candidate_mask = candidate_mask & inside_mask
 
     if topk2 is not None and topk2 != topk:
         candidate_mask = _refine_yolov8_candidate_mask(
@@ -102,8 +88,18 @@ def assign_yolov8_detection_targets(
     candidate_weight = candidate_mask.to(alignment_metric.dtype)
     matched_metric = alignment_metric * candidate_weight
     matched_iou = pair_iou * candidate_weight
-    quality_scores, assigned_gt_indices = matched_metric.max(dim=0)
-    foreground_mask = quality_scores > 0
+    selection_metric = torch_module.where(
+        candidate_mask,
+        matched_metric,
+        matched_metric.new_full(matched_metric.shape, -1.0),
+    )
+    _, assigned_gt_indices = selection_metric.max(dim=0)
+    foreground_mask = candidate_mask.any(dim=0)
+    quality_scores = matched_metric.gather(0, assigned_gt_indices.unsqueeze(0)).squeeze(0)
+    quality_scores = quality_scores.where(
+        foreground_mask,
+        torch_module.zeros_like(quality_scores),
+    )
     if bool(foreground_mask.any()):
         matched_gt_indices = assigned_gt_indices[foreground_mask]
         max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
@@ -213,9 +209,17 @@ def _build_yolov8_anchor_inside_mask(
     torch_module: Any,
     anchor_centers_xy: Any,
     gt_boxes: Any,
+    min_stride: float,
+    tiny_box_stride: float,
 ) -> Any:
-    """判断 anchor center 是否落在 gt bbox 内部。"""
+    """判断 anchor center 是否落在 gt bbox 内部，并按 Ultralytics 规则扩展 tiny bbox。"""
 
+    gt_boxes = _expand_yolov8_tiny_gt_boxes_for_assignment(
+        torch_module=torch_module,
+        gt_boxes=gt_boxes,
+        min_stride=min_stride,
+        tiny_box_stride=tiny_box_stride,
+    )
     center_x = anchor_centers_xy[:, 0].unsqueeze(0)
     center_y = anchor_centers_xy[:, 1].unsqueeze(0)
     return (
@@ -224,6 +228,30 @@ def _build_yolov8_anchor_inside_mask(
         & (center_y >= gt_boxes[:, 1:2])
         & (center_y <= gt_boxes[:, 3:4])
     )
+
+
+def _expand_yolov8_tiny_gt_boxes_for_assignment(
+    *,
+    torch_module: Any,
+    gt_boxes: Any,
+    min_stride: float,
+    tiny_box_stride: float,
+) -> Any:
+    """按 Ultralytics TAL 规则把小于最小 stride 的 gt bbox 扩到稳定候选范围。"""
+
+    centers = (gt_boxes[:, 0:2] + gt_boxes[:, 2:4]) * 0.5
+    sizes = (gt_boxes[:, 2:4] - gt_boxes[:, 0:2]).clamp_min(0.0)
+    tiny_mask = sizes < float(min_stride)
+    if not bool(tiny_mask.any()):
+        return gt_boxes
+
+    expanded_sizes = torch_module.where(
+        tiny_mask,
+        torch_module.full_like(sizes, float(tiny_box_stride)),
+        sizes,
+    )
+    half_sizes = expanded_sizes * 0.5
+    return torch_module.cat((centers - half_sizes, centers + half_sizes), dim=1)
 
 
 def _refine_yolov8_candidate_mask(

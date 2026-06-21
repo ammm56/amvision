@@ -21,6 +21,14 @@ from backend.service.application.models.yolov8_core.decode import (
 class Detect(nn.Module):
     """YOLOv8 detection head 的项目内 full core 实现。"""
 
+    dynamic = False
+    export = False
+    format = None
+    max_det = 300
+    agnostic_nms = False
+    shape = None
+    xyxy = False
+
     def __init__(
         self,
         nc: int,
@@ -37,7 +45,7 @@ class Detect(nn.Module):
         self.nc = nc
         self.nl = len(ch)
         self.reg_max = reg_max
-        self.no = nc + 4
+        self.no = nc + self.reg_max * 4
         self.strides = tuple(int(item) for item in strides)
         self.end2end = bool(end2end)
         self.legacy_class_head = bool(legacy_class_head)

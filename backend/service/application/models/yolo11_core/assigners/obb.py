@@ -87,6 +87,7 @@ def assign_yolo11_obb_targets(
     candidate_mask = _select_yolo11_obb_candidates(
         torch_module=torch_module,
         alignment_metric=alignment_metric,
+        inside_mask=inside_mask,
         gt_rboxes=candidate_gt_rboxes,
         anchor_centers_xy=anchor_centers_xy,
         topk=topk,
@@ -96,8 +97,18 @@ def assign_yolo11_obb_targets(
     )
     matched_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
     matched_iou = pair_iou * candidate_mask.to(pair_iou.dtype)
-    quality_scores, assigned_gt_indices = matched_metric.max(dim=0)
-    foreground_mask = quality_scores > 0
+    selection_metric = torch_module.where(
+        candidate_mask,
+        matched_metric,
+        matched_metric.new_full(matched_metric.shape, -1.0),
+    )
+    _, assigned_gt_indices = selection_metric.max(dim=0)
+    foreground_mask = candidate_mask.any(dim=0)
+    quality_scores = matched_metric.gather(0, assigned_gt_indices.unsqueeze(0)).squeeze(0)
+    quality_scores = quality_scores.where(
+        foreground_mask,
+        torch_module.zeros_like(quality_scores),
+    )
     if bool(foreground_mask.any()):
         matched_gt_indices = assigned_gt_indices[foreground_mask]
         max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
@@ -126,6 +137,7 @@ def _select_yolo11_obb_candidates(
     *,
     torch_module: Any,
     alignment_metric: Any,
+    inside_mask: Any,
     gt_rboxes: Any,
     anchor_centers_xy: Any,
     topk: int,
@@ -140,27 +152,16 @@ def _select_yolo11_obb_candidates(
         dtype=torch_module.bool,
         device=alignment_metric.device,
     )
-    center_distances = torch_module.cdist(gt_rboxes[:, :2], anchor_centers_xy)
     topk_count = min(max(1, int(topk)), anchor_count)
     for gt_index in range(gt_count):
-        valid_indices = torch_module.nonzero(
-            alignment_metric[gt_index] > 0,
-            as_tuple=False,
-        ).squeeze(1)
-        if int(valid_indices.numel()) == 0:
-            fallback_index = int(torch_module.argmin(center_distances[gt_index]).item())
-            candidate_mask[gt_index, fallback_index] = True
-            alignment_metric[gt_index, fallback_index] = alignment_metric[
-                gt_index,
-                fallback_index,
-            ].clamp_min(1e-4)
-            continue
-        selected_count = min(topk_count, int(valid_indices.numel()))
+        selected_count = min(topk_count, int(alignment_metric[gt_index].numel()))
         _, topk_indices = torch_module.topk(
-            alignment_metric[gt_index][valid_indices],
+            alignment_metric[gt_index],
             k=selected_count,
         )
-        candidate_mask[gt_index, valid_indices[topk_indices]] = True
+        candidate_mask[gt_index, topk_indices] = True
+
+    candidate_mask = candidate_mask & inside_mask
 
     if topk2 is None or int(topk2) == int(topk):
         return candidate_mask
