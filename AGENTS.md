@@ -49,7 +49,7 @@
 ## 默认开发工具链
 
 - Python 环境管理：开发环境使用 conda，但项目代码不得依赖系统 Python 隐式状态
-- 当前 Windows 目标开发机默认使用 `D:\software\anaconda3\envs\amvision\python.exe`；自动化回归、Codex 执行命令和需要避免环境串错的调试命令优先使用该显式解释器
+- 开发和调试命令默认先执行 `conda activate amvision`，再使用当前环境中的 `python`；文档中不写本机 Conda 绝对路径
 - 代码质量：pytest、ruff、pre-commit
 - pytest 默认临时目录固定为仓库根目录 `.tmp/pytest`，由 `pytest.ini` 的 `--basetemp=.tmp/pytest` 统一配置；长链或并发测试需要隔离时只改成 `.tmp/<name>` 子目录
 - 数据库迁移：Alembic

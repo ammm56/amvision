@@ -16,19 +16,22 @@
 基础基线执行命令：
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_soak_benchmark.py -q -s
+conda activate amvision
+python -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_soak_benchmark.py -q -s
 ```
 
 扩展基线执行命令：
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q -s
+conda activate amvision
+python -m pytest --basetemp .tmp/pytest tests/integration/test_yoloe_sam3_extended_soak_benchmark.py -q -s
 ```
 
 视频 memory-attention 基线执行命令：
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest --basetemp .tmp/pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
+conda activate amvision
+python -m pytest --basetemp .tmp/pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
 ```
 
 ## 当前测试覆盖

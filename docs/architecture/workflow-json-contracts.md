@@ -147,8 +147,9 @@ custom_nodes/barcode_protocol_nodes/workflow/generate_catalog.py 是面向日常
 这类变化通常来自 custom_nodes/barcode_protocol_nodes/specs.py，例如新增条码制式、修改 display_name、description、capability_tags 或公共参数 schema。此时需要先更新批量生成的 backend 节点模块和对应 node JSON，再回写 catalog.json。
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.backend.generate_decode_node_modules
-D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+conda activate amvision
+python -m custom_nodes.barcode_protocol_nodes.backend.generate_decode_node_modules
+python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
 ```
 
 2. 非 decode 节点发生变化
@@ -161,7 +162,8 @@ D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_
 完成修改后只需要回写 catalog.json：
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+conda activate amvision
+python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
 ```
 
 ### 维护约定

@@ -40,6 +40,7 @@
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/operations/README.md](operations/README.md) 汇总现场运维、排障和受控上线手册
 - [docs/operations/release-full-troubleshooting.md](operations/release-full-troubleshooting.md) 汇总 `release/full/` 的日志入口、worker profile 检查点和现场排障顺序
+- [docs/development/python-code-checks.md](development/python-code-checks.md) 说明 Python 明显问题检查命令，以及 Ruff 规则编号对应的直白含义
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
 - [docs/architecture/node-system.md](architecture/node-system.md) 汇总 node pack、custom node 和扩展机制文档
 - [docs/decisions/README.md](decisions/README.md) 汇总架构决策记录

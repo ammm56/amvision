@@ -161,7 +161,7 @@
 当前已真实遇到过的现象是：
 
 - `release/full/python/python.exe -c "import torch"` 直接报 `libiomp5md.dll already initialized`
-- 同一台机器上的源码开发环境 `D:\software\anaconda3\envs\amvision\python.exe -c "import torch"` 却是正常的
+- 同一台机器上先执行 `conda activate amvision` 后，源码开发环境 `python -c "import torch"` 却是正常的
 
 高频原因：
 
@@ -171,7 +171,8 @@
 先做：
 
 ```powershell
-python -m backend.maintenance.main assemble-release --profile-id full --release-root .\release --force --bundled-python-source-dir D:\software\anaconda3\envs\amvision --output text
+conda activate amvision
+python -m backend.maintenance.main assemble-release --profile-id full --release-root .\release --force --bundled-python-source-dir $env:CONDA_PREFIX --output text
 ```
 
 判断方式：
@@ -213,31 +214,36 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 如果需要在开发仓库复现 release/full 现场问题，当前最直接的入口是：
 
 ```powershell
-D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
+conda activate amvision
+python -m pytest --basetemp .tmp\pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
 ```
 
 ```powershell
-D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
+conda activate amvision
+python -m pytest --basetemp .tmp\pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
 ```
 
 完整 non-detection runtime backend matrix：
 
 ```powershell
-D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
+conda activate amvision
+python -m pytest --basetemp .tmp\pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
 ```
 
 release/full 短时启停验收：
 
 ```powershell
-D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
+conda activate amvision
+python -m pytest --basetemp .tmp\pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 release/full 长时 soak 入口示例：
 
 ```powershell
+conda activate amvision
 $env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
 $env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
-D:\software\anaconda3\envs\amvision\python.exe -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
+python -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
 长时 soak 完成后先看：

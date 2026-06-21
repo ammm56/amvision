@@ -190,7 +190,8 @@
 建议只在目标机器上手动执行：
 
 ```powershell
-D:/software/anaconda3/envs/amvision/python.exe -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
+conda activate amvision
+python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q
 ```
 
 当前 smoke 重点覆盖：
