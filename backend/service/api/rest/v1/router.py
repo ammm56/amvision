@@ -71,7 +71,7 @@ from backend.service.api.rest.v1.routes.obb_training_tasks.router import (
 from backend.service.api.rest.v1.routes.obb_validation_sessions.router import (
     obb_validation_sessions_router,
 )
-from backend.service.api.rest.v1.routes.auth import auth_router
+from backend.service.api.rest.v1.routes.auth.router import auth_router
 from backend.service.api.rest.v1.routes.models.router import models_router
 from backend.service.api.rest.v1.routes.projects.router import projects_router
 from backend.service.api.rest.v1.routes.system.router import system_router
