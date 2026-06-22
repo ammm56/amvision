@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app
+from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -59,7 +60,6 @@ def test_project_summary_api_aggregates_workflow_and_deployment_counts(tmp_path:
                     "application_ref": {"application_id": "process-echo-app"},
                     "input_bindings": {"request_text": {"value": "project summary preview"}},
                     "wait_mode": "sync",
-                    "timeout_seconds": 5,
                 },
             )
             assert preview_run_response.status_code == 201
@@ -256,6 +256,7 @@ def _create_project_summary_test_client(
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

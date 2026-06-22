@@ -26,10 +26,14 @@ from backend.service.api.deps.auth import (
     require_scopes,
 )
 from backend.service.api.deps.db import get_unit_of_work
-from backend.service.api.rest.v1.routes.projects import (
+from backend.service.api.rest.v1.routes.projects.responses import (
+    build_project_catalog_item_response,
+)
+from backend.service.api.rest.v1.routes.projects.schemas import (
     ProjectCatalogItemResponse,
-    _build_project_catalog_item_response,
-    _list_visible_project_ids,
+)
+from backend.service.api.rest.v1.routes.projects.services import (
+    list_visible_project_ids,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.auth.provider_registry import AuthProviderRegistry
@@ -203,12 +207,12 @@ def get_system_bootstrap(
     visible_projects: list[ProjectCatalogItemResponse] = []
     if principal is not None:
         visible_projects = [
-            _build_project_catalog_item_response(
+            build_project_catalog_item_response(
                 request=request,
                 project_id=project_id,
                 include_summary=False,
             )
-            for project_id in _list_visible_project_ids(request=request, principal=principal)
+            for project_id in list_visible_project_ids(request=request, principal=principal)
         ]
 
     return SystemBootstrapResponse(
