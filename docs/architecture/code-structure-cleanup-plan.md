@@ -182,8 +182,10 @@ backend/service/application/workflows/
 
 ### 当前问题
 
-- `workflows.py`、`workflow_runtime.py`、`datasets.py` 和多个 deployment / inference route 文件承担了过多响应组装 helper。
+- `datasets.py` 和多个 deployment / inference route 文件承担了过多响应组装 helper。
 - route 文件里混有请求模型、权限检查、服务装配和 response builder。
+- 当前已删除旧 `workflows.py` 单文件入口，按 node catalog、node pack admin、template 文档和 application 文档拆到 `workflows/`，并由 `workflows/router.py` 统一装配。
+- 当前已删除旧 `workflow_runtime.py` 单文件入口，按 endpoint 组拆到 `workflow_runtime/`，并由 `workflow_runtime/router.py` 统一装配。跨 endpoint 共用的请求体、响应构建、服务装配和 multipart 调用构建暂放 `workflow_runtime_support/`。
 
 ### 目标结构
 
@@ -195,19 +197,29 @@ backend/service/api/rest/v1/routes/
 │  ├─ schemas.py
 │  └─ responses.py
 ├─ workflows/
+│  ├─ router.py
 │  ├─ templates.py
 │  ├─ applications.py
 │  ├─ node_catalog.py
 │  ├─ node_pack_admin.py
+│  ├─ documents.py
+│  ├─ node_catalog_helpers.py
+│  ├─ node_pack_helpers.py
 │  ├─ schemas.py
-│  └─ responses.py
+│  └─ ...
 ├─ workflow_runtime/
+│  ├─ router.py
 │  ├─ preview_runs.py
 │  ├─ app_runtimes.py
 │  ├─ runs.py
 │  ├─ policies.py
 │  ├─ schemas.py
 │  └─ responses.py
+├─ workflow_runtime_support/
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ uploads.py
 └─ ...
 ```
 
@@ -217,6 +229,7 @@ backend/service/api/rest/v1/routes/
 - request / response schema 放到同目录 `schemas.py` 或 `responses.py`。
 - 复杂 response builder 从 route 文件移出。
 - 完成迁移后删除旧单文件 route，不保留双路由。
+- `<route>_support/` 只放跨多个 endpoint 组共用的 helper；如果 helper 只服务单个 endpoint 组，应继续并入对应正式目录。
 
 ## 第四批：core_nodes
 

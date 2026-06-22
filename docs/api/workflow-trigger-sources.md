@@ -877,7 +877,9 @@ checked-in 的配置请求体见 `docs/api/examples/workflows/09-industrial-loca
 主要文件：
 
 ```text
-backend/service/api/rest/v1/routes/workflow_runtime.py
+backend/service/api/rest/v1/routes/workflow_runtime/router.py
+backend/service/api/rest/v1/routes/workflow_runtime/
+backend/service/api/rest/v1/routes/workflow_runtime_support/
 backend/service/application/workflows/runtime_service.py
 docs/api/postman/workflows/
 docs/api/examples/workflows/

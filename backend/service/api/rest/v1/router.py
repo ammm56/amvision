@@ -43,9 +43,9 @@ from backend.service.api.rest.v1.routes.models import models_router
 from backend.service.api.rest.v1.routes.projects import projects_router
 from backend.service.api.rest.v1.routes.system import system_router
 from backend.service.api.rest.v1.routes.tasks import tasks_router
-from backend.service.api.rest.v1.routes.workflow_runtime import workflow_runtime_router
+from backend.service.api.rest.v1.routes.workflow_runtime.router import workflow_runtime_router
 from backend.service.api.rest.v1.routes.workflow_trigger_sources import workflow_trigger_sources_router
-from backend.service.api.rest.v1.routes.workflows import workflows_router
+from backend.service.api.rest.v1.routes.workflows.router import workflows_router
 
 
 api_v1_router = APIRouter(prefix="/v1")

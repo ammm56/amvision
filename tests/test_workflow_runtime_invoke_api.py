@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.api.app import create_app
-from backend.service.api.rest.v1.routes.workflow_runtime import _build_workflow_runtime_service
+from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
+    build_workflow_runtime_service as _build_workflow_runtime_service,
+)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,

@@ -371,10 +371,10 @@ sequenceDiagram
 
 ## Workflow Runtime 链
 
-- preview 控制面：[backend/service/api/rest/v1/routes/workflow_runtime.py](../../backend/service/api/rest/v1/routes/workflow_runtime.py)
-- runtime 服务：[backend/service/application/workflows/runtime_service.py](../../backend/service/application/workflows/runtime_service.py)
+- preview / app runtime 控制面入口：[backend/service/api/rest/v1/routes/workflow_runtime/router.py](../../backend/service/api/rest/v1/routes/workflow_runtime/router.py)
+- runtime 服务门面：[backend/service/application/workflows/runtime_service.py](../../backend/service/application/workflows/runtime_service.py)
 - preview 子进程执行器：[backend/service/application/workflows/snapshot_execution.py](../../backend/service/application/workflows/snapshot_execution.py)
-- runtime worker 管理器：[backend/service/application/workflows/runtime_worker.py](../../backend/service/application/workflows/runtime_worker.py)
+- runtime worker 管理器：[backend/service/application/workflows/worker/manager.py](../../backend/service/application/workflows/worker/manager.py)
 
 ```mermaid
 sequenceDiagram
