@@ -1,28 +1,17 @@
-"""detection deployment 路由响应模型与辅助函数。"""
+"""detection deployment 路由响应模型与构造函数。"""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from backend.service.api.deps.auth import AuthenticatedPrincipal
-from backend.service.application.deployments.detection_deployment_service import (
-    DetectionDeploymentInstanceView,
-    SqlAlchemyDetectionDeploymentService,
-)
-from backend.service.application.errors import ResourceNotFoundError
-from backend.service.application.models.inference.detection_async_inference_gateway import (
-    DetectionAsyncInferenceGatewayDispatcherRegistry,
-)
+from backend.service.application.deployments.detection_deployment_service import DetectionDeploymentInstanceView
 from backend.service.application.runtime.deployment.deployment_events import DetectionDeploymentProcessEvent
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
     DeploymentProcessKeepWarmStatus,
     DeploymentProcessStatus,
-    DeploymentProcessSupervisor,
 )
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 class DetectionDeploymentInstanceResponse(BaseModel):
@@ -103,8 +92,14 @@ class DetectionDeploymentRuntimeHealthResponse(DetectionDeploymentProcessStatusR
     warmed_instance_count: int = Field(description="已预热实例数量")
     pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
     instances: list[DetectionDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
-    keep_warm: DetectionDeploymentProcessKeepWarmResponse = Field(default_factory=DetectionDeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
-    local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
+    keep_warm: DetectionDeploymentProcessKeepWarmResponse = Field(
+        default_factory=DetectionDeploymentProcessKeepWarmResponse,
+        description="keep-warm 运行状态",
+    )
+    local_buffer_broker: dict[str, object] = Field(
+        default_factory=dict,
+        description="LocalBufferBroker 接入状态、输入计数和最近错误",
+    )
 
 
 class DetectionDeploymentProcessEventResponse(BaseModel):
@@ -119,21 +114,7 @@ class DetectionDeploymentProcessEventResponse(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
 
 
-def _ensure_detection_deployment_visible(
-    *,
-    principal: AuthenticatedPrincipal,
-    view: DetectionDeploymentInstanceView,
-) -> None:
-    """校验当前主体是否可以访问指定 detection DeploymentInstance。"""
-
-    if principal.project_ids and view.project_id not in principal.project_ids:
-        raise ResourceNotFoundError(
-            "找不到指定的 DeploymentInstance",
-            details={"deployment_instance_id": view.deployment_instance_id},
-        )
-
-
-def _build_detection_deployment_instance_response(
+def build_detection_deployment_instance_response(
     view: DetectionDeploymentInstanceView,
 ) -> DetectionDeploymentInstanceResponse:
     """把 DeploymentInstance 视图转换为 detection REST 响应。"""
@@ -165,71 +146,7 @@ def _build_detection_deployment_instance_response(
     )
 
 
-def _run_detection_process_status_action(
-    *,
-    deployment_instance_id: str,
-    principal: AuthenticatedPrincipal,
-    session_factory: SessionFactory,
-    dataset_storage: LocalDatasetStorage,
-    supervisor: DeploymentProcessSupervisor,
-    gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None,
-    runtime_mode: str,
-    action: str,
-) -> DetectionDeploymentProcessStatusResponse:
-    """执行指定通道的 detection deployment 进程状态动作。"""
-
-    service = SqlAlchemyDetectionDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
-    view = service.get_deployment_instance(deployment_instance_id)
-    _ensure_detection_deployment_visible(principal=principal, view=view)
-    process_config = service.resolve_process_config(deployment_instance_id)
-    if action == "start":
-        process_status = supervisor.start_deployment(process_config)
-        if runtime_mode == "async" and gateway_dispatcher_registry is not None:
-            gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
-    elif action == "stop":
-        process_status = supervisor.stop_deployment(process_config)
-        if runtime_mode == "async" and gateway_dispatcher_registry is not None:
-            gateway_dispatcher_registry.stop_dispatcher_for_deployment(deployment_instance_id)
-    else:
-        process_status = supervisor.get_status(process_config)
-    return _build_detection_process_status_response(view, process_status, runtime_mode)
-
-
-def _run_detection_process_health_action(
-    *,
-    deployment_instance_id: str,
-    principal: AuthenticatedPrincipal,
-    session_factory: SessionFactory,
-    dataset_storage: LocalDatasetStorage,
-    supervisor: DeploymentProcessSupervisor,
-    gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None,
-    runtime_mode: str,
-    action: str,
-) -> DetectionDeploymentRuntimeHealthResponse:
-    """执行指定通道的 detection deployment 进程健康动作。"""
-
-    service = SqlAlchemyDetectionDeploymentService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
-    view = service.get_deployment_instance(deployment_instance_id)
-    _ensure_detection_deployment_visible(principal=principal, view=view)
-    process_config = service.resolve_process_config(deployment_instance_id)
-    if action == "warmup":
-        process_health = supervisor.warmup_deployment(process_config)
-        if runtime_mode == "async" and gateway_dispatcher_registry is not None:
-            gateway_dispatcher_registry.ensure_dispatcher_for_deployment(deployment_instance_id)
-    elif action == "reset":
-        process_health = supervisor.reset_deployment(process_config)
-    else:
-        process_health = supervisor.get_health(process_config)
-    return _build_detection_runtime_health_response(view, process_health, runtime_mode)
-
-
-def _build_detection_process_status_response(
+def build_detection_process_status_response(
     view: DetectionDeploymentInstanceView,
     process_status: DeploymentProcessStatus,
     runtime_mode: str,
@@ -252,7 +169,7 @@ def _build_detection_process_status_response(
     )
 
 
-def _build_detection_runtime_health_response(
+def build_detection_runtime_health_response(
     view: DetectionDeploymentInstanceView,
     process_health: DeploymentProcessHealth,
     runtime_mode: str,
@@ -275,13 +192,13 @@ def _build_detection_runtime_health_response(
         healthy_instance_count=process_health.healthy_instance_count,
         warmed_instance_count=process_health.warmed_instance_count,
         pinned_output_total_bytes=process_health.pinned_output_total_bytes,
-        instances=[_build_detection_runtime_instance_health_response(item) for item in process_health.instances],
-        keep_warm=_build_detection_keep_warm_response(process_health.keep_warm),
+        instances=[build_detection_runtime_instance_health_response(item) for item in process_health.instances],
+        keep_warm=build_detection_keep_warm_response(process_health.keep_warm),
         local_buffer_broker=dict(process_health.local_buffer_broker),
     )
 
 
-def _build_detection_runtime_instance_health_response(
+def build_detection_runtime_instance_health_response(
     item: DeploymentProcessInstanceHealth,
 ) -> DetectionDeploymentRuntimeInstanceHealthResponse:
     """把 runtime 实例健康状态转换为 REST 响应。"""
@@ -295,7 +212,7 @@ def _build_detection_runtime_instance_health_response(
     )
 
 
-def _build_detection_keep_warm_response(
+def build_detection_keep_warm_response(
     item: DeploymentProcessKeepWarmStatus | None,
 ) -> DetectionDeploymentProcessKeepWarmResponse:
     """把 keep-warm 状态转换为 REST 响应。"""
@@ -317,7 +234,7 @@ def _build_detection_keep_warm_response(
     )
 
 
-def _build_detection_deployment_process_event_response(
+def build_detection_deployment_process_event_response(
     item: DetectionDeploymentProcessEvent,
 ) -> DetectionDeploymentProcessEventResponse:
     """把 deployment 事件转换为 detection REST 响应。"""
