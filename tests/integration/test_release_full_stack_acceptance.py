@@ -87,8 +87,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         assert "/api/v1/models/classification/conversion-tasks/{task_id}/result" in paths
         assert "/api/v1/models/segmentation/deployment-instances" in paths
 
-        assert state_file.is_file()
-        state_payload = json.loads(state_file.read_text(encoding="utf-8"))
+        state_payload = _wait_for_state_payload(state_file, timeout_seconds=60)
         assert state_payload.get("root_pid") != -1
         components = state_payload.get("components")
         assert isinstance(components, list)
@@ -209,6 +208,28 @@ def _resolve_release_python(release_root: Path) -> Path:
     if not candidate.is_file():
         pytest.skip("release/full/python 不存在，跳过发布目录真实启动验收")
     return candidate
+
+
+def _wait_for_state_payload(state_file: Path, *, timeout_seconds: float) -> dict[str, object]:
+    """等待 full stack 启动器写出运行状态文件。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        if not state_file.is_file():
+            time.sleep(0.5)
+            continue
+        try:
+            payload = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            last_error = exc
+            time.sleep(0.5)
+            continue
+        if isinstance(payload, dict):
+            return payload
+        last_error = TypeError("runtime-state.json root payload is not an object")
+        time.sleep(0.5)
+    raise AssertionError(f"等待运行状态文件超时: {state_file}") from last_error
 
 
 def _assert_component_logs_exist(release_root: Path, components: list[object]) -> None:

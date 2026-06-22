@@ -188,6 +188,7 @@ backend/service/application/workflows/
 - 旧 `detection_conversion_tasks.py` 已删除，detection conversion 的创建、查询、结果读取、schema、response、service 装配和可见性校验已拆到 `routes/detection_conversion_tasks/`。
 - 旧 `classification_conversion_tasks.py`、`segmentation_conversion_tasks.py`、`pose_conversion_tasks.py` 和 `obb_conversion_tasks.py` 已删除，non-detection conversion 入口已按任务类型拆成 `router.py` 与 `services.py`。
 - 旧 `detection_deployments.py` 和 `detection_deployment_helpers.py` 已删除，detection deployment 已按实例管理、事件、sync/async 控制、schema、response、service 和 runtime action 拆到 `routes/detection_deployments/`。
+- 旧 `classification_deployments.py`、`segmentation_deployments.py`、`pose_deployments.py`、`obb_deployments.py` 以及对应 helper 已删除，non-detection deployment 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，共同 CRUD 与 sync/async 控制由 `task_deployments/factory.py` 装配。
 - route 文件里混有请求模型、权限检查、服务装配和 response builder。
 - 当前已删除旧 `workflows.py` 单文件入口，按 node catalog、node pack admin、template 文档和 application 文档拆到 `workflows/`，并由 `workflows/router.py` 统一装配。
 - 当前已删除旧 `workflow_runtime.py` 单文件入口，按 endpoint 组拆到 `workflow_runtime/`，并由 `workflow_runtime/router.py` 统一装配。跨 endpoint 共用的请求体、响应构建、服务装配和 multipart 调用构建暂放 `workflow_runtime_support/`。
@@ -273,6 +274,28 @@ backend/service/api/rest/v1/routes/
 │  ├─ responses.py
 │  ├─ services.py
 │  └─ runtime_actions.py
+├─ task_deployments/
+│  └─ factory.py
+├─ classification_deployments/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ segmentation_deployments/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ pose_deployments/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ obb_deployments/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
 └─ ...
 ```
 

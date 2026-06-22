@@ -7,7 +7,9 @@ from fastapi import APIRouter
 from backend.service.api.rest.v1.routes.classification_conversion_tasks.router import (
     classification_conversion_tasks_router,
 )
-from backend.service.api.rest.v1.routes.classification_deployments import classification_deployments_router
+from backend.service.api.rest.v1.routes.classification_deployments.router import (
+    classification_deployments_router,
+)
 from backend.service.api.rest.v1.routes.classification_evaluation_tasks import classification_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.classification_inference_tasks import classification_inference_tasks_router
 from backend.service.api.rest.v1.routes.classification_training_tasks import classification_training_tasks_router
@@ -24,19 +26,21 @@ from backend.service.api.rest.v1.routes.detection_validation_sessions import (
 from backend.service.api.rest.v1.routes.segmentation_conversion_tasks.router import (
     segmentation_conversion_tasks_router,
 )
-from backend.service.api.rest.v1.routes.segmentation_deployments import segmentation_deployments_router
+from backend.service.api.rest.v1.routes.segmentation_deployments.router import (
+    segmentation_deployments_router,
+)
 from backend.service.api.rest.v1.routes.segmentation_evaluation_tasks import segmentation_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_inference_tasks import segmentation_inference_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_training_tasks import segmentation_training_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_validation_sessions import segmentation_validation_sessions_router
 from backend.service.api.rest.v1.routes.pose_conversion_tasks.router import pose_conversion_tasks_router
-from backend.service.api.rest.v1.routes.pose_deployments import pose_deployments_router
+from backend.service.api.rest.v1.routes.pose_deployments.router import pose_deployments_router
 from backend.service.api.rest.v1.routes.pose_evaluation_tasks import pose_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.pose_inference_tasks import pose_inference_tasks_router
 from backend.service.api.rest.v1.routes.pose_training_tasks import pose_training_tasks_router
 from backend.service.api.rest.v1.routes.pose_validation_sessions import pose_validation_sessions_router
 from backend.service.api.rest.v1.routes.obb_conversion_tasks.router import obb_conversion_tasks_router
-from backend.service.api.rest.v1.routes.obb_deployments import obb_deployments_router
+from backend.service.api.rest.v1.routes.obb_deployments.router import obb_deployments_router
 from backend.service.api.rest.v1.routes.obb_evaluation_tasks import obb_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.obb_inference_tasks import obb_inference_tasks_router
 from backend.service.api.rest.v1.routes.obb_training_tasks import obb_training_tasks_router
