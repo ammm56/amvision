@@ -1,39 +1,39 @@
-"""segmentation inference tasks REST 路由。"""
+"""segmentation inference route service 装配与执行编排。"""
 
 from __future__ import annotations
 
 from time import perf_counter
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
-from pydantic import BaseModel, Field
+from fastapi import Request
 
 from backend.queue import LocalFileQueueBackend
-from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
-from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
-from backend.service.api.deps.segmentation_deployment_process_supervisor import (
-    get_segmentation_async_deployment_process_supervisor,
-    get_segmentation_async_inference_gateway_dispatcher_registry,
-    get_segmentation_sync_deployment_process_supervisor,
-)
-from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+from backend.service.api.deps.auth import AuthenticatedPrincipal
+from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
     ensure_deployment_visible,
     ensure_requested_model_type_matches,
     read_async_inference_service_id,
     require_running_deployment_process,
 )
-from backend.service.api.rest.v1.routes.inference_route_helpers import (
+from backend.service.api.rest.v1.routes.segmentation_inference_tasks.responses import (
+    SegmentationInferenceTaskSubmissionResponse,
+)
+from backend.service.api.rest.v1.routes.segmentation_inference_tasks.schemas import (
+    SegmentationDirectInferenceRequestBody,
+    SegmentationInferenceTaskCreateRequestBody,
+)
+from backend.service.api.rest.v1.routes.task_inference.requests import (
+    read_inference_http_payload,
+    resolve_inference_http_request_id,
+)
+from backend.service.api.rest.v1.routes.task_inference.responses import (
     InferenceTaskDetailResponse,
     InferenceTaskResultResponse,
     InferenceTaskSummaryResponse,
-    build_inference_task_detail_response,
-    build_inference_task_summary_response,
-    read_inference_http_payload,
-    read_inference_task_result,
-    require_visible_inference_task,
-    resolve_inference_http_request_id,
+)
+from backend.service.api.rest.v1.routes.task_inference.visibility import (
+    get_inference_task_detail_response,
+    get_inference_task_result_response,
+    list_inference_task_summaries,
 )
 from backend.service.application.deployments.segmentation_deployment_service import (
     SqlAlchemySegmentationDeploymentService,
@@ -59,76 +59,23 @@ from backend.service.application.models.inference.segmentation_inference_task_se
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 
 
-segmentation_inference_tasks_router = APIRouter(prefix="/models", tags=["models"])
-
-
-class SegmentationInferenceTaskCreateRequestBody(BaseModel):
-    """描述 segmentation 异步推理任务创建请求体。"""
-
-    project_id: str = Field(description="所属 Project id")
-    deployment_instance_id: str = Field(description="DeploymentInstance id")
-    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
-    input_file_id: str | None = Field(default=None)
-    input_uri: str | None = Field(default=None)
-    image_base64: str | None = Field(default=None)
-    input_transport_mode: str = Field(default="storage")
-    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    mask_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    save_result_image: bool = Field(default=False)
-    return_preview_image_base64: bool = Field(default=False)
-    extra_options: dict[str, object] = Field(default_factory=dict)
-    display_name: str = Field(default="")
-
-
-class SegmentationDirectInferenceRequestBody(BaseModel):
-    """描述 segmentation 同步直返推理请求体。"""
-
-    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
-    input_file_id: str | None = Field(default=None)
-    input_uri: str | None = Field(default=None)
-    image_base64: str | None = Field(default=None)
-    input_transport_mode: str = Field(default="storage")
-    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    mask_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    save_result_image: bool = Field(default=False)
-    return_preview_image_base64: bool = Field(default=False)
-    extra_options: dict[str, object] = Field(default_factory=dict)
-
-
-class SegmentationInferenceTaskSubmissionResponse(BaseModel):
-    """描述 segmentation 推理任务创建响应。"""
-
-    task_id: str
-    status: str
-    queue_name: str
-    queue_task_id: str
-    deployment_instance_id: str
-    input_uri: str
-    input_source_kind: str
-
-
-@segmentation_inference_tasks_router.post(
-    "/segmentation/inference-tasks",
-    response_model=SegmentationInferenceTaskSubmissionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def create_segmentation_inference_task(
+async def submit_segmentation_inference_task_from_request(
+    *,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_segmentation_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[SegmentationAsyncInferenceGatewayDispatcherRegistry, Depends(get_segmentation_async_inference_gateway_dispatcher_registry)],
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+    dataset_storage: LocalDatasetStorage,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
+    gateway_dispatcher_registry: SegmentationAsyncInferenceGatewayDispatcherRegistry,
 ) -> SegmentationInferenceTaskSubmissionResponse:
-    """创建一条 segmentation 异步推理任务。"""
+    """从 HTTP 请求创建 segmentation inference task。"""
 
     payload, source_payload = await read_inference_http_payload(request)
     try:
@@ -142,7 +89,7 @@ async def create_segmentation_inference_task(
     if principal.project_ids and body.project_id not in principal.project_ids:
         raise PermissionDeniedError("无权访问该 Project", details={"project_id": body.project_id})
 
-    deployment_service = _build_segmentation_deployment_service(
+    deployment_service = build_segmentation_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -218,17 +165,14 @@ async def create_segmentation_inference_task(
     )
 
 
-@segmentation_inference_tasks_router.post(
-    "/segmentation/deployment-instances/{deployment_instance_id}/infer",
-    response_model=dict[str, object],
-)
-async def infer_segmentation_deployment_instance(
+async def infer_segmentation_deployment_instance_from_request(
+    *,
     deployment_instance_id: str,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_segmentation_sync_deployment_process_supervisor)],
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
 ) -> dict[str, object]:
     """直接执行一次同步 segmentation 推理并返回结果。"""
 
@@ -244,7 +188,7 @@ async def infer_segmentation_deployment_instance(
             details={"error": str(error)},
         ) from error
 
-    deployment_service = _build_segmentation_deployment_service(
+    deployment_service = build_segmentation_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -329,61 +273,40 @@ async def infer_segmentation_deployment_instance(
     return serialized_payload
 
 
-@segmentation_inference_tasks_router.get(
-    "/segmentation/inference-tasks",
-    response_model=list[InferenceTaskSummaryResponse],
-)
-def list_segmentation_inference_tasks(
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    project_id: Annotated[str | None, Query(description="所属 Project id")] = None,
-    state: Annotated[str | None, Query(description="任务状态")] = None,
-    created_by: Annotated[str | None, Query(description="提交主体 id")] = None,
-    deployment_instance_id: Annotated[str | None, Query(description="DeploymentInstance id")] = None,
-    limit: Annotated[int, Query(ge=1, le=500, description="最大返回数量")] = 100,
+def list_segmentation_inference_task_summaries(
+    *,
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    project_id: str | None,
+    state: str | None,
+    created_by: str | None,
+    deployment_instance_id: str | None,
+    limit: int,
 ) -> list[InferenceTaskSummaryResponse]:
     """按公开筛选条件列出 segmentation 推理任务。"""
 
-    visible_project_ids = _resolve_visible_project_ids(
+    return list_inference_task_summaries(
         principal=principal,
+        session_factory=session_factory,
+        task_kind=SEGMENTATION_INFERENCE_TASK_KIND,
         project_id=project_id,
+        state=state,
+        created_by=created_by,
+        deployment_instance_id=deployment_instance_id,
+        limit=limit,
     )
-    service = SqlAlchemyTaskService(session_factory)
-    matched_tasks = []
-    for current_project_id in visible_project_ids:
-        matched_tasks.extend(
-            service.list_tasks(
-                TaskQueryFilters(
-                    project_id=current_project_id,
-                    task_kind=SEGMENTATION_INFERENCE_TASK_KIND,
-                    state=state,
-                    created_by=created_by,
-                    limit=limit,
-                )
-            )
-        )
-    visible_tasks = [
-        task
-        for task in matched_tasks
-        if _matches_deployment_instance(task=task, deployment_instance_id=deployment_instance_id)
-    ]
-    visible_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
-    return [build_inference_task_summary_response(task) for task in visible_tasks[:limit]]
 
 
-@segmentation_inference_tasks_router.get(
-    "/segmentation/inference-tasks/{task_id}",
-    response_model=InferenceTaskDetailResponse,
-)
-def get_segmentation_inference_task_detail(
+def get_segmentation_inference_task_detail_response(
+    *,
+    principal: AuthenticatedPrincipal,
     task_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
+    session_factory: SessionFactory,
+    include_events: bool,
 ) -> InferenceTaskDetailResponse:
     """按任务 id 返回 segmentation 推理任务详情。"""
 
-    task_detail = require_visible_inference_task(
+    return get_inference_task_detail_response(
         principal=principal,
         task_id=task_id,
         session_factory=session_factory,
@@ -391,37 +314,28 @@ def get_segmentation_inference_task_detail(
         resource_label="segmentation 推理任务",
         include_events=include_events,
     )
-    return build_inference_task_detail_response(task_detail.task, tuple(task_detail.events))
 
 
-@segmentation_inference_tasks_router.get(
-    "/segmentation/inference-tasks/{task_id}/result",
-    response_model=InferenceTaskResultResponse,
-)
-def get_segmentation_inference_task_result(
+def get_segmentation_inference_task_result_response(
+    *,
+    principal: AuthenticatedPrincipal,
     task_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
 ) -> InferenceTaskResultResponse:
     """按任务 id 返回当前 segmentation 推理结果。"""
 
-    task_detail = require_visible_inference_task(
+    return get_inference_task_result_response(
         principal=principal,
         task_id=task_id,
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
         task_kind=SEGMENTATION_INFERENCE_TASK_KIND,
         resource_label="segmentation 推理任务",
-        include_events=False,
-    )
-    return read_inference_task_result(
-        task_state=task_detail.task.state,
-        result_payload=dict(task_detail.task.result),
-        dataset_storage=dataset_storage,
     )
 
 
-def _build_segmentation_deployment_service(
+def build_segmentation_deployment_service(
     *,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
@@ -432,31 +346,3 @@ def _build_segmentation_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-
-
-def _resolve_visible_project_ids(
-    *,
-    principal: AuthenticatedPrincipal,
-    project_id: str | None,
-) -> list[str]:
-    """解析当前查询允许访问的项目列表。"""
-
-    visible_project_ids: list[str] = []
-    if project_id is not None:
-        if principal.project_ids and project_id not in principal.project_ids:
-            raise PermissionDeniedError("无权访问该 Project", details={"project_id": project_id})
-        visible_project_ids.append(project_id)
-    elif principal.project_ids:
-        visible_project_ids.extend(principal.project_ids)
-    else:
-        raise InvalidRequestError("查询推理任务列表时必须提供 project_id")
-    return visible_project_ids
-
-
-def _matches_deployment_instance(*, task: object, deployment_instance_id: str | None) -> bool:
-    """判断推理任务是否满足 deployment_instance_id 过滤条件。"""
-
-    if deployment_instance_id is None:
-        return True
-    task_spec = dict(task.task_spec)
-    return task_spec.get("deployment_instance_id") == deployment_instance_id

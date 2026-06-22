@@ -1,4 +1,4 @@
-"""deployment 运行控制与推理路由公共辅助函数。"""
+"""task deployment 运行控制与推理路由公共辅助函数。"""
 
 from __future__ import annotations
 

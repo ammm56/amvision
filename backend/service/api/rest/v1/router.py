@@ -11,14 +11,16 @@ from backend.service.api.rest.v1.routes.classification_deployments.router import
     classification_deployments_router,
 )
 from backend.service.api.rest.v1.routes.classification_evaluation_tasks import classification_evaluation_tasks_router
-from backend.service.api.rest.v1.routes.classification_inference_tasks import classification_inference_tasks_router
+from backend.service.api.rest.v1.routes.classification_inference_tasks.router import (
+    classification_inference_tasks_router,
+)
 from backend.service.api.rest.v1.routes.classification_training_tasks import classification_training_tasks_router
 from backend.service.api.rest.v1.routes.classification_validation_sessions import classification_validation_sessions_router
 from backend.service.api.rest.v1.routes.datasets.router import datasets_router
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.router import detection_conversion_tasks_router
 from backend.service.api.rest.v1.routes.detection_deployments.router import detection_deployments_router
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks import detection_evaluation_tasks_router
-from backend.service.api.rest.v1.routes.detection_inference_tasks import detection_inference_tasks_router
+from backend.service.api.rest.v1.routes.detection_inference_tasks.router import detection_inference_tasks_router
 from backend.service.api.rest.v1.routes.detection_training_tasks.router import detection_training_tasks_router
 from backend.service.api.rest.v1.routes.detection_validation_sessions import (
     detection_validation_sessions_router,
@@ -30,19 +32,21 @@ from backend.service.api.rest.v1.routes.segmentation_deployments.router import (
     segmentation_deployments_router,
 )
 from backend.service.api.rest.v1.routes.segmentation_evaluation_tasks import segmentation_evaluation_tasks_router
-from backend.service.api.rest.v1.routes.segmentation_inference_tasks import segmentation_inference_tasks_router
+from backend.service.api.rest.v1.routes.segmentation_inference_tasks.router import (
+    segmentation_inference_tasks_router,
+)
 from backend.service.api.rest.v1.routes.segmentation_training_tasks import segmentation_training_tasks_router
 from backend.service.api.rest.v1.routes.segmentation_validation_sessions import segmentation_validation_sessions_router
 from backend.service.api.rest.v1.routes.pose_conversion_tasks.router import pose_conversion_tasks_router
 from backend.service.api.rest.v1.routes.pose_deployments.router import pose_deployments_router
 from backend.service.api.rest.v1.routes.pose_evaluation_tasks import pose_evaluation_tasks_router
-from backend.service.api.rest.v1.routes.pose_inference_tasks import pose_inference_tasks_router
+from backend.service.api.rest.v1.routes.pose_inference_tasks.router import pose_inference_tasks_router
 from backend.service.api.rest.v1.routes.pose_training_tasks import pose_training_tasks_router
 from backend.service.api.rest.v1.routes.pose_validation_sessions import pose_validation_sessions_router
 from backend.service.api.rest.v1.routes.obb_conversion_tasks.router import obb_conversion_tasks_router
 from backend.service.api.rest.v1.routes.obb_deployments.router import obb_deployments_router
 from backend.service.api.rest.v1.routes.obb_evaluation_tasks import obb_evaluation_tasks_router
-from backend.service.api.rest.v1.routes.obb_inference_tasks import obb_inference_tasks_router
+from backend.service.api.rest.v1.routes.obb_inference_tasks.router import obb_inference_tasks_router
 from backend.service.api.rest.v1.routes.obb_training_tasks import obb_training_tasks_router
 from backend.service.api.rest.v1.routes.obb_validation_sessions import obb_validation_sessions_router
 from backend.service.api.rest.v1.routes.auth import auth_router

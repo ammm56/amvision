@@ -1,46 +1,44 @@
-"""detection inference tasks REST 路由。"""
+"""detection inference route service 装配与执行编排。"""
 
 from __future__ import annotations
 
 from time import perf_counter
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
-from pydantic import BaseModel, Field
+from fastapi import Request
 
 from backend.queue import LocalFileQueueBackend
-from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
-from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
-from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.deps.detection_deployment_process_supervisor import (
-    get_detection_async_inference_gateway_dispatcher_registry,
-    get_detection_async_deployment_process_supervisor,
-    get_detection_sync_deployment_process_supervisor,
-)
-from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+from backend.service.api.deps.auth import AuthenticatedPrincipal
+from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
     ensure_requested_model_type_matches,
 )
-from backend.service.api.rest.v1.routes.detection_inference_helpers import (
+from backend.service.api.rest.v1.routes.detection_inference_tasks.responses import (
     DetectionInferencePayloadResponse,
     DetectionInferenceTaskDetailResponse,
-    DetectionInferenceTaskResultResponse,
     DetectionInferenceTaskSubmissionResponse,
     DetectionInferenceTaskSummaryResponse,
-    _build_detection_inference_task_detail_response,
-    _build_detection_inference_task_summary_response,
-    _ensure_visible_detection_deployment,
-    _matches_detection_inference_filters,
-    _read_detection_async_inference_service_id,
-    _read_detection_inference_request_payload,
-    _require_running_detection_deployment_process,
-    _resolve_detection_http_request_id,
-    _resolve_detection_requested_score_threshold,
+    build_detection_inference_task_detail_response,
+    build_detection_inference_task_summary_response,
+)
+from backend.service.api.rest.v1.routes.detection_inference_tasks.runtime_controls import (
+    ensure_visible_detection_deployment,
+    matches_detection_inference_filters,
+    read_detection_async_inference_service_id,
+    read_detection_inference_request_payload,
+    require_running_detection_deployment_process,
+    resolve_detection_http_request_id,
+    resolve_detection_requested_score_threshold,
+)
+from backend.service.api.rest.v1.routes.detection_inference_tasks.schemas import (
+    DetectionDirectInferenceRequestBody,
+    DetectionInferenceTaskCreateRequestBody,
 )
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.models.inference.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
+)
 from backend.service.application.models.inference.detection_inference_payloads import (
     DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
     attach_detection_inference_serialize_timing,
@@ -55,9 +53,6 @@ from backend.service.application.models.inference.detection_inference_task_servi
     SqlAlchemyDetectionInferenceTaskService,
     run_detection_inference_task,
 )
-from backend.service.application.models.inference.detection_async_inference_gateway import (
-    DetectionAsyncInferenceGatewayDispatcherRegistry,
-)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -66,57 +61,19 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-detection_inference_tasks_router = APIRouter(prefix="/models", tags=["models"])
-
-
-class DetectionInferenceTaskCreateRequestBody(BaseModel):
-    """描述 detection 推理任务创建请求体。"""
-
-    project_id: str = Field(description="所属 Project id")
-    deployment_instance_id: str = Field(description="执行推理使用的 DeploymentInstance id")
-    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
-    input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
-    input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
-    image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
-    input_transport_mode: str = Field(default="storage", description="异步输入传输模式")
-    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="推理阈值")
-    save_result_image: bool = Field(default=True, description="是否输出预览图")
-    return_preview_image_base64: bool = Field(default=False, description="是否在响应中直接返回预览图 base64")
-    extra_options: dict[str, object] = Field(default_factory=dict, description="附加推理选项")
-    display_name: str = Field(default="", description="可选展示名称")
-
-
-class DetectionDirectInferenceRequestBody(BaseModel):
-    """描述 detection 同步直返推理请求体。"""
-
-    model_type: str | None = Field(default=None, description="模型分类；提供时需与 DeploymentInstance 绑定模型一致")
-    input_file_id: str | None = Field(default=None, description="Project 公开文件 id；与 input_uri、image_base64、input_image 四选一")
-    input_uri: str | None = Field(default=None, description="输入图片 URI 或 object key")
-    image_base64: str | None = Field(default=None, description="直接提交的 base64 图片内容")
-    input_transport_mode: str = Field(default="storage", description="同步输入传输模式")
-    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="推理阈值")
-    save_result_image: bool = Field(default=True, description="是否输出预览图")
-    return_preview_image_base64: bool = Field(default=False, description="是否在响应中直接返回预览图 base64")
-    extra_options: dict[str, object] = Field(default_factory=dict, description="附加推理选项")
-
-
-@detection_inference_tasks_router.post(
-    "/detection/inference-tasks",
-    response_model=DetectionInferenceTaskSubmissionResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def create_detection_inference_task(
+async def submit_detection_inference_task_from_request(
+    *,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
-    gateway_dispatcher_registry: Annotated[DetectionAsyncInferenceGatewayDispatcherRegistry, Depends(get_detection_async_inference_gateway_dispatcher_registry)],
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+    dataset_storage: LocalDatasetStorage,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
+    gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry,
 ) -> DetectionInferenceTaskSubmissionResponse:
-    """创建一个正式 detection inference task。"""
+    """从 HTTP 请求创建正式 detection inference task。"""
 
-    payload, input_source = await _read_detection_inference_request_payload(request)
+    payload, input_source = await read_detection_inference_request_payload(request)
     try:
         body = DetectionInferenceTaskCreateRequestBody.model_validate(payload)
     except Exception as error:
@@ -129,7 +86,7 @@ async def create_detection_inference_task(
             "当前主体无权访问该 Project",
             details={"project_id": body.project_id},
         )
-    deployment_service = SqlAlchemyDetectionDeploymentService(
+    deployment_service = build_detection_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
@@ -150,14 +107,14 @@ async def create_detection_inference_task(
         deployment_instance_id=body.deployment_instance_id,
     )
     deployment_process_supervisor.ensure_deployment(process_config)
-    _require_running_detection_deployment_process(
+    require_running_detection_deployment_process(
         deployment_process_supervisor=deployment_process_supervisor,
         process_config=process_config,
         runtime_mode="async",
     )
     normalized_input = normalize_detection_inference_input(
         dataset_storage=dataset_storage,
-        request_id=_resolve_detection_http_request_id(request, prefix="inference-task-submit"),
+        request_id=resolve_detection_http_request_id(request, prefix="inference-task-submit"),
         source=input_source,
         input_transport_mode=body.input_transport_mode,
         expected_project_id=body.project_id,
@@ -179,7 +136,7 @@ async def create_detection_inference_task(
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=_read_detection_async_inference_service_id(request),
+            async_inference_owner_id=read_detection_async_inference_service_id(request),
             score_threshold=body.score_threshold,
             save_result_image=body.save_result_image,
             return_preview_image_base64=body.return_preview_image_base64,
@@ -199,21 +156,18 @@ async def create_detection_inference_task(
     )
 
 
-@detection_inference_tasks_router.post(
-    "/detection/deployment-instances/{deployment_instance_id}/infer",
-    response_model=DetectionInferencePayloadResponse,
-)
-async def infer_detection_deployment_instance(
+async def infer_detection_deployment_instance_from_request(
+    *,
     deployment_instance_id: str,
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-    deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    deployment_process_supervisor: DeploymentProcessSupervisor,
 ) -> DetectionInferencePayloadResponse:
-    """直接执行一次同步 detection 推理并返回结果。"""
+    """从 HTTP 请求执行一次 detection sync inference。"""
 
-    payload, input_source = await _read_detection_inference_request_payload(request)
+    payload, input_source = await read_detection_inference_request_payload(request)
     payload.pop("project_id", None)
     payload.pop("deployment_instance_id", None)
     payload.pop("display_name", None)
@@ -224,12 +178,12 @@ async def infer_detection_deployment_instance(
             "同步推理请求不合法",
             details={"error": str(error)},
         ) from error
-    deployment_service = SqlAlchemyDetectionDeploymentService(
+    deployment_service = build_detection_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
     deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
-    _ensure_visible_detection_deployment(
+    ensure_visible_detection_deployment(
         principal=principal,
         deployment_project_id=deployment_view.project_id,
         deployment_instance_id=deployment_instance_id,
@@ -241,12 +195,12 @@ async def infer_detection_deployment_instance(
         deployment_instance_id=deployment_instance_id,
     )
     deployment_process_supervisor.ensure_deployment(process_config)
-    _require_running_detection_deployment_process(
+    require_running_detection_deployment_process(
         deployment_process_supervisor=deployment_process_supervisor,
         process_config=process_config,
         runtime_mode="sync",
     )
-    request_id = _resolve_detection_http_request_id(request, prefix="direct-inference")
+    request_id = resolve_detection_http_request_id(request, prefix="direct-inference")
     normalized_input = normalize_detection_inference_input(
         dataset_storage=dataset_storage,
         request_id=request_id,
@@ -256,7 +210,7 @@ async def infer_detection_deployment_instance(
     )
     prediction_request = build_detection_prediction_request(
         normalized_input=normalized_input,
-        score_threshold=_resolve_detection_requested_score_threshold(body.score_threshold),
+        score_threshold=resolve_detection_requested_score_threshold(body.score_threshold),
         save_result_image=body.save_result_image,
         return_preview_image_base64=body.return_preview_image_base64,
         extra_options=dict(body.extra_options),
@@ -288,7 +242,7 @@ async def infer_detection_deployment_instance(
         instance_id=execution_result.instance_id,
         runtime_target=process_config.runtime_target,
         normalized_input=normalized_input,
-        score_threshold=_resolve_detection_requested_score_threshold(body.score_threshold),
+        score_threshold=resolve_detection_requested_score_threshold(body.score_threshold),
         save_result_image=body.save_result_image,
         return_preview_image_base64=body.return_preview_image_base64,
         execution_result=execution_result,
@@ -305,20 +259,17 @@ async def infer_detection_deployment_instance(
     return DetectionInferencePayloadResponse.model_validate(serialized_payload)
 
 
-@detection_inference_tasks_router.get(
-    "/detection/inference-tasks",
-    response_model=list[DetectionInferenceTaskSummaryResponse],
-)
-def list_detection_inference_tasks(
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    project_id: Annotated[str | None, Query(description="所属 Project id")] = None,
-    state: Annotated[str | None, Query(description="任务状态")] = None,
-    created_by: Annotated[str | None, Query(description="提交主体 id")] = None,
-    deployment_instance_id: Annotated[str | None, Query(description="DeploymentInstance id")] = None,
-    limit: Annotated[int, Query(ge=1, le=500, description="最大返回数量")] = 100,
+def list_detection_inference_task_summaries(
+    *,
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    project_id: str | None,
+    state: str | None,
+    created_by: str | None,
+    deployment_instance_id: str | None,
+    limit: int,
 ) -> list[DetectionInferenceTaskSummaryResponse]:
-    """按公开筛选条件列出 detection 推理任务。"""
+    """按公开筛选条件列出 detection 推理任务摘要。"""
 
     visible_project_ids = []
     if project_id is not None:
@@ -350,95 +301,40 @@ def list_detection_inference_tasks(
     visible_tasks = [
         task
         for task in matched_tasks
-        if _matches_detection_inference_filters(
+        if matches_detection_inference_filters(
             task=task,
             deployment_instance_id=deployment_instance_id,
         )
     ]
     visible_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
-    return [_build_detection_inference_task_summary_response(task) for task in visible_tasks[:limit]]
+    return [build_detection_inference_task_summary_response(task) for task in visible_tasks[:limit]]
 
 
-@detection_inference_tasks_router.get(
-    "/detection/inference-tasks/{task_id}",
-    response_model=DetectionInferenceTaskDetailResponse,
-)
-def get_detection_inference_task_detail(
+def get_detection_inference_task_detail_response(
+    *,
     task_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    include_events: Annotated[bool, Query(description="是否返回事件列表")] = False,
+    principal: AuthenticatedPrincipal,
+    session_factory: SessionFactory,
+    include_events: bool,
 ) -> DetectionInferenceTaskDetailResponse:
-    """按任务 id 返回 detection 推理任务详情。"""
+    """读取并构造 detection 推理任务详情响应。"""
 
-    task_detail = _require_visible_detection_inference_task(
+    task_detail = require_visible_detection_inference_task(
         principal=principal,
         task_id=task_id,
         session_factory=session_factory,
         include_events=include_events,
     )
-    return _build_detection_inference_task_detail_response(task_detail.task, tuple(task_detail.events))
+    return build_detection_inference_task_detail_response(task_detail.task, tuple(task_detail.events))
 
 
-@detection_inference_tasks_router.get(
-    "/detection/inference-tasks/{task_id}/result",
-    response_model=DetectionInferenceTaskResultResponse,
-)
-def get_detection_inference_task_result(
-    task_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
-    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-) -> DetectionInferenceTaskResultResponse:
-    """按任务 id 返回当前 detection 推理结果。"""
-
-    task_detail = _require_visible_detection_inference_task(
-        principal=principal,
-        task_id=task_id,
-        session_factory=session_factory,
-        include_events=False,
-    )
-    result = dict(task_detail.task.result)
-    object_key = result.get("result_object_key")
-    if not isinstance(object_key, str) or not object_key.strip():
-        if task_detail.task.state in {"queued", "running"}:
-            return DetectionInferenceTaskResultResponse(
-                file_status="pending",
-                task_state=task_detail.task.state,
-                object_key=None,
-                payload={},
-            )
-        raise InvalidRequestError(
-            "当前推理任务缺少结果文件",
-            details={"task_id": task_id},
-        )
-    resolved_path = dataset_storage.resolve(object_key)
-    if not resolved_path.is_file():
-        if task_detail.task.state in {"queued", "running"}:
-            return DetectionInferenceTaskResultResponse(
-                file_status="pending",
-                task_state=task_detail.task.state,
-                object_key=object_key,
-                payload={},
-            )
-        raise InvalidRequestError(
-            "当前推理任务的结果文件不存在",
-            details={"task_id": task_id, "object_key": object_key},
-        )
-    payload = dataset_storage.read_json(object_key)
-    return DetectionInferenceTaskResultResponse(
-        file_status="ready",
-        task_state=task_detail.task.state,
-        object_key=object_key,
-        payload=dict(payload) if isinstance(payload, dict) else {},
-    )
-def _require_visible_detection_inference_task(
+def require_visible_detection_inference_task(
     *,
     principal: AuthenticatedPrincipal,
     task_id: str,
     session_factory: SessionFactory,
     include_events: bool,
-):
+) -> object:
     """读取并校验当前主体可见的 detection 推理任务。"""
 
     service = SqlAlchemyTaskService(session_factory)
@@ -455,3 +351,16 @@ def _require_visible_detection_inference_task(
             details={"task_id": task_id},
         )
     return task_detail
+
+
+def build_detection_deployment_service(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+) -> SqlAlchemyDetectionDeploymentService:
+    """构建 detection deployment service。"""
+
+    return SqlAlchemyDetectionDeploymentService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )

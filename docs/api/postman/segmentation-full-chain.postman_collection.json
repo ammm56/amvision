@@ -159,6 +159,10 @@
       "value": ""
     },
     {
+      "key": "includeEvents",
+      "value": "false"
+    },
+    {
       "key": "previewRunId",
       "value": ""
     },
@@ -1252,6 +1256,68 @@
           "response": []
         },
         {
+          "name": "Reset Segmentation Sync Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/deployment-instances/{{deploymentInstanceId}}/sync/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "reset"
+              ]
+            },
+            "description": "重置 sync deployment 进程内 session 和状态，用于转换产物替换或异常恢复后重新加载。"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Segmentation Sync Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/deployment-instances/{{deploymentInstanceId}}/sync/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "sync",
+                "stop"
+              ]
+            },
+            "description": "停止 sync deployment 进程。完成联调或释放显存时使用。"
+          },
+          "response": []
+        },
+        {
           "name": "Start Segmentation Async Deployment",
           "request": {
             "method": "POST",
@@ -1314,6 +1380,37 @@
           "response": []
         },
         {
+          "name": "Warmup Segmentation Async Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/deployment-instances/{{deploymentInstanceId}}/async/warmup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "warmup"
+              ]
+            },
+            "description": "执行一次 async warmup，确认异步推理进程和 dispatcher 已就绪。"
+          },
+          "response": []
+        },
+        {
           "name": "Get Segmentation Async Deployment Health",
           "request": {
             "method": "GET",
@@ -1341,6 +1438,68 @@
               ]
             },
             "description": "读取 async deployment 健康摘要。"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Segmentation Async Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/deployment-instances/{{deploymentInstanceId}}/async/reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "reset"
+              ]
+            },
+            "description": "重置 async deployment 进程内 session 和状态，用于异常恢复或重新加载。"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Segmentation Async Deployment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/deployment-instances/{{deploymentInstanceId}}/async/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "deployment-instances",
+                "{{deploymentInstanceId}}",
+                "async",
+                "stop"
+              ]
+            },
+            "description": "停止 async deployment 进程和 dispatcher。完成异步联调或释放资源时使用。"
           },
           "response": []
         },
@@ -1445,6 +1604,41 @@
               }
             }
           ]
+        },
+        {
+          "name": "Get Segmentation Async Inference Task",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/models/segmentation/inference-tasks/{{inferenceTaskId}}?include_events={{includeEvents}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "models",
+                "segmentation",
+                "inference-tasks",
+                "{{inferenceTaskId}}"
+              ],
+              "query": [
+                {
+                  "key": "include_events",
+                  "value": "{{includeEvents}}"
+                }
+              ]
+            },
+            "description": "读取异步推理任务详情和可选事件列表，用于排查队列、worker 和结果写回状态。"
+          },
+          "response": []
         },
         {
           "name": "Get Segmentation Async Inference Result",

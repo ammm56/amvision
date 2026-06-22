@@ -177,8 +177,19 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         )
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}/result" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances" in urls
+        for runtime_mode in ["sync", "async"]:
+            for action in ["start", "warmup", "status", "health", "reset", "stop"]:
+                assert (
+                    f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/"
+                    f"{{{{deploymentInstanceId}}}}/{runtime_mode}/{action}"
+                ) in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/{{{{deploymentInstanceId}}}}/infer" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks" in urls
+        assert any(
+            url.startswith(f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}")
+            and not url.endswith("/result")
+            for url in urls
+        )
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}/result" in urls
         assert "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke" in urls
 
@@ -192,6 +203,7 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert variables["targetFormat"] == "onnx"
         assert variables["deploymentRuntimeBackend"] == "onnxruntime"
         assert variables["runtimePrecision"] == "fp32"
+        assert variables["includeEvents"] == "false"
         assert variables["validationInputUri"] == "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
         assert len(variables["inputImageBase64"]) > 100
 

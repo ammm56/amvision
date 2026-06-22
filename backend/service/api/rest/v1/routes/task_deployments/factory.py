@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, status
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.deployment_runtime_helpers import (
+from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
     DeploymentProcessStatusResponse,
     DeploymentRuntimeHealthResponse,
     run_deployment_process_health_action,
