@@ -11,13 +11,11 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.detection_conversion_route_models import (
-    OPENVINO_IR_PRECISION_OPTION_KEY,
-    TENSORRT_ENGINE_PRECISION_OPTION_KEY,
-)
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.schemas import (
     DetectionConversionTaskCreateRequestBody,
     DetectionConversionTaskSubmissionResponse,
+    OPENVINO_IR_PRECISION_OPTION_KEY,
+    TENSORRT_ENGINE_PRECISION_OPTION_KEY,
 )
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.services import (
     merge_fixed_detection_conversion_extra_options,

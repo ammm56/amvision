@@ -183,9 +183,12 @@ backend/service/application/workflows/
 ### 当前问题
 
 - 旧 `datasets.py` 与 `dataset_exports.py` 已删除，数据集导入/导出路由已拆到 `routes/datasets/`。
-- 旧 `detection_training_tasks.py` 已删除，detection 训练任务路由已拆到 `routes/detection_training_tasks/`。
+- 旧 `detection_training_tasks.py` 和 `detection_training_route_models.py` 已删除，detection 训练任务路由已拆到 `routes/detection_training_tasks/`，训练响应模型和响应构建函数已并入 `detection_training_tasks/responses.py`。
+- 旧 `classification_training_tasks.py`、`segmentation_training_tasks.py`、`pose_training_tasks.py`、`obb_training_tasks.py` 和 `non_detection_training_management.py` 已删除，non-detection training 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`、`controls.py`，共同任务查询、详情、控制、resume/delete 和响应构建由 `task_training/` 装配。
+- 旧 `detection_validation_sessions.py`、`classification_validation_sessions.py`、`segmentation_validation_sessions.py`、`pose_validation_sessions.py` 和 `obb_validation_sessions.py` 已删除，validation session 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，共同项目权限校验和 tensor spec payload 由 `task_validation/` 装配。
+- 旧 `detection_evaluation_tasks.py`、`detection_evaluation_route_models.py`、`detection_output_files.py`、`classification_evaluation_tasks.py`、`segmentation_evaluation_tasks.py`、`pose_evaluation_tasks.py` 和 `obb_evaluation_tasks.py` 已删除，evaluation task 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，detection evaluation 报告和输出文件读取放在 `detection_evaluation_tasks/outputs.py`，detection training 输出文件读取放在 `detection_training_tasks/output_files.py`。
 - 旧 `task_conversion_routes_common.py` 已删除，task-native conversion 公共 schema、response、service 装配、结果文件读取和可见性校验已拆到 `routes/task_conversion/`。
-- 旧 `detection_conversion_tasks.py` 已删除，detection conversion 的创建、查询、结果读取、schema、response、service 装配和可见性校验已拆到 `routes/detection_conversion_tasks/`。
+- 旧 `detection_conversion_tasks.py` 和 `detection_conversion_route_models.py` 已删除，detection conversion 的创建、查询、结果读取、schema、response、service 装配和可见性校验已拆到 `routes/detection_conversion_tasks/`。
 - 旧 `classification_conversion_tasks.py`、`segmentation_conversion_tasks.py`、`pose_conversion_tasks.py` 和 `obb_conversion_tasks.py` 已删除，non-detection conversion 入口已按任务类型拆成 `router.py` 与 `services.py`。
 - 旧 `detection_deployments.py` 和 `detection_deployment_helpers.py` 已删除，detection deployment 已按实例管理、事件、sync/async 控制、schema、response、service 和 runtime action 拆到 `routes/detection_deployments/`。
 - 旧 `classification_deployments.py`、`segmentation_deployments.py`、`pose_deployments.py`、`obb_deployments.py` 以及对应 helper 已删除，non-detection deployment 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，共同 CRUD 与 sync/async 控制由 `task_deployments/factory.py` 装配。
@@ -235,9 +238,95 @@ backend/service/api/rest/v1/routes/
 │  ├─ queries.py
 │  ├─ controls.py
 │  ├─ outputs.py
+│  ├─ output_files.py
 │  ├─ schemas.py
 │  ├─ responses.py
 │  └─ services.py
+├─ task_training/
+│  ├─ catalog.py
+│  ├─ controls.py
+│  ├─ responses.py
+│  ├─ schemas.py
+│  └─ services.py
+├─ task_validation/
+│  └─ services.py
+├─ detection_validation_sessions/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ classification_validation_sessions/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ segmentation_validation_sessions/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ pose_validation_sessions/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ obb_validation_sessions/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ task_evaluation/
+│  └─ services.py
+├─ detection_evaluation_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ outputs.py
+│  └─ services.py
+├─ classification_evaluation_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ segmentation_evaluation_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ pose_evaluation_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ obb_evaluation_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ classification_training_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ controls.py
+├─ segmentation_training_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ controls.py
+├─ pose_training_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ controls.py
+├─ obb_training_tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ controls.py
 ├─ task_conversion/
 │  ├─ schemas.py
 │  ├─ responses.py

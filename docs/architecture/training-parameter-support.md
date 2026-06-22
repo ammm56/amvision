@@ -226,10 +226,10 @@
 - 前端训练页面：`frontend/web-ui/src/modules/models/pages/ModelOperationsPage.vue`
 - 前端训练请求：`frontend/web-ui/src/modules/models/services/model.service.ts`
 - detection 训练公开接口：`backend/service/api/rest/v1/routes/detection_training_tasks.py`
-- classification 训练公开接口：`backend/service/api/rest/v1/routes/classification_training_tasks.py`
-- segmentation 训练公开接口：`backend/service/api/rest/v1/routes/segmentation_training_tasks.py`
-- pose 训练公开接口：`backend/service/api/rest/v1/routes/pose_training_tasks.py`
-- obb 训练公开接口：`backend/service/api/rest/v1/routes/obb_training_tasks.py`
+- classification 训练公开接口：`backend/service/api/rest/v1/routes/classification_training_tasks/router.py`
+- segmentation 训练公开接口：`backend/service/api/rest/v1/routes/segmentation_training_tasks/router.py`
+- pose 训练公开接口：`backend/service/api/rest/v1/routes/pose_training_tasks/router.py`
+- obb 训练公开接口：`backend/service/api/rest/v1/routes/obb_training_tasks/router.py`
 - YOLOX detection 训练执行入口：`backend/service/application/models/training/yolox_detection.py`
 - YOLO 主线 detection 训练执行：`backend/service/application/models/yolo_primary_detection_training.py`
 - RF-DETR detection 训练执行：`backend/service/application/models/training/rfdetr_detection.py`

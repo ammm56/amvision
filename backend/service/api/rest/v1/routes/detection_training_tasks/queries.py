@@ -12,6 +12,8 @@ from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 
 from .responses import (
+    DetectionTrainingTaskDetailResponse,
+    DetectionTrainingTaskSummaryResponse,
     _build_detection_training_task_detail_response,
     _build_detection_training_task_summary_response,
 )
@@ -21,11 +23,6 @@ from .services import (
     _resolve_detection_training_task_kinds,
     _resolve_visible_project_ids,
 )
-from backend.service.api.rest.v1.routes.detection_training_route_models import (
-    DetectionTrainingTaskDetailResponse,
-    DetectionTrainingTaskSummaryResponse,
-)
-
 
 detection_training_query_router = APIRouter()
 

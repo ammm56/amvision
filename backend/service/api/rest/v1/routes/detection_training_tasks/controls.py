@@ -16,15 +16,16 @@ from backend.service.application.models.training.yolox_detection_task_service im
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
-from .responses import _build_detection_training_task_detail_response
+from .responses import (
+    DetectionTrainingTaskDetailResponse,
+    _build_detection_training_task_detail_response,
+)
 from .schemas import DetectionTrainingTaskSubmissionResponse
 from .services import (
     _build_detection_training_service_for_task,
     _require_visible_detection_training_task,
     _resolve_detection_training_model_type_from_task,
 )
-from backend.service.api.rest.v1.routes.detection_training_route_models import DetectionTrainingTaskDetailResponse
-
 
 detection_training_control_router = APIRouter()
 

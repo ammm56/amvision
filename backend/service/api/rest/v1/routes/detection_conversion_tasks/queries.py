@@ -8,11 +8,9 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.rest.v1.routes.detection_conversion_route_models import (
+from backend.service.api.rest.v1.routes.detection_conversion_tasks.responses import (
     DetectionConversionTaskDetailResponse,
     DetectionConversionTaskSummaryResponse,
-)
-from backend.service.api.rest.v1.routes.detection_conversion_tasks.responses import (
     build_detection_conversion_task_detail,
     build_detection_conversion_task_summary,
 )

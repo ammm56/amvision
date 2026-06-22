@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.detection_output_files import (
+from backend.service.api.rest.v1.routes.detection_training_tasks.output_files import (
     DetectionTrainingMetricsFileResponse,
     DetectionTrainingOutputFileDetailResponse,
     DetectionTrainingOutputFileSummaryResponse,

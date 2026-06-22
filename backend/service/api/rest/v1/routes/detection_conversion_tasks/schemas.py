@@ -18,6 +18,9 @@ DetectionConversionTargetLiteral = Literal[
     "rknn",
 ]
 
+OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
+TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
+
 
 class DetectionConversionTaskCreateRequestBody(BaseModel):
     """描述 detection conversion 任务创建请求体。"""

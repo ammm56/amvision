@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.api.rest.v1.routes.detection_conversion_route_models import (
+from backend.service.api.rest.v1.routes.detection_conversion_tasks.responses import (
     DetectionConversionResultResponse,
     build_detection_conversion_result_response,
 )

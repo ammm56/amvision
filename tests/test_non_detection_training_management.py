@@ -1,4 +1,4 @@
-"""非 detection 训练共享管理模块测试。"""
+"""非 detection 训练共享路由支撑测试。"""
 
 from __future__ import annotations
 
@@ -6,8 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.service.api.rest.v1.routes import (
-    non_detection_training_management as management_module,
+from backend.service.api.rest.v1.routes.task_training import (
+    catalog as catalog_module,
+    responses as responses_module,
+    services as services_module,
 )
 from backend.service.application.errors import InvalidRequestError
 
@@ -17,7 +19,7 @@ def test_build_summary_response_exposes_task_type_for_non_detection_training() -
 
     task = SimpleNamespace(
         task_id="task-1",
-        task_kind=management_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
         worker_pool="classification-worker",
         state="queued",
         current_attempt_no=0,
@@ -34,7 +36,7 @@ def test_build_summary_response_exposes_task_type_for_non_detection_training() -
         task_spec={"dataset_export_id": "export-1", "recipe_id": "default"},
     )
 
-    response = management_module.build_summary_response(task)
+    response = responses_module.build_summary_response(task)
 
     assert response.task_type == "classification"
     assert response.model_type == "yolo11"
@@ -49,7 +51,7 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
 
     task = SimpleNamespace(
         task_id="task-2",
-        task_kind=management_module.YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
         worker_pool="segmentation-worker",
         state="paused",
         current_attempt_no=1,
@@ -75,7 +77,7 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
         payload={"state": "paused"},
     )
 
-    response = management_module.build_detail_response(task, (event,))
+    response = responses_module.build_detail_response(task, (event,))
 
     assert response.task_type == "segmentation"
     assert response.model_type == "yolo11"
@@ -98,9 +100,9 @@ def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatc
             captured["task_kind"] = filters.task_kind
             return []
 
-    monkeypatch.setattr(management_module, "SqlAlchemyTaskService", _FakeTaskService)
+    monkeypatch.setattr(services_module, "SqlAlchemyTaskService", _FakeTaskService)
 
-    result = management_module.list_training_tasks(
+    result = services_module.list_training_tasks(
         session_factory=object(),
         project_id="project-1",
         task_type="classification",
@@ -109,7 +111,10 @@ def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatc
     )
 
     assert result == []
-    assert captured["task_kind"] == management_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND
+    assert (
+        captured["task_kind"]
+        == catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND
+    )
 
 
 def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,7 +128,7 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
             return (
                 SimpleNamespace(
                     task_id="task-yolo11",
-                    task_kind=management_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+                    task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
                     worker_pool="classification-worker",
                     state="queued",
                     current_attempt_no=0,
@@ -141,7 +146,7 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
                 ),
                 SimpleNamespace(
                     task_id="task-yolov8",
-                    task_kind=management_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+                    task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
                     worker_pool="classification-worker",
                     state="queued",
                     current_attempt_no=0,
@@ -159,9 +164,9 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
                 ),
             )
 
-    monkeypatch.setattr(management_module, "SqlAlchemyTaskService", _FakeTaskService)
+    monkeypatch.setattr(services_module, "SqlAlchemyTaskService", _FakeTaskService)
 
-    result = management_module.list_training_tasks(
+    result = services_module.list_training_tasks(
         session_factory=object(),
         project_id="project-1",
         task_type="classification",
@@ -179,10 +184,10 @@ def test_list_training_tasks_rejects_unknown_task_type(monkeypatch: pytest.Monke
         def __init__(self, session_factory) -> None:
             raise AssertionError("不应在 task_type 校验失败后继续访问任务服务")
 
-    monkeypatch.setattr(management_module, "SqlAlchemyTaskService", _FakeTaskService)
+    monkeypatch.setattr(services_module, "SqlAlchemyTaskService", _FakeTaskService)
 
     with pytest.raises(InvalidRequestError) as error:
-        management_module.list_training_tasks(
+        services_module.list_training_tasks(
             session_factory=object(),
             project_id="project-1",
             task_type="unknown",
