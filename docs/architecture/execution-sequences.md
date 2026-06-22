@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## 转换链
 
-- REST 入口：[backend/service/api/rest/v1/routes/detection_conversion_tasks.py](../../backend/service/api/rest/v1/routes/detection_conversion_tasks.py)
+- REST 入口：[backend/service/api/rest/v1/routes/detection_conversion_tasks/router.py](../../backend/service/api/rest/v1/routes/detection_conversion_tasks/router.py)
 - 任务服务：REST 层按 `model_type` 分发到 `SqlAlchemyYoloXConversionTaskService`、`SqlAlchemyYoloV8ConversionTaskService`、`SqlAlchemyYolo11ConversionTaskService`、`SqlAlchemyYolo26ConversionTaskService` 或 `SqlAlchemyRfdetrConversionTaskService`
 - worker 入口：`backend/workers/conversion/*_conversion_queue_worker.py` 中的模型专属 worker
 - 转换 runner：YOLOX 走 `LocalYoloXConversionRunner`；YOLOv8 / YOLO11 / YOLO26 走 `LocalYoloModelConversionRunner` 派生 runner，并由各自 `*_core/export/` 提供 ONNX / OpenVINO / TensorRT 细节；RF-DETR 走 `LocalRfdetrConversionRunner`
@@ -143,7 +143,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor Client as 调用方
-    participant API as detection_conversion_tasks._submit_detection_conversion_task
+    participant API as detection_conversion_tasks.create
     participant ConvSvc as model_type 对应 ConversionTaskService
     participant Planner as model_type 对应 ConversionPlanner
     participant TaskSvc as SqlAlchemyTaskService

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.service.api.rest.v1.routes.task_conversion_routes_common import (
+from backend.service.api.rest.v1.routes.task_conversion.services import (
     TaskConversionServiceEntry,
     create_task_conversion_router,
 )

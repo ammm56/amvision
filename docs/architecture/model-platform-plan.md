@@ -33,7 +33,7 @@
 - 历史命名上仍保留大量 `yolox_*` 模块名、队列名、runtime target 与 专用 route；这些外壳不再只服务 YOLOX，但名称仍会影响理解成本。
 - `ModelRuntime`、deployment supervisor 和 async inference gateway 已经具备通用分发能力，但部分请求/结果对象和目录命名仍带早期 detection/YOLOX 色彩。
 - workflow service node runtime 已经组装统一 detection / classification / segmentation / pose / obb 服务，以及 YOLOE / SAM3、PLC、目录触发、自定义输出等能力；但少数 service node id 与内部 helper 仍沿用早期 YOLOX 命名。
-- worker consumer 注册表里，detection 推理和评估已经改成 `detection-inference / detection-evaluation`；当前 detection 训练仍保留 `yolox-training`，因为这层还直接对应 YOLOX 的任务服务、trainer runner 和 worker 实现边界。detection conversion 的公开入口仍然是 `detection_conversion_tasks.py`，但内部已经收成 `yolo_conversion_task_service_base.py` + `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 模型适配层；task kind、queue name 和 worker consumer 仍按真实模型实现命名，不再伪装成已经完全共享。
+- worker consumer 注册表里，detection 推理和评估已经改成 `detection-inference / detection-evaluation`；当前 detection 训练仍保留 `yolox-training`，因为这层还直接对应 YOLOX 的任务服务、trainer runner 和 worker 实现边界。detection conversion 的公开入口仍然是 `detection_conversion_tasks/` 路由组，但内部已经收成 `yolo_conversion_task_service_base.py` + `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 模型适配层；task kind、queue name 和 worker consumer 仍按真实模型实现命名，不再伪装成已经完全共享。
 
 因此，下一步不应按“再复制一套 YOLOX 目录给下一个模型”的方式继续扩张，而应先把当前主干拆成稳定的通用层、任务分类层和模型分类适配层。
 

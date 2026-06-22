@@ -184,6 +184,8 @@ backend/service/application/workflows/
 
 - 旧 `datasets.py` 与 `dataset_exports.py` 已删除，数据集导入/导出路由已拆到 `routes/datasets/`。
 - 旧 `detection_training_tasks.py` 已删除，detection 训练任务路由已拆到 `routes/detection_training_tasks/`；后续继续收 conversion、deployment、inference route 文件。
+- 旧 `task_conversion_routes_common.py` 已删除，task-native conversion 公共 schema、response、service 装配、结果文件读取和可见性校验已拆到 `routes/task_conversion/`。
+- 旧 `detection_conversion_tasks.py` 已删除，detection conversion 的创建、查询、结果读取、schema、response、service 装配和可见性校验已拆到 `routes/detection_conversion_tasks/`。
 - route 文件里混有请求模型、权限检查、服务装配和 response builder。
 - 当前已删除旧 `workflows.py` 单文件入口，按 node catalog、node pack admin、template 文档和 application 文档拆到 `workflows/`，并由 `workflows/router.py` 统一装配。
 - 当前已删除旧 `workflow_runtime.py` 单文件入口，按 endpoint 组拆到 `workflow_runtime/`，并由 `workflow_runtime/router.py` 统一装配。跨 endpoint 共用的请求体、响应构建、服务装配和 multipart 调用构建暂放 `workflow_runtime_support/`。
@@ -231,6 +233,22 @@ backend/service/api/rest/v1/routes/
 │  ├─ schemas.py
 │  ├─ responses.py
 │  └─ services.py
+├─ task_conversion/
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  ├─ outputs.py
+│  ├─ visibility.py
+│  └─ files.py
+├─ detection_conversion_tasks/
+│  ├─ router.py
+│  ├─ create.py
+│  ├─ queries.py
+│  ├─ outputs.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  └─ visibility.py
 └─ ...
 ```
 

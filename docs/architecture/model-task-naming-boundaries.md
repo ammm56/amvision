@@ -31,7 +31,7 @@
 
 | 层次 | 命名方式 | 典型例子 | 不该这样命名 | 说明 |
 | --- | --- | --- | --- | --- |
-| 公开控制面 | 按 `task_type` 命名 | `detection_training_tasks.py`、`detection_conversion_tasks.py`、`detection-inference`、`detection-evaluation` | 把公开 detection 路由写成 `yolox_*_tasks.py` | 这一层面对的是平台调用方、前端和 workflow 公共入口，重点是任务分类一致。 |
+| 公开控制面 | 按 `task_type` 命名 | `detection_training_tasks/`、`detection_conversion_tasks/`、`detection-inference`、`detection-evaluation` | 把公开 detection 路由写成 `yolox_*_tasks.py` | 这一层面对的是平台调用方、前端和 workflow 公共入口，重点是任务分类一致。 |
 | 模型实现层 | 按 `model_type` 命名 | `training/yolox_detection_task_service.py`、`yolox_training_queue_worker.py`、`yolox_conversion_task_service.py`、`rfdetr_conversion_task_service.py` | 把仍然只服务 YOLOX 的训练/转换 worker 改成 `detection-training`、`detection-conversion` | 这一层承载的是模型结构、训练/转换流程、队列和执行器差异，必须明确隔离。 |
 | 模型系列共享内部层 | 按模型系列命名 | `yolo_conversion_task_service_base.py`、`yolo_model_conversion_task_service.py` | `detection_conversion_task_service.py` | 这一层允许多个同系列模型共用代码，但名字必须说明“共享范围只在这个系列里”，不能冒充全任务通用层。 |
 | 模型 core 包 | 外层按 `model_type`，内部按 `task_type` | `yolov8_core/nn/tasks/detection.py`、`yolo26_core/losses/pose.py` | `yolo_core_common/detection_yolo26.py`、`detection_core.py` | core 外层表达模型代际，内部任务文件表达任务差异。 |
@@ -78,7 +78,7 @@ core 迁移顺序按模型纵向推进，不按目录横向推进：
 - classification / segmentation evaluation 共享链改为显式使用 `SqlAlchemyYoloPrimary*EvaluationTaskService`
 - evaluation runtime resolver 公共映射单独收到了 `evaluation_runtime_target_resolvers.py`
 - segmentation evaluation 已补上 `rfdetr` resolver 分发；pose / obb evaluation 去掉了误写的 `yolox` 支持残留
-- 保留了公开 task 路由 `backend/service/api/rest/v1/routes/detection_conversion_tasks.py`
+- 保留了公开 task 路由组 `backend/service/api/rest/v1/routes/detection_conversion_tasks/`
 - 保留了 YOLOX 训练和转换 worker / task kind / queue name 的模型专属命名
 
 这次调整的核心意思是：
@@ -106,7 +106,7 @@ core 迁移顺序按模型纵向推进，不按目录横向推进：
 - classification / segmentation evaluation 继续走 task-type 公开路由，但共享实现名明确写成 `yolo_primary_*`，避免把 YOLO 共享层误读成全平台通用层。
 - deployment 这一层当前没有发现只做转发的薄壳；`detection / classification / segmentation / pose / obb deployment service` 继续保留 task-type 公共服务命名。
 - `conversion` 相关层现在采用“三层分开”的写法：
-  - 公开入口：`detection_conversion_tasks.py`
+  - 公开入口：`detection_conversion_tasks/`
   - YOLO 共享层：`yolo_conversion_task_service_base.py`
   - 模型适配层：`yolox_conversion_task_service.py`、`yolov8_conversion_task_service.py`、`yolo11_conversion_task_service.py`、`yolo26_conversion_task_service.py`、`rfdetr_conversion_task_service.py`
 
