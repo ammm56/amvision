@@ -182,7 +182,7 @@ backend/service/application/workflows/
 
 ### 当前问题
 
-- `datasets.py` 和多个 deployment / inference route 文件承担了过多响应组装 helper。
+- 旧 `datasets.py` 与 `dataset_exports.py` 已删除，数据集导入/导出路由已拆到 `routes/datasets/`；后续继续收多个 deployment / inference route 文件。
 - route 文件里混有请求模型、权限检查、服务装配和 response builder。
 - 当前已删除旧 `workflows.py` 单文件入口，按 node catalog、node pack admin、template 文档和 application 文档拆到 `workflows/`，并由 `workflows/router.py` 统一装配。
 - 当前已删除旧 `workflow_runtime.py` 单文件入口，按 endpoint 组拆到 `workflow_runtime/`，并由 `workflow_runtime/router.py` 统一装配。跨 endpoint 共用的请求体、响应构建、服务装配和 multipart 调用构建暂放 `workflow_runtime_support/`。
@@ -192,6 +192,7 @@ backend/service/application/workflows/
 ```text
 backend/service/api/rest/v1/routes/
 ├─ datasets/
+│  ├─ router.py
 │  ├─ imports.py
 │  ├─ exports.py
 │  ├─ schemas.py

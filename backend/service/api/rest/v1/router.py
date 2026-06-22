@@ -10,8 +10,7 @@ from backend.service.api.rest.v1.routes.classification_evaluation_tasks import c
 from backend.service.api.rest.v1.routes.classification_inference_tasks import classification_inference_tasks_router
 from backend.service.api.rest.v1.routes.classification_training_tasks import classification_training_tasks_router
 from backend.service.api.rest.v1.routes.classification_validation_sessions import classification_validation_sessions_router
-from backend.service.api.rest.v1.routes.dataset_exports import dataset_exports_router
-from backend.service.api.rest.v1.routes.datasets import datasets_router
+from backend.service.api.rest.v1.routes.datasets.router import datasets_router
 from backend.service.api.rest.v1.routes.detection_conversion_tasks import detection_conversion_tasks_router
 from backend.service.api.rest.v1.routes.detection_deployments import detection_deployments_router
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks import detection_evaluation_tasks_router
@@ -56,7 +55,6 @@ api_v1_router.include_router(workflows_router)
 api_v1_router.include_router(workflow_runtime_router)
 api_v1_router.include_router(workflow_trigger_sources_router)
 api_v1_router.include_router(datasets_router)
-api_v1_router.include_router(dataset_exports_router)
 api_v1_router.include_router(models_router)
 api_v1_router.include_router(detection_training_tasks_router)
 api_v1_router.include_router(detection_validation_sessions_router)

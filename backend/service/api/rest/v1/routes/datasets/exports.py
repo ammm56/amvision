@@ -1,4 +1,4 @@
-"""数据集导出 REST 路由分组。"""
+"""数据集导出 API。"""
 
 from __future__ import annotations
 
@@ -6,24 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
 
 from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.dataset_formats import (
-	IMPLEMENTED_DATASET_EXPORT_FORMATS,
-	IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
-)
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.application.datasets.exports.delivery import (
-	DatasetExportPackage,
-	SqlAlchemyDatasetExportDeliveryService,
-)
-from backend.service.application.datasets.exports import (
-	DatasetExportRequest,
-)
+from backend.service.application.datasets.exports import DatasetExportRequest
+from backend.service.application.datasets.exports.delivery import SqlAlchemyDatasetExportDeliveryService
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
 from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.unit_of_work import UnitOfWork
@@ -31,94 +21,22 @@ from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
-
-dataset_exports_router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-
-class DatasetExportCreateRequestBody(BaseModel):
-	"""描述创建 DatasetExport 的请求体。"""
-
-	project_id: str = Field(description="所属 Project id")
-	dataset_id: str = Field(description="所属 Dataset id")
-	dataset_version_id: str = Field(description="导出来源的 DatasetVersion id")
-	format_id: str = Field(description="目标导出格式 id")
-	display_name: str = Field(default="", description="可选的任务展示名称")
-	output_object_prefix: str = Field(default="", description="可选的导出目录前缀")
-	category_names: tuple[str, ...] = Field(default_factory=tuple, description="可选的导出类别名列表")
-	include_test_split: bool = Field(default=True, description="是否包含 test split")
+from .responses import (
+	_build_dataset_export_format_catalog_response,
+	_build_dataset_export_package_response,
+	_build_dataset_export_response,
+)
+from .schemas import (
+	DatasetExportCreateRequestBody,
+	DatasetExportDetailResponse,
+	DatasetExportFormatCatalogResponse,
+	DatasetExportPackageResponse,
+	DatasetExportSubmissionResponse,
+	DatasetExportSummaryResponse,
+)
 
 
-class DatasetExportSubmissionResponse(BaseModel):
-	"""描述 DatasetExport 提交接口响应。"""
-
-	dataset_export_id: str = Field(description="导出记录 id")
-	task_id: str = Field(description="关联的任务 id")
-	status: str = Field(description="导出状态")
-	dataset_version_id: str = Field(description="导出来源的 DatasetVersion id")
-	format_id: str = Field(description="目标导出格式 id")
-	queue_name: str = Field(description="提交到的队列名称")
-	queue_task_id: str = Field(description="队列任务 id")
-
-
-class DatasetExportSummaryResponse(BaseModel):
-	"""描述 DatasetExport 列表中的单条记录摘要。"""
-
-	dataset_export_id: str = Field(description="导出记录 id")
-	task_id: str | None = Field(default=None, description="关联的任务 id")
-	dataset_id: str = Field(description="所属 Dataset id")
-	project_id: str = Field(description="所属 Project id")
-	dataset_version_id: str = Field(description="导出来源的 DatasetVersion id")
-	format_id: str = Field(description="导出格式 id")
-	task_type: str = Field(description="任务类型")
-	status: str = Field(description="导出状态")
-	created_at: str = Field(description="导出记录创建时间")
-	include_test_split: bool = Field(description="是否包含 test split")
-	export_path: str | None = Field(default=None, description="导出根目录 object key")
-	manifest_object_key: str | None = Field(default=None, description="导出 manifest object key")
-	split_names: tuple[str, ...] = Field(default_factory=tuple, description="导出产生的 split 列表")
-	sample_count: int = Field(description="导出样本总数")
-	category_names: tuple[str, ...] = Field(default_factory=tuple, description="导出类别名列表")
-	queue_task_id: str | None = Field(default=None, description="关联的队列任务 id")
-	package_object_key: str | None = Field(default=None, description="导出下载包 object key")
-	package_file_name: str | None = Field(default=None, description="导出下载包文件名")
-	package_size: int | None = Field(default=None, description="导出下载包大小")
-	packaged_at: str | None = Field(default=None, description="最近一次打包时间")
-	error_message: str | None = Field(default=None, description="失败时的错误消息")
-	metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
-
-
-class DatasetExportDetailResponse(DatasetExportSummaryResponse):
-	"""描述 DatasetExport 查询接口返回的完整记录。"""
-
-
-class DatasetExportPackageResponse(BaseModel):
-	"""描述 DatasetExport 下载包接口响应。"""
-
-	dataset_export_id: str = Field(description="导出记录 id")
-	export_path: str = Field(description="导出根目录 object key")
-	manifest_object_key: str = Field(description="导出 manifest object key")
-	package_object_key: str = Field(description="导出下载包 object key")
-	package_file_name: str = Field(description="导出下载包文件名")
-	package_size: int = Field(description="导出下载包大小")
-	packaged_at: str = Field(description="最近一次打包时间")
-
-
-class DatasetExportFormatItemResponse(BaseModel):
-	"""描述单个已实现数据集导出格式的公开规则项。"""
-
-	format_id: str = Field(description="导出格式 id")
-
-
-class DatasetExportFormatCatalogResponse(BaseModel):
-	"""描述数据集导出格式公开能力规则。"""
-
-	implemented_formats: list[str] = Field(default_factory=list, description="当前已实现并可用的格式")
-	default_format: str = Field(description="默认导出格式")
-	format_types_by_task_type: dict[str, list[str]] = Field(
-		default_factory=dict,
-		description="按 task_type 列出的已实现导出格式",
-	)
-	items: list[DatasetExportFormatItemResponse] = Field(default_factory=list, description="已实现格式列表")
+dataset_exports_router = APIRouter()
 
 
 @dataset_exports_router.get(
@@ -382,86 +300,3 @@ def _require_visible_dataset_export(
 
 	return dataset_export
 
-
-def _build_dataset_export_response(dataset_export: DatasetExport) -> DatasetExportDetailResponse:
-	"""把 DatasetExport 转成显式响应模型。"""
-
-	return DatasetExportDetailResponse(
-		dataset_export_id=dataset_export.dataset_export_id,
-		task_id=dataset_export.task_id,
-		dataset_id=dataset_export.dataset_id,
-		project_id=dataset_export.project_id,
-		dataset_version_id=dataset_export.dataset_version_id,
-		format_id=dataset_export.format_id,
-		task_type=dataset_export.task_type,
-		status=dataset_export.status,
-		created_at=dataset_export.created_at,
-		include_test_split=dataset_export.include_test_split,
-		export_path=dataset_export.export_path,
-		manifest_object_key=dataset_export.manifest_object_key,
-		split_names=dataset_export.split_names,
-		sample_count=dataset_export.sample_count,
-		category_names=dataset_export.category_names,
-		queue_task_id=_read_optional_str(dataset_export.metadata, "queue_task_id"),
-		package_object_key=_read_optional_str(dataset_export.metadata, "package_object_key"),
-		package_file_name=_read_optional_str(dataset_export.metadata, "package_file_name"),
-		package_size=_read_optional_int(dataset_export.metadata, "package_size"),
-		packaged_at=_read_optional_str(dataset_export.metadata, "packaged_at"),
-		error_message=dataset_export.error_message,
-		metadata=dict(dataset_export.metadata),
-	)
-
-
-def _build_dataset_export_package_response(
-	package: DatasetExportPackage,
-) -> DatasetExportPackageResponse:
-	"""把 DatasetExportPackage 转成显式响应模型。"""
-
-	return DatasetExportPackageResponse(
-		dataset_export_id=package.dataset_export_id,
-		export_path=package.export_path,
-		manifest_object_key=package.manifest_object_key,
-		package_object_key=package.package_object_key,
-		package_file_name=package.package_file_name,
-		package_size=package.package_size,
-		packaged_at=package.packaged_at,
-	)
-
-
-def _build_dataset_export_format_catalog_response() -> DatasetExportFormatCatalogResponse:
-	"""构造稳定的数据集导出格式能力规则响应。"""
-
-	return DatasetExportFormatCatalogResponse(
-		implemented_formats=list(IMPLEMENTED_DATASET_EXPORT_FORMATS),
-		default_format=IMPLEMENTED_DATASET_EXPORT_FORMATS[0],
-		format_types_by_task_type={
-			task_type: list(format_types)
-			for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
-		},
-		items=[
-			DatasetExportFormatItemResponse(format_id=format_id)
-			for format_id in IMPLEMENTED_DATASET_EXPORT_FORMATS
-		],
-	)
-
-
-def _read_optional_str(payload: dict[str, object], key: str) -> str | None:
-	"""从字典中读取可选字符串字段。"""
-
-	value = payload.get(key)
-	if isinstance(value, str):
-		return value
-
-	return None
-
-
-def _read_optional_int(payload: dict[str, object], key: str) -> int | None:
-	"""从字典中读取可选整数值。"""
-
-	value = payload.get(key)
-	if isinstance(value, int):
-		return value
-	if isinstance(value, float):
-		return int(value)
-
-	return None

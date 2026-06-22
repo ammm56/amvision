@@ -108,7 +108,12 @@ backend/service/
 │  │     ├─ router.py
 │  │     └─ routes/
 │  │        ├─ system.py
-│  │        ├─ datasets.py
+│  │        ├─ datasets/
+│  │        │  ├─ router.py
+│  │        │  ├─ imports.py
+│  │        │  ├─ exports.py
+│  │        │  ├─ schemas.py
+│  │        │  └─ responses.py
 │  │        ├─ models.py
 │  │        └─ tasks.py
 │  └─ ws/
