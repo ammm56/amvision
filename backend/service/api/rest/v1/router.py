@@ -15,7 +15,7 @@ from backend.service.api.rest.v1.routes.detection_conversion_tasks import detect
 from backend.service.api.rest.v1.routes.detection_deployments import detection_deployments_router
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks import detection_evaluation_tasks_router
 from backend.service.api.rest.v1.routes.detection_inference_tasks import detection_inference_tasks_router
-from backend.service.api.rest.v1.routes.detection_training_tasks import detection_training_tasks_router
+from backend.service.api.rest.v1.routes.detection_training_tasks.router import detection_training_tasks_router
 from backend.service.api.rest.v1.routes.detection_validation_sessions import (
     detection_validation_sessions_router,
 )
