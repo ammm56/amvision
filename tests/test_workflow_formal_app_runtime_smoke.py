@@ -26,7 +26,7 @@ from backend.service.application.workflows.process_executor import (
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 from tests.test_workflow_barcode_protocol_nodes import _build_barcode_test_png_bytes
@@ -1241,6 +1241,3 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
                 item.deployment_instance_id
                 for item in unit_of_work.deployments.list_deployment_instances(project_id)
             )
-
-
-

@@ -49,7 +49,7 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
     serialize_node_execution_record_for_response,
 )
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,

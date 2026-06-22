@@ -66,9 +66,7 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
-from backend.service.application.workflows.runtime_worker import (
-    WorkflowRuntimeWorkerManager,
-)
+from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
 from backend.service.application.workflows.trigger_sources.trigger_source_service import (
     WorkflowTriggerSourceService,
 )
@@ -78,7 +76,7 @@ from backend.service.application.workflows.trigger_sources.trigger_source_superv
 from backend.service.application.workflows.trigger_sources.workflow_submitter import (
     WorkflowSubmitter,
 )
-from backend.service.application.workflows.service_node_runtime import (
+from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
 from backend.service.application.workflows.runtime_registry_loader import (

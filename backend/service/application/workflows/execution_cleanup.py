@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 from backend.service.application.errors import ServiceConfigurationError, ServiceError
 
 if TYPE_CHECKING:
-    from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+    from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 
 
 WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY = "workflow_execution_cleanup_items"

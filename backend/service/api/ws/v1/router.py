@@ -32,7 +32,7 @@ from backend.service.application.runtime.deployment.deployment_events import (
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
-from backend.service.application.workflows.runtime_worker import WorkflowRuntimeWorkerManager
+from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
 from backend.service.domain.tasks.task_records import TaskEvent
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntimeEvent,

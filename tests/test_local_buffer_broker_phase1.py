@@ -44,7 +44,7 @@ from backend.service.application.runtime.targets.runtime_target import RuntimeTa
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,

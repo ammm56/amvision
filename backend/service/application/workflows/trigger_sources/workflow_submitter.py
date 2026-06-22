@@ -6,10 +6,8 @@ from dataclasses import dataclass
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
 from backend.service.application.errors import ServiceError
-from backend.service.application.workflows.runtime_service import (
-    WorkflowRuntimeInvokeRequest,
-    WorkflowRuntimeService,
-)
+from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
+from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 from backend.service.application.workflows.trigger_sources.input_binding_mapper import (
     InputBindingMapper,
 )

@@ -32,7 +32,7 @@ from backend.service.application.workflows.snapshot_execution import (
     WorkflowSnapshotExecutionRequest,
     WorkflowSnapshotExecutionResult,
 )
-from backend.service.application.workflows.service_node_runtime import (
+from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService

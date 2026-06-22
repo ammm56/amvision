@@ -35,7 +35,7 @@ from backend.service.application.workflows.execution_cleanup import (
     list_registered_execution_cleanups,
 )
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
-from backend.service.application.workflows.service_node_runtime import (
+from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
 from backend.service.application.workflows.runtime_registry_loader import (
@@ -4026,6 +4026,3 @@ def _build_fake_process_config(*, instance_count: int) -> SimpleNamespace:
         instance_count=instance_count,
         runtime_target=SimpleNamespace(runtime_artifact_storage_uri="artifacts/runtime/model.onnx"),
     )
-
-
-

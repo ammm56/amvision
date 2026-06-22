@@ -19,7 +19,7 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessSupervisor,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,

@@ -23,7 +23,7 @@ from backend.service.application.models.training.yolox_detection_task_service im
 from backend.service.application.tasks.task_service import TaskDetail
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
 
 

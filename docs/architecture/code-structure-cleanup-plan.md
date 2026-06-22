@@ -107,22 +107,39 @@ backend/service/application/datasets/
 
 ### 当前问题
 
-- `runtime_service.py`、`runtime_worker.py`、`workflow_service.py`、`graph_executor.py` 文件过大。
-- workflow 文档管理、runtime 控制、preview run、app runtime、worker process、消息序列化和 payload 清理边界还不够清晰。
+- `runtime_service.py` 约 100KB，混合了 execution policy、preview run、app runtime、sync invoke、workflow run 查询和事件读取。
+- 旧 `runtime_worker.py` 已删除，worker manager、子进程入口、消息、heartbeat 和 health 已拆到 `worker/*`。
+- `graph_executor.py` 约 54KB，混合了节点执行、registry、for-each、变量读写和执行记录构造。
+- `workflow_service.py` 原约 49KB，混合了 workflow 文档 contracts、模板管理、应用管理、summary sidecar 和 object key 规则。
+- 旧 `service_node_runtime.py` 已删除，平台 service runtime 已拆到 `service_runtime/context.py`、`service_runtime/builders.py` 和 `service_runtime/payloads.py`。
+- 当前已把 workflow 文档 contracts 拆到 `documents/contracts.py`，把模板/应用校验摘要拆到 `documents/validation.py`，把 object key 规则、sidecar summary、路径归一化拆到 `documents/storage.py`。
+- 当前已把模板文档管理拆到 `documents/templates.py`，把流程应用文档管理拆到 `documents/applications.py`，`workflow_service.py` 只保留对外门面和 store 装配。
+- 当前已把 graph executor 的执行数据结构拆到 `execution/contracts.py`，节点运行时注册表拆到 `execution/registry.py`，for-each 纯解析/校验拆到 `execution/foreach.py`，变量存储辅助函数拆到 `execution/variables.py`。
+- 当前已把拓扑排序拆到 `execution/topology.py`，模板输入和节点输入解析拆到 `execution/inputs.py`，节点事件与失败详情构造拆到 `execution/events.py`。
+- 当前已把 runtime execution policy 的默认值、创建请求、metadata 摘要、超时和持久化保留策略拆到 `runtime/policies.py`。
+- 当前已把 preview run 的创建请求、请求规范化、列表过滤、默认保留时间和删除前状态判断拆到 `runtime/preview_runs.py`。
+- 当前已把 app runtime 的创建请求、请求规范化、资源更新主体 metadata 和 worker state 回写拆到 `runtime/app_runtimes.py`。
+- 当前已把 sync/async invoke 请求与同步调用结果拆到 `runtime/invokes.py`，把 WorkflowRun 结果回写、node_records 序列化、BufferRef cleanup 和 WorkflowRun events 文件读写拆到 `runtime/persistence.py`。
+- 后续继续收 API route 响应组装边界，以及 service runtime 内部更细的按任务分类 builder。
 
 ### 目标结构
 
 ```text
 backend/service/application/workflows/
 ├─ documents/
+│  ├─ contracts.py
 │  ├─ templates.py
 │  ├─ applications.py
 │  ├─ validation.py
 │  └─ storage.py
 ├─ execution/
 │  ├─ graph_executor.py
-│  ├─ node_runtime_registry.py
+│  ├─ registry.py
 │  ├─ foreach.py
+│  ├─ contracts.py
+│  ├─ inputs.py
+│  ├─ topology.py
+│  ├─ events.py
 │  └─ variables.py
 ├─ runtime/
 │  ├─ service.py
@@ -137,16 +154,29 @@ backend/service/application/workflows/
 │  ├─ messages.py
 │  ├─ heartbeat.py
 │  └─ health.py
+├─ service_runtime/
+│  ├─ context.py
+│  ├─ builders.py
+│  └─ payloads.py
 ├─ events.py
 └─ README.md
 ```
 
 ### 迁移规则
 
+- 不做旧路径兼容壳；移动代码后同步更新引用。
 - API route 不直接理解 worker message 细节。
 - worker process 不直接写 workflow 文档存储规则。
 - preview run 和 app runtime 可以复用底层执行器，但 service 边界要分开。
 - `graph_executor` 只保留图执行和节点调用，不承担 API response 组装。
+
+### 建议顺序
+
+1. 先收 `workflow_service.py`：已拆 `documents/contracts.py`、`documents/validation.py`、`documents/storage.py`、`documents/templates.py` 和 `documents/applications.py`。
+2. 再收 `graph_executor.py`：已拆 `execution/contracts.py`、`execution/registry.py`、`execution/foreach.py`、`execution/variables.py`、`execution/inputs.py`、`execution/topology.py` 和 `execution/events.py`；后续只在确认收益明确时继续拆 for-each 执行循环本体。
+3. 再收 `runtime_service.py`：已拆 `runtime/policies.py`、`runtime/preview_runs.py`、`runtime/app_runtimes.py`、`runtime/invokes.py` 和 `runtime/persistence.py`。
+4. 再收旧 `runtime_worker.py`：已删除旧平铺文件，拆到 `worker/manager.py`、`worker/process.py`、`worker/messages.py`、`worker/heartbeat.py` 和 `worker/health.py`。
+5. 最后收旧 `service_node_runtime.py`：已删除旧平铺文件，按 `service_runtime/context.py`、`service_runtime/builders.py` 和 `service_runtime/payloads.py` 细分平台服务装配。
 
 ## 第三批：API routes
 

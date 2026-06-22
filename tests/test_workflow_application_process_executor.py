@@ -12,7 +12,7 @@ import time
 
 from fastapi.testclient import TestClient
 
-import backend.service.application.workflows.runtime_worker as runtime_worker_module
+import backend.service.application.workflows.worker.process as runtime_worker_module
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app

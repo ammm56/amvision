@@ -30,7 +30,7 @@ from backend.service.application.workflows.execution_cleanup import (
     list_registered_execution_cleanups,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.service_node_runtime import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from tests.api_test_support import build_test_jpeg_bytes
 
 

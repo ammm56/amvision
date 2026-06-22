@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from dataclasses import replace
+from datetime import datetime, timezone
 from threading import Lock
 from uuid import uuid4
 
@@ -15,18 +15,12 @@ from backend.service.application.project_summary import (
     publish_project_summary_event,
     should_publish_project_summary_for_workflow_run_event,
 )
-from backend.contracts.buffers import BufferRef
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.contracts.workflows.resource_semantics import (
-    WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS,
-    WORKFLOW_PREVIEW_RUN_STATES,
-    WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
     WorkflowPreviewRunState,
-    build_workflow_app_runtime_events_object_key,
     build_workflow_app_runtime_storage_dir,
     build_workflow_app_runtime_snapshot_object_key,
     build_workflow_preview_run_snapshot_object_key,
-    build_workflow_run_events_object_key,
 )
 from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import (
@@ -46,21 +40,56 @@ from backend.service.application.workflows.preview_run_cleanup import (
     restore_staged_preview_run_storage,
     stage_preview_run_storage_for_cleanup,
 )
-from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
-from backend.service.application.workflows.runtime_worker import (
-    WorkflowRuntimeAsyncRunCallbacks,
+from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
-    WorkflowRuntimeWorkerManager,
-    WorkflowRuntimeWorkerRunResult,
     WorkflowRuntimeWorkerState,
+)
+from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
+from backend.service.application.workflows.worker.messages import (
+    WorkflowRuntimeAsyncRunCallbacks,
+    WorkflowRuntimeWorkerRunResult,
 )
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
-    serialize_node_execution_record,
 )
 from backend.service.application.workflows.runtime_app_events import (
     append_workflow_app_runtime_event,
     read_workflow_app_runtime_events,
+)
+from backend.service.application.workflows.runtime.policies import (
+    WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED,
+    WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED,
+    WORKFLOW_RUN_DEFAULT_TRACE_LEVEL,
+    WorkflowExecutionPolicyCreateRequest,
+    apply_execution_policy_metadata,
+    apply_workflow_run_persistence_defaults,
+    normalize_execution_policy_create_request,
+    resolve_effective_timeout_seconds,
+    serialize_execution_policy_snapshot,
+)
+from backend.service.application.workflows.runtime.app_runtimes import (
+    WorkflowAppRuntimeCreateRequest,
+    apply_worker_state,
+    normalize_app_runtime_create_request,
+    with_runtime_resource_updated_by,
+)
+from backend.service.application.workflows.runtime.preview_runs import (
+    WorkflowPreviewRunCreateRequest,
+    build_preview_run_retention_until,
+    filter_preview_runs,
+    normalize_preview_run_create_request,
+    preview_run_needs_cancel_before_delete,
+)
+from backend.service.application.workflows.runtime.invokes import (
+    WorkflowRuntimeInvokeRequest,
+    WorkflowRuntimeSyncInvokeResult,
+    normalize_runtime_invoke_request,
+)
+from backend.service.application.workflows.runtime.persistence import (
+    append_workflow_run_event,
+    apply_workflow_run_result,
+    read_workflow_run_events,
+    with_input_buffer_ref_cleanups,
 )
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.domain.workflows.workflow_runtime_records import (
@@ -77,95 +106,6 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-
-
-WORKFLOW_RUN_DEFAULT_TRACE_LEVEL = "none"
-WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED = False
-WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED = False
-
-
-@dataclass(frozen=True)
-class WorkflowPreviewRunCreateRequest:
-    """描述一次 preview run 创建请求。"""
-
-    project_id: str
-    application_ref_id: str | None = None
-    execution_policy_id: str | None = None
-    application: FlowApplication | None = None
-    template: WorkflowGraphTemplate | None = None
-    input_bindings: dict[str, object] | None = None
-    execution_metadata: dict[str, object] | None = None
-    timeout_seconds: int | None = None
-    wait_mode: str = "sync"
-
-
-@dataclass(frozen=True)
-class WorkflowAppRuntimeCreateRequest:
-    """描述一次 app runtime 创建请求。"""
-
-    project_id: str
-    application_id: str
-    execution_policy_id: str | None = None
-    display_name: str = ""
-    request_timeout_seconds: int | None = None
-    heartbeat_interval_seconds: int | None = None
-    heartbeat_timeout_seconds: int | None = None
-    metadata: dict[str, object] | None = None
-
-
-@dataclass(frozen=True)
-class WorkflowRuntimeSyncInvokeResult:
-    """描述一次同步 WorkflowAppRuntime 调用结果。
-
-    字段：
-    - workflow_run：已持久化并完成状态回写的 WorkflowRun。
-    - raw_outputs：本次同步调用返回的未脱敏 application outputs。
-    - raw_template_outputs：本次同步调用返回的未脱敏 template outputs。
-    - raw_node_records：本次同步调用返回的未脱敏 node_records。
-    """
-
-    workflow_run: WorkflowRun
-    raw_outputs: dict[str, object] = field(default_factory=dict)
-    raw_template_outputs: dict[str, object] = field(default_factory=dict)
-    raw_node_records: tuple[dict[str, object], ...] = ()
-
-
-@dataclass(frozen=True)
-class WorkflowExecutionPolicyCreateRequest:
-    """描述一条 WorkflowExecutionPolicy 创建请求。
-
-    字段：
-    - project_id：所属 Project id。
-    - execution_policy_id：策略 id。
-    - display_name：展示名称。
-    - policy_kind：策略类型。
-    - default_timeout_seconds：默认执行超时秒数。
-    - max_run_timeout_seconds：允许的最大执行超时秒数。
-    - trace_level：trace 保留级别。
-    - retain_node_records_enabled：是否保留 node_records。
-    - retain_trace_enabled：是否保留 trace 数据。
-    - metadata：附加元数据。
-    """
-
-    project_id: str
-    execution_policy_id: str
-    display_name: str
-    policy_kind: str
-    default_timeout_seconds: int = 30
-    max_run_timeout_seconds: int = 30
-    trace_level: str = WORKFLOW_RUN_DEFAULT_TRACE_LEVEL
-    retain_node_records_enabled: bool = WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED
-    retain_trace_enabled: bool = WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED
-    metadata: dict[str, object] | None = None
-
-
-@dataclass(frozen=True)
-class WorkflowRuntimeInvokeRequest:
-    """描述一次 runtime 同步调用请求。"""
-
-    input_bindings: dict[str, object] | None = None
-    execution_metadata: dict[str, object] | None = None
-    timeout_seconds: int | None = None
 
 
 class WorkflowRuntimeService:
@@ -207,7 +147,7 @@ class WorkflowRuntimeService:
     ) -> WorkflowExecutionPolicy:
         """创建一条 WorkflowExecutionPolicy。"""
 
-        normalized_request = self._normalize_execution_policy_create_request(request)
+        normalized_request = normalize_execution_policy_create_request(request)
         with self._open_unit_of_work() as unit_of_work:
             existing_policy = unit_of_work.workflow_runtime.get_execution_policy(normalized_request.execution_policy_id)
             if existing_policy is not None:
@@ -268,7 +208,7 @@ class WorkflowRuntimeService:
         if self.preview_run_manager is None:
             raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
 
-        normalized_request = self._normalize_preview_request(request)
+        normalized_request = normalize_preview_run_create_request(request)
         preview_run_id = f"preview-run-{uuid4().hex}"
         execution_policy = self._resolve_execution_policy_for_project(
             project_id=normalized_request.project_id,
@@ -291,7 +231,7 @@ class WorkflowRuntimeService:
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,
-                self._serialize_execution_policy_snapshot(execution_policy),
+                serialize_execution_policy_snapshot(execution_policy),
             )
         self.dataset_storage.write_json(
             application_snapshot_object_key,
@@ -302,13 +242,13 @@ class WorkflowRuntimeService:
             template.model_dump(mode="json"),
         )
 
-        effective_timeout_seconds = self._resolve_effective_timeout_seconds(
+        effective_timeout_seconds = resolve_effective_timeout_seconds(
             requested_timeout_seconds=normalized_request.timeout_seconds,
             fallback_timeout_seconds=30,
             execution_policy=execution_policy,
             field_name="timeout_seconds",
         )
-        preview_metadata = self._apply_execution_policy_metadata(
+        preview_metadata = apply_execution_policy_metadata(
             dict(normalized_request.execution_metadata or {}),
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
@@ -330,7 +270,7 @@ class WorkflowRuntimeService:
             started_at=now,
             created_by=_normalize_optional_str(created_by),
             timeout_seconds=effective_timeout_seconds,
-            retention_until=_future_isoformat(hours=WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS),
+            retention_until=build_preview_run_retention_until(),
             metadata=preview_metadata,
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -482,36 +422,14 @@ class WorkflowRuntimeService:
     ) -> tuple[WorkflowPreviewRun, ...]:
         """执行 preview run 列表查询和过滤。"""
 
-        normalized_state = _normalize_optional_str(state)
-        if normalized_state is not None and normalized_state not in WORKFLOW_PREVIEW_RUN_STATES:
-            raise InvalidRequestError(
-                "preview run state 过滤条件无效",
-                details={"state": normalized_state},
-            )
-        created_from_at = _parse_optional_iso_datetime_text(created_from, field_name="created_from")
-        created_to_at = _parse_optional_iso_datetime_text(created_to, field_name="created_to")
-        if created_from_at is not None and created_to_at is not None and created_from_at > created_to_at:
-            raise InvalidRequestError(
-                "created_from 不能大于 created_to",
-                details={"created_from": created_from, "created_to": created_to},
-            )
         with self._open_unit_of_work() as unit_of_work:
             preview_runs = unit_of_work.workflow_runtime.list_preview_runs(project_id)
-
-        filtered_preview_runs: list[WorkflowPreviewRun] = []
-        for preview_run in preview_runs:
-            if normalized_state is not None and preview_run.state != normalized_state:
-                continue
-            preview_created_at = _parse_required_iso_datetime_text(
-                preview_run.created_at,
-                field_name="preview_run.created_at",
-            )
-            if created_from_at is not None and preview_created_at < created_from_at:
-                continue
-            if created_to_at is not None and preview_created_at > created_to_at:
-                continue
-            filtered_preview_runs.append(preview_run)
-        return tuple(filtered_preview_runs)
+        return filter_preview_runs(
+            preview_runs,
+            state=state,
+            created_from=created_from,
+            created_to=created_to,
+        )
 
     def delete_preview_run(self, preview_run_id: str) -> None:
         """删除一个 WorkflowPreviewRun 及其 snapshot 目录。
@@ -524,7 +442,7 @@ class WorkflowRuntimeService:
         """
 
         preview_run = self.get_preview_run(preview_run_id)
-        if preview_run.state not in WORKFLOW_PREVIEW_RUN_TERMINAL_STATES:
+        if preview_run_needs_cancel_before_delete(preview_run):
             if self.preview_run_manager is None:
                 raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
             preview_run = self.preview_run_manager.cancel_run(preview_run_id, cancelled_by=None)
@@ -556,7 +474,7 @@ class WorkflowRuntimeService:
     ) -> WorkflowAppRuntime:
         """创建一个最小 WorkflowAppRuntime。"""
 
-        normalized_request = self._normalize_runtime_create_request(request)
+        normalized_request = normalize_app_runtime_create_request(request)
         execution_policy = self._resolve_execution_policy_for_project(
             project_id=normalized_request.project_id,
             execution_policy_id=normalized_request.execution_policy_id,
@@ -592,7 +510,7 @@ class WorkflowRuntimeService:
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,
-                self._serialize_execution_policy_snapshot(execution_policy),
+                serialize_execution_policy_snapshot(execution_policy),
             )
         self.dataset_storage.write_json(
             application_snapshot_object_key,
@@ -602,7 +520,7 @@ class WorkflowRuntimeService:
             template_snapshot_object_key,
             template_document.template.model_dump(mode="json"),
         )
-        request_timeout_seconds = self._resolve_effective_timeout_seconds(
+        request_timeout_seconds = resolve_effective_timeout_seconds(
             requested_timeout_seconds=normalized_request.request_timeout_seconds,
             fallback_timeout_seconds=60,
             execution_policy=execution_policy,
@@ -625,8 +543,8 @@ class WorkflowRuntimeService:
             created_at=now,
             updated_at=now,
             created_by=_normalize_optional_str(created_by),
-            metadata=self._with_resource_updated_by(
-                self._apply_execution_policy_metadata(
+            metadata=with_runtime_resource_updated_by(
+                apply_execution_policy_metadata(
                     dict(normalized_request.metadata or {}),
                     execution_policy=execution_policy,
                     execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
@@ -700,14 +618,14 @@ class WorkflowRuntimeService:
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
-        updated_runtime = self._apply_worker_state(
+        updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
                 desired_state="running",
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
-                metadata=self._with_resource_updated_by(
+                metadata=with_runtime_resource_updated_by(
                     dict(workflow_app_runtime.metadata),
                     updated_by,
                 ),
@@ -738,14 +656,14 @@ class WorkflowRuntimeService:
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         runtime_state = self.worker_manager.stop_runtime(workflow_runtime_id)
-        updated_runtime = self._apply_worker_state(
+        updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
                 desired_state="stopped",
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_stopped_at=_now_isoformat(),
-                metadata=self._with_resource_updated_by(
+                metadata=with_runtime_resource_updated_by(
                     dict(workflow_app_runtime.metadata),
                     updated_by,
                 ),
@@ -796,7 +714,7 @@ class WorkflowRuntimeService:
             desired_state="stopped",
             observed_state="stopped",
             updated_at=_now_isoformat(),
-            metadata=self._with_resource_updated_by(
+            metadata=with_runtime_resource_updated_by(
                 dict(workflow_app_runtime.metadata),
                 deleted_by,
             ),
@@ -830,7 +748,7 @@ class WorkflowRuntimeService:
         stopped_at = _now_isoformat()
         self.worker_manager.stop_runtime(workflow_runtime_id)
         runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
-        updated_runtime = self._apply_worker_state(
+        updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
                 desired_state="running",
@@ -838,7 +756,7 @@ class WorkflowRuntimeService:
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
                 last_stopped_at=stopped_at,
-                metadata=self._with_resource_updated_by(
+                metadata=with_runtime_resource_updated_by(
                     dict(workflow_app_runtime.metadata),
                     updated_by,
                 ),
@@ -864,7 +782,7 @@ class WorkflowRuntimeService:
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         runtime_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
-        updated_runtime = self._apply_worker_state(
+        updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
                 observed_state=runtime_state.observed_state,
@@ -912,7 +830,7 @@ class WorkflowRuntimeService:
         """
 
         self.get_workflow_run(workflow_run_id)
-        events = self._read_workflow_run_events(workflow_run_id)
+        events = read_workflow_run_events(self.dataset_storage, workflow_run_id)
         if after_sequence is not None:
             events = tuple(item for item in events if item.sequence > after_sequence)
         if limit is None:
@@ -948,15 +866,15 @@ class WorkflowRuntimeService:
             )
 
         execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
-        normalized_request = self._normalize_runtime_invoke_request(request)
+        normalized_request = normalize_runtime_invoke_request(request)
         metadata = dict(normalized_request.execution_metadata or {})
         metadata.setdefault("trigger_source", "async-invoke")
-        metadata = self._apply_execution_policy_metadata(
+        metadata = apply_execution_policy_metadata(
             metadata,
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         )
-        metadata = _apply_workflow_run_persistence_defaults(
+        metadata = apply_workflow_run_persistence_defaults(
             metadata,
             execution_policy=execution_policy,
         )
@@ -969,7 +887,7 @@ class WorkflowRuntimeService:
             state="queued",
             created_at=now,
             created_by=_normalize_optional_str(created_by),
-            requested_timeout_seconds=self._resolve_effective_timeout_seconds(
+            requested_timeout_seconds=resolve_effective_timeout_seconds(
                 requested_timeout_seconds=normalized_request.timeout_seconds,
                 fallback_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
                 execution_policy=execution_policy,
@@ -992,7 +910,7 @@ class WorkflowRuntimeService:
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=_with_input_buffer_ref_cleanups(
+                execution_metadata=with_input_buffer_ref_cleanups(
                     metadata,
                     normalized_request.input_bindings or {},
                 ),
@@ -1072,14 +990,14 @@ class WorkflowRuntimeService:
             )
 
         execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
-        normalized_request = self._normalize_runtime_invoke_request(request)
+        normalized_request = normalize_runtime_invoke_request(request)
         now = _now_isoformat()
-        execution_metadata = self._apply_execution_policy_metadata(
+        execution_metadata = apply_execution_policy_metadata(
             dict(normalized_request.execution_metadata or {}),
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         )
-        execution_metadata = _apply_workflow_run_persistence_defaults(
+        execution_metadata = apply_workflow_run_persistence_defaults(
             execution_metadata,
             execution_policy=execution_policy,
         )
@@ -1091,7 +1009,7 @@ class WorkflowRuntimeService:
             state="dispatching",
             created_at=now,
             created_by=_normalize_optional_str(created_by),
-            requested_timeout_seconds=self._resolve_effective_timeout_seconds(
+            requested_timeout_seconds=resolve_effective_timeout_seconds(
                 requested_timeout_seconds=normalized_request.timeout_seconds,
                 fallback_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
                 execution_policy=execution_policy,
@@ -1117,7 +1035,7 @@ class WorkflowRuntimeService:
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=_with_input_buffer_ref_cleanups(
+                execution_metadata=with_input_buffer_ref_cleanups(
                     execution_metadata,
                     normalized_request.input_bindings or {},
                 ),
@@ -1126,12 +1044,12 @@ class WorkflowRuntimeService:
             raw_outputs = dict(worker_result.outputs)
             raw_template_outputs = dict(worker_result.template_outputs)
             raw_node_records = tuple(dict(item) for item in worker_result.node_records)
-            workflow_run = self._apply_run_result(
+            workflow_run = apply_workflow_run_result(
                 workflow_run,
                 worker_result,
                 execution_policy=execution_policy,
             )
-            workflow_app_runtime = self._apply_worker_state(
+            workflow_app_runtime = apply_worker_state(
                 replace(workflow_app_runtime, updated_at=_now_isoformat()),
                 worker_result.worker_state,
             )
@@ -1268,54 +1186,6 @@ class WorkflowRuntimeService:
             )
         raise InvalidRequestError("preview run 需要 application_ref_id 或 application + template")
 
-    def _apply_worker_state(
-        self,
-        workflow_app_runtime: WorkflowAppRuntime,
-        runtime_state: WorkflowRuntimeWorkerState,
-    ) -> WorkflowAppRuntime:
-        """把 worker 返回状态回写到 WorkflowAppRuntime。"""
-
-        return replace(
-            workflow_app_runtime,
-            observed_state=runtime_state.observed_state,
-            worker_process_id=runtime_state.process_id,
-            heartbeat_at=runtime_state.heartbeat_at,
-            loaded_snapshot_fingerprint=runtime_state.loaded_snapshot_fingerprint,
-            last_error=runtime_state.last_error,
-            health_summary=dict(runtime_state.health_summary),
-        )
-
-    def _apply_run_result(
-        self,
-        workflow_run: WorkflowRun,
-        worker_result: WorkflowRuntimeWorkerRunResult,
-        *,
-        execution_policy: WorkflowExecutionPolicy | None = None,
-    ) -> WorkflowRun:
-        """把 worker 返回的执行结果回写到 WorkflowRun。"""
-
-        metadata = dict(workflow_run.metadata)
-        if worker_result.error_details:
-            metadata["error_details"] = dict(worker_result.error_details)
-        return replace(
-            workflow_run,
-            state=worker_result.state,
-            started_at=workflow_run.started_at or _now_isoformat(),
-            finished_at=_now_isoformat(),
-            assigned_process_id=worker_result.worker_state.process_id,
-            outputs=sanitize_runtime_mapping(worker_result.outputs),
-            template_outputs=sanitize_runtime_mapping(worker_result.template_outputs),
-            node_records=_serialize_node_records(
-                tuple(worker_result.node_records),
-                retain_node_records_enabled=_should_retain_workflow_run_node_records(
-                    workflow_run,
-                    execution_policy=execution_policy,
-                ),
-            ),
-            error_message=worker_result.error_message,
-            metadata=metadata,
-        )
-
     def _build_async_run_callbacks(
         self,
         workflow_runtime_id: str,
@@ -1383,12 +1253,12 @@ class WorkflowRuntimeService:
             workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
             if workflow_run is None or workflow_app_runtime is None:
                 return
-            updated_run = self._apply_run_result(
+            updated_run = apply_workflow_run_result(
                 workflow_run,
                 worker_result,
                 execution_policy=self._load_runtime_execution_policy(workflow_app_runtime),
             )
-            updated_runtime = self._apply_worker_state(
+            updated_runtime = apply_worker_state(
                 replace(workflow_app_runtime, updated_at=_now_isoformat()),
                 worker_result.worker_state,
             )
@@ -1533,7 +1403,7 @@ class WorkflowRuntimeService:
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
             if workflow_app_runtime is not None and runtime_state is not None:
                 unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                    self._apply_worker_state(
+                    apply_worker_state(
                         replace(workflow_app_runtime, updated_at=_now_isoformat()),
                         runtime_state,
                     )
@@ -1577,38 +1447,18 @@ class WorkflowRuntimeService:
         - WorkflowRunEvent：新生成的事件；no-trace 模式下只返回内存事件，不写磁盘。
         """
 
-        event_payload = sanitize_runtime_mapping(
-            {
-                **self._build_workflow_run_event_payload(workflow_run),
-                **dict(payload or {}),
-            }
-        )
-        if not _should_retain_workflow_run_trace(workflow_run):
-            return WorkflowRunEvent(
-                workflow_run_id=workflow_run.workflow_run_id,
-                workflow_runtime_id=workflow_run.workflow_runtime_id,
-                sequence=0,
-                event_type=event_type.strip() or "run.updated",
-                created_at=_now_isoformat(),
-                message=message.strip() or "workflow run 事件",
-                payload=event_payload,
-            )
-
         event_lock = self._resolve_workflow_run_event_lock(workflow_run.workflow_run_id)
-        with event_lock:
-            existing_events = list(self._read_workflow_run_events(workflow_run.workflow_run_id))
-            event = WorkflowRunEvent(
-                workflow_run_id=workflow_run.workflow_run_id,
-                workflow_runtime_id=workflow_run.workflow_runtime_id,
-                sequence=len(existing_events) + 1,
-                event_type=event_type.strip() or "run.updated",
-                created_at=_now_isoformat(),
-                message=message.strip() or "workflow run 事件",
-                payload=event_payload,
-            )
-            existing_events.append(event)
-            self._write_workflow_run_events(workflow_run.workflow_run_id, tuple(existing_events))
-            self._publish_workflow_run_event(event)
+        event = append_workflow_run_event(
+            dataset_storage=self.dataset_storage,
+            workflow_run=workflow_run,
+            event_lock=event_lock,
+            event_type=event_type,
+            message=message,
+            payload=payload,
+        )
+        if event.sequence <= 0:
+            return event
+        self._publish_workflow_run_event(event)
         if should_publish_project_summary_for_workflow_run_event(event.event_type):
             publish_project_summary_event(
                 session_factory=self.session_factory,
@@ -1667,166 +1517,6 @@ class WorkflowRuntimeService:
             )
         )
 
-    def _publish_workflow_app_runtime_event(self, event: WorkflowAppRuntimeEvent) -> None:
-        """把 WorkflowAppRuntime 事件同步发布到统一服务内事件总线。"""
-
-        if self.service_event_bus is None:
-            return
-        self.service_event_bus.publish(
-            ServiceEvent(
-                stream="workflows.app-runtimes.events",
-                resource_kind="workflow_app_runtime",
-                resource_id=event.workflow_runtime_id,
-                event_type=event.event_type,
-                occurred_at=event.created_at,
-                cursor=str(event.sequence),
-                payload={
-                    "workflow_runtime_id": event.workflow_runtime_id,
-                    "sequence": event.sequence,
-                    "message": event.message,
-                    **dict(event.payload),
-                },
-            )
-        )
-
-    def _read_workflow_run_events(self, workflow_run_id: str) -> tuple[WorkflowRunEvent, ...]:
-        """读取一条 WorkflowRun 的全部事件。"""
-
-        object_key = build_workflow_run_events_object_key(workflow_run_id)
-        if not self.dataset_storage.resolve(object_key).exists():
-            return ()
-        payload = self.dataset_storage.read_json(object_key)
-        if not isinstance(payload, list):
-            raise ServiceConfigurationError(
-                "workflow run 事件文件格式无效",
-                details={"workflow_run_id": workflow_run_id},
-            )
-        events: list[WorkflowRunEvent] = []
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
-            sequence = item.get("sequence")
-            created_at = item.get("created_at")
-            event_type = item.get("event_type")
-            message = item.get("message")
-            workflow_runtime_id = item.get("workflow_runtime_id")
-            if (
-                not isinstance(sequence, int)
-                or isinstance(sequence, bool)
-                or sequence <= 0
-                or not isinstance(created_at, str)
-                or not created_at
-                or not isinstance(event_type, str)
-                or not event_type
-                or not isinstance(message, str)
-                or not message
-                or not isinstance(workflow_runtime_id, str)
-                or not workflow_runtime_id
-            ):
-                continue
-            payload_value = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-            events.append(
-                WorkflowRunEvent(
-                    workflow_run_id=workflow_run_id,
-                    workflow_runtime_id=workflow_runtime_id,
-                    sequence=sequence,
-                    event_type=event_type,
-                    created_at=created_at,
-                    message=message,
-                    payload=payload_value,
-                )
-            )
-        return tuple(events)
-
-    def _write_workflow_run_events(
-        self,
-        workflow_run_id: str,
-        events: tuple[WorkflowRunEvent, ...],
-    ) -> None:
-        """把 WorkflowRun 事件列表写回 events.json。"""
-
-        payload = [
-            {
-                "workflow_run_id": item.workflow_run_id,
-                "workflow_runtime_id": item.workflow_runtime_id,
-                "sequence": item.sequence,
-                "event_type": item.event_type,
-                "created_at": item.created_at,
-                "message": item.message,
-                "payload": sanitize_runtime_mapping(item.payload),
-            }
-            for item in events
-        ]
-        self.dataset_storage.write_json(build_workflow_run_events_object_key(workflow_run_id), payload)
-
-    def _read_workflow_app_runtime_events(
-        self,
-        workflow_runtime_id: str,
-    ) -> tuple[WorkflowAppRuntimeEvent, ...]:
-        """读取一条 WorkflowAppRuntime 的全部事件。"""
-
-        object_key = build_workflow_app_runtime_events_object_key(workflow_runtime_id)
-        if not self.dataset_storage.resolve(object_key).exists():
-            return ()
-        payload = self.dataset_storage.read_json(object_key)
-        if not isinstance(payload, list):
-            raise ServiceConfigurationError(
-                "workflow app runtime 事件文件格式无效",
-                details={"workflow_runtime_id": workflow_runtime_id},
-            )
-        events: list[WorkflowAppRuntimeEvent] = []
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
-            sequence = item.get("sequence")
-            created_at = item.get("created_at")
-            event_type = item.get("event_type")
-            message = item.get("message")
-            if (
-                not isinstance(sequence, int)
-                or isinstance(sequence, bool)
-                or sequence <= 0
-                or not isinstance(created_at, str)
-                or not created_at
-                or not isinstance(event_type, str)
-                or not event_type
-                or not isinstance(message, str)
-                or not message
-            ):
-                continue
-            payload_value = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-            events.append(
-                WorkflowAppRuntimeEvent(
-                    workflow_runtime_id=workflow_runtime_id,
-                    sequence=sequence,
-                    event_type=event_type,
-                    created_at=created_at,
-                    message=message,
-                    payload=payload_value,
-                )
-            )
-        return tuple(events)
-
-    def _write_workflow_app_runtime_events(
-        self,
-        workflow_runtime_id: str,
-        events: tuple[WorkflowAppRuntimeEvent, ...],
-    ) -> None:
-        """把 WorkflowAppRuntime 事件列表写回 events.json。"""
-
-        payload = [
-            {
-                "workflow_runtime_id": item.workflow_runtime_id,
-                "sequence": item.sequence,
-                "event_type": item.event_type,
-                "created_at": item.created_at,
-                "message": item.message,
-                "payload": sanitize_runtime_mapping(item.payload),
-            }
-            for item in events
-        ]
-        self.dataset_storage.write_json(build_workflow_app_runtime_events_object_key(workflow_runtime_id), payload)
-
     @classmethod
     def _resolve_workflow_run_event_lock(cls, workflow_run_id: str) -> Lock:
         """返回指定 WorkflowRun 事件文件对应的写锁。"""
@@ -1837,56 +1527,6 @@ class WorkflowRuntimeService:
                 event_lock = Lock()
                 cls._workflow_run_event_locks[workflow_run_id] = event_lock
             return event_lock
-
-    @classmethod
-    def _resolve_workflow_app_runtime_event_lock(cls, workflow_runtime_id: str) -> Lock:
-        """返回指定 WorkflowAppRuntime 事件文件对应的写锁。"""
-
-        with cls._event_lock:
-            event_lock = cls._workflow_app_runtime_event_locks.get(workflow_runtime_id)
-            if event_lock is None:
-                event_lock = Lock()
-                cls._workflow_app_runtime_event_locks[workflow_runtime_id] = event_lock
-            return event_lock
-
-    @staticmethod
-    def _build_workflow_run_event_payload(workflow_run: WorkflowRun) -> dict[str, object]:
-        """构造 WorkflowRun 事件的基础 payload。"""
-
-        payload: dict[str, object] = {
-            "state": workflow_run.state,
-            "workflow_runtime_id": workflow_run.workflow_runtime_id,
-        }
-        if workflow_run.assigned_process_id is not None:
-            payload["assigned_process_id"] = workflow_run.assigned_process_id
-        if workflow_run.error_message is not None:
-            payload["error_message"] = workflow_run.error_message
-        if workflow_run.started_at is not None:
-            payload["started_at"] = workflow_run.started_at
-        if workflow_run.finished_at is not None:
-            payload["finished_at"] = workflow_run.finished_at
-        return payload
-
-    @staticmethod
-    def _build_workflow_app_runtime_event_payload(
-        workflow_app_runtime: WorkflowAppRuntime,
-    ) -> dict[str, object]:
-        """构造 WorkflowAppRuntime 事件的基础 payload。"""
-
-        payload: dict[str, object] = {
-            "desired_state": workflow_app_runtime.desired_state,
-            "observed_state": workflow_app_runtime.observed_state,
-            "health_summary": dict(workflow_app_runtime.health_summary),
-        }
-        if workflow_app_runtime.worker_process_id is not None:
-            payload["worker_process_id"] = workflow_app_runtime.worker_process_id
-        if workflow_app_runtime.heartbeat_at is not None:
-            payload["heartbeat_at"] = workflow_app_runtime.heartbeat_at
-        if workflow_app_runtime.loaded_snapshot_fingerprint is not None:
-            payload["loaded_snapshot_fingerprint"] = workflow_app_runtime.loaded_snapshot_fingerprint
-        if workflow_app_runtime.last_error is not None:
-            payload["last_error"] = workflow_app_runtime.last_error
-        return payload
 
     @staticmethod
     def _event_type_for_workflow_run_state(state: str) -> str:
@@ -1947,133 +1587,6 @@ class WorkflowRuntimeService:
         metadata["project_id"] = project_id
         return application.model_copy(update={"metadata": metadata})
 
-    @staticmethod
-    def _normalize_preview_request(request: WorkflowPreviewRunCreateRequest) -> WorkflowPreviewRunCreateRequest:
-        """规范化 preview run 创建请求。"""
-
-        project_id = request.project_id.strip()
-        if not project_id:
-            raise InvalidRequestError("project_id 不能为空")
-        if request.timeout_seconds is not None and request.timeout_seconds <= 0:
-            raise InvalidRequestError("timeout_seconds 必须大于 0")
-        wait_mode = request.wait_mode.strip().lower()
-        if wait_mode not in {"sync", "async"}:
-            raise InvalidRequestError(
-                "wait_mode 只支持 sync 或 async",
-                details={"wait_mode": request.wait_mode},
-            )
-        application_ref_id = _normalize_optional_str(request.application_ref_id)
-        execution_policy_id = _normalize_optional_str(request.execution_policy_id)
-        return WorkflowPreviewRunCreateRequest(
-            project_id=project_id,
-            application_ref_id=application_ref_id,
-            execution_policy_id=execution_policy_id,
-            application=request.application,
-            template=request.template,
-            input_bindings=dict(request.input_bindings or {}),
-            execution_metadata=dict(request.execution_metadata or {}),
-            timeout_seconds=request.timeout_seconds,
-            wait_mode=wait_mode,
-        )
-
-    @staticmethod
-    def _normalize_runtime_create_request(
-        request: WorkflowAppRuntimeCreateRequest,
-    ) -> WorkflowAppRuntimeCreateRequest:
-        """规范化 app runtime 创建请求。"""
-
-        project_id = request.project_id.strip()
-        application_id = request.application_id.strip()
-        if not project_id:
-            raise InvalidRequestError("project_id 不能为空")
-        if not application_id:
-            raise InvalidRequestError("application_id 不能为空")
-        if request.request_timeout_seconds is not None and request.request_timeout_seconds <= 0:
-            raise InvalidRequestError("request_timeout_seconds 必须大于 0")
-        heartbeat_interval_seconds = request.heartbeat_interval_seconds
-        heartbeat_timeout_seconds = request.heartbeat_timeout_seconds
-        if heartbeat_interval_seconds is not None and heartbeat_interval_seconds <= 0:
-            raise InvalidRequestError("heartbeat_interval_seconds 必须大于 0")
-        if heartbeat_timeout_seconds is not None and heartbeat_timeout_seconds <= 0:
-            raise InvalidRequestError("heartbeat_timeout_seconds 必须大于 0")
-        resolved_heartbeat_interval_seconds = heartbeat_interval_seconds or 5
-        resolved_heartbeat_timeout_seconds = heartbeat_timeout_seconds or max(
-            resolved_heartbeat_interval_seconds * 3,
-            15,
-        )
-        if resolved_heartbeat_timeout_seconds <= resolved_heartbeat_interval_seconds:
-            raise InvalidRequestError(
-                "heartbeat_timeout_seconds 必须大于 heartbeat_interval_seconds",
-                details={
-                    "heartbeat_interval_seconds": resolved_heartbeat_interval_seconds,
-                    "heartbeat_timeout_seconds": resolved_heartbeat_timeout_seconds,
-                },
-            )
-        return WorkflowAppRuntimeCreateRequest(
-            project_id=project_id,
-            application_id=application_id,
-            execution_policy_id=_normalize_optional_str(request.execution_policy_id),
-            display_name=request.display_name.strip(),
-            request_timeout_seconds=request.request_timeout_seconds,
-            heartbeat_interval_seconds=resolved_heartbeat_interval_seconds,
-            heartbeat_timeout_seconds=resolved_heartbeat_timeout_seconds,
-            metadata=dict(request.metadata or {}),
-        )
-
-    @staticmethod
-    def _normalize_execution_policy_create_request(
-        request: WorkflowExecutionPolicyCreateRequest,
-    ) -> WorkflowExecutionPolicyCreateRequest:
-        """规范化 WorkflowExecutionPolicy 创建请求。"""
-
-        project_id = request.project_id.strip()
-        execution_policy_id = request.execution_policy_id.strip()
-        display_name = request.display_name.strip()
-        policy_kind = request.policy_kind.strip()
-        trace_level = request.trace_level.strip()
-        if not project_id:
-            raise InvalidRequestError("project_id 不能为空")
-        if not execution_policy_id:
-            raise InvalidRequestError("execution_policy_id 不能为空")
-        if not display_name:
-            raise InvalidRequestError("display_name 不能为空")
-        if policy_kind not in {"preview-default", "runtime-default"}:
-            raise InvalidRequestError("policy_kind 取值无效")
-        if request.default_timeout_seconds <= 0:
-            raise InvalidRequestError("default_timeout_seconds 必须大于 0")
-        if request.max_run_timeout_seconds <= 0:
-            raise InvalidRequestError("max_run_timeout_seconds 必须大于 0")
-        if request.max_run_timeout_seconds < request.default_timeout_seconds:
-            raise InvalidRequestError("max_run_timeout_seconds 不能小于 default_timeout_seconds")
-        if not trace_level:
-            raise InvalidRequestError("trace_level 不能为空")
-        return WorkflowExecutionPolicyCreateRequest(
-            project_id=project_id,
-            execution_policy_id=execution_policy_id,
-            display_name=display_name,
-            policy_kind=policy_kind,
-            default_timeout_seconds=request.default_timeout_seconds,
-            max_run_timeout_seconds=request.max_run_timeout_seconds,
-            trace_level=trace_level,
-            retain_node_records_enabled=request.retain_node_records_enabled,
-            retain_trace_enabled=request.retain_trace_enabled,
-            metadata=dict(request.metadata or {}),
-        )
-
-    @staticmethod
-    def _normalize_runtime_invoke_request(
-        request: WorkflowRuntimeInvokeRequest,
-    ) -> WorkflowRuntimeInvokeRequest:
-        """规范化 runtime invoke 请求。"""
-
-        if request.timeout_seconds is not None and request.timeout_seconds <= 0:
-            raise InvalidRequestError("timeout_seconds 必须大于 0")
-        return WorkflowRuntimeInvokeRequest(
-            input_bindings=dict(request.input_bindings or {}),
-            execution_metadata=dict(request.execution_metadata or {}),
-            timeout_seconds=request.timeout_seconds,
-        )
-
     def _resolve_execution_policy_for_project(
         self,
         *,
@@ -2130,290 +1643,11 @@ class WorkflowRuntimeService:
             metadata=dict(payload.get("metadata") or {}),
         )
 
-    @staticmethod
-    def _serialize_execution_policy_snapshot(execution_policy: WorkflowExecutionPolicy) -> dict[str, object]:
-        """把 WorkflowExecutionPolicy 序列化为 snapshot JSON。"""
-
-        return {
-            "execution_policy_id": execution_policy.execution_policy_id,
-            "project_id": execution_policy.project_id,
-            "display_name": execution_policy.display_name,
-            "policy_kind": execution_policy.policy_kind,
-            "default_timeout_seconds": execution_policy.default_timeout_seconds,
-            "max_run_timeout_seconds": execution_policy.max_run_timeout_seconds,
-            "trace_level": execution_policy.trace_level,
-            "retain_node_records_enabled": execution_policy.retain_node_records_enabled,
-            "retain_trace_enabled": execution_policy.retain_trace_enabled,
-            "created_at": execution_policy.created_at,
-            "updated_at": execution_policy.updated_at,
-            "created_by": execution_policy.created_by,
-            "metadata": dict(execution_policy.metadata),
-        }
-
-    @staticmethod
-    def _apply_execution_policy_metadata(
-        metadata: dict[str, object],
-        *,
-        execution_policy: WorkflowExecutionPolicy | None,
-        execution_policy_snapshot_object_key: str | None,
-    ) -> dict[str, object]:
-        """把 execution policy 摘要补充到 metadata。"""
-
-        payload = dict(metadata)
-        if execution_policy is None:
-            return payload
-        payload["execution_policy"] = {
-            "execution_policy_id": execution_policy.execution_policy_id,
-            "policy_kind": execution_policy.policy_kind,
-            "trace_level": execution_policy.trace_level,
-            "retain_node_records_enabled": execution_policy.retain_node_records_enabled,
-            "retain_trace_enabled": execution_policy.retain_trace_enabled,
-            "snapshot_object_key": execution_policy_snapshot_object_key,
-        }
-        return payload
-
-    @staticmethod
-    def _with_resource_updated_by(
-        metadata: dict[str, object],
-        updated_by: str | None,
-    ) -> dict[str, object]:
-        """把 runtime 资源最近修改主体写入 metadata。"""
-
-        payload = dict(metadata)
-        normalized_updated_by = _normalize_optional_str(updated_by)
-        if normalized_updated_by is not None:
-            payload["updated_by"] = normalized_updated_by
-        return payload
-
-    @staticmethod
-    def _resolve_effective_timeout_seconds(
-        *,
-        requested_timeout_seconds: int | None,
-        fallback_timeout_seconds: int,
-        execution_policy: WorkflowExecutionPolicy | None,
-        field_name: str,
-    ) -> int:
-        """基于 execution policy 计算最终超时秒数。"""
-
-        effective_timeout_seconds = requested_timeout_seconds or fallback_timeout_seconds
-        if execution_policy is None:
-            return effective_timeout_seconds
-        if requested_timeout_seconds is None:
-            return execution_policy.default_timeout_seconds
-        if requested_timeout_seconds > execution_policy.max_run_timeout_seconds:
-            raise InvalidRequestError(
-                f"{field_name} 不能大于 execution policy 限制",
-                details={
-                    field_name: requested_timeout_seconds,
-                    "max_run_timeout_seconds": execution_policy.max_run_timeout_seconds,
-                    "execution_policy_id": execution_policy.execution_policy_id,
-                },
-            )
-        return effective_timeout_seconds
-
-
-def _serialize_node_records(
-    node_records: tuple[object, ...],
-    *,
-    retain_node_records_enabled: bool = True,
-) -> tuple[dict[str, object], ...]:
-    """把节点执行记录转换为稳定 JSON 结构。"""
-
-    if not retain_node_records_enabled:
-        return ()
-
-    serialized: list[dict[str, object]] = []
-    for item in node_records:
-        serialized.append(serialize_node_execution_record(item))
-    return tuple(serialized)
-
-
-def _with_input_buffer_ref_cleanups(
-    execution_metadata: dict[str, object],
-    input_bindings: dict[str, object],
-) -> dict[str, object]:
-    """把本次输入里的 BufferRef lease 登记为执行期 cleanup。
-
-    参数：
-    - execution_metadata：原始执行元数据。
-    - input_bindings：本次 WorkflowRun 的输入绑定。
-
-    返回：
-    - dict[str, object]：包含 cleanup 登记项的执行元数据副本。
-    """
-
-    payload = dict(execution_metadata)
-    for buffer_ref in _iter_input_buffer_refs(input_bindings):
-        pool_name_value = buffer_ref.metadata.get("pool_name")
-        register_local_buffer_lease_cleanup(
-            payload,
-            lease_id=buffer_ref.lease_id,
-            pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
-        )
-    return payload
-
-
-def _apply_workflow_run_persistence_defaults(
-    metadata: dict[str, object],
-    *,
-    execution_policy: WorkflowExecutionPolicy | None,
-) -> dict[str, object]:
-    """补齐正式 WorkflowRun 的轻量持久化默认值。
-
-    参数：
-    - metadata：调用方传入并已合并 execution policy 摘要的元数据。
-    - execution_policy：runtime 当前绑定的执行策略。
-
-    返回：
-    - dict[str, object]：包含 trace 和 node_records 保留策略的元数据副本。
-    """
-
-    payload = dict(metadata)
-    if "trace_level" not in payload:
-        payload["trace_level"] = (
-            execution_policy.trace_level
-            if execution_policy is not None
-            else WORKFLOW_RUN_DEFAULT_TRACE_LEVEL
-        )
-    if "retain_trace_enabled" not in payload:
-        payload["retain_trace_enabled"] = (
-            execution_policy.retain_trace_enabled
-            if execution_policy is not None
-            else WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED
-        )
-    if "retain_node_records_enabled" not in payload:
-        payload["retain_node_records_enabled"] = (
-            execution_policy.retain_node_records_enabled
-            if execution_policy is not None
-            else WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED
-        )
-    return payload
-
-
-def _iter_input_buffer_refs(value: object) -> Iterator[BufferRef]:
-    """递归读取输入载荷里的 BufferRef。
-
-    参数：
-    - value：待扫描的输入载荷片段。
-
-    返回：
-    - Iterator[BufferRef]：输入载荷中可解析的 BufferRef。
-    """
-
-    if isinstance(value, BufferRef):
-        yield value
-        return
-    if isinstance(value, dict):
-        buffer_ref_payload = value.get("buffer_ref")
-        if isinstance(buffer_ref_payload, dict):
-            try:
-                yield BufferRef.model_validate(buffer_ref_payload)
-            except Exception:
-                pass
-        for child_value in value.values():
-            yield from _iter_input_buffer_refs(child_value)
-        return
-    if isinstance(value, list | tuple):
-        for child_value in value:
-            yield from _iter_input_buffer_refs(child_value)
-
-
-def _should_retain_workflow_run_node_records(
-    workflow_run: WorkflowRun,
-    *,
-    execution_policy: WorkflowExecutionPolicy | None,
-) -> bool:
-    """判断 WorkflowRun 是否需要保留 node_records。
-
-    参数：
-    - workflow_run：目标 WorkflowRun。
-    - execution_policy：runtime 当前绑定的执行策略。
-
-    返回：
-    - bool：需要保留时返回 True。
-    """
-
-    metadata_flag = _read_optional_bool_flag(
-        workflow_run.metadata.get("retain_node_records_enabled")
-    )
-    if metadata_flag is False:
-        return False
-    if execution_policy is not None and not execution_policy.retain_node_records_enabled:
-        return False
-    if metadata_flag is True:
-        return True
-    return bool(execution_policy is not None and execution_policy.retain_node_records_enabled)
-
-
-def _should_retain_workflow_run_trace(workflow_run: WorkflowRun) -> bool:
-    """判断 WorkflowRun 是否需要写入 events.json。
-
-    参数：
-    - workflow_run：目标 WorkflowRun。
-
-    返回：
-    - bool：需要写入事件文件时返回 True。
-    """
-
-    metadata = dict(workflow_run.metadata)
-    metadata_flag = _read_optional_bool_flag(metadata.get("retain_trace_enabled"))
-    if metadata_flag is False:
-        return False
-    trace_level_value = metadata.get("trace_level")
-    trace_level = trace_level_value if isinstance(trace_level_value, str) else None
-    if _normalize_optional_str(trace_level) == "none":
-        return False
-    if metadata_flag is True and trace_level is not None:
-        return True
-    execution_policy_payload = metadata.get("execution_policy")
-    if isinstance(execution_policy_payload, dict):
-        execution_policy_flag = _read_optional_bool_flag(
-            execution_policy_payload.get("retain_trace_enabled")
-        )
-        if execution_policy_flag is False:
-            return False
-        policy_trace_level = execution_policy_payload.get("trace_level")
-        normalized_policy_trace_level = (
-            policy_trace_level if isinstance(policy_trace_level, str) else None
-        )
-        if _normalize_optional_str(normalized_policy_trace_level) == "none":
-            return False
-        if execution_policy_flag is True and normalized_policy_trace_level is not None:
-            return True
-    return False
-
-
-def _read_optional_bool_flag(value: object) -> bool | None:
-    """读取可由 JSON 或文本传入的布尔开关。
-
-    参数：
-    - value：原始开关值。
-
-    返回：
-    - bool | None：可识别时返回布尔值，否则返回 None。
-    """
-
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized_value = value.strip().lower()
-        if normalized_value in {"true", "1", "yes", "on"}:
-            return True
-        if normalized_value in {"false", "0", "no", "off"}:
-            return False
-    return None
-
 
 def _now_isoformat() -> str:
     """返回当前 UTC 时间的 ISO8601 文本。"""
 
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _future_isoformat(*, hours: int) -> str:
-    """返回若干小时后的 UTC 时间文本。"""
-
-    return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
 
 
 def _normalize_optional_str(value: str | None) -> str | None:
@@ -2423,27 +1657,3 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
-
-
-def _parse_optional_iso_datetime_text(value: str | None, *, field_name: str) -> datetime | None:
-    """把可选 ISO8601 文本解析为 UTC datetime。"""
-
-    normalized_value = _normalize_optional_str(value)
-    if normalized_value is None:
-        return None
-    return _parse_required_iso_datetime_text(normalized_value, field_name=field_name)
-
-
-def _parse_required_iso_datetime_text(value: str, *, field_name: str) -> datetime:
-    """把 ISO8601 文本解析为带时区的 UTC datetime。"""
-
-    try:
-        parsed_value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise InvalidRequestError(
-            f"{field_name} 不是有效的 ISO8601 时间",
-            details={field_name: value},
-        ) from exc
-    if parsed_value.tzinfo is None:
-        parsed_value = parsed_value.replace(tzinfo=timezone.utc)
-    return parsed_value.astimezone(timezone.utc)

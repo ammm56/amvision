@@ -36,8 +36,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.workflows.workflow_service import (
-    LocalWorkflowJsonService,
+from backend.service.application.workflows.documents.contracts import (
     WorkflowApplicationDocument,
     WorkflowApplicationSummary,
     WorkflowApplicationValidationSummary,
@@ -47,6 +46,7 @@ from backend.service.application.workflows.workflow_service import (
     WorkflowTemplateValidationSummary,
 )
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
+from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 

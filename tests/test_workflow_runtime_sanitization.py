@@ -36,10 +36,8 @@ from backend.service.application.workflows.runtime_service import (
     WorkflowRuntimeInvokeRequest,
     WorkflowRuntimeService,
 )
-from backend.service.application.workflows.runtime_worker import (
-    WorkflowRuntimeWorkerRunResult,
-    WorkflowRuntimeWorkerState,
-)
+from backend.service.application.workflows.worker.health import WorkflowRuntimeWorkerState
+from backend.service.application.workflows.worker.messages import WorkflowRuntimeWorkerRunResult
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,

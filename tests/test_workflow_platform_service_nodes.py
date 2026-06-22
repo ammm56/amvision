@@ -48,7 +48,7 @@ from backend.service.application.conversions.rfdetr_conversion_task_service impo
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from backend.service.application.workflows.service_node_runtime import (
+from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
 

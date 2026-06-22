@@ -74,7 +74,7 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
 from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
 )
-from backend.service.application.workflows.service_node_runtime import (
+from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
