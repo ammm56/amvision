@@ -72,12 +72,14 @@ from backend.service.api.rest.v1.routes.obb_validation_sessions.router import (
     obb_validation_sessions_router,
 )
 from backend.service.api.rest.v1.routes.auth import auth_router
-from backend.service.api.rest.v1.routes.models import models_router
+from backend.service.api.rest.v1.routes.models.router import models_router
 from backend.service.api.rest.v1.routes.projects import projects_router
 from backend.service.api.rest.v1.routes.system import system_router
-from backend.service.api.rest.v1.routes.tasks import tasks_router
+from backend.service.api.rest.v1.routes.tasks.router import tasks_router
 from backend.service.api.rest.v1.routes.workflow_runtime.router import workflow_runtime_router
-from backend.service.api.rest.v1.routes.workflow_trigger_sources import workflow_trigger_sources_router
+from backend.service.api.rest.v1.routes.workflow_trigger_sources.router import (
+    workflow_trigger_sources_router,
+)
 from backend.service.api.rest.v1.routes.workflows.router import workflows_router
 
 

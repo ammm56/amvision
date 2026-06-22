@@ -1048,7 +1048,7 @@ backend/service/application/workflows/trigger_sources/path_values.py
 
 开发内容：
 
-- 新增 `workflow_trigger_sources.py` REST route。
+- 新增 `workflow_trigger_sources/` REST route 目录。
 - 在 v1 router 中挂载 trigger source 路由。
 - 提供 create、list、get、enable、disable 和 health 的最小接口。
 - 权限第一阶段沿用 `workflows:read` 和 `workflows:write`。
@@ -1068,7 +1068,7 @@ GET /api/v1/workflows/trigger-sources/{trigger_source_id}/health
 主要文件：
 
 ```text
-backend/service/api/rest/v1/routes/workflow_trigger_sources.py
+backend/service/api/rest/v1/routes/workflow_trigger_sources/
 backend/service/api/rest/v1/router.py
 tests/test_workflow_trigger_sources_api.py
 tests/test_workflow_trigger_source_components.py
@@ -1261,7 +1261,7 @@ backend/service/application/workflows/trigger_sources/
   result_dispatcher.py
 backend/service/infrastructure/integrations/zeromq/
   zeromq_trigger_adapter.py
-backend/service/api/rest/v1/routes/workflow_trigger_sources.py
+backend/service/api/rest/v1/routes/workflow_trigger_sources/
 sdks/
   README.md
   contracts/

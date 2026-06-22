@@ -194,6 +194,9 @@ backend/service/application/workflows/
 - 旧 `classification_deployments.py`、`segmentation_deployments.py`、`pose_deployments.py`、`obb_deployments.py` 以及对应 helper 已删除，non-detection deployment 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，共同 CRUD 与 sync/async 控制由 `task_deployments/factory.py` 装配。
 - 旧 `detection_inference_tasks.py` 和 `detection_inference_helpers.py` 已删除，detection inference 已按 router、schema、response、service、outputs、runtime control 拆到 `routes/detection_inference_tasks/`。
 - 旧 `classification_inference_tasks.py`、`segmentation_inference_tasks.py`、`pose_inference_tasks.py`、`obb_inference_tasks.py`、`classification_inference_helpers.py` 和 `inference_route_helpers.py` 已删除，non-detection inference 入口已按任务类型拆成 `router.py`、`schemas.py`、`responses.py`、`services.py`，共同请求读取、响应构建、可见性和结果读取由 `task_inference/` 装配。
+- 旧 `tasks.py` 已删除，通用任务创建、列表、详情、事件和取消 API 已拆到 `routes/tasks/`，schema、response builder、可见性校验和控制动作分文件放置。
+- 旧 `models.py` 已删除，平台基础模型列表和详情 API 已拆到 `routes/models/`，schema、response builder 和 service 查询 helper 分文件放置。
+- 旧 `workflow_trigger_sources.py` 已删除，WorkflowTriggerSource 管理 API 已拆到 `routes/workflow_trigger_sources/`，router、schema、response builder、service 装配、health 响应和 runtime/application 引用摘要分文件放置。
 - route 文件里混有请求模型、权限检查、服务装配和 response builder。
 - 当前已删除旧 `workflows.py` 单文件入口，按 node catalog、node pack admin、template 文档和 application 文档拆到 `workflows/`，并由 `workflows/router.py` 统一装配。
 - 当前已删除旧 `workflow_runtime.py` 单文件入口，按 endpoint 组拆到 `workflow_runtime/`，并由 `workflow_runtime/router.py` 统一装配。跨 endpoint 共用的请求体、响应构建、服务装配和 multipart 调用构建暂放 `workflow_runtime_support/`。
@@ -419,6 +422,24 @@ backend/service/api/rest/v1/routes/
 │  ├─ schemas.py
 │  ├─ responses.py
 │  └─ services.py
+├─ tasks/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ visibility.py
+│  └─ controls.py
+├─ models/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  └─ services.py
+├─ workflow_trigger_sources/
+│  ├─ router.py
+│  ├─ schemas.py
+│  ├─ responses.py
+│  ├─ services.py
+│  ├─ health.py
+│  └─ references.py
 └─ ...
 ```
 
