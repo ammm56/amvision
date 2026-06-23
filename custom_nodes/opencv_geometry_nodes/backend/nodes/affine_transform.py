@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from backend.nodes.core_nodes._logic_node_support import (
+from backend.nodes.core_nodes.support.logic import (
     build_value_payload,
     extract_value_by_path,
     require_value_payload,

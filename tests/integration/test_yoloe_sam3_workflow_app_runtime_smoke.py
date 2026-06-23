@@ -22,8 +22,8 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
+from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local_handler
+from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest

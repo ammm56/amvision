@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 from threading import Lock
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from backend.service.application.events import ServiceEvent
@@ -22,7 +23,6 @@ from backend.contracts.workflows.resource_semantics import (
     build_workflow_app_runtime_snapshot_object_key,
     build_workflow_preview_run_snapshot_object_key,
 )
-from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
@@ -32,6 +32,7 @@ from backend.service.application.errors import (
 )
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.preview_run_manager import (
+    WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS,
     WorkflowPreviewRunExecutionRequest,
     WorkflowPreviewRunManager,
 )
@@ -105,6 +106,9 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+
+if TYPE_CHECKING:
+    from backend.service.application.deployments import PublishedInferenceGateway
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
@@ -308,7 +312,11 @@ class WorkflowRuntimeService:
             return self.get_preview_run(preview_run_id)
         return self.preview_run_manager.wait_for_completion(
             preview_run_id,
-            timeout_seconds=float(effective_timeout_seconds) + 5.0,
+            timeout_seconds=(
+                float(effective_timeout_seconds)
+                + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
+                + 5.0
+            ),
         )
 
     def get_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun:

@@ -16,9 +16,6 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError, ServiceError
-from backend.service.application.runtime.deployment.deployment_process_supervisor import (
-    DeploymentProcessSupervisor,
-)
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
@@ -35,6 +32,7 @@ from backend.service.application.workflows.snapshot_execution import (
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
+from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -220,8 +218,8 @@ def run_workflow_application_process_worker(
     """workflow application 子进程入口。"""
 
     session_factory: SessionFactory | None = None
-    sync_supervisor: DeploymentProcessSupervisor | None = None
-    async_supervisor: DeploymentProcessSupervisor | None = None
+    sync_supervisor: LazyDeploymentProcessSupervisor | None = None
+    async_supervisor: LazyDeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -237,18 +235,16 @@ def run_workflow_application_process_worker(
         )
         runtime_registry_loader.refresh()
 
-        sync_supervisor = DeploymentProcessSupervisor(
+        sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
         )
-        async_supervisor = DeploymentProcessSupervisor(
+        async_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
         )
-        sync_supervisor.start()
-        async_supervisor.start()
 
         project_id = _require_payload_str(request_payload, "project_id")
         application_id = _require_payload_str(request_payload, "application_id")

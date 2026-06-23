@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from backend.queue import QueueBackend
-from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.local_buffers import LocalBufferReader
 from backend.service.application.model_type_support import normalize_optional_platform_model_type
-from backend.service.application.models.inference.detection_async_inference_gateway import (
-    DetectionAsyncInferenceGatewayDispatcherRegistry,
-)
-from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessSupervisor
 from backend.service.application.task_type_support import require_supported_platform_task_type
-from backend.service.application.workflows.service_runtime import builders
-from backend.service.application.workflows.service_runtime.payloads import WorkflowEvaluationTaskPackage
 from backend.service.domain.models.platform_model_support import get_supported_platform_model_types
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+if TYPE_CHECKING:
+    from backend.queue import QueueBackend
+    from backend.service.application.deployments import PublishedInferenceGateway
+    from backend.service.application.local_buffers import LocalBufferReader
+    from backend.service.application.models.inference.detection_async_inference_gateway import (
+        DetectionAsyncInferenceGatewayDispatcherRegistry,
+    )
+    from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessSupervisor
+    from backend.service.application.workflows.service_runtime.payloads import WorkflowEvaluationTaskPackage
+    from backend.service.infrastructure.db.session import SessionFactory
+    from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 @dataclass(frozen=True)
@@ -63,40 +64,56 @@ class WorkflowServiceNodeRuntimeContext:
     def build_training_task_service(self, *, task_type: str, model_type: str) -> Any:
         """构造训练任务 service。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_training_task_service(self, task_type=task_type, model_type=model_type)
 
     def build_conversion_task_service(self, *, task_type: str, model_type: str) -> Any:
         """构造转换任务 service。"""
+
+        from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_conversion_task_service(self, task_type=task_type, model_type=model_type)
 
     def build_validation_session_service(self, *, task_type: str) -> Any:
         """构造人工验证 session service。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_validation_session_service(self, task_type=task_type)
 
     def build_dataset_export_task_service(self) -> Any:
         """构造数据集导出任务 service。"""
+
+        from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_dataset_export_task_service(self)
 
     def build_dataset_export_delivery_service(self) -> Any:
         """构造数据集导出打包与下载辅助 service。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_dataset_export_delivery_service(self)
 
     def build_dataset_import_service(self) -> Any:
         """构造数据集导入任务 service。"""
+
+        from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_dataset_import_service(self)
 
     def build_task_service(self) -> Any:
         """构造通用任务查询 service。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_task_service(self)
 
     def build_evaluation_task_service(self, *, task_type: str) -> Any:
         """构造评估任务 service。"""
+
+        from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_evaluation_task_service(self, task_type=task_type)
 
@@ -110,6 +127,8 @@ class WorkflowServiceNodeRuntimeContext:
     ) -> WorkflowEvaluationTaskPackage:
         """按任务分类生成或复用评估结果包。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.package_evaluation_result(
             self,
             task_id=task_id,
@@ -121,15 +140,21 @@ class WorkflowServiceNodeRuntimeContext:
     def build_deployment_service(self, *, task_type: str) -> Any:
         """按 task_type 构造 DeploymentInstance service。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_deployment_service(self, task_type=task_type)
 
     def build_published_inference_gateway(self) -> PublishedInferenceGateway:
         """构造 workflow 推理节点使用的 PublishedInferenceGateway。"""
 
+        from backend.service.application.workflows.service_runtime import builders
+
         return builders.build_published_inference_gateway(self)
 
     def build_inference_task_service(self, *, task_type: str) -> Any:
         """按 task_type 构造正式推理任务 service。"""
+
+        from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_inference_task_service(self, task_type=task_type)
 

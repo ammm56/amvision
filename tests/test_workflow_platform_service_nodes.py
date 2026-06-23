@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from backend.nodes.core_nodes import (
-    model_conversion_submit as conversion_node,
+import pytest
+
+from backend.nodes.core_nodes.service.deployment import (
     model_deployment_create as deployment_create_node,
+)
+from backend.nodes.core_nodes.service.model_tasks import (
+    model_conversion_submit as conversion_node,
     model_evaluation_submit as evaluation_node,
     model_inference_submit as inference_node,
     model_training_submit as training_node,
@@ -35,6 +39,18 @@ from backend.service.application.models.training.yolo11_pose_training_service im
 )
 from backend.service.application.models.training.yolo11_obb_training_service import (
     Yolo11ObbTrainingTaskRequest,
+)
+from backend.service.application.models.training.yolo26_classification_training_service import (
+    Yolo26ClassificationTrainingTaskRequest,
+)
+from backend.service.application.models.training.yolo26_obb_training_service import (
+    Yolo26ObbTrainingTaskRequest,
+)
+from backend.service.application.models.training.yolo26_pose_training_service import (
+    Yolo26PoseTrainingTaskRequest,
+)
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
+    Yolo26SegmentationTrainingTaskRequest,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     RfdetrTrainingTaskRequest,
@@ -285,6 +301,76 @@ def test_training_service_node_uses_yolo11_obb_request(
     assert isinstance(captured["request"], Yolo11ObbTrainingTaskRequest)
     assert captured["request"].display_name == "obb training"
     assert captured["request"].model_type == "yolo11"
+    assert captured["created_by"] == "workflow-user"
+    assert captured["submit_kwargs"] == {}
+
+
+@pytest.mark.parametrize(
+    ("task_type", "request_cls"),
+    (
+        ("classification", Yolo26ClassificationTrainingTaskRequest),
+        ("segmentation", Yolo26SegmentationTrainingTaskRequest),
+        ("pose", Yolo26PoseTrainingTaskRequest),
+        ("obb", Yolo26ObbTrainingTaskRequest),
+    ),
+)
+def test_training_service_node_uses_yolo26_non_detection_request(
+    monkeypatch,
+    task_type,
+    request_cls,
+) -> None:
+    """YOLO26 非 detection 训练节点应构造模型专属请求。"""
+
+    captured: dict[str, object] = {}
+
+    class _FakeTrainingService:
+        def submit_training_task(self, request, *, created_by=None, **kwargs):
+            captured["request"] = request
+            captured["created_by"] = created_by
+            captured["submit_kwargs"] = kwargs
+            return {"task_id": f"task-yolo26-{task_type}-1", "status": "queued"}
+
+    def _build_training_task_service(self, *, task_type=None, model_type="yolox"):
+        captured["service_kwargs"] = {"task_type": task_type, "model_type": model_type}
+        return _FakeTrainingService()
+
+    monkeypatch.setattr(
+        WorkflowServiceNodeRuntimeContext,
+        "build_training_task_service",
+        _build_training_task_service,
+    )
+
+    request = WorkflowNodeExecutionRequest(
+        node_id=f"yolo26-{task_type}-training-node",
+        node_definition=training_node.CORE_NODE_SPEC.node_definition,
+        parameters={
+            "task_type": task_type,
+            "model_type": "yolo26",
+            "project_id": "project-1",
+            "dataset_export_id": "dataset-export-1",
+            "recipe_id": "recipe-1",
+            "model_scale": "nano",
+            "output_model_name": f"yolo26-{task_type}-model",
+            "max_epochs": 5,
+            "display_name": f"yolo26 {task_type} training",
+            "created_by": "workflow-user",
+        },
+        runtime_context=WorkflowServiceNodeRuntimeContext(
+            session_factory=object(),
+            dataset_storage=object(),
+        ),
+    )
+
+    result = training_node._model_training_submit_handler(request)
+
+    assert result["body"]["task_id"] == f"task-yolo26-{task_type}-1"
+    assert captured["service_kwargs"] == {
+        "task_type": task_type,
+        "model_type": "yolo26",
+    }
+    assert isinstance(captured["request"], request_cls)
+    assert captured["request"].display_name == f"yolo26 {task_type} training"
+    assert captured["request"].model_type == "yolo26"
     assert captured["created_by"] == "workflow-user"
     assert captured["submit_kwargs"] == {}
 

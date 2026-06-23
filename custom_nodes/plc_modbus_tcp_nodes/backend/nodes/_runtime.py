@@ -8,11 +8,11 @@ import time
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.nodes.core_nodes._inspection_record_node_support import (
+from backend.nodes.core_nodes.support.inspection_record import (
     require_alarm_record_payload,
     require_ok_ng_value,
 )
-from backend.nodes.core_nodes._logic_node_support import (
+from backend.nodes.core_nodes.support.logic import (
     build_value_payload,
     compare_values,
     require_value_payload,

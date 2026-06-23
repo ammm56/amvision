@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
-from backend.nodes.core_nodes.alarm_condition import _alarm_condition_handler
-from backend.nodes.core_nodes.alarm_record import _alarm_record_handler
-from backend.nodes.core_nodes.ok_ng_decision import _ok_ng_decision_handler
-from backend.nodes.core_nodes.presence_check import _presence_check_handler
-from backend.nodes.core_nodes.process_decision import _process_decision_handler
-from backend.nodes.core_nodes.range_check import _range_check_handler
-from backend.nodes.core_nodes.result_record import _result_record_handler
-from backend.nodes.core_nodes.threshold_check import _threshold_check_handler
+from backend.nodes.core_nodes.output.alarm_record import _alarm_record_handler
+from backend.nodes.core_nodes.output.result_record import _result_record_handler
+from backend.nodes.core_nodes.rule.alarm_condition import _alarm_condition_handler
+from backend.nodes.core_nodes.rule.ok_ng_decision import _ok_ng_decision_handler
+from backend.nodes.core_nodes.rule.presence_check import _presence_check_handler
+from backend.nodes.core_nodes.rule.process_decision import _process_decision_handler
+from backend.nodes.core_nodes.rule.range_check import _range_check_handler
+from backend.nodes.core_nodes.rule.threshold_check import _threshold_check_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

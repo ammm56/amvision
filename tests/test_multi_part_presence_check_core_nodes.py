@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes.multi_part_presence_check import _multi_part_presence_check_handler
+from backend.nodes.core_nodes.vision.pattern.multi_part_presence_check import (
+    _multi_part_presence_check_handler,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

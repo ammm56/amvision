@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from backend.nodes import register_image_bytes
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
-from backend.nodes.core_nodes._region_node_support import (
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.region import (
     build_class_distribution,
     build_regions_payload,
 )
-from backend.nodes.core_nodes._roi_node_support import bbox_to_polygon_xy
+from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest

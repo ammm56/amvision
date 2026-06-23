@@ -6,11 +6,15 @@ import cv2
 import numpy as np
 import pytest
 
-from backend.nodes.core_nodes.foreign_object_check import _foreign_object_check_handler
-from backend.nodes.core_nodes.foreground_change_ratio import _foreground_change_ratio_handler
-from backend.nodes.core_nodes.reference_diff_metrics import _reference_diff_metrics_handler
-from backend.nodes.core_nodes.surface_uniformity_check import _surface_uniformity_check_handler
-from backend.nodes.core_nodes.surface_uniformity_metrics import _surface_uniformity_metrics_handler
+from backend.nodes.core_nodes.vision.defects.foreign_object_check import _foreign_object_check_handler
+from backend.nodes.core_nodes.vision.defects.foreground_change_ratio import _foreground_change_ratio_handler
+from backend.nodes.core_nodes.vision.defects.reference_diff_metrics import _reference_diff_metrics_handler
+from backend.nodes.core_nodes.vision.defects.surface_uniformity_check import (
+    _surface_uniformity_check_handler,
+)
+from backend.nodes.core_nodes.vision.defects.surface_uniformity_metrics import (
+    _surface_uniformity_metrics_handler,
+)
 from backend.nodes.runtime_support import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

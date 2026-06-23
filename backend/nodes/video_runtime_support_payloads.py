@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.nodes.core_nodes._logic_node_support import require_value_payload
+from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.nodes.runtime_support import require_image_payload
 from backend.nodes.video_runtime_support_tools import (
     infer_video_file_extension_from_media_type,

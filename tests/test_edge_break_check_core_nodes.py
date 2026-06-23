@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.core_nodes.edge_break_check import _edge_break_check_handler
+from backend.nodes.core_nodes.vision.defects.edge_break_check import _edge_break_check_handler
 from backend.nodes.runtime_support import build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

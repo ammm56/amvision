@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.core_nodes.corner_missing_check import _corner_missing_check_handler
-from backend.nodes.core_nodes.hole_pattern_check import _hole_pattern_check_handler
+from backend.nodes.core_nodes.vision.pattern.corner_missing_check import _corner_missing_check_handler
+from backend.nodes.core_nodes.vision.pattern.hole_pattern_check import _hole_pattern_check_handler
 from backend.nodes.runtime_support import build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

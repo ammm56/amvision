@@ -1097,7 +1097,7 @@ tests/test_workflow_trigger_source_components.py
 
 ```text
 backend/nodes/core_catalog.py
-backend/nodes/core_nodes/workflow_result.py
+backend/nodes/core_nodes/output/workflow_result.py
 tests/test_workflow_display_and_response_nodes.py
 docs/examples/workflows/
 ```

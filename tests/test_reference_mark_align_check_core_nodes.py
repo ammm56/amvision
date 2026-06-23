@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes.reference_mark_align_check import _reference_mark_align_check_handler
+from backend.nodes.core_nodes.vision.geometry.reference_mark_align_check import _reference_mark_align_check_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

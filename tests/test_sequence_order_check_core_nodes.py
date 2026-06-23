@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes.sequence_order_check import _sequence_order_check_handler
+from backend.nodes.core_nodes.vision.pattern.sequence_order_check import _sequence_order_check_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

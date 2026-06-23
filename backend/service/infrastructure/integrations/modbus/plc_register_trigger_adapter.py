@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from threading import Event, RLock, Thread
 from typing import Literal
 
-from backend.nodes.core_nodes._logic_node_support import compare_values
+from backend.nodes.core_nodes.support.logic import compare_values
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,

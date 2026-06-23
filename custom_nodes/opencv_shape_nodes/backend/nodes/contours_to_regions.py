@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
-from backend.nodes.core_nodes._region_node_support import (
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.region import (
     build_class_distribution,
     build_regions_payload,
 )

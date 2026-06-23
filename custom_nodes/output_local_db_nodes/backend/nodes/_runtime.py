@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from backend.nodes.core_nodes._logic_node_support import (
+from backend.nodes.core_nodes.support.logic import (
     build_value_payload,
     require_value_payload,
     try_extract_value_by_path,

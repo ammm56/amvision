@@ -6,7 +6,7 @@ from threading import Lock
 from types import SimpleNamespace
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.nodes.core_nodes.sahi_inference import _sahi_inference_handler
+from backend.nodes.core_nodes.model.inference.sahi_inference import _sahi_inference_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 

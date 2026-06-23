@@ -5,12 +5,14 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from backend.nodes.core_nodes.region_component_count import _region_component_count_handler
-from backend.nodes.core_nodes.region_continuity_score import _region_continuity_score_handler
-from backend.nodes.core_nodes.region_gap_check import _region_gap_check_handler
-from backend.nodes.core_nodes.region_hole_count import _region_hole_count_handler
-from backend.nodes.core_nodes.region_largest_component_ratio import _region_largest_component_ratio_handler
-from backend.nodes.core_nodes.region_span_metrics import _region_span_metrics_handler
+from backend.nodes.core_nodes.vision.continuity.region_component_count import _region_component_count_handler
+from backend.nodes.core_nodes.vision.continuity.region_continuity_score import _region_continuity_score_handler
+from backend.nodes.core_nodes.vision.continuity.region_gap_check import _region_gap_check_handler
+from backend.nodes.core_nodes.vision.continuity.region_hole_count import _region_hole_count_handler
+from backend.nodes.core_nodes.vision.continuity.region_largest_component_ratio import (
+    _region_largest_component_ratio_handler,
+)
+from backend.nodes.core_nodes.vision.continuity.region_span_metrics import _region_span_metrics_handler
 from backend.nodes.runtime_support import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

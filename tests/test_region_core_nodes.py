@@ -6,26 +6,26 @@ import cv2
 import numpy as np
 
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
-from backend.nodes.core_nodes.detections_to_regions import (
+from backend.nodes.core_nodes.vision.regions.detections_to_regions import (
     _detections_to_regions_handler,
 )
-from backend.nodes.core_nodes.regions_area_ratio import _regions_area_ratio_handler
-from backend.nodes.core_nodes.regions_area_sum import _regions_area_sum_handler
-from backend.nodes.core_nodes.regions_bbox_metrics import _regions_bbox_metrics_handler
-from backend.nodes.core_nodes.regions_count import _regions_count_handler
-from backend.nodes.core_nodes.regions_coverage_check import (
+from backend.nodes.core_nodes.vision.regions.regions_area_ratio import _regions_area_ratio_handler
+from backend.nodes.core_nodes.vision.regions.regions_area_sum import _regions_area_sum_handler
+from backend.nodes.core_nodes.vision.regions.regions_bbox_metrics import _regions_bbox_metrics_handler
+from backend.nodes.core_nodes.vision.regions.regions_count import _regions_count_handler
+from backend.nodes.core_nodes.vision.regions.regions_filter import _regions_filter_handler
+from backend.nodes.core_nodes.vision.regions.segments_to_regions import _segments_to_regions_handler
+from backend.nodes.core_nodes.vision.regions.value_to_regions import _value_to_regions_handler
+from backend.nodes.core_nodes.vision.regions.value_to_segments import _value_to_segments_handler
+from backend.nodes.core_nodes.vision.roi.regions_coverage_check import (
     _regions_coverage_check_handler,
 )
-from backend.nodes.core_nodes.regions_filter import _regions_filter_handler
-from backend.nodes.core_nodes.regions_inside_check import _regions_inside_check_handler
-from backend.nodes.core_nodes.regions_intersection_metrics import (
+from backend.nodes.core_nodes.vision.roi.regions_inside_check import _regions_inside_check_handler
+from backend.nodes.core_nodes.vision.roi.regions_intersection_metrics import (
     _regions_intersection_metrics_handler,
 )
-from backend.nodes.core_nodes.regions_offset_check import _regions_offset_check_handler
-from backend.nodes.core_nodes.roi_create import _roi_create_handler
-from backend.nodes.core_nodes.segments_to_regions import _segments_to_regions_handler
-from backend.nodes.core_nodes.value_to_regions import _value_to_regions_handler
-from backend.nodes.core_nodes.value_to_segments import _value_to_segments_handler
+from backend.nodes.core_nodes.vision.roi.regions_offset_check import _regions_offset_check_handler
+from backend.nodes.core_nodes.vision.roi.roi_create import _roi_create_handler
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     build_memory_image_payload,

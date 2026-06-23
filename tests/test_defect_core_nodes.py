@@ -6,10 +6,12 @@ import cv2
 import numpy as np
 
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.core_nodes.defect_cluster_count import _defect_cluster_count_handler
-from backend.nodes.core_nodes.defect_density import _defect_density_handler
-from backend.nodes.core_nodes.defect_largest_cluster_ratio import _defect_largest_cluster_ratio_handler
-from backend.nodes.core_nodes.edge_profile_gap_check import _edge_profile_gap_check_handler
+from backend.nodes.core_nodes.vision.defects.defect_cluster_count import _defect_cluster_count_handler
+from backend.nodes.core_nodes.vision.defects.defect_density import _defect_density_handler
+from backend.nodes.core_nodes.vision.defects.defect_largest_cluster_ratio import (
+    _defect_largest_cluster_ratio_handler,
+)
+from backend.nodes.core_nodes.vision.defects.edge_profile_gap_check import _edge_profile_gap_check_handler
 from backend.nodes.runtime_support import build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

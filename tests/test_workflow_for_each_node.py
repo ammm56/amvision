@@ -9,11 +9,11 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.nodes.core_nodes.compare import CORE_NODE_SPEC as COMPARE_NODE_SPEC
-from backend.nodes.core_nodes.for_each import CORE_NODE_SPEC as FOR_EACH_NODE_SPEC
-from backend.nodes.core_nodes.list_item_get import CORE_NODE_SPEC as LIST_ITEM_GET_NODE_SPEC
-from backend.nodes.core_nodes.variable_get import CORE_NODE_SPEC as VARIABLE_GET_NODE_SPEC
-from backend.nodes.core_nodes.variable_set import CORE_NODE_SPEC as VARIABLE_SET_NODE_SPEC
+from backend.nodes.core_nodes.logic.boolean.compare import CORE_NODE_SPEC as COMPARE_NODE_SPEC
+from backend.nodes.core_nodes.logic.control.for_each import CORE_NODE_SPEC as FOR_EACH_NODE_SPEC
+from backend.nodes.core_nodes.logic.collections.list_item_get import CORE_NODE_SPEC as LIST_ITEM_GET_NODE_SPEC
+from backend.nodes.core_nodes.logic.state.variable_get import CORE_NODE_SPEC as VARIABLE_GET_NODE_SPEC
+from backend.nodes.core_nodes.logic.state.variable_set import CORE_NODE_SPEC as VARIABLE_SET_NODE_SPEC
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor, WorkflowNodeRuntimeRegistry
 
 

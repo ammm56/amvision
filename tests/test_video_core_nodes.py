@@ -9,15 +9,15 @@ import numpy as np
 
 from backend.nodes import ExecutionImageRegistry
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
-from backend.nodes.core_nodes.tracks_filter import _tracks_filter_handler
-from backend.nodes.core_nodes.tracks_to_regions import _tracks_to_regions_handler
-from backend.nodes.core_nodes.video_decode_frames import _video_decode_frames_handler
-from backend.nodes.core_nodes.video_body import _video_body_handler
-from backend.nodes.core_nodes.video_frame_window_item_get import _video_frame_window_item_get_handler
-from backend.nodes.core_nodes.frame_window_preview import _frame_window_preview_handler
-from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
-from backend.nodes.core_nodes.video_overlay_render import _video_overlay_render_handler
-from backend.nodes.core_nodes.video_save import _video_save_handler
+from backend.nodes.core_nodes.video.tracks.tracks_filter import _tracks_filter_handler
+from backend.nodes.core_nodes.video.tracks.tracks_to_regions import _tracks_to_regions_handler
+from backend.nodes.core_nodes.video.windows.video_decode_frames import _video_decode_frames_handler
+from backend.nodes.core_nodes.output.video_body import _video_body_handler
+from backend.nodes.core_nodes.video.windows.video_frame_window_item_get import _video_frame_window_item_get_handler
+from backend.nodes.core_nodes.video.windows.frame_window_preview import _frame_window_preview_handler
+from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local_handler
+from backend.nodes.core_nodes.video.tracks.video_overlay_render import _video_overlay_render_handler
+from backend.nodes.core_nodes.video.io.video_save import _video_save_handler
 from backend.nodes.runtime_support import build_memory_image_payload
 from backend.nodes.video_runtime_support import (
     VIDEO_TRANSPORT_LOCAL_PATH,

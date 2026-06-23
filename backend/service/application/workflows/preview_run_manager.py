@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from queue import Empty
 from threading import Event, Lock, Thread
 from time import monotonic
+from typing import TYPE_CHECKING
 
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
     build_workflow_preview_run_events_object_key,
 )
 from backend.service.application.events import ServiceEvent
-from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
@@ -50,6 +50,12 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+
+if TYPE_CHECKING:
+    from backend.service.application.deployments import PublishedInferenceGateway
+
+
+WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS = 15.0
 
 
 @dataclass(frozen=True)
@@ -300,7 +306,11 @@ class WorkflowPreviewRunManager:
     def _observe_active_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
         """在后台线程里观察单条 preview run 的执行过程。"""
 
-        deadline = monotonic() + float(active_run.request.timeout_seconds)
+        deadline = (
+            monotonic()
+            + float(active_run.request.timeout_seconds)
+            + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
+        )
         preview_run_id = active_run.request.preview_run_id
         try:
             while True:

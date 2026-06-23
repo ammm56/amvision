@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
-from backend.nodes.core_nodes._roi_node_support import (
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.roi import (
     build_roi_payload,
     polygon_area,
     polygon_bbox_xyxy,

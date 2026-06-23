@@ -12,35 +12,35 @@ import httpx
 import pytest
 from PIL import Image
 
-from backend.nodes.core_nodes.csv_append_local import _csv_append_local_handler
-from backend.nodes.core_nodes.batch_files_relocate import (
+from backend.nodes.core_nodes.io.batch.batch_files_relocate import (
     _batch_files_relocate_handler,
 )
-from backend.nodes.core_nodes.batch_record import _batch_record_handler
-from backend.nodes.core_nodes.batch_result_summary import (
-    _batch_result_summary_handler,
-)
-from backend.nodes.core_nodes.directory_cursor_advance import (
+from backend.nodes.core_nodes.io.directory.directory_cursor_advance import (
     _directory_cursor_advance_handler,
 )
-from backend.nodes.core_nodes.directory_cursor_normalize import (
+from backend.nodes.core_nodes.io.directory.directory_cursor_normalize import (
     _directory_cursor_normalize_handler,
 )
-from backend.nodes.core_nodes.directory_batch_window import (
+from backend.nodes.core_nodes.io.directory.directory_batch_window import (
     _directory_batch_window_handler,
 )
-from backend.nodes.core_nodes.directory_poll_window import (
+from backend.nodes.core_nodes.io.directory.directory_poll_window import (
     _directory_poll_window_handler,
 )
-from backend.nodes.core_nodes.directory_scan import _directory_scan_handler
-from backend.nodes.core_nodes.http_post import _http_post_handler
-from backend.nodes.core_nodes.image_load_local import _image_load_local_handler
-from backend.nodes.core_nodes.image_list_local import _image_list_local_handler
-from backend.nodes.core_nodes.json_load_local import _json_load_local_handler
-from backend.nodes.core_nodes.json_save_local import _json_save_local_handler
-from backend.nodes.core_nodes.workflow_result import _workflow_result_handler
+from backend.nodes.core_nodes.io.directory.directory_scan import _directory_scan_handler
+from backend.nodes.core_nodes.io.local.image_list_local import _image_list_local_handler
+from backend.nodes.core_nodes.io.local.image_load_local import _image_load_local_handler
+from backend.nodes.core_nodes.io.local.json_load_local import _json_load_local_handler
+from backend.nodes.core_nodes.output.batch_record import _batch_record_handler
+from backend.nodes.core_nodes.output.batch_result_summary import (
+    _batch_result_summary_handler,
+)
+from backend.nodes.core_nodes.output.csv_append_local import _csv_append_local_handler
+from backend.nodes.core_nodes.output.http_post import _http_post_handler
+from backend.nodes.core_nodes.output.json_save_local import _json_save_local_handler
+from backend.nodes.core_nodes.output.workflow_result import _workflow_result_handler
 from backend.nodes.runtime_support import require_execution_image_registry
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -130,7 +130,7 @@ def test_directory_scan_handler_filters_unstable_files_and_dedupes_by_file_name_
     os.utime(second_file, (fresh_timestamp, fresh_timestamp))
 
     with patch(
-        "backend.nodes.core_nodes.directory_scan.time.time",
+        "backend.nodes.core_nodes.io.directory.directory_scan.time.time",
         return_value=fresh_timestamp,
     ):
         output = _directory_scan_handler(
@@ -200,9 +200,7 @@ def test_http_post_handler_posts_json_and_returns_summary(monkeypatch: object) -
             request=request,
         )
 
-    monkeypatch.setattr(
-        "backend.nodes.core_nodes.http_post.httpx.request", _fake_request
-    )
+    monkeypatch.setattr("backend.nodes.core_nodes.output.http_post._send_http_request", _fake_request)
 
     output = _http_post_handler(
         WorkflowNodeExecutionRequest(
@@ -222,6 +220,35 @@ def test_http_post_handler_posts_json_and_returns_summary(monkeypatch: object) -
     assert output["response"]["value"]["ok"] is True
     assert output["response"]["value"]["status_code"] == 201
     assert output["response"]["value"]["body_json"]["accepted"] is True
+
+
+def test_http_post_handler_maps_timeout_to_operation_timeout(
+    monkeypatch: object,
+) -> None:
+    """验证 HTTP 超时会转换为节点超时错误。"""
+
+    def _fake_request(**_: object) -> httpx.Response:
+        raise httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr(
+        "backend.nodes.core_nodes.output.http_post._send_http_request",
+        _fake_request,
+    )
+
+    with pytest.raises(OperationTimeoutError):
+        _http_post_handler(
+            WorkflowNodeExecutionRequest(
+                node_id="http-post-timeout",
+                node_definition=object(),
+                parameters={
+                    "url": "http://example.test/callback",
+                    "method": "POST",
+                    "timeout_seconds": 0.1,
+                },
+                input_values={"value": {"value": {"ok_ng": "OK"}}},
+                execution_metadata={},
+            )
+        )
 
 
 def test_csv_append_local_handler_appends_alarm_record(tmp_path: Path) -> None:

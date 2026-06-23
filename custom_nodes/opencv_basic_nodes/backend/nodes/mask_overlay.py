@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes._region_node_support import (
+from backend.nodes.core_nodes.support.region import (
     build_region_binary_mask,
     require_regions_payload,
 )

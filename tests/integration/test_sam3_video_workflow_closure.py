@@ -8,11 +8,11 @@ import cv2
 import numpy as np
 
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.core_nodes.video_body import _video_body_handler
-from backend.nodes.core_nodes.video_decode_frames import _video_decode_frames_handler
-from backend.nodes.core_nodes.video_load_local import _video_load_local_handler
-from backend.nodes.core_nodes.video_overlay_render import _video_overlay_render_handler
-from backend.nodes.core_nodes.video_save import _video_save_handler
+from backend.nodes.core_nodes.video.windows.video_decode_frames import _video_decode_frames_handler
+from backend.nodes.core_nodes.output.video_body import _video_body_handler
+from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local_handler
+from backend.nodes.core_nodes.video.tracks.video_overlay_render import _video_overlay_render_handler
+from backend.nodes.core_nodes.video.io.video_save import _video_save_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,

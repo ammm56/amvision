@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from queue import Empty
 from threading import Event, Lock, Thread
 from time import monotonic
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 import multiprocessing
 
@@ -16,11 +16,6 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ServiceConfigurationError,
     ServiceError,
-)
-from backend.service.application.deployments import (
-    PublishedInferenceGateway,
-    PublishedInferenceGatewayDispatcher,
-    PublishedInferenceGatewayEventChannel,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
@@ -47,6 +42,13 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+
+if TYPE_CHECKING:
+    from backend.service.application.deployments import (
+        PublishedInferenceGateway,
+        PublishedInferenceGatewayDispatcher,
+        PublishedInferenceGatewayEventChannel,
+    )
 
 
 @dataclass
@@ -894,6 +896,8 @@ class WorkflowRuntimeWorkerManager:
 
         if self.published_inference_gateway is None:
             return None
+        from backend.service.application.deployments import PublishedInferenceGatewayEventChannel
+
         return PublishedInferenceGatewayEventChannel(
             request_queue=self._context.Queue(),
             response_queue=self._context.Queue(),
@@ -908,4 +912,6 @@ class WorkflowRuntimeWorkerManager:
 
         if channel is None or self.published_inference_gateway is None:
             return None
+        from backend.service.application.deployments import PublishedInferenceGatewayDispatcher
+
         return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)

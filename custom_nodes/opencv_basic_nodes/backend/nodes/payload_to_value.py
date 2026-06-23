@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 

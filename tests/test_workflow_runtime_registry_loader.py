@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import backend.nodes.core_nodes.model_inference_submit as model_inference_submit_node
+import backend.nodes.core_nodes.service.model_tasks.model_inference_submit as model_inference_submit_node
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphEdge,
     WorkflowGraphInput,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes._logic_node_support import build_value_payload
-from backend.nodes.core_nodes._roi_node_support import build_roi_mask, require_roi_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.roi import build_roi_mask, require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.support import (

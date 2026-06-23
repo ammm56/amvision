@@ -4,20 +4,16 @@ from __future__ import annotations
 
 from multiprocessing.queues import Queue
 from threading import Event, Lock, Thread
-from typing import Any
+from typing import TYPE_CHECKING, Any
 import multiprocessing
 
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
-from backend.service.application.deployments import (
-    PublishedInferenceGatewayClient,
-    PublishedInferenceGatewayEventChannel,
-)
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
-from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessSupervisor
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
@@ -46,6 +42,12 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
 
+if TYPE_CHECKING:
+    from backend.service.application.deployments import (
+        PublishedInferenceGatewayClient,
+        PublishedInferenceGatewayEventChannel,
+    )
+
 
 def run_workflow_runtime_worker_process(
     *,
@@ -59,8 +61,8 @@ def run_workflow_runtime_worker_process(
     """workflow runtime worker 子进程入口。"""
 
     session_factory: SessionFactory | None = None
-    sync_supervisor: DeploymentProcessSupervisor | None = None
-    async_supervisor: DeploymentProcessSupervisor | None = None
+    sync_supervisor: LazyDeploymentProcessSupervisor | None = None
+    async_supervisor: LazyDeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -76,20 +78,18 @@ def run_workflow_runtime_worker_process(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
-        sync_supervisor = DeploymentProcessSupervisor(
+        sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
             local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
-        async_supervisor = DeploymentProcessSupervisor(
+        async_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
             local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
         )
-        sync_supervisor.start()
-        async_supervisor.start()
         runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
@@ -343,6 +343,8 @@ def build_published_inference_gateway(
 
     if channel is None:
         return None
+    from backend.service.application.deployments import PublishedInferenceGatewayClient
+
     return PublishedInferenceGatewayClient(channel)
 
 

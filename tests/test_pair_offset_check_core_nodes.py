@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_nodes.pair_offset_check import _pair_offset_check_handler
+from backend.nodes.core_nodes.vision.geometry.pair_offset_check import _pair_offset_check_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

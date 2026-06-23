@@ -485,7 +485,33 @@ backend/service/api/rest/v1/routes/
 ### 当前问题
 
 - 当前节点基本保持一节点一文件，这是合理的。
-- 问题主要在 support 文件和节点数量继续增长后目录会过大。
+- 旧平铺根目录已经开始收口，`core.rule.*` 已拆到 `core_nodes/rule/`，`core.output.*` 已拆到 `core_nodes/output/`。
+- `core.vision` 第一批已开始收口，区域结果处理已拆到 `core_nodes/vision/regions/`，ROI 与覆盖规则已拆到 `core_nodes/vision/roi/`。
+- `core.vision` 连续性与完整性指标已拆到 `core_nodes/vision/continuity/`。
+- `core.vision` 缺陷与异常语义节点已拆到 `core_nodes/vision/defects/`。
+- `core.vision` 几何量测与位置关系节点已拆到 `core_nodes/vision/geometry/`，图案、装配关系与结构缺陷节点已拆到 `core_nodes/vision/pattern/`。
+- `core.io` 第一批已开始收口，本地文件输入已拆到 `core_nodes/io/local/`，目录扫描、批次窗口和游标节点已拆到 `core_nodes/io/directory/`，批次文件处理已拆到 `core_nodes/io/batch/`。
+- `core.model` 的 deployment 直连推理节点已拆到 `core_nodes/model/deployment/`。
+- `core.model.sahi-inference` 已拆到 `core_nodes/model/inference/`。
+- `core.service` 的模型任务提交节点已拆到 `core_nodes/service/model_tasks/`，模型 deployment 控制节点已拆到 `core_nodes/service/deployment/`。
+- `core.service` 的数据集导入、导出、打包节点已拆到 `core_nodes/service/datasets/`，通用任务查询和等待节点已拆到 `core_nodes/service/tasks/`。
+- `core.logic` 已按 boolean、control、collections、objects、state、value 拆到 `core_nodes/logic/`。
+- `core.io` 的图片编码、图片预览、图片保存、模板输入、表格预览和值预览节点已分别拆到 `core_nodes/io/image/`、`core_nodes/io/templates/` 和 `core_nodes/io/preview/`。
+- `core.video` 已按本地输入输出、帧窗口和跟踪叠加拆到 `core_nodes/video/io/`、`core_nodes/video/windows/` 和 `core_nodes/video/tracks/`。
+- `core.vision.edge-break-check` 已并入 `core_nodes/vision/defects/`，`core.vision.reference-mark-align-check` 已并入 `core_nodes/vision/geometry/`。
+- 旧 `_xxx_support.py` 支撑文件已改成 `core_nodes/support/<短名>.py`，不再使用根目录下划线 support 文件。
+- `workflow service node` 的平台 task/model 参数 helper 已从单个 `platform_service.py` 拆到 `core_nodes/support/platform/constants.py`、`parameters.py`、`schemas.py`；训练请求类型分发已收成 `training_requests.py` 注册表。
+- `regions.v1`、`roi.v1` 和视频跟踪支撑代码已从 `region.py`、`roi.py`、`video_track.py` 三个大文件拆成 `support/region/`、`support/roi/`、`support/video_track/` 包，按 payload、mask、geometry、intersection、validator、filter 等能力分文件放置。
+- `logic.py` 已拆成 `support/logic/`，按 payload、JSON 安全值、点分路径和比较语义分文件放置。
+- `local_io.py` 已拆成 `support/local_io/`，按路径解析、文件记录、图片读取、CSV 展开和 result/alarm 输入解析分文件放置。
+- `service.py` 已拆成 `support/service/`，按 runtime context、参数读取、response body、service builder 和 deployment 子进程动作分文件放置。
+- `directory_window.py` 已拆成 `support/directory_window/`，按窗口参数、cursor 起点和窗口输出 payload 分文件放置。
+- `directory_cursor.py` 已拆成 `support/directory_cursor/`，按 cursor 输入读取、字段校验和规范化分文件放置。
+- `assembly.py` 已拆成 `support/assembly/`，按 region selector、装配几何和参数读取分文件放置。
+- `condition_expression.py` 已拆成 `support/condition_expression/`，按条件表达式校验和执行分文件放置。
+- `get_core_node_specs()` 已改成递归扫描，后续 `vision/`、`io/`、`model/` 等能力族继续迁移时不再依赖根目录平铺文件。
+- `core_nodes/` 根目录目前只保留扫描入口 `__init__.py`，不再放具体节点文件。
+- 剩余问题主要是 `batch_result_summary.py`、`collection.py`、`object.py`、`state.py`、`task.py` 等较小 helper 还可以按实际增长继续拆细；如果后续新增 workflow 专属节点，再单独建立 `core_nodes/workflow/`，不为了空目录提前保留。
 
 ### 目标结构
 
@@ -493,12 +519,25 @@ backend/service/api/rest/v1/routes/
 backend/nodes/core_nodes/
 ├─ io/
 ├─ model/
+├─ service/
 ├─ vision/
 ├─ rule/
 ├─ output/
+├─ logic/
 ├─ video/
-├─ workflow/
 ├─ support/
+│  ├─ platform/
+│  ├─ region/
+│  ├─ roi/
+│  ├─ video_track/
+│  ├─ logic/
+│  ├─ local_io/
+│  ├─ service/
+│  ├─ directory_window/
+│  ├─ directory_cursor/
+│  ├─ assembly/
+│  ├─ condition_expression/
+│  └─ ...
 └─ catalog.py
 ```
 
@@ -506,8 +545,14 @@ backend/nodes/core_nodes/
 
 - 节点可以继续一节点一文件，但按能力族分目录。
 - 公共 helper 放 `support/`，不要散在节点目录根部。
+- 节点目录只放带 `CORE_NODE_SPEC` 的节点模块；注册表、DTO 解析、参数校验和跨节点 helper 放到 `support/` 对应领域目录。
 - catalog loader 应支持递归发现，不再依赖平铺文件。
 - 迁移时先改 loader，再移动节点文件。
+- 公开 `node_type_id` 不因目录移动而变化，workflow 示例、Postman 和已有应用不需要改节点 ID。
+- 完成每批迁移后，同步更新 import smoke 和节点专项测试，不保留旧平铺模块兼容壳。
+- 节点模块导入阶段只允许声明节点定义和轻量 helper；不得为了类型注解、常量或可选执行分支顶层导入训练、转换、deployment、worker、HTTP client 等重依赖。
+- service node 需要调用平台服务时，DTO、worker 队列、部署 gateway 和模型运行时依赖应在 handler 或 service builder 执行阶段导入。
+- workflow preview / runtime worker / application process 子进程不得在启动阶段无条件启动 deployment supervisor；只在 workflow 实际执行 deployment 或模型推理服务节点时按需创建。
 
 ## 第五批：custom_nodes
 
@@ -606,8 +651,8 @@ frontend/web-ui/src/modules/datasets/
 1. 先拆 `datasets`，因为它是训练全链路入口。
 2. 再拆 `workflow runtime`，因为它影响流程编排和现场长期运行。
 3. 再拆 API routes，使 HTTP 层保持薄入口。
-4. 再拆 custom node 大 runtime 文件。
-5. 再拆 core_nodes 平铺目录。
+4. 再拆 core_nodes 平铺目录。
+5. 再拆 custom node 大 runtime 文件。
 6. 最后拆前端大页面。
 
 每一批都要先移动纯 helper 和 DTO，再移动执行逻辑，最后删除旧入口。不要长期保留“新旧双实现”。

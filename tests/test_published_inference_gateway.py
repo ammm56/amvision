@@ -7,7 +7,9 @@ from types import SimpleNamespace
 
 from backend.contracts.buffers import BufferRef
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.nodes.core_nodes.deployment_detection import _deployment_detection_handler
+from backend.nodes.core_nodes.model.deployment.deployment_detection import (
+    _deployment_detection_handler,
+)
 from backend.service.application.deployments import (
     DetectionDeploymentPublishedInferenceGateway,
     PublishedInferenceGatewayClient,
