@@ -13,6 +13,7 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
 )
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    is_yolo26_processed_class_id_column,
     select_yolo26_end2end_topk_indices,
 )
 
@@ -143,9 +144,16 @@ def _build_yolo26_obb_processed_instances(
 ) -> tuple[Yolo26ObbPostprocessInstance, ...] | None:
     """解析官方 YOLO26 export processed OBB 输出。"""
 
-    if int(prediction.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+    if int(prediction.shape[1]) > DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
         return None
     if int(prediction.shape[2]) != 7:
+        return None
+    if not is_yolo26_processed_class_id_column(
+        np_module=np_module,
+        prediction_array=prediction,
+        class_column_index=5,
+        num_classes=len(labels),
+    ):
         return None
 
     results: list[Yolo26ObbPostprocessInstance] = []

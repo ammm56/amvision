@@ -19,7 +19,7 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
 )
 from backend.service.application.models.evaluation.evaluation_runtime_target_resolvers import (
-    get_yolo_task_evaluation_runtime_target_resolver,
+    get_yolo_evaluation_runtime_target_resolver,
 )
 from backend.service.application.models.evaluation.yolov8_classification_evaluation import (
     ClassificationEvaluationRequest,
@@ -397,7 +397,7 @@ class SqlAlchemyYoloV8ClassificationEvaluationService:
                 details={"model_version_id": request.model_version_id},
             )
         model_type = model.model_type
-        resolver_cls = get_yolo_task_evaluation_runtime_target_resolver(model_type)
+        resolver_cls = get_yolo_evaluation_runtime_target_resolver(model_type)
         return resolver_cls(
             session_factory=self.session_factory,
             dataset_storage=self._require_dataset_storage(),

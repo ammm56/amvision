@@ -61,7 +61,7 @@ from backend.workers.training.yolo11_training_queue_worker import Yolo11Training
 from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
 from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
-from backend.workers.training.yolo_task_training_queue_worker import (
+from backend.workers.training.yolo_training_queue_worker import (
     ClassificationTrainingQueueWorker,
     SegmentationTrainingQueueWorker,
     PoseTrainingQueueWorker,

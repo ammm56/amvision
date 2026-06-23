@@ -101,9 +101,10 @@ def select_yolo26_export_topk_indices(
 ) -> tuple[Any, Any, Any]:
     """按 YOLO26 end2end two-stage top-k 规则选择输出索引。"""
 
-    batch_size, _anchor_count, class_count = scores.shape
-    # 官方 end2end export 固定使用 max_det；小输入验证需要显式调低 max_det。
-    top_k = int(max_detections)
+    batch_size, anchor_count, class_count = scores.shape
+    # Ultralytics exporter 会在导出前把 max_det 收到 anchor 数以内。
+    # 这里也在 core 内兜住小输入，避免 64x64 smoke 的候选框数量小于 max_det。
+    top_k = min(int(max_detections), int(anchor_count))
     first_stage_indices = scores.max(dim=-1)[0].topk(top_k, dim=1)[1].unsqueeze(-1)
     first_stage_scores = scores.gather(
         dim=1,

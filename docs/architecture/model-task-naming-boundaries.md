@@ -73,10 +73,10 @@ core 迁移顺序按模型纵向推进，不按目录横向推进：
 - 删除了 `backend/service/application/conversions/detection_conversion_task_service.py`
 - 新增了 `backend/service/application/conversions/yolo_conversion_task_service_base.py`
 - 新增了 `backend/service/application/conversions/conversion_result_snapshot.py`
-- classification、segmentation、pose 和 OBB 训练路由直接改为使用 `yolo_task_*_training_service.py`
+- classification、pose 和 OBB 训练路由已改为使用 YOLOv8 专属 service；segmentation 训练路由使用中性 `segmentation_training_service.py`，YOLO11 / YOLO26 使用各自专属 service。
 - 删除了只做别名转发的 classification / segmentation 模型包装服务文件
-- classification / segmentation evaluation 共享链改为显式使用 `SqlAlchemyYoloTask*EvaluationService`
-- classification / segmentation / pose / OBB 训练共享链改为显式使用 `SqlAlchemyYoloTask*TrainingService`
+- classification evaluation 已改为 YOLOv8 专属 service；segmentation evaluation 使用中性 service，并保留 RF-DETR 分支。
+- classification / segmentation / pose / OBB 训练链已按 YOLOv8 专属、中性 segmentation、YOLO11 专属和 YOLO26 专属边界拆分。
 - evaluation runtime resolver 公共映射单独收到了 `evaluation_runtime_target_resolvers.py`
 - segmentation evaluation 已补上 `rfdetr` resolver 分发；pose / obb evaluation 去掉了误写的 `yolox` 支持残留
 - 保留了公开 task 路由组 `backend/service/api/rest/v1/routes/detection_conversion_tasks/`
@@ -103,8 +103,8 @@ core 迁移顺序按模型纵向推进，不按目录横向推进：
 
 - `detection-inference`、`detection-evaluation` 继续保留为任务分类共享名，因为实现已经是真共享。
 - detection training 继续保留 `yolox-*`、`yolov8-*`、`yolo11-*`、`yolo26-*`、`rfdetr-*` 这些模型专属执行层命名。
-- classification / segmentation / pose / obb 这几条非 detection 训练链，已经直接收口到 `yolo_task_*_training_service.py` 共享实现。
-- classification / segmentation evaluation 继续走 task-type 公开路由，共享实现名明确写成 `yolo_task_*`，避免把 YOLO 共享层误读成全平台通用层。
+- classification / pose / obb 这几条非 detection 训练链已收成 YOLOv8 专属实现，YOLO11 / YOLO26 使用各自专属 service。
+- segmentation 训练与 evaluation 使用中性 `segmentation_*` 命名，明确只共享 YOLOv8 与 RF-DETR 的平台任务边界。
 - deployment 这一层当前没有发现只做转发的薄壳；`detection / classification / segmentation / pose / obb deployment service` 继续保留 task-type 公共服务命名。
 - `conversion` 相关层现在采用“三层分开”的写法：
   - 公开入口：`detection_conversion_tasks/`

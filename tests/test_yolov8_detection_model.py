@@ -11,17 +11,17 @@ import torch
 
 from backend.service.application.models.yolo_core_common.modeling.detection_model import YoloDetectionModel
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
-    build_yolo_task_detection_model,
-    load_yolo_task_checkpoint,
+    build_yolo_detection_model_for_type,
+    load_yolo_checkpoint,
 )
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
 from backend.service.application.models.yolov8_core.model import build_yolov8_model
 
 
 def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
     """验证项目内 YOLOv8 结构可以完成一次前向。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=2,
@@ -38,19 +38,19 @@ def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) ->
     """验证项目内 YOLOv8 结构可以回读自身 checkpoint。"""
 
     checkpoint_path = tmp_path / "yolov8-project-native.pt"
-    source_model = build_yolo_task_detection_model(
+    source_model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=1,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
 
-    target_model = build_yolo_task_detection_model(
+    target_model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=1,
     )
-    load_summary = load_yolo_task_checkpoint(
+    load_summary = load_yolo_checkpoint(
         imports=SimpleNamespace(torch=torch),
         model=target_model,
         checkpoint_path=checkpoint_path,
@@ -64,19 +64,19 @@ def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: 
     """验证加载不同类别数 checkpoint 时会跳过不兼容分类头。"""
 
     checkpoint_path = tmp_path / "yolov8-class-mismatch.pt"
-    source_model = build_yolo_task_detection_model(
+    source_model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=2,
     )
     torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
 
-    target_model = build_yolo_task_detection_model(
+    target_model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=1,
     )
-    load_summary = load_yolo_task_checkpoint(
+    load_summary = load_yolo_checkpoint(
         imports=SimpleNamespace(torch=torch),
         model=target_model,
         checkpoint_path=checkpoint_path,
@@ -90,7 +90,7 @@ def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: 
 def test_yolov8_detection_model_uses_legacy_class_head() -> None:
     """验证 YOLOv8 权重对应旧版分类 head 结构。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolov8",
         model_scale="nano",
         num_classes=2,
@@ -126,7 +126,7 @@ def test_yolov8_segmentation_proto_width_scales_with_model_scale() -> None:
 def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
     """验证共享层已经可以构建并前向 YOLO11 detection 模型。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolo11",
         model_scale="nano",
         num_classes=2,
@@ -142,7 +142,7 @@ def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
 def test_yolo11_detection_model_uses_current_class_head() -> None:
     """验证 YOLO11 不会误用 YOLOv8 旧版分类 head。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolo11",
         model_scale="nano",
         num_classes=2,
@@ -155,7 +155,7 @@ def test_yolo11_detection_model_uses_current_class_head() -> None:
 def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
     """验证共享层已经可以构建并前向 YOLO26 detection 模型。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolo26",
         model_scale="nano",
         num_classes=2,
@@ -171,7 +171,7 @@ def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
 def test_yolo26_m_detection_model_enables_c3k2_scale_branch() -> None:
     """验证 YOLO26 m/l/x 会按 upstream 规则启用 C3k2 的 C3k 分支。"""
 
-    model = build_yolo_task_detection_model(
+    model = build_yolo_detection_model_for_type(
         model_type="yolo26",
         model_scale="m",
         num_classes=2,
@@ -185,19 +185,19 @@ def test_yolo_checkpoint_loader_reads_ultralytics_style_model_pickle(tmp_path: P
     """验证无 ultralytics 依赖时也能读取ultralytics风格完整模型 checkpoint。"""
 
     checkpoint_path = tmp_path / "ultralytics-style-yolo.pt"
-    source_model = build_yolo_task_detection_model(
+    source_model = build_yolo_detection_model_for_type(
         model_type="yolo26",
         model_scale="m",
         num_classes=1,
     )
     _save_as_ultralytics_style_detection_checkpoint(source_model, checkpoint_path)
 
-    target_model = build_yolo_task_detection_model(
+    target_model = build_yolo_detection_model_for_type(
         model_type="yolo26",
         model_scale="m",
         num_classes=1,
     )
-    load_summary = load_yolo_task_checkpoint(
+    load_summary = load_yolo_checkpoint(
         imports=SimpleNamespace(torch=torch),
         model=target_model,
         checkpoint_path=checkpoint_path,
@@ -211,7 +211,7 @@ def test_yolo_checkpoint_loader_reads_ultralytics_style_model_pickle(tmp_path: P
 def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> None:
     """验证共享任务配置已经可以构建并前向 YOLO11 segmentation 模型。"""
 
-    model = build_yolo_task_model(
+    model = build_yolo_model(
         model_type="yolo11",
         task_type="segmentation",
         model_scale="nano",
@@ -230,7 +230,7 @@ def test_yolo11_segmentation_model_forward_returns_prediction_and_proto() -> Non
 def test_yolo26_classification_model_forward_returns_probabilities_and_logits() -> None:
     """验证共享任务配置已经可以构建并前向 YOLO26 classification 模型。"""
 
-    model = build_yolo_task_model(
+    model = build_yolo_model(
         model_type="yolo26",
         task_type="classification",
         model_scale="nano",

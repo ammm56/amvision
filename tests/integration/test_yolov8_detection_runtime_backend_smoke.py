@@ -16,7 +16,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
     YoloV8ConversionPlanningRequest,
 )
 from backend.service.application.models.registry.model_service import ModelBuildRegistration, TrainingOutputRegistration
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
 from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.tasks.detection_model_runtime import DefaultDetectionModelRuntime
 from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
@@ -143,7 +143,7 @@ def _seed_model_version(
     labels_uri = "projects/project-1/models/yolov8/detection-source-1/artifacts/labels.txt"
     checkpoint_path = dataset_storage.resolve(checkpoint_uri)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    source_model = build_yolo_task_model(
+    source_model = build_yolo_model(
         model_type="yolov8",
         task_type="detection",
         model_scale="nano",

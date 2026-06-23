@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.obb_loss import compute_obb_loss
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
 from backend.service.application.runtime.predictors.yolov8.obb.postprocess import (
     build_yolov8_obb_runtime_instances,
 )
@@ -17,7 +17,7 @@ from backend.service.application.runtime.predictors.yolov8.obb.postprocess impor
 def test_obb_model_can_build_and_forward():
     """验证 obb 模型可以构建并完成前向推理。"""
     overrides = {"ne": 1}
-    model = build_yolo_task_model(model_type="yolov8", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
+    model = build_yolo_model(model_type="yolov8", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -29,7 +29,7 @@ def test_obb_model_can_build_and_forward():
 def test_obb26_model_can_build_and_forward():
     """验证 OBB26 模型推理输出包含 bbox、score 和 angle。"""
     overrides = {"ne": 1}
-    model = build_yolo_task_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
+    model = build_yolo_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=1, model_config_overrides=overrides)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -41,7 +41,7 @@ def test_obb26_model_can_build_and_forward():
 def test_obb26_loss_can_backward_with_e2e_outputs():
     """验证 OBB26 E2E obb loss 可以完成反向传播。"""
 
-    model = build_yolo_task_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=2)
+    model = build_yolo_model(model_type="yolo26", task_type="obb", model_scale="nano", num_classes=2)
     model.train()
     outputs = model(torch.randn(1, 3, 64, 64))
     raw_outputs = outputs["one2many"] if isinstance(outputs, dict) and "one2many" in outputs else outputs

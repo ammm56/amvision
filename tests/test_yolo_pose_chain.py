@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
 from backend.service.application.runtime.predictors.yolov8.pose.postprocess import (
     build_yolov8_pose_runtime_instances,
 )
@@ -16,7 +16,7 @@ from backend.service.application.runtime.predictors.yolov8.pose.postprocess impo
 
 def test_pose_model_can_build_and_forward():
     """验证 pose 模型可以构建并完成前向推理。"""
-    model = build_yolo_task_model(model_type="yolov8", task_type="pose", model_scale="nano", num_classes=1)
+    model = build_yolo_model(model_type="yolov8", task_type="pose", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -25,7 +25,7 @@ def test_pose_model_can_build_and_forward():
 
 def test_pose26_model_can_build_and_forward():
     """验证 Pose26 模型可以构建并完成前向推理。"""
-    model = build_yolo_task_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=1)
+    model = build_yolo_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -35,7 +35,7 @@ def test_pose26_model_can_build_and_forward():
 def test_pose26_loss_can_backward_with_e2e_outputs():
     """验证 Pose26 E2E pose loss 可以完成反向传播。"""
 
-    model = build_yolo_task_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=2)
+    model = build_yolo_model(model_type="yolo26", task_type="pose", model_scale="nano", num_classes=2)
     model.train()
     outputs = model(torch.randn(1, 3, 64, 64))
     raw_outputs = outputs["one2many"] if isinstance(outputs, dict) and "one2many" in outputs else outputs
@@ -64,7 +64,7 @@ def test_pose26_loss_can_backward_with_e2e_outputs():
 
 def test_segment26_model_can_build_and_forward():
     """验证 Segment26 模型可以构建并完成前向推理。"""
-    model = build_yolo_task_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
+    model = build_yolo_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
@@ -79,7 +79,7 @@ def test_segment26_model_can_build_and_forward():
 
 def test_segment26_model_training_output_contains_proto():
     """验证 Segment26 训练态原始输出包含 proto。"""
-    model = build_yolo_task_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
+    model = build_yolo_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
     model.train()
     output = model(torch.randn(1, 3, 256, 256))
     assert isinstance(output, dict)

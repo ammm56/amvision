@@ -161,7 +161,7 @@ YOLO26_DETECTION_MODEL_CONFIG: dict[str, object] = {
     ],
 }
 
-YOLO_TASK_DETECTION_MODEL_CONFIGS: dict[str, dict[str, object]] = {
+YOLO_DETECTION_MODEL_CONFIGS: dict[str, dict[str, object]] = {
     "yolov8": YOLOV8_DETECTION_MODEL_CONFIG,
     "yolo11": YOLO11_DETECTION_MODEL_CONFIG,
     "yolo26": YOLO26_DETECTION_MODEL_CONFIG,
@@ -181,7 +181,7 @@ _ULTRALYTICS_CHECKPOINT_MODULE_NAMES = (
 )
 
 
-def build_yolo_task_detection_model(
+def build_yolo_detection_model_for_type(
     *,
     model_type: str,
     model_scale: str,
@@ -189,7 +189,7 @@ def build_yolo_task_detection_model(
 ) -> Any:
     """按模型分类构建一套 YOLO 主线 detection 模型。"""
 
-    model_config = YOLO_TASK_DETECTION_MODEL_CONFIGS.get(model_type)
+    model_config = YOLO_DETECTION_MODEL_CONFIGS.get(model_type)
     if model_config is None:
         raise InvalidRequestError(
             "当前不支持指定的 YOLO 主线 detection 模型分类",
@@ -203,7 +203,7 @@ def build_yolo_task_detection_model(
     )
 
 
-def load_yolo_task_checkpoint(
+def load_yolo_checkpoint(
     *,
     imports: Any,
     model: Any,

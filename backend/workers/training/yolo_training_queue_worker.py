@@ -46,7 +46,7 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.training.yolo_task_trainer_runner import SqlAlchemyYoloTaskTrainerRunner
+from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner
 
 
 class ClassificationTrainingQueueWorker:
@@ -84,7 +84,7 @@ class ClassificationTrainingQueueWorker:
 
         try:
             task_id = _read_task_id(qt)
-            training_backend = self.training_backend or SqlAlchemyYoloTaskTrainerRunner(
+            training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
@@ -177,7 +177,7 @@ class SegmentationTrainingQueueWorker:
 
         try:
             task_id = _read_task_id(qt)
-            training_backend = self.training_backend or SqlAlchemyYoloTaskTrainerRunner(
+            training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
@@ -252,7 +252,7 @@ class PoseTrainingQueueWorker:
 
         try:
             task_id = _read_task_id(qt)
-            training_backend = self.training_backend or SqlAlchemyYoloTaskTrainerRunner(
+            training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
@@ -327,7 +327,7 @@ class ObbTrainingQueueWorker:
 
         try:
             task_id = _read_task_id(qt)
-            training_backend = self.training_backend or SqlAlchemyYoloTaskTrainerRunner(
+            training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,

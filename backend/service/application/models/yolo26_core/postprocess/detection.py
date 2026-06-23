@@ -113,6 +113,7 @@ def postprocess_yolo26_detection_prediction_array(
     processed_results = _postprocess_yolo26_detection_processed_array(
         prediction_array=normalized_prediction,
         np_module=np_module,
+        num_classes=num_classes,
         score_threshold=score_threshold,
         max_detections=resolved_max_detections,
     )
@@ -137,14 +138,22 @@ def _postprocess_yolo26_detection_processed_array(
     *,
     prediction_array: Any,
     np_module: Any,
+    num_classes: int,
     score_threshold: float,
     max_detections: int,
 ) -> list[Yolo26DetectionTopKResult | None] | None:
     """解析官方 YOLO26 export processed detection 输出。"""
 
-    if int(prediction_array.shape[1]) != int(max_detections) or int(
-        prediction_array.shape[2]
-    ) != 6:
+    if int(prediction_array.shape[1]) > int(max_detections):
+        return None
+    if int(prediction_array.shape[2]) != 6:
+        return None
+    if not is_yolo26_processed_class_id_column(
+        np_module=np_module,
+        prediction_array=prediction_array,
+        class_column_index=5,
+        num_classes=num_classes,
+    ):
         return None
 
     results: list[Yolo26DetectionTopKResult | None] = []
@@ -235,7 +244,7 @@ def _normalize_yolo26_detection_prediction_array(
     last_axis_size = int(normalized_prediction.shape[2])
     if (
         last_axis_size == 6
-        and channel_axis_size == DEFAULT_YOLO26_END2END_MAX_DETECTIONS
+        and channel_axis_size <= DEFAULT_YOLO26_END2END_MAX_DETECTIONS
     ):
         return normalized_prediction
     if channel_axis_size >= required_channel_count and (
@@ -333,6 +342,33 @@ def normalize_yolo26_detection_boxes_array(
     )
 
 
+def is_yolo26_processed_class_id_column(
+    *,
+    np_module: Any,
+    prediction_array: Any,
+    class_column_index: int,
+    num_classes: int,
+) -> bool:
+    """判断 YOLO26 processed 输出中的 class id 列是否有效。"""
+
+    if int(prediction_array.shape[2]) <= int(class_column_index):
+        return False
+    class_values = prediction_array[..., int(class_column_index)]
+    if int(class_values.size) <= 0:
+        return True
+    rounded_class_values = np_module.round(class_values)
+    if not bool(np_module.all(np_module.isfinite(class_values))):
+        return False
+    if not bool(
+        np_module.all(np_module.abs(class_values - rounded_class_values) <= 1e-4)
+    ):
+        return False
+    return bool(
+        np_module.all(rounded_class_values >= 0)
+        and np_module.all(rounded_class_values < int(num_classes))
+    )
+
+
 def _select_descending_topk_indices(
     *,
     np_module: Any,
@@ -372,6 +408,7 @@ __all__ = [
     "YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK",
     "Yolo26DetectionTopKResult",
     "build_yolo26_detection_records",
+    "is_yolo26_processed_class_id_column",
     "normalize_yolo26_detection_boxes_array",
     "postprocess_yolo26_detection_prediction_array",
     "select_yolo26_end2end_topk_indices",

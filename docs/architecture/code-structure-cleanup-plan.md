@@ -41,12 +41,12 @@
 
 ## 模型任务 service/helper 回审
 
-模型 core 已经完成一轮大幅收口后，`models/training/yolo_task_*` 还需要继续按真实职责改名和拆分。当前审计结论：
+模型 core 已经完成一轮大幅收口后，普通 YOLO 训练任务 helper 已按真实职责改名和拆分。当前审计结论：
 
 - `yolov8_classification_training_*` 已完成命名收口：训练 service/helper、evaluation service/helper、API route、worker、workflow service node、core node platform training request 映射和测试引用都已指向 YOLOv8 专属入口；YOLO11 / YOLO26 classification 已使用各自 task_kind 和 queue。
 - `yolov8_pose_training_*`、`yolov8_obb_training_*` 已完成命名收口：YOLOv8 pose / OBB service/helper 使用显式 `yolov8-pose-training`、`yolov8-obb-training` task_kind 和 queue；YOLO11 / YOLO26 pose / OBB 已使用各自 task_kind 和 queue，不再复用旧的过渡 task_kind。
 - `segmentation_training_*` 已完成中性化收口：该层只保留 YOLOv8 与 RF-DETR segmentation 共享的任务状态、队列、对象存储和登记分发；模型执行继续由 `yolov8_core` 和 `rfdetr_core` 承接，YOLO11 / YOLO26 segmentation 使用各自专属 service、task_kind 和 queue。
-- `backend/workers/training/yolo_task_*`、`routes/task_training/catalog.py`、各 task route 的 `services.py`、workflow service node builder 和 core node platform training request 映射，都要跟随 service 名称同步更新。
+- `backend/workers/training/yolo_training_*`、`routes/task_training/catalog.py`、各 task route 的 `services.py`、workflow service node builder 和 core node platform training request 映射已跟随 service 名称同步更新。
 - 改名时删除旧文件，不保留兼容壳；如果某个旧名仍被引用，必须同步更新调用方。
 
 后续继续处理时，只允许按真实职责继续瘦身 `segmentation_training_*`，不能再恢复旧的普通 YOLO segmentation 任务命名，避免误导模型边界。

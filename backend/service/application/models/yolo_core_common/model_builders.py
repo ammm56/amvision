@@ -20,17 +20,17 @@ from backend.service.application.models.yolov8_core import (
 )
 
 
-YOLO_TASK_MODEL_CONFIGS: dict[str, dict[str, dict[str, object]]] = {
+YOLO_MODEL_CONFIGS: dict[str, dict[str, dict[str, object]]] = {
     "yolov8": YOLOV8_MODEL_CONFIGS,
     "yolo11": YOLO11_MODEL_CONFIGS,
     "yolo26": YOLO26_MODEL_CONFIGS,
 }
 
 
-def get_yolo_task_model_config(*, model_type: str, task_type: str) -> dict[str, object]:
+def get_yolo_model_config(*, model_type: str, task_type: str) -> dict[str, object]:
     """读取指定模型分类和任务分类对应的项目内模型配置。"""
 
-    task_configs = YOLO_TASK_MODEL_CONFIGS.get(model_type)
+    task_configs = YOLO_MODEL_CONFIGS.get(model_type)
     if task_configs is None:
         raise InvalidRequestError(
             "当前不支持指定的 YOLO 主线模型分类",
@@ -45,7 +45,7 @@ def get_yolo_task_model_config(*, model_type: str, task_type: str) -> dict[str, 
     return deepcopy(model_config)
 
 
-def build_yolo_task_model(
+def build_yolo_model(
     *,
     model_type: str,
     task_type: str,

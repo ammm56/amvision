@@ -8,7 +8,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.evaluation_runtime_target_resolvers import (
     get_detection_evaluation_runtime_target_resolver,
     get_segmentation_evaluation_runtime_target_resolver,
-    get_yolo_task_evaluation_runtime_target_resolver,
+    get_yolo_evaluation_runtime_target_resolver,
 )
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
@@ -31,21 +31,21 @@ def test_yolo_model_evaluation_runtime_resolver_supports_expected_model_types() 
     """YOLO 主线评估 resolver 只支持 yolov8/yolo11/yolo26。"""
 
     assert (
-        get_yolo_task_evaluation_runtime_target_resolver("yolov8")
+        get_yolo_evaluation_runtime_target_resolver("yolov8")
         is SqlAlchemyYoloV8RuntimeTargetResolver
     )
     assert (
-        get_yolo_task_evaluation_runtime_target_resolver("yolo11")
+        get_yolo_evaluation_runtime_target_resolver("yolo11")
         is SqlAlchemyYolo11RuntimeTargetResolver
     )
     assert (
-        get_yolo_task_evaluation_runtime_target_resolver("yolo26")
+        get_yolo_evaluation_runtime_target_resolver("yolo26")
         is SqlAlchemyYolo26RuntimeTargetResolver
     )
     with pytest.raises(InvalidRequestError):
-        get_yolo_task_evaluation_runtime_target_resolver("rfdetr")
+        get_yolo_evaluation_runtime_target_resolver("rfdetr")
     with pytest.raises(InvalidRequestError):
-        get_yolo_task_evaluation_runtime_target_resolver("yolox")
+        get_yolo_evaluation_runtime_target_resolver("yolox")
 
 
 def test_segmentation_evaluation_runtime_resolver_supports_rfdetr() -> None:

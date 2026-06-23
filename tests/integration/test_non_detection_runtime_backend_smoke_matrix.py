@@ -27,7 +27,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
 from backend.service.application.models.registry.model_service import ModelBuildRegistration, TrainingOutputRegistration
 from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
 from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.tasks.classification_model_runtime import DefaultClassificationModelRuntime
 from backend.service.application.runtime.contracts.classification.prediction import ClassificationPredictionRequest
@@ -280,7 +280,7 @@ def _seed_model_version(
     )
     checkpoint_path = dataset_storage.resolve(checkpoint_uri)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    source_model = build_yolo_task_model(
+    source_model = build_yolo_model(
         model_type=spec.model_type,
         task_type=spec.task_type,
         model_scale="nano",

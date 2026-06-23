@@ -82,11 +82,11 @@ YOLO 系列长期按下面五层理解：
 
 `backend/service/application/models/training/` 是应用层训练任务 helper 目录，不是模型 core 目录。
 
-- `yolo_task_*` 表示普通 YOLO 主线中仍可共享的应用层 helper，只能处理跨 `yolov8 / yolo11 / yolo26` 共用的任务参数、DatasetExport 校验、状态事件、输出登记、warm start 和对象存储写入。
+- 普通 YOLO 主线中仍可共享的应用层 helper 使用 `yolo_*` 或更具体的任务层命名，只能处理跨 `yolov8 / yolo11 / yolo26` 共用的任务参数、DatasetExport 校验、状态事件、输出登记、warm start 和对象存储写入。
 - `yolov8_*`、`yolo11_*`、`yolo26_*` 表示对应模型代际的专属训练任务 helper；只要涉及模型代际差异、训练执行、loss、target、augmentation、evaluation 或 checkpoint 语义，都应进入对应 `*_core` 或对应模型 service helper。
 - `yolox_*` 表示 YOLOX detection 训练任务 helper，只服务 `yolox`。
 - `rfdetr_*` 表示 RF-DETR 训练任务 helper，只服务 `rfdetr`。
-- `yolo_task_*` 不能实现模型结构、head、loss、assigner、decode、postprocess、export forward 或 deployment session；这些能力必须进入 `yolov8_core / yolo11_core / yolo26_core`。
+- 普通 YOLO 共享 helper 不能实现模型结构、head、loss、assigner、decode、postprocess、export forward 或 deployment session；这些能力必须进入 `yolov8_core / yolo11_core / yolo26_core`。
 - `yolov8_core / yolo11_core / yolo26_core` 可以被训练任务 helper 调用，但不能反向 import `models/training`，避免模型 core 依赖数据库、队列、对象存储或任务状态。
 
 旧 `yolo_primary_*` 入口不得继续作为新实现模板。共享 detection 训练入口已经删除，YOLOv8 detection 训练执行已下沉到 `yolov8_core/training/detection_execution.py`；应用层只保留 `yolov8_detection_training.py` 作为入口包装。
@@ -369,7 +369,7 @@ backend/service/application/models/yolo26_core/
 - `yolov8_core`、`yolo11_core`、`yolo26_core` 不能共用一个普通 YOLO 大模型文件表达差异。
 - YOLO26 的 `Segment26 / Pose26 / OBB26` 必须只在 `yolo26_core` 内部出现。
 - `yolo_core_common` 只承接 anchor、bbox、DFL、通用 NMS 前过滤、通用 tensor 工具等不含模型代际判断的能力。
-- `yolo_task_*` 文件只允许作为平台共享 service / worker helper；模型结构和训练细节必须进各自 core。
+- 普通 YOLO 共享文件只允许作为平台共享 service / worker helper；模型结构和训练细节必须进各自 core。
 
 当前大重构按模型纵向推进，不按横向功能一次性强切：
 
@@ -699,14 +699,14 @@ YOLOv8 full core 边界已按最终目录继续收口：
 - `backend/service/application/models/yolov8_core/losses/pose.py`、`losses/obb.py`：已承接 YOLOv8 pose / OBB loss 编排，内部调用 YOLOv8 自己的 assigner、decode、target 编码和几何入口；pose / OBB 的 box / DFL loss 已按 target score 加权并按 `target_scores_sum` 归一，不再用 foreground count 简单平均；pose keypoint / visibility loss 已避免按 foreground 二次缩小，OBB angle loss 已按 target score 聚合后再统一归一。YOLOv8 pose / OBB 训练执行已分别进入 `yolov8_core/training/pose_execution.py` 和 `yolov8_core/training/obb_execution.py`，旧 `yolov8_pose_training.py` 与 `yolov8_obb_training.py` 已删除；YOLO11 / YOLO26 pose / OBB 由各自专属 service 与 core 入口承接。
 - `backend/service/application/models/yolov8_core/assigners/pose.py`、`assigners/obb.py`、`decode/pose.py`、`decode/obb.py`、`targets/pose.py`、`targets/obb.py`：已建立 YOLOv8 pose / OBB 的正样本分配、keypoint decode、angle decode、rotated target 和 keypoint target 编码边界；pose assigner 已复用 YOLOv8 detection 的 TAL / CIoU 入口，OBB assigner 已按 rotated IoU 补 target score 归一，并在候选 anchor 判断中按最小 stride 扩张 tiny rbox；common 只保留不带模型代际判断的底层数学工具。
 - `backend/service/application/models/yolov8_core/data/detection.py`：已收成 YOLOv8 detection data 层统一入口，内部按职责拆到 `detection_types.py`、`detection_splits.py`、`detection_samples.py`、`detection_batch.py` 和 `detection_augmentation.py`。YOLOv8 detection 训练执行通过 `yolov8_core/training/detection_execution.py` 走该 data 层，YOLO11 / YOLO26 使用各自 detection 专属训练入口。
-- `backend/service/application/models/yolov8_core/training/detection_execution.py` 已承接原共享 detection 训练入口中剩余的 YOLOv8 detection 执行编排；`backend/service/application/models/training/yolo_task_detection_training.py` 已删除。
+- `backend/service/application/models/yolov8_core/training/detection_execution.py` 已承接原共享 detection 训练入口中剩余的 YOLOv8 detection 执行编排；旧共享 detection 训练文件已删除。
 - `backend/service/application/models/yolov8_core/data/classification.py`、`data/segmentation.py`、`data/pose.py`、`data/obb.py`、`data/augmentation.py`：已承接 YOLOv8 classification / segmentation / pose / OBB 的训练 batch 编码。segmentation / pose / OBB 已接入受控 HSV、水平翻转、random affine / perspective matrix、mosaic、mixup、multi-scale 和 close-mosaic/no-aug schedule；水平翻转会同步更新 segmentation bbox / mask、pose bbox / keypoint 左右交换、OBB center / angle；random affine 会同步更新 segmentation bbox / mask、pose bbox / keypoint 和 OBB rotated box；mosaic / mixup 会按各 task 自己的 target 结构合并 mask、keypoint 和 rotated box。`no_aug / no_augmentation / disable_augmentation` 已进入 task data 配置入口，用于关闭这些增强。OBB data 已按参考行为过滤小于 2px 的 tiny rbox。后续数据增强继续围绕真实训练表现微调，不回写到 primary training。
 - `backend/service/application/models/yolov8_core/evaluation/classification.py`、`evaluation/segmentation.py`、`evaluation/pose.py`、`evaluation/obb.py`：已承接 YOLOv8 四类任务的训练期验证和数据集级 evaluation 入口。classification 输出 top1/top5；segmentation 使用项目内 COCO-style AP 插值计算 bbox AP 与 mask IoU AP；pose 使用 OKS AP；OBB 使用 polygon / rotated box IoU AP。segmentation / pose / OBB 的 core wrapper 已由对应 task service 在 `model_type == yolov8` 时调用。后续如果要和 `pycocotools` COCO mask / keypoint 或专门 rotated box evaluator 做逐项一致性验收，应作为独立 evaluator 校准任务处理，不再回退到旧的 `precision * recall` 或 bbox 近似统计。
 - `backend/service/application/models/yolov8_core/evaluation/detection.py`：已承接 YOLOv8 detection 数据集级正式 evaluation 外壳。当前内部仍复用平台通用 `run_detection_evaluation` 执行逐图推理、COCO-style mAP、per-class metrics 和报告输出，任务服务只负责状态、文件登记和结果落盘。
 
 ### YOLO task service/helper 回审
 
-当前 `yolo_task_*_training.py` 训练执行入口已删除，但 `models/training/yolo_task_*_training_service.py` 与同名 helper 仍保留在平台 task service 层。审计结论如下：
+当前旧共享训练执行入口已删除，平台 task service 层也已按真实边界收成 YOLOv8 专属、中性 segmentation、YOLO11 专属和 YOLO26 专属命名。审计结论如下：
 
 - `classification`：已完成 YOLOv8 专属命名收口。`yolov8_classification_training_*` 和 `yolov8_classification_evaluation*` 承接 YOLOv8 classification 平台任务 service/helper；YOLO11 / YOLO26 classification 已使用各自 task_kind、queue、service 和 registration helper，不再通过 YOLOv8 task_kind 分发。
 - `pose`：当前 `YOLOV8_POSE_MODEL_SERVICE_MAP` 只包含 `yolov8`，训练执行已经进入 `yolov8_core/training/pose_execution.py`；平台 service/helper 已收成 `yolov8_pose_training_*`，task_kind / queue 已显式为 `yolov8-pose-training` / `yolov8-pose-trainings`。YOLO11 / YOLO26 pose 走各自专属 service。

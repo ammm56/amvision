@@ -9,6 +9,7 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    is_yolo26_processed_class_id_column,
     select_yolo26_end2end_topk_indices,
 )
 
@@ -93,10 +94,13 @@ def build_yolo26_segmentation_postprocess_instances(
 ) -> tuple[Yolo26SegmentationPostprocessInstance, ...]:
     """把 YOLO26 segmentation 输出转换为实例记录。"""
 
+    proto = proto_array[0]
+    mask_coefficient_count = int(proto.shape[0])
     postprocess_results = postprocess_yolo26_segmentation_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,
         num_classes=len(labels),
+        mask_coefficient_count=mask_coefficient_count,
         score_threshold=score_threshold,
         nms_threshold=nms_threshold,
         nms_indices_func=nms_indices_func,
@@ -107,7 +111,6 @@ def build_yolo26_segmentation_postprocess_instances(
     if prediction is None:
         return ()
 
-    proto = proto_array[0]
     resized_height = min(int(round(image_height * resize_ratio)), int(input_size[0]))
     resized_width = min(int(round(image_width * resize_ratio)), int(input_size[1]))
     masks = decode_yolo26_segmentation_masks(
@@ -198,6 +201,7 @@ def postprocess_yolo26_segmentation_prediction_array(
     prediction_array: Any,
     np_module: Any,
     num_classes: int,
+    mask_coefficient_count: int,
     score_threshold: float,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
@@ -221,6 +225,8 @@ def postprocess_yolo26_segmentation_prediction_array(
     processed_results = _postprocess_yolo26_segmentation_processed_array(
         prediction_array=normalized_prediction,
         np_module=np_module,
+        num_classes=num_classes,
+        mask_coefficient_count=mask_coefficient_count,
         score_threshold=score_threshold,
     )
     if processed_results is not None:
@@ -268,13 +274,22 @@ def _postprocess_yolo26_segmentation_processed_array(
     *,
     prediction_array: Any,
     np_module: Any,
+    num_classes: int,
+    mask_coefficient_count: int,
     score_threshold: float,
 ) -> list[Yolo26SegmentationTopKInputArrays | None] | None:
     """解析官方 YOLO26 export processed segmentation 输出。"""
 
-    if int(prediction_array.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+    if int(prediction_array.shape[1]) > DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
         return None
-    if int(prediction_array.shape[2]) < 7:
+    if int(prediction_array.shape[2]) != 6 + int(mask_coefficient_count):
+        return None
+    if not is_yolo26_processed_class_id_column(
+        np_module=np_module,
+        prediction_array=prediction_array,
+        class_column_index=5,
+        num_classes=num_classes,
+    ):
         return None
 
     results: list[Yolo26SegmentationTopKInputArrays | None] = []
@@ -292,7 +307,10 @@ def _postprocess_yolo26_segmentation_processed_array(
                     np_module.int32,
                     copy=False,
                 ),
-                mask_coefficients=image_prediction[keep_mask, 6:],
+                mask_coefficients=image_prediction[
+                    keep_mask,
+                    6 : 6 + int(mask_coefficient_count),
+                ],
             )
         )
     return results

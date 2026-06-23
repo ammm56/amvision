@@ -4,7 +4,7 @@
 
 ## 文件名前缀
 
-- `yolo_task_*`：普通 YOLO 主线中仍可共享的训练任务 helper，当前只允许放跨 `yolov8 / yolo11 / yolo26` 共用的任务参数、DatasetExport 校验、状态事件、输出登记、warm start 解析和 task payload，不实现 backbone、head、loss、assigner、decode、postprocess、export 或 deployment session。
+- `yolo_*`：普通 YOLO 主线中仍可共享的训练任务 helper，当前只允许放跨 `yolov8 / yolo11 / yolo26` 共用的任务参数、DatasetExport 校验、状态事件、输出登记、warm start 解析和 task payload，不实现 backbone、head、loss、assigner、decode、postprocess、export 或 deployment session。
 - `yolov8_*`、`yolo11_*`、`yolo26_*`：对应模型代际的专属训练任务入口。只要涉及某一代模型的训练执行、loss、target、augmentation、evaluation 或 checkpoint 语义，都应优先进入对应 `*_core` 或对应模型 service helper。
 - `yolox_*`：YOLOX detection 训练任务 helper，只服务 `yolox`。
 - `rfdetr_*`：RF-DETR 训练任务 helper，只服务 `rfdetr`。

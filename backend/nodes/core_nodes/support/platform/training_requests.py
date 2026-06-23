@@ -30,7 +30,7 @@ class TrainingRequestClassRef:
         return request_cls
 
 
-_YOLO_TASK_REQUEST_BY_TASK_TYPE: dict[str, TrainingRequestClassRef] = {
+_YOLO_TRAINING_REQUEST_BY_TASK_TYPE: dict[str, TrainingRequestClassRef] = {
     CLASSIFICATION_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
@@ -156,7 +156,7 @@ def resolve_non_detection_training_request_class(
 
     request_ref = _TRAINING_REQUEST_BY_TASK_AND_MODEL_TYPE.get((task_type, model_type))
     if request_ref is None:
-        request_ref = _YOLO_TASK_REQUEST_BY_TASK_TYPE.get(task_type)
+        request_ref = _YOLO_TRAINING_REQUEST_BY_TASK_TYPE.get(task_type)
     if request_ref is None:
         raise ValueError(f"unsupported task_type: {task_type}")
     return request_ref.load()

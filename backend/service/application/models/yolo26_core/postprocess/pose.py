@@ -9,6 +9,7 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
+    is_yolo26_processed_class_id_column,
     select_yolo26_end2end_topk_indices,
 )
 
@@ -161,9 +162,16 @@ def _build_yolo26_pose_processed_instances(
 
     keypoint_width = int(default_kpt_shape[0]) * int(default_kpt_shape[1])
     required_channels = 6 + keypoint_width
-    if int(prediction.shape[1]) != DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
+    if int(prediction.shape[1]) > DEFAULT_YOLO26_END2END_MAX_DETECTIONS:
         return None
     if int(prediction.shape[2]) < required_channels:
+        return None
+    if not is_yolo26_processed_class_id_column(
+        np_module=np_module,
+        prediction_array=prediction,
+        class_column_index=5,
+        num_classes=len(labels),
+    ):
         return None
 
     results: list[Yolo26PosePostprocessInstance] = []

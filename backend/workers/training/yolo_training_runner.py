@@ -117,7 +117,7 @@ _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE: dict[tuple[str, str], type]
 }
 
 
-class SqlAlchemyYoloTaskTrainerRunner:
+class SqlAlchemyYoloTrainingRunner:
     """基于 SQLAlchemy 的 YOLO 主线非 detection 训练执行器。
 
     实现 TrainingBackend 协议，统一 classification / segmentation /

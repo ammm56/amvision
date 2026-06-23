@@ -60,7 +60,7 @@ from backend.service.application.models.yolov8_core.training.validation import (
     evaluate_yolov8_detection_validation_losses,
 )
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
-    load_yolo_task_checkpoint,
+    load_yolo_checkpoint,
 )
 from backend.service.application.models.yolov8_core import (
     build_yolov8_model,
@@ -945,7 +945,7 @@ def _load_warm_start_checkpoint(
 ) -> dict[str, object]:
     """加载 warm start checkpoint 并返回摘要。"""
 
-    load_summary = load_yolo_task_checkpoint(
+    load_summary = load_yolo_checkpoint(
         imports=imports,
         model=model,
         checkpoint_path=checkpoint_path,

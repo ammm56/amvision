@@ -338,7 +338,7 @@ from backend.service.application.runtime.predictors.yolo26.obb import (
     PyTorchYolo26ObbRuntimeSession,
     TensorRTYolo26ObbRuntimeSession,
 )
-from backend.workers.training.yolo_task_trainer_runner import (
+from backend.workers.training.yolo_training_runner import (
     _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE,
 )
 from backend.service.application.models.training.yolo11_training_service import (

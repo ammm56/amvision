@@ -12,7 +12,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
-from backend.workers.training.yolo_task_training_queue_worker import (
+from backend.workers.training.yolo_training_queue_worker import (
     ClassificationTrainingQueueWorker,
     ObbTrainingQueueWorker,
     PoseTrainingQueueWorker,
@@ -40,7 +40,7 @@ class _KeywordOnlyQueueBackend:
         (ObbTrainingQueueWorker, "obb-training-worker", 3),
     ],
 )
-def test_yolo_task_training_workers_use_keyword_only_claim_next(
+def test_yolo_training_workers_use_keyword_only_claim_next(
     tmp_path: Path,
     worker_cls: type,
     worker_id: str,

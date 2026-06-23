@@ -257,7 +257,7 @@ def run_yolov8_pose_training(
                 input_size=batch_input_size,
                 device=device,
                 precision=precision,
-                imports=_build_yolo_task_training_imports(cv2, np, torch),
+                imports=_build_yolo_training_imports(cv2, np, torch),
                 augmentation_options=effective_yolov8_augmentation_options,
                 available_samples=shuffled,
             )
@@ -359,7 +359,7 @@ def run_yolov8_pose_training(
                     extra.get("keypoint_confidence_threshold", 0.25)
                 ),
                 kpt_shape=kpt_shape,
-                imports=_build_yolo_task_training_imports(cv2, np, torch),
+                imports=_build_yolo_training_imports(cv2, np, torch),
             )
             validation_history.append({"epoch": epoch, **val_metrics})
             current_metric = float(val_metrics.get("map50_95", 0.0))
@@ -416,7 +416,7 @@ def run_yolov8_pose_training(
     )
 
 
-def _build_yolo_task_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
+def _build_yolo_training_imports(cv2: Any, np: Any, torch: Any) -> Any:
     """构建 YOLO task core data/evaluation 使用的依赖对象。"""
 
     from types import SimpleNamespace
