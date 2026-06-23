@@ -231,10 +231,10 @@
 - pose 训练公开接口：`backend/service/api/rest/v1/routes/pose_training_tasks/router.py`
 - obb 训练公开接口：`backend/service/api/rest/v1/routes/obb_training_tasks/router.py`
 - YOLOX detection 训练执行入口：`backend/service/application/models/training/yolox_detection.py`
-- YOLO 主线 detection 训练执行：`backend/service/application/models/yolo_primary_detection_training.py`
+- YOLOv8 detection 过渡训练执行：`backend/service/application/models/training/yolo_task_detection_training.py`
 - RF-DETR detection 训练执行：`backend/service/application/models/training/rfdetr_detection.py`
-- YOLO 主线 classification 训练执行：`backend/service/application/models/yolo_primary_classification_training.py`
-- YOLO 主线 segmentation 训练执行：`backend/service/application/models/yolo_primary_segmentation_training.py`
+- YOLO 主线 classification 训练执行：`backend/service/application/models/training/yolo_task_classification_training.py`
+- YOLO 主线 segmentation 训练执行：`backend/service/application/models/training/yolo_task_segmentation_training.py`
 - RF-DETR segmentation 训练执行：`backend/service/application/models/training/rfdetr_segmentation.py`
-- YOLO 主线 pose 训练执行：`backend/service/application/models/yolo_primary_pose_training.py`
-- YOLO 主线 obb 训练执行：`backend/service/application/models/yolo_primary_obb_training.py`
+- YOLO 主线 pose 训练执行：`backend/service/application/models/training/yolo_task_pose_training.py`
+- YOLO 主线 obb 训练执行：`backend/service/application/models/training/yolo_task_obb_training.py`

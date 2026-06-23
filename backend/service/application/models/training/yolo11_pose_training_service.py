@@ -62,8 +62,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO11_POSE_TRAINING_TASK_KIND = "yolo-primary-pose-training"
-YOLO11_POSE_TRAINING_QUEUE_NAME = "yolo-primary-pose-trainings"
+YOLO11_POSE_TRAINING_TASK_KIND = "yolo-task-pose-training"
+YOLO11_POSE_TRAINING_QUEUE_NAME = "yolo-task-pose-trainings"
 
 
 @dataclass(frozen=True)

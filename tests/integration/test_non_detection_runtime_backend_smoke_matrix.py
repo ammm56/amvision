@@ -27,7 +27,7 @@ from backend.service.application.conversions.yolov8_conversion_planner import (
 from backend.service.application.models.registry.model_service import ModelBuildRegistration, TrainingOutputRegistration
 from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
 from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
 from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
 from backend.service.application.runtime.tasks.classification_model_runtime import DefaultClassificationModelRuntime
 from backend.service.application.runtime.contracts.classification.prediction import ClassificationPredictionRequest
@@ -68,7 +68,7 @@ class _NonDetectionSmokeSpec:
     input_size: tuple[int, int]
 
 
-_YOLO_PRIMARY_STACKS: dict[str, tuple[type, type, type, type, type]] = {
+_YOLO_MODEL_STACKS: dict[str, tuple[type, type, type, type, type]] = {
     "yolov8": (
         SqlAlchemyYoloV8ModelService,
         DefaultYoloV8ConversionPlanner,
@@ -93,7 +93,7 @@ _YOLO_PRIMARY_STACKS: dict[str, tuple[type, type, type, type, type]] = {
 }
 
 
-def _build_yolo_primary_smoke_spec(
+def _build_yolo_model_smoke_spec(
     *,
     task_type: str,
     model_type: str,
@@ -102,7 +102,7 @@ def _build_yolo_primary_smoke_spec(
 ) -> _NonDetectionSmokeSpec:
     """按 YOLO 主线模型分类生成一条 non-detection smoke 规格。"""
 
-    stack = _YOLO_PRIMARY_STACKS[model_type]
+    stack = _YOLO_MODEL_STACKS[model_type]
     return _NonDetectionSmokeSpec(
         task_type=task_type,
         model_type=model_type,
@@ -119,7 +119,7 @@ def _build_yolo_primary_smoke_spec(
 
 _SMOKE_SPECS = (
     *(
-        _build_yolo_primary_smoke_spec(
+        _build_yolo_model_smoke_spec(
             task_type="classification",
             model_type=model_type,
             runtime_cls=DefaultClassificationModelRuntime,
@@ -128,7 +128,7 @@ _SMOKE_SPECS = (
         for model_type in ("yolov8", "yolo11", "yolo26")
     ),
     *(
-        _build_yolo_primary_smoke_spec(
+        _build_yolo_model_smoke_spec(
             task_type="segmentation",
             model_type=model_type,
             runtime_cls=DefaultSegmentationModelRuntime,
@@ -137,7 +137,7 @@ _SMOKE_SPECS = (
         for model_type in ("yolov8", "yolo11", "yolo26")
     ),
     *(
-        _build_yolo_primary_smoke_spec(
+        _build_yolo_model_smoke_spec(
             task_type="pose",
             model_type=model_type,
             runtime_cls=DefaultPoseModelRuntime,
@@ -146,7 +146,7 @@ _SMOKE_SPECS = (
         for model_type in ("yolov8", "yolo11", "yolo26")
     ),
     *(
-        _build_yolo_primary_smoke_spec(
+        _build_yolo_model_smoke_spec(
             task_type="obb",
             model_type=model_type,
             runtime_cls=DefaultObbModelRuntime,
@@ -280,7 +280,7 @@ def _seed_model_version(
     )
     checkpoint_path = dataset_storage.resolve(checkpoint_uri)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    source_model = build_yolo_primary_model(
+    source_model = build_yolo_task_model(
         model_type=spec.model_type,
         task_type=spec.task_type,
         model_scale="nano",

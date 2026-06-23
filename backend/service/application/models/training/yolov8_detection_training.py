@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from backend.service.application.models.training.yolo_primary_detection_training import (
-    YoloPrimaryDetectionTrainingExecutionRequest as YoloV8DetectionTrainingExecutionRequest,
-    YoloPrimaryDetectionTrainingExecutionResult as YoloV8DetectionTrainingExecutionResult,
-    YoloPrimaryTrainingBatchProgress as YoloV8TrainingBatchProgress,
-    YoloPrimaryTrainingEpochProgress as YoloV8TrainingEpochProgress,
-    run_yolo_primary_detection_training,
+from backend.service.application.models.training.yolo_task_detection_training import (
+    YoloTaskDetectionTrainingExecutionRequest as YoloV8DetectionTrainingExecutionRequest,
+    YoloTaskDetectionTrainingExecutionResult as YoloV8DetectionTrainingExecutionResult,
+    YoloTaskDetectionTrainingBatchProgress as YoloV8TrainingBatchProgress,
+    YoloTaskDetectionTrainingEpochProgress as YoloV8TrainingEpochProgress,
+    run_yolo_task_detection_training,
 )
 
 YOLOV8_IMPLEMENTATION_MODE = "yolov8-detection-core"
-run_yolov8_detection_training = run_yolo_primary_detection_training
+run_yolov8_detection_training = run_yolo_task_detection_training
 
 
 __all__ = [

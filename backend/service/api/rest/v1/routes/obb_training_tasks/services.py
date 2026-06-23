@@ -10,9 +10,9 @@ from backend.service.api.rest.v1.routes.obb_training_tasks.schemas import (
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolo_primary_obb_training_service import (
-    SqlAlchemyYoloPrimaryObbTrainingTaskService,
-    YoloPrimaryObbTrainingTaskRequest,
+from backend.service.application.models.training.yolo_task_obb_training_service import (
+    SqlAlchemyYoloTaskObbTrainingService,
+    YoloTaskObbTrainingRequest,
 )
 from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
@@ -84,5 +84,5 @@ def _resolve_obb_training_service_and_request(model_type: str):
         return SqlAlchemyYolo11ObbTrainingTaskService, Yolo11ObbTrainingTaskRequest
     if model_type == "yolo26":
         return SqlAlchemyYolo26ObbTrainingTaskService, Yolo26ObbTrainingTaskRequest
-    return SqlAlchemyYoloPrimaryObbTrainingTaskService, YoloPrimaryObbTrainingTaskRequest
+    return SqlAlchemyYoloTaskObbTrainingService, YoloTaskObbTrainingRequest
 

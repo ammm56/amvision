@@ -7,13 +7,13 @@ from types import SimpleNamespace
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
-from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
 
 
 def test_compute_pose_loss_exposes_visibility_loss_for_standard_pose() -> None:
     """验证标准 pose 训练损失会显式产出 visibility_loss。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type="yolov8",
         task_type="pose",
         model_scale="nano",
@@ -40,7 +40,7 @@ def test_compute_pose_loss_exposes_visibility_loss_for_standard_pose() -> None:
 def test_compute_pose_loss_exposes_rle_loss_for_pose26() -> None:
     """验证 Pose26 训练损失会显式产出 rle_loss。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type="yolo26",
         task_type="pose",
         model_scale="nano",

@@ -46,15 +46,15 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
 ```
 
 ```powershell
-python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
+python -m tests.integration.yolo_model_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
 ```
 
 ```powershell
-python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks detection --target-formats onnx --start-processes
+python -m tests.integration.yolo_model_full_chain_smoke --model-type yolo11 --tasks detection --target-formats onnx --start-processes
 ```
 
 ```powershell
-python -m tests.integration.yolo_primary_full_chain_smoke --model-type yolo11 --tasks pose obb --target-formats onnx --max-epochs 1 --batch-size 1 --max-images-per-split 2 --start-processes
+python -m tests.integration.yolo_model_full_chain_smoke --model-type yolo11 --tasks pose obb --target-formats onnx --max-epochs 1 --batch-size 1 --max-images-per-split 2 --start-processes
 ```
 
 ```powershell

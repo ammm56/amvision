@@ -30,34 +30,34 @@ class TrainingRequestClassRef:
         return request_cls
 
 
-_PRIMARY_REQUEST_BY_TASK_TYPE: dict[str, TrainingRequestClassRef] = {
+_YOLO_TASK_REQUEST_BY_TASK_TYPE: dict[str, TrainingRequestClassRef] = {
     CLASSIFICATION_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_primary_classification_training_service"
+            "yolo_task_classification_training_service"
         ),
-        class_name="YoloPrimaryClassificationTrainingTaskRequest",
+        class_name="YoloTaskClassificationTrainingRequest",
     ),
     SEGMENTATION_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_primary_segmentation_training_service"
+            "yolo_task_segmentation_training_service"
         ),
-        class_name="YoloPrimarySegmentationTrainingTaskRequest",
+        class_name="YoloTaskSegmentationTrainingRequest",
     ),
     POSE_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_primary_pose_training_service"
+            "yolo_task_pose_training_service"
         ),
-        class_name="YoloPrimaryPoseTrainingTaskRequest",
+        class_name="YoloTaskPoseTrainingRequest",
     ),
     OBB_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_primary_obb_training_service"
+            "yolo_task_obb_training_service"
         ),
-        class_name="YoloPrimaryObbTrainingTaskRequest",
+        class_name="YoloTaskObbTrainingRequest",
     ),
 }
 
@@ -156,8 +156,7 @@ def resolve_non_detection_training_request_class(
 
     request_ref = _TRAINING_REQUEST_BY_TASK_AND_MODEL_TYPE.get((task_type, model_type))
     if request_ref is None:
-        request_ref = _PRIMARY_REQUEST_BY_TASK_TYPE.get(task_type)
+        request_ref = _YOLO_TASK_REQUEST_BY_TASK_TYPE.get(task_type)
     if request_ref is None:
         raise ValueError(f"unsupported task_type: {task_type}")
     return request_ref.load()
-

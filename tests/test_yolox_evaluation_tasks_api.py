@@ -18,7 +18,7 @@ from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.evaluation.yolo_primary_evaluation_queue_worker import DetectionEvaluationQueueWorker
+from backend.workers.evaluation.model_evaluation_queue_worker import DetectionEvaluationQueueWorker
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
     create_yolox_api_test_context,

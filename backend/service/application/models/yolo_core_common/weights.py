@@ -295,7 +295,7 @@ def _bind_pickle_checkpoint_classes(
         Proto,
         Segment,
     )
-    from backend.service.application.models.yolo_core_common.primary.yolo_detection_model import (
+    from backend.service.application.models.yolo_core_common.modeling.detection_model import (
         Attention,
         Bottleneck,
         C2PSA,

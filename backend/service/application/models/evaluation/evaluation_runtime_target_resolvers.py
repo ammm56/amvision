@@ -21,27 +21,27 @@ from backend.service.application.runtime.targets.yolov8 import (
 )
 
 
-_YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
+_YOLO_TASK_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
     "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
 }
 _SEGMENTATION_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
-    **_YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE,
+    **_YOLO_TASK_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE,
     "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
 }
 _DETECTION_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE: dict[str, type] = {
     "yolox": SqlAlchemyRuntimeTargetResolver,
-    **_YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE,
+    **_YOLO_TASK_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE,
     "rfdetr": SqlAlchemyRfdetrRuntimeTargetResolver,
 }
 
 
-def get_yolo_primary_evaluation_runtime_target_resolver(model_type: str) -> type:
+def get_yolo_task_evaluation_runtime_target_resolver(model_type: str) -> type:
     """按 model_type 返回 YOLO 主线评估使用的 resolver 类。"""
 
     normalized_model_type = require_platform_model_type(model_type)
-    resolver_cls = _YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(
+    resolver_cls = _YOLO_TASK_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(
         normalized_model_type
     )
     if resolver_cls is None:
@@ -50,7 +50,7 @@ def get_yolo_primary_evaluation_runtime_target_resolver(model_type: str) -> type
             details={
                 "model_type": normalized_model_type,
                 "supported": sorted(
-                    _YOLO_PRIMARY_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.keys()
+                    _YOLO_TASK_EVALUATION_RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.keys()
                 ),
             },
         )

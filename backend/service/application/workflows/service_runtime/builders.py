@@ -48,11 +48,11 @@ from backend.service.application.models.evaluation.obb_evaluation_task_service i
 from backend.service.application.models.evaluation.pose_evaluation_task_service import (
     SqlAlchemyPoseEvaluationTaskService,
 )
-from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
-    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
+    SqlAlchemyYoloTaskClassificationEvaluationService,
 )
-from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
-    SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+from backend.service.application.models.evaluation.yolo_task_segmentation_evaluation_service import (
+    SqlAlchemyYoloTaskSegmentationEvaluationService,
 )
 from backend.service.application.models.inference.classification_inference_task_service import (
     SqlAlchemyClassificationInferenceTaskService,
@@ -72,17 +72,17 @@ from backend.service.application.models.inference.segmentation_inference_task_se
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
-from backend.service.application.models.training.yolo_primary_classification_training_service import (
-    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+from backend.service.application.models.training.yolo_task_classification_training_service import (
+    SqlAlchemyYoloTaskClassificationTrainingService,
 )
-from backend.service.application.models.training.yolo_primary_obb_training_service import (
-    SqlAlchemyYoloPrimaryObbTrainingTaskService,
+from backend.service.application.models.training.yolo_task_obb_training_service import (
+    SqlAlchemyYoloTaskObbTrainingService,
 )
-from backend.service.application.models.training.yolo_primary_pose_training_service import (
-    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+from backend.service.application.models.training.yolo_task_pose_training_service import (
+    SqlAlchemyYoloTaskPoseTrainingService,
 )
-from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
-    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+from backend.service.application.models.training.yolo_task_segmentation_training_service import (
+    SqlAlchemyYoloTaskSegmentationTrainingService,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
@@ -152,10 +152,10 @@ _DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE: dict[str, type] = {
     "rfdetr": SqlAlchemyRfdetrConversionTaskService,
 }
 _TRAINING_SERVICE_BY_TASK_TYPE: dict[str, type] = {
-    CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
-    SEGMENTATION_TASK_TYPE: SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
-    POSE_TASK_TYPE: SqlAlchemyYoloPrimaryPoseTrainingTaskService,
-    OBB_TASK_TYPE: SqlAlchemyYoloPrimaryObbTrainingTaskService,
+    CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloTaskClassificationTrainingService,
+    SEGMENTATION_TASK_TYPE: SqlAlchemyYoloTaskSegmentationTrainingService,
+    POSE_TASK_TYPE: SqlAlchemyYoloTaskPoseTrainingService,
+    OBB_TASK_TYPE: SqlAlchemyYoloTaskObbTrainingService,
 }
 _TRAINING_SERVICE_BY_TASK_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
     (CLASSIFICATION_TASK_TYPE, "yolo11"): SqlAlchemyYolo11ClassificationTrainingTaskService,
@@ -176,8 +176,8 @@ _VALIDATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
 }
 _EVALUATION_SERVICE_BY_TASK_TYPE: dict[str, type] = {
     DETECTION_TASK_TYPE: SqlAlchemyDetectionEvaluationTaskService,
-    CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
-    SEGMENTATION_TASK_TYPE: SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+    CLASSIFICATION_TASK_TYPE: SqlAlchemyYoloTaskClassificationEvaluationService,
+    SEGMENTATION_TASK_TYPE: SqlAlchemyYoloTaskSegmentationEvaluationService,
     POSE_TASK_TYPE: SqlAlchemyPoseEvaluationTaskService,
     OBB_TASK_TYPE: SqlAlchemyObbEvaluationTaskService,
 }

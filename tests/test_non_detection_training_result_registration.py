@@ -15,13 +15,13 @@ from backend.service.application.models.training import (
     yolo11_classification_training_service as yolo11_classification_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_primary_pose_training_service as pose_service_module,
+    yolo_task_pose_training_service as pose_service_module,
 )
 from backend.service.application.models.training import (
     yolo26_obb_training_service as yolo26_obb_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_primary_segmentation_training_service as segmentation_service_module,
+    yolo_task_segmentation_training_service as segmentation_service_module,
 )
 from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -32,19 +32,19 @@ from backend.service.application.models.registry.yolo26_model_service import (
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
-from backend.service.application.models.training.yolo_primary_classification_training import (
-    YoloPrimaryClassificationTrainingExecutionResult,
+from backend.service.application.models.training.yolo_task_classification_training import (
+    YoloTaskClassificationTrainingExecutionResult,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
     Yolo11ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.training.yolo_primary_pose_training import (
-    YoloPrimaryPoseTrainingExecutionResult,
+from backend.service.application.models.training.yolo_task_pose_training import (
+    YoloTaskPoseTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_primary_pose_training_service import (
-    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
-    YoloPrimaryPoseTrainingTaskRequest,
+from backend.service.application.models.training.yolo_task_pose_training_service import (
+    SqlAlchemyYoloTaskPoseTrainingService,
+    YoloTaskPoseTrainingRequest,
 )
 from backend.service.application.models.training.yolo26_obb_training import (
     Yolo26ObbTrainingExecutionResult,
@@ -53,12 +53,12 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     SqlAlchemyYolo26ObbTrainingTaskService,
     Yolo26ObbTrainingTaskRequest,
 )
-from backend.service.application.models.training.yolo_primary_segmentation_training import (
-    YoloPrimarySegmentationTrainingExecutionResult,
+from backend.service.application.models.training.yolo_task_segmentation_training import (
+    YoloTaskSegmentationTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
-    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
-    YoloPrimarySegmentationTrainingTaskRequest,
+from backend.service.application.models.training.yolo_task_segmentation_training_service import (
+    SqlAlchemyYoloTaskSegmentationTrainingService,
+    YoloTaskSegmentationTrainingRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -104,7 +104,7 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
 
     def _fake_run(request):
         assert request.model_type == "yolo11"
-        return YoloPrimaryClassificationTrainingExecutionResult(
+        return YoloTaskClassificationTrainingExecutionResult(
             best_metric_value=0.88,
             best_metric_name="val_top1_accuracy",
             latest_checkpoint_bytes=b"classification-checkpoint",
@@ -206,7 +206,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
 
     def _fake_run(request):
         assert request.model_type == "yolo26"
-        return YoloPrimarySegmentationTrainingExecutionResult(
+        return YoloTaskSegmentationTrainingExecutionResult(
             best_metric_value=0.51,
             best_metric_name="val_map50_95",
             latest_checkpoint_bytes=b"segmentation-checkpoint",
@@ -217,17 +217,17 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
 
     monkeypatch.setattr(
         segmentation_service_module,
-        "run_yolo_primary_segmentation_training",
+        "run_yolo_task_segmentation_training",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloPrimarySegmentationTrainingTaskService(
+    service = SqlAlchemyYoloTaskSegmentationTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloPrimarySegmentationTrainingTaskRequest(
+        YoloTaskSegmentationTrainingRequest(
             project_id="project-1",
             recipe_id="recipe-1",
             model_type="yolo26",
@@ -308,7 +308,7 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
 
     def _fake_run(request):
         assert request.model_type == "yolov8"
-        return YoloPrimaryPoseTrainingExecutionResult(
+        return YoloTaskPoseTrainingExecutionResult(
             best_metric_value=0.41,
             best_metric_name="val_map50_95",
             latest_checkpoint_bytes=b"pose-checkpoint",
@@ -319,17 +319,17 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
 
     monkeypatch.setattr(
         pose_service_module,
-        "run_yolo_primary_pose_training",
+        "run_yolo_task_pose_training",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloPrimaryPoseTrainingTaskService(
+    service = SqlAlchemyYoloTaskPoseTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloPrimaryPoseTrainingTaskRequest(
+        YoloTaskPoseTrainingRequest(
             project_id="project-1",
             recipe_id="recipe-1",
             model_type="yolov8",

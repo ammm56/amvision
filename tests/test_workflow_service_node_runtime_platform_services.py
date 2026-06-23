@@ -41,23 +41,23 @@ from backend.service.application.models.evaluation.obb_evaluation_task_service i
 from backend.service.application.models.inference.obb_inference_task_service import (
     SqlAlchemyObbInferenceTaskService,
 )
-from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
-    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
+    SqlAlchemyYoloTaskClassificationEvaluationService,
 )
-from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
-    SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+from backend.service.application.models.evaluation.yolo_task_segmentation_evaluation_service import (
+    SqlAlchemyYoloTaskSegmentationEvaluationService,
 )
 from backend.service.application.models.inference.segmentation_inference_task_service import (
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.models.training.yolo_primary_classification_training_service import (
-    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+from backend.service.application.models.training.yolo_task_classification_training_service import (
+    SqlAlchemyYoloTaskClassificationTrainingService,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
-from backend.service.application.models.training.yolo_primary_pose_training_service import (
-    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+from backend.service.application.models.training.yolo_task_pose_training_service import (
+    SqlAlchemyYoloTaskPoseTrainingService,
 )
 from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
@@ -103,7 +103,7 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(
         runtime_context.build_training_task_service(
             task_type="classification", model_type="yolov8"
         ),
-        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+        SqlAlchemyYoloTaskClassificationTrainingService,
     )
     assert isinstance(
         runtime_context.build_training_task_service(
@@ -133,7 +133,7 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(
         runtime_context.build_training_task_service(
             task_type="pose", model_type="yolov8"
         ),
-        SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+        SqlAlchemyYoloTaskPoseTrainingService,
     )
     assert isinstance(
         runtime_context.build_training_task_service(
@@ -165,11 +165,11 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(
     )
     assert isinstance(
         runtime_context.build_evaluation_task_service(task_type="classification"),
-        SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
+        SqlAlchemyYoloTaskClassificationEvaluationService,
     )
     assert isinstance(
         runtime_context.build_evaluation_task_service(task_type="segmentation"),
-        SqlAlchemyYoloPrimarySegmentationEvaluationTaskService,
+        SqlAlchemyYoloTaskSegmentationEvaluationService,
     )
     assert isinstance(
         runtime_context.build_evaluation_task_service(task_type="obb"),

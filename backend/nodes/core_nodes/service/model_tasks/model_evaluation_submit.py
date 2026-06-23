@@ -89,20 +89,20 @@ def _build_platform_evaluation_request(
             nms_threshold=get_optional_float_parameter(request, "nms_threshold"),
         )
     if task_type == CLASSIFICATION_TASK_TYPE:
-        from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
-            YoloPrimaryClassificationEvaluationTaskRequest,
+        from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
+            YoloTaskClassificationEvaluationRequest,
         )
 
-        return YoloPrimaryClassificationEvaluationTaskRequest(
+        return YoloTaskClassificationEvaluationRequest(
             **common_kwargs,
             top_k=get_optional_int_parameter(request, "top_k") or 5,
         )
     if task_type == SEGMENTATION_TASK_TYPE:
-        from backend.service.application.models.evaluation.yolo_primary_segmentation_evaluation_task_service import (
-            YoloPrimarySegmentationEvaluationTaskRequest,
+        from backend.service.application.models.evaluation.yolo_task_segmentation_evaluation_service import (
+            YoloTaskSegmentationEvaluationRequest,
         )
 
-        return YoloPrimarySegmentationEvaluationTaskRequest(
+        return YoloTaskSegmentationEvaluationRequest(
             **common_kwargs,
             score_threshold=get_optional_float_parameter(request, "score_threshold"),
             mask_threshold=get_optional_float_parameter(request, "mask_threshold"),

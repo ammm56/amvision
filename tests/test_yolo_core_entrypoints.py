@@ -249,11 +249,11 @@ from backend.service.application.models.training.yolo26_obb_task_registration im
     register_yolo26_obb_training_output_model_version,
     resolve_yolo26_obb_implementation_mode,
 )
-from backend.service.application.models.training.yolo_primary_pose_task_registration import (
-    YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP,
+from backend.service.application.models.training.yolo_task_pose_training_registration import (
+    YOLO_TASK_POSE_MODEL_SERVICE_MAP,
 )
-from backend.service.application.models.training.yolo_primary_obb_task_registration import (
-    YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP,
+from backend.service.application.models.training.yolo_task_obb_training_registration import (
+    YOLO_TASK_OBB_MODEL_SERVICE_MAP,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
@@ -278,34 +278,34 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     YOLO26_OBB_TRAINING_QUEUE_NAME,
     YOLO26_OBB_TRAINING_TASK_KIND,
 )
-from backend.service.application.models.training.yolo_primary_classification_training_service import (
-    SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+from backend.service.application.models.training.yolo_task_classification_training_service import (
+    SqlAlchemyYoloTaskClassificationTrainingService,
 )
 from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
-from backend.service.application.models.training.yolo_primary_segmentation_training_service import (
-    SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+from backend.service.application.models.training.yolo_task_segmentation_training_service import (
+    SqlAlchemyYoloTaskSegmentationTrainingService,
 )
 from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
 )
-from backend.service.application.models.training.yolo_primary_pose_training_service import (
-    SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+from backend.service.application.models.training.yolo_task_pose_training_service import (
+    SqlAlchemyYoloTaskPoseTrainingService,
 )
 from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
 )
-from backend.service.application.models.training.yolo_primary_obb_training_service import (
-    SqlAlchemyYoloPrimaryObbTrainingTaskService,
+from backend.service.application.models.training.yolo_task_obb_training_service import (
+    SqlAlchemyYoloTaskObbTrainingService,
 )
-from backend.service.application.models.training.yolo_primary_pose_training import (
-    YoloPrimaryPoseTrainingExecutionRequest,
-    run_yolo_primary_pose_training,
+from backend.service.application.models.training.yolo_task_pose_training import (
+    YoloTaskPoseTrainingExecutionRequest,
+    run_yolo_task_pose_training,
 )
-from backend.service.application.models.training.yolo_primary_obb_training import (
-    YoloPrimaryObbTrainingExecutionRequest,
-    run_yolo_primary_obb_training,
+from backend.service.application.models.training.yolo_task_obb_training import (
+    YoloTaskObbTrainingExecutionRequest,
+    run_yolo_task_obb_training,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.predictors.yolo11.classification import (
@@ -338,7 +338,7 @@ from backend.service.application.runtime.predictors.yolo26.obb import (
     PyTorchYolo26ObbRuntimeSession,
     TensorRTYolo26ObbRuntimeSession,
 )
-from backend.workers.training.yolo_primary_trainer_runner import (
+from backend.workers.training.yolo_task_trainer_runner import (
     _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE,
 )
 from backend.service.application.models.training.yolo11_training_service import (
@@ -1100,7 +1100,7 @@ def test_yolo11_classification_training_service_uses_model_specific_runner() -> 
     assert SqlAlchemyYolo11ClassificationTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo11ClassificationTrainingTaskService,
-        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+        SqlAlchemyYoloTaskClassificationTrainingService,
     )
     assert SqlAlchemyYolo11ClassificationTrainingTaskService._run_training_execution.__module__.endswith(
         "models.training.yolo11_classification_training_service"
@@ -1119,7 +1119,7 @@ def test_yolo26_classification_training_service_uses_model_specific_runner() -> 
     assert SqlAlchemyYolo26ClassificationTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo26ClassificationTrainingTaskService,
-        SqlAlchemyYoloPrimaryClassificationTrainingTaskService,
+        SqlAlchemyYoloTaskClassificationTrainingService,
     )
     assert SqlAlchemyYolo26ClassificationTrainingTaskService._run_training_execution.__module__.endswith(
         "models.training.yolo26_classification_training_service"
@@ -1151,7 +1151,7 @@ def test_yolo11_segmentation_training_service_uses_model_specific_runner() -> No
     assert SqlAlchemyYolo11SegmentationTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo11SegmentationTrainingTaskService,
-        SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+        SqlAlchemyYoloTaskSegmentationTrainingService,
     )
     assert SqlAlchemyYolo11SegmentationTrainingTaskService._run_segmentation_training_execution.__module__.endswith(
         "models.training.yolo11_segmentation_training_service"
@@ -1202,7 +1202,7 @@ def test_yolo26_segmentation_training_service_uses_model_specific_runner() -> No
     assert SqlAlchemyYolo26SegmentationTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo26SegmentationTrainingTaskService,
-        SqlAlchemyYoloPrimarySegmentationTrainingTaskService,
+        SqlAlchemyYoloTaskSegmentationTrainingService,
     )
     assert SqlAlchemyYolo26SegmentationTrainingTaskService._run_segmentation_training_execution.__module__.endswith(
         "models.training.yolo26_segmentation_training_service"
@@ -1263,7 +1263,7 @@ def test_yolo26_pose_training_service_uses_model_specific_runner() -> None:
     assert SqlAlchemyYolo26PoseTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo26PoseTrainingTaskService,
-        SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+        SqlAlchemyYoloTaskPoseTrainingService,
     )
     assert SqlAlchemyYolo26PoseTrainingTaskService._run_pose_training_execution.__module__.endswith(
         "models.training.yolo26_pose_training_service"
@@ -1325,7 +1325,7 @@ def test_yolo26_obb_training_service_uses_model_specific_runner() -> None:
     assert SqlAlchemyYolo26ObbTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo26ObbTrainingTaskService,
-        SqlAlchemyYoloPrimaryObbTrainingTaskService,
+        SqlAlchemyYoloTaskObbTrainingService,
     )
     assert SqlAlchemyYolo26ObbTrainingTaskService._run_obb_training_execution.__module__.endswith(
         "models.training.yolo26_obb_training_service"
@@ -1387,12 +1387,12 @@ def test_yolo11_pose_and_obb_training_services_use_model_specific_runner() -> No
     assert SqlAlchemyYolo11PoseTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo11PoseTrainingTaskService,
-        SqlAlchemyYoloPrimaryPoseTrainingTaskService,
+        SqlAlchemyYoloTaskPoseTrainingService,
     )
     assert SqlAlchemyYolo11ObbTrainingTaskService.__bases__ == (object,)
     assert not issubclass(
         SqlAlchemyYolo11ObbTrainingTaskService,
-        SqlAlchemyYoloPrimaryObbTrainingTaskService,
+        SqlAlchemyYoloTaskObbTrainingService,
     )
     assert SqlAlchemyYolo11PoseTrainingTaskService._run_pose_training_execution.__module__.endswith(
         "models.training.yolo11_pose_training_service"
@@ -1452,8 +1452,8 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
 
     fake_storage = object()
     with pytest.raises(InvalidRequestError):
-        run_yolo_primary_pose_training(
-            YoloPrimaryPoseTrainingExecutionRequest(
+        run_yolo_task_pose_training(
+            YoloTaskPoseTrainingExecutionRequest(
                 dataset_storage=fake_storage,
                 manifest_payload={},
                 model_type="yolo11",
@@ -1461,8 +1461,8 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
             )
         )
     with pytest.raises(InvalidRequestError):
-        run_yolo_primary_pose_training(
-            YoloPrimaryPoseTrainingExecutionRequest(
+        run_yolo_task_pose_training(
+            YoloTaskPoseTrainingExecutionRequest(
                 dataset_storage=fake_storage,
                 manifest_payload={},
                 model_type="yolo26",
@@ -1470,8 +1470,8 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
             )
         )
     with pytest.raises(InvalidRequestError):
-        run_yolo_primary_obb_training(
-            YoloPrimaryObbTrainingExecutionRequest(
+        run_yolo_task_obb_training(
+            YoloTaskObbTrainingExecutionRequest(
                 dataset_storage=fake_storage,
                 manifest_payload={},
                 model_type="yolo11",
@@ -1479,8 +1479,8 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
             )
         )
     with pytest.raises(InvalidRequestError):
-        run_yolo_primary_obb_training(
-            YoloPrimaryObbTrainingExecutionRequest(
+        run_yolo_task_obb_training(
+            YoloTaskObbTrainingExecutionRequest(
                 dataset_storage=fake_storage,
                 manifest_payload={},
                 model_type="yolo26",
@@ -1492,9 +1492,9 @@ def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
 def test_yolo11_pose_and_obb_training_registration_is_model_specific() -> None:
     """验证 YOLO11 pose / OBB 成果登记不再挂在 primary registration map 下。"""
 
-    assert "yolo11" not in YOLO_PRIMARY_POSE_MODEL_SERVICE_MAP
-    assert "yolo11" not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP
-    assert "yolo26" not in YOLO_PRIMARY_OBB_MODEL_SERVICE_MAP
+    assert "yolo11" not in YOLO_TASK_POSE_MODEL_SERVICE_MAP
+    assert "yolo11" not in YOLO_TASK_OBB_MODEL_SERVICE_MAP
+    assert "yolo26" not in YOLO_TASK_OBB_MODEL_SERVICE_MAP
     assert register_yolo11_pose_training_output_model_version.__module__.endswith(
         "models.training.yolo11_pose_task_registration"
     )

@@ -20,10 +20,10 @@ from backend.service.api.rest.v1.routes.task_evaluation.services import (
     list_evaluation_task_records,
     require_evaluation_project_access,
 )
-from backend.service.application.models.evaluation.yolo_primary_classification_evaluation_task_service import (
+from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
     CLASSIFICATION_EVALUATION_TASK_KIND,
-    SqlAlchemyYoloPrimaryClassificationEvaluationTaskService,
-    YoloPrimaryClassificationEvaluationTaskRequest,
+    SqlAlchemyYoloTaskClassificationEvaluationService,
+    YoloTaskClassificationEvaluationRequest,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -40,13 +40,13 @@ def create_classification_evaluation_task_response(
     """创建 classification evaluation 任务并返回提交响应。"""
 
     require_evaluation_project_access(principal=principal, project_id=body.project_id)
-    service = SqlAlchemyYoloPrimaryClassificationEvaluationTaskService(
+    service = SqlAlchemyYoloTaskClassificationEvaluationService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
     )
     submission = service.submit_evaluation_task(
-        YoloPrimaryClassificationEvaluationTaskRequest(
+        YoloTaskClassificationEvaluationRequest(
             project_id=body.project_id,
             model_version_id=body.model_version_id,
             dataset_export_id=body.dataset_export_id,

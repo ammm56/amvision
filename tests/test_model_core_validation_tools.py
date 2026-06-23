@@ -9,7 +9,7 @@ from backend.service.application.models.validation.model_core_validation import 
     analyze_state_dict_coverage,
     build_model_core_snapshot,
 )
-from backend.service.application.models.yolo_core_common.primary.yolo_primary_model_configs import build_yolo_primary_model
+from backend.service.application.models.yolo_core_common.model_builders import build_yolo_task_model
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
@@ -39,7 +39,7 @@ def test_yolo_primary_core_snapshot_records_tensor_output_shape(
 ) -> None:
     """验证 YOLO 主线 tensor 输出任务可以生成结构与输出形状快照。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type=model_type,
         task_type=task_type,
         model_scale="nano",
@@ -72,7 +72,7 @@ def test_yolo_primary_core_snapshot_records_tensor_output_shape(
 def test_yolo_primary_core_snapshot_records_classification_tuple_shape(model_type: str) -> None:
     """验证 classification 输出的概率和 logits 形状会一起记录。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type=model_type,
         task_type=CLASSIFICATION_TASK_TYPE,
         model_scale="nano",
@@ -101,7 +101,7 @@ def test_yolo_primary_core_snapshot_records_classification_tuple_shape(model_typ
 def test_yolo_primary_core_snapshot_records_segmentation_tuple_shape(model_type: str) -> None:
     """验证 segmentation 输出的预测和 proto 形状会一起记录。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type=model_type,
         task_type=SEGMENTATION_TASK_TYPE,
         model_scale="nano",
@@ -129,7 +129,7 @@ def test_yolo_primary_core_snapshot_records_segmentation_tuple_shape(model_type:
 def test_state_dict_coverage_accepts_exact_project_state_dict() -> None:
     """验证自身 state_dict 可以达到完整覆盖。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type="yolo26",
         task_type=DETECTION_TASK_TYPE,
         model_scale="nano",
@@ -153,7 +153,7 @@ def test_state_dict_coverage_accepts_exact_project_state_dict() -> None:
 def test_state_dict_coverage_strips_common_prefixes() -> None:
     """验证常见 model/module 前缀不会影响覆盖率判断。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type="yolo11",
         task_type=DETECTION_TASK_TYPE,
         model_scale="nano",
@@ -177,7 +177,7 @@ def test_state_dict_coverage_strips_common_prefixes() -> None:
 def test_state_dict_coverage_reports_shape_mismatch() -> None:
     """验证 shape 不一致的 key 会被单独标记出来。"""
 
-    model = build_yolo_primary_model(
+    model = build_yolo_task_model(
         model_type="yolov8",
         task_type=DETECTION_TASK_TYPE,
         model_scale="nano",

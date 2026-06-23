@@ -29,9 +29,9 @@ _TRAINING_TASK_KINDS = (
     "yolo11-training",
     "yolo26-training",
     "rfdetr-training",
-    "yolo-primary-classification-training",
-    "yolo-primary-segmentation-training",
-    "yolo-primary-pose-training",
+    "yolo-task-classification-training",
+    "yolo-task-segmentation-training",
+    "yolo-task-pose-training",
     "obb-training",
 )
 _EVALUATION_TASK_KINDS = (

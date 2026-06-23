@@ -16,6 +16,7 @@
 - [docs/architecture/training-parameter-support.md](training-parameter-support.md)：训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
 - [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)：固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
 - [docs/architecture/model-core-implementation-plan.md](model-core-implementation-plan.md)：固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 完整 core 的实现范围，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
+- [docs/architecture/model-full-core-audit-checklist.md](model-full-core-audit-checklist.md)：固定 RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26 的 full core 审计状态、过渡残留分类和进入 custom node 前的真实全链路验收清单
 - [docs/architecture/code-structure-cleanup-plan.md](code-structure-cleanup-plan.md)：固定模型 core / runtime 之外的代码结构收口顺序和目标目录
 - [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)：模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)：YOLOE 与 SAM3 作为 custom node 扩展时的磁盘资产规则、manifest.json 字段和 payload 规则 约定
@@ -72,15 +73,16 @@
 6. [docs/architecture/training-parameter-support.md](training-parameter-support.md)
 7. [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)
 8. [docs/architecture/model-core-implementation-plan.md](model-core-implementation-plan.md)
-9. [docs/architecture/code-structure-cleanup-plan.md](code-structure-cleanup-plan.md)
-10. [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)
-11. [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)
-12. [docs/architecture/industrial-rule-node-plan.md](industrial-rule-node-plan.md)
-13. [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)
-14. [docs/architecture/plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)
-15. [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)
-16. [docs/architecture/yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)
-17. [docs/architecture/execution-sequences.md](execution-sequences.md)
+9. [docs/architecture/model-full-core-audit-checklist.md](model-full-core-audit-checklist.md)
+10. [docs/architecture/code-structure-cleanup-plan.md](code-structure-cleanup-plan.md)
+11. [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)
+12. [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)
+13. [docs/architecture/industrial-rule-node-plan.md](industrial-rule-node-plan.md)
+14. [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)
+15. [docs/architecture/plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)
+16. [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)
+17. [docs/architecture/yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)
+18. [docs/architecture/execution-sequences.md](execution-sequences.md)
 18. [docs/architecture/workflow-runtime.md](workflow-runtime.md)
 19. [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)
 20. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)

@@ -19,7 +19,7 @@ def test_build_summary_response_exposes_task_type_for_non_detection_training() -
 
     task = SimpleNamespace(
         task_id="task-1",
-        task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
         worker_pool="classification-worker",
         state="queued",
         current_attempt_no=0,
@@ -51,7 +51,7 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
 
     task = SimpleNamespace(
         task_id="task-2",
-        task_kind=catalog_module.YOLO_PRIMARY_SEGMENTATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
         worker_pool="segmentation-worker",
         state="paused",
         current_attempt_no=1,
@@ -113,7 +113,7 @@ def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatc
     assert result == []
     assert (
         captured["task_kind"]
-        == catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND
+        == catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND
     )
 
 
@@ -128,7 +128,7 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
             return (
                 SimpleNamespace(
                     task_id="task-yolo11",
-                    task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+                    task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
                     worker_pool="classification-worker",
                     state="queued",
                     current_attempt_no=0,
@@ -146,7 +146,7 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
                 ),
                 SimpleNamespace(
                     task_id="task-yolov8",
-                    task_kind=catalog_module.YOLO_PRIMARY_CLASSIFICATION_TRAINING_TASK_KIND,
+                    task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
                     worker_pool="classification-worker",
                     state="queued",
                     current_attempt_no=0,
