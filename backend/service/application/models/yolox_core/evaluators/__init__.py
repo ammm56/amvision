@@ -23,9 +23,17 @@ from .pytorch import (
 )
 from .validation import evaluate_yolox_validation_losses
 from .voc import VocDetectionMetrics
+from .voc import (
+    DEFAULT_VOC_IOU_THRESHOLDS,
+    evaluate_voc_class_detections,
+    evaluate_voc_detections,
+    evaluate_yolox_voc_map,
+    voc_ap,
+)
 
 __all__ = [
     "CocoDetectionMetrics",
+    "DEFAULT_VOC_IOU_THRESHOLDS",
     "VocDetectionMetrics",
     "YOLOX_EVALUATION_DEFAULT_BATCH_SIZE",
     "YOLOX_EVALUATION_DEFAULT_NMS_THRESHOLD",
@@ -38,10 +46,14 @@ __all__ = [
     "collect_yolox_coco_detections",
     "convert_yolox_predictions_to_coco_detections",
     "evaluate_coco_detections",
+    "evaluate_voc_class_detections",
+    "evaluate_voc_detections",
     "evaluate_yolox_coco_map",
+    "evaluate_yolox_voc_map",
     "evaluate_yolox_validation_losses",
     "resolve_yolox_evaluation_device_name",
     "resolve_yolox_evaluation_precision",
     "resolve_yolox_evaluation_split",
     "run_yolox_detection_evaluation",
+    "voc_ap",
 ]

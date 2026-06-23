@@ -18,17 +18,19 @@ from .detection import (
 )
 from .voc import (
     ParsedVocAnnotation,
+    ParsedVocObject,
     ResolvedVocSample,
     ResolvedVocSplit,
     VocDetectionExportDataset,
     parse_voc_annotation_file,
+    read_voc_annotation_objects,
     resolve_voc_splits,
-    write_voc_split_coco_ground_truth,
 )
 
 __all__ = [
     "CocoDetectionExportDataset",
     "ParsedVocAnnotation",
+    "ParsedVocObject",
     "ResolvedCocoSample",
     "ResolvedCocoSplit",
     "ResolvedVocSample",
@@ -40,10 +42,10 @@ __all__ = [
     "get_yolox_detection_evaluation_annotation_file",
     "load_coco_ground_truth_silently",
     "parse_voc_annotation_file",
+    "read_voc_annotation_objects",
     "resolve_coco_splits",
     "resolve_train_split",
     "resolve_validation_split",
     "resolve_voc_splits",
     "resolve_yolox_detection_splits",
-    "write_voc_split_coco_ground_truth",
 ]

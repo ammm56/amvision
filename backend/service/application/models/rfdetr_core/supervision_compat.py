@@ -185,7 +185,7 @@ def _restore_scene(scene: Image.Image, was_pil: bool) -> Image.Image | np.ndarra
 
 
 class BoxAnnotator:
-    """最小边界框绘制器。"""
+    """当前 RF-DETR core 使用的边界框绘制器。"""
 
     def __init__(
         self,
@@ -219,7 +219,7 @@ class BoxAnnotator:
 
 
 class LabelAnnotator:
-    """最小文字标签绘制器。"""
+    """当前 RF-DETR core 使用的文字标签绘制器。"""
 
     def __init__(
         self,

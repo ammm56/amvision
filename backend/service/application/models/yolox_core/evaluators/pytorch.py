@@ -8,6 +8,8 @@ from typing import Any
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolox_core.data.datasets import (
+    CocoDetectionExportDataset,
+    VocDetectionExportDataset,
     YoloXDetectionSplit,
     build_yolox_detection_dataset,
     get_yolox_detection_evaluation_annotation_file,
@@ -21,6 +23,9 @@ from backend.service.application.models.yolox_core.dependencies import (
 from backend.service.application.models.yolox_core.evaluators.coco import (
     collect_yolox_coco_detections,
     evaluate_coco_detections,
+)
+from backend.service.application.models.yolox_core.evaluators.voc import (
+    evaluate_voc_detections,
 )
 from backend.service.application.models.yolox_core.models import build_yolox_detection_model
 from backend.service.application.models.yolox_core.utils.torch_runtime import (
@@ -181,17 +186,29 @@ def run_yolox_detection_evaluation(
         score_threshold=request.score_threshold,
         nms_threshold=request.nms_threshold,
     )
-    evaluation_metrics = evaluate_coco_detections(
-        coco_class=imports.COCO,
-        cocoeval_class=imports.COCOeval,
-        annotation_file=get_yolox_detection_evaluation_annotation_file(dataset),
-        detections=list(detections),
-        category_ids=dataset.category_ids,
-        category_names=request.runtime_target.labels,
-    )
+    if isinstance(dataset, CocoDetectionExportDataset):
+        evaluation_metrics = evaluate_coco_detections(
+            coco_class=imports.COCO,
+            cocoeval_class=imports.COCOeval,
+            annotation_file=get_yolox_detection_evaluation_annotation_file(dataset),
+            detections=list(detections),
+            category_ids=dataset.category_ids,
+            category_names=request.runtime_target.labels,
+        )
+        evaluation_metric = "coco-bbox"
+    elif isinstance(dataset, VocDetectionExportDataset):
+        evaluation_metrics = evaluate_voc_detections(
+            dataset=dataset,
+            detections=list(detections),
+            category_names=request.runtime_target.labels,
+        )
+        evaluation_metric = "voc-python"
+    else:
+        raise TypeError(f"不支持的 YOLOX detection dataset 类型: {type(dataset)!r}")
     duration_seconds = round(perf_counter() - started_at, 6)
     report_payload = {
         "implementation_mode": YOLOX_EVALUATION_IMPLEMENTATION_MODE,
+        "evaluation_metric": evaluation_metric,
         "model_version_id": request.runtime_target.model_version_id,
         "dataset_export_id": request.dataset_export_id,
         "dataset_version_id": request.dataset_version_id,
@@ -214,6 +231,7 @@ def run_yolox_detection_evaluation(
         "dataset_export_id": request.dataset_export_id,
         "dataset_version_id": request.dataset_version_id,
         "split_name": evaluation_split.name,
+        "bbox_format": "xywh_original_image",
         "sample_count": len(dataset),
         "detection_count": len(detections),
         "detections": [dict(item) for item in detections],

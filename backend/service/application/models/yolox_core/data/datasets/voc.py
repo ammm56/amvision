@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 from pathlib import PurePosixPath
 import xml.etree.ElementTree as ET
@@ -21,6 +20,15 @@ class ParsedVocAnnotation:
     height: int
     file_name: str | None
     boxes_xyxy_with_class: tuple[tuple[float, float, float, float, float], ...]
+
+
+@dataclass(frozen=True)
+class ParsedVocObject:
+    """描述一个 VOC object 标注。"""
+
+    name: str
+    difficult: bool
+    bbox_xyxy: tuple[float, float, float, float]
 
 
 @dataclass(frozen=True)
@@ -75,7 +83,6 @@ class VocDetectionExportDataset:
         self.category_names = tuple(split.category_names)
         self.category_ids = tuple(range(len(self.category_names)))
         self.samples = self._build_samples()
-        self.coco_annotation_file = write_voc_split_coco_ground_truth(split=split, samples=self.samples)
 
     def __len__(self) -> int:
         """返回样本数量。"""
@@ -113,6 +120,11 @@ class VocDetectionExportDataset:
             )
         targets = self.load_anno(index)
         return image, targets, (sample.height, sample.width), sample.image_id
+
+    def read_voc_objects(self, annotation_file: Path) -> tuple[ParsedVocObject, ...]:
+        """读取原生 VOC object 标注。"""
+
+        return read_voc_annotation_objects(annotation_file=annotation_file)
 
     def __getitem__(self, index: object) -> tuple[object, object, tuple[int, int], int]:
         """读取样本并执行 YOLOX TrainTransform。"""
@@ -201,56 +213,6 @@ def resolve_voc_splits(
     return tuple(resolved_splits)
 
 
-def write_voc_split_coco_ground_truth(
-    *,
-    split: ResolvedVocSplit,
-    samples: tuple[ResolvedVocSample, ...],
-) -> Path:
-    """把 VOC split 生成 YOLOX evaluator 可复用的 COCO-style ground truth。"""
-
-    cache_dir = split.annotation_root.parent / ".yolox_coco"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    output_file = cache_dir / f"{split.name}.json"
-    annotations: list[dict[str, object]] = []
-    next_annotation_id = 1
-    for sample in samples:
-        for x1, y1, x2, y2, class_index in sample.boxes_xyxy_with_class:
-            width = max(0.0, float(x2) - float(x1))
-            height = max(0.0, float(y2) - float(y1))
-            if width <= 0.0 or height <= 0.0:
-                continue
-            annotations.append(
-                {
-                    "id": next_annotation_id,
-                    "image_id": sample.image_id,
-                    "category_id": int(class_index),
-                    "bbox": [float(x1), float(y1), width, height],
-                    "area": width * height,
-                    "iscrowd": 0,
-                }
-            )
-            next_annotation_id += 1
-
-    payload = {
-        "images": [
-            {
-                "id": sample.image_id,
-                "file_name": sample.image_path.name,
-                "width": sample.width,
-                "height": sample.height,
-            }
-            for sample in samples
-        ],
-        "annotations": annotations,
-        "categories": [
-            {"id": index, "name": class_name}
-            for index, class_name in enumerate(split.category_names)
-        ],
-    }
-    output_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    return output_file
-
-
 def parse_voc_annotation_file(
     *,
     annotation_file: Path,
@@ -276,26 +238,19 @@ def parse_voc_annotation_file(
     height = _read_required_int(size, "height")
 
     boxes: list[tuple[float, float, float, float, float]] = []
-    for object_node in root.iter("object"):
-        difficult = _read_optional_int(object_node, "difficult", default=0) == 1
+    for voc_object in _parse_voc_objects(root):
+        difficult = voc_object.difficult
         if difficult and not keep_difficult:
             continue
 
-        name_node = object_node.find("name")
-        class_name = name_node.text.strip() if name_node is not None and name_node.text else ""
+        class_name = voc_object.name
         if class_name not in class_to_index:
             raise InvalidRequestError(
                 "VOC annotation 包含未登记类别",
                 details={"class_name": class_name},
             )
 
-        bbox = object_node.find("bndbox")
-        if bbox is None:
-            raise InvalidRequestError("VOC object 缺少 bndbox 节点")
-        xmin = float(_read_required_int(bbox, "xmin") - 1)
-        ymin = float(_read_required_int(bbox, "ymin") - 1)
-        xmax = float(_read_required_int(bbox, "xmax") - 1)
-        ymax = float(_read_required_int(bbox, "ymax") - 1)
+        xmin, ymin, xmax, ymax = voc_object.bbox_xyxy
         boxes.append((xmin, ymin, xmax, ymax, float(class_to_index[class_name])))
 
     return ParsedVocAnnotation(
@@ -304,6 +259,43 @@ def parse_voc_annotation_file(
         file_name=file_name,
         boxes_xyxy_with_class=tuple(boxes),
     )
+
+
+def read_voc_annotation_objects(*, annotation_file: Path) -> tuple[ParsedVocObject, ...]:
+    """读取 VOC annotation 中的原生 object 标注。"""
+
+    if not annotation_file.is_file():
+        raise InvalidRequestError(
+            "VOC annotation 文件不存在",
+            details={"annotation_file": annotation_file.as_posix()},
+        )
+    root = ET.parse(annotation_file).getroot()
+    return _parse_voc_objects(root)
+
+
+def _parse_voc_objects(root: ET.Element) -> tuple[ParsedVocObject, ...]:
+    """从 VOC XML root 中解析 object 列表。"""
+
+    objects: list[ParsedVocObject] = []
+    for object_node in root.iter("object"):
+        name_node = object_node.find("name")
+        class_name = name_node.text.strip() if name_node is not None and name_node.text else ""
+        difficult = _read_optional_int(object_node, "difficult", default=0) == 1
+        bbox = object_node.find("bndbox")
+        if bbox is None:
+            raise InvalidRequestError("VOC object 缺少 bndbox 节点")
+        xmin = float(_read_required_int(bbox, "xmin") - 1)
+        ymin = float(_read_required_int(bbox, "ymin") - 1)
+        xmax = float(_read_required_int(bbox, "xmax") - 1)
+        ymax = float(_read_required_int(bbox, "ymax") - 1)
+        objects.append(
+            ParsedVocObject(
+                name=class_name,
+                difficult=difficult,
+                bbox_xyxy=(xmin, ymin, xmax, ymax),
+            )
+        )
+    return tuple(objects)
 
 
 def _read_voc_category_names(manifest_payload: dict[str, object]) -> tuple[str, ...]:

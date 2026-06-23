@@ -6,7 +6,7 @@ from .cfg import (
     YOLOX_SUPPORTED_MODEL_SCALES,
     YoloXScaleProfile,
 )
-from .data import TrainTransform
+from .data import TrainTransform, ValTransform
 from .dependencies import YoloXCoreDependencies, require_yolox_core_dependencies
 from .models import YOLOPAFPN, YOLOX, YOLOXHead, build_yolox_detection_model
 from .utils import LRScheduler, postprocess
@@ -17,6 +17,7 @@ __all__ = [
     "YOLOX_SCALE_PROFILES",
     "YOLOX_SUPPORTED_MODEL_SCALES",
     "TrainTransform",
+    "ValTransform",
     "YOLOPAFPN",
     "YOLOX",
     "YOLOXHead",

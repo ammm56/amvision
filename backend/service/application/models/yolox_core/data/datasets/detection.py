@@ -82,13 +82,11 @@ def build_yolox_detection_dataset(
 
 
 def get_yolox_detection_evaluation_annotation_file(dataset: YoloXDetectionDataset):
-    """返回当前数据集可供 COCO evaluator 使用的 annotation 文件。"""
+    """返回当前 COCO 数据集可供 COCO evaluator 使用的 annotation 文件。"""
 
     if isinstance(dataset, CocoDetectionExportDataset):
         return dataset.annotation_file
-    if isinstance(dataset, VocDetectionExportDataset):
-        return dataset.coco_annotation_file
-    raise TypeError(f"不支持的 YOLOX detection dataset 类型: {type(dataset)!r}")
+    raise TypeError(f"当前 YOLOX detection dataset 不提供 COCO annotation 文件: {type(dataset)!r}")
 
 
 def _read_yolox_dataset_format_id(manifest_payload: dict[str, object]) -> str:

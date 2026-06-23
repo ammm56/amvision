@@ -53,7 +53,7 @@ class BaseConv(nn.Module):
         return self.act(self.bn(self.conv(x)))
 
     def fuseforward(self, x: torch.Tensor) -> torch.Tensor:
-        """执行 fuse 后的近似前向计算。"""
+        """执行 fuse 后的前向计算。"""
 
         return self.act(self.conv(x))
 

@@ -11,7 +11,7 @@ from ..utils import xyxy2cxcywh
 
 
 def augment_hsv(img: np.ndarray, hgain: int = 5, sgain: int = 30, vgain: int = 30) -> None:
-    """对输入图像执行轻量 HSV 扰动。
+    """按 YOLOX 训练规则对输入图像执行 HSV 扰动。
 
     参数：
     - img：待增强的 BGR 图像。
@@ -179,7 +179,7 @@ def preproc(
 
 
 class TrainTransform:
-    """实现与原 YOLOX 兼容的最小训练预处理。"""
+    """实现 YOLOX 训练阶段的样本预处理。"""
 
     def __init__(self, max_labels: int = 50, flip_prob: float = 0.5, hsv_prob: float = 1.0) -> None:
         """初始化训练预处理器。
@@ -238,3 +238,43 @@ class TrainTransform:
         ]
         padded_labels = np.ascontiguousarray(padded_labels, dtype=np.float32)
         return transformed_image, padded_labels
+
+
+class ValTransform:
+    """实现 YOLOX 验证和推理阶段的输入预处理。"""
+
+    def __init__(
+        self,
+        swap: tuple[int, int, int] = (2, 0, 1),
+        legacy: bool = False,
+    ) -> None:
+        """初始化验证预处理器。
+
+        参数：
+        - swap：输出张量通道顺序。
+        - legacy：是否启用早期 YOLOX demo 使用的 RGB mean/std 归一化。
+        """
+
+        self.swap = swap
+        self.legacy = legacy
+
+    def __call__(
+        self,
+        image: np.ndarray,
+        _target: object,
+        input_size: tuple[int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """执行验证/推理图像预处理。
+
+        返回：
+        - np.ndarray：处理后的 CHW float32 图像。
+        - np.ndarray：当前验证阶段不修改标签，返回占位数组保持 YOLOX 调用签名一致。
+        """
+
+        processed_image, _ = preproc(image, input_size, self.swap)
+        if self.legacy:
+            processed_image = processed_image[::-1, :, :].copy()
+            processed_image /= 255.0
+            processed_image -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
+            processed_image /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
+        return processed_image, np.zeros((1, 5), dtype=np.float32)

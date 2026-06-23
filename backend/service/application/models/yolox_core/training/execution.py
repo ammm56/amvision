@@ -16,6 +16,8 @@ from backend.service.application.models.yolox_core.cfg import (
     resolve_yolox_input_size,
 )
 from backend.service.application.models.yolox_core.data.datasets import (
+    CocoDetectionExportDataset as _CocoDetectionExportDataset,
+    VocDetectionExportDataset as _VocDetectionExportDataset,
     YoloXDetectionDataset as _CoreYoloXDetectionDataset,
     YoloXDetectionSplit as _CoreYoloXDetectionSplit,
     build_yolox_detection_dataset as _build_yolox_detection_dataset,
@@ -36,6 +38,7 @@ from backend.service.application.models.yolox_core.dependencies import (
 )
 from backend.service.application.models.yolox_core.evaluators import (
     evaluate_yolox_coco_map,
+    evaluate_yolox_voc_map,
     evaluate_yolox_validation_losses,
 )
 from backend.service.application.models.yolox_core.models.build import (
@@ -579,28 +582,47 @@ def run_yolox_detection_training_execution(
             device=runtime.device,
             precision=precision,
         )
-        coco_metrics = evaluate_yolox_coco_map(
-            torch_module=imports.torch,
-            postprocess=imports.postprocess,
-            autocast_context_factory=_build_autocast_context,
-            coco_class=imports.COCO,
-            cocoeval_class=imports.COCOeval,
-            model=evaluation_model,
-            loader=validation_loader,
-            device=runtime.device,
-            precision=precision,
-            input_size=input_size,
-            num_classes=len(train_category_names),
-            category_ids=validation_dataset.category_ids if validation_dataset is not None else (),
-            category_names=train_category_names,
-            annotation_file=_get_yolox_detection_evaluation_annotation_file(validation_dataset),
-            score_threshold=evaluation_confidence_threshold,
-            nms_threshold=evaluation_nms_threshold,
-        )
+        if isinstance(validation_dataset, _CocoDetectionExportDataset):
+            detection_metrics = evaluate_yolox_coco_map(
+                torch_module=imports.torch,
+                postprocess=imports.postprocess,
+                autocast_context_factory=_build_autocast_context,
+                coco_class=imports.COCO,
+                cocoeval_class=imports.COCOeval,
+                model=evaluation_model,
+                loader=validation_loader,
+                device=runtime.device,
+                precision=precision,
+                input_size=input_size,
+                num_classes=len(train_category_names),
+                category_ids=validation_dataset.category_ids,
+                category_names=train_category_names,
+                annotation_file=_get_yolox_detection_evaluation_annotation_file(validation_dataset),
+                score_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
+            )
+        elif isinstance(validation_dataset, _VocDetectionExportDataset):
+            detection_metrics = evaluate_yolox_voc_map(
+                torch_module=imports.torch,
+                postprocess=imports.postprocess,
+                autocast_context_factory=_build_autocast_context,
+                model=evaluation_model,
+                loader=validation_loader,
+                device=runtime.device,
+                precision=precision,
+                input_size=input_size,
+                num_classes=len(train_category_names),
+                dataset=validation_dataset,
+                category_names=train_category_names,
+                score_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
+            )
+        else:
+            raise TypeError(f"不支持的 YOLOX validation dataset 类型: {type(validation_dataset)!r}")
         validation_metrics.update(
             {
-                "map50": coco_metrics.map50,
-                "map50_95": coco_metrics.map50_95,
+                "map50": detection_metrics.map50,
+                "map50_95": detection_metrics.map50_95,
             }
         )
         return validation_metrics

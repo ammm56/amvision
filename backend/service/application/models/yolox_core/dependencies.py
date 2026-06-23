@@ -10,6 +10,7 @@ from backend.service.application.models.yolox_core.data import (
     InfiniteSampler,
     MosaicDetection,
     TrainTransform,
+    ValTransform,
     YoloBatchSampler,
     worker_init_reset_seed,
 )
@@ -35,6 +36,7 @@ class YoloXCoreDependencies:
     MosaicDetection: Any
     InfiniteSampler: Any
     TrainTransform: Any
+    ValTransform: Any
     YoloBatchSampler: Any
     YOLOPAFPN: Any
     YOLOX: Any
@@ -68,6 +70,7 @@ def require_yolox_core_dependencies() -> YoloXCoreDependencies:
         MosaicDetection=MosaicDetection,
         InfiniteSampler=InfiniteSampler,
         TrainTransform=TrainTransform,
+        ValTransform=ValTransform,
         YoloBatchSampler=YoloBatchSampler,
         YOLOPAFPN=YOLOPAFPN,
         YOLOX=YOLOX,

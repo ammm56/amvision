@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,11 +15,11 @@ from backend.service.application.datasets.formats import (
 from backend.service.application.models.yolox_core.data.datasets import (
     VocDetectionExportDataset,
     build_yolox_detection_dataset,
-    get_yolox_detection_evaluation_annotation_file,
     resolve_yolox_detection_splits,
 )
 from backend.service.application.models.yolox_core.evaluators import (
     YoloXDetectionEvaluationRequest,
+    evaluate_voc_detections,
     run_yolox_detection_evaluation,
 )
 from backend.service.application.models.yolox_core.models import build_yolox_detection_model
@@ -43,8 +42,8 @@ def test_yolox_detection_supports_coco_and_voc_dataset_exports() -> None:
     )
 
 
-def test_yolox_voc_dataset_export_resolves_samples_and_coco_ground_truth(tmp_path) -> None:
-    """验证 YOLOX core 能读取 VOC DatasetExport 并生成 evaluator ground truth。"""
+def test_yolox_voc_dataset_export_resolves_samples_and_native_metrics(tmp_path) -> None:
+    """验证 YOLOX core 能读取 VOC DatasetExport 并执行原生 VOC AP 评估。"""
 
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")),
@@ -112,11 +111,21 @@ def test_yolox_voc_dataset_export_resolves_samples_and_coco_ground_truth(tmp_pat
     assert dataset.category_ids == (0,)
     assert len(dataset) == 1
     assert dataset.samples[0].boxes_xyxy_with_class == [(10.0, 5.0, 70.0, 25.0, 0.0)]
-    annotation_file = get_yolox_detection_evaluation_annotation_file(dataset)
-    payload = json.loads(annotation_file.read_text(encoding="utf-8"))
-    assert payload["categories"] == [{"id": 0, "name": "defect"}]
-    assert payload["images"][0]["file_name"] == "sample-1.jpg"
-    assert payload["annotations"][0]["bbox"] == [10.0, 5.0, 60.0, 20.0]
+    metrics = evaluate_voc_detections(
+        dataset=dataset,
+        detections=[
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox": [10.0, 5.0, 60.0, 20.0],
+                "score": 0.99,
+            }
+        ],
+        category_names=("defect",),
+    )
+    assert metrics.map50 == 1.0
+    assert metrics.map50_95 == 1.0
+    assert metrics.per_class_metrics[0]["metric"] == "voc-python"
 
 
 def test_yolox_voc_dataset_export_runs_pytorch_evaluation_smoke(tmp_path) -> None:
@@ -211,7 +220,9 @@ def test_yolox_voc_dataset_export_runs_pytorch_evaluation_smoke(tmp_path) -> Non
     assert result.split_name == "val"
     assert result.sample_count == 1
     assert result.report_payload["implementation_mode"] == "yolox-evaluation-core"
+    assert result.report_payload["evaluation_metric"] == "voc-python"
     assert result.report_payload["dataset_export_id"] == "dataset-export-voc-eval"
+    assert result.detections_payload["bbox_format"] == "xywh_original_image"
     assert result.detections_payload["sample_count"] == 1
 
 

@@ -7,7 +7,7 @@ from functools import partial
 
 
 class LRScheduler:
-    """实现与原 YOLOX 兼容的最小学习率调度器。"""
+    """实现 YOLOX supervised 训练使用的学习率调度器。"""
 
     def __init__(self, name: str, lr: float, iters_per_epoch: int, total_epochs: int, **kwargs) -> None:
         """初始化学习率调度器。"""
