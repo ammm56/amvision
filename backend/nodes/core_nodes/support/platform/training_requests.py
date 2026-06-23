@@ -34,30 +34,30 @@ _YOLO_TASK_REQUEST_BY_TASK_TYPE: dict[str, TrainingRequestClassRef] = {
     CLASSIFICATION_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_task_classification_training_service"
+            "yolov8_classification_training_service"
         ),
-        class_name="YoloTaskClassificationTrainingRequest",
+        class_name="YoloV8ClassificationTrainingRequest",
     ),
     SEGMENTATION_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_task_segmentation_training_service"
+            "segmentation_training_service"
         ),
-        class_name="YoloTaskSegmentationTrainingRequest",
+        class_name="SegmentationTrainingRequest",
     ),
     POSE_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_task_pose_training_service"
+            "yolov8_pose_training_service"
         ),
-        class_name="YoloTaskPoseTrainingRequest",
+        class_name="YoloV8PoseTrainingRequest",
     ),
     OBB_TASK_TYPE: TrainingRequestClassRef(
         module_path=(
             "backend.service.application.models.training."
-            "yolo_task_obb_training_service"
+            "yolov8_obb_training_service"
         ),
-        class_name="YoloTaskObbTrainingRequest",
+        class_name="YoloV8ObbTrainingRequest",
     ),
 }
 
@@ -160,3 +160,4 @@ def resolve_non_detection_training_request_class(
     if request_ref is None:
         raise ValueError(f"unsupported task_type: {task_type}")
     return request_ref.load()
+

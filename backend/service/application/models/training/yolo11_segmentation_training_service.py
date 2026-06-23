@@ -61,8 +61,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO11_SEGMENTATION_TRAINING_TASK_KIND = "yolo-task-segmentation-training"
-YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME = "yolo-task-segmentation-trainings"
+YOLO11_SEGMENTATION_TRAINING_TASK_KIND = "yolo11-segmentation-training"
+YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME = "yolo11-segmentation-trainings"
 YOLO11_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL = 5
 
 

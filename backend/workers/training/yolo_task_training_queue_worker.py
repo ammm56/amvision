@@ -8,23 +8,38 @@ from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
-from backend.service.application.models.training.yolo_task_classification_training_service import (
-    YOLO_TASK_CLASSIFICATION_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo11_classification_training_service import (
+    YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo26_classification_training_service import (
     YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    YOLO_TASK_SEGMENTATION_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.segmentation_training_service import (
+    SEGMENTATION_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
+    YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo26_segmentation_training_service import (
     YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.training.yolo_task_pose_training_service import (
-    YOLO_TASK_POSE_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    YOLOV8_POSE_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo11_pose_training_service import (
+    YOLO11_POSE_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo26_pose_training_service import (
     YOLO26_POSE_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolov8_obb_training_service import (
+    YOLOV8_OBB_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo11_obb_training_service import (
+    YOLO11_OBB_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo26_obb_training_service import (
     YOLO26_OBB_TRAINING_QUEUE_NAME,
@@ -32,9 +47,6 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.yolo_task_trainer_runner import SqlAlchemyYoloTaskTrainerRunner
-
-
-YOLO_TASK_OBB_TRAINING_QUEUE_NAME = "obb-trainings"
 
 
 class ClassificationTrainingQueueWorker:
@@ -61,7 +73,8 @@ class ClassificationTrainingQueueWorker:
         qt = _claim_next_training_queue(
             self.queue_backend,
             queue_names=(
-                YOLO_TASK_CLASSIFICATION_TRAINING_QUEUE_NAME,
+                YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME,
+                YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME,
                 YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
             ),
             worker_id=self.worker_id,
@@ -153,7 +166,8 @@ class SegmentationTrainingQueueWorker:
         qt = _claim_next_training_queue(
             self.queue_backend,
             queue_names=(
-                YOLO_TASK_SEGMENTATION_TRAINING_QUEUE_NAME,
+                SEGMENTATION_TRAINING_QUEUE_NAME,
+                YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME,
                 YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
             ),
             worker_id=self.worker_id,
@@ -227,7 +241,8 @@ class PoseTrainingQueueWorker:
         qt = _claim_next_training_queue(
             self.queue_backend,
             queue_names=(
-                YOLO_TASK_POSE_TRAINING_QUEUE_NAME,
+                YOLOV8_POSE_TRAINING_QUEUE_NAME,
+                YOLO11_POSE_TRAINING_QUEUE_NAME,
                 YOLO26_POSE_TRAINING_QUEUE_NAME,
             ),
             worker_id=self.worker_id,
@@ -301,7 +316,8 @@ class ObbTrainingQueueWorker:
         qt = _claim_next_training_queue(
             self.queue_backend,
             queue_names=(
-                YOLO_TASK_OBB_TRAINING_QUEUE_NAME,
+                YOLOV8_OBB_TRAINING_QUEUE_NAME,
+                YOLO11_OBB_TRAINING_QUEUE_NAME,
                 YOLO26_OBB_TRAINING_QUEUE_NAME,
             ),
             worker_id=self.worker_id,
@@ -425,3 +441,4 @@ def _read_optional_task_id(payload: dict | str) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+

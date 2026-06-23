@@ -10,9 +10,9 @@ from backend.service.api.rest.v1.routes.segmentation_training_tasks.schemas impo
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    SqlAlchemyYoloTaskSegmentationTrainingService,
-    YoloTaskSegmentationTrainingRequest,
+from backend.service.application.models.training.segmentation_training_service import (
+    SqlAlchemySegmentationTrainingService,
+    SegmentationTrainingRequest,
 )
 from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
@@ -57,8 +57,8 @@ def submit_segmentation_training_task(
     service_cls, request_cls = service_and_request_by_model_type.get(
         model_type,
         (
-            SqlAlchemyYoloTaskSegmentationTrainingService,
-            YoloTaskSegmentationTrainingRequest,
+            SqlAlchemySegmentationTrainingService,
+            SegmentationTrainingRequest,
         ),
     )
     service = service_cls(

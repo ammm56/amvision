@@ -10,9 +10,9 @@ from backend.service.api.rest.v1.routes.pose_training_tasks.schemas import (
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolo_task_pose_training_service import (
-    SqlAlchemyYoloTaskPoseTrainingService,
-    YoloTaskPoseTrainingRequest,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
+    YoloV8PoseTrainingRequest,
 )
 from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
@@ -54,11 +54,11 @@ def submit_pose_training_task(
     }
     service_cls = service_cls_by_model_type.get(
         model_type,
-        SqlAlchemyYoloTaskPoseTrainingService,
+        SqlAlchemyYoloV8PoseTrainingService,
     )
     request_cls = request_cls_by_model_type.get(
         model_type,
-        YoloTaskPoseTrainingRequest,
+        YoloV8PoseTrainingRequest,
     )
     service = service_cls(
         session_factory=session_factory,
@@ -90,4 +90,5 @@ def submit_pose_training_task(
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
     )
+
 

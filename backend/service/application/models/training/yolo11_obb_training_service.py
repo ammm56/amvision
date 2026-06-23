@@ -62,8 +62,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO11_OBB_TRAINING_TASK_KIND = "obb-training"
-YOLO11_OBB_TRAINING_QUEUE_NAME = "obb-trainings"
+YOLO11_OBB_TRAINING_TASK_KIND = "yolo11-obb-training"
+YOLO11_OBB_TRAINING_QUEUE_NAME = "yolo11-obb-trainings"
 
 
 @dataclass(frozen=True)

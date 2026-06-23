@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from backend.queue import QueueBackend
-from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
+from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
     CLASSIFICATION_EVALUATION_QUEUE_NAME,
-    SqlAlchemyYoloTaskClassificationEvaluationService,
+    SqlAlchemyYoloV8ClassificationEvaluationService,
 )
-from backend.service.application.models.evaluation.yolo_task_segmentation_evaluation_service import (
+from backend.service.application.models.evaluation.segmentation_evaluation_service import (
     SEGMENTATION_EVALUATION_QUEUE_NAME,
-    SqlAlchemyYoloTaskSegmentationEvaluationService,
+    SqlAlchemySegmentationEvaluationService,
 )
 from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DETECTION_EVALUATION_QUEUE_NAME,
@@ -52,7 +52,7 @@ class ClassificationEvaluationQueueWorker:
             return False
         try:
             task_id = queue_task.payload["task_id"]
-            service = SqlAlchemyYoloTaskClassificationEvaluationService(
+            service = SqlAlchemyYoloV8ClassificationEvaluationService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
@@ -98,7 +98,7 @@ class SegmentationEvaluationQueueWorker:
             return False
         try:
             task_id = queue_task.payload["task_id"]
-            service = SqlAlchemyYoloTaskSegmentationEvaluationService(
+            service = SqlAlchemySegmentationEvaluationService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,

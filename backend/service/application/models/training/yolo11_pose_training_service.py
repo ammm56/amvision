@@ -62,8 +62,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO11_POSE_TRAINING_TASK_KIND = "yolo-task-pose-training"
-YOLO11_POSE_TRAINING_QUEUE_NAME = "yolo-task-pose-trainings"
+YOLO11_POSE_TRAINING_TASK_KIND = "yolo11-pose-training"
+YOLO11_POSE_TRAINING_QUEUE_NAME = "yolo11-pose-trainings"
 
 
 @dataclass(frozen=True)
@@ -830,3 +830,4 @@ __all__ = [
     "SqlAlchemyYolo11PoseTrainingTaskService",
     "Yolo11PoseTrainingTaskRequest",
 ]
+

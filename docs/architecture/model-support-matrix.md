@@ -65,9 +65,9 @@
 | 组合 | 当前主证据 |
 | --- | --- |
 | `yolox + detection` | `tests/test_yolox_training_api.py`、`tests/test_yolox_conversion_tasks_api.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolox_validation_sessions_api.py`、`tests/test_yolox_voc_dataset_support.py`；当前训练和评估输入支持 `coco-detection-v1` 与 `voc-detection-v1` |
-| `yolov8 + classification` | `tests/test_yolo_task_classification_chain.py` |
+| `yolov8 + classification` | `tests/test_yolov8_classification_chain.py` |
 | `yolo11 + classification` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py`、`docs/api/postman/classification-full-chain.postman_collection.json` |
-| `yolov8 + segmentation` | `tests/test_yolo_task_segmentation_chain.py` |
+| `yolov8 + segmentation` | `tests/test_yolov8_segmentation_chain.py` |
 | `yolo26 + segmentation` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
 | `rfdetr + segmentation` | `tests/test_rfdetr_segmentation_task_smoke.py`；2026-06-15 已用真实 segmentation nano checkpoint 跑通 ONNX 导出、ONNXRuntime 数值校验、ONNX simplify、OpenVINO IR、TensorRT 10.16 engine 构建和 deployment runtime pool sync / async smoke。 |
 | `yolov8 + pose` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |

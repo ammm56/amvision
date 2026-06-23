@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from backend.service.application.models.evaluation import obb_evaluation as obb_module
 from backend.service.application.models.evaluation import pose_evaluation as pose_module
 from backend.service.application.models.evaluation import (
-    yolo_task_segmentation_evaluation as segmentation_module,
+    segmentation_evaluation as segmentation_module,
 )
 from backend.service.application.models.yolov8_core.evaluation import obb as yolov8_obb_module
 from backend.service.application.models.yolov8_core.evaluation import pose as yolov8_pose_module
@@ -110,7 +110,7 @@ def test_yolov8_segmentation_dataset_evaluation_runs_inside_yolov8_core(monkeypa
         ),
     )
 
-    assert not hasattr(yolov8_segmentation_module, "run_yolo_task_segmentation_evaluation")
+    assert not hasattr(yolov8_segmentation_module, "run_segmentation_evaluation")
     assert result.sample_count == 1
     assert result.map50 == 1.0
     assert result.mask_map50 == 1.0
@@ -276,7 +276,7 @@ def test_segmentation_evaluation_computes_bbox_and_mask_ap(monkeypatch, tmp_path
 
     monkeypatch.setattr(segmentation_module, "DefaultSegmentationModelRuntime", FakeRuntime)
 
-    result = segmentation_module.run_yolo_task_segmentation_evaluation(
+    result = segmentation_module.run_segmentation_evaluation(
         segmentation_module.SegmentationEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
             runtime_target=SimpleNamespace(model_version_id="mv-seg", model_type="yolov8"),

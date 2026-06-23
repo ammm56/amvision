@@ -384,7 +384,7 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         unit_of_work.tasks.save_task(
             TaskRecord(
                 task_id="task-training-2",
-                task_kind="obb-training",
+                task_kind="yolov8-obb-training",
                 project_id="project-1",
                 display_name="train obb",
                 created_at=_now_isoformat(),

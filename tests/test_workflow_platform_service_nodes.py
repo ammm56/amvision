@@ -25,8 +25,8 @@ from backend.service.application.models.inference.segmentation_inference_task_se
 from backend.service.application.models.validation.pose_session_service import (
     PoseValidationSessionCreateRequest,
 )
-from backend.service.application.models.evaluation.yolo_task_classification_evaluation_service import (
-    YoloTaskClassificationEvaluationRequest,
+from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
+    YoloV8ClassificationEvaluationRequest,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     Yolo11ClassificationTrainingTaskRequest,
@@ -630,7 +630,7 @@ def test_evaluation_service_node_routes_to_platform_evaluation_service(
     assert result["body"]["task_id"] == "task-evaluation-1"
     assert captured["service_kwargs"] == {"task_type": "classification"}
     assert isinstance(
-        captured["request"], YoloTaskClassificationEvaluationRequest
+        captured["request"], YoloV8ClassificationEvaluationRequest
     )
     assert captured["request"].top_k == 3
 

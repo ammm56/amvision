@@ -32,18 +32,19 @@ class _KeywordOnlyQueueBackend:
 
 
 @pytest.mark.parametrize(
-    ("worker_cls", "worker_id"),
+    ("worker_cls", "worker_id", "expected_queue_count"),
     [
-        (ClassificationTrainingQueueWorker, "classification-training-worker"),
-        (SegmentationTrainingQueueWorker, "segmentation-training-worker"),
-        (PoseTrainingQueueWorker, "pose-training-worker"),
-        (ObbTrainingQueueWorker, "obb-training-worker"),
+        (ClassificationTrainingQueueWorker, "classification-training-worker", 3),
+        (SegmentationTrainingQueueWorker, "segmentation-training-worker", 3),
+        (PoseTrainingQueueWorker, "pose-training-worker", 3),
+        (ObbTrainingQueueWorker, "obb-training-worker", 3),
     ],
 )
 def test_yolo_task_training_workers_use_keyword_only_claim_next(
     tmp_path: Path,
     worker_cls: type,
     worker_id: str,
+    expected_queue_count: int,
 ) -> None:
     """验证 non-detection 训练 worker 使用 QueueBackend 新签名。"""
 
@@ -63,7 +64,7 @@ def test_yolo_task_training_workers_use_keyword_only_claim_next(
 
     try:
         assert worker.run_once() is False
-        assert len(queue_backend.calls) == 2
+        assert len(queue_backend.calls) == expected_queue_count
         assert {call[1] for call in queue_backend.calls} == {worker_id}
     finally:
         session_factory.engine.dispose()

@@ -15,13 +15,13 @@ from backend.service.application.models.training import (
     yolo11_classification_training_service as yolo11_classification_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_task_pose_training_service as pose_service_module,
+    yolov8_pose_training_service as pose_service_module,
 )
 from backend.service.application.models.training import (
     yolo26_obb_training_service as yolo26_obb_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_task_segmentation_training_service as segmentation_service_module,
+    segmentation_training_service as segmentation_service_module,
 )
 from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -32,19 +32,19 @@ from backend.service.application.models.registry.yolo26_model_service import (
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
-from backend.service.application.models.training.yolo_task_classification_training import (
-    YoloTaskClassificationTrainingExecutionResult,
+from backend.service.application.models.training.yolo11_classification_training import (
+    Yolo11ClassificationTrainingExecutionResult,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
     Yolo11ClassificationTrainingTaskRequest,
 )
-from backend.service.application.models.training.yolo_task_pose_training import (
-    YoloTaskPoseTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_pose_training import (
+    YoloV8PoseTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_pose_training_service import (
-    SqlAlchemyYoloTaskPoseTrainingService,
-    YoloTaskPoseTrainingRequest,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
+    YoloV8PoseTrainingRequest,
 )
 from backend.service.application.models.training.yolo26_obb_training import (
     Yolo26ObbTrainingExecutionResult,
@@ -53,12 +53,12 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     SqlAlchemyYolo26ObbTrainingTaskService,
     Yolo26ObbTrainingTaskRequest,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training import (
-    YoloTaskSegmentationTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_segmentation_training import (
+    YoloV8SegmentationTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    SqlAlchemyYoloTaskSegmentationTrainingService,
-    YoloTaskSegmentationTrainingRequest,
+from backend.service.application.models.training.segmentation_training_service import (
+    SqlAlchemySegmentationTrainingService,
+    SegmentationTrainingRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -104,7 +104,7 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
 
     def _fake_run(request):
         assert request.model_type == "yolo11"
-        return YoloTaskClassificationTrainingExecutionResult(
+        return Yolo11ClassificationTrainingExecutionResult(
             best_metric_value=0.88,
             best_metric_name="val_top1_accuracy",
             latest_checkpoint_bytes=b"classification-checkpoint",
@@ -205,8 +205,8 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
     )
 
     def _fake_run(request):
-        assert request.model_type == "yolo26"
-        return YoloTaskSegmentationTrainingExecutionResult(
+        assert request.model_type == "yolov8"
+        return YoloV8SegmentationTrainingExecutionResult(
             best_metric_value=0.51,
             best_metric_name="val_map50_95",
             latest_checkpoint_bytes=b"segmentation-checkpoint",
@@ -217,22 +217,22 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
 
     monkeypatch.setattr(
         segmentation_service_module,
-        "run_yolo_task_segmentation_training",
+        "run_yolov8_segmentation_training",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloTaskSegmentationTrainingService(
+    service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloTaskSegmentationTrainingRequest(
+        SegmentationTrainingRequest(
             project_id="project-1",
             recipe_id="recipe-1",
-            model_type="yolo26",
+            model_type="yolov8",
             model_scale="nano",
-            output_model_name="yolo26-segmenter",
+            output_model_name="yolov8-segmenter",
             dataset_export_id="segmentation-export-1",
             max_epochs=2,
             batch_size=2,
@@ -246,7 +246,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
         worker_id="segmentation-worker",
     )
     assert queue_task is not None
-    assert queue_task.payload["model_type"] == "yolo26"
+    assert queue_task.payload["model_type"] == "yolov8"
 
     task_service = SqlAlchemyTaskService(session_factory=session_factory)
     task_record = task_service.get_task(submission["task_id"]).task
@@ -260,7 +260,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
     assert updated_task.result["model_version_id"] == result["model_version_id"]
     assert updated_task.result["labels_object_key"].endswith("/labels.txt")
 
-    model_service = SqlAlchemyYolo26ModelService(session_factory=session_factory)
+    model_service = SqlAlchemyYoloV8ModelService(session_factory=session_factory)
     model_files = model_service.list_model_files(
         model_version_id=result["model_version_id"]
     )
@@ -268,10 +268,10 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
     assert any(item.storage_uri.endswith("/best-checkpoint.pt") for item in model_files)
     assert any(item.storage_uri.endswith("/labels.txt") for item in model_files)
     assert any(item.storage_uri.endswith("/train-metrics.json") for item in model_files)
-    assert "yolo26-label-map" in file_types
-    assert "yolo26-training-metrics" in file_types
+    assert "yolov8-label-map" in file_types
+    assert "yolov8-training-metrics" in file_types
 
-    runtime_target = SqlAlchemyYolo26RuntimeTargetResolver(
+    runtime_target = SqlAlchemyYoloV8RuntimeTargetResolver(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     ).resolve_target(
@@ -282,7 +282,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
             device_name="cpu",
         )
     )
-    assert runtime_target.model_type == "yolo26"
+    assert runtime_target.model_type == "yolov8"
     assert runtime_target.task_type == "segmentation"
     assert runtime_target.labels == ("part-a", "part-b", "part-c")
 
@@ -308,7 +308,7 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
 
     def _fake_run(request):
         assert request.model_type == "yolov8"
-        return YoloTaskPoseTrainingExecutionResult(
+        return YoloV8PoseTrainingExecutionResult(
             best_metric_value=0.41,
             best_metric_name="val_map50_95",
             latest_checkpoint_bytes=b"pose-checkpoint",
@@ -319,17 +319,17 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
 
     monkeypatch.setattr(
         pose_service_module,
-        "run_yolo_task_pose_training",
+        "run_yolov8_pose_training",
         _fake_run,
     )
 
-    service = SqlAlchemyYoloTaskPoseTrainingService(
+    service = SqlAlchemyYoloV8PoseTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
-        YoloTaskPoseTrainingRequest(
+        YoloV8PoseTrainingRequest(
             project_id="project-1",
             recipe_id="recipe-1",
             model_type="yolov8",
@@ -557,3 +557,4 @@ def _seed_dataset_export(
         unit_of_work.commit()
     finally:
         unit_of_work.close()
+

@@ -29,10 +29,18 @@ _TRAINING_TASK_KINDS = (
     "yolo11-training",
     "yolo26-training",
     "rfdetr-training",
-    "yolo-task-classification-training",
-    "yolo-task-segmentation-training",
-    "yolo-task-pose-training",
-    "obb-training",
+    "yolov8-classification-training",
+    "yolo11-classification-training",
+    "yolo26-classification-training",
+    "segmentation-training",
+    "yolo11-segmentation-training",
+    "yolo26-segmentation-training",
+    "yolov8-pose-training",
+    "yolo11-pose-training",
+    "yolo26-pose-training",
+    "yolov8-obb-training",
+    "yolo11-obb-training",
+    "yolo26-obb-training",
 )
 _EVALUATION_TASK_KINDS = (
     "detection-evaluation",
@@ -495,3 +503,4 @@ def _now_isoformat() -> str:
     """返回当前 UTC 时间的 ISO8601 字符串。"""
 
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+

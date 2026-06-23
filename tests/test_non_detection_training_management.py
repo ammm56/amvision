@@ -19,7 +19,7 @@ def test_build_summary_response_exposes_task_type_for_non_detection_training() -
 
     task = SimpleNamespace(
         task_id="task-1",
-        task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND,
         worker_pool="classification-worker",
         state="queued",
         current_attempt_no=0,
@@ -51,7 +51,7 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
 
     task = SimpleNamespace(
         task_id="task-2",
-        task_kind=catalog_module.YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
+        task_kind=catalog_module.SEGMENTATION_TRAINING_TASK_KIND,
         worker_pool="segmentation-worker",
         state="paused",
         current_attempt_no=1,
@@ -90,14 +90,14 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
 def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证共享列表 helper 会按 task_type 映射到对应 task_kind。"""
 
-    captured: dict[str, object] = {}
+    captured: dict[str, object] = {"task_kinds": []}
 
     class _FakeTaskService:
         def __init__(self, session_factory) -> None:
             captured["session_factory"] = session_factory
 
         def list_tasks(self, filters):
-            captured["task_kind"] = filters.task_kind
+            captured["task_kinds"].append(filters.task_kind)
             return []
 
     monkeypatch.setattr(services_module, "SqlAlchemyTaskService", _FakeTaskService)
@@ -111,10 +111,11 @@ def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatc
     )
 
     assert result == []
-    assert (
-        captured["task_kind"]
-        == catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND
-    )
+    assert captured["task_kinds"] == [
+        catalog_module.YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND,
+        catalog_module.YOLO11_CLASSIFICATION_TRAINING_TASK_KIND,
+        catalog_module.YOLO26_CLASSIFICATION_TRAINING_TASK_KIND,
+    ]
 
 
 def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,43 +126,49 @@ def test_list_training_tasks_filters_by_model_type(monkeypatch: pytest.MonkeyPat
             pass
 
         def list_tasks(self, filters):
+            if filters.task_kind == catalog_module.YOLO11_CLASSIFICATION_TRAINING_TASK_KIND:
+                return (
+                    SimpleNamespace(
+                        task_id="task-yolo11",
+                        task_kind=catalog_module.YOLO11_CLASSIFICATION_TRAINING_TASK_KIND,
+                        worker_pool="classification-worker",
+                        state="queued",
+                        current_attempt_no=0,
+                        project_id="project-1",
+                        display_name="classification yolo11",
+                        created_by="user-1",
+                        created_at="2026-06-13T00:00:00Z",
+                        started_at=None,
+                        finished_at=None,
+                        error_message=None,
+                        progress={},
+                        result={},
+                        metadata={"model_type": "yolo11"},
+                        task_spec={},
+                    ),
+                )
+            if filters.task_kind == catalog_module.YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND:
+                return (
+                    SimpleNamespace(
+                        task_id="task-yolov8",
+                        task_kind=catalog_module.YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND,
+                        worker_pool="classification-worker",
+                        state="queued",
+                        current_attempt_no=0,
+                        project_id="project-1",
+                        display_name="classification yolov8",
+                        created_by="user-1",
+                        created_at="2026-06-13T00:00:01Z",
+                        started_at=None,
+                        finished_at=None,
+                        error_message=None,
+                        progress={},
+                        result={},
+                        metadata={"model_type": "yolov8"},
+                        task_spec={},
+                    ),
+                )
             return (
-                SimpleNamespace(
-                    task_id="task-yolo11",
-                    task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
-                    worker_pool="classification-worker",
-                    state="queued",
-                    current_attempt_no=0,
-                    project_id="project-1",
-                    display_name="classification yolo11",
-                    created_by="user-1",
-                    created_at="2026-06-13T00:00:00Z",
-                    started_at=None,
-                    finished_at=None,
-                    error_message=None,
-                    progress={},
-                    result={},
-                    metadata={"model_type": "yolo11"},
-                    task_spec={},
-                ),
-                SimpleNamespace(
-                    task_id="task-yolov8",
-                    task_kind=catalog_module.YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
-                    worker_pool="classification-worker",
-                    state="queued",
-                    current_attempt_no=0,
-                    project_id="project-1",
-                    display_name="classification yolov8",
-                    created_by="user-1",
-                    created_at="2026-06-13T00:00:01Z",
-                    started_at=None,
-                    finished_at=None,
-                    error_message=None,
-                    progress={},
-                    result={},
-                    metadata={"model_type": "yolov8"},
-                    task_spec={},
-                ),
             )
 
     monkeypatch.setattr(services_module, "SqlAlchemyTaskService", _FakeTaskService)

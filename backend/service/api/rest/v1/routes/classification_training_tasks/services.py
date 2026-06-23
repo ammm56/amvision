@@ -10,9 +10,9 @@ from backend.service.api.rest.v1.routes.classification_training_tasks.schemas im
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.models.training.yolo_task_classification_training_service import (
-    SqlAlchemyYoloTaskClassificationTrainingService,
-    YoloTaskClassificationTrainingRequest,
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    SqlAlchemyYoloV8ClassificationTrainingService,
+    YoloV8ClassificationTrainingRequest,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
@@ -54,11 +54,11 @@ def submit_classification_training_task(
     }
     service_cls = service_cls_by_model_type.get(
         model_type,
-        SqlAlchemyYoloTaskClassificationTrainingService,
+        SqlAlchemyYoloV8ClassificationTrainingService,
     )
     request_cls = request_cls_by_model_type.get(
         model_type,
-        YoloTaskClassificationTrainingRequest,
+        YoloV8ClassificationTrainingRequest,
     )
     service = service_cls(
         session_factory=session_factory,

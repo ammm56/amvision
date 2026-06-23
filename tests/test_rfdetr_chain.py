@@ -75,7 +75,7 @@ def test_rfdetr_imports():
         build_rfdetr_segmentation_model,
     )
     from backend.service.application.models.training.rfdetr_segmentation import run_rfdetr_segmentation_training
-    from backend.service.application.models.training.yolo_task_segmentation_training_service import SqlAlchemyYoloTaskSegmentationTrainingService
+    from backend.service.application.models.training.segmentation_training_service import SqlAlchemySegmentationTrainingService
     from backend.service.application.models.training.rfdetr_detection_task_service import SqlAlchemyRfdetrTrainingTaskService
     from backend.service.application.conversions.rfdetr_conversion_task_service import SqlAlchemyRfdetrConversionTaskService
     from backend.service.application.runtime.predictors.rfdetr.detection import PyTorchRfdetrRuntimeSession
@@ -95,7 +95,7 @@ def test_rfdetr_imports():
             RfdetrSegmentationPostProcess,
             build_rfdetr_segmentation_model,
             run_rfdetr_segmentation_training,
-            SqlAlchemyYoloTaskSegmentationTrainingService,
+            SqlAlchemySegmentationTrainingService,
             SqlAlchemyRfdetrTrainingTaskService,
             SqlAlchemyRfdetrConversionTaskService,
             PyTorchRfdetrRuntimeSession,

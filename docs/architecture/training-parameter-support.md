@@ -233,8 +233,8 @@
 - YOLOX detection 训练执行入口：`backend/service/application/models/training/yolox_detection.py`
 - YOLOv8 detection 训练执行：`backend/service/application/models/yolov8_core/training/detection_execution.py`
 - RF-DETR detection 训练执行：`backend/service/application/models/training/rfdetr_detection.py`
-- YOLO 主线 classification 训练执行：`backend/service/application/models/training/yolo_task_classification_training.py`
-- YOLO 主线 segmentation 训练执行：`backend/service/application/models/training/yolo_task_segmentation_training.py`
+- YOLOv8 classification 训练执行：`backend/service/application/models/yolov8_core/training/classification_execution.py`
+- YOLOv8 segmentation 训练执行：`backend/service/application/models/yolov8_core/training/segmentation_execution.py`
 - RF-DETR segmentation 训练执行：`backend/service/application/models/training/rfdetr_segmentation.py`
-- YOLO 主线 pose 训练执行：`backend/service/application/models/training/yolo_task_pose_training.py`
-- YOLO 主线 obb 训练执行：`backend/service/application/models/training/yolo_task_obb_training.py`
+- YOLOv8 pose 训练执行：`backend/service/application/models/yolov8_core/training/pose_execution.py`
+- YOLOv8 obb 训练执行：`backend/service/application/models/yolov8_core/training/obb_execution.py`

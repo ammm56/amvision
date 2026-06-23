@@ -10,45 +10,49 @@ from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
 )
-from backend.service.application.models.training.yolo_task_classification_training_service import (
-    SqlAlchemyYoloTaskClassificationTrainingService,
-    YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    SqlAlchemyYoloV8ClassificationTrainingService,
+    YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
+    YOLO11_CLASSIFICATION_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo26_classification_training_service import (
     SqlAlchemyYolo26ClassificationTrainingTaskService,
     YOLO26_CLASSIFICATION_TRAINING_TASK_KIND,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    SqlAlchemyYoloTaskSegmentationTrainingService,
-    YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
+from backend.service.application.models.training.segmentation_training_service import (
+    SqlAlchemySegmentationTrainingService,
+    SEGMENTATION_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo11_segmentation_training_service import (
     SqlAlchemyYolo11SegmentationTrainingTaskService,
+    YOLO11_SEGMENTATION_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo26_segmentation_training_service import (
     SqlAlchemyYolo26SegmentationTrainingTaskService,
     YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
 )
-from backend.service.application.models.training.yolo_task_pose_training_service import (
-    SqlAlchemyYoloTaskPoseTrainingService,
-    YOLO_TASK_POSE_TRAINING_TASK_KIND,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
+    YOLOV8_POSE_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
+    YOLO11_POSE_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo26_pose_training_service import (
     SqlAlchemyYolo26PoseTrainingTaskService,
     YOLO26_POSE_TRAINING_TASK_KIND,
 )
-from backend.service.application.models.training.yolo_task_obb_training_service import (
-    SqlAlchemyYoloTaskObbTrainingService,
-    YOLO_TASK_OBB_TRAINING_TASK_KIND,
+from backend.service.application.models.training.yolov8_obb_training_service import (
+    SqlAlchemyYoloV8ObbTrainingService,
+    YOLOV8_OBB_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo11_obb_training_service import (
     SqlAlchemyYolo11ObbTrainingTaskService,
+    YOLO11_OBB_TRAINING_TASK_KIND,
 )
 from backend.service.application.models.training.yolo26_obb_training_service import (
     SqlAlchemyYolo26ObbTrainingTaskService,
@@ -63,61 +67,49 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 # 任务类型到训练服务的映射
 _TASK_KIND_TO_SERVICE: dict[str, type] = {
-    YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND: SqlAlchemyYoloTaskClassificationTrainingService,
+    YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND: SqlAlchemyYoloV8ClassificationTrainingService,
+    YOLO11_CLASSIFICATION_TRAINING_TASK_KIND: SqlAlchemyYolo11ClassificationTrainingTaskService,
     YOLO26_CLASSIFICATION_TRAINING_TASK_KIND: SqlAlchemyYolo26ClassificationTrainingTaskService,
-    YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemyYoloTaskSegmentationTrainingService,
+    SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemySegmentationTrainingService,
+    YOLO11_SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemyYolo11SegmentationTrainingTaskService,
     YOLO26_SEGMENTATION_TRAINING_TASK_KIND: SqlAlchemyYolo26SegmentationTrainingTaskService,
-    YOLO_TASK_POSE_TRAINING_TASK_KIND: SqlAlchemyYoloTaskPoseTrainingService,
+    YOLOV8_POSE_TRAINING_TASK_KIND: SqlAlchemyYoloV8PoseTrainingService,
+    YOLO11_POSE_TRAINING_TASK_KIND: SqlAlchemyYolo11PoseTrainingTaskService,
     YOLO26_POSE_TRAINING_TASK_KIND: SqlAlchemyYolo26PoseTrainingTaskService,
-    YOLO_TASK_OBB_TRAINING_TASK_KIND: SqlAlchemyYoloTaskObbTrainingService,
+    YOLOV8_OBB_TRAINING_TASK_KIND: SqlAlchemyYoloV8ObbTrainingService,
+    YOLO11_OBB_TRAINING_TASK_KIND: SqlAlchemyYolo11ObbTrainingTaskService,
     YOLO26_OBB_TRAINING_TASK_KIND: SqlAlchemyYolo26ObbTrainingTaskService,
 }
 
 _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE: dict[tuple[str, str], type] = {
     (
-        YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
+        YOLO11_CLASSIFICATION_TRAINING_TASK_KIND,
         "yolo11",
     ): SqlAlchemyYolo11ClassificationTrainingTaskService,
-    (
-        YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
-        "yolo26",
-    ): SqlAlchemyYolo26ClassificationTrainingTaskService,
     (
         YOLO26_CLASSIFICATION_TRAINING_TASK_KIND,
         "yolo26",
     ): SqlAlchemyYolo26ClassificationTrainingTaskService,
     (
-        YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
+        YOLO11_SEGMENTATION_TRAINING_TASK_KIND,
         "yolo11",
     ): SqlAlchemyYolo11SegmentationTrainingTaskService,
-    (
-        YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
-        "yolo26",
-    ): SqlAlchemyYolo26SegmentationTrainingTaskService,
     (
         YOLO26_SEGMENTATION_TRAINING_TASK_KIND,
         "yolo26",
     ): SqlAlchemyYolo26SegmentationTrainingTaskService,
     (
-        YOLO_TASK_POSE_TRAINING_TASK_KIND,
+        YOLO11_POSE_TRAINING_TASK_KIND,
         "yolo11",
     ): SqlAlchemyYolo11PoseTrainingTaskService,
-    (
-        YOLO_TASK_POSE_TRAINING_TASK_KIND,
-        "yolo26",
-    ): SqlAlchemyYolo26PoseTrainingTaskService,
     (
         YOLO26_POSE_TRAINING_TASK_KIND,
         "yolo26",
     ): SqlAlchemyYolo26PoseTrainingTaskService,
     (
-        YOLO_TASK_OBB_TRAINING_TASK_KIND,
+        YOLO11_OBB_TRAINING_TASK_KIND,
         "yolo11",
     ): SqlAlchemyYolo11ObbTrainingTaskService,
-    (
-        YOLO_TASK_OBB_TRAINING_TASK_KIND,
-        "yolo26",
-    ): SqlAlchemyYolo26ObbTrainingTaskService,
     (
         YOLO26_OBB_TRAINING_TASK_KIND,
         "yolo26",
@@ -196,34 +188,25 @@ class SqlAlchemyYoloTaskTrainerRunner:
             # 尝试通过 task_type 推断
             task_type = request.task_type or "classification"
             kind_map = {
-                "classification": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
-                    (
-                        YOLO_TASK_CLASSIFICATION_TRAINING_TASK_KIND,
-                        normalized_model_type,
-                    ),
-                    SqlAlchemyYoloTaskClassificationTrainingService,
+                "classification": {
+                    "yolo11": SqlAlchemyYolo11ClassificationTrainingTaskService,
+                    "yolo26": SqlAlchemyYolo26ClassificationTrainingTaskService,
+                }.get(
+                    normalized_model_type,
+                    SqlAlchemyYoloV8ClassificationTrainingService,
                 ),
-                "segmentation": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
-                    (
-                        YOLO_TASK_SEGMENTATION_TRAINING_TASK_KIND,
-                        normalized_model_type,
-                    ),
-                    SqlAlchemyYoloTaskSegmentationTrainingService,
-                ),
-                "pose": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
-                    (
-                        YOLO_TASK_POSE_TRAINING_TASK_KIND,
-                        normalized_model_type,
-                    ),
-                    SqlAlchemyYoloTaskPoseTrainingService,
-                ),
-                "obb": _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE.get(
-                    (
-                        YOLO_TASK_OBB_TRAINING_TASK_KIND,
-                        normalized_model_type,
-                    ),
-                    SqlAlchemyYoloTaskObbTrainingService,
-                ),
+                "segmentation": {
+                    "yolo11": SqlAlchemyYolo11SegmentationTrainingTaskService,
+                    "yolo26": SqlAlchemyYolo26SegmentationTrainingTaskService,
+                }.get(normalized_model_type, SqlAlchemySegmentationTrainingService),
+                "pose": {
+                    "yolo11": SqlAlchemyYolo11PoseTrainingTaskService,
+                    "yolo26": SqlAlchemyYolo26PoseTrainingTaskService,
+                }.get(normalized_model_type, SqlAlchemyYoloV8PoseTrainingService),
+                "obb": {
+                    "yolo11": SqlAlchemyYolo11ObbTrainingTaskService,
+                    "yolo26": SqlAlchemyYolo26ObbTrainingTaskService,
+                }.get(normalized_model_type, SqlAlchemyYoloV8ObbTrainingService),
             }
             service_cls = kind_map.get(task_type)
             if service_cls is None:
@@ -265,4 +248,5 @@ class SqlAlchemyYoloTaskTrainerRunner:
             best_metric_value=result.get("best_metric_value"),
             summary=result,
         )
+
 

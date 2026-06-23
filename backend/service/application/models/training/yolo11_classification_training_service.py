@@ -61,8 +61,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO11_CLASSIFICATION_TRAINING_TASK_KIND = "yolo-task-classification-training"
-YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME = "yolo-task-classification-trainings"
+YOLO11_CLASSIFICATION_TRAINING_TASK_KIND = "yolo11-classification-training"
+YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME = "yolo11-classification-trainings"
 YOLO11_CLASSIFICATION_DEFAULT_EVALUATION_INTERVAL = 5
 
 

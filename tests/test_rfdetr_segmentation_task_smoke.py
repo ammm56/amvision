@@ -28,9 +28,9 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SegmentationDeploymentInstanceCreateRequest,
     SqlAlchemySegmentationDeploymentService,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    SqlAlchemyYoloTaskSegmentationTrainingService,
-    YoloTaskSegmentationTrainingRequest,
+from backend.service.application.models.training.segmentation_training_service import (
+    SqlAlchemySegmentationTrainingService,
+    SegmentationTrainingRequest,
 )
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
@@ -74,13 +74,13 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
         dataset_export_id="rfdetr-seg-export-1",
     )
 
-    training_service = SqlAlchemyYoloTaskSegmentationTrainingService(
+    training_service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
-        YoloTaskSegmentationTrainingRequest(
+        SegmentationTrainingRequest(
             project_id="project-1",
             recipe_id="recipe-rfdetr-segmentation-smoke-1",
             model_type="rfdetr",
@@ -363,13 +363,13 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
         dataset_export_id=f"rfdetr-seg-real-{target_format}",
     )
 
-    training_service = SqlAlchemyYoloTaskSegmentationTrainingService(
+    training_service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
-        YoloTaskSegmentationTrainingRequest(
+        SegmentationTrainingRequest(
             project_id="project-1",
             recipe_id=f"recipe-rfdetr-seg-real-{target_format}",
             model_type="rfdetr",

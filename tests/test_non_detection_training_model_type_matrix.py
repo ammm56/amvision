@@ -15,19 +15,19 @@ from backend.contracts.datasets.exports.dataset_formats import (
 )
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.models.training import (
-    yolo_task_classification_training_service as classification_service_module,
+    yolov8_classification_training_service as classification_service_module,
 )
 from backend.service.application.models.training import (
     yolo11_classification_training_service as yolo11_classification_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_task_obb_training_service as obb_service_module,
+    yolov8_obb_training_service as obb_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_task_pose_training_service as pose_service_module,
+    yolov8_pose_training_service as pose_service_module,
 )
 from backend.service.application.models.training import (
-    yolo_task_segmentation_training_service as segmentation_service_module,
+    segmentation_training_service as segmentation_service_module,
 )
 from backend.service.application.models.training import (
     yolo11_segmentation_training_service as yolo11_segmentation_service_module,
@@ -100,33 +100,33 @@ from backend.service.application.models.training.yolo26_segmentation_training_se
     SqlAlchemyYolo26SegmentationTrainingTaskService,
     Yolo26SegmentationTrainingTaskRequest,
 )
-from backend.service.application.models.training.yolo_task_classification_training import (
-    YoloTaskClassificationTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_classification_training import (
+    YoloV8ClassificationTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_classification_training_service import (
-    SqlAlchemyYoloTaskClassificationTrainingService,
-    YoloTaskClassificationTrainingRequest,
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    SqlAlchemyYoloV8ClassificationTrainingService,
+    YoloV8ClassificationTrainingRequest,
 )
-from backend.service.application.models.training.yolo_task_obb_training import (
-    YoloTaskObbTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_obb_training import (
+    YoloV8ObbTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_obb_training_service import (
-    SqlAlchemyYoloTaskObbTrainingService,
-    YoloTaskObbTrainingRequest,
+from backend.service.application.models.training.yolov8_obb_training_service import (
+    SqlAlchemyYoloV8ObbTrainingService,
+    YoloV8ObbTrainingRequest,
 )
-from backend.service.application.models.training.yolo_task_pose_training import (
-    YoloTaskPoseTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_pose_training import (
+    YoloV8PoseTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_pose_training_service import (
-    SqlAlchemyYoloTaskPoseTrainingService,
-    YoloTaskPoseTrainingRequest,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
+    YoloV8PoseTrainingRequest,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training import (
-    YoloTaskSegmentationTrainingExecutionResult,
+from backend.service.application.models.training.yolov8_segmentation_training import (
+    YoloV8SegmentationTrainingExecutionResult,
 )
-from backend.service.application.models.training.yolo_task_segmentation_training_service import (
-    SqlAlchemyYoloTaskSegmentationTrainingService,
-    YoloTaskSegmentationTrainingRequest,
+from backend.service.application.models.training.segmentation_training_service import (
+    SqlAlchemySegmentationTrainingService,
+    SegmentationTrainingRequest,
 )
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
@@ -173,40 +173,40 @@ class _TrainingMatrixSpec:
 _TASK_STACKS = {
     "classification": (
         classification_service_module,
-        "run_yolo_task_classification_training",
-        SqlAlchemyYoloTaskClassificationTrainingService,
-        YoloTaskClassificationTrainingRequest,
-        YoloTaskClassificationTrainingExecutionResult,
+        "run_yolov8_classification_training",
+        SqlAlchemyYoloV8ClassificationTrainingService,
+        YoloV8ClassificationTrainingRequest,
+        YoloV8ClassificationTrainingExecutionResult,
         IMAGENET_CLASSIFICATION_DATASET_FORMAT,
         "val_top1_accuracy",
         ("ok", "ng", "rework"),
     ),
     "segmentation": (
         segmentation_service_module,
-        "run_yolo_task_segmentation_training",
-        SqlAlchemyYoloTaskSegmentationTrainingService,
-        YoloTaskSegmentationTrainingRequest,
-        YoloTaskSegmentationTrainingExecutionResult,
+        "run_yolov8_segmentation_training",
+        SqlAlchemySegmentationTrainingService,
+        SegmentationTrainingRequest,
+        YoloV8SegmentationTrainingExecutionResult,
         YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
         "val_map50_95",
         ("part-a", "part-b", "part-c"),
     ),
     "pose": (
         pose_service_module,
-        "run_yolo_task_pose_training",
-        SqlAlchemyYoloTaskPoseTrainingService,
-        YoloTaskPoseTrainingRequest,
-        YoloTaskPoseTrainingExecutionResult,
+        "run_yolov8_pose_training",
+        SqlAlchemyYoloV8PoseTrainingService,
+        YoloV8PoseTrainingRequest,
+        YoloV8PoseTrainingExecutionResult,
         YOLO_POSE_DATASET_FORMAT,
         "val_map50_95",
         ("operator",),
     ),
     "obb": (
         obb_service_module,
-        "run_yolo_task_obb_training",
-        SqlAlchemyYoloTaskObbTrainingService,
-        YoloTaskObbTrainingRequest,
-        YoloTaskObbTrainingExecutionResult,
+        "run_yolov8_obb_training",
+        SqlAlchemyYoloV8ObbTrainingService,
+        YoloV8ObbTrainingRequest,
+        YoloV8ObbTrainingExecutionResult,
         DOTA_OBB_DATASET_FORMAT,
         "val_loss",
         ("plate", "label"),
@@ -524,3 +524,4 @@ def _seed_dataset_export(
         unit_of_work.commit()
     finally:
         unit_of_work.close()
+
