@@ -123,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
                         batch_size=args.batch_size,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
+                        run_workflow=args.run_workflow,
                         max_images_per_split=args.max_images_per_split,
                     )
                 except Exception as error:
@@ -208,6 +209,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="每个 split 抽取的真实图片数量；0 表示打包完整数据目录",
     )
     parser.add_argument("--skip-deployment", action="store_true")
+    parser.add_argument(
+        "--run-workflow",
+        action="store_true",
+        help="deployment sync 验收后继续用正式 workflow app runtime 调用一次",
+    )
     return parser.parse_args(argv)
 
 
