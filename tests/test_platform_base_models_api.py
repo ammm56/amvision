@@ -11,8 +11,8 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
-from backend.service.application.models.catalog.yolo_primary_pretrained_catalog import (
-    _load_yolo_primary_catalog_entry,
+from backend.service.application.models.catalog.yolo_model_pretrained_catalog import (
+    _load_yolo_model_catalog_entry,
 )
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -125,16 +125,16 @@ def test_list_platform_base_models_requires_models_read_scope(tmp_path: Path) ->
         session_factory.engine.dispose()
 
 
-def test_yolo_primary_pretrained_manifest_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
+def test_yolo_model_pretrained_manifest_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
     """验证 YOLO 主线预训练 manifest 不会静默接受错误版本 id。"""
 
-    manifest_path, dataset_storage = _write_yolo_primary_manifest(
+    manifest_path, dataset_storage = _write_yolo_model_manifest(
         tmp_path,
         model_version_id="mv-pretrainanoed-yolov8-detectionano-nano",
     )
 
     try:
-        _load_yolo_primary_catalog_entry(
+        _load_yolo_model_catalog_entry(
             manifest_path=manifest_path,
             dataset_storage=dataset_storage,
             model_type="yolov8",
@@ -145,15 +145,15 @@ def test_yolo_primary_pretrained_manifest_rejects_inconsistent_model_version_id(
         raise AssertionError("错误的 model_version_id 应该被拒绝")
 
 
-def test_yolo_primary_pretrained_manifest_accepts_variant_model_version_id(tmp_path: Path) -> None:
+def test_yolo_model_pretrained_manifest_accepts_variant_model_version_id(tmp_path: Path) -> None:
     """验证 YOLO 主线预训练 manifest 允许使用 variant 后缀区分版本。"""
 
-    manifest_path, dataset_storage = _write_yolo_primary_manifest(
+    manifest_path, dataset_storage = _write_yolo_model_manifest(
         tmp_path,
         model_version_id="mv-pretrained-yolov8-detection-nano-openimagev7",
     )
 
-    entry = _load_yolo_primary_catalog_entry(
+    entry = _load_yolo_model_catalog_entry(
         manifest_path=manifest_path,
         dataset_storage=dataset_storage,
         model_type="yolov8",
@@ -244,7 +244,7 @@ def _build_model_headers(*, scopes: str = "models:read") -> dict[str, str]:
     return build_test_headers(scopes=scopes)
 
 
-def _write_yolo_primary_manifest(
+def _write_yolo_model_manifest(
     tmp_path: Path,
     *,
     model_version_id: str,

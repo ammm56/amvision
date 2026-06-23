@@ -37,7 +37,7 @@ from backend.service.application.runtime.targets.runtime_target import (
     resolve_runtime_precision,
 )
 from backend.service.domain.files.classification_model_file_types import (
-    YOLO_PRIMARY_CLASSIFICATION_FILE_TYPES,
+    YOLO_MODEL_CLASSIFICATION_FILE_TYPES,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
@@ -531,7 +531,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> ClassificationVal
     )
     runtime_artifact_file_type = (
         _read_payload_optional_str(payload, "runtime_artifact_file_type")
-        or YOLO_PRIMARY_CLASSIFICATION_FILE_TYPES.checkpoint_file_type
+        or YOLO_MODEL_CLASSIFICATION_FILE_TYPES.checkpoint_file_type
     )
     return ClassificationValidationSessionView(
         session_id=_require_payload_str(payload, "session_id"),

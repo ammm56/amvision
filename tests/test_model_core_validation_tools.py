@@ -31,7 +31,7 @@ YOLO_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
         (OBB_TASK_TYPE, 2, (1, 84, 7)),
     ),
 )
-def test_yolo_primary_core_snapshot_records_tensor_output_shape(
+def test_yolo_model_core_snapshot_records_tensor_output_shape(
     model_type: str,
     task_type: str,
     num_classes: int,
@@ -69,7 +69,7 @@ def test_yolo_primary_core_snapshot_records_tensor_output_shape(
 
 
 @pytest.mark.parametrize("model_type", YOLO_MODEL_TYPES)
-def test_yolo_primary_core_snapshot_records_classification_tuple_shape(model_type: str) -> None:
+def test_yolo_model_core_snapshot_records_classification_tuple_shape(model_type: str) -> None:
     """验证 classification 输出的概率和 logits 形状会一起记录。"""
 
     model = build_yolo_task_model(
@@ -98,7 +98,7 @@ def test_yolo_primary_core_snapshot_records_classification_tuple_shape(model_typ
 
 
 @pytest.mark.parametrize("model_type", YOLO_MODEL_TYPES)
-def test_yolo_primary_core_snapshot_records_segmentation_tuple_shape(model_type: str) -> None:
+def test_yolo_model_core_snapshot_records_segmentation_tuple_shape(model_type: str) -> None:
     """验证 segmentation 输出的预测和 proto 形状会一起记录。"""
 
     model = build_yolo_task_model(

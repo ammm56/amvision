@@ -27,15 +27,15 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 if TYPE_CHECKING:
     from backend.service.api.bootstrap import BackendServiceRuntime
 
-YOLO_PRIMARY_PRETRAINED_CATALOG_ROOTS: dict[str, str] = {
+YOLO_MODEL_PRETRAINED_CATALOG_ROOTS: dict[str, str] = {
     "yolov8": "models/pretrained/yolov8",
     "yolo11": "models/pretrained/yolo11",
     "yolo26": "models/pretrained/yolo26",
     "rfdetr": "models/pretrained/rfdetr",
 }
-YOLO_PRIMARY_PRETRAINED_MANIFEST_FILE = "manifest.json"
+YOLO_MODEL_PRETRAINED_MANIFEST_FILE = "manifest.json"
 
-_YOLO_PRIMARY_MODEL_SERVICE_REGISTRY: dict[str, type] = {
+_YOLO_MODEL_SERVICE_REGISTRY: dict[str, type] = {
     "yolov8": SqlAlchemyYoloV8ModelService,
     "yolo11": SqlAlchemyYolo11ModelService,
     "yolo26": SqlAlchemyYolo26ModelService,
@@ -44,7 +44,7 @@ _YOLO_PRIMARY_MODEL_SERVICE_REGISTRY: dict[str, type] = {
 
 
 @dataclass(frozen=True)
-class YoloPrimaryPretrainedCatalogEntry:
+class YoloModelPretrainedCatalogEntry:
     """描述一条可从磁盘自动登记的 YOLO 主线预训练模型目录条目。"""
 
     model_type: str
@@ -57,13 +57,13 @@ class YoloPrimaryPretrainedCatalogEntry:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
-class YoloPrimaryPretrainedModelCatalogSeeder:
+class YoloModelPretrainedCatalogSeeder:
     """扫描预训练模型目录并自动登记 YOLOv8/YOLO11/YOLO26/RF-DETR 预训练模型。"""
 
     def get_step_name(self) -> str:
         """返回当前 seeder 的稳定步骤名。"""
 
-        return "seed-yolo-primary-pretrained-model-catalog"
+        return "seed-yolo-model-pretrained-catalog"
 
     def seed(self, runtime: BackendServiceRuntime) -> None:
         """扫描当前本地文件存储下的预训练目录并登记可用模型。
@@ -73,16 +73,16 @@ class YoloPrimaryPretrainedModelCatalogSeeder:
         """
 
         seen_model_version_ids: dict[str, Path] = {}
-        for model_type, catalog_root_key in YOLO_PRIMARY_PRETRAINED_CATALOG_ROOTS.items():
+        for model_type, catalog_root_key in YOLO_MODEL_PRETRAINED_CATALOG_ROOTS.items():
             catalog_root = runtime.dataset_storage.resolve(catalog_root_key)
             if not catalog_root.exists():
                 continue
-            service_cls = _YOLO_PRIMARY_MODEL_SERVICE_REGISTRY.get(model_type)
+            service_cls = _YOLO_MODEL_SERVICE_REGISTRY.get(model_type)
             if service_cls is None:
                 continue
             model_service = service_cls(session_factory=runtime.session_factory)
-            for manifest_path in sorted(catalog_root.rglob(YOLO_PRIMARY_PRETRAINED_MANIFEST_FILE)):
-                entry = _load_yolo_primary_catalog_entry(
+            for manifest_path in sorted(catalog_root.rglob(YOLO_MODEL_PRETRAINED_MANIFEST_FILE)):
+                entry = _load_yolo_model_catalog_entry(
                     manifest_path=manifest_path,
                     dataset_storage=runtime.dataset_storage,
                     model_type=model_type,
@@ -111,12 +111,12 @@ class YoloPrimaryPretrainedModelCatalogSeeder:
                 )
 
 
-def _load_yolo_primary_catalog_entry(
+def _load_yolo_model_catalog_entry(
     *,
     manifest_path: Path,
     dataset_storage: LocalDatasetStorage,
     model_type: str,
-) -> YoloPrimaryPretrainedCatalogEntry:
+) -> YoloModelPretrainedCatalogEntry:
     """从磁盘 manifest 读取一条 YOLO 主线预训练模型目录定义。"""
 
     try:
@@ -147,7 +147,7 @@ def _load_yolo_primary_catalog_entry(
         model_version_id=model_version_id,
     )
 
-    return YoloPrimaryPretrainedCatalogEntry(
+    return YoloModelPretrainedCatalogEntry(
         model_type=model_type,
         model_name=model_name,
         model_scale=model_scale,

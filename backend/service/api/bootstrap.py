@@ -56,8 +56,8 @@ from backend.service.application.models.inference.obb_async_inference_gateway im
 from backend.service.application.models.catalog.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
 )
-from backend.service.application.models.catalog.yolo_primary_pretrained_catalog import (
-    YoloPrimaryPretrainedModelCatalogSeeder,
+from backend.service.application.models.catalog.yolo_model_pretrained_catalog import (
+    YoloModelPretrainedCatalogSeeder,
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeRuntimeRegistry,
@@ -768,7 +768,7 @@ class BackendServiceBootstrap(
         default_seeders: tuple[BackendServiceSeeder, ...] = (
             DefaultLocalAuthSeeder(),
             YoloXPretrainedModelCatalogSeeder(),
-            YoloPrimaryPretrainedModelCatalogSeeder(),
+            YoloModelPretrainedCatalogSeeder(),
         )
         if self._provided_seeders is None:
             return default_seeders

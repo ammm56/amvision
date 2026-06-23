@@ -104,7 +104,7 @@ def test_resolve_supported_dataset_export_format_returns_current_runner_formats(
     ) == expected_formats[0]
 
 
-def test_yolo_primary_profiles_match_current_supported_dataset_formats() -> None:
+def test_yolo_model_profiles_match_current_supported_dataset_formats() -> None:
     """验证 YOLO 主线 profile 默认导出格式与当前训练执行器能力一致。"""
 
     for profile in (YOLOV8_MODEL_PROFILE, YOLO11_MODEL_PROFILE, YOLO26_MODEL_PROFILE):

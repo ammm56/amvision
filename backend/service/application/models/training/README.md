@@ -4,7 +4,8 @@
 
 ## 文件名前缀
 
-- `yolo_primary_*`：YOLO 主线训练任务 helper，当前覆盖 `yolov8 / yolo11 / yolo26`。这些文件只处理任务参数、DatasetExport 校验、状态事件、输出登记、warm start 解析和 task payload，不实现 backbone、head、loss、assigner、decode、postprocess、export 或 deployment session。
+- `yolo_task_*`：普通 YOLO 主线中仍可共享的训练任务 helper，当前只允许放跨 `yolov8 / yolo11 / yolo26` 共用的任务参数、DatasetExport 校验、状态事件、输出登记、warm start 解析和 task payload，不实现 backbone、head、loss、assigner、decode、postprocess、export 或 deployment session。
+- `yolov8_*`、`yolo11_*`、`yolo26_*`：对应模型代际的专属训练任务入口。只要涉及某一代模型的训练执行、loss、target、augmentation、evaluation 或 checkpoint 语义，都应优先进入对应 `*_core` 或对应模型 service helper。
 - `yolox_*`：YOLOX detection 训练任务 helper，只服务 `yolox`。
 - `rfdetr_*`：RF-DETR 训练任务 helper，只服务 `rfdetr`。
 
@@ -16,4 +17,4 @@
 
 ## 当前注意点
 
-`yolo_primary_segmentation_*` 当前仍承接 `rfdetr` segmentation 的服务分发，这是历史过渡边界。后续继续收口时，应把 RF-DETR segmentation 训练任务服务拆到 `rfdetr_*` 或更中性的 segmentation service helper，避免 `yolo_primary` 名称继续覆盖非 YOLO 模型。
+共享 detection 训练入口已删除。YOLOv8 detection 训练执行位于 `backend/service/application/models/yolov8_core/training/detection_execution.py`，本目录只保留 `yolov8_detection_training.py` 作为应用层入口包装。

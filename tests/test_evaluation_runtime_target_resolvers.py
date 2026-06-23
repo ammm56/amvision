@@ -27,7 +27,7 @@ from backend.service.application.runtime.targets.yolov8 import (
 )
 
 
-def test_yolo_primary_evaluation_runtime_resolver_supports_expected_model_types() -> None:
+def test_yolo_model_evaluation_runtime_resolver_supports_expected_model_types() -> None:
     """YOLO 主线评估 resolver 只支持 yolov8/yolo11/yolo26。"""
 
     assert (

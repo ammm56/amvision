@@ -86,7 +86,7 @@ from backend.service.infrastructure.persistence.base import Base
         ),
     ],
 )
-def test_yolo_primary_model_services_and_runtime_resolvers_preserve_model_type(
+def test_yolo_model_services_and_runtime_resolvers_preserve_model_type(
     tmp_path: Path,
     model_type: str,
     model_service_factory,

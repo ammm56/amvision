@@ -1,21 +1,27 @@
-"""YOLOv8 detection 训练执行模块。"""
+"""YOLOv8 detection 训练应用层入口。"""
 
 from __future__ import annotations
 
-from backend.service.application.models.training.yolo_task_detection_training import (
-    YoloTaskDetectionTrainingExecutionRequest as YoloV8DetectionTrainingExecutionRequest,
-    YoloTaskDetectionTrainingExecutionResult as YoloV8DetectionTrainingExecutionResult,
-    YoloTaskDetectionTrainingBatchProgress as YoloV8TrainingBatchProgress,
-    YoloTaskDetectionTrainingEpochProgress as YoloV8TrainingEpochProgress,
-    run_yolo_task_detection_training,
+from backend.service.application.models.yolov8_core.training.detection_execution import (
+    YOLOV8_DETECTION_IMPLEMENTATION_MODE,
+    YoloV8DetectionTrainingExecutionRequest,
+    YoloV8DetectionTrainingExecutionResult,
+    YoloV8DetectionTrainingEpochProgress,
+    run_yolov8_detection_training,
+)
+from backend.service.application.models.yolov8_core.training.runner import (
+    YoloV8DetectionTrainingBatchProgress,
 )
 
-YOLOV8_IMPLEMENTATION_MODE = "yolov8-detection-core"
-run_yolov8_detection_training = run_yolo_task_detection_training
+YOLOV8_IMPLEMENTATION_MODE = YOLOV8_DETECTION_IMPLEMENTATION_MODE
+YoloV8TrainingBatchProgress = YoloV8DetectionTrainingBatchProgress
+YoloV8TrainingEpochProgress = YoloV8DetectionTrainingEpochProgress
 
 
 __all__ = [
     "YOLOV8_IMPLEMENTATION_MODE",
+    "YoloV8DetectionTrainingBatchProgress",
+    "YoloV8DetectionTrainingEpochProgress",
     "YoloV8TrainingBatchProgress",
     "YoloV8TrainingEpochProgress",
     "YoloV8DetectionTrainingExecutionRequest",

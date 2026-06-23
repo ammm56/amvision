@@ -1,4 +1,4 @@
-"""YOLOv8 detection 过渡训练执行模块。"""
+"""YOLOv8 detection 训练执行入口。"""
 
 from __future__ import annotations
 
@@ -21,25 +21,43 @@ from backend.service.application.models.postprocess.detection_postprocess import
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_detection_training_batch,
 )
-from backend.service.application.models.yolov8_core.training import (
-    YoloV8DetectionResumeValidationRequest,
-    YoloV8DetectionTrainingBatchProgress,
+from backend.service.application.models.yolov8_core.training.checkpoint import (
     build_yolov8_detection_epoch_checkpoint_update,
-    build_yolov8_detection_training_savepoint_payload,
-    build_yolov8_detection_training_runtime,
-    compute_yolov8_detection_training_loss,
     encode_yolov8_detection_checkpoint_state,
-    evaluate_yolov8_detection_validation_losses,
-    is_yolov8_detection_core_model,
-    move_yolov8_optimizer_state_to_device,
-    resolve_yolov8_detection_best_metric_update,
+)
+from backend.service.application.models.yolov8_core.training.control import (
     resolve_yolov8_detection_epoch_control,
+)
+from backend.service.application.models.yolov8_core.training.detection import (
+    compute_yolov8_detection_training_loss,
+    is_yolov8_detection_core_model,
+)
+from backend.service.application.models.yolov8_core.training.epoch import (
+    resolve_yolov8_detection_best_metric_update,
     serialize_yolov8_detection_best_metric_value,
     should_run_yolov8_detection_validation,
+)
+from backend.service.application.models.yolov8_core.training.execution import (
     plan_yolov8_detection_training_execution,
     prepare_yolov8_detection_training_data_context,
-    run_yolov8_detection_training_epoch,
+)
+from backend.service.application.models.yolov8_core.training.resume import (
+    YoloV8DetectionResumeValidationRequest,
     validate_yolov8_detection_resume_checkpoint,
+)
+from backend.service.application.models.yolov8_core.training.runner import (
+    YoloV8DetectionTrainingBatchProgress,
+    run_yolov8_detection_training_epoch,
+)
+from backend.service.application.models.yolov8_core.training.runtime import (
+    build_yolov8_detection_training_runtime,
+    move_yolov8_optimizer_state_to_device,
+)
+from backend.service.application.models.yolov8_core.training.savepoint import (
+    build_yolov8_detection_training_savepoint_payload,
+)
+from backend.service.application.models.yolov8_core.training.validation import (
+    evaluate_yolov8_detection_validation_losses,
 )
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
     load_yolo_task_checkpoint,
@@ -52,50 +70,35 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 
 
-YOLO_TASK_DETECTION_IMPLEMENTATION_MODE = "yolo-task-detection"
-YOLO_TASK_DETECTION_DEFAULT_INPUT_SIZE = (640, 640)
-YOLO_TASK_DETECTION_DEFAULT_BATCH_SIZE = 1
-YOLO_TASK_DETECTION_DEFAULT_MAX_EPOCHS = 1
-YOLO_TASK_DETECTION_DEFAULT_EVALUATION_INTERVAL = 5
-YOLO_TASK_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
-YOLO_TASK_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
-YOLO_TASK_DETECTION_DEFAULT_ASSIGN_TOPK = 10
-YOLO_TASK_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT = 0.5
-YOLO_TASK_DETECTION_DEFAULT_BOX_LOSS_WEIGHT = 7.5
-YOLO_TASK_DETECTION_DEFAULT_DFL_LOSS_WEIGHT = 1.5
-YOLO_TASK_DETECTION_DEFAULT_ASSIGN_ALPHA = 0.5
-YOLO_TASK_DETECTION_DEFAULT_ASSIGN_BETA = 6.0
-YOLO_TASK_DETECTION_DEFAULT_MIN_LR_RATIO = 0.01
-YOLO_TASK_DETECTION_DEFAULT_GRAD_CLIP_NORM = 10.0
-YOLO_TASK_DETECTION_DEFAULT_FLIP_PROB = 0.0
-YOLO_TASK_DETECTION_DEFAULT_HSV_PROB = 0.0
-YOLO_TASK_DETECTION_DEFAULT_MOSAIC_PROB = 0.0
-YOLO_TASK_DETECTION_DEFAULT_MIXUP_PROB = 0.0
-YOLO_TASK_DETECTION_DEFAULT_ENABLE_MIXUP = False
-YOLO_TASK_DETECTION_DEFAULT_AFFINE_DEGREES = 10.0
-YOLO_TASK_DETECTION_DEFAULT_AFFINE_TRANSLATE = 0.1
-YOLO_TASK_DETECTION_DEFAULT_AFFINE_SHEAR = 2.0
-YOLO_TASK_DETECTION_DEFAULT_MOSAIC_SCALE = (0.1, 2.0)
-YOLO_TASK_DETECTION_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
+YOLOV8_DETECTION_IMPLEMENTATION_MODE = "yolov8-detection-core"
+YOLOV8_DETECTION_DEFAULT_INPUT_SIZE = (640, 640)
+YOLOV8_DETECTION_DEFAULT_BATCH_SIZE = 1
+YOLOV8_DETECTION_DEFAULT_MAX_EPOCHS = 1
+YOLOV8_DETECTION_DEFAULT_EVALUATION_INTERVAL = 5
+YOLOV8_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
+YOLOV8_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
+YOLOV8_DETECTION_DEFAULT_ASSIGN_TOPK = 10
+YOLOV8_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT = 0.5
+YOLOV8_DETECTION_DEFAULT_BOX_LOSS_WEIGHT = 7.5
+YOLOV8_DETECTION_DEFAULT_DFL_LOSS_WEIGHT = 1.5
+YOLOV8_DETECTION_DEFAULT_ASSIGN_ALPHA = 0.5
+YOLOV8_DETECTION_DEFAULT_ASSIGN_BETA = 6.0
+YOLOV8_DETECTION_DEFAULT_MIN_LR_RATIO = 0.01
+YOLOV8_DETECTION_DEFAULT_GRAD_CLIP_NORM = 10.0
+YOLOV8_DETECTION_DEFAULT_FLIP_PROB = 0.0
+YOLOV8_DETECTION_DEFAULT_HSV_PROB = 0.0
+YOLOV8_DETECTION_DEFAULT_MOSAIC_PROB = 0.0
+YOLOV8_DETECTION_DEFAULT_MIXUP_PROB = 0.0
+YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP = False
+YOLOV8_DETECTION_DEFAULT_AFFINE_DEGREES = 10.0
+YOLOV8_DETECTION_DEFAULT_AFFINE_TRANSLATE = 0.1
+YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR = 2.0
+YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE = (0.1, 2.0)
+YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
 
 
 @dataclass(frozen=True)
-class YoloTaskDetectionTrainingBatchProgress:
-    """描述单个训练 batch 完成后的进度快照。"""
-
-    epoch: int
-    max_epochs: int
-    iteration: int
-    max_iterations: int
-    global_iteration: int
-    total_iterations: int
-    input_size: tuple[int, int]
-    learning_rate: float
-    train_metrics: dict[str, float]
-
-
-@dataclass(frozen=True)
-class YoloTaskDetectionTrainingEpochProgress:
+class YoloV8DetectionTrainingEpochProgress:
     """描述单轮训练结束后的进度快照。"""
 
     epoch: int
@@ -114,7 +117,7 @@ class YoloTaskDetectionTrainingEpochProgress:
 
 
 @dataclass(frozen=True)
-class YoloTaskDetectionTrainingControlCommand:
+class YoloV8DetectionTrainingControlCommand:
     """描述单轮训练结束后由上层返回给训练循环的控制命令。"""
 
     save_checkpoint: bool = False
@@ -123,7 +126,7 @@ class YoloTaskDetectionTrainingControlCommand:
 
 
 @dataclass(frozen=True)
-class YoloTaskDetectionTrainingSavePoint:
+class YoloV8DetectionTrainingSavePoint:
     """描述训练在某个 epoch 边界导出的可恢复 savepoint。"""
 
     epoch: int
@@ -134,14 +137,14 @@ class YoloTaskDetectionTrainingSavePoint:
 
 
 @dataclass(frozen=True)
-class YoloTaskDetectionTrainingExecutionRequest:
-    """描述一次 YOLOv8 detection 过渡训练执行请求。"""
+class YoloV8DetectionTrainingExecutionRequest:
+    """描述一次 YOLOv8 detection 训练执行请求。"""
 
     dataset_storage: LocalDatasetStorage
     manifest_payload: dict[str, object]
     model_scale: str
     model_type: str = "yolov8"
-    implementation_mode: str = YOLO_TASK_DETECTION_IMPLEMENTATION_MODE
+    implementation_mode: str = YOLOV8_DETECTION_IMPLEMENTATION_MODE
     evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
@@ -152,19 +155,19 @@ class YoloTaskDetectionTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
-    batch_callback: Callable[[YoloTaskDetectionTrainingBatchProgress], None] | None = None
+    batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None
     epoch_callback: (
         Callable[
-            [YoloTaskDetectionTrainingEpochProgress], YoloTaskDetectionTrainingControlCommand | None
+            [YoloV8DetectionTrainingEpochProgress], YoloV8DetectionTrainingControlCommand | None
         ]
         | None
     ) = None
-    savepoint_callback: Callable[[YoloTaskDetectionTrainingSavePoint], None] | None = None
+    savepoint_callback: Callable[[YoloV8DetectionTrainingSavePoint], None] | None = None
 
 
 @dataclass(frozen=True)
-class YoloTaskDetectionTrainingExecutionResult:
-    """描述一次 YOLOv8 detection 过渡训练执行结果。"""
+class YoloV8DetectionTrainingExecutionResult:
+    """描述一次 YOLOv8 detection 训练执行结果。"""
 
     checkpoint_bytes: bytes
     latest_checkpoint_bytes: bytes
@@ -275,30 +278,30 @@ class _LoadedResumeState:
     warm_start_summary: dict[str, object]
 
 
-class YoloTaskDetectionTrainingPausedError(Exception):
+class YoloV8DetectionTrainingPausedError(Exception):
     """表示训练在 epoch 边界按请求完成保存后进入 paused 状态。"""
 
-    def __init__(self, savepoint: YoloTaskDetectionTrainingSavePoint) -> None:
-        super().__init__("yolo task detection training paused")
+    def __init__(self, savepoint: YoloV8DetectionTrainingSavePoint) -> None:
+        super().__init__("yolov8 detection training paused")
         self.savepoint = savepoint
 
 
-class YoloTaskDetectionTrainingTerminatedError(Exception):
+class YoloV8DetectionTrainingTerminatedError(Exception):
     """表示训练在 epoch 边界按请求终止。"""
 
     def __init__(self) -> None:
-        super().__init__("yolo task detection training terminated")
+        super().__init__("yolov8 detection training terminated")
 
 
-def run_yolo_task_detection_training(
-    request: YoloTaskDetectionTrainingExecutionRequest,
-) -> YoloTaskDetectionTrainingExecutionResult:
-    """执行一轮 YOLOv8 detection 过渡训练。"""
+def run_yolov8_detection_training(
+    request: YoloV8DetectionTrainingExecutionRequest,
+) -> YoloV8DetectionTrainingExecutionResult:
+    """执行一轮 YOLOv8 detection 训练。"""
 
     if request.model_type != "yolov8":
         raise InvalidRequestError(
-            "普通 YOLO detection 共享训练入口只保留 YOLOv8 过渡路径，"
-            "YOLO11 / YOLO26 必须使用各自 detection 训练专属入口",
+            "YOLOv8 detection 训练入口只接受 model_type=yolov8，"
+            "YOLO11 / YOLO26 必须使用各自 detection 训练入口",
             details={"model_type": request.model_type},
         )
 
@@ -317,11 +320,11 @@ def run_yolo_task_detection_training(
     category_ids = yolov8_data_context.category_ids
     validation_samples = yolov8_data_context.validation_samples
     input_size = _resolve_input_size(request.input_size)
-    batch_size = max(1, int(request.batch_size or YOLO_TASK_DETECTION_DEFAULT_BATCH_SIZE))
-    max_epochs = max(1, int(request.max_epochs or YOLO_TASK_DETECTION_DEFAULT_MAX_EPOCHS))
+    batch_size = max(1, int(request.batch_size or YOLOV8_DETECTION_DEFAULT_BATCH_SIZE))
+    max_epochs = max(1, int(request.max_epochs or YOLOV8_DETECTION_DEFAULT_MAX_EPOCHS))
     evaluation_interval = max(
         1,
-        int(request.evaluation_interval or YOLO_TASK_DETECTION_DEFAULT_EVALUATION_INTERVAL),
+        int(request.evaluation_interval or YOLOV8_DETECTION_DEFAULT_EVALUATION_INTERVAL),
     )
     extra_options = dict(request.extra_options or {})
     device, gpu_count, device_ids, distributed_mode, runtime_precision = (
@@ -336,53 +339,53 @@ def run_yolo_task_detection_training(
     class_loss_weight = _read_float_option(
         extra_options,
         "class_loss_weight",
-        default=YOLO_TASK_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT,
+        default=YOLOV8_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT,
     )
     box_loss_weight = _read_float_option(
         extra_options,
         "box_loss_weight",
-        default=YOLO_TASK_DETECTION_DEFAULT_BOX_LOSS_WEIGHT,
+        default=YOLOV8_DETECTION_DEFAULT_BOX_LOSS_WEIGHT,
     )
     dfl_loss_weight = _read_float_option(
         extra_options,
         "dfl_loss_weight",
-        default=YOLO_TASK_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
+        default=YOLOV8_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
     )
     evaluation_confidence_threshold = _read_float_option(
         extra_options,
         "evaluation_confidence_threshold",
-        default=YOLO_TASK_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
+        default=YOLOV8_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
     )
     evaluation_nms_threshold = _read_float_option(
         extra_options,
         "evaluation_nms_threshold",
-        default=YOLO_TASK_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
+        default=YOLOV8_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
     )
     assign_topk = max(
         1,
         _read_int_option(
-            extra_options, "assign_topk", default=YOLO_TASK_DETECTION_DEFAULT_ASSIGN_TOPK
+            extra_options, "assign_topk", default=YOLOV8_DETECTION_DEFAULT_ASSIGN_TOPK
         ),
     )
     assign_alpha = _read_float_option(
         extra_options,
         "assign_alpha",
-        default=YOLO_TASK_DETECTION_DEFAULT_ASSIGN_ALPHA,
+        default=YOLOV8_DETECTION_DEFAULT_ASSIGN_ALPHA,
     )
     assign_beta = _read_float_option(
         extra_options,
         "assign_beta",
-        default=YOLO_TASK_DETECTION_DEFAULT_ASSIGN_BETA,
+        default=YOLOV8_DETECTION_DEFAULT_ASSIGN_BETA,
     )
     min_lr_ratio = _read_float_option(
         extra_options,
         "min_lr_ratio",
-        default=YOLO_TASK_DETECTION_DEFAULT_MIN_LR_RATIO,
+        default=YOLOV8_DETECTION_DEFAULT_MIN_LR_RATIO,
     )
     grad_clip_norm = _read_float_option(
         extra_options,
         "grad_clip_norm",
-        default=YOLO_TASK_DETECTION_DEFAULT_GRAD_CLIP_NORM,
+        default=YOLOV8_DETECTION_DEFAULT_GRAD_CLIP_NORM,
     )
     augmentation_options = _resolve_detection_augmentation_options(extra_options)
     validation_split_name = (
@@ -521,23 +524,11 @@ def run_yolo_task_detection_training(
         def on_yolov8_batch_progress(
             progress: YoloV8DetectionTrainingBatchProgress,
         ) -> None:
-            """把 YOLOv8 core batch 进度转成平台训练进度对象。"""
+            """把 YOLOv8 core batch 进度透传给平台回调。"""
 
             if request.batch_callback is None:
                 return
-            request.batch_callback(
-                YoloTaskDetectionTrainingBatchProgress(
-                    epoch=progress.epoch,
-                    max_epochs=progress.max_epochs,
-                    iteration=progress.iteration,
-                    max_iterations=progress.max_iterations,
-                    global_iteration=progress.global_iteration,
-                    total_iterations=progress.total_iterations,
-                    input_size=progress.input_size,
-                    learning_rate=progress.learning_rate,
-                    train_metrics=progress.train_metrics,
-                )
-            )
+            request.batch_callback(progress)
 
         epoch_result = run_yolov8_detection_training_epoch(
             torch_module=imports.torch,
@@ -692,7 +683,7 @@ def run_yolo_task_detection_training(
         control_command = None
         if request.epoch_callback is not None:
             control_command = request.epoch_callback(
-                YoloTaskDetectionTrainingEpochProgress(
+                YoloV8DetectionTrainingEpochProgress(
                     epoch=epoch,
                     max_epochs=max_epochs,
                     evaluation_interval=evaluation_interval,
@@ -739,7 +730,7 @@ def run_yolo_task_detection_training(
                 best_metric_value=best_metric_value,
                 has_validation=has_validation,
             )
-            savepoint = YoloTaskDetectionTrainingSavePoint(
+            savepoint = YoloV8DetectionTrainingSavePoint(
                 epoch=savepoint_payload.epoch,
                 latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
                 best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
@@ -749,9 +740,9 @@ def run_yolo_task_detection_training(
             if request.savepoint_callback is not None:
                 request.savepoint_callback(savepoint)
             if should_pause_training:
-                raise YoloTaskDetectionTrainingPausedError(savepoint)
+                raise YoloV8DetectionTrainingPausedError(savepoint)
         if should_terminate_training:
-            raise YoloTaskDetectionTrainingTerminatedError()
+            raise YoloV8DetectionTrainingTerminatedError()
 
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
@@ -869,7 +860,7 @@ def run_yolo_task_detection_training(
         },
         "augmentation": _serialize_detection_augmentation_options(augmentation_options),
     }
-    return YoloTaskDetectionTrainingExecutionResult(
+    return YoloV8DetectionTrainingExecutionResult(
         checkpoint_bytes=best_checkpoint_bytes,
         latest_checkpoint_bytes=latest_checkpoint_bytes,
         metrics_payload=metrics_payload,
@@ -924,7 +915,7 @@ def _resolve_input_size(input_size: tuple[int, int] | None) -> tuple[int, int]:
     """解析训练输入尺寸。"""
 
     if input_size is None:
-        return YOLO_TASK_DETECTION_DEFAULT_INPUT_SIZE
+        return YOLOV8_DETECTION_DEFAULT_INPUT_SIZE
     return tuple(int(item) for item in input_size)
 
 
@@ -1437,7 +1428,7 @@ def _compute_detection_loss(
     torch = imports.torch
     if not is_yolov8_detection_core_model(model):
         raise ServiceConfigurationError(
-            "YOLOv8 detection 过渡训练损失只接受 YOLOv8 core 模型"
+            "YOLOv8 detection 训练损失只接受 YOLOv8 core 模型"
         )
     return compute_yolov8_detection_training_loss(
         torch_module=torch,
@@ -1560,7 +1551,7 @@ def _evaluate_detection_validation_losses(
     )
     if not is_yolov8_detection_core_model(model):
         raise ServiceConfigurationError(
-            "YOLOv8 detection 过渡训练验证只接受 YOLOv8 core 模型"
+            "YOLOv8 detection 训练验证只接受 YOLOv8 core 模型"
         )
     return evaluate_yolov8_detection_validation_losses(
         torch_module=torch,
@@ -1638,7 +1629,7 @@ def _evaluate_validation_map(
                 )
                 prediction_tensor = model(images)
                 detections.extend(
-                    _convert_primary_predictions_to_coco_detections(
+                    _convert_yolov8_predictions_to_coco_detections(
                         imports=imports,
                         prediction_tensor=prediction_tensor,
                         batch_targets=batch_targets,
@@ -1673,7 +1664,7 @@ def _evaluate_validation_map(
     }
 
 
-def _convert_primary_predictions_to_coco_detections(
+def _convert_yolov8_predictions_to_coco_detections(
     *,
     imports: _TrainingImports,
     prediction_tensor: Any,
@@ -1918,41 +1909,41 @@ def _resolve_detection_augmentation_options(
             _read_float_option(
                 extra_options,
                 "flip_prob",
-                default=YOLO_TASK_DETECTION_DEFAULT_FLIP_PROB,
+                default=YOLOV8_DETECTION_DEFAULT_FLIP_PROB,
             )
         ),
         hsv_prob=_clamp_probability(
             _read_float_option(
                 extra_options,
                 "hsv_prob",
-                default=YOLO_TASK_DETECTION_DEFAULT_HSV_PROB,
+                default=YOLOV8_DETECTION_DEFAULT_HSV_PROB,
             )
         ),
         mosaic_prob=_clamp_probability(
             _read_float_option(
                 extra_options,
                 "mosaic_prob",
-                default=YOLO_TASK_DETECTION_DEFAULT_MOSAIC_PROB,
+                default=YOLOV8_DETECTION_DEFAULT_MOSAIC_PROB,
             )
         ),
         mixup_prob=_clamp_probability(
             _read_float_option(
                 extra_options,
                 "mixup_prob",
-                default=YOLO_TASK_DETECTION_DEFAULT_MIXUP_PROB,
+                default=YOLOV8_DETECTION_DEFAULT_MIXUP_PROB,
             )
         ),
         enable_mixup=_read_bool_option(
             extra_options,
             "enable_mixup",
-            default=YOLO_TASK_DETECTION_DEFAULT_ENABLE_MIXUP,
+            default=YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP,
         ),
         degrees=max(
             0.0,
             _read_float_option(
                 extra_options,
                 "degrees",
-                default=YOLO_TASK_DETECTION_DEFAULT_AFFINE_DEGREES,
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_DEGREES,
             ),
         ),
         translate=max(
@@ -1960,7 +1951,7 @@ def _resolve_detection_augmentation_options(
             _read_float_option(
                 extra_options,
                 "translate",
-                default=YOLO_TASK_DETECTION_DEFAULT_AFFINE_TRANSLATE,
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_TRANSLATE,
             ),
         ),
         shear=max(
@@ -1968,18 +1959,18 @@ def _resolve_detection_augmentation_options(
             _read_float_option(
                 extra_options,
                 "shear",
-                default=YOLO_TASK_DETECTION_DEFAULT_AFFINE_SHEAR,
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR,
             ),
         ),
         mosaic_scale=_read_float_pair_option(
             extra_options,
             "mosaic_scale",
-            default=YOLO_TASK_DETECTION_DEFAULT_MOSAIC_SCALE,
+            default=YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE,
         ),
         mixup_scale=_read_float_pair_option(
             extra_options,
             "mixup_scale",
-            default=YOLO_TASK_DETECTION_DEFAULT_MIXUP_SCALE,
+            default=YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE,
         ),
     )
 
@@ -2007,3 +1998,4 @@ def _clamp_probability(value: float) -> float:
     """把概率值裁剪到 [0, 1]。"""
 
     return max(0.0, min(1.0, float(value)))
+

@@ -1652,7 +1652,7 @@ def test_yolo_conversion_runner_uses_core_export_source_session(
 
 
 def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:
-    """确认 YOLO11 runtime 后端不再继承旧 yolo_primary predictor。"""
+    """确认 YOLO11 runtime 后端不再继承旧通用 predictor。"""
 
     assert PyTorchYolo11RuntimeSession.__module__.endswith(
         "runtime.predictors.yolo11.detection.pytorch"
@@ -1717,7 +1717,7 @@ def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:
         TensorRTYolo11ObbRuntimeSession,
     ):
         assert all(
-            "YoloPrimary" not in base_class.__name__
+            "Primary" not in base_class.__name__
             for base_class in session_class.__mro__
         )
 
