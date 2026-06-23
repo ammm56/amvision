@@ -10,6 +10,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
     is_yolo26_processed_class_id_column,
+    normalize_yolo26_detection_boxes_array,
     select_yolo26_end2end_topk_indices,
 )
 
@@ -135,10 +136,14 @@ def build_yolo26_segmentation_postprocess_instances(
         strict=True,
     ):
         scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
+        left = min(float(scaled_bbox[0]), float(scaled_bbox[2]))
+        top = min(float(scaled_bbox[1]), float(scaled_bbox[3]))
+        right = max(float(scaled_bbox[0]), float(scaled_bbox[2]))
+        bottom = max(float(scaled_bbox[1]), float(scaled_bbox[3]))
+        x1 = float(max(0.0, min(left, float(image_width))))
+        y1 = float(max(0.0, min(top, float(image_height))))
+        x2 = float(max(0.0, min(right, float(image_width))))
+        y2 = float(max(0.0, min(bottom, float(image_height))))
         resolved_class_id = int(class_id)
         class_name = (
             labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
@@ -147,6 +152,8 @@ def build_yolo26_segmentation_postprocess_instances(
             cv2_module=cv2_module, binary_mask=binary_mask
         )
         mask_area = float(np_module.count_nonzero(binary_mask))
+        if mask_area <= 0.0 or not segments:
+            continue
         instances.append(
             Yolo26SegmentationPostprocessInstance(
                 bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
@@ -254,7 +261,11 @@ def postprocess_yolo26_segmentation_prediction_array(
             results.append(None)
             continue
         selected_anchor_indices = selected_anchor_indices[keep_mask]
-        boxes = image_prediction[selected_anchor_indices, :4]
+        boxes = normalize_yolo26_detection_boxes_array(
+            boxes=image_prediction[selected_anchor_indices, :4],
+            np_module=np_module,
+            box_format="xyxy",
+        )
         mask_start_index = 4 + int(num_classes)
         results.append(
             Yolo26SegmentationTopKInputArrays(
@@ -301,7 +312,11 @@ def _postprocess_yolo26_segmentation_processed_array(
             continue
         results.append(
             Yolo26SegmentationTopKInputArrays(
-                boxes_xyxy=image_prediction[keep_mask, :4],
+                boxes_xyxy=normalize_yolo26_detection_boxes_array(
+                    boxes=image_prediction[keep_mask, :4],
+                    np_module=np_module,
+                    box_format="xyxy",
+                ),
                 scores=scores[keep_mask],
                 class_ids=image_prediction[keep_mask, 5].astype(
                     np_module.int32,
@@ -373,6 +388,8 @@ def extract_yolo26_mask_segments(
     segments: list[tuple[tuple[float, float], ...]] = []
     for contour in contours:
         if contour is None or len(contour) < 3:
+            continue
+        if float(cv2_module.contourArea(contour)) <= 0.0:
             continue
         flattened = contour.reshape(-1, 2)
         segments.append(

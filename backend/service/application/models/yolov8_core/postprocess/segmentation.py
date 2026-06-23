@@ -128,6 +128,8 @@ def build_yolov8_segmentation_postprocess_instances(
         class_name = labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
         segments = extract_yolov8_mask_segments(cv2_module=cv2_module, binary_mask=binary_mask)
         mask_area = float(np_module.count_nonzero(binary_mask))
+        if mask_area <= 0.0 or not segments:
+            continue
         instances.append(
             YoloV8SegmentationPostprocessInstance(
                 bbox_xyxy=(round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)),
@@ -315,6 +317,8 @@ def extract_yolov8_mask_segments(
     segments: list[tuple[tuple[float, float], ...]] = []
     for contour in contours:
         if contour is None or len(contour) < 3:
+            continue
+        if float(cv2_module.contourArea(contour)) <= 0.0:
             continue
         flattened = contour.reshape(-1, 2)
         segments.append(

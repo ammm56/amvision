@@ -163,9 +163,14 @@ def _postprocess_yolo26_detection_processed_array(
         if not bool(np_module.any(keep_mask)):
             results.append(None)
             continue
+        boxes_xyxy = normalize_yolo26_detection_boxes_array(
+            boxes=image_prediction[keep_mask, :4],
+            np_module=np_module,
+            box_format="xyxy",
+        )
         results.append(
             Yolo26DetectionTopKResult(
-                boxes_xyxy=image_prediction[keep_mask, :4],
+                boxes_xyxy=boxes_xyxy,
                 scores=scores[keep_mask],
                 class_ids=image_prediction[keep_mask, 5].astype(
                     np_module.int32,
@@ -319,7 +324,10 @@ def normalize_yolo26_detection_boxes_array(
     """把 YOLO26 detection box 转成平台统一使用的 ``xyxy``。"""
 
     if box_format == "xyxy":
-        return boxes
+        return normalize_yolo26_xyxy_box_order_array(
+            boxes=boxes,
+            np_module=np_module,
+        )
     if box_format == "xywh":
         center_x = boxes[:, 0]
         center_y = boxes[:, 1]
@@ -327,7 +335,7 @@ def normalize_yolo26_detection_boxes_array(
         height = boxes[:, 3]
         half_width = width / 2.0
         half_height = height / 2.0
-        return np_module.stack(
+        converted_boxes = np_module.stack(
             (
                 center_x - half_width,
                 center_y - half_height,
@@ -336,10 +344,31 @@ def normalize_yolo26_detection_boxes_array(
             ),
             axis=1,
         )
+        return normalize_yolo26_xyxy_box_order_array(
+            boxes=converted_boxes,
+            np_module=np_module,
+        )
     raise InvalidRequestError(
         "当前 YOLO26 detection box 格式不受支持",
         details={"box_format": box_format},
     )
+
+
+def normalize_yolo26_xyxy_box_order_array(
+    *,
+    boxes: Any,
+    np_module: Any,
+) -> Any:
+    """保证 YOLO26 输出的 xyxy 坐标满足 x2>=x1 且 y2>=y1。"""
+
+    normalized_boxes = np_module.asarray(boxes, dtype=np_module.float32)
+    if int(normalized_boxes.size) <= 0:
+        return normalized_boxes
+    x1 = np_module.minimum(normalized_boxes[:, 0], normalized_boxes[:, 2])
+    y1 = np_module.minimum(normalized_boxes[:, 1], normalized_boxes[:, 3])
+    x2 = np_module.maximum(normalized_boxes[:, 0], normalized_boxes[:, 2])
+    y2 = np_module.maximum(normalized_boxes[:, 1], normalized_boxes[:, 3])
+    return np_module.stack((x1, y1, x2, y2), axis=1)
 
 
 def is_yolo26_processed_class_id_column(
@@ -410,6 +439,7 @@ __all__ = [
     "build_yolo26_detection_records",
     "is_yolo26_processed_class_id_column",
     "normalize_yolo26_detection_boxes_array",
+    "normalize_yolo26_xyxy_box_order_array",
     "postprocess_yolo26_detection_prediction_array",
     "select_yolo26_end2end_topk_indices",
 ]

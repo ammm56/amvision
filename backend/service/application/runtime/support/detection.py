@@ -34,7 +34,7 @@ from backend.service.application.runtime.predictors.yolox import (
     _resolve_cuda_runtime_device_name as resolve_cuda_runtime_device_name,
     _resolve_numpy_dtype as resolve_numpy_dtype,
     _resolve_onnxruntime_providers as resolve_onnxruntime_providers,
-    _resolve_openvino_compiled_runtime_precision as resolve_openvino_compiled_runtime_precision,
+    _resolve_openvino_compiled_runtime_precision as _resolve_yolox_openvino_compiled_runtime_precision,
     _resolve_openvino_device_name as resolve_openvino_device_name,
     _resolve_openvino_port_dtype as resolve_openvino_port_dtype,
     _resolve_openvino_port_name as resolve_openvino_port_name,
@@ -48,6 +48,40 @@ from backend.service.application.runtime.predictors.yolox.backend import (
 from backend.service.application.runtime.support.detection_preview import (
     render_detection_preview_image as render_preview_image,
 )
+
+
+def resolve_openvino_compiled_runtime_precision(
+    *,
+    session: object | None = None,
+    fallback_precision: str | None = None,
+    requested_runtime_precision: str | None = None,
+    compile_properties: dict[object, object] | None = None,
+    fallback: str | None = None,
+) -> str:
+    """解析 OpenVINO 编译后实际使用的 runtime precision。
+
+    参数：
+    - session：已经编译完成的 OpenVINO session，可用于读取真实 precision hint。
+    - fallback_precision：读取 session 失败时的回退 precision。
+    - requested_runtime_precision：没有 session 时按请求 precision 记录 metadata。
+    - compile_properties：OpenVINO compile_model 属性，用于区分是否显式请求 fp16。
+    - fallback：没有 session 和请求值时使用的回退 precision。
+    """
+
+    resolved_fallback = (
+        fallback_precision
+        or requested_runtime_precision
+        or fallback
+        or "fp32"
+    )
+    if session is not None:
+        return _resolve_yolox_openvino_compiled_runtime_precision(
+            session=session,
+            fallback_precision=resolved_fallback,
+        )
+    if requested_runtime_precision == "fp16" and compile_properties:
+        return "fp16"
+    return requested_runtime_precision or fallback or resolved_fallback
 
 
 __all__ = [

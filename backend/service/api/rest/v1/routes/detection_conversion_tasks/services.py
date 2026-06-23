@@ -88,14 +88,17 @@ def submit_detection_conversion_task(
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
     )
+    request_kwargs = {
+        "project_id": body.project_id,
+        "source_model_version_id": body.source_model_version_id,
+        "target_formats": (target_format,),
+        "runtime_profile_id": body.runtime_profile_id,
+        "extra_options": dict(extra_options_override or body.extra_options),
+    }
+    if model_type == "rfdetr":
+        request_kwargs["task_type"] = DETECTION_TASK_TYPE
     submission = service.submit_conversion_task(
-        request_cls(
-            project_id=body.project_id,
-            source_model_version_id=body.source_model_version_id,
-            target_formats=(target_format,),
-            runtime_profile_id=body.runtime_profile_id,
-            extra_options=dict(extra_options_override or body.extra_options),
-        ),
+        request_cls(**request_kwargs),
         created_by=principal.principal_id,
         display_name=body.display_name,
     )

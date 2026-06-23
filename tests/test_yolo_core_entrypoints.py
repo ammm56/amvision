@@ -387,11 +387,15 @@ from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_pose_postprocess_instances,
     build_yolo11_segmentation_postprocess_instances,
 )
+from backend.service.application.models.yolo11_core.postprocess.segmentation import (
+    extract_yolo11_mask_segments,
+)
 from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_detection_records,
     build_yolo26_obb_postprocess_instances,
     build_yolo26_pose_postprocess_instances,
     build_yolo26_segmentation_postprocess_instances,
+    extract_yolo26_mask_segments,
     postprocess_yolo26_detection_prediction_array,
 )
 from backend.service.application.models.yolov8_core.data import (
@@ -432,6 +436,9 @@ from backend.service.application.models.yolov8_core.inference import (
     normalize_yolov8_classification_inference_outputs,
     normalize_yolov8_obb_inference_outputs,
     normalize_yolov8_pose_inference_outputs,
+)
+from backend.service.application.models.yolov8_core.postprocess.segmentation import (
+    extract_yolov8_mask_segments,
 )
 from backend.service.application.models.yolov8_core.targets import (
     rasterize_yolov8_segmentation_polygons,
@@ -926,6 +933,73 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
     assert pose_instances[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
     assert len(pose_instances[0].keypoints) == 17
     assert obb_instances[0].bbox_xywhr == (16.0, 16.0, 10.0, 6.0, 0.2)
+
+
+def test_yolo26_postprocess_normalizes_reversed_xyxy_boxes() -> None:
+    """验证 YOLO26 输出反序 xyxy 时会在 core 边界归一化。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+
+    detection_prediction = np.zeros((1, 300, 6), dtype=np.float32)
+    detection_prediction[0, 0] = [18.0, 20.0, 2.0, 3.0, 0.91, 0.0]
+    detections = build_yolo26_detection_records(
+        np_module=np,
+        prediction_array=detection_prediction,
+        labels=("part",),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+    )
+
+    segmentation_prediction = np.zeros((1, 300, 7), dtype=np.float32)
+    segmentation_prediction[0, 0] = [18.0, 20.0, 2.0, 3.0, 0.92, 0.0, 1.0]
+    segmentation_instances = build_yolo26_segmentation_postprocess_instances(
+        cv2_module=cv2,
+        np_module=np,
+        prediction_array=segmentation_prediction,
+        proto_array=np.ones((1, 1, 4, 4), dtype=np.float32),
+        labels=("part",),
+        score_threshold=0.1,
+        nms_threshold=0.65,
+        mask_threshold=0.5,
+        resize_ratio=1.0,
+        image_width=32,
+        image_height=32,
+        input_size=(32, 32),
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert detections[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
+    assert segmentation_instances[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
+
+
+def test_yolo_segmentation_mask_segments_ignore_zero_area_contours() -> None:
+    """验证普通 YOLO segmentation core 会过滤零面积 mask 轮廓。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    zero_area_mask = np.zeros((8, 8), dtype=np.uint8)
+    for point_x, point_y in ((2, 2), (3, 3), (4, 2), (5, 3)):
+        zero_area_mask[point_y, point_x] = 1
+
+    valid_mask = np.zeros((8, 8), dtype=np.uint8)
+    valid_mask[2:6, 2:6] = 1
+
+    assert (
+        extract_yolov8_mask_segments(cv2_module=cv2, binary_mask=zero_area_mask) == ()
+    )
+    assert (
+        extract_yolo11_mask_segments(cv2_module=cv2, binary_mask=zero_area_mask) == ()
+    )
+    assert (
+        extract_yolo26_mask_segments(cv2_module=cv2, binary_mask=zero_area_mask) == ()
+    )
+    assert extract_yolov8_mask_segments(cv2_module=cv2, binary_mask=valid_mask)
+    assert extract_yolo11_mask_segments(cv2_module=cv2, binary_mask=valid_mask)
+    assert extract_yolo26_mask_segments(cv2_module=cv2, binary_mask=valid_mask)
 
 
 @pytest.mark.parametrize(

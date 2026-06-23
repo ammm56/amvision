@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import socket
@@ -38,6 +39,7 @@ DEFAULT_TOKEN = "amvision-default-user-token"
 DEFAULT_PROJECT_ID = "project-1"
 DEFAULT_MODEL_TYPE = "yolov8"
 DEFAULT_MODEL_SCALE = "nano"
+WORKFLOW_EXAMPLES_DIR = PROJECT_ROOT / "docs" / "examples" / "workflows"
 SMOKE_ROOT = PROJECT_ROOT / ".tmp" / "yolo-model-full-chain-smoke"
 
 TERMINAL_TASK_STATES = {"succeeded", "failed", "cancelled"}
@@ -65,6 +67,15 @@ class ManagedProcess:
     name: str
     process: subprocess.Popen[bytes]
     log_path: Path
+
+
+WORKFLOW_EXAMPLE_BY_TASK_TYPE = {
+    "detection": "detection_deployment_sync_infer_health",
+    "classification": "classification_deployment_sync_class_gate",
+    "segmentation": "segmentation_deployment_sync_regions_gate",
+    "pose": "pose_deployment_sync_presence_gate",
+    "obb": "obb_deployment_sync_angle_gate",
+}
 
 
 def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
@@ -149,6 +160,12 @@ class SmokeApiClient:
         response = self.client.post(path, **kwargs)
         return self._read_json_response(response=response, method="POST", path=path)
 
+    def put(self, path: str, **kwargs: Any) -> dict[str, Any]:
+        """执行 PUT 并返回 JSON 对象。"""
+
+        response = self.client.put(path, **kwargs)
+        return self._read_json_response(response=response, method="PUT", path=path)
+
     def post_no_json(self, path: str, **kwargs: Any) -> None:
         """执行不要求 JSON 响应的 POST。"""
 
@@ -227,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
                         batch_size=args.batch_size,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
+                        run_workflow=args.run_workflow,
                         max_images_per_split=args.max_images_per_split,
                     )
                 except Exception as error:
@@ -301,6 +319,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="每个 split 抽取的真实图片数量；0 表示打包完整数据目录",
     )
     parser.add_argument("--skip-deployment", action="store_true")
+    parser.add_argument(
+        "--run-workflow",
+        action="store_true",
+        help="deployment sync 验收后继续用正式 workflow app runtime 调用一次",
+    )
     return parser.parse_args(argv)
 
 
@@ -448,6 +471,7 @@ def run_task_case(
     batch_size: int,
     timeout_seconds: float,
     skip_deployment: bool,
+    run_workflow: bool,
     max_images_per_split: int,
 ) -> dict[str, Any]:
     """运行单个 task_type 的完整短链路。"""
@@ -582,6 +606,7 @@ def run_task_case(
                 target_format=target_format,
                 sample_image_path=sample_image_path,
                 timeout_seconds=timeout_seconds,
+                run_workflow=run_workflow,
             )
             conversion_summary["deployment"] = deployment_summary
         conversions[target_format] = conversion_summary
@@ -629,6 +654,17 @@ def build_dataset_zip(
                 selected_paths=selected_paths,
                 sample_extensions=case.sample_extensions,
             ):
+                filtered_coco_payload = build_filtered_coco_annotation_payload(
+                    file_path=file_path,
+                    selected_paths=selected_paths,
+                    sample_extensions=case.sample_extensions,
+                )
+                if filtered_coco_payload is not None:
+                    archive.writestr(
+                        relative_path.as_posix(),
+                        json.dumps(filtered_coco_payload, ensure_ascii=False),
+                    )
+                    continue
                 archive.write(file_path, relative_path.as_posix())
     return zip_path
 
@@ -755,6 +791,56 @@ def should_include_smoke_dataset_file(
     ):
         return relative_path in selected_paths
     return True
+
+
+def build_filtered_coco_annotation_payload(
+    *,
+    file_path: Path,
+    selected_paths: set[Path] | None,
+    sample_extensions: tuple[str, ...],
+) -> dict[str, object] | None:
+    """按短链路抽样图片裁剪 COCO annotation。"""
+
+    if selected_paths is None or file_path.suffix.lower() != ".json":
+        return None
+    selected_file_names = {
+        selected_path.name
+        for selected_path in selected_paths
+        if selected_path.suffix.lower() in sample_extensions
+    }
+    if not selected_file_names:
+        return None
+    try:
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    images = payload.get("images")
+    annotations = payload.get("annotations")
+    if not isinstance(images, list) or not isinstance(annotations, list):
+        return None
+    kept_images: list[dict[str, object]] = []
+    kept_image_ids: set[object] = set()
+    for image_payload in images:
+        if not isinstance(image_payload, dict):
+            continue
+        file_name = Path(str(image_payload.get("file_name") or "")).name
+        if file_name not in selected_file_names:
+            continue
+        kept_images.append(dict(image_payload))
+        kept_image_ids.add(image_payload.get("id"))
+    if not kept_images:
+        return None
+    filtered_payload = dict(payload)
+    filtered_payload["images"] = kept_images
+    filtered_payload["annotations"] = [
+        dict(annotation_payload)
+        for annotation_payload in annotations
+        if isinstance(annotation_payload, dict)
+        and annotation_payload.get("image_id") in kept_image_ids
+    ]
+    return filtered_payload
 
 
 def find_sample_image(dataset_dir: Path, sample_extensions: tuple[str, ...]) -> Path:
@@ -942,6 +1028,7 @@ def run_deployment_smoke(
     target_format: str,
     sample_image_path: Path,
     timeout_seconds: float,
+    run_workflow: bool,
 ) -> dict[str, Any]:
     """用转换产物创建 deployment，并验证 sync / async 推理。"""
 
@@ -962,6 +1049,7 @@ def run_deployment_smoke(
     deployment_id = read_required_string(deployment, "deployment_instance_id")
     sync_result: dict[str, Any] = {}
     async_result: dict[str, Any] = {}
+    workflow_result: dict[str, Any] | None = None
     try:
         client.post(f"{case.deployment_route}/{deployment_id}/sync/start")
         sync_status = client.get(f"{case.deployment_route}/{deployment_id}/sync/status")
@@ -972,12 +1060,22 @@ def run_deployment_smoke(
             model_type=model_type,
             sample_image_path=sample_image_path,
         )
-        client.post(f"{case.deployment_route}/{deployment_id}/sync/reset")
-        client.post(f"{case.deployment_route}/{deployment_id}/sync/stop")
         sync_result = {
             "status": sync_status,
             "result_summary": summarize_inference_payload(direct_result),
         }
+        if run_workflow:
+            workflow_result = run_workflow_app_runtime_smoke(
+                client=client,
+                case=case,
+                project_id=project_id,
+                model_type=model_type,
+                deployment_id=deployment_id,
+                sample_image_path=sample_image_path,
+                timeout_seconds=timeout_seconds,
+            )
+        client.post(f"{case.deployment_route}/{deployment_id}/sync/reset")
+        client.post(f"{case.deployment_route}/{deployment_id}/sync/stop")
 
         client.post(f"{case.deployment_route}/{deployment_id}/async/start")
         async_status = client.get(
@@ -1016,7 +1114,144 @@ def run_deployment_smoke(
         "runtime_backend": runtime_backend,
         "sync": sync_result,
         "async": async_result,
+        "workflow": workflow_result,
     }
+
+
+def run_workflow_app_runtime_smoke(
+    *,
+    client: SmokeApiClient,
+    case: YoloModelTaskCase,
+    project_id: str,
+    model_type: str,
+    deployment_id: str,
+    sample_image_path: Path,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """用正式 workflow 示例调用当前 sync deployment。"""
+
+    example_name = WORKFLOW_EXAMPLE_BY_TASK_TYPE[case.task_type]
+    template, application = load_workflow_example_documents(example_name)
+    save_workflow_example_documents(
+        client=client,
+        project_id=project_id,
+        template=template,
+        application=application,
+    )
+    runtime_payload = client.post(
+        "/workflows/app-runtimes",
+        json={
+            "project_id": project_id,
+            "application_id": application["application_id"],
+            "display_name": f"smoke {model_type} {case.task_type} workflow",
+            "request_timeout_seconds": max(30, int(timeout_seconds)),
+            "metadata": {
+                "smoke_validation": True,
+                "model_type": model_type,
+                "task_type": case.task_type,
+            },
+        },
+    )
+    workflow_runtime_id = read_required_string(runtime_payload, "workflow_runtime_id")
+    try:
+        start_payload = client.post(
+            f"/workflows/app-runtimes/{workflow_runtime_id}/start"
+        )
+        invoke_payload = client.post(
+            f"/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+            json={
+                "input_bindings": {
+                    "request_image": build_image_base64_payload(sample_image_path),
+                    "deployment_request": {
+                        "value": {"deployment_instance_id": deployment_id}
+                    },
+                },
+                "execution_metadata": {
+                    "scenario": "yolo-model-full-chain-workflow-smoke",
+                    "model_type": model_type,
+                    "task_type": case.task_type,
+                    "deployment_instance_id": deployment_id,
+                },
+                "timeout_seconds": max(30, int(timeout_seconds)),
+            },
+        )
+        workflow_run_id = read_required_string(invoke_payload, "workflow_run_id")
+        run_payload = client.get(f"/workflows/runs/{workflow_run_id}")
+        workflow_state = str(run_payload.get("state") or invoke_payload.get("state"))
+        if workflow_state != "succeeded":
+            summary = summarize_workflow_payload(run_payload)
+            raise RuntimeError(
+                f"workflow {example_name} failed: "
+                f"{json.dumps(summary, ensure_ascii=False)}"
+            )
+        return {
+            "example_name": example_name,
+            "workflow_runtime_id": workflow_runtime_id,
+            "workflow_run_id": workflow_run_id,
+            "start": summarize_workflow_payload(start_payload),
+            "invoke": summarize_workflow_payload(invoke_payload),
+            "run": summarize_workflow_payload(run_payload),
+        }
+    finally:
+        try:
+            client.post(f"/workflows/app-runtimes/{workflow_runtime_id}/stop")
+        except Exception:
+            pass
+
+
+def load_workflow_example_documents(
+    example_name: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """读取正式 workflow 示例 template 和 application。"""
+
+    template_path = WORKFLOW_EXAMPLES_DIR / f"{example_name}.template.json"
+    application_path = WORKFLOW_EXAMPLES_DIR / f"{example_name}.application.json"
+    return (
+        json.loads(template_path.read_text(encoding="utf-8")),
+        json.loads(application_path.read_text(encoding="utf-8")),
+    )
+
+
+def save_workflow_example_documents(
+    *,
+    client: SmokeApiClient,
+    project_id: str,
+    template: dict[str, Any],
+    application: dict[str, Any],
+) -> None:
+    """通过公开 API 保存 workflow 示例文档。"""
+
+    client.put(
+        (
+            f"/workflows/projects/{project_id}/templates/{template['template_id']}"
+            f"/versions/{template['template_version']}"
+        ),
+        json={"template": template},
+    )
+    client.put(
+        f"/workflows/projects/{project_id}/applications/{application['application_id']}",
+        json={"application": application},
+    )
+
+
+def build_image_base64_payload(sample_image_path: Path) -> dict[str, str]:
+    """把本地样例图编码成 workflow image-base64.v1 payload。"""
+
+    return {
+        "image_base64": base64.b64encode(sample_image_path.read_bytes()).decode("ascii"),
+        "media_type": resolve_image_media_type(sample_image_path),
+    }
+
+
+def resolve_image_media_type(sample_image_path: Path) -> str:
+    """根据文件扩展名返回常见图片 media type。"""
+
+    suffix = sample_image_path.suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".bmp":
+        return "image/bmp"
+    return "image/png"
 
 
 def submit_direct_inference(
@@ -1301,6 +1536,34 @@ def summarize_task_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "result": payload.get("result"),
         "error_message": payload.get("error_message"),
     }
+
+
+def summarize_workflow_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """提取 workflow 响应里的关键字段。"""
+
+    summary: dict[str, Any] = {}
+    for key in (
+        "workflow_runtime_id",
+        "workflow_run_id",
+        "state",
+        "desired_state",
+        "observed_state",
+        "assigned_process_id",
+        "worker_process_id",
+        "created_at",
+        "updated_at",
+        "started_at",
+        "finished_at",
+    ):
+        if key in payload:
+            summary[key] = payload[key]
+    outputs = payload.get("outputs")
+    if isinstance(outputs, dict):
+        summary["output_keys"] = sorted(outputs)
+    error = payload.get("error")
+    if error:
+        summary["error"] = error
+    return summary
 
 
 def summarize_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:

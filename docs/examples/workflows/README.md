@@ -40,7 +40,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 共同目标是先把非 detection 的最小现场链路收实，而不是一开始就堆更重的后处理：
 
 - segmentation：`segments -> regions -> presence + area_ratio`
-- classification：`top class_name + top score`
+- classification：`top class_name + top probability`
 - pose：`count + top pose score`
 - obb：`count + angle range`
 
@@ -76,7 +76,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `image-base64-decode`
 - `core.model.classification`
 - `payload-to-value`
-- `value-field-extract(top_item.class_name / top_item.score / count)`
+- `value-field-extract(top_item.class_name / top_item.probability / count)`
 - `compare`
 - `threshold-check`
 - `process-decision`

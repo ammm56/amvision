@@ -3,7 +3,7 @@
   "template_id": "classification-deployment-sync-class-gate-template",
   "template_version": "1.0.0",
   "display_name": "Classification Deployment Sync Class Gate",
-  "description": "接收 base64 图片和已有 deployment 请求，直接执行 classification 推理，再基于 top class 与 top score 完成最小 OK/NG 判定。",
+  "description": "接收 base64 图片和已有 deployment 请求，直接执行 classification 推理，再基于 top class 与 top probability 完成最小 OK/NG 判定。",
   "nodes": [
     {
       "node_id": "decode_request_image",
@@ -38,10 +38,10 @@
       }
     },
     {
-      "node_id": "extract_top_score",
+      "node_id": "extract_top_probability",
       "node_type_id": "core.logic.value-field-extract",
       "parameters": {
-        "path": "top_item.score"
+        "path": "top_item.probability"
       }
     },
     {
@@ -60,7 +60,7 @@
       }
     },
     {
-      "node_id": "score_ok",
+      "node_id": "probability_ok",
       "node_type_id": "core.rule.threshold-check",
       "parameters": {
         "operator": "ge",
@@ -87,7 +87,7 @@
         "keys": [
           "categories",
           "top_class_name",
-          "top_score",
+          "top_probability",
           "count"
         ]
       }
@@ -99,7 +99,7 @@
         "mode": "all",
         "condition_names": [
           "class_match",
-          "score"
+            "probability"
         ],
         "ok_reason": "classification class gate passed",
         "ng_reason": "classification class gate failed"
@@ -136,10 +136,10 @@
       "target_port": "value"
     },
     {
-      "edge_id": "edge-categories-value-top-score",
+      "edge_id": "edge-categories-value-top-probability",
       "source_node_id": "categories_value",
       "source_port": "value",
-      "target_node_id": "extract_top_score",
+      "target_node_id": "extract_top_probability",
       "target_port": "value"
     },
     {
@@ -157,10 +157,10 @@
       "target_port": "left"
     },
     {
-      "edge_id": "edge-top-score-threshold",
-      "source_node_id": "extract_top_score",
+      "edge_id": "edge-top-probability-threshold",
+      "source_node_id": "extract_top_probability",
       "source_port": "value",
-      "target_node_id": "score_ok",
+      "target_node_id": "probability_ok",
       "target_port": "value"
     },
     {
@@ -185,8 +185,8 @@
       "target_port": "values"
     },
     {
-      "edge_id": "edge-top-score-metrics",
-      "source_node_id": "extract_top_score",
+      "edge_id": "edge-top-probability-metrics",
+      "source_node_id": "extract_top_probability",
       "source_port": "value",
       "target_node_id": "metrics_object",
       "target_port": "values"
@@ -206,8 +206,8 @@
       "target_port": "conditions"
     },
     {
-      "edge_id": "edge-score-process",
-      "source_node_id": "score_ok",
+      "edge_id": "edge-probability-process",
+      "source_node_id": "probability_ok",
       "source_port": "result",
       "target_node_id": "process_decision",
       "target_port": "conditions"
@@ -286,12 +286,12 @@
         "classify",
         "categories_value",
         "extract_top_class_name",
-        "extract_top_score",
+          "extract_top_probability",
         "extract_count"
       ],
       "rules": [
         "class_match",
-        "score_ok",
+          "probability_ok",
         "metadata_object",
         "metrics_object",
         "process_decision"

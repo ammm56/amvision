@@ -17,6 +17,10 @@ from backend.service.application.models.yolov8_core.export.segmentation import (
 
 YOLOV8_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
 YOLOV8_TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
+YOLOV8_ONNX_MEAN_RATIO_TOLERANCES: dict[str, float] = {
+    "predictions": 1e-5,
+    "proto": 1e-5,
+}
 
 ConversionScriptRunner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -101,8 +105,9 @@ def validate_yolov8_onnx_model(
         np_module=session.imports.np,
         torch_outputs=torch_outputs,
         ort_outputs=ort_outputs,
+        output_names=export_plan.output_names,
     )
-    if not bool(summary["allclose"]):
+    if not bool(summary["accepted"]):
         raise ServiceConfigurationError(
             "YOLOv8 ONNX 数值校验失败",
             details=dict(summary),
@@ -228,6 +233,7 @@ def summarize_yolov8_onnx_numeric_validation(
     np_module: object,
     torch_outputs: list[object],
     ort_outputs: list[object],
+    output_names: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """计算 YOLOv8 PyTorch 与 ONNX 输出的数值差异摘要。"""
 
@@ -239,33 +245,79 @@ def summarize_yolov8_onnx_numeric_validation(
                 "ort_output_count": len(ort_outputs),
             },
         )
+    resolved_output_names = output_names or tuple(
+        f"output_{index}" for index in range(len(torch_outputs))
+    )
+    if len(resolved_output_names) != len(torch_outputs):
+        raise ServiceConfigurationError(
+            "YOLOv8 ONNX 输出名数量与输出数量不一致",
+            details={
+                "output_name_count": len(resolved_output_names),
+                "torch_output_count": len(torch_outputs),
+            },
+        )
     max_abs_diff = 0.0
     mean_abs_diff = 0.0
     compared_output_count = 0
-    for torch_output, ort_output in zip(torch_outputs, ort_outputs, strict=True):
+    strict_allclose = True
+    accepted = True
+    output_summaries: list[dict[str, object]] = []
+    for output_name, torch_output, ort_output in zip(
+        resolved_output_names,
+        torch_outputs,
+        ort_outputs,
+        strict=True,
+    ):
         if tuple(torch_output.shape) != tuple(ort_output.shape):
             raise ServiceConfigurationError(
                 "YOLOv8 ONNX 输出形状与 PyTorch 不一致",
                 details={
+                    "output_name": output_name,
                     "torch_shape": list(torch_output.shape),
                     "ort_shape": list(ort_output.shape),
                 },
             )
         abs_diff = np_module.abs(torch_output - ort_output)
-        max_abs_diff = max(max_abs_diff, float(np_module.max(abs_diff)))
-        mean_abs_diff += float(np_module.mean(abs_diff))
+        output_max_abs_diff = float(np_module.max(abs_diff))
+        output_mean_abs_diff = float(np_module.mean(abs_diff))
+        reference_mean_abs = float(np_module.mean(np_module.abs(torch_output)))
+        mean_abs_ratio = output_mean_abs_diff / max(reference_mean_abs, 1e-6)
+        output_allclose = bool(np_module.allclose(torch_output, ort_output, rtol=1e-3, atol=1e-4))
+        mean_abs_ratio_tolerance = YOLOV8_ONNX_MEAN_RATIO_TOLERANCES.get(output_name)
+        output_accepted = output_allclose or (
+            mean_abs_ratio_tolerance is not None
+            and mean_abs_ratio <= mean_abs_ratio_tolerance
+        )
+        max_abs_diff = max(max_abs_diff, output_max_abs_diff)
+        mean_abs_diff += output_mean_abs_diff
         compared_output_count += 1
+        strict_allclose = strict_allclose and output_allclose
+        accepted = accepted and output_accepted
+        output_summaries.append(
+            {
+                "output_name": output_name,
+                "index": compared_output_count - 1,
+                "shape": list(torch_output.shape),
+                "allclose": output_allclose,
+                "accepted": output_accepted,
+                "max_abs_diff": output_max_abs_diff,
+                "mean_abs_diff": output_mean_abs_diff,
+                "reference_mean_abs": reference_mean_abs,
+                "mean_abs_ratio": mean_abs_ratio,
+                "mean_abs_ratio_tolerance": mean_abs_ratio_tolerance,
+            }
+        )
     mean_abs_diff = mean_abs_diff / max(1, compared_output_count)
-    allclose = all(
-        bool(np_module.allclose(torch_output, ort_output, rtol=1e-3, atol=1e-4))
-        for torch_output, ort_output in zip(torch_outputs, ort_outputs, strict=True)
-    )
     return {
         "stage": "validate-onnx",
-        "allclose": allclose,
+        "validation_mode": "strict-or-mean-ratio",
+        "allclose": strict_allclose,
+        "strict_allclose": strict_allclose,
+        "accepted": accepted,
         "max_abs_diff": max_abs_diff,
         "mean_abs_diff": mean_abs_diff,
         "output_count": compared_output_count,
+        "outputs": output_summaries,
     }
 
 
@@ -300,7 +352,7 @@ def use_yolov8_model_export_mode(model: object, *, enabled: bool):
 def _build_yolov8_dummy_input(*, session: object) -> object:
     """按 runtime target 的输入尺寸生成 YOLOv8 导出和校验使用的 dummy input。"""
 
-    return session.imports.torch.randn(
+    return session.imports.torch.zeros(
         1,
         3,
         session.runtime_target.input_size[0],

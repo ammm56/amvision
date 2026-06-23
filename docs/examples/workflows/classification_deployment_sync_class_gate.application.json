@@ -10,7 +10,7 @@
     "metadata": {}
   },
   "runtime_mode": "python-json-workflow",
-  "description": "最小 FlowApplication 示例，使用 base64 图片驱动已有 classification deployment，并直接输出 top class 规则判定结果。",
+  "description": "最小 FlowApplication 示例，使用 base64 图片驱动已有 classification deployment，并直接输出 top class 概率规则判定结果。",
   "bindings": [
     {
       "binding_id": "request_image",

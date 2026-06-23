@@ -766,20 +766,20 @@ def _build_task_native_direct_model_smoke_output(
                         "class_id": 0,
                         "class_name": "ok-part",
                         "label": "ok-part",
-                        "score": 0.93,
+                        "probability": 0.93,
                     },
                     {
                         "class_id": 1,
                         "class_name": "defect",
                         "label": "defect",
-                        "score": 0.07,
+                        "probability": 0.07,
                     },
                 ],
                 "top_item": {
                     "class_id": 0,
                     "class_name": "ok-part",
                     "label": "ok-part",
-                    "score": 0.93,
+                    "probability": 0.93,
                 },
                 "image_width": 64,
                 "image_height": 64,
@@ -864,7 +864,7 @@ def _assert_task_native_direct_model_smoke_outputs(
         assert outputs["model_categories"]["top_item"]["class_name"] == "ok-part"
         assert inspection_result["metadata"]["inspection_kind"] == "classification-class-gate"
         assert inspection_result["metrics"]["top_class_name"] == "ok-part"
-        assert inspection_result["metrics"]["top_score"] == 0.93
+        assert inspection_result["metrics"]["top_probability"] == 0.93
         assert inspection_result["metrics"]["count"] == 2
         return
     if example_name == "pose_deployment_sync_presence_gate":
