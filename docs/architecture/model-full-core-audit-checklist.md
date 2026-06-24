@@ -132,29 +132,38 @@ rg -n "primary|legacy|minimal|compat|lightweight|stub|TODO|NotImplemented|过渡
 
 以下不是本轮模型主线短链路阻塞，但进入第五批 custom nodes 前必须单独处理。
 
-- `custom_nodes/yoloe_open_vocab_nodes/backend/nodes/_project_native_runtime.py`：仍是大文件 runtime，需要按 core / runtime / node adapter / payload helper 拆分，并删除或重写旧 lightweight / compat 占位逻辑。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/prompt_free.py`、`text_prompt.py`、`visual_prompt.py`：已接收 YOLOE project-native runtime session class 和推理调用编排，nodes 层不再保存 `_project_native_runtime.py`。
 - `custom_nodes/sam3_segment_nodes/backend/nodes/_project_native_runtime.py`：同样需要按最新 deployment/runtime/workflow 边界审计。
 - 训练 service 中保留的 `legacy_labels_json_object_key` 后续可考虑改成更直白的内部字段名，但前提是不破坏已有输出文件记录；它不是当前 full core 行为差距。
 
 ### YOLOE / SAM3 审计记录
 
-以下 custom model node 不能在第五批前继续扩展功能，必须先按模型主链路稳定后的边界重新审计。当前结论是：它们不是空壳，也不是完全没实现；真正的问题是模型结构、runtime session、payload 解析、prompt 处理和节点 adapter 仍混在同一层，后续会让第五批 custom nodes 继续依赖旧边界。
+以下 custom model node 不能在第五批前继续扩展功能，必须先按模型主链路稳定后的边界重新审计。当前结论是：它们不是空壳，也不是完全没实现；真正的问题是部分模型结构、runtime session、payload 解析、prompt 处理和节点 adapter 还没有完全按最新边界收口，后续会让第五批 custom nodes 继续依赖旧边界。
 
 #### YOLOE open vocab nodes
 
 当前主要实现位置：
 
-- `custom_nodes/yoloe_open_vocab_nodes/backend/nodes/_project_native_runtime.py`：约 2813 行，包含 54 个 class 和 33 个 function。
-- `custom_nodes/yoloe_open_vocab_nodes/backend/nodes/_common.py`：约 1170 行，包含 payload、prompt、summary、runtime session 获取和结果转换。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/prompt_free.py`：包含 prompt-free runtime session 和推理调用编排。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/text_prompt.py`：包含 text-prompt runtime session 和推理调用编排。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/visual_prompt.py`：包含 visual-prompt runtime session 和推理调用编排。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/access.py`：包含节点侧获取 runtime session 的调用入口。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/core/prompts/text.py`：约 55 行，包含 text prompt 特征聚合和结果追溯文本构造。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/core/prompts/visual_embeddings.py`：约 59 行，包含 visual prompt embedding 提取和带 class embedding 的前向检查。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/core/nn/modules.py`：约 558 行，包含 YOLOE 基础 nn 模块、DFL decode、Proto、SAVPE 和文本适配模块。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/core/nn/models.py`：约 937 行，包含 prompt-free / text-prompt segmentation head、模型 parser 和模型构建入口。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/core/weights/checkpoint.py`：约 269 行，包含 prompt-free checkpoint artifact loader 和受控 checkpoint 反序列化桥。
+- `custom_nodes/yoloe_open_vocab_nodes/backend/payloads/`：包含 payload 类型、图片和 prompt 解析、预训练权重定位、参数归一化、summary / result / regions payload 组装。
 - 节点 adapter 分散在 `prompt_free_detect.py`、`text_prompt_detect.py`、`visual_prompt_detect.py`。
 
 当前混装内容：
 
-- 模型结构：`YoloeConv`、`YoloeC2f`、`YoloeC3k2`、`YoloePSABlock`、`YoloePromptFreeSegmentationModel`、`YoloeTextPromptSegmentationModel`。
-- 权重读取和 checkpoint 兼容：`_CheckpointCompatModule`、`_temporary_checkpoint_class_aliases`、`load_prompt_free_checkpoint_artifacts`、`_uses_legacy_yoloe_class_head`。
-- prompt 和 embedding：text prompt、visual prompt、prompt-free grouped text features、visual prompt mask 构建。
-- postprocess：bbox decode、mask decode、polygon 提取、mask PNG 编码、regions payload 组装。
-- runtime：`get_or_create_prompt_free_runtime_session`、`get_or_create_text_prompt_runtime_session`、`get_or_create_visual_prompt_runtime_session`。
+- 模型结构已下沉到 `core/nn/modules.py` 和 `core/nn/models.py`，不再和 runtime session 混在同一文件。
+- 权重读取和 checkpoint 兼容已下沉到 `core/weights/checkpoint.py`。其中 `compat` class 是真实 checkpoint 反序列化所需的受控桥接，不是旧业务入口。
+- prompt 和 embedding 已拆出第一层：visual prompt mask 构建在 `core/prompts/visual.py`，text prompt grouped feature 在 `core/prompts/text.py`，visual embedding 提取在 `core/prompts/visual_embeddings.py`。
+- postprocess 已下沉到 `core/postprocess/segmentation.py`，包含 bbox decode、mask decode、polygon 提取、mask PNG 编码和 regions payload 组装。
+- runtime session cache 已下沉到 `runtime/sessions.py`，runtime session class 已按 prompt-free / text / visual 下沉到 `runtime/prompt_free.py`、`runtime/text_prompt.py`、`runtime/visual_prompt.py`，节点获取 session 的调用层已下沉到 `runtime/access.py`。
+- payload 解析、prompt 读取、summary/result 组装已下沉到 `payloads/`，节点 adapter 不再从 `_common.py` 读取这些 helper。
 
 第一阶段目标结构：
 
@@ -166,12 +175,17 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 │  ├─ prompts/
 │  └─ postprocess/
 ├─ runtime/
+│  ├─ access.py
+│  ├─ prompt_free.py
 │  ├─ sessions.py
-│  └─ cache.py
+│  ├─ text_prompt.py
+│  ├─ types.py
+│  └─ visual_prompt.py
 ├─ payloads/
-│  ├─ prompts.py
-│  ├─ images.py
-│  └─ results.py
+│  ├─ inputs.py
+│  ├─ pretrained.py
+│  ├─ results.py
+│  └─ types.py
 └─ nodes/
    ├─ prompt_free_detect.py
    ├─ text_prompt_detect.py
@@ -183,7 +197,48 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 - node_type_id 不改，workflow 示例和 Postman 不因为内部重构改变公开节点名。
 - `legacy` / `compat` 命名不能按关键词盲删。YOLOE checkpoint 里的旧类名、旧 head 形态和真实权重映射如果仍需要读取现有预训练文件，应保留为 `weights` 层的受控兼容逻辑，并写清楚对应权重来源。
 - `projectsrc` 不能作为运行时依赖来源；如果文档或错误信息仍提到参考目录，只能作为开发参考说明。
-- `_common.py` 不能继续同时承担 payload 解析、runtime session 获取、prompt 栅格化和结果组装；后续要拆成 payload helper 与 node adapter 调用层。
+- 节点 adapter 只保留参数读取、调用 runtime 和返回 payload，不再新增 `_common.py` 这类混合入口。
+
+2026-06-24 第一批收口：
+
+- `prompt-free / text-prompt / visual-prompt` 共用的 segmentation 输出过滤、NMS、mask decode、polygon 和 mask PNG 编码已移入 `custom_nodes/yoloe_open_vocab_nodes/backend/core/postprocess/segmentation.py`。
+- visual prompt mask / tensor 构建已移入 `custom_nodes/yoloe_open_vocab_nodes/backend/core/prompts/visual.py`，测试不再直接引用 `_project_native_runtime.py` 的私有函数。
+- runtime session cache 已移入 `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/sessions.py`，`_common.py` 不再从模型大文件直接拿 session cache。
+- `_project_native_runtime.py` 从约 2813 行降到约 2406 行，仍保留模型结构、checkpoint 兼容、模型 parser、runtime session 类和 visual embedding 提取，下一批继续按 `nn / weights / runtime session class` 分层下沉。
+
+2026-06-24 第二批收口：
+
+- prompt-free checkpoint artifact loader、输入尺寸读取、class name 解析和 state_dict 读取已移入 `custom_nodes/yoloe_open_vocab_nodes/backend/core/weights/checkpoint.py`。
+- `_CheckpointCompat*` class 和 `_temporary_checkpoint_class_aliases` 保留在 `core/weights/checkpoint.py`。这些名称服务于真实 YOLOE checkpoint 反序列化，不能按 `compat` 关键词盲删。
+- `YoloeConv`、`YoloeC2f`、`YoloeC3k2`、`YoloeC2PSA`、`YoloeSPPF`、`YoloeDistributionFocalLossDecoder`、`YoloeProto`、`YoloeProto26`、`YoloeSpatialAwareVisualPromptEmbedding`、`YoloeBatchNormContrastiveHead` 和文本适配模块已移入 `core/nn/modules.py`。
+- `YoloePromptFreeSegmentationHead`、`YoloeTextPromptSegmentationHead`、`YoloePromptFreeSegmentationModel`、`YoloeTextPromptSegmentationModel`、模型 parser 和模型 build 函数已移入 `core/nn/models.py`。
+- `_project_native_runtime.py` 从约 2406 行降到约 740 行，当前只保留 4 个 class / 13 个 function；后续继续拆 runtime session class、text prompt feature 聚合和 visual embedding helper。
+
+2026-06-24 第三批收口：
+
+- `custom_nodes/yoloe_open_vocab_nodes/backend/nodes/_project_native_runtime.py` 已拆到 `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/` 下的正式 session 文件，nodes 层不再保存 project-native runtime session class。
+- `runtime/sessions.py` 现在直接从 `runtime/prompt_free.py`、`runtime/text_prompt.py`、`runtime/visual_prompt.py` 加载 session，断开 runtime 对 nodes 层的反向依赖。
+- text prompt grouped feature 和 source prompt text 构造已移入 `core/prompts/text.py`。
+- visual prompt embedding 提取和带 class embedding 的前向输出检查已移入 `core/prompts/visual_embeddings.py`。
+- `runtime/project_native.py` 已删除，runtime session class 和推理调用编排已按 prompt-free / text / visual 分文件。
+
+2026-06-24 第四批收口：
+
+- YOLOE 的旧 `custom_nodes/yoloe_open_vocab_nodes/backend/nodes/_common.py` 已删除，不再保留 re-export 壳。
+- payload 类型已进入 `payloads/types.py`，图片读取、文本提示解析、视觉提示解析和 text prompt 聚合已进入 `payloads/inputs.py`。
+- 预训练 manifest 定位、模型系列 / scale / device / precision / 阈值参数归一化和 NotImplemented 错误构造已进入 `payloads/pretrained.py`。
+- detection items、region items、summary、prompt-free / text / visual 输出 payload 和 workflow regions payload 已进入 `payloads/results.py`。
+- 节点获取 runtime session 的调用层已进入 `runtime/access.py`；三个 node adapter 现在直接调用 `payloads/` 和 `runtime/access.py`，不再依赖 `_common.py`。
+
+2026-06-24 第五批内部收口：
+
+- `runtime/project_native.py` 已删除，不再作为三类 session 的混装大文件。
+- `ProjectNativeYoloePrediction` 已进入 `runtime/types.py`。
+- prompt-free、text-prompt、visual-prompt 三条 project-native session 已分别进入 `runtime/prompt_free.py`、`runtime/text_prompt.py`、`runtime/visual_prompt.py`。
+- `runtime/sessions.py` 现在直接按 session 类型导入正式文件，不再通过 `project_native.py` 聚合。
+- checkpoint / 模型加载公共逻辑已进入 `runtime/model_loading.py`，受控 checkpoint 兼容仍留在 `core/weights/checkpoint.py`。
+- device / precision / CUDA fast path 准备逻辑已进入 `runtime/environment.py`，图片 decode / preprocess / tensor 构造已进入 `runtime/preprocess.py`。
+- 已复跑 YOLOE 节点和 workflow 使用面：`tests/test_import_smoke.py tests/test_yoloe_prompt_free_node.py tests/test_yoloe_text_prompt_node.py tests/test_yoloe_visual_prompt_node.py tests/test_yoloe_sam3_stability.py -q` 为 `815 passed`；`tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q` 为 `3 passed`。
 
 #### SAM3 segment nodes
 
@@ -454,9 +509,9 @@ release/full soak 记录：
 ## 下一步执行顺序
 
 1. 如需要更强运行时基线，继续补代表性 deployment 长驻负载、真实长时间训练和更长周期资源采样；这些是显式验收任务，不进入默认 pytest。
-2. 单独审计 `YOLOE / SAM3` custom model node，重点检查 `_project_native_runtime.py` 是否仍包含旧轻量实现、兼容占位、runtime 和 node adapter 混装。
-3. 将 `YOLOE / SAM3` 按 core / runtime / node adapter / payload helper 收口，删除旧 lightweight / compat 占位逻辑。
-4. 上述两项完成后，再进入第五批 custom nodes。
+2. 继续 YOLOE 后续工程收口：检查 `runtime/prompt_free.py`、`runtime/text_prompt.py`、`runtime/visual_prompt.py` 的 summary 组装是否需要继续拆成更小 helper；checkpoint 加载和输入预处理已下沉。
+3. 单独审计 `SAM3` custom model node，重点检查 `_project_native_runtime.py` 和 `_common.py` 是否仍包含旧轻量实现、runtime、payload 和 node adapter 混装。
+4. 将 `SAM3` 按 core / runtime / node adapter / payload helper 收口后，再进入第五批 custom nodes。
 
 ## 第五批进入条件
 
@@ -466,5 +521,5 @@ release/full soak 记录：
 - 旧 `yolo_primary_*` 入口已经删除或改为中性命名；旧共享 detection 训练入口也已删除或完全下沉到 `yolov8_core`。
 - 每个模型的支持 task 都有真实全链路验收结果。
 - deployment sync / async 和 workflow 调用已经确认不依赖旧 predictor。
-- YOLOE / SAM3 已按最新 runtime/deployment/workflow 边界完成审计。
+- YOLOE 已完成 core / runtime / payloads / node adapter 的前四批收口，SAM3 仍需按最新 runtime/deployment/workflow 边界完成审计。
 - 长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线不作为第五批入口的默认 pytest 条件，但必须有单独计划和结果记录入口；如果执行过程中发现模型主链路 bug，必须先修复并复跑受影响链路。

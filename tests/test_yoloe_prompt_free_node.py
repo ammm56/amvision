@@ -9,16 +9,22 @@ from types import SimpleNamespace
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import prompt_free_detect
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
-    YoloeDetectionPrediction,
-    get_or_create_yoloe_prompt_free_runtime_session,
-    resolve_yoloe_pretrained_variant,
+from custom_nodes.yoloe_open_vocab_nodes.backend.core.weights.checkpoint import (
+    is_ignored_text_prompt_checkpoint_key,
+    load_prompt_free_checkpoint_artifacts,
 )
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._project_native_runtime import (
-    _is_ignored_text_prompt_checkpoint_key,
+from custom_nodes.yoloe_open_vocab_nodes.backend.core.nn.models import (
     build_yoloe_prompt_free_segmentation_model,
     build_yoloe_text_prompt_segmentation_model,
-    load_prompt_free_checkpoint_artifacts,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
+    resolve_yoloe_pretrained_variant,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
+    YoloeDetectionPrediction,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
+    get_or_create_yoloe_prompt_free_runtime_session,
 )
 
 
@@ -218,10 +224,8 @@ def test_yoloe_pretrained_manifests_load_project_native_weights() -> None:
             unexpected_keys = tuple(incompatible.unexpected_keys)
             missing_keys = tuple(incompatible.missing_keys)
         else:
-            unexpected_keys = tuple(
-                key for key in incompatible.unexpected_keys if not _is_ignored_text_prompt_checkpoint_key(key)
-            )
-            missing_keys = tuple(key for key in incompatible.missing_keys if not _is_ignored_text_prompt_checkpoint_key(key))
+            unexpected_keys = tuple(key for key in incompatible.unexpected_keys if not is_ignored_text_prompt_checkpoint_key(key))
+            missing_keys = tuple(key for key in incompatible.missing_keys if not is_ignored_text_prompt_checkpoint_key(key))
 
         assert not unexpected_keys, f"{manifest_path} unexpected keys: {unexpected_keys[:10]}"
         assert not missing_keys, f"{manifest_path} missing keys: {missing_keys[:10]}"

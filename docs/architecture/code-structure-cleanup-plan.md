@@ -571,7 +571,7 @@ backend/nodes/core_nodes/
 ### 当前问题
 
 - `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 同时包含连接参数、地址解析、编码解码、读写、等待条件、结果信号映射和错误处理。
-- `yoloe_open_vocab_nodes/backend/nodes/_project_native_runtime.py` 同时包含模型模块、checkpoint 读取、prompt-free/text/visual session、后处理和 mask 编码。
+- `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除。
 - `sam3_segment_nodes/backend/nodes/_common.py` 同时包含 prompt 读取、payload 构造、summary、session cache 和部分 mask 处理。
 
 ### 目标结构
@@ -591,13 +591,24 @@ custom_nodes/plc_modbus_tcp_nodes/backend/
 
 ```text
 custom_nodes/yoloe_open_vocab_nodes/backend/
-├─ runtime/
+├─ core/
 │  ├─ nn/
-│  ├─ weights.py
+│  ├─ postprocess/
+│  ├─ prompts/
+│  └─ weights/
+├─ runtime/
+│  ├─ access.py
+│  ├─ prompt_free.py
 │  ├─ sessions.py
-│  ├─ prompts.py
-│  ├─ postprocess.py
-│  └─ payloads.py
+│  ├─ text_prompt.py
+│  ├─ types.py
+│  ├─ visual_prompt.py
+│  └─ ...
+├─ payloads/
+│  ├─ inputs.py
+│  ├─ pretrained.py
+│  ├─ results.py
+│  └─ types.py
 └─ nodes/
 ```
 

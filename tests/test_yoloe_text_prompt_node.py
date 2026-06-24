@@ -12,11 +12,17 @@ from backend.nodes.text_encoder_runtime_support import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import text_prompt_detect
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
-    YoloeTextPromptPrediction,
-    get_or_create_yoloe_text_prompt_runtime_session,
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
     resolve_yoloe_pretrained_variant,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
+    YoloeTextPromptPrediction,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
+    get_or_create_yoloe_text_prompt_runtime_session,
 )
 
 

@@ -12,7 +12,7 @@ from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
     merge_text_prompt_items as merge_sam3_text_prompt_items,
     read_text_prompt_items as read_sam3_text_prompt_items,
 )
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
     get_or_create_yoloe_text_prompt_runtime_session,
 )
 from tests.integration.test_yoloe_sam3_soak_benchmark import (

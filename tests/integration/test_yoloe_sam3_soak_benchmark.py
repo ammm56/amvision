@@ -22,9 +22,11 @@ from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
     read_text_prompt_items as read_sam3_text_prompt_items,
     resolve_sam3_pretrained_variant,
 )
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
-    get_or_create_yoloe_text_prompt_runtime_session,
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
     resolve_yoloe_pretrained_variant,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
+    get_or_create_yoloe_text_prompt_runtime_session,
 )
 
 

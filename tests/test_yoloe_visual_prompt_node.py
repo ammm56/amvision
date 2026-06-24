@@ -11,12 +11,14 @@ import torch
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import visual_prompt_detect
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._common import (
+from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
     YoloeDetectionPrediction,
     YoloeVisualPromptItem,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
     get_or_create_yoloe_visual_prompt_runtime_session,
 )
-from custom_nodes.yoloe_open_vocab_nodes.backend.nodes._project_native_runtime import _build_visual_prompt_tensor
+from custom_nodes.yoloe_open_vocab_nodes.backend.core.prompts.visual import build_visual_prompt_tensor
 
 
 def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -> None:
@@ -304,7 +306,7 @@ def test_build_visual_prompt_tensor_supports_multiple_prompt_kinds() -> None:
     polygon_mask[8:24, 8:24] = 1
     explicit_mask = np.zeros((64, 64), dtype=np.uint8)
     explicit_mask[24:48, 24:48] = 1
-    visual_tensor = _build_visual_prompt_tensor(
+    visual_tensor = build_visual_prompt_tensor(
         torch_module=torch,
         np_module=np,
         prompts=(
