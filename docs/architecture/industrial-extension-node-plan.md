@@ -113,7 +113,7 @@
 
 其中前五轮 pack 拆分试点当前已落地：
 
-- 共享 backend helper 已从 `custom_nodes/opencv_basic_nodes/backend/support.py` 抽到 `custom_nodes/_opencv_shared/backend/support.py`
+- OpenCV 共享 backend helper 已统一收进 `custom_nodes/_opencv_shared/backend/runtime/`，并按依赖加载、图片读写、payload、几何、局部特征、平面变换和参数校验分包
 - OpenCV custom payload 规则 当前也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`
 - `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入 `custom_nodes/opencv_geometry_nodes/`
 - `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_measurement_nodes/`

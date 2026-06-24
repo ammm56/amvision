@@ -17,7 +17,8 @@
 `RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26` 的真实短链路已经形成可追溯记录，`YOLOE / SAM3` 也已按最新 core / runtime / payload / node adapter 边界完成当前阶段收口。第五批当前重点转为剩余 custom node 的结构治理：
 
 - 已完成：`plc_modbus_tcp_nodes`、`output_local_db_nodes`、`output_mes_http_nodes` 的旧 `_runtime.py` 已拆到正式 `backend/runtime/`。
-- 待收口：`camera_usb_uvc_nodes/backend/support.py`、`barcode_protocol_nodes/backend/support.py` 和 `_opencv_shared/backend/support.py` 仍是较大的 support 文件，需要按领域继续拆分。
+- 已完成：`camera_usb_uvc_nodes` 和 `barcode_protocol_nodes` 已删除旧 `backend/support.py`，并拆到正式 `backend/runtime/`。
+- 已完成：`_opencv_shared` 已删除旧 `backend/support.py`，跨 OpenCV node pack 共享能力已拆到 `backend/runtime/`。
 - 显式验收：长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线仍单独跑，不放进默认 pytest，也不作为第五批结构收口的默认阻塞条件。
 
 ## 判断状态

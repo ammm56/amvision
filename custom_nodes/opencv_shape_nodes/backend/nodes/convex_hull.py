@@ -5,15 +5,17 @@ from __future__ import annotations
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.geometry import (
     build_contour_item_from_cv_contour,
-    build_contours_payload,
     compute_contour_metrics_from_points,
     contour_points_to_matrix,
-    require_contours_payload,
-    require_opencv_imports,
-    require_positive_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.payloads import (
+    build_contours_payload,
+    require_contours_payload,
+)
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.convex-hull"

@@ -6,7 +6,8 @@ from pathlib import PurePosixPath
 
 from backend.nodes.runtime_support import build_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import require_image_refs_payload, require_positive_int
+from custom_nodes._opencv_shared.backend.runtime.payloads import require_image_refs_payload
+from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.gallery-preview"

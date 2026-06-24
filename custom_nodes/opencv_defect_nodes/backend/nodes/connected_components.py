@@ -12,15 +12,17 @@ from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.images import (
     encode_png_image_bytes,
     load_image_matrix,
+)
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_connected_components_connectivity,
     require_non_negative_float,
-    require_opencv_imports,
     require_positive_int,
     require_uint8_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.connected-components"

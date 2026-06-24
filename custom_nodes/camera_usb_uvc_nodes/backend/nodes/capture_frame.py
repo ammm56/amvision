@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.camera_usb_uvc_nodes.backend import support
+from custom_nodes.camera_usb_uvc_nodes.backend.runtime import capture, config, payloads
 from custom_nodes.camera_usb_uvc_nodes.specs import CAPTURE_FRAME_NODE_TYPE_ID
 
 
@@ -13,68 +13,68 @@ NODE_TYPE_ID = CAPTURE_FRAME_NODE_TYPE_ID
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """从指定 USB / UVC 相机采集单帧，并输出 image-ref。"""
 
-    cv2_module, _ = support.require_opencv_imports()
-    config = support.resolve_capture_config(request, cv2_module=cv2_module)
-    capture = support.open_video_capture_or_raise(
-        source=config.source_value,
-        api_preference=config.api_preference,
-        backend_preference=config.backend_preference,
+    cv2_module, _ = capture.require_opencv_imports()
+    capture_config = config.resolve_capture_config(request, cv2_module=cv2_module)
+    video_capture = capture.open_video_capture_or_raise(
+        source=capture_config.source_value,
+        api_preference=capture_config.api_preference,
+        backend_preference=capture_config.backend_preference,
         node_id=request.node_id,
     )
     try:
-        support.configure_video_capture(
-            capture,
-            width=config.width,
-            height=config.height,
-            fps=config.fps,
+        capture.configure_video_capture(
+            video_capture,
+            width=capture_config.width,
+            height=capture_config.height,
+            fps=capture_config.fps,
             cv2_module=cv2_module,
         )
-        frame, successful_reads = support.read_last_frame(
-            capture,
-            warmup_frame_count=config.warmup_frame_count,
-            retry_read_count=config.retry_read_count,
+        frame, successful_reads = capture.read_last_frame(
+            video_capture,
+            warmup_frame_count=capture_config.warmup_frame_count,
+            retry_read_count=capture_config.retry_read_count,
             node_id=request.node_id,
             source_details={
-                "source_kind": config.source_kind,
-                "device_index": config.device_index,
-                "device_path": config.device_path,
+                "source_kind": capture_config.source_kind,
+                "device_index": capture_config.device_index,
+                "device_path": capture_config.device_path,
             },
         )
-        frame_width, frame_height, channels = support.get_frame_dimensions(frame)
-        encoded_frame, media_type = support.encode_frame_bytes(
+        frame_width, frame_height, channels = capture.get_frame_dimensions(frame)
+        encoded_frame, media_type = capture.encode_frame_bytes(
             frame=frame,
-            output_format=config.output_format,
-            jpeg_quality=config.jpeg_quality,
+            output_format=capture_config.output_format,
+            jpeg_quality=capture_config.jpeg_quality,
             cv2_module=cv2_module,
         )
-        image_payload = support.build_captured_image_payload(
+        image_payload = payloads.build_captured_image_payload(
             request,
             content=encoded_frame,
             media_type=media_type,
             width=frame_width,
             height=frame_height,
-            output_object_key=config.output_object_key,
-            overwrite=config.overwrite,
+            output_object_key=capture_config.output_object_key,
+            overwrite=capture_config.overwrite,
         )
-        backend_name = support.get_capture_backend_name(capture)
-        observed_width = support.read_capture_property(
-            capture,
+        backend_name = capture.get_capture_backend_name(video_capture)
+        observed_width = capture.read_capture_property(
+            video_capture,
             property_id=int(cv2_module.CAP_PROP_FRAME_WIDTH),
         )
-        observed_height = support.read_capture_property(
-            capture,
+        observed_height = capture.read_capture_property(
+            video_capture,
             property_id=int(cv2_module.CAP_PROP_FRAME_HEIGHT),
         )
-        observed_fps = support.read_capture_property(
-            capture,
+        observed_fps = capture.read_capture_property(
+            video_capture,
             property_id=int(cv2_module.CAP_PROP_FPS),
         )
         summary: dict[str, object] = {
             "transport": "usb-uvc",
             "operation": "capture_frame",
-            "source_kind": config.source_kind,
-            "backend_preference": config.backend_preference,
-            "output_format": config.output_format,
+            "source_kind": capture_config.source_kind,
+            "backend_preference": capture_config.backend_preference,
+            "output_format": capture_config.output_format,
             "media_type": media_type,
             "successful_reads": successful_reads,
             "frame_width": frame_width,
@@ -82,16 +82,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "channels": channels,
             "transport_kind": image_payload.get("transport_kind"),
         }
-        if config.device_index is not None:
-            summary["device_index"] = config.device_index
-        if config.device_path is not None:
-            summary["device_path"] = config.device_path
-        if config.width is not None:
-            summary["requested_width"] = config.width
-        if config.height is not None:
-            summary["requested_height"] = config.height
-        if config.fps is not None:
-            summary["requested_fps"] = config.fps
+        if capture_config.device_index is not None:
+            summary["device_index"] = capture_config.device_index
+        if capture_config.device_path is not None:
+            summary["device_path"] = capture_config.device_path
+        if capture_config.width is not None:
+            summary["requested_width"] = capture_config.width
+        if capture_config.height is not None:
+            summary["requested_height"] = capture_config.height
+        if capture_config.fps is not None:
+            summary["requested_fps"] = capture_config.fps
         if backend_name is not None:
             summary["backend_name"] = backend_name
         if observed_width is not None:
@@ -108,7 +108,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             summary["image_handle"] = image_handle
         return {
             "image": image_payload,
-            "summary": support.build_value_payload(summary),
+            "summary": payloads.build_value_payload(summary),
         }
     finally:
-        support.safe_release_capture(capture)
+        capture.safe_release_capture(video_capture)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_nodes.barcode_protocol_nodes.backend.support import build_decode_handler
+from custom_nodes.barcode_protocol_nodes.backend.runtime.decode import build_decode_handler
 
 
 NODE_TYPE_ID = "custom.barcode.code93-decode"

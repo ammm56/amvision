@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
     encode_png_image_bytes,
     load_image_matrix,
-    normalize_bbox,
+)
+from custom_nodes._opencv_shared.backend.runtime.geometry import normalize_bbox
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_optional_object_key,
-    require_contours_payload,
     require_non_negative_float,
-    require_opencv_imports,
     require_positive_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.payloads import require_contours_payload
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 

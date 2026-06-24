@@ -6,14 +6,14 @@ from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import build_roi_mask, require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
-    build_local_features_payload,
-    load_image_matrix,
+from custom_nodes._opencv_shared.backend.runtime.features import build_local_features_payload
+from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_int,
     require_non_negative_float,
-    require_opencv_imports,
     require_positive_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.orb-keypoints"

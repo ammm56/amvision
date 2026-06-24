@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.barcode_protocol_nodes.backend.support import (
-    _read_bool_parameter,
-    _read_non_negative_float_parameter,
-    _read_positive_int_parameter,
-    build_barcode_label,
+from custom_nodes.barcode_protocol_nodes.backend.runtime.images import (
     build_output_image_payload,
-    iter_barcode_result_items,
     load_image_matrix,
+)
+from custom_nodes.barcode_protocol_nodes.backend.runtime.imports import require_barcode_runtime_imports
+from custom_nodes.barcode_protocol_nodes.backend.runtime.results import (
+    build_barcode_label,
+    iter_barcode_result_items,
+)
+from custom_nodes.barcode_protocol_nodes.backend.runtime.validators import (
     normalize_optional_object_key,
-    require_barcode_runtime_imports,
+    read_bool_parameter,
+    read_non_negative_float_parameter,
+    read_positive_int_parameter,
 )
 from custom_nodes.barcode_protocol_nodes.specs import DRAW_BARCODE_RESULTS_NODE_TYPE_ID
 
@@ -27,12 +31,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, np_module, _ = require_barcode_runtime_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
 
-    line_thickness = _read_positive_int_parameter(request, field_name="line_thickness", default=2)
-    font_scale = _read_non_negative_float_parameter(request, field_name="font_scale", default=0.5)
-    draw_polygon = _read_bool_parameter(request, field_name="draw_polygon", default=True)
-    draw_text = _read_bool_parameter(request, field_name="draw_text", default=True)
-    draw_format = _read_bool_parameter(request, field_name="draw_format", default=False)
-    draw_index = _read_bool_parameter(request, field_name="draw_index", default=False)
+    line_thickness = read_positive_int_parameter(request, field_name="line_thickness", default=2)
+    font_scale = read_non_negative_float_parameter(request, field_name="font_scale", default=0.5)
+    draw_polygon = read_bool_parameter(request, field_name="draw_polygon", default=True)
+    draw_text = read_bool_parameter(request, field_name="draw_text", default=True)
+    draw_format = read_bool_parameter(request, field_name="draw_format", default=False)
+    draw_index = read_bool_parameter(request, field_name="draw_index", default=False)
 
     for item in iter_barcode_result_items(request.input_values.get("results")):
         polygon_xy = item["position"]["polygon_xy"]

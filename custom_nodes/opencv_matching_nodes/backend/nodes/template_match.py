@@ -9,12 +9,12 @@ from backend.nodes.core_nodes.support.region import build_regions_payload
 from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy, require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
-    load_image_matrix,
+from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_float,
-    require_opencv_imports,
     require_positive_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.template-match"

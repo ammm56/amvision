@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
-    build_contour_item_from_cv_contour,
-    build_contours_payload,
-    load_image_matrix,
+from custom_nodes._opencv_shared.backend.runtime.geometry import build_contour_item_from_cv_contour
+from custom_nodes._opencv_shared.backend.runtime.payloads import build_contours_payload
+from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_contour_approximation,
     normalize_contour_retrieval_mode,
     require_non_negative_float,
-    require_opencv_imports,
     require_positive_int,
     require_uint8_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.contour"

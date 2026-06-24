@@ -5,11 +5,11 @@ from __future__ import annotations
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.barcode_protocol_nodes.backend.support import (
-    decode_barcodes,
+from custom_nodes.barcode_protocol_nodes.backend.runtime.decode import decode_barcodes
+from custom_nodes.barcode_protocol_nodes.backend.runtime.imports import require_barcode_runtime_imports
+from custom_nodes.barcode_protocol_nodes.backend.runtime.results import (
     require_barcode_position_payload,
     require_image_refs_payload,
-    require_barcode_runtime_imports,
 )
 from custom_nodes.barcode_protocol_nodes.specs import QR_CROP_DECODE_REMAP_NODE_TYPE_ID
 

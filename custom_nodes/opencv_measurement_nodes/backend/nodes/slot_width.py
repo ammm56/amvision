@@ -5,14 +5,14 @@ from __future__ import annotations
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.geometry import (
     compute_line_angle_delta_deg,
     measure_point_to_line,
     normalize_point_xy,
-    require_lines_payload,
-    require_positive_int,
     select_line_item,
 )
+from custom_nodes._opencv_shared.backend.runtime.payloads import require_lines_payload
+from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.slot-width"

@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
     load_image_matrix,
+)
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_optional_object_key,
     require_aperture_size,
     require_non_negative_float,
-    require_opencv_imports,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.canny"

@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
+from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
     encode_png_image_bytes,
     load_image_matrix,
+)
+from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_adaptive_block_size,
     normalize_adaptive_threshold_method,
     normalize_binary_threshold_mode,
     normalize_optional_object_key,
     require_number,
-    require_opencv_imports,
     require_uint8_int,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.adaptive-threshold"

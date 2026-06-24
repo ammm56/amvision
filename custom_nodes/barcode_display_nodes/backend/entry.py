@@ -8,7 +8,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.application.workflows.runtime_registry_loader import (
     NodePackEntrypointRegistrationContext,
 )
-from custom_nodes.barcode_protocol_nodes.backend.support import build_barcode_results_summary
+from custom_nodes.barcode_protocol_nodes.backend.runtime.results import build_barcode_results_summary
 
 
 NODE_PACK_ID = "barcode.display-nodes"

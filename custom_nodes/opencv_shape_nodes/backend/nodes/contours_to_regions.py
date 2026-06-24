@@ -9,13 +9,13 @@ from backend.nodes.core_nodes.support.region import (
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
-    compute_contour_metrics_from_points,
+from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
+from custom_nodes._opencv_shared.backend.runtime.payloads import (
     require_contours_payload,
-    require_non_negative_float,
-    require_opencv_imports,
     resolve_contours_source_image,
 )
+from custom_nodes._opencv_shared.backend.runtime.validators import require_non_negative_float
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
 NODE_TYPE_ID = "custom.opencv.contours-to-regions"

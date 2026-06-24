@@ -16,7 +16,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.camera_usb_uvc_nodes.backend import support as camera_support
+from custom_nodes.camera_usb_uvc_nodes.backend.runtime import capture as camera_capture
 from custom_nodes.camera_usb_uvc_nodes.backend.nodes import (
     capture_frame,
     close_device,
@@ -150,9 +150,9 @@ def test_enumerate_devices_node_returns_detected_cameras(monkeypatch) -> None:
         3: _FakeCapture(opened=False),
     }
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
     monkeypatch.setattr(
-        camera_support,
+        camera_capture,
         "create_video_capture",
         lambda *, source, api_preference: captures.get(int(source), _FakeCapture(opened=False)),
     )
@@ -202,9 +202,9 @@ def test_capture_frame_node_returns_memory_image(monkeypatch) -> None:
     capture = _FakeCapture(frames=[(True, frame), (True, frame)])
     image_registry = ExecutionImageRegistry()
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
     monkeypatch.setattr(
-        camera_support,
+        camera_capture,
         "create_video_capture",
         lambda *, source, api_preference: capture,
     )
@@ -255,9 +255,9 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
     capture = _FakeCapture(frames=[(True, frame)])
     dataset_storage = _create_dataset_storage(tmp_path)
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
     monkeypatch.setattr(
-        camera_support,
+        camera_capture,
         "create_video_capture",
         lambda *, source, api_preference: capture,
     )
@@ -300,9 +300,9 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
 def test_capture_frame_node_raises_when_camera_cannot_open(monkeypatch) -> None:
     """验证 capture-frame 在相机无法打开时返回明确错误。"""
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
     monkeypatch.setattr(
-        camera_support,
+        camera_capture,
         "create_video_capture",
         lambda *, source, api_preference: _FakeCapture(opened=False),
     )
@@ -329,13 +329,13 @@ def test_usb_camera_session_nodes_reuse_runtime_scoped_session(monkeypatch) -> N
     runtime_scope = _RuntimeScope()
     created_sources: list[tuple[int | str, int]] = []
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
 
     def _create_capture(*, source, api_preference):
         created_sources.append((source, api_preference))
         return capture
 
-    monkeypatch.setattr(camera_support, "create_video_capture", _create_capture)
+    monkeypatch.setattr(camera_capture, "create_video_capture", _create_capture)
 
     open_output = open_device.handle_node(
         WorkflowNodeExecutionRequest(
@@ -447,8 +447,8 @@ def test_usb_camera_session_nodes_support_execution_scoped_registry(monkeypatch)
     capture = _FakeCapture(frames=[(True, frame)])
     execution_metadata: dict[str, object] = {"execution_image_registry": ExecutionImageRegistry()}
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
-    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "create_video_capture", lambda *, source, api_preference: capture)
 
     opened_session = open_device.handle_node(
         WorkflowNodeExecutionRequest(
@@ -493,8 +493,8 @@ def test_usb_camera_stream_nodes_produce_frame_window_and_reuse_buffer(monkeypat
     runtime_scope = _RuntimeScope()
     image_registry = ExecutionImageRegistry()
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
-    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "create_video_capture", lambda *, source, api_preference: capture)
 
     opened_session = open_device.handle_node(
         WorkflowNodeExecutionRequest(
@@ -619,8 +619,8 @@ def test_read_latest_frame_raises_after_session_closed(monkeypatch) -> None:
     capture = _FakeCapture()
     runtime_scope = _RuntimeScope()
 
-    monkeypatch.setattr(camera_support, "require_opencv_imports", lambda: (_FakeCv2Module, np))
-    monkeypatch.setattr(camera_support, "create_video_capture", lambda *, source, api_preference: capture)
+    monkeypatch.setattr(camera_capture, "require_opencv_imports", lambda: (_FakeCv2Module, np))
+    monkeypatch.setattr(camera_capture, "create_video_capture", lambda *, source, api_preference: capture)
 
     opened_session = open_device.handle_node(
         WorkflowNodeExecutionRequest(

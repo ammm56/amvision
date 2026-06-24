@@ -5,11 +5,9 @@ from __future__ import annotations
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.support import (
-    require_circles_payload,
-    require_positive_int,
-    select_circle_item,
-)
+from custom_nodes._opencv_shared.backend.runtime.payloads import require_circles_payload
+from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
+from custom_nodes._opencv_shared.backend.runtime.geometry import select_circle_item
 
 
 NODE_TYPE_ID = "custom.opencv.circle-diameter"
