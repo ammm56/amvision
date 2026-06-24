@@ -16,12 +16,14 @@ import pytest
 import torch
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
-    get_or_create_sam3_semantic_runtime_session,
+from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items as merge_sam3_text_prompt_items,
     read_text_prompt_items as read_sam3_text_prompt_items,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     resolve_sam3_pretrained_variant,
 )
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import get_or_create_sam3_semantic_runtime_session
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
     resolve_yoloe_pretrained_variant,
 )

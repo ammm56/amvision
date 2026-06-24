@@ -133,7 +133,7 @@ rg -n "primary|legacy|minimal|compat|lightweight|stub|TODO|NotImplemented|过渡
 以下不是本轮模型主线短链路阻塞，但进入第五批 custom nodes 前必须单独处理。
 
 - `custom_nodes/yoloe_open_vocab_nodes/backend/runtime/prompt_free.py`、`text_prompt.py`、`visual_prompt.py`：已接收 YOLOE project-native runtime session class 和推理调用编排，nodes 层不再保存 `_project_native_runtime.py`。
-- `custom_nodes/sam3_segment_nodes/backend/nodes/_project_native_runtime.py`：同样需要按最新 deployment/runtime/workflow 边界审计。
+- `custom_nodes/sam3_segment_nodes/backend/runtime/access.py`：已接收 SAM3 custom node 侧 runtime cache key 与 session 获取，nodes 层不再保存 `_project_native_runtime.py`。
 - 训练 service 中保留的 `legacy_labels_json_object_key` 后续可考虑改成更直白的内部字段名，但前提是不破坏已有输出文件记录；它不是当前 full core 行为差距。
 
 ### YOLOE / SAM3 审计记录
@@ -238,22 +238,28 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 - `runtime/sessions.py` 现在直接按 session 类型导入正式文件，不再通过 `project_native.py` 聚合。
 - checkpoint / 模型加载公共逻辑已进入 `runtime/model_loading.py`，受控 checkpoint 兼容仍留在 `core/weights/checkpoint.py`。
 - device / precision / CUDA fast path 准备逻辑已进入 `runtime/environment.py`，图片 decode / preprocess / tensor 构造已进入 `runtime/preprocess.py`。
-- 已复跑 YOLOE 节点和 workflow 使用面：`tests/test_import_smoke.py tests/test_yoloe_prompt_free_node.py tests/test_yoloe_text_prompt_node.py tests/test_yoloe_visual_prompt_node.py tests/test_yoloe_sam3_stability.py -q` 为 `815 passed`；`tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q` 为 `3 passed`。
+- 已复跑 YOLOE 节点和 workflow 使用面：`tests/test_import_smoke.py tests/test_yoloe_prompt_free_node.py tests/test_yoloe_text_prompt_node.py tests/test_yoloe_visual_prompt_node.py tests/test_yoloe_sam3_stability.py -q` 为 `815 passed`；新增 prompt-free / visual-prompt WorkflowAppRuntime smoke 后，`tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py -q` 为 `5 passed`。
 
 #### SAM3 segment nodes
 
 当前主要实现位置：
 
-- `custom_nodes/sam3_segment_nodes/backend/nodes/_project_native_runtime.py`：约 109 行，只负责 custom node 侧 runtime cache key 与 session 获取。
-- `custom_nodes/sam3_segment_nodes/backend/nodes/_common.py`：约 948 行，包含 text / interactive prompt 解析、frame window、图片读取、mask / polygon 处理和输出 payload。
-- `custom_nodes/sam3_segment_nodes/backend/nodes/video_interactive_segment.py`：约 481 行，包含视频 tracking mode、prompt 传播、memory / attention track state 更新和输出摘要。
-- `backend/nodes/sam3_runtime_support/`：已经存在项目内 SAM3 支撑包，包含 checkpoint、image preprocess、interactive model、semantic model、prompt encoding、mask postprocess、video memory tracker、vision backbone 等 14 个 Python 文件。
+- `custom_nodes/sam3_segment_nodes/backend/core/`：SAM3 custom node 私有 core，包含 checkpoint、image preprocess、interactive model、semantic model、prompt encoding、mask postprocess、video memory tracker、vision backbone 等模型支撑文件；旧 backend shared 支撑目录已迁入这里，不再作为平台 shared support。
+- `custom_nodes/sam3_segment_nodes/backend/runtime/access.py`：负责 custom node 侧 runtime cache key 与 session 获取；旧 `nodes/_project_native_runtime.py` 已删除。
+- `custom_nodes/sam3_segment_nodes/backend/runtime/tracking.py`：包含 video-interactive tracking mode、参数解析、跨帧 prompt 传播、memory / attention track state 更新和 tracking summary 构造。
+- `custom_nodes/sam3_segment_nodes/backend/payloads/types.py`：包含 text / interactive prompt、frame window 和预训练 variant 的 payload 类型。
+- `custom_nodes/sam3_segment_nodes/backend/payloads/pretrained.py`：包含 SAM3 预训练 manifest 定位、scale / device / precision 规范化和受控未实现错误。
+- `custom_nodes/sam3_segment_nodes/backend/payloads/inputs.py`：包含 text / interactive prompt 解析、frame window 读取、图片读取、polygon / mask prompt 处理。
+- `custom_nodes/sam3_segment_nodes/backend/payloads/results.py`：包含 regions、tracks、summary 和 source image 摘要 payload 组装。
+- 旧 `custom_nodes/sam3_segment_nodes/backend/nodes/_common.py` 已删除，不再保留 re-export 壳。
+- `custom_nodes/sam3_segment_nodes/backend/nodes/video_interactive_segment.py`：只保留 frame/prompt 读取、runtime session 调用、逐帧推理和 payload 返回；tracking 细节已迁到 `runtime/tracking.py`。
 
 当前边界判断：
 
-- SAM3 的模型支撑已经比 YOLOE 更接近正式分层，但它放在 `backend/nodes/sam3_runtime_support/`，还没有明确是平台共享 core、custom node 私有 core，还是后续模型主线的一部分。
-- custom node 侧 `_common.py` 仍然混合 payload、prompt、frame window、summary 和 output payload 构造。
-- `video_interactive_segment.py` 里 tracking 逻辑比较重，后续应拆到 SAM3 runtime 或 tracking helper，不应长期留在 node adapter。
+- SAM3 的模型支撑已经明确为 custom node 私有 core，不进入 `backend/nodes` 平台 shared support，也不作为主模型服务 core 对外暴露。
+- custom node 侧 runtime session cache 已进入 `runtime/access.py`，不再放在 nodes 目录。
+- custom node 侧 payload 类型、prompt / frame window 输入读取、pretrained manifest 和 result / summary 构造已进入 `payloads/`，节点 adapter 不再依赖 `_common.py`。
+- video-interactive tracking 参数解析、prompt propagation、memory / attention state 更新和 tracking summary 已进入 `runtime/tracking.py`，节点 adapter 不再直接持有这批逻辑。
 
 第一阶段目标结构：
 
@@ -266,12 +272,13 @@ custom_nodes/sam3_segment_nodes/backend/
 │  ├─ postprocess/
 │  └─ tracking/
 ├─ runtime/
-│  ├─ sessions.py
-│  └─ cache.py
+│  ├─ access.py
+│  └─ tracking.py
 ├─ payloads/
-│  ├─ prompts.py
-│  ├─ frames.py
-│  └─ results.py
+│  ├─ inputs.py
+│  ├─ pretrained.py
+│  ├─ results.py
+│  └─ types.py
 └─ nodes/
    ├─ interactive_segment.py
    ├─ semantic_segment.py
@@ -281,7 +288,8 @@ custom_nodes/sam3_segment_nodes/backend/
 
 处理规则：
 
-- 先判断 `backend/nodes/sam3_runtime_support/` 是继续作为平台共享 support，还是移动到 SAM3 custom node 的 `core/`。如果只有 SAM3 custom node 使用，优先随节点包内聚；如果未来平台核心也要复用，必须在 `backend/nodes/` 下写清 shared support 边界。
+- `custom_nodes/sam3_segment_nodes/backend/core/` 是 SAM3 custom node 私有模型支撑层；平台内建节点和其他 custom node 不直接依赖该目录。
+- 如果未来平台核心需要复用 SAM3 能力，必须另立公开模型服务或显式 shared support 设计，不能反向依赖 custom node 私有 core。
 - `NotImplementedError` 只允许出现在明确不支持的模型缩放、抽象接口或受控错误路径里，不能作为功能占位。
 - `fallback` 只能用于后处理小区域过滤、参数默认值这类受控路径，不能作为模型结构或 checkpoint 缺失的静默降级。
 
@@ -509,9 +517,9 @@ release/full soak 记录：
 ## 下一步执行顺序
 
 1. 如需要更强运行时基线，继续补代表性 deployment 长驻负载、真实长时间训练和更长周期资源采样；这些是显式验收任务，不进入默认 pytest。
-2. 继续 YOLOE 后续工程收口：检查 `runtime/prompt_free.py`、`runtime/text_prompt.py`、`runtime/visual_prompt.py` 的 summary 组装是否需要继续拆成更小 helper；checkpoint 加载和输入预处理已下沉。
-3. 单独审计 `SAM3` custom model node，重点检查 `_project_native_runtime.py` 和 `_common.py` 是否仍包含旧轻量实现、runtime、payload 和 node adapter 混装。
-4. 将 `SAM3` 按 core / runtime / node adapter / payload helper 收口后，再进入第五批 custom nodes。
+2. YOLOE 后续只保留小范围工程整理：summary helper 已按 text / visual 局部拆分，不做跨模式大 helper；checkpoint 加载和输入预处理已下沉。
+3. 继续 `SAM3` custom model node 收口：payloads、runtime access、video tracking 和私有 core 迁移已完成，后续只做 core 内部 checkpoint / nn / prompts / postprocess / tracking 子包细化。
+4. 将 `SAM3` core 内部子包继续细化后，再进入第五批 custom nodes。
 
 ## 第五批进入条件
 
@@ -521,5 +529,5 @@ release/full soak 记录：
 - 旧 `yolo_primary_*` 入口已经删除或改为中性命名；旧共享 detection 训练入口也已删除或完全下沉到 `yolov8_core`。
 - 每个模型的支持 task 都有真实全链路验收结果。
 - deployment sync / async 和 workflow 调用已经确认不依赖旧 predictor。
-- YOLOE 已完成 core / runtime / payloads / node adapter 的前四批收口，SAM3 仍需按最新 runtime/deployment/workflow 边界完成审计。
+- YOLOE 已完成 core / runtime / payloads / node adapter 收口，并补齐三类 workflow smoke；SAM3 已完成 runtime access、payloads 和 video tracking 拆分，仍需收口 shared support / core 边界。
 - 长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线不作为第五批入口的默认 pytest 条件，但必须有单独计划和结果记录入口；如果执行过程中发现模型主链路 bug，必须先修复并复跑受影响链路。

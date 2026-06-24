@@ -203,13 +203,7 @@ class YoloeTextPromptRuntimeSession:
             "text_encoder": "mobileclip/blt",
             "negative_prompt_weight": self.NEGATIVE_PROMPT_WEIGHT,
             "prompt_groups": [
-                {
-                    "prompt_id": group.prompt_id,
-                    "display_name": group.display_name,
-                    "positive_texts": list(group.positive_texts),
-                    "negative_texts": list(group.negative_texts),
-                    "languages": list(group.languages),
-                }
+                _build_text_prompt_group_summary_item(group)
                 for group in prompt_groups
             ],
             "project_native": True,
@@ -219,6 +213,18 @@ class YoloeTextPromptRuntimeSession:
             regions=tuple(regions),
             summary=summary,
         )
+
+
+def _build_text_prompt_group_summary_item(group: Any) -> dict[str, object]:
+    """构建 text prompt group 的运行时摘要项。"""
+
+    return {
+        "prompt_id": str(group.prompt_id),
+        "display_name": str(group.display_name),
+        "positive_texts": list(group.positive_texts),
+        "negative_texts": list(group.negative_texts),
+        "languages": list(group.languages),
+    }
 
 
 __all__ = ["YoloeTextPromptRuntimeSession"]

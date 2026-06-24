@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
-    build_tracks_payload,
-    build_video_semantic_summary_payload,
-    get_or_create_sam3_semantic_runtime_session,
+from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
-    normalize_device,
-    normalize_model_scale,
-    normalize_precision,
     read_frame_window_items,
     read_text_prompt_items,
 )
+from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
+    normalize_device,
+    normalize_model_scale,
+    normalize_precision,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.results import (
+    build_tracks_payload,
+    build_video_semantic_summary_payload,
+)
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import get_or_create_sam3_semantic_runtime_session
 
 
 NODE_TYPE_ID = "custom.sam3.video-semantic-segment"

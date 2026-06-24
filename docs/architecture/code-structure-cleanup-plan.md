@@ -34,7 +34,8 @@
 - 数据集导入/导出把格式识别、格式解析、文件写入、任务状态和持久化混在大文件里。
 - workflow runtime 把 DTO、服务、worker、消息序列化、事件和响应组装混在少数大文件里。
 - API route 文件承担了请求模型、权限、服务装配、响应组装和业务路由多类职责。
-- 自定义节点包里有少数 `_runtime.py`、`_common.py`、`_project_native_runtime.py` 文件过大。
+- 自定义节点包里仍有少数 `_runtime.py` 旧式大文件，YOLOE / SAM3 的 `_common.py` 和 `_project_native_runtime.py` 已进入专项收口。
+- SAM3 模型支撑已从平台 `backend/nodes` shared support 迁入 `custom_nodes/sam3_segment_nodes/backend/core/`，后续只作为 SAM3 custom node 私有 core 维护。
 - 前端少数页面组件承担了数据加载、表单状态、弹窗、提交、列表和样式，后续应拆成 page + components + composables。
 
 这些问题不一定是功能缺陷，但会降低后续扩展模型、数据集格式、workflow runtime 和现场节点时的可维护性。
@@ -571,8 +572,8 @@ backend/nodes/core_nodes/
 ### 当前问题
 
 - `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 同时包含连接参数、地址解析、编码解码、读写、等待条件、结果信号映射和错误处理。
-- `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除。
-- `sam3_segment_nodes/backend/nodes/_common.py` 同时包含 prompt 读取、payload 构造、summary、session cache 和部分 mask 处理。
+- `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除；prompt-free / text-prompt / visual-prompt 三类节点已补 WorkflowAppRuntime smoke。
+- `sam3_segment_nodes` 的 runtime session cache 已从 `nodes/_project_native_runtime.py` 迁到 `runtime/access.py`；旧 `nodes/_common.py` 已删除，prompt 类型、预训练解析、输入读取和结果 payload 已拆到 `payloads/`；video-interactive 的跨帧 tracking 编排已拆到 `runtime/tracking.py`。
 
 ### 目标结构
 
@@ -614,12 +615,14 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 
 ```text
 custom_nodes/sam3_segment_nodes/backend/
+├─ payloads/
+│  ├─ inputs.py
+│  ├─ results.py
+│  ├─ pretrained.py
+│  └─ types.py
 ├─ runtime/
-│  ├─ prompts.py
-│  ├─ payloads.py
-│  ├─ sessions.py
-│  ├─ masks.py
-│  └─ summaries.py
+│  ├─ access.py
+│  └─ tracking.py
 └─ nodes/
 ```
 

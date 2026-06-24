@@ -9,7 +9,14 @@ from PIL import Image
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-import custom_nodes.sam3_segment_nodes.backend.nodes._common as sam3_common
+from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
+    merge_text_prompt_items as merge_sam3_text_prompt_items,
+    read_text_prompt_items as read_sam3_text_prompt_items,
+)
+import custom_nodes.sam3_segment_nodes.backend.payloads.pretrained as sam3_pretrained
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
+    get_or_create_sam3_semantic_runtime_session,
+)
 import custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained as yoloe_pretrained
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.inputs import (
     read_text_prompt_items as read_yoloe_text_prompt_items,
@@ -40,13 +47,13 @@ def test_sam3_resolve_pretrained_variant_rejects_missing_manifest(monkeypatch) -
     """验证 SAM3 缺失 manifest 时会返回明确错误。"""
 
     monkeypatch.setattr(
-        sam3_common,
+        sam3_pretrained,
         "SAM3_PRETRAINED_ROOT",
         Path(__file__).resolve().parents[1] / "data" / "files" / "models" / "pretrained" / "_missing-sam3",
     )
 
     with pytest.raises(InvalidRequestError, match="manifest"):
-        sam3_common.resolve_sam3_pretrained_variant(model_scale="l")
+        sam3_pretrained.resolve_sam3_pretrained_variant(model_scale="l")
 
 
 def test_yoloe_text_prompt_items_reject_empty_items() -> None:
@@ -59,7 +66,7 @@ def test_yoloe_text_prompt_items_reject_empty_items() -> None:
 def test_sam3_text_prompt_groups_reject_negative_only_group() -> None:
     """验证 SAM3 semantic 会拒绝只有 negative 文本的 prompt 组。"""
 
-    prompt_items = sam3_common.read_text_prompt_items(
+    prompt_items = read_sam3_text_prompt_items(
         {
             "items": [
                 {
@@ -73,7 +80,7 @@ def test_sam3_text_prompt_groups_reject_negative_only_group() -> None:
     )
 
     with pytest.raises(InvalidRequestError, match="positive 文本提示"):
-        sam3_common.merge_text_prompt_items(prompt_items)
+        merge_sam3_text_prompt_items(prompt_items)
 
 
 def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
@@ -125,12 +132,12 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
 def test_sam3_semantic_runtime_session_reuses_cpu_cache() -> None:
     """验证 SAM3 semantic runtime 在 CPU 上会复用同一会话。"""
 
-    session_a = sam3_common.get_or_create_sam3_semantic_runtime_session(
+    session_a = get_or_create_sam3_semantic_runtime_session(
         model_scale="l",
         device="cpu",
         precision="fp32",
     )
-    session_b = sam3_common.get_or_create_sam3_semantic_runtime_session(
+    session_b = get_or_create_sam3_semantic_runtime_session(
         model_scale="l",
         device="cpu",
         precision="fp32",
@@ -138,8 +145,8 @@ def test_sam3_semantic_runtime_session_reuses_cpu_cache() -> None:
 
     assert session_a is session_b
 
-    prompt_groups = sam3_common.merge_text_prompt_items(
-        sam3_common.read_text_prompt_items(
+    prompt_groups = merge_sam3_text_prompt_items(
+        read_sam3_text_prompt_items(
             {
                 "items": [
                     {

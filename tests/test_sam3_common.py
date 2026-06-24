@@ -9,10 +9,12 @@ import pytest
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
+from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
     read_interactive_prompt_items,
     read_text_prompt_items,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     resolve_sam3_pretrained_variant,
 )
 

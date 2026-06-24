@@ -46,6 +46,107 @@ _YOLOE_MANIFEST_PATH = _CUSTOM_NODES_ROOT / "yoloe_open_vocab_nodes" / "manifest
 _SAM3_MANIFEST_PATH = _CUSTOM_NODES_ROOT / "sam3_segment_nodes" / "manifest.json"
 
 
+def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+    """验证 YOLOE prompt-free 可以按受控启用路径进入 WorkflowAppRuntime。"""
+
+    with _temporary_pack_default_enabled(
+        {
+            _YOLOE_MANIFEST_PATH: False,
+            _SAM3_MANIFEST_PATH: False,
+        }
+    ):
+        client, session_factory, dataset_storage = _create_runtime_api_client(
+            tmp_path,
+            database_name="workflow-app-runtime-yoloe-prompt-free-smoke.db",
+        )
+        headers = build_test_headers(scopes="workflows:read,workflows:write")
+
+        try:
+            with client:
+                _assert_pack_catalog_disabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                )
+                _enable_pack_and_assert_loaded(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                )
+                _assert_pack_catalog_enabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                    expected_node_type_ids=("custom.yoloe.prompt-free-detect",),
+                )
+
+                workflow_service = LocalWorkflowJsonService(
+                    dataset_storage=dataset_storage,
+                    node_catalog_registry=client.app.state.node_catalog_registry,
+                )
+                workflow_service.save_template(
+                    project_id=_PROJECT_ID,
+                    template=_build_yoloe_prompt_free_template(),
+                )
+                workflow_service.save_application(
+                    project_id=_PROJECT_ID,
+                    application=_build_yoloe_prompt_free_application(),
+                )
+
+                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-prompt-free-smoke.png")
+                workflow_runtime_id = _create_and_start_runtime(
+                    client=client,
+                    headers=headers,
+                    application_id="yoloe-prompt-free-smoke-app",
+                    display_name="YOLOE Prompt Free Smoke Runtime",
+                )
+                health_response = client.get(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                    headers=headers,
+                )
+                invoke_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    headers=headers,
+                    json={
+                        "input_bindings": {
+                            "request_image": {
+                                "object_key": image_object_key,
+                                "media_type": "image/png",
+                            },
+                        },
+                        "execution_metadata": {
+                            "scenario": "yoloe-prompt-free-workflow-app-runtime-smoke",
+                            "trigger_source": "sync-api",
+                        },
+                    },
+                )
+                stop_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                    headers=headers,
+                )
+        finally:
+            session_factory.engine.dispose()
+
+    assert health_response.status_code == 200
+    assert health_response.json()["observed_state"] == "running"
+    assert invoke_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert stop_response.json()["observed_state"] == "stopped"
+
+    payload = invoke_response.json()
+    assert payload["state"] == "succeeded"
+    assert set(payload["outputs"]) == {"detections", "regions", "summary"}
+    assert isinstance(payload["outputs"]["detections"]["items"], list)
+    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+
+    summary_payload = payload["outputs"]["summary"]
+    assert summary_payload["project_native"] is True
+    assert summary_payload["inference_mode"] == "prompt-free"
+    assert summary_payload["prompt_free"] is True
+    assert summary_payload["prompt_count"] == 0
+    assert summary_payload["vocabulary_size"] > 1000
+
+
 def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
     """验证 YOLOE text-prompt 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
@@ -146,6 +247,117 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
     assert summary_payload["prompt_group_count"] == 2
     assert summary_payload["positive_prompt_count"] == 2
     assert summary_payload["negative_prompt_count"] == 2
+
+
+def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+    """验证 YOLOE visual-prompt 可以按受控启用路径进入 WorkflowAppRuntime。"""
+
+    with _temporary_pack_default_enabled(
+        {
+            _YOLOE_MANIFEST_PATH: False,
+            _SAM3_MANIFEST_PATH: False,
+        }
+    ):
+        client, session_factory, dataset_storage = _create_runtime_api_client(
+            tmp_path,
+            database_name="workflow-app-runtime-yoloe-visual-prompt-smoke.db",
+        )
+        headers = build_test_headers(scopes="workflows:read,workflows:write")
+
+        try:
+            with client:
+                _assert_pack_catalog_disabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                )
+                _enable_pack_and_assert_loaded(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                )
+                _assert_pack_catalog_enabled(
+                    client=client,
+                    headers=headers,
+                    node_pack_id="yoloe.open-vocab-nodes",
+                    expected_node_type_ids=("custom.yoloe.visual-prompt-detect",),
+                )
+
+                workflow_service = LocalWorkflowJsonService(
+                    dataset_storage=dataset_storage,
+                    node_catalog_registry=client.app.state.node_catalog_registry,
+                )
+                workflow_service.save_template(
+                    project_id=_PROJECT_ID,
+                    template=_build_yoloe_visual_prompt_template(),
+                )
+                workflow_service.save_application(
+                    project_id=_PROJECT_ID,
+                    application=_build_yoloe_visual_prompt_application(),
+                )
+
+                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-visual-source-smoke.png")
+                prompt_image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-visual-prompt-smoke.png")
+                workflow_runtime_id = _create_and_start_runtime(
+                    client=client,
+                    headers=headers,
+                    application_id="yoloe-visual-prompt-smoke-app",
+                    display_name="YOLOE Visual Prompt Smoke Runtime",
+                )
+                health_response = client.get(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
+                    headers=headers,
+                )
+                invoke_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    headers=headers,
+                    json={
+                        "input_bindings": {
+                            "request_image": {
+                                "object_key": image_object_key,
+                                "media_type": "image/png",
+                            },
+                            "request_prompt_image": {
+                                "object_key": prompt_image_object_key,
+                                "media_type": "image/png",
+                            },
+                            "request_prompts": _build_visual_prompts_payload(),
+                        },
+                        "execution_metadata": {
+                            "scenario": "yoloe-visual-prompt-workflow-app-runtime-smoke",
+                            "trigger_source": "sync-api",
+                        },
+                    },
+                )
+                stop_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                    headers=headers,
+                )
+        finally:
+            session_factory.engine.dispose()
+
+    assert health_response.status_code == 200
+    assert health_response.json()["observed_state"] == "running"
+    assert invoke_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert stop_response.json()["observed_state"] == "stopped"
+
+    payload = invoke_response.json()
+    assert payload["state"] == "succeeded"
+    assert set(payload["outputs"]) == {"detections", "regions", "summary"}
+    assert isinstance(payload["outputs"]["detections"]["items"], list)
+    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+
+    summary_payload = payload["outputs"]["summary"]
+    assert summary_payload["project_native"] is True
+    assert summary_payload["inference_mode"] == "visual-prompt"
+    assert summary_payload["prompt_free"] is False
+    assert summary_payload["prompt_count"] == 1
+    assert summary_payload["prompt_item_count"] == 1
+    assert summary_payload["prompt_group_count"] == 1
+    assert summary_payload["visual_prompt_kind"] == "box"
+    assert summary_payload["visual_prompt_kinds"] == ["box"]
+    assert summary_payload["prompt_kind_counts"] == {"box": 1}
 
 
 def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
@@ -486,6 +698,109 @@ def _find_node_pack_status_item(
     raise AssertionError(f"未找到 node pack 状态项: {node_pack_id}")
 
 
+def _build_yoloe_prompt_free_template() -> WorkflowGraphTemplate:
+    """构造 YOLOE prompt-free 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="yoloe-prompt-free-smoke-template",
+        template_version="1.0.0",
+        display_name="YOLOE Prompt Free Smoke Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="yoloe_prompt_free",
+                node_type_id="custom.yoloe.prompt-free-detect",
+                parameters={
+                    "model_series": "v8",
+                    "model_scale": "s",
+                    "confidence_threshold": 0.05,
+                    "iou_threshold": 0.5,
+                    "max_detections": 8,
+                    "device": "cpu",
+                    "precision": "fp32",
+                },
+            ),
+        ),
+        edges=(),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="yoloe_prompt_free",
+                target_port="image",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="detections",
+                display_name="Detections",
+                payload_type_id="detections.v1",
+                source_node_id="yoloe_prompt_free",
+                source_port="detections",
+            ),
+            WorkflowGraphOutput(
+                output_id="regions",
+                display_name="Regions",
+                payload_type_id="regions.v1",
+                source_node_id="yoloe_prompt_free",
+                source_port="regions",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="yoloe_prompt_free",
+                source_port="summary",
+            ),
+        ),
+    )
+
+
+def _build_yoloe_prompt_free_application() -> FlowApplication:
+    """构造 YOLOE prompt-free 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="yoloe-prompt-free-smoke-app",
+        display_name="YOLOE Prompt Free Smoke App",
+        template_ref=FlowTemplateReference(
+            template_id="yoloe-prompt-free-smoke-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image",
+                direction="input",
+                template_port_id="request_image",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "image-ref.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="detections",
+                direction="output",
+                template_port_id="detections",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "detections.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="regions",
+                direction="output",
+                template_port_id="regions",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "regions.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="summary",
+                direction="output",
+                template_port_id="summary",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "value.v1"},
+            ),
+        ),
+    )
+
+
 def _build_yoloe_text_prompt_template() -> WorkflowGraphTemplate:
     """构造 YOLOE text-prompt 的最小 workflow 模板。"""
 
@@ -577,6 +892,137 @@ def _build_yoloe_text_prompt_application() -> FlowApplication:
                 template_port_id="request_prompts",
                 binding_kind="workflow-execute-input",
                 config={"payload_type_id": "text-prompts.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="detections",
+                direction="output",
+                template_port_id="detections",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "detections.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="regions",
+                direction="output",
+                template_port_id="regions",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "regions.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="summary",
+                direction="output",
+                template_port_id="summary",
+                binding_kind="workflow-execute-output",
+                config={"payload_type_id": "value.v1"},
+            ),
+        ),
+    )
+
+
+def _build_yoloe_visual_prompt_template() -> WorkflowGraphTemplate:
+    """构造 YOLOE visual-prompt 的最小 workflow 模板。"""
+
+    return WorkflowGraphTemplate(
+        template_id="yoloe-visual-prompt-smoke-template",
+        template_version="1.0.0",
+        display_name="YOLOE Visual Prompt Smoke Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="yoloe_visual",
+                node_type_id="custom.yoloe.visual-prompt-detect",
+                parameters={
+                    "model_series": "v8",
+                    "model_scale": "s",
+                    "confidence_threshold": 0.05,
+                    "iou_threshold": 0.5,
+                    "max_detections": 8,
+                    "device": "cpu",
+                    "precision": "fp32",
+                },
+            ),
+        ),
+        edges=(),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="yoloe_visual",
+                target_port="image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_prompt_image",
+                display_name="Request Prompt Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="yoloe_visual",
+                target_port="prompt_image",
+            ),
+            WorkflowGraphInput(
+                input_id="request_prompts",
+                display_name="Request Prompts",
+                payload_type_id="prompt-regions.v1",
+                target_node_id="yoloe_visual",
+                target_port="prompts",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="detections",
+                display_name="Detections",
+                payload_type_id="detections.v1",
+                source_node_id="yoloe_visual",
+                source_port="detections",
+            ),
+            WorkflowGraphOutput(
+                output_id="regions",
+                display_name="Regions",
+                payload_type_id="regions.v1",
+                source_node_id="yoloe_visual",
+                source_port="regions",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="yoloe_visual",
+                source_port="summary",
+            ),
+        ),
+    )
+
+
+def _build_yoloe_visual_prompt_application() -> FlowApplication:
+    """构造 YOLOE visual-prompt 的最小流程应用。"""
+
+    return FlowApplication(
+        application_id="yoloe-visual-prompt-smoke-app",
+        display_name="YOLOE Visual Prompt Smoke App",
+        template_ref=FlowTemplateReference(
+            template_id="yoloe-visual-prompt-smoke-template",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="placeholder",
+        ),
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image",
+                direction="input",
+                template_port_id="request_image",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "image-ref.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="request_prompt_image",
+                direction="input",
+                template_port_id="request_prompt_image",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "image-ref.v1"},
+            ),
+            FlowApplicationBinding(
+                binding_id="request_prompts",
+                direction="input",
+                template_port_id="request_prompts",
+                binding_kind="workflow-execute-input",
+                config={"payload_type_id": "prompt-regions.v1"},
             ),
             FlowApplicationBinding(
                 binding_id="detections",
@@ -846,6 +1292,21 @@ def _build_text_prompts_payload() -> dict[str, object]:
                 "display_name": "Target",
                 "text": "empty background",
                 "negative": True,
+            },
+        ]
+    }
+
+
+def _build_visual_prompts_payload() -> dict[str, object]:
+    """构造 visual-prompt smoke 使用的 prompt-regions.v1 输入。"""
+
+    return {
+        "items": [
+            {
+                "prompt_id": "target-box",
+                "display_name": "Target Box",
+                "prompt_kind": "box",
+                "bbox_xyxy": [24, 24, 112, 88],
             },
         ]
     }

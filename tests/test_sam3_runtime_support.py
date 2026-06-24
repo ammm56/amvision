@@ -1,4 +1,4 @@
-"""SAM3 runtime_support 基础模块测试。"""
+"""SAM3 custom node core 基础模块测试。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PIL import Image
 import torch
 import torch.nn.functional as F
 
-from backend.nodes.sam3_runtime_support import (
+from custom_nodes.sam3_segment_nodes.backend.core import (
     Sam3VideoAttentionMemoryEntry,
     Sam3VideoAttentionTrackState,
     Sam3InteractiveFrameContext,

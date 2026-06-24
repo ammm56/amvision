@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.sam3_segment_nodes.backend.nodes._common import (
-    build_interactive_summary_payload,
-    build_regions_payload,
-    get_or_create_sam3_interactive_runtime_session,
+from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
+    read_image_bytes,
+    read_interactive_prompt_items,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     normalize_device,
     normalize_model_scale,
     normalize_precision,
-    read_image_bytes,
-    read_interactive_prompt_items,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.results import (
+    build_interactive_summary_payload,
+    build_regions_payload,
+)
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
+    get_or_create_sam3_interactive_runtime_session,
 )
 
 

@@ -1,15 +1,15 @@
-"""SAM3 nn_common 公共算子测试。"""
+"""SAM3 custom node core 公共算子测试。"""
 
 from __future__ import annotations
 
 import torch
 
-from backend.nodes.sam3_runtime_support.interactive_state import (
+from custom_nodes.sam3_segment_nodes.backend.core.interactive_state import (
     Sam3InteractiveImageFeatures,
     Sam3InteractiveMemoryEntry,
     Sam3InteractiveState,
 )
-from backend.nodes.sam3_runtime_support.nn_common import (
+from custom_nodes.sam3_segment_nodes.backend.core.nn_common import (
     LayerNorm2d,
     MLP,
     MLPBlock,
