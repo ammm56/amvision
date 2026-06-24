@@ -10,6 +10,9 @@ from backend.service.application.models.evaluation.detection_evaluation import (
     DetectionEvaluationResult,
     run_detection_evaluation,
 )
+from backend.service.application.models.yolo26_core.inference import (
+    normalize_yolo26_detection_inference_outputs,
+)
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     postprocess_yolo26_detection_prediction_array,
 )
@@ -63,7 +66,10 @@ def convert_yolo26_predictions_to_coco_detections(
 ) -> list[dict[str, object]]:
     """把 YOLO26 detection 预测转换为 COCO detection 结果列表。"""
 
-    prediction_array = prediction_tensor.detach().cpu().numpy()
+    prediction_array = normalize_yolo26_detection_inference_outputs(
+        outputs=prediction_tensor,
+        np_module=np_module,
+    )
     _ = nms_threshold
     postprocess_results = postprocess_yolo26_detection_prediction_array(
         prediction_array=prediction_array,

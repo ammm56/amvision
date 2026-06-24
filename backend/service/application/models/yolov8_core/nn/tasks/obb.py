@@ -96,4 +96,6 @@ class OBB(Detect):
             strides=self.strides,
             dfl_decoder=self.dfl,
         )
+        if self.export:
+            return prediction
         return prediction.transpose(1, 2).contiguous()

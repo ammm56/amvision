@@ -223,6 +223,11 @@ def postprocess_yolov8_segmentation_prediction_array(
             "YOLOv8 segmentation 推理输出维度不合法",
             details={"shape": list(normalized_prediction.shape)},
         )
+    if _is_yolov8_channel_first_segmentation_prediction(
+        prediction_array=normalized_prediction,
+        num_classes=num_classes,
+    ):
+        normalized_prediction = np_module.transpose(normalized_prediction, (0, 2, 1))
     _validate_yolov8_segmentation_prediction_channel_count(
         channel_count=int(normalized_prediction.shape[2]),
         num_classes=num_classes,
@@ -343,6 +348,21 @@ def _validate_yolov8_segmentation_prediction_channel_count(
                 "required_min_channels": required_min_channels,
             },
         )
+
+
+def _is_yolov8_channel_first_segmentation_prediction(
+    *,
+    prediction_array: Any,
+    num_classes: int,
+) -> bool:
+    """判断 YOLOv8 segmentation prediction 是否为 export 的 [B, C, N] 布局。"""
+
+    if int(prediction_array.ndim) != 3:
+        return False
+    required_min_channels = 5 + int(num_classes)
+    return int(prediction_array.shape[1]) >= required_min_channels and int(
+        prediction_array.shape[2]
+    ) > int(prediction_array.shape[1])
 
 
 __all__ = [

@@ -177,15 +177,20 @@ class Pose26(Detect):
         )
         prediction = torch.cat((prediction, kpts), dim=1)
         normalized_prediction = prediction.transpose(1, 2).contiguous()
-        if self.export and self.end2end:
-            normalized_prediction = postprocess_yolo26_extra_export_tensor(
+        if self.end2end:
+            processed_prediction = postprocess_yolo26_extra_export_tensor(
                 torch_module=torch,
                 prediction=normalized_prediction,
                 num_classes=self.nc,
                 extra_channels=self.nk,
                 max_detections=self.max_det,
             )
-        return normalized_prediction
+            return (
+                processed_prediction
+                if self.export
+                else (processed_prediction, raw_outputs)
+            )
+        return normalized_prediction if self.export else (normalized_prediction, raw_outputs)
 
     def _build_head_outputs_pose26(
         self,

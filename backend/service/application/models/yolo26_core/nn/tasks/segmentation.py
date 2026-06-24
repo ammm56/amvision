@@ -109,7 +109,7 @@ class Segment26(Detect):
         )
         self.nm = int(nm)
         self.npr = int(npr)
-        self.proto = Proto26(c_=256, c2=self.nm, nc=nc, feature_channels=ch)
+        self.proto = Proto26(c_=self.npr, c2=self.nm, nc=nc, feature_channels=ch)
         hidden_channels = max(ch[0] // 4, self.nm)
         self.cv4 = nn.ModuleList(
             nn.Sequential(
@@ -188,15 +188,23 @@ class Segment26(Detect):
         )
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
         normalized_prediction = prediction.transpose(1, 2).contiguous()
-        if self.export and self.end2end:
-            normalized_prediction = postprocess_yolo26_extra_export_tensor(
+        if self.end2end:
+            processed_prediction = postprocess_yolo26_extra_export_tensor(
                 torch_module=torch,
                 prediction=normalized_prediction,
                 num_classes=self.nc,
                 extra_channels=self.nm,
                 max_detections=self.max_det,
             )
-        return normalized_prediction, proto
+            return (
+                (processed_prediction, proto)
+                if self.export
+                else ((processed_prediction, proto), raw_outputs)
+            )
+        return (normalized_prediction, proto) if self.export else (
+            (normalized_prediction, proto),
+            raw_outputs,
+        )
 
     def forward_head(
         self,

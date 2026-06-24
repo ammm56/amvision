@@ -63,18 +63,21 @@ def test_pose26_loss_can_backward_with_e2e_outputs():
 
 
 def test_segment26_model_can_build_and_forward():
-    """验证 Segment26 模型可以构建并完成前向推理。"""
+    """验证 Segment26 普通推理返回官方 processed/proto 和 raw head 输出。"""
     model = build_yolo_model(model_type="yolo26", task_type="segmentation", model_scale="nano", num_classes=1)
     model.eval()
     with torch.no_grad():
         output = model(torch.randn(1, 3, 256, 256))
     assert isinstance(output, tuple)
     assert len(output) == 2
-    prediction, proto = output
+    prediction_pair, raw_outputs = output
+    prediction, proto = prediction_pair
     assert prediction is not None
     assert proto is not None
     assert prediction.ndim == 3
     assert proto.ndim == 4
+    assert isinstance(raw_outputs, dict)
+    assert set(raw_outputs) == {"one2many", "one2one"}
 
 
 def test_segment26_model_training_output_contains_proto():

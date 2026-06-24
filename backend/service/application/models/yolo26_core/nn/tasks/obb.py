@@ -100,12 +100,17 @@ class OBB26(Detect):
             angle_decode_mode=self.angle_decode_mode,
         )
         normalized_prediction = prediction.transpose(1, 2).contiguous()
-        if self.export and self.end2end:
-            normalized_prediction = postprocess_yolo26_obb_export_tensor(
+        if self.end2end:
+            processed_prediction = postprocess_yolo26_obb_export_tensor(
                 torch_module=torch,
                 prediction=normalized_prediction,
                 num_classes=self.nc,
                 angle_channels=self.ne,
                 max_detections=self.max_det,
             )
-        return normalized_prediction
+            return (
+                processed_prediction
+                if self.export
+                else (processed_prediction, raw_outputs)
+            )
+        return normalized_prediction if self.export else (normalized_prediction, raw_outputs)

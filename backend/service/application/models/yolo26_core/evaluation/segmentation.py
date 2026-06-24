@@ -25,6 +25,9 @@ from backend.service.application.models.yolo26_core.postprocess import (
     normalize_yolo26_segmentation_outputs,
     postprocess_yolo26_segmentation_prediction_array,
 )
+from backend.service.application.models.yolo26_core.inference import (
+    unwrap_yolo26_segmentation_runtime_outputs,
+)
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
@@ -644,9 +647,10 @@ def _build_yolo26_segmentation_prediction_items(
 
     bbox_items: list[dict[str, object]] = []
     mask_items: list[dict[str, object]] = []
+    normalized_outputs = unwrap_yolo26_segmentation_runtime_outputs(outputs)
     try:
         prediction_array, proto_array = normalize_yolo26_segmentation_outputs(
-            outputs=outputs,
+            outputs=normalized_outputs,
             np_module=imports.np,
             num_classes=len(labels),
         )
@@ -691,7 +695,9 @@ def _build_yolo26_segmentation_prediction_items(
         return bbox_items, mask_items, len(instances)
     except Exception:
         prediction_array = _yolo26_segmentation_tensor_to_np(
-            outputs[0] if isinstance(outputs, tuple) else outputs,
+            normalized_outputs[0]
+            if isinstance(normalized_outputs, tuple)
+            else normalized_outputs,
             imports,
         )
     if prediction_array.ndim < 3:

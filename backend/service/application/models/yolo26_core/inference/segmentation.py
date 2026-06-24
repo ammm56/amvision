@@ -20,6 +20,7 @@ def normalize_yolo26_segmentation_inference_outputs(
 ) -> tuple[Any, Any]:
     """归一化 YOLO26 segmentation inference 输出。"""
 
+    outputs = unwrap_yolo26_segmentation_runtime_outputs(outputs)
     num_classes = _infer_yolo26_segmentation_num_classes(
         outputs=outputs, np_module=np_module
     )
@@ -63,6 +64,20 @@ def build_yolo26_segmentation_inference_instances(
         input_size=input_size,
         nms_indices_func=nms_indices_func,
     )
+
+
+def unwrap_yolo26_segmentation_runtime_outputs(outputs: object) -> object:
+    """解开 YOLO26 segmentation 参考 forward 形态中的 processed/raw 双输出。"""
+
+    if (
+        isinstance(outputs, list | tuple)
+        and len(outputs) >= 2
+        and isinstance(outputs[0], list | tuple)
+        and len(outputs[0]) >= 2
+        and isinstance(outputs[1], dict)
+    ):
+        return outputs[0]
+    return outputs
 
 
 def _infer_yolo26_segmentation_num_classes(*, outputs: object, np_module: Any) -> int:
@@ -120,4 +135,5 @@ def _infer_yolo26_proto_channels(*, proto_array: Any) -> int:
 __all__ = [
     "build_yolo26_segmentation_inference_instances",
     "normalize_yolo26_segmentation_inference_outputs",
+    "unwrap_yolo26_segmentation_runtime_outputs",
 ]

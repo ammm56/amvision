@@ -105,4 +105,6 @@ class Pose(Detect):
             anchor_offset=-0.5,
         )
         prediction = torch.cat((prediction, keypoints), dim=1)
+        if self.export:
+            return prediction
         return prediction.transpose(1, 2).contiguous()

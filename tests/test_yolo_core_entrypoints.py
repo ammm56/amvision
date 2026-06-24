@@ -522,6 +522,12 @@ def test_yolo_core_entrypoint_builds_detection_model(
         prediction = model(torch.randn(1, 3, 64, 64))
 
     assert model.model_name == f"{model_type}-detection"
+    if model_type == "yolo26":
+        assert isinstance(prediction, tuple)
+        assert prediction[0].shape == (1, 84, 6)
+        assert isinstance(prediction[1], dict)
+        assert set(prediction[1]) == {"one2many", "one2one"}
+        return
     assert prediction.shape == (1, 84, 6)
 
 
@@ -819,6 +825,44 @@ def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
     )
     assert [item.score for item in detections] == pytest.approx([0.90, 0.85, 0.70])
     assert [item.class_id for item in detections] == [1, 1, 0]
+
+
+@pytest.mark.parametrize(
+    ("builder", "task_type", "expected_channels"),
+    (
+        (build_yolov8_model, DETECTION_TASK_TYPE, 6),
+        (build_yolov8_model, SEGMENTATION_TASK_TYPE, 38),
+        (build_yolov8_model, POSE_TASK_TYPE, 57),
+        (build_yolov8_model, OBB_TASK_TYPE, 7),
+        (build_yolo11_model, DETECTION_TASK_TYPE, 6),
+        (build_yolo11_model, SEGMENTATION_TASK_TYPE, 38),
+        (build_yolo11_model, POSE_TASK_TYPE, 57),
+        (build_yolo11_model, OBB_TASK_TYPE, 7),
+    ),
+)
+def test_regular_yolo_export_forward_uses_ultralytics_channel_first_layout(
+    builder,
+    task_type: str,
+    expected_channels: int,
+) -> None:
+    """验证 YOLOv8 / YOLO11 export forward 保持 Ultralytics [B, C, N] 布局。"""
+
+    model = builder(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.eval()
+    for module in model.modules():
+        if isinstance(getattr(module, "export", None), bool):
+            module.export = True
+
+    with torch.no_grad():
+        outputs = model(torch.randn(1, 3, 64, 64))
+
+    prediction = outputs[0] if task_type == SEGMENTATION_TASK_TYPE else outputs
+    assert int(prediction.shape[1]) == expected_channels
+    assert int(prediction.shape[2]) > expected_channels
 
 
 @pytest.mark.parametrize(

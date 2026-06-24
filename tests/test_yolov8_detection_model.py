@@ -153,7 +153,7 @@ def test_yolo11_detection_model_uses_current_class_head() -> None:
 
 
 def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
-    """验证共享层已经可以构建并前向 YOLO26 detection 模型。"""
+    """验证 YOLO26 detection 普通推理返回官方 processed 输出和 raw head 输出。"""
 
     model = build_yolo_detection_model_for_type(
         model_type="yolo26",
@@ -163,9 +163,11 @@ def test_yolo26_detection_model_forward_returns_detection_tensor() -> None:
     model.eval()
 
     with torch.inference_mode():
-        prediction = model(torch.randn(1, 3, 64, 64))
+        prediction, raw_outputs = model(torch.randn(1, 3, 64, 64))
 
     assert prediction.shape == (1, 84, 6)
+    assert isinstance(raw_outputs, dict)
+    assert set(raw_outputs) == {"one2many", "one2one"}
 
 
 def test_yolo26_m_detection_model_enables_c3k2_scale_branch() -> None:

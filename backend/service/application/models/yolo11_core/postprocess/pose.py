@@ -73,6 +73,11 @@ def build_yolo11_pose_postprocess_instances(
         class_count=class_count,
         keypoint_shape=default_kpt_shape,
     )
+    if _is_yolo11_channel_first_pose_prediction(
+        prediction_array=prediction,
+        required_channels=required_channels,
+    ):
+        prediction = np_module.transpose(prediction, (0, 2, 1))
     if int(prediction.shape[2]) < required_channels:
         raise InvalidRequestError(
             "YOLO11 pose 推理输出通道数不足",
@@ -211,6 +216,20 @@ def _build_yolo11_pose_instance(
         keypoints=tuple(keypoints),
         kpt_shape=default_kpt_shape,
     )
+
+
+def _is_yolo11_channel_first_pose_prediction(
+    *,
+    prediction_array: Any,
+    required_channels: int,
+) -> bool:
+    """判断 YOLO11 pose prediction 是否为 export 的 [B, C, N] 布局。"""
+
+    if int(prediction_array.ndim) != 3:
+        return False
+    return int(prediction_array.shape[1]) >= int(required_channels) and int(
+        prediction_array.shape[2]
+    ) > int(prediction_array.shape[1])
 
 
 __all__ = [

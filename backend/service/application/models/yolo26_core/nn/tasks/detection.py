@@ -156,16 +156,19 @@ class Detect(nn.Module):
         inference_outputs = raw_outputs["one2one"] if self.end2end else raw_outputs
         prediction = self._inference(inference_outputs)
         normalized_prediction = prediction.transpose(1, 2).contiguous()
-        if self.export:
-            if self.end2end:
-                return postprocess_yolo26_detection_export_tensor(
-                    torch_module=torch,
-                    prediction=normalized_prediction,
-                    num_classes=self.nc,
-                    max_detections=self.max_det,
-                )
-            return prediction
-        return normalized_prediction
+        if self.end2end:
+            processed_prediction = postprocess_yolo26_detection_export_tensor(
+                torch_module=torch,
+                prediction=normalized_prediction,
+                num_classes=self.nc,
+                max_detections=self.max_det,
+            )
+            return (
+                processed_prediction
+                if self.export
+                else (processed_prediction, raw_outputs)
+            )
+        return prediction if self.export else (normalized_prediction, raw_outputs)
 
     def _inference(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """按 YOLO26 Detect 推理路径解码 detection 输出。"""

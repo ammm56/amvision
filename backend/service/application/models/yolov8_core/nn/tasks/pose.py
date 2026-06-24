@@ -101,4 +101,6 @@ class Pose(Detect):
             keypoint_shape=self.kpt_shape,
         )
         prediction = torch.cat((prediction, keypoints), dim=1)
+        if self.export:
+            return prediction
         return prediction.transpose(1, 2).contiguous()

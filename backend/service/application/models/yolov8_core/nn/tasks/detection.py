@@ -147,6 +147,8 @@ class Detect(nn.Module):
             strides=self.strides,
             dfl_decoder=self.dfl,
         )
+        if self.export:
+            return prediction
         return prediction.transpose(1, 2).contiguous()
 
     def _build_head_outputs(

@@ -96,4 +96,6 @@ class OBB(Detect):
             dfl_decoder=self.dfl,
             angle_decode_mode=self.angle_decode_mode,
         )
+        if self.export:
+            return prediction
         return prediction.transpose(1, 2).contiguous()

@@ -6,17 +6,11 @@ import numpy as np
 import torch
 import cv2
 
-from backend.service.application.models import yolo_detection_model
 from backend.service.application.models.yolo_core_common import (
-    Classify,
     Conv,
-    Detect,
     DistributionFocalLossDecoder,
-    OBB,
     OBB_ANGLE_DECODE_MODE_RAW,
     OBB_ANGLE_DECODE_MODE_SIGMOID_MINUS_QUARTER_PI,
-    Pose,
-    Segment,
     build_detection_prediction,
     build_obb_prediction,
     decode_detection_boxes,
@@ -76,38 +70,6 @@ from backend.service.application.models.yolo_core_common.targets import (
     xywhr_to_xyxy,
 )
 from backend.service.application.models.yolo26_core.tasks import OBB26, Pose26, Segment26
-
-
-def test_yolo_detection_model_uses_common_conv_layer() -> None:
-    """验证 detection 结构文件不再本地定义 Conv 基础层。"""
-
-    assert yolo_detection_model.Conv is Conv
-    assert yolo_detection_model.Conv.__module__.endswith("yolo_core_common.layers")
-
-
-def test_yolo_detection_model_uses_common_task_heads() -> None:
-    """验证 detection 结构文件不再本地定义通用任务 head。"""
-
-    assert yolo_detection_model.Detect is Detect
-    assert yolo_detection_model.Classify is Classify
-    assert yolo_detection_model.Segment is Segment
-    assert yolo_detection_model.Pose is Pose
-    assert yolo_detection_model.OBB is OBB
-    assert not hasattr(yolo_detection_model.Detect, "_decode_boxes")
-    assert not hasattr(yolo_detection_model.Detect, "_build_inference_prediction")
-    assert not hasattr(yolo_detection_model.Pose, "_decode_keypoints")
-    assert not hasattr(yolo_detection_model.OBB, "_decode_angle_logits")
-    assert yolo_detection_model.Detect.__module__.endswith(
-        "yolo_core_common.tasks.detection"
-    )
-    assert yolo_detection_model.Classify.__module__.endswith(
-        "yolo_core_common.tasks.classification"
-    )
-    assert yolo_detection_model.Segment.__module__.endswith(
-        "yolo_core_common.tasks.segmentation"
-    )
-    assert yolo_detection_model.Pose.__module__.endswith("yolo_core_common.tasks.pose")
-    assert yolo_detection_model.OBB.__module__.endswith("yolo_core_common.tasks.obb")
 
 
 def test_yolo26_heads_live_in_yolo26_core() -> None:

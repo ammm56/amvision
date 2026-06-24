@@ -72,6 +72,11 @@ def build_yolov8_pose_postprocess_instances(
         class_count=class_count,
         keypoint_shape=default_kpt_shape,
     )
+    if _is_yolov8_channel_first_pose_prediction(
+        prediction_array=normalized_prediction,
+        required_channels=required_channels,
+    ):
+        normalized_prediction = np_module.transpose(normalized_prediction, (0, 2, 1))
     if int(normalized_prediction.shape[2]) < required_channels:
         raise InvalidRequestError(
             "YOLOv8 pose 推理输出通道数不足",
@@ -208,6 +213,20 @@ def _build_yolov8_pose_instance(
         keypoints=tuple(keypoints),
         kpt_shape=default_kpt_shape,
     )
+
+
+def _is_yolov8_channel_first_pose_prediction(
+    *,
+    prediction_array: Any,
+    required_channels: int,
+) -> bool:
+    """判断 YOLOv8 pose prediction 是否为 export 的 [B, C, N] 布局。"""
+
+    if int(prediction_array.ndim) != 3:
+        return False
+    return int(prediction_array.shape[1]) >= int(required_channels) and int(
+        prediction_array.shape[2]
+    ) > int(prediction_array.shape[1])
 
 
 __all__ = [

@@ -122,4 +122,6 @@ class Segment(Detect):
             dfl_decoder=self.dfl,
         )
         prediction = torch.cat((prediction, inference_outputs["mask_coefficients"]), dim=1)
+        if self.export:
+            return prediction, proto
         return prediction.transpose(1, 2).contiguous(), proto

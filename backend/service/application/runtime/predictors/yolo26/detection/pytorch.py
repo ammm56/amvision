@@ -14,6 +14,9 @@ from backend.service.application.models.yolo26_core import (
     build_yolo26_model,
     load_yolo26_checkpoint_file,
 )
+from backend.service.application.models.yolo26_core.inference import (
+    normalize_yolo26_detection_inference_outputs,
+)
 from backend.service.application.models.yolo26_core.postprocess import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
     YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
@@ -34,7 +37,6 @@ from backend.service.application.runtime.support.detection import (
     enable_pytorch_cuda_inference_fast_path,
     load_prediction_image,
     measure_stage_elapsed_ms,
-    prediction_to_numpy_array,
     preprocess_image,
     render_preview_image,
     require_inference_imports,
@@ -195,8 +197,8 @@ class PyTorchYolo26RuntimeSession:
         image_width = int(image.shape[1])
 
         postprocess_started_at = perf_counter()
-        prediction_array = prediction_to_numpy_array(
-            prediction_tensor=outputs,
+        prediction_array = normalize_yolo26_detection_inference_outputs(
+            outputs=outputs,
             np_module=self.imports.np,
         )
         detections = build_yolo26_detection_records(

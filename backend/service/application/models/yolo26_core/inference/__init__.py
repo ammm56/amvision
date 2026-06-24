@@ -4,6 +4,9 @@ from backend.service.application.models.yolo26_core.inference.classification imp
     build_yolo26_classification_inference_categories,
     normalize_yolo26_classification_inference_outputs,
 )
+from backend.service.application.models.yolo26_core.inference.detection import (
+    normalize_yolo26_detection_inference_outputs,
+)
 from backend.service.application.models.yolo26_core.inference.obb import (
     build_yolo26_obb_inference_instances,
     normalize_yolo26_obb_inference_outputs,
@@ -15,6 +18,7 @@ from backend.service.application.models.yolo26_core.inference.pose import (
 from backend.service.application.models.yolo26_core.inference.segmentation import (
     build_yolo26_segmentation_inference_instances,
     normalize_yolo26_segmentation_inference_outputs,
+    unwrap_yolo26_segmentation_runtime_outputs,
 )
 
 __all__ = [
@@ -23,7 +27,9 @@ __all__ = [
     "build_yolo26_pose_inference_instances",
     "build_yolo26_segmentation_inference_instances",
     "normalize_yolo26_classification_inference_outputs",
+    "normalize_yolo26_detection_inference_outputs",
     "normalize_yolo26_obb_inference_outputs",
     "normalize_yolo26_pose_inference_outputs",
     "normalize_yolo26_segmentation_inference_outputs",
+    "unwrap_yolo26_segmentation_runtime_outputs",
 ]

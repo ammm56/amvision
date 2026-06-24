@@ -67,6 +67,11 @@ def build_yolo11_obb_postprocess_instances(
     required_channels = resolve_yolo11_obb_prediction_channel_count(
         class_count=class_count,
     )
+    if _is_yolo11_channel_first_obb_prediction(
+        prediction_array=prediction,
+        required_channels=required_channels,
+    ):
+        prediction = np_module.transpose(prediction, (0, 2, 1))
     if int(prediction.shape[2]) < required_channels:
         raise InvalidRequestError(
             "YOLO11 OBB 推理输出通道数不足",
@@ -241,6 +246,20 @@ def _clip_yolo11_obb_bounds(
         float(max(0.0, min(x2, float(image_width)))),
         float(max(0.0, min(y2, float(image_height)))),
     )
+
+
+def _is_yolo11_channel_first_obb_prediction(
+    *,
+    prediction_array: Any,
+    required_channels: int,
+) -> bool:
+    """判断 YOLO11 OBB prediction 是否为 export 的 [B, C, N] 布局。"""
+
+    if int(prediction_array.ndim) != 3:
+        return False
+    return int(prediction_array.shape[1]) >= int(required_channels) and int(
+        prediction_array.shape[2]
+    ) > int(prediction_array.shape[1])
 
 
 __all__ = [

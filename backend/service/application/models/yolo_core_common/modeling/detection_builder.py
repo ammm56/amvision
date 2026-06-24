@@ -9,10 +9,7 @@ import sys
 import types
 from typing import Any
 
-from backend.service.application.errors import (
-    InvalidRequestError,
-    ServiceConfigurationError,
-)
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.yolo_core_common import (
     Classify,
     Conv,
@@ -36,7 +33,6 @@ from backend.service.application.models.yolo_core_common.modeling.detection_mode
     PSABlock,
     SPPF,
     YoloDetectionModel,
-    build_yolo_detection_model,
 )
 
 
@@ -187,19 +183,17 @@ def build_yolo_detection_model_for_type(
     model_scale: str,
     num_classes: int,
 ) -> Any:
-    """按模型分类构建一套 YOLO 主线 detection 模型。"""
+    """按模型分类分发到对应 YOLO core detection builder。"""
 
-    model_config = YOLO_DETECTION_MODEL_CONFIGS.get(model_type)
-    if model_config is None:
-        raise InvalidRequestError(
-            "当前不支持指定的 YOLO 主线 detection 模型分类",
-            details={"model_type": model_type},
-        )
-    return build_yolo_detection_model(
-        model_name=model_type,
+    from backend.service.application.models.yolo_core_common.model_builders import (
+        build_yolo_model,
+    )
+
+    return build_yolo_model(
+        model_type=model_type,
+        task_type="detection",
         model_scale=model_scale,
         num_classes=num_classes,
-        model_config=model_config,
     )
 
 
