@@ -8,16 +8,17 @@
 
 - 当前哪些模型可以认为已经进入 full core 验收阶段
 - 哪些实现仍然是过渡残留、旧入口或轻量近似实现
-- 进入第五批 custom node 前，哪些真实链路必须先跑通并记录结果
+- 第五批 custom nodes 已进入后，哪些模型链路和 custom model node 记录仍需要继续跟踪
 
 ## 当前结论
 
-当前仍不建议直接进入第五批 custom nodes，但原因已经改变。
+当前可以进入第五批 custom nodes 的剩余结构收口，但不能跳过模型主线和 custom model node 的持续验收记录。
 
-`RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26` 的真实短链路已经形成可追溯记录。当前阻塞第五批 custom nodes 的重点不是“模型主链路完全没有记录”，而是两件事：
+`RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26` 的真实短链路已经形成可追溯记录，`YOLOE / SAM3` 也已按最新 core / runtime / payload / node adapter 边界完成当前阶段收口。第五批当前重点转为剩余 custom node 的结构治理：
 
-- 长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线还需要单独跑，不放进默认 pytest。
-- `YOLOE / SAM3` 这类 custom model node 还没有按最新模型服务、deployment runtime、workflow 调用和 payload contract 边界重新审计；如果这一步不先做，后续 custom node 仍可能沿用旧 predictor、旧轻量 runtime 或旧 workflow payload。
+- 已完成：`plc_modbus_tcp_nodes`、`output_local_db_nodes`、`output_mes_http_nodes` 的旧 `_runtime.py` 已拆到正式 `backend/runtime/`。
+- 待收口：`camera_usb_uvc_nodes/backend/support.py`、`barcode_protocol_nodes/backend/support.py` 和 `_opencv_shared/backend/support.py` 仍是较大的 support 文件，需要按领域继续拆分。
+- 显式验收：长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线仍单独跑，不放进默认 pytest，也不作为第五批结构收口的默认阻塞条件。
 
 ## 判断状态
 
@@ -519,7 +520,7 @@ release/full soak 记录：
 1. 如需要更强运行时基线，继续补代表性 deployment 长驻负载、真实长时间训练和更长周期资源采样；这些是显式验收任务，不进入默认 pytest。
 2. YOLOE 后续只保留小范围工程整理：summary helper 已按 text / visual 局部拆分，不做跨模式大 helper；checkpoint 加载和输入预处理已下沉。
 3. `SAM3` custom model node 收口已完成当前阶段：payloads、runtime access、video tracking、私有 core 迁移和 core 内部 checkpoint / models / nn / postprocess / preprocess / prompts / state / tracking 子包细化都已完成。
-4. 下一步可以进入第五批 custom nodes，优先处理 `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 这类仍混装的自定义节点 runtime。
+4. 第五批 custom nodes 已进入结构收口：`plc_modbus_tcp_nodes`、`output_local_db_nodes` 和 `output_mes_http_nodes` 的旧 `backend/nodes/_runtime.py` 均已删除，协议连接、输出 payload、参数读取、client / database / HTTP 调用和执行入口已拆到各自 `backend/runtime/`。
 
 ## 第五批进入条件
 

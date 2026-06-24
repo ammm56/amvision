@@ -15,7 +15,9 @@ def _iter_node_module_names() -> tuple[str, ...]:
         sorted(
             file_path.stem
             for file_path in nodes_dir.glob("*.py")
-            if file_path.is_file() and file_path.stem != "__init__" and not file_path.stem.startswith("_")
+            if file_path.is_file()
+            and file_path.stem != "__init__"
+            and not file_path.stem.startswith("_")
         )
     )
 
@@ -23,7 +25,10 @@ def _iter_node_module_names() -> tuple[str, ...]:
 def _load_node_modules() -> tuple[ModuleType, ...]:
     """导入 backend/nodes 目录下的全部显式节点模块。"""
 
-    return tuple(import_module(f"{__name__}.{module_name}") for module_name in _iter_node_module_names())
+    return tuple(
+        import_module(f"{__name__}.{module_name}")
+        for module_name in _iter_node_module_names()
+    )
 
 
 def _read_node_type_id(module: ModuleType) -> str:

@@ -34,7 +34,7 @@
 - 数据集导入/导出把格式识别、格式解析、文件写入、任务状态和持久化混在大文件里。
 - workflow runtime 把 DTO、服务、worker、消息序列化、事件和响应组装混在少数大文件里。
 - API route 文件承担了请求模型、权限、服务装配、响应组装和业务路由多类职责。
-- 自定义节点包里仍有少数 `_runtime.py` 旧式大文件，YOLOE / SAM3 的 `_common.py` 和 `_project_native_runtime.py` 已进入专项收口。
+- 自定义节点包里的旧 `_runtime.py` 大文件已清空；YOLOE / SAM3 的 `_common.py` 和 `_project_native_runtime.py` 也已完成当前阶段专项收口。
 - SAM3 模型支撑已从平台 `backend/nodes` shared support 迁入 `custom_nodes/sam3_segment_nodes/backend/core/`，后续只作为 SAM3 custom node 私有 core 维护。
 - 前端少数页面组件承担了数据加载、表单状态、弹窗、提交、列表和样式，后续应拆成 page + components + composables。
 
@@ -571,9 +571,14 @@ backend/nodes/core_nodes/
 
 ### 当前问题
 
-- `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 同时包含连接参数、地址解析、编码解码、读写、等待条件、结果信号映射和错误处理。
+- `plc_modbus_tcp_nodes` 已删除旧 `backend/nodes/_runtime.py`，连接参数、地址解析、编解码、client 生命周期、读写、等待条件和结果信号回写已拆到 `backend/runtime/`；节点入口只保留调用 runtime 的薄入口。
+- `output_local_db_nodes` 已删除旧 `backend/nodes/_runtime.py`，输入来源、列映射、参数读取、数据库连接、表反射、upsert 构造和执行入口已拆到 `backend/runtime/`。
+- `output_mes_http_nodes` 已删除旧 `backend/nodes/_runtime.py`，输入来源、query/body 映射、参数读取、请求头与鉴权、HTTP 调用、响应解析和执行入口已拆到 `backend/runtime/`。
 - `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除；prompt-free / text-prompt / visual-prompt 三类节点已补 WorkflowAppRuntime smoke。
 - `sam3_segment_nodes` 的模型支撑已进入私有 `core/`，并按 checkpoint、models、nn、postprocess、preprocess、prompts、state、tracking 拆分；runtime session cache 已从 `nodes/_project_native_runtime.py` 迁到 `runtime/access.py`；旧 `nodes/_common.py` 已删除，prompt 类型、预训练解析、输入读取和结果 payload 已拆到 `payloads/`；video-interactive 的跨帧 tracking 编排已拆到 `runtime/tracking.py`。
+- `camera_usb_uvc_nodes/backend/support.py` 仍是约 1900 行的大 support 文件，混有参数解析、OpenCV capture 创建、单帧编码、session registry、stream worker、参数读写和 payload 组装。它没有旧 `_runtime.py` 文件名，但职责边界仍不够清晰，下一批应拆到 `backend/runtime/`。
+- `barcode_protocol_nodes/backend/support.py` 仍混有图片读取、ZXing 解码、结果过滤、位置解析、输出图片和 barcode label 组装。体量低于 camera，但后续应拆出 runtime/image_io、decode、results、filters。
+- `_opencv_shared/backend/support.py` 是多个 OpenCV node pack 共用支撑层，当前承担 image-ref 读取、contours/lines/circles payload、几何量测、特征匹配、planar transform 和参数规范化。它是跨 pack 共享能力，不应盲目删除，但后续应按 image_io、payloads、geometry、features、transforms、validators 分包，避免继续膨胀成唯一 shared 大文件。
 
 ### 目标结构
 
@@ -586,7 +591,59 @@ custom_nodes/plc_modbus_tcp_nodes/backend/
 │  ├─ client.py
 │  ├─ read_write.py
 │  ├─ wait_condition.py
-│  └─ result_signals.py
+│  ├─ result_signals.py
+│  ├─ parameters.py
+│  └─ types.py
+└─ nodes/
+```
+
+```text
+custom_nodes/output_local_db_nodes/backend/
+├─ runtime/
+│  ├─ database.py
+│  ├─ execution.py
+│  ├─ parameters.py
+│  ├─ payloads.py
+│  └─ types.py
+└─ nodes/
+```
+
+```text
+custom_nodes/output_mes_http_nodes/backend/
+├─ runtime/
+│  ├─ execution.py
+│  ├─ http_client.py
+│  ├─ parameters.py
+│  ├─ payloads.py
+│  ├─ request.py
+│  └─ types.py
+└─ nodes/
+```
+
+```text
+custom_nodes/camera_usb_uvc_nodes/backend/
+├─ runtime/
+│  ├─ config.py
+│  ├─ capture.py
+│  ├─ sessions.py
+│  ├─ streaming.py
+│  ├─ parameters.py
+│  ├─ payloads.py
+│  ├─ validators.py
+│  └─ types.py
+└─ nodes/
+```
+
+```text
+custom_nodes/barcode_protocol_nodes/backend/
+├─ runtime/
+│  ├─ image_io.py
+│  ├─ decode.py
+│  ├─ filters.py
+│  ├─ results.py
+│  ├─ positions.py
+│  ├─ payloads.py
+│  └─ validators.py
 └─ nodes/
 ```
 
@@ -640,6 +697,8 @@ custom_nodes/sam3_segment_nodes/backend/
 - 自定义节点入口文件只读参数、调用 runtime、返回 payload。
 - 设备协议、模型 session、codec 和后处理不放在节点入口文件。
 - 不再新增 `_runtime.py` 这种无边界大文件。
+- `support.py` 这种无边界大文件也不能继续扩大；如果确实是跨 pack 共享能力，必须按领域拆成短文件，而不是把所有 helper 放在一个文件中。
+- camera 采流线程、session registry 和 payload 解析必须一次拆清边界，不做旧 support re-export 壳；拆分时先保持公开 node_type_id 和 payload contract 不变。
 
 ## 第六批：frontend
 

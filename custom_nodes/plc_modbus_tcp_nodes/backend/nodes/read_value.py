@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.plc_modbus_tcp_nodes.backend.nodes._runtime import execute_read_value_node
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
+from custom_nodes.plc_modbus_tcp_nodes.backend.runtime import execute_read_value_node
 from custom_nodes.plc_modbus_tcp_nodes.specs import READ_VALUE_NODE_TYPE_ID
 
 

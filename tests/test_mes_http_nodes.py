@@ -8,12 +8,16 @@ import httpx
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.output_mes_http_nodes.backend.nodes import mes_http_post
-import custom_nodes.output_mes_http_nodes.backend.nodes._runtime as mes_http_runtime
+import custom_nodes.output_mes_http_nodes.backend.runtime.execution as mes_http_runtime
 
 
-def test_mes_http_post_builds_request_from_result_and_request_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mes_http_post_builds_request_from_result_and_request_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """验证 mes-http-post 会按受限映射规则组装请求。"""
 
     captured_request: dict[str, object] = {}
@@ -107,7 +111,10 @@ def test_mes_http_post_builds_request_from_result_and_request_context(monkeypatc
     }
     assert captured_request["headers"]["Authorization"] == "Bearer super-secret-token"
     assert captured_request["headers"]["Content-Type"] == "application/json"
-    assert output["prepared_request"]["value"]["headers"]["Authorization"] == "***REDACTED***"
+    assert (
+        output["prepared_request"]["value"]["headers"]["Authorization"]
+        == "***REDACTED***"
+    )
     assert output["prepared_request"]["value"]["body_mode"] == "json_envelope"
     assert output["response"]["value"]["ok"] is True
     assert output["response"]["value"]["status_code"] == 202
@@ -121,18 +128,26 @@ def test_mes_http_post_rejects_multiple_primary_inputs() -> None:
         mes_http_post.handle_node(
             WorkflowNodeExecutionRequest(
                 node_id="mes-http-post-invalid",
-                node_definition=SimpleNamespace(node_type_id=mes_http_post.NODE_TYPE_ID),
+                node_definition=SimpleNamespace(
+                    node_type_id=mes_http_post.NODE_TYPE_ID
+                ),
                 parameters={"url": "https://mes.example.test/api/inspection-result"},
                 input_values={
                     "result": {"ok_ng": "OK", "ok": True},
-                    "workflow_result": {"status": "succeeded", "code": 0, "message": "ok"},
+                    "workflow_result": {
+                        "status": "succeeded",
+                        "code": 0,
+                        "message": "ok",
+                    },
                 },
                 execution_metadata={},
             )
         )
 
 
-def test_mes_http_post_supports_skip_and_null_mapping_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mes_http_post_supports_skip_and_null_mapping_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """验证 mes-http-post 支持 skip/null 缺失策略。"""
 
     captured_request: dict[str, object] = {}
@@ -191,6 +206,8 @@ def test_mes_http_post_supports_skip_and_null_mapping_policy(monkeypatch: pytest
     )
 
     assert captured_request["params"] is None
-    assert captured_request["json"] == {"payload": {"pass_ratio": 0.9, "operator_id": None}}
+    assert captured_request["json"] == {
+        "payload": {"pass_ratio": 0.9, "operator_id": None}
+    }
     assert output["prepared_request"]["value"]["query"] == {}
     assert output["response"]["value"]["body_json"]["ok"] is True

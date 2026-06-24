@@ -20,9 +20,14 @@ def test_modbus_tcp_node_catalog_builder_matches_checked_in_catalog() -> None:
         / "plc_modbus_tcp_nodes"
         / "workflow"
     )
-    checked_in_payload = json.loads((workflow_dir / "catalog.json").read_text(encoding="utf-8"))
+    checked_in_payload = json.loads(
+        (workflow_dir / "catalog.json").read_text(encoding="utf-8")
+    )
 
-    assert build_custom_node_catalog_payload(workflow_dir=workflow_dir) == checked_in_payload
+    assert (
+        build_custom_node_catalog_payload(workflow_dir=workflow_dir)
+        == checked_in_payload
+    )
 
 
 def test_repository_modbus_tcp_node_pack_is_enabled_by_default() -> None:
@@ -32,8 +37,12 @@ def test_repository_modbus_tcp_node_pack_is_enabled_by_default() -> None:
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
     node_pack_loader.refresh()
 
-    node_pack_ids = {manifest.node_pack_id for manifest in node_pack_loader.get_node_pack_manifests()}
-    loaded_node_type_ids = {node.node_type_id for node in node_pack_loader.get_workflow_node_definitions()}
+    node_pack_ids = {
+        manifest.node_pack_id for manifest in node_pack_loader.get_node_pack_manifests()
+    }
+    loaded_node_type_ids = {
+        node.node_type_id for node in node_pack_loader.get_workflow_node_definitions()
+    }
 
     assert "plc.modbus-tcp-nodes" in node_pack_ids
     assert {

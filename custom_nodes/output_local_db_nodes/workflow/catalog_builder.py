@@ -61,7 +61,9 @@ def build_custom_node_catalog_document(
         metadata_payload = raw_metadata_payload
 
     node_definitions_payload: list[dict[str, object]] = []
-    for node_file_path in sorted(get_node_sources_dir(workflow_dir=resolved_workflow_dir).glob("*.json")):
+    for node_file_path in sorted(
+        get_node_sources_dir(workflow_dir=resolved_workflow_dir).glob("*.json")
+    ):
         node_payload = _load_json_document(node_file_path)
         if not isinstance(node_payload, dict):
             raise ValueError(f"节点目录碎片必须是对象: {node_file_path.name}")
@@ -77,15 +79,20 @@ def build_custom_node_catalog_document(
     )
     validate_node_definition_catalog(
         node_definitions=catalog_document.node_definitions,
-        payload_contracts=get_core_workflow_payload_contracts() + catalog_document.payload_contracts,
+        payload_contracts=get_core_workflow_payload_contracts()
+        + catalog_document.payload_contracts,
     )
     return catalog_document
 
 
-def build_custom_node_catalog_payload(*, workflow_dir: Path | None = None) -> dict[str, object]:
+def build_custom_node_catalog_payload(
+    *, workflow_dir: Path | None = None
+) -> dict[str, object]:
     """构造可直接写入 catalog.json 的 JSON payload。"""
 
-    return build_custom_node_catalog_document(workflow_dir=workflow_dir).model_dump(mode="json")
+    return build_custom_node_catalog_document(workflow_dir=workflow_dir).model_dump(
+        mode="json"
+    )
 
 
 def write_custom_node_catalog(*, workflow_dir: Path | None = None) -> Path:
@@ -93,7 +100,9 @@ def write_custom_node_catalog(*, workflow_dir: Path | None = None) -> Path:
 
     resolved_workflow_dir = workflow_dir or get_workflow_dir()
     catalog_path = resolved_workflow_dir / "catalog.json"
-    catalog_payload = build_custom_node_catalog_payload(workflow_dir=resolved_workflow_dir)
+    catalog_payload = build_custom_node_catalog_payload(
+        workflow_dir=resolved_workflow_dir
+    )
     catalog_path.write_text(
         json.dumps(catalog_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

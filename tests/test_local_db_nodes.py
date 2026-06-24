@@ -10,7 +10,9 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.output_local_db_nodes.backend.nodes import local_db_upsert
 
 
@@ -50,7 +52,7 @@ def test_local_db_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                         "column_name": "event_id",
                         "source_kind": "literal",
                         "literal_value": "evt-001",
-                    }
+                    },
                 ],
             },
             input_values={
@@ -90,7 +92,7 @@ def test_local_db_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
                         "column_name": "coverage_ratio",
                         "source_kind": "result",
                         "source_path": "metrics.coverage_ratio",
-                    }
+                    },
                 ],
             },
             input_values={
@@ -117,7 +119,11 @@ def test_local_db_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:
     assert first_output["prepared_row"]["value"]["station_id"] == "station-a"
     assert second_output["result"]["value"]["skipped"] is False
     assert second_output["result"]["value"]["written_row"]["ok_ng"] == "OK"
-    assert second_output["result"]["value"]["update_columns"] == ["ok_ng", "coverage_ratio", "station_id"]
+    assert second_output["result"]["value"]["update_columns"] == [
+        "ok_ng",
+        "coverage_ratio",
+        "station_id",
+    ]
 
 
 def test_local_db_upsert_rejects_multiple_primary_inputs(tmp_path: Path) -> None:
@@ -129,7 +135,9 @@ def test_local_db_upsert_rejects_multiple_primary_inputs(tmp_path: Path) -> None
         local_db_upsert.handle_node(
             WorkflowNodeExecutionRequest(
                 node_id="local-db-upsert-invalid",
-                node_definition=SimpleNamespace(node_type_id=local_db_upsert.NODE_TYPE_ID),
+                node_definition=SimpleNamespace(
+                    node_type_id=local_db_upsert.NODE_TYPE_ID
+                ),
                 parameters={
                     "database_url": database_url,
                     "table_name": "inspection_results",
@@ -144,14 +152,20 @@ def test_local_db_upsert_rejects_multiple_primary_inputs(tmp_path: Path) -> None
                 },
                 input_values={
                     "result": {"ok_ng": "OK", "ok": True},
-                    "workflow_result": {"status": "succeeded", "code": 0, "message": "ok"},
+                    "workflow_result": {
+                        "status": "succeeded",
+                        "code": 0,
+                        "message": "ok",
+                    },
                 },
                 execution_metadata={},
             )
         )
 
 
-def test_local_db_upsert_requires_key_columns_to_match_unique_constraint(tmp_path: Path) -> None:
+def test_local_db_upsert_requires_key_columns_to_match_unique_constraint(
+    tmp_path: Path,
+) -> None:
     """验证 local-db-upsert 会拒绝非主键/非唯一键的冲突列。"""
 
     database_path = tmp_path / "inspection.db"
@@ -177,7 +191,9 @@ def test_local_db_upsert_requires_key_columns_to_match_unique_constraint(tmp_pat
         local_db_upsert.handle_node(
             WorkflowNodeExecutionRequest(
                 node_id="local-db-upsert-invalid-key",
-                node_definition=SimpleNamespace(node_type_id=local_db_upsert.NODE_TYPE_ID),
+                node_definition=SimpleNamespace(
+                    node_type_id=local_db_upsert.NODE_TYPE_ID
+                ),
                 parameters={
                     "database_url": database_url,
                     "table_name": "inspection_results",
@@ -192,9 +208,9 @@ def test_local_db_upsert_requires_key_columns_to_match_unique_constraint(tmp_pat
                             "column_name": "ok_ng",
                             "source_kind": "literal",
                             "literal_value": "NG",
-                        }
+                        },
                     ],
-                    "skip_if_no_update_columns": True
+                    "skip_if_no_update_columns": True,
                 },
                 input_values={
                     "summary": {"value": {"ok_count": 0, "ng_count": 1}},

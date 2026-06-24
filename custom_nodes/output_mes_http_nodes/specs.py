@@ -8,6 +8,4 @@ NODE_PACK_VERSION = "0.1.0"
 
 MES_HTTP_POST_NODE_TYPE_ID = "custom.output.mes-http-post"
 
-ALL_NODE_TYPE_IDS: tuple[str, ...] = (
-    MES_HTTP_POST_NODE_TYPE_ID,
-)
+ALL_NODE_TYPE_IDS: tuple[str, ...] = (MES_HTTP_POST_NODE_TYPE_ID,)

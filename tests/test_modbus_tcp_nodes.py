@@ -7,7 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from backend.service.application.errors import OperationTimeoutError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.infrastructure.integrations.modbus import (
     ModbusBitsReadResponse,
     ModbusRegistersReadResponse,
@@ -19,7 +21,8 @@ from custom_nodes.plc_modbus_tcp_nodes.backend.nodes import (
     write_result_signals,
     write_value,
 )
-import custom_nodes.plc_modbus_tcp_nodes.backend.nodes._runtime as modbus_runtime
+import custom_nodes.plc_modbus_tcp_nodes.backend.runtime.client as modbus_client_runtime
+import custom_nodes.plc_modbus_tcp_nodes.backend.runtime.wait_condition as modbus_wait_runtime
 
 
 def test_read_value_node_returns_typed_scalar(monkeypatch) -> None:
@@ -28,7 +31,9 @@ def test_read_value_node_returns_typed_scalar(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             captured["client_init"] = {
                 "host": host,
                 "port": port,
@@ -65,7 +70,9 @@ def test_read_value_node_returns_typed_scalar(monkeypatch) -> None:
                 retries=0,
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = read_value.handle_node(
         WorkflowNodeExecutionRequest(
@@ -103,7 +110,9 @@ def test_read_value_node_decodes_int64(monkeypatch) -> None:
     """验证 read-value 支持 int64 解码。"""
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -135,7 +144,9 @@ def test_read_value_node_decodes_int64(monkeypatch) -> None:
                 retries=0,
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = read_value.handle_node(
         WorkflowNodeExecutionRequest(
@@ -161,7 +172,9 @@ def test_write_value_node_supports_request_override(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             captured["client_init"] = {
                 "host": host,
                 "port": port,
@@ -197,7 +210,9 @@ def test_write_value_node_supports_request_override(monkeypatch) -> None:
                 acknowledged_values=list(values),
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = write_value.handle_node(
         WorkflowNodeExecutionRequest(
@@ -217,7 +232,7 @@ def test_write_value_node_supports_request_override(monkeypatch) -> None:
                         "unit_id": 7,
                         "register_address": "400002",
                         "data_type": "uint32",
-                        "value": 305419896
+                        "value": 305419896,
                     }
                 }
             },
@@ -247,7 +262,9 @@ def test_write_value_node_encodes_uint64(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             captured["client_init"] = {
                 "host": host,
                 "port": port,
@@ -283,7 +300,9 @@ def test_write_value_node_encodes_uint64(monkeypatch) -> None:
                 acknowledged_values=list(values),
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = write_value.handle_node(
         WorkflowNodeExecutionRequest(
@@ -305,17 +324,26 @@ def test_write_value_node_encodes_uint64(monkeypatch) -> None:
         "values": [0x1234, 0x5678, 0x9ABC, 0xDEF0],
         "device_id": 7,
     }
-    assert output["result"]["value"]["encoded_registers"] == [0x1234, 0x5678, 0x9ABC, 0xDEF0]
+    assert output["result"]["value"]["encoded_registers"] == [
+        0x1234,
+        0x5678,
+        0x9ABC,
+        0xDEF0,
+    ]
     assert output["result"]["value"]["requested_value"] == 1311768467463790320
 
 
-def test_write_result_signals_node_writes_result_alarm_and_request_override(monkeypatch) -> None:
+def test_write_result_signals_node_writes_result_alarm_and_request_override(
+    monkeypatch,
+) -> None:
     """验证 write-result-signals 会写入结果位、报警位和 request 信号覆盖值。"""
 
     captured_calls: list[dict[str, object]] = []
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -377,12 +405,16 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(monk
                 acknowledged_values=[value],
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = write_result_signals.handle_node(
         WorkflowNodeExecutionRequest(
             node_id="write-result-signals-node",
-            node_definition=SimpleNamespace(node_type_id=write_result_signals.NODE_TYPE_ID),
+            node_definition=SimpleNamespace(
+                node_type_id=write_result_signals.NODE_TYPE_ID
+            ),
             parameters={
                 "host": "192.168.10.40",
                 "unit_id": 2,
@@ -412,7 +444,11 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(monk
             },
             input_values={
                 "result": {"ok_ng": "OK", "ok": True, "reason": "pass"},
-                "alarm": {"active": True, "level": "warning", "message": "alarm active"},
+                "alarm": {
+                    "active": True,
+                    "level": "warning",
+                    "message": "alarm active",
+                },
                 "request": {"value": {"signal_values": {"result_code": 17}}},
             },
         )
@@ -430,13 +466,17 @@ def test_write_result_signals_node_writes_result_alarm_and_request_override(monk
     assert output["result"]["value"]["request_source"] == "request-input"
 
 
-def test_write_result_signals_node_skips_missing_and_continues_after_failure(monkeypatch) -> None:
+def test_write_result_signals_node_skips_missing_and_continues_after_failure(
+    monkeypatch,
+) -> None:
     """验证 write-result-signals 支持缺失跳过和 continue_on_error。"""
 
     captured_calls: list[dict[str, object]] = []
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -473,12 +513,16 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(mon
                 acknowledged_values=[1 if value else 0],
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = write_result_signals.handle_node(
         WorkflowNodeExecutionRequest(
             node_id="write-result-signals-continue-node",
-            node_definition=SimpleNamespace(node_type_id=write_result_signals.NODE_TYPE_ID),
+            node_definition=SimpleNamespace(
+                node_type_id=write_result_signals.NODE_TYPE_ID
+            ),
             parameters={
                 "host": "192.168.10.41",
                 "continue_on_error": True,
@@ -522,7 +566,10 @@ def test_write_result_signals_node_skips_missing_and_continues_after_failure(mon
     assert output["result"]["value"]["skipped_count"] == 1
     assert output["result"]["value"]["failed_count"] == 1
     assert output["result"]["value"]["skipped_items"][0]["signal_name"] == "part_id"
-    assert output["result"]["value"]["failed_items"][0]["signal_name"] == "bad_reason_uint16"
+    assert (
+        output["result"]["value"]["failed_items"][0]["signal_name"]
+        == "bad_reason_uint16"
+    )
     assert output["result"]["value"]["written_items"][0]["signal_name"] == "ng"
 
 
@@ -533,7 +580,9 @@ def test_wait_condition_node_requires_stable_match_count(monkeypatch) -> None:
     captured_attempts: list[dict[str, object]] = []
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -571,7 +620,9 @@ def test_wait_condition_node_requires_stable_match_count(monkeypatch) -> None:
                 retries=0,
             )
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
 
     output = wait_condition.handle_node(
         WorkflowNodeExecutionRequest(
@@ -599,11 +650,15 @@ def test_wait_condition_node_requires_stable_match_count(monkeypatch) -> None:
     assert output["result"]["value"]["last_observed"]["observed_value"] is True
 
 
-def test_wait_condition_node_defaults_wait_timeout_to_sixty_seconds(monkeypatch) -> None:
+def test_wait_condition_node_defaults_wait_timeout_to_sixty_seconds(
+    monkeypatch,
+) -> None:
     """验证 wait-condition 未显式传 wait_timeout_seconds 时默认使用 60 秒。"""
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -634,15 +689,21 @@ def test_wait_condition_node_defaults_wait_timeout_to_sixty_seconds(monkeypatch)
 
     perf_counter_values = iter([0.0, 61.0])
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
-    monkeypatch.setattr(modbus_runtime.time, "perf_counter", lambda: next(perf_counter_values))
-    monkeypatch.setattr(modbus_runtime.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
+    monkeypatch.setattr(
+        modbus_wait_runtime.time, "perf_counter", lambda: next(perf_counter_values)
+    )
+    monkeypatch.setattr(modbus_wait_runtime.time, "sleep", lambda _: None)
 
     with pytest.raises(OperationTimeoutError) as exc_info:
         wait_condition.handle_node(
             WorkflowNodeExecutionRequest(
                 node_id="wait-default-timeout-node",
-                node_definition=SimpleNamespace(node_type_id=wait_condition.NODE_TYPE_ID),
+                node_definition=SimpleNamespace(
+                    node_type_id=wait_condition.NODE_TYPE_ID
+                ),
                 parameters={
                     "host": "192.168.0.21",
                     "register_address": "00005",
@@ -658,13 +719,17 @@ def test_wait_condition_node_defaults_wait_timeout_to_sixty_seconds(monkeypatch)
     assert exc_info.value.details["timeout_seconds"] == 60.0
 
 
-def test_wait_condition_node_supports_null_timeout_for_infinite_wait(monkeypatch) -> None:
+def test_wait_condition_node_supports_null_timeout_for_infinite_wait(
+    monkeypatch,
+) -> None:
     """验证 wait-condition 传 null 时不会套用默认超时。"""
 
     bit_sequence = iter([False, True])
 
     class _FakeModbusTcpClient:
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             self.host = host
             self.port = port
             self.timeout = timeout
@@ -695,9 +760,13 @@ def test_wait_condition_node_supports_null_timeout_for_infinite_wait(monkeypatch
 
     perf_counter_values = iter([0.0, 61.0, 122.0])
 
-    monkeypatch.setattr(modbus_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient)
-    monkeypatch.setattr(modbus_runtime.time, "perf_counter", lambda: next(perf_counter_values))
-    monkeypatch.setattr(modbus_runtime.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        modbus_client_runtime, "ProjectModbusTcpClient", _FakeModbusTcpClient
+    )
+    monkeypatch.setattr(
+        modbus_wait_runtime.time, "perf_counter", lambda: next(perf_counter_values)
+    )
+    monkeypatch.setattr(modbus_wait_runtime.time, "sleep", lambda _: None)
 
     output = wait_condition.handle_node(
         WorkflowNodeExecutionRequest(

@@ -8,6 +8,4 @@ NODE_PACK_VERSION = "0.1.0"
 
 LOCAL_DB_UPSERT_NODE_TYPE_ID = "custom.output.local-db-upsert"
 
-ALL_NODE_TYPE_IDS: tuple[str, ...] = (
-    LOCAL_DB_UPSERT_NODE_TYPE_ID,
-)
+ALL_NODE_TYPE_IDS: tuple[str, ...] = (LOCAL_DB_UPSERT_NODE_TYPE_ID,)
