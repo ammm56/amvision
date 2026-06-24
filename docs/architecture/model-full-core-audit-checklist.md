@@ -518,8 +518,8 @@ release/full soak 记录：
 
 1. 如需要更强运行时基线，继续补代表性 deployment 长驻负载、真实长时间训练和更长周期资源采样；这些是显式验收任务，不进入默认 pytest。
 2. YOLOE 后续只保留小范围工程整理：summary helper 已按 text / visual 局部拆分，不做跨模式大 helper；checkpoint 加载和输入预处理已下沉。
-3. 继续 `SAM3` custom model node 收口：payloads、runtime access、video tracking 和私有 core 迁移已完成，后续只做 core 内部 checkpoint / nn / prompts / postprocess / tracking 子包细化。
-4. 将 `SAM3` core 内部子包继续细化后，再进入第五批 custom nodes。
+3. `SAM3` custom model node 收口已完成当前阶段：payloads、runtime access、video tracking、私有 core 迁移和 core 内部 checkpoint / models / nn / postprocess / preprocess / prompts / state / tracking 子包细化都已完成。
+4. 下一步可以进入第五批 custom nodes，优先处理 `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 这类仍混装的自定义节点 runtime。
 
 ## 第五批进入条件
 
@@ -529,5 +529,5 @@ release/full soak 记录：
 - 旧 `yolo_primary_*` 入口已经删除或改为中性命名；旧共享 detection 训练入口也已删除或完全下沉到 `yolov8_core`。
 - 每个模型的支持 task 都有真实全链路验收结果。
 - deployment sync / async 和 workflow 调用已经确认不依赖旧 predictor。
-- YOLOE 已完成 core / runtime / payloads / node adapter 收口，并补齐三类 workflow smoke；SAM3 已完成 runtime access、payloads 和 video tracking 拆分，仍需收口 shared support / core 边界。
+- YOLOE 已完成 core / runtime / payloads / node adapter 收口，并补齐三类 workflow smoke；SAM3 已完成私有 core、runtime access、payloads、video tracking 和 core 内部子包拆分。
 - 长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线不作为第五批入口的默认 pytest 条件，但必须有单独计划和结果记录入口；如果执行过程中发现模型主链路 bug，必须先修复并复跑受影响链路。

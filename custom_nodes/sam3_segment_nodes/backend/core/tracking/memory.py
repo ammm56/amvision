@@ -8,9 +8,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .interactive_model import Sam3InteractiveFrameContext
-from .mask_postprocess import Sam3RegionItem
-from .video_tracker_common import (
+from ..models.interactive import Sam3InteractiveFrameContext
+from ..postprocess.masks import Sam3RegionItem
+from .common import (
     build_fused_history_mask_from_tensors,
     decode_mask_png,
     extract_feature_prototype,

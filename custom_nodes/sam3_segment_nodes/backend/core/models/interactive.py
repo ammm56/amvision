@@ -13,18 +13,18 @@ from backend.service.application.runtime.support.detection import (
     resolve_execution_device_name,
 )
 
-from .checkpoint_loader import build_sam3_interactive_state_dict, load_sam3_checkpoint_branches
-from .image_preprocess import PreparedSam3Image, preprocess_sam3_image
-from .mask_postprocess import (
+from ..checkpoint.loader import build_sam3_interactive_state_dict, load_sam3_checkpoint_branches
+from ..postprocess.masks import (
     DEFAULT_MASK_THRESHOLD,
     DEFAULT_POLYGON_SIMPLIFY_RATIO,
     DEFAULT_STABILITY_OFFSET,
     Sam3RegionItem,
     postprocess_sam3_interactive_masks,
 )
-from .prompt_encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
-from .prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
-from .vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
+from ..preprocess.image import PreparedSam3Image, preprocess_sam3_image
+from ..prompts.encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
+from ..nn.prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
+from ..nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
 
 
 @dataclass(frozen=True)

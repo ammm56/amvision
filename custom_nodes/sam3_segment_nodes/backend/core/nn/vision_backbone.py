@@ -10,7 +10,7 @@ from torch import nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 
-from .nn_common import DropPath, LayerScale
+from .common import DropPath, LayerScale
 
 
 def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 10000.0, scale_pos: float = 1.0) -> torch.Tensor:

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import torch
 
-from custom_nodes.sam3_segment_nodes.backend.core.interactive_state import (
+from custom_nodes.sam3_segment_nodes.backend.core.state.interactive import (
     Sam3InteractiveImageFeatures,
     Sam3InteractiveMemoryEntry,
     Sam3InteractiveState,
 )
-from custom_nodes.sam3_segment_nodes.backend.core.nn_common import (
+from custom_nodes.sam3_segment_nodes.backend.core.nn.common import (
     LayerNorm2d,
     MLP,
     MLPBlock,

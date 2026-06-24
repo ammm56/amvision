@@ -573,7 +573,7 @@ backend/nodes/core_nodes/
 
 - `plc_modbus_tcp_nodes/backend/nodes/_runtime.py` 同时包含连接参数、地址解析、编码解码、读写、等待条件、结果信号映射和错误处理。
 - `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除；prompt-free / text-prompt / visual-prompt 三类节点已补 WorkflowAppRuntime smoke。
-- `sam3_segment_nodes` 的 runtime session cache 已从 `nodes/_project_native_runtime.py` 迁到 `runtime/access.py`；旧 `nodes/_common.py` 已删除，prompt 类型、预训练解析、输入读取和结果 payload 已拆到 `payloads/`；video-interactive 的跨帧 tracking 编排已拆到 `runtime/tracking.py`。
+- `sam3_segment_nodes` 的模型支撑已进入私有 `core/`，并按 checkpoint、models、nn、postprocess、preprocess、prompts、state、tracking 拆分；runtime session cache 已从 `nodes/_project_native_runtime.py` 迁到 `runtime/access.py`；旧 `nodes/_common.py` 已删除，prompt 类型、预训练解析、输入读取和结果 payload 已拆到 `payloads/`；video-interactive 的跨帧 tracking 编排已拆到 `runtime/tracking.py`。
 
 ### 目标结构
 
@@ -615,6 +615,15 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 
 ```text
 custom_nodes/sam3_segment_nodes/backend/
+├─ core/
+│  ├─ checkpoint/
+│  ├─ models/
+│  ├─ nn/
+│  ├─ postprocess/
+│  ├─ preprocess/
+│  ├─ prompts/
+│  ├─ state/
+│  └─ tracking/
 ├─ payloads/
 │  ├─ inputs.py
 │  ├─ results.py

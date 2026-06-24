@@ -7,7 +7,7 @@ import math
 import torch
 from torch import nn
 
-from .nn_common import LayerNorm2d, MLP, MLPBlock
+from .common import LayerNorm2d, MLP, MLPBlock
 
 
 class PositionEmbeddingRandom(nn.Module):
