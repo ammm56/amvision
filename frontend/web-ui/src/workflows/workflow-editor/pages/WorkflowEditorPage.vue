@@ -192,96 +192,36 @@
               <span v-else class="workflow-graph-port workflow-graph-port--placeholder" />
             </div>
           </div>
-          <div v-if="nodeParameterFieldsForNode(node).length" class="workflow-graph-node-widgets">
-            <label
-              v-for="field in nodeParameterFieldsForNode(node)"
-              :key="`${node.node.node_id}-${field.parameter_name}`"
-              class="workflow-graph-node-widget"
-              @mousedown.stop
-              @click.stop
-            >
-              <div class="workflow-graph-node-widget__label">
-                <span>{{ readNodeParameterLabel(field) }}</span>
-              </div>
-              <SelectField
-                v-if="field.enum_options.length"
-                :model-value="readNodeParameterEnumIndex(node, field)"
-                :options="nodeParameterEnumOptions(field)"
-                :disabled="field.readonly"
-                @update:model-value="updateNodeParameterFromEnumValue(node, field, $event)"
-              />
-              <input
-                v-else-if="isBooleanParameter(field)"
-                type="checkbox"
-                :checked="readNodeParameterBooleanValue(node, field)"
-                :disabled="field.readonly"
-                @change="updateNodeParameterFromCheckboxEvent(node, field, $event)"
-              />
-              <input
-                v-else-if="isNumberParameter(field)"
-                type="number"
-                step="any"
-                :value="readNodeParameterTextValue(node, field)"
-                :disabled="field.readonly"
-                @change="updateNodeParameterFromNumberEvent(node, field, $event)"
-              />
-              <input
-                v-else-if="isStringParameter(field)"
-                :value="readNodeParameterTextValue(node, field)"
-                :disabled="field.readonly"
-                @input="updateNodeParameterFromTextEvent(node, field, $event)"
-              />
-              <template v-else-if="isJsonParameter(field)">
-                <textarea
-                  :value="readNodeParameterJsonTextValue(node, field)"
-                  :disabled="field.readonly"
-                  :placeholder="nodeParameterJsonPlaceholder(field)"
-                  @input="updateNodeParameterJsonDraft(node, field, $event)"
-                  @change="commitNodeParameterJsonDraft(node, field, $event)"
-                />
-              </template>
-            </label>
-          </div>
-          <div
+          <WorkflowNodeParameterWidgets
+            v-if="nodeParameterFieldsForNode(node).length"
+            :node="node"
+            :fields="nodeParameterFieldsForNode(node)"
+            :read-label="readNodeParameterLabel"
+            :read-enum-value="readNodeParameterEnumIndex"
+            :read-enum-options="nodeParameterEnumOptions"
+            :is-boolean="isBooleanParameter"
+            :read-boolean-value="readNodeParameterBooleanValue"
+            :is-number="isNumberParameter"
+            :read-text-value="readNodeParameterTextValue"
+            :is-string="isStringParameter"
+            :is-json="isJsonParameter"
+            :read-json-text-value="readNodeParameterJsonTextValue"
+            :read-json-placeholder="nodeParameterJsonPlaceholder"
+            @update-enum="updateNodeParameterFromEnumValue"
+            @update-checkbox="updateNodeParameterFromCheckboxEvent"
+            @update-number="updateNodeParameterFromNumberEvent"
+            @update-text="updateNodeParameterFromTextEvent"
+            @update-json-draft="updateNodeParameterJsonDraft"
+            @commit-json-draft="commitNodeParameterJsonDraft"
+          />
+          <WorkflowNodePreviewDisplay
             v-if="previewNodeDisplays[node.node.node_id]"
-            class="workflow-graph-node-preview"
-            :title="readPreviewNodeDisplayTooltip(previewNodeDisplays[node.node.node_id])"
-            @mousedown.stop
-            @dblclick.stop="openPreviewDisplayViewer(previewNodeDisplays[node.node.node_id])"
-          >
-            <img
-              v-if="previewNodeDisplays[node.node.node_id]?.kind === 'image' && previewNodeDisplays[node.node.node_id]?.image?.src"
-              :src="previewNodeDisplays[node.node.node_id]?.image?.src || ''"
-              :alt="previewNodeDisplays[node.node.node_id]?.image?.title || readGraphNodeTitle(node)"
-              draggable="false"
-            />
-            <div v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'gallery'" class="workflow-graph-node-preview__gallery">
-              <button
-                v-for="item in previewNodeDisplays[node.node.node_id]?.galleryItems"
-                :key="`${item.nodeId}-${item.objectKey || item.caption}`"
-                type="button"
-                class="workflow-graph-node-preview__gallery-item"
-                @mousedown.stop
-                @click.stop="openImageViewer(item)"
-              >
-                <img v-if="item.src" :src="item.src" :alt="item.caption" draggable="false" />
-                <span v-else class="workflow-graph-node-preview__empty">{{ item.statusText }}</span>
-              </button>
-            </div>
-            <WorkflowPreviewTable
-              v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'table'"
-              :columns="previewNodeDisplays[node.node.node_id]?.columns || []"
-              :rows="previewNodeDisplays[node.node.node_id]?.rows || []"
-              :empty-text="previewNodeDisplays[node.node.node_id]?.emptyText"
-              :max-rows="4"
-              compact
-            />
-            <pre
-              v-else-if="previewNodeDisplays[node.node.node_id]?.kind === 'value'"
-              class="json-view workflow-graph-node-preview__json"
-            >{{ previewNodeDisplays[node.node.node_id]?.formattedValue }}</pre>
-            <div v-else class="workflow-graph-node-preview__empty">{{ previewNodeDisplays[node.node.node_id]?.statusText }}</div>
-          </div>
+            :display="previewNodeDisplays[node.node.node_id]"
+            :tooltip="readPreviewNodeDisplayTooltip(previewNodeDisplays[node.node.node_id])"
+            :fallback-title="readGraphNodeTitle(node)"
+            @open-display="openPreviewDisplayViewer"
+            @open-image="openImageViewer"
+          />
         </div>
       </div>
 
@@ -409,50 +349,20 @@
             删除连线
           </Button>
         </div>
-        <div v-else-if="selectedBoundaryKind" class="workflow-graph-inspector-body">
-          <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-            <div>
-              <p>Public IO</p>
-              <h2>{{ selectedBoundaryTitle }}</h2>
-            </div>
-            <StatusBadge tone="info">{{ selectedBoundaryBindings.length }}</StatusBadge>
-          </div>
-          <EmptyState v-if="selectedBoundaryBindings.length === 0" title="暂无公开接口" description="右键节点端口后选择公开为应用输入或应用输出。" />
-          <section
-            v-for="binding in selectedBoundaryBindings"
-            :key="`public-binding-editor-${binding.direction}-${binding.binding_id}`"
-            class="workflow-graph-public-binding-editor"
-          >
-            <div class="workflow-graph-public-binding-editor__title">
-              <strong>{{ binding.binding_id }}</strong>
-              <small>{{ bindingEndpointText(binding) }}</small>
-            </div>
-            <label class="workflow-graph-preview-field">
-              <span>公开 id</span>
-              <input :value="binding.binding_id" @change="updateBindingIdFromEvent(binding, $event)" />
-            </label>
-            <label class="workflow-graph-preview-field">
-              <span>显示名称</span>
-              <input :value="bindingDisplayName(binding)" @input="updateBindingDisplayNameFromEvent(binding, $event)" />
-            </label>
-            <label class="workflow-graph-preview-field">
-              <span>binding kind</span>
-              <SelectField :model-value="binding.binding_kind" :options="bindingKindSelectOptions(binding)" @update:model-value="updateBindingKindFromValue(binding, $event)" />
-            </label>
-            <label v-if="binding.direction === 'input'" class="workflow-graph-public-binding-editor__checkbox">
-              <input type="checkbox" :checked="binding.required" @change="updateBindingRequiredFromEvent(binding, $event)" />
-              <span>必填输入</span>
-            </label>
-            <div class="workflow-graph-inspector-row">
-              <span>payload type</span>
-              <strong>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</strong>
-            </div>
-            <Button variant="danger" type="button" @click="deleteApplicationBinding(binding)">
-              <Trash2 :size="16" />
-              删除公开接口
-            </Button>
-          </section>
-        </div>
+        <WorkflowPublicBindingEditorPanel
+          v-else-if="selectedBoundaryKind"
+          :title="selectedBoundaryTitle"
+          :bindings="selectedBoundaryBindings"
+          :read-endpoint-text="bindingEndpointText"
+          :read-display-name="bindingDisplayName"
+          :read-kind-options="bindingKindSelectOptions"
+          :get-payload-type-id="getBindingPayloadTypeId"
+          @update-binding-id="updateBindingIdFromEvent"
+          @update-display-name="updateBindingDisplayNameFromEvent"
+          @update-kind="updateBindingKindFromValue"
+          @update-required="updateBindingRequiredFromEvent"
+          @delete-binding="deleteApplicationBinding"
+        />
         <div v-else-if="workflowApp" class="workflow-graph-inspector-body">
           <div class="workflow-graph-inspector-row">
             <span>应用</span>
@@ -473,83 +383,19 @@
         </div>
         <EmptyState v-else :title="t('workflowEditor.editor.emptyInspectorTitle')" :description="t('workflowEditor.editor.emptyInspectorDescription')" />
 
-        <div v-if="workflowApp" class="workflow-graph-preview-inputs">
-          <div class="workflow-graph-panel__header">
-            <h2>Preview 输入</h2>
-            <div class="workflow-graph-panel__tools">
-              <InfoHint
-                v-if="previewHelpText"
-                :text="previewHelpText"
-              />
-              <StatusBadge :tone="previewBlockingMessages.length ? 'danger' : 'success'">
-                {{ previewBlockingMessages.length ? '缺少输入' : '就绪' }}
-              </StatusBadge>
-            </div>
-          </div>
-          <section v-for="binding in previewInputBindings" :key="binding.binding_id" class="workflow-graph-preview-binding">
-            <div class="workflow-graph-preview-binding__header">
-              <span class="workflow-graph-preview-binding__summary">
-                <strong>{{ binding.binding_id }}</strong>
-                <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
-              </span>
-              <div class="workflow-graph-preview-binding__tools">
-                <InfoHint :text="previewBindingHelpText(binding)" />
-                <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">{{ binding.required ? '必填' : '可选' }}</StatusBadge>
-              </div>
-            </div>
-            <template v-if="previewInputState[binding.binding_id] && getBindingPayloadTypeId(binding) === 'value.v1'">
-              <div class="workflow-graph-value-fields">
-                <label v-for="field in previewInputState[binding.binding_id].valueFields" :key="field.id" class="workflow-graph-value-field">
-                  <input v-model="field.key" placeholder="字段名" />
-                  <input v-model="field.value" placeholder="字段值" />
-                  <button type="button" title="删除字段" @click="removePreviewValueField(binding.binding_id, field.id)">
-                    <Trash2 :size="14" />
-                  </button>
-                </label>
-              </div>
-              <Button size="sm" variant="secondary" type="button" @click="addPreviewValueField(binding.binding_id)">
-                <Plus :size="14" />
-                添加字段
-              </Button>
-            </template>
-            <template v-else-if="previewInputState[binding.binding_id] && getBindingPayloadTypeId(binding) === 'image-base64.v1'">
-              <FilePicker
-                v-model="previewInputState[binding.binding_id].file"
-                icon="image"
-                accept="image/*"
-                label="图片文件"
-              />
-              <label class="workflow-graph-preview-field">
-                <span>media_type</span>
-                <input v-model="previewInputState[binding.binding_id].mediaType" placeholder="自动使用文件类型" />
-              </label>
-            </template>
-            <template v-else-if="previewInputState[binding.binding_id] && getBindingPayloadTypeId(binding) === 'image-ref.v1'">
-              <label class="workflow-graph-preview-field">
-                <span>引用来源</span>
-                <SelectField :model-value="previewInputState[binding.binding_id].imageRefTransportKind" :options="imageRefTransportKindOptions" @update:model-value="setPreviewImageRefTransportKind(binding.binding_id, $event)" />
-              </label>
-              <label v-if="previewInputState[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
-                <span>object_key</span>
-                <input v-model="previewInputState[binding.binding_id].objectKey" placeholder="project/files/image.jpg" />
-              </label>
-              <label v-else class="workflow-graph-preview-field">
-                <span>image_handle</span>
-                <input v-model="previewInputState[binding.binding_id].imageHandle" placeholder="execution-scoped image handle" />
-              </label>
-              <label class="workflow-graph-preview-field">
-                <span>media_type</span>
-                <input v-model="previewInputState[binding.binding_id].mediaType" placeholder="image/jpeg" />
-              </label>
-            </template>
-            <template v-else-if="previewInputState[binding.binding_id]">
-              <label class="workflow-graph-preview-field">
-                <span>输入值</span>
-                <input v-model="previewInputState[binding.binding_id].plainValue" placeholder="按字符串值提交" />
-              </label>
-            </template>
-          </section>
-        </div>
+        <WorkflowPreviewInputPanel
+          v-if="workflowApp"
+          :bindings="previewInputBindings"
+          :states="previewInputState"
+          :blocking-messages="previewBlockingMessages"
+          :help-text="previewHelpText"
+          :image-ref-transport-kind-options="imageRefTransportKindOptions"
+          :get-payload-type-id="getBindingPayloadTypeId"
+          :read-binding-help-text="previewBindingHelpText"
+          @add-value-field="addPreviewValueField"
+          @remove-value-field="removePreviewValueField"
+          @set-image-ref-transport-kind="setPreviewImageRefTransportKind"
+        />
         <div v-if="lastPreviewRun" class="workflow-graph-preview-inputs">
           <div class="workflow-graph-panel__header">
             <h2>运行结果</h2>
@@ -744,17 +590,18 @@ import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
-import FilePicker from '@/shared/ui/components/FilePicker.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
-import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowNodeParameterWidgets from '../components/WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
+import WorkflowNodePreviewDisplay from '../components/WorkflowNodePreviewDisplay.vue'
+import WorkflowPublicBindingEditorPanel from '../components/WorkflowPublicBindingEditorPanel.vue'
+import WorkflowPreviewInputPanel from '../components/WorkflowPreviewInputPanel.vue'
 import WorkflowPreviewJsonViewer from '../components/WorkflowPreviewJsonViewer.vue'
-import WorkflowPreviewTable from '../components/WorkflowPreviewTable.vue'
 import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer.vue'
+import { useWorkflowCanvasPan } from '../canvas/useWorkflowCanvasPan'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
 import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
@@ -834,13 +681,6 @@ interface ConnectionDraftState {
   startClientY: number
   hasMoved: boolean
   replacingEdgeId?: string | null
-}
-
-interface PanState {
-  startClientX: number
-  startClientY: number
-  startX: number
-  startY: number
 }
 
 interface ContextMenuState {
@@ -1022,7 +862,6 @@ const selectedBoundaryKind = ref<AppBoundaryKind | null>(null)
 const dragState = ref<DragState | null>(null)
 const boundaryDragState = ref<BoundaryDragState | null>(null)
 const connectionDraft = ref<ConnectionDraftState | null>(null)
-const panState = ref<PanState | null>(null)
 const suppressNextNodeClick = ref(false)
 const minimapVisible = ref(true)
 const inspectorCollapsed = ref(false)
@@ -1034,6 +873,15 @@ const viewportX = ref(0)
 const viewportY = ref(0)
 const viewportScale = ref(1)
 const stageSize = ref({ width: 1, height: 1 })
+const { startStagePan, stopStagePan } = useWorkflowCanvasPan({
+  viewportX,
+  viewportY,
+  shouldIgnorePointerTarget: shouldIgnoreStagePointer,
+  beforeStart: () => {
+    contextMenu.value = null
+    nodePicker.value = null
+  },
+})
 const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
 const previewNodeDisplays = ref<Record<string, PreviewNodeDisplay>>({})
 const activeImageViewer = ref<PreviewViewerImage | null>(null)
@@ -3094,33 +2942,6 @@ function resetContextBoundaryPosition(): void {
 
 function createGraphEdgeId(sourceNodeId: string, sourcePort: string, targetNodeId: string, targetPort: string): string {
   return `${sourceNodeId}_${sourcePort}_to_${targetNodeId}_${targetPort}`.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'edge'
-}
-
-function startStagePan(event: MouseEvent): void {
-  if (event.button !== 0 || shouldIgnoreStagePointer(event.target)) return
-  contextMenu.value = null
-  nodePicker.value = null
-  panState.value = {
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    startX: viewportX.value,
-    startY: viewportY.value,
-  }
-  document.addEventListener('mousemove', moveStagePan)
-  document.addEventListener('mouseup', stopStagePan)
-}
-
-function moveStagePan(event: MouseEvent): void {
-  const pan = panState.value
-  if (!pan) return
-  viewportX.value = pan.startX + event.clientX - pan.startClientX
-  viewportY.value = pan.startY + event.clientY - pan.startClientY
-}
-
-function stopStagePan(): void {
-  panState.value = null
-  document.removeEventListener('mousemove', moveStagePan)
-  document.removeEventListener('mouseup', stopStagePan)
 }
 
 function shouldIgnoreStagePointer(target: EventTarget | null): boolean {

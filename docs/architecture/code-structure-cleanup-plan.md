@@ -714,13 +714,20 @@ custom_nodes/sam3_segment_nodes/backend/
 - `DatasetOperationsPage.vue` 已拆成页面组合层、`components/` 和 `composables/`。
 - datasets 组件层当前包括导入表单、导出表单、DatasetVersion 选择面板、导入记录和导出记录。
 - datasets composable 层当前包括导入状态、导出状态、格式能力和 DatasetVersion 选择。
+- `ModelOperationsPage.vue` 已拆成页面组合层、`components/` 和 `composables/`。
+- models 组件层当前包括训练表单、转换表单、训练任务列表、转换任务列表，并继续复用基础模型选择面板和 DatasetExport 选择面板。
+- models composable 层当前包括训练/转换任务列表、基础模型选择、DatasetExport 选择、训练参数、训练提交状态和转换提交状态。
+- `WorkflowEditorPage.vue` 已进入第一轮拆分。
+- workflow editor 组件层当前新增节点参数控件、节点预览展示、Preview 输入面板和公开接口编辑面板。
+- workflow editor 画布层当前新增 `canvas/useWorkflowCanvasPan.ts`，先收口 stage pan 状态和 document mouse 监听；节点拖拽、连线拖拽、minimap 和 `litegraph` 内核暂不在这一轮移动。
 - 已运行 `npm run typecheck` 和 `npm run build`。
 - 已用本地 Vite + Edge / Playwright 做 `/datasets` 真实渲染检查：导入/导出表单、导入/导出记录、DatasetVersion 选择面板和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/datasets-desktop.png` 和 `.tmp/datasets-mobile.png`。
-- `ModelOperationsPage.vue` 和 `WorkflowEditorPage.vue` 尚未进入本批拆分。
+- 已用本地构建产物 + Playwright + mock API 做 `/models` 真实渲染检查：基础模型选择面板、DatasetExport 选择面板、训练表单、转换表单、桌面布局和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/models-desktop.png` 和 `.tmp/models-mobile.png`。
+- 已用本地构建产物 + mock API 做 `/workflows/graph/new` 真实渲染检查：桌面和 390px 窄屏下均无工作流错误提示、无横向溢出，工具栏、画布、属性面板和 Preview 输入面板均可见；浏览器全页截图接口在画布页超时，本轮以 DOM 布局检查记录结果。
 
 ### 当前问题
 
-- `ModelOperationsPage.vue`、`DatasetOperationsPage.vue`、`WorkflowEditorPage.vue` 较大。
+- `WorkflowEditorPage.vue` 仍较大，后续继续拆运行结果面板、节点详情面板、context menu 和 minimap。
 - `litegraph` 目录是图编辑器内核，体量大但不属于普通业务页面，不和业务页面一起拆。
 
 ### 目标结构
