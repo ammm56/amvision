@@ -725,17 +725,20 @@ custom_nodes/sam3_segment_nodes/backend/
 - workflow editor 动作层当前新增 `actions/useWorkflowEditorActions.ts`，用于收口 workflow 保存、Preview Run 创建、前端校验调用、动作状态和运行结果状态。
 - workflow editor 保存/运行反馈层当前新增 `actions/useWorkflowSaveRunFeedback.ts`，用于收口保存成功后的路由切换、应用刷新、Preview 结果刷新和失败节点定位。
 - workflow editor 保存/运行编排层当前新增 `actions/useWorkflowSaveRunOrchestration.ts`，用于收口保存和 Preview Run 的 template/application 构建、preflight、动作调用和结果反馈串联。
+- workflow editor 新建应用 draft 层当前新增 `documents/useWorkflowNewAppDraft.ts`，用于收口首次新建应用的 draft 状态、id 归一化、保存阻塞、本地 template/application document 构建和新建保存时的 application patch。
 - workflow editor public binding 层当前新增 `bindings/useWorkflowPublicBindings.ts`，用于收口应用输入/输出 binding 草稿、binding id 变更、必填状态、显示名、boundary position metadata 和 payload type 读取。
 - workflow editor binding 编辑动作层当前新增 `bindings/useWorkflowBindingEditorActions.ts`，用于收口公开接口详情面板和 context menu 中的 binding id、显示名、kind、required、删除和 boundary position 重置操作。
 - workflow editor boundary 视图层当前新增 `bindings/useWorkflowBoundaryNodes.ts`，用于收口 App Entry / App Result 节点视图、端口位置、选中面板标题和连接状态。
+- workflow editor 选择状态层当前新增 `selection/useWorkflowSelectionState.ts`，用于收口 node / edge / boundary 选中状态、graph link 选中、节点点击抑制、保存刷新后的选择恢复和 transient UI 清理。
+- workflow editor 节点选择器层当前新增 `nodes/useWorkflowNodePicker.ts`，用于收口 node picker 状态、右键添加节点、连线落点创建节点、节点 id 生成和新节点 view 构建入口。
 - workflow editor 连接规则层当前新增 `connections/useWorkflowConnectionRules.ts`，用于收口端口类型匹配、普通 edge 创建、公开输入/输出连接更新、重连和新节点自动连接规则。
 - workflow editor 删除规则层当前新增 `graph/useWorkflowGraphDeletion.ts`，用于收口节点删除时的 edge、template input/output、公开接口和 Preview 输入状态级联清理。
 - workflow editor request image 快捷编排层当前新增 `graph/useWorkflowRequestImageInputs.ts`，用于收口 `request_image_ref` / `request_image_base64` 快捷输入节点创建、公开输入 binding、自动连线和布局。
 - workflow editor 几何层当前新增 `geometry/useWorkflowGraphGeometry.ts`，用于收口节点高度、端口坐标、普通连线、template input/output 连线和 SVG path 计算。
 - workflow editor 参数层当前新增 `parameters/useWorkflowNodeParameters.ts`，用于收口节点参数默认值、文本/数值/布尔/枚举读取更新、JSON 草稿和 schema placeholder。
 - workflow editor 保存/运行前校验层当前新增 `validation/useWorkflowPreflight.ts`，用于收口节点、连线、公开接口、端口类型和重复 id 的前置校验，以及失败后选中定位规则。
-- workflow editor 画布层当前新增 `canvas/useWorkflowCanvasPan.ts`、`canvas/useWorkflowPortConnections.ts` 和 `canvas/useWorkflowBoundaryDrag.ts`，分别收口 stage pan、端口连线草稿、边界节点拖拽状态和 document mouse 监听。
-- workflow editor 页面层仍保留主流程组合、节点编辑入口、画布选择状态和主要面板布局；连接规则、公开接口 binding、binding 编辑动作、boundary 视图、节点删除、Preview 校验、preflight、参数处理、几何绘制、request image 快捷编排和保存/运行主编排已拆到专题 composable。
+- workflow editor 画布层当前新增 `canvas/useWorkflowCanvasViewport.ts`、`canvas/useWorkflowCanvasPan.ts`、`canvas/useWorkflowPortConnections.ts` 和 `canvas/useWorkflowBoundaryDrag.ts`，分别收口 viewport/zoom/fit/reset/minimap 导航、stage pan、端口连线草稿、边界节点拖拽状态和 document mouse 监听。
+- workflow editor 页面层仍保留主流程组合、节点编辑入口和主要面板布局；新建应用 draft、node picker、连接规则、选择状态、公开接口 binding、binding 编辑动作、boundary 视图、节点删除、Preview 校验、preflight、参数处理、几何绘制、request image 快捷编排、保存/运行主编排和画布 viewport/minimap 已拆到专题 composable。
 - 已运行 `npm run typecheck` 和 `npm run build`。
 - 已用本地 Vite + Edge / Playwright 做 `/datasets` 真实渲染检查：导入/导出表单、导入/导出记录、DatasetVersion 选择面板和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/datasets-desktop.png` 和 `.tmp/datasets-mobile.png`。
 - 已用本地构建产物 + Playwright + mock API 做 `/models` 真实渲染检查：基础模型选择面板、DatasetExport 选择面板、训练表单、转换表单、桌面布局和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/models-desktop.png` 和 `.tmp/models-mobile.png`。
@@ -743,7 +746,7 @@ custom_nodes/sam3_segment_nodes/backend/
 
 ### 当前问题
 
-- `WorkflowEditorPage.vue` 仍较大，后续继续拆节点详情面板状态、节点选择状态和少量页面组合逻辑。
+- `WorkflowEditorPage.vue` 仍较大，后续继续拆 context menu、加载刷新编排和剩余页面组合逻辑。
 - `litegraph` 目录是图编辑器内核，体量大但不属于普通业务页面，不和业务页面一起拆。
 
 ### 目标结构
