@@ -236,14 +236,14 @@
               class="workflow-graph-panel__icon-button"
               :title="t('workflowEditor.editor.hideInspector')"
               :aria-label="t('workflowEditor.editor.hideInspector')"
-              @click="inspectorCollapsed = true"
+              @click="collapseInspector"
             >
               <PanelRightClose :size="15" />
             </button>
           </div>
         </div>
         <WorkflowNewAppDraftPanel
-          v-if="workflowApp && isNewApp"
+          v-if="showNewAppDraftPanel"
           :draft="newWorkflowAppDraft"
           :save-blocker="newWorkflowAppSaveBlocker"
           @update-display-name="updateNewWorkflowDraftField('displayName', $event)"
@@ -256,7 +256,7 @@
           @normalize-graph-version="normalizeNewWorkflowGraphVersion"
         />
         <WorkflowAppContractPanel
-          v-if="workflowApp"
+          v-if="showAppContractPanel"
           :input-bindings="appInputBindings"
           :output-bindings="appOutputBindings"
           :get-payload-type-id="getBindingPayloadTypeId"
@@ -264,15 +264,15 @@
           @add-request-image-base64="addRequestImageBase64Input"
         />
         <WorkflowNodeDetailPanel
-          v-if="selectedNode"
-          :node="selectedNode"
+          v-if="inspectorDetail.kind === 'node'"
+          :node="inspectorDetail.node"
           :read-title="readGraphNodeTitle"
         />
-        <WorkflowEdgeDetailPanel v-else-if="selectedEdge" :edge="selectedEdge" @delete-edge="deleteSelectedEdge" />
+        <WorkflowEdgeDetailPanel v-else-if="inspectorDetail.kind === 'edge'" :edge="inspectorDetail.edge" @delete-edge="deleteSelectedEdge" />
         <WorkflowPublicBindingEditorPanel
-          v-else-if="selectedBoundaryKind"
-          :title="selectedBoundaryTitle"
-          :bindings="selectedBoundaryBindings"
+          v-else-if="inspectorDetail.kind === 'boundary'"
+          :title="inspectorDetail.title"
+          :bindings="inspectorDetail.bindings"
           :read-endpoint-text="bindingEndpointText"
           :read-display-name="bindingDisplayName"
           :read-kind-options="bindingKindSelectOptions"
@@ -284,17 +284,17 @@
           @delete-binding="deleteApplicationBinding"
         />
         <WorkflowApplicationSummaryPanel
-          v-else-if="workflowApp"
-          :application-id="workflowApp.applicationDocument.application_id"
-          :template-input-text="workflowApp.graphDocument.template_input_ids.join(', ')"
-          :template-output-text="workflowApp.graphDocument.template_output_ids.join(', ')"
+          v-else-if="inspectorDetail.kind === 'application'"
+          :application-id="inspectorDetail.applicationId"
+          :template-input-text="inspectorDetail.templateInputText"
+          :template-output-text="inspectorDetail.templateOutputText"
           :empty-text="t('common.noValue')"
-          :preview-run-text="lastPreviewRun ? `${lastPreviewRun.preview_run_id} / ${lastPreviewRun.state}` : null"
+          :preview-run-text="inspectorDetail.previewRunText"
         />
         <EmptyState v-else :title="t('workflowEditor.editor.emptyInspectorTitle')" :description="t('workflowEditor.editor.emptyInspectorDescription')" />
 
         <WorkflowPreviewInputPanel
-          v-if="workflowApp"
+          v-if="showAppContractPanel"
           :bindings="previewInputBindings"
           :states="previewInputState"
           :blocking-messages="previewBlockingMessages"
@@ -334,7 +334,7 @@
         :title="t('workflowEditor.editor.showInspector')"
         :aria-label="t('workflowEditor.editor.showInspector')"
         @mousedown.stop
-        @click.stop="inspectorCollapsed = false"
+        @click.stop="expandInspector"
       >
         <PanelRightOpen :size="16" />
       </button>
@@ -403,7 +403,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { ArrowLeft, Moon, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, Sun, Workflow } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -435,23 +435,32 @@ import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer
 import { useWorkflowCanvasPan } from '../canvas/useWorkflowCanvasPan'
 import { useWorkflowCanvasViewport } from '../canvas/useWorkflowCanvasViewport'
 import { useWorkflowBoundaryDrag } from '../canvas/useWorkflowBoundaryDrag'
-import { useWorkflowPortConnections, type WorkflowPortDirection, type WorkflowPortReference } from '../canvas/useWorkflowPortConnections'
-import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
+import { useWorkflowConnectionInteractions } from '../canvas/useWorkflowConnectionInteractions'
+import { useWorkflowEdgeHandles } from '../canvas/useWorkflowEdgeHandles'
+import { useWorkflowNodeDrag } from '../canvas/useWorkflowNodeDrag'
+import { useWorkflowPortConnections } from '../canvas/useWorkflowPortConnections'
+import type { WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
 import { useWorkflowConnectionRules } from '../connections/useWorkflowConnectionRules'
+import { useWorkflowContextMenu, type WorkflowContextMenuState } from '../context/useWorkflowContextMenu'
 import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
 import { useWorkflowPreviewDisplays } from '../preview/useWorkflowPreviewDisplays'
 import { previewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
+import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
 import { useWorkflowNewAppDraft } from '../documents/useWorkflowNewAppDraft'
-import { buildPublicPortMetadata, createUniquePublicId, normalizePublicIdentifier, useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
+import { useWorkflowInspectorPanel } from '../panels/useWorkflowInspectorPanel'
+import { useWorkflowInspectorViewModel } from '../panels/useWorkflowInspectorViewModel'
+import { useWorkflowEditorKeyboard } from '../shell/useWorkflowEditorKeyboard'
+import { useWorkflowGraphTheme } from '../shell/useWorkflowGraphTheme'
+import { useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingEditorActions'
 import { useWorkflowBoundaryNodes, type WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { useWorkflowGraphDeletion } from '../graph/useWorkflowGraphDeletion'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
+import { useWorkflowGraphNodeViews, type WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import { useWorkflowNodePicker } from '../nodes/useWorkflowNodePicker'
 import {
-  applyMissingNodeParameterDefaults,
   buildInitialNodeParameters,
   useWorkflowNodeParameters,
   type WorkflowNodeParameterSelectValue,
@@ -462,46 +471,15 @@ import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedbac
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
-import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
-import { getWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
-import type { FlowApplication, FlowApplicationBinding, NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
-
-interface GraphNodeView {
-  node: WorkflowGraphNode
-  definition: NodeDefinition | null
-  title: string
-  x: number
-  y: number
-  width: number
-  inputs: NodePortDefinition[]
-  outputs: NodePortDefinition[]
-}
-
-interface DragState {
-  nodeId: string
-  offsetX: number
-  offsetY: number
-}
+import type { WorkflowAppDocument } from '../services/workflow-app.service'
+import type { FlowApplication, FlowApplicationBinding, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
 type SelectValue = WorkflowNodeParameterSelectValue
 type GraphLinkView = WorkflowGraphLinkView
+type GraphNodeView = WorkflowGraphNodeView
 
-type PortDirection = WorkflowPortDirection
-
-type PortReference = WorkflowPortReference
-
-interface ContextMenuState {
-  x: number
-  y: number
-  worldX: number
-  worldY: number
-  nodeId: string | null
-  edgeId: string | null
-  port: PortReference | null
-  boundaryKind?: AppBoundaryKind | null
-  bindingId?: string | null
-}
+type ContextMenuState = WorkflowContextMenuState<AppBoundaryKind>
 
 type AppBoundaryNodeView = WorkflowBoundaryNodeView
 
@@ -509,14 +487,6 @@ interface NodePortRowView {
   key: string
   input: NodePortDefinition | null
   output: NodePortDefinition | null
-}
-
-interface EdgeHandleView {
-  key: string
-  edgeId: string
-  x: number
-  y: number
-  link: GraphLinkView
 }
 
 const { t, locale } = useI18n()
@@ -550,11 +520,38 @@ const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
 const templateInputs = ref<WorkflowGraphInput[]>([])
 const templateOutputs = ref<WorkflowGraphOutput[]>([])
-const dragState = ref<DragState | null>(null)
-const inspectorCollapsed = ref(false)
 const contextMenu = ref<ContextMenuState | null>(null)
 const complexParameterDrafts = ref<Record<string, string>>({})
 const canvasRef = ref<HTMLElement | null>(null)
+const {
+  inspectorCollapsed,
+  collapseInspector,
+  expandInspector,
+} = useWorkflowInspectorPanel()
+const {
+  graphTheme,
+  toggleGraphTheme,
+} = useWorkflowGraphTheme({
+  readTheme: () => preferencesStore.theme,
+  setTheme: (theme) => {
+    preferencesStore.setTheme(theme)
+  },
+  lightTheme: 'light',
+  darkTheme: 'dark',
+  clearContextMenu: () => {
+    contextMenu.value = null
+  },
+})
+const {
+  nodeDefinitionsById,
+  nodePickerDefinitions,
+  buildDefaultGraphNodeWidth,
+  buildGraphNodeView,
+  buildGraphNodeViews,
+} = useWorkflowGraphNodeViews({
+  nodeCatalog,
+  graphEdges,
+})
 const {
   minimapVisible,
   viewportX,
@@ -812,6 +809,50 @@ const {
   },
 })
 const {
+  contextMenuStyle,
+  clearContextMenu,
+  openGraphLinkContextMenu,
+  selectPortEndpoint,
+  exposeContextPortAsAppInput,
+  exposeContextPortAsAppOutput,
+  exposeNodeInputAsAppInput,
+  deleteSelectedNode,
+  deleteSelectedEdge,
+  openNodeContextMenu,
+  openPortContextMenu,
+  openBoundaryContextMenu,
+  openBoundaryPortContextMenu,
+  openStageContextMenu,
+} = useWorkflowContextMenu<GraphNodeView, AppBoundaryNodeView, GraphLinkView, AppBoundaryKind>({
+  workflowApp,
+  graphNodes,
+  graphEdges,
+  templateInputs,
+  templateOutputs,
+  applicationBindingsDraft,
+  contextMenu,
+  nodePicker,
+  screenToWorld,
+  findInputEdge,
+  findOutputEdge,
+  readSelectedNodeId: () => selectedNodeId.value,
+  readSelectedEdgeId: () => selectedEdgeId.value,
+  setPreviewInputStateForBinding,
+  setSelection,
+  selectNode,
+  selectEdge,
+  selectApplicationBoundary,
+  deleteGraphNode,
+  deleteGraphEdge,
+  shouldIgnoreStagePointer,
+  setStatusMessage: (message) => {
+    statusMessage.value = message
+  },
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
+})
+const {
   connectionDraft,
   startPortConnectionDraft,
   stopPortConnection,
@@ -823,6 +864,15 @@ const {
   clearNodePicker: () => {
     nodePicker.value = null
   },
+})
+const {
+  startNodeDrag,
+  stopNodeDrag,
+} = useWorkflowNodeDrag<GraphNodeView>({
+  graphNodes,
+  connectionDraft,
+  screenToWorld,
+  selectNode,
 })
 const {
   boundaryDragState,
@@ -860,6 +910,20 @@ const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const routeApplicationId = computed(() => (typeof route.params.applicationId === 'string' ? route.params.applicationId : ''))
 const isNewApp = computed(() => route.path.endsWith('/new'))
 const {
+  showNewAppDraftPanel,
+  showAppContractPanel,
+  inspectorDetail,
+} = useWorkflowInspectorViewModel<GraphNodeView>({
+  workflowApp,
+  isNewApp,
+  selectedNode,
+  selectedEdge,
+  selectedBoundaryKind,
+  selectedBoundaryTitle,
+  selectedBoundaryBindings,
+  lastPreviewRun,
+})
+const {
   newWorkflowAppDraft,
   newWorkflowAppSaveBlocker,
   resetNewWorkflowAppDraft,
@@ -876,9 +940,6 @@ const {
   selectedProjectId,
   readNodeCount: () => graphNodes.value.length,
 })
-const graphTheme = computed(() => preferencesStore.theme)
-const nodeDefinitionsById = computed(() => new Map((nodeCatalog.value?.node_definitions ?? []).map((definition) => [definition.node_type_id, definition])))
-const nodePickerDefinitions = computed(() => nodeCatalog.value?.node_definitions ?? [])
 const {
   runWorkflowPreflight,
   applyWorkflowValidationIssue,
@@ -895,45 +956,6 @@ const {
   },
   setStatusMessage: (message) => {
     statusMessage.value = message
-  },
-})
-const {
-  applyWorkflowSaveFeedback,
-  applyPreviewRunFeedback,
-} = useWorkflowSaveRunFeedback({
-  replaceRouteWithSavedApp: async (applicationId) => {
-    await router.replace(`/workflows/graph/apps/${encodeURIComponent(applicationId)}`)
-  },
-  refreshSavedWorkflowApp,
-  resetPreviewRun,
-  revokePreviewImageObjectUrls,
-  refreshPreviewNodeDisplays,
-  focusGraphNode,
-  setActionError,
-  setActionStatus,
-})
-const {
-  saveCurrentWorkflowApp,
-  runPreview,
-} = useWorkflowSaveRunOrchestration({
-  workflowApp,
-  isNewApp,
-  selectedProjectId,
-  readNewWorkflowAppSaveBlocker,
-  buildCurrentTemplate,
-  buildCurrentApplication,
-  runWorkflowPreflight,
-  applyWorkflowValidationIssue,
-  buildPreviewInputBindings,
-  saveWorkflowDocument,
-  runWorkflowPreview,
-  applyWorkflowSaveFeedback,
-  applyPreviewRunFeedback,
-  clearActionMessages,
-  revokePreviewImageObjectUrls,
-  setActionError,
-  clearContextMenu: () => {
-    contextMenu.value = null
   },
 })
 const {
@@ -1008,6 +1030,38 @@ const {
   clampNumber,
 })
 const {
+  graphLinkMidpoints,
+  selectedEdgeReconnectHandles,
+} = useWorkflowEdgeHandles({
+  graphLinks,
+  selectedEdgeId,
+  linkPointAt,
+})
+const {
+  isSelectedEdgeEndpoint,
+  isDraftAnchorPort,
+  startPortConnection,
+  startBoundaryPortConnection,
+  startEdgeTargetReconnect,
+} = useWorkflowConnectionInteractions<GraphNodeView>({
+  graphNodes,
+  graphLinks,
+  selectedEdge,
+  connectionDraft,
+  portX,
+  portY,
+  boundaryPortX,
+  boundaryPortY,
+  findInputEdge,
+  startPortConnectionDraft,
+  selectNode,
+  selectEdge,
+  selectApplicationBoundary,
+  clearErrorMessage: () => {
+    errorMessage.value = null
+  },
+})
+const {
   addRequestImageRefInput,
   addRequestImageBase64Input,
   normalizeLoadedRequestImageInputBindings,
@@ -1039,20 +1093,95 @@ const {
     errorMessage.value = message
   },
 })
-const graphLinkMidpoints = computed<EdgeHandleView[]>(() => graphLinks.value.map((link) => ({
-  key: `${link.edgeId}-midpoint`,
-  edgeId: link.edgeId,
-  link,
-  ...linkPointAt(link, 0.5),
-})))
-const selectedEdgeReconnectHandles = computed<EdgeHandleView[]>(() => {
-  const link = graphLinks.value.find((item) => item.edgeId === selectedEdgeId.value && item.linkKind === 'edge')
-  if (!link) return []
-  return [{ key: `${link.edgeId}-reconnect`, edgeId: link.edgeId, link, ...linkPointAt(link, 0.5) }]
+const { handleKeydown } = useWorkflowEditorKeyboard({
+  selectedNodeId,
+  selectedEdgeId,
+  clearConnectionDraft: () => {
+    connectionDraft.value = null
+  },
+  clearContextMenu: () => {
+    contextMenu.value = null
+  },
+  clearErrorMessage: () => {
+    errorMessage.value = null
+  },
+  deleteSelectedNode,
+  deleteSelectedEdge,
 })
-const contextMenuStyle = computed<Record<string, string>>(() => {
-  if (!contextMenu.value) return {} as Record<string, string>
-  return { left: `${contextMenu.value.x}px`, top: `${contextMenu.value.y}px` }
+const {
+  refreshSavedWorkflowApp,
+  loadPage,
+} = useWorkflowDocumentLoader({
+  loading,
+  nodeCatalog,
+  workflowApp,
+  graphNodes,
+  graphEdges,
+  templateInputs,
+  templateOutputs,
+  applicationBindingsDraft,
+  liteGraphAdapter,
+  selectedProjectId,
+  isNewApp,
+  routeApplicationId,
+  readLoadFailedMessage: () => t('workflowEditor.messages.loadFailed'),
+  clearActionMessages,
+  resetPreviewRun,
+  resetNewWorkflowAppDraft,
+  createLocalWorkflowAppDraft,
+  initializePublicBindings,
+  initializePreviewInputs,
+  normalizeLoadedRequestImageInputBindings,
+  readSelection,
+  setSelection,
+  restoreSelectionAfterGraphRefresh,
+  buildGraphNodeViews,
+  clearComplexParameterDrafts: () => {
+    complexParameterDrafts.value = {}
+  },
+  revokePreviewImageObjectUrls,
+  updateStageSize,
+  fitView,
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
+})
+const {
+  applyWorkflowSaveFeedback,
+  applyPreviewRunFeedback,
+} = useWorkflowSaveRunFeedback({
+  replaceRouteWithSavedApp: async (applicationId) => {
+    await router.replace(`/workflows/graph/apps/${encodeURIComponent(applicationId)}`)
+  },
+  refreshSavedWorkflowApp,
+  resetPreviewRun,
+  revokePreviewImageObjectUrls,
+  refreshPreviewNodeDisplays,
+  focusGraphNode,
+  setActionError,
+  setActionStatus,
+})
+const {
+  saveCurrentWorkflowApp,
+  runPreview,
+} = useWorkflowSaveRunOrchestration({
+  workflowApp,
+  isNewApp,
+  selectedProjectId,
+  readNewWorkflowAppSaveBlocker,
+  buildCurrentTemplate,
+  buildCurrentApplication,
+  runWorkflowPreflight,
+  applyWorkflowValidationIssue,
+  buildPreviewInputBindings,
+  saveWorkflowDocument,
+  runWorkflowPreview,
+  applyWorkflowSaveFeedback,
+  applyPreviewRunFeedback,
+  clearActionMessages,
+  revokePreviewImageObjectUrls,
+  setActionError,
+  clearContextMenu,
 })
 const previewInputBindings = computed(() => appInputBindings.value)
 const previewAlternativeImageBindingIds = computed(() => {
@@ -1102,105 +1231,6 @@ function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
   return readPublicBindingPayloadTypeId(binding)
 }
 
-function readNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function readNodePosition(node: WorkflowGraphNode, index: number, fallbackByNodeId: Map<string, { x: number; y: number }>): { x: number; y: number } {
-  const rawX = node.ui_state.x ?? node.ui_state.pos_x ?? node.ui_state.position_x
-  const rawY = node.ui_state.y ?? node.ui_state.pos_y ?? node.ui_state.position_y
-  const fallback = fallbackByNodeId.get(node.node_id) ?? { x: 360 + (index % 3) * 280, y: 120 + Math.floor(index / 3) * 180 }
-  return {
-    x: readNumber(rawX, fallback.x),
-    y: readNumber(rawY, fallback.y),
-  }
-}
-
-function buildFallbackPositions(nodes: WorkflowGraphNode[], edges: WorkflowGraphEdge[]): Map<string, { x: number; y: number }> {
-  const nodeIds = new Set(nodes.map((node) => node.node_id))
-  const incomingCounts = new Map(nodes.map((node) => [node.node_id, 0]))
-  const outgoingNodes = new Map(nodes.map((node) => [node.node_id, [] as string[]]))
-  for (const edge of edges) {
-    if (!nodeIds.has(edge.source_node_id) || !nodeIds.has(edge.target_node_id)) continue
-    outgoingNodes.get(edge.source_node_id)?.push(edge.target_node_id)
-    incomingCounts.set(edge.target_node_id, (incomingCounts.get(edge.target_node_id) ?? 0) + 1)
-  }
-
-  const queue = nodes.filter((node) => (incomingCounts.get(node.node_id) ?? 0) === 0).map((node) => node.node_id)
-  const depthByNodeId = new Map(nodes.map((node) => [node.node_id, 0]))
-  while (queue.length > 0) {
-    const nodeId = queue.shift()
-    if (!nodeId) continue
-    const nextDepth = (depthByNodeId.get(nodeId) ?? 0) + 1
-    for (const targetNodeId of outgoingNodes.get(nodeId) ?? []) {
-      depthByNodeId.set(targetNodeId, Math.max(depthByNodeId.get(targetNodeId) ?? 0, nextDepth))
-      incomingCounts.set(targetNodeId, (incomingCounts.get(targetNodeId) ?? 1) - 1)
-      if ((incomingCounts.get(targetNodeId) ?? 0) === 0) {
-        queue.push(targetNodeId)
-      }
-    }
-  }
-
-  const columns = new Map<number, WorkflowGraphNode[]>()
-  for (const node of nodes) {
-    const depth = depthByNodeId.get(node.node_id) ?? 0
-    const columnNodes = columns.get(depth) ?? []
-    columnNodes.push(node)
-    columns.set(depth, columnNodes)
-  }
-
-  const positions = new Map<string, { x: number; y: number }>()
-  for (const [depth, columnNodes] of columns) {
-    columnNodes.forEach((node, rowIndex) => {
-      positions.set(node.node_id, { x: 360 + depth * 320, y: 120 + rowIndex * 230 })
-    })
-  }
-  return positions
-}
-
-function inferPortsFromEdges(node: WorkflowGraphNode, direction: 'input' | 'output'): NodePortDefinition[] {
-  const edgeNames = new Set<string>()
-  for (const edge of graphEdges.value) {
-    if (direction === 'input' && edge.target_node_id === node.node_id) {
-      edgeNames.add(edge.target_port)
-    }
-    if (direction === 'output' && edge.source_node_id === node.node_id) {
-      edgeNames.add(edge.source_port)
-    }
-  }
-  return [...edgeNames].map((name) => ({
-    name,
-    display_name: name,
-    payload_type_id: '',
-    description: '',
-    required: true,
-    multiple: false,
-    metadata: {},
-  }))
-}
-
-function buildGraphNodeView(node: WorkflowGraphNode, index: number, fallbackByNodeId: Map<string, { x: number; y: number }>): GraphNodeView {
-  const definition = nodeDefinitionsById.value.get(node.node_type_id) ?? null
-  const normalizedNode = definition ? applyMissingNodeParameterDefaults(node, definition) : node
-  const position = readNodePosition(normalizedNode, index, fallbackByNodeId)
-  const defaultWidth = definition ? buildDefaultGraphNodeWidth(definition) : 256
-  return {
-    node: normalizedNode,
-    definition,
-    title: definition?.display_name || normalizedNode.node_type_id,
-    x: position.x,
-    y: position.y,
-    width: normalizeGraphNodeWidth(normalizedNode.ui_state.width, defaultWidth),
-    inputs: definition?.input_ports.length ? definition.input_ports : inferPortsFromEdges(normalizedNode, 'input'),
-    outputs: definition?.output_ports.length ? definition.output_ports : inferPortsFromEdges(normalizedNode, 'output'),
-  }
-}
-
-function buildGraphNodeViews(nodes: WorkflowGraphNode[]): GraphNodeView[] {
-  const fallbackByNodeId = buildFallbackPositions(nodes, graphEdges.value)
-  return nodes.map((node, index) => buildGraphNodeView(node, index, fallbackByNodeId))
-}
-
 function readGraphNodeTitle(node: GraphNodeView): string {
   return node.definition ? resolveNodeDefinitionDisplayName(node.definition, currentLocale.value) : node.title
 }
@@ -1222,42 +1252,6 @@ function nodePortRows(node: GraphNodeView): NodePortRowView[] {
   }))
 }
 
-function isSelectedEdgeEndpoint(nodeId: string, portName: string, direction: PortDirection): boolean {
-  const edge = selectedEdge.value
-  if (!edge) return false
-  return direction === 'input'
-    ? edge.target_node_id === nodeId && edge.target_port === portName
-    : edge.source_node_id === nodeId && edge.source_port === portName
-}
-
-function isDraftAnchorPort(nodeId: string, portName: string, direction: PortDirection): boolean {
-  const draft = connectionDraft.value
-  return Boolean(draft && draft.anchorNodeId === nodeId && draft.anchorPort === portName && draft.anchorDirection === direction)
-}
-
-function openGraphLinkContextMenu(event: MouseEvent, link: GraphLinkView): void {
-  if (link.linkKind === 'edge') {
-    openEdgeContextMenu(event, link)
-    return
-  }
-  const boundaryKind: AppBoundaryKind = link.linkKind === 'template-input' ? 'entry' : 'result'
-  setSelection({ nodeId: null, edgeId: null, boundaryKind })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind, bindingId: link.bindingId ?? null }
-}
-
-function selectPortEndpoint(node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
-  const edge = direction === 'input'
-    ? findInputEdge(node.node.node_id, port.name)
-    : findOutputEdge(node.node.node_id, port.name)
-  if (edge) {
-    selectEdge(edge.edge_id)
-    return
-  }
-  selectNode(node.node.node_id)
-}
-
 function isMinimapNodeSelected(nodeId: string): boolean {
   if (selectedNodeId.value === nodeId) return true
   if (selectedBoundaryKind.value === 'entry') return nodeId === appEntryBoundaryId
@@ -1265,216 +1259,8 @@ function isMinimapNodeSelected(nodeId: string): boolean {
   return false
 }
 
-function buildDefaultGraphNodeWidth(definition: NodeDefinition): number {
-  void definition
-  return 256
-}
-
-function normalizeGraphNodeWidth(value: unknown, fallbackWidth: number): number {
-  const width = readNumber(value, fallbackWidth)
-  if ([250, 300, 320, 340].includes(width)) return fallbackWidth
-  return width
-}
-
 function clampNumber(value: number, minValue: number, maxValue: number): number {
   return Math.min(maxValue, Math.max(minValue, value))
-}
-
-function startNodeDrag(event: MouseEvent, node: GraphNodeView): void {
-  if (connectionDraft.value) return
-  const worldPosition = screenToWorld(event.clientX, event.clientY)
-  selectNode(node.node.node_id)
-  dragState.value = {
-    nodeId: node.node.node_id,
-    offsetX: worldPosition.x - node.x,
-    offsetY: worldPosition.y - node.y,
-  }
-  event.preventDefault()
-  document.addEventListener('mousemove', moveDraggedNode)
-  document.addEventListener('mouseup', stopNodeDrag)
-}
-
-function moveDraggedNode(event: MouseEvent): void {
-  const drag = dragState.value
-  if (!drag) return
-  const targetNode = graphNodes.value.find((node) => node.node.node_id === drag.nodeId)
-  if (!targetNode) return
-  const worldPosition = screenToWorld(event.clientX, event.clientY)
-  targetNode.x = Math.round(worldPosition.x - drag.offsetX)
-  targetNode.y = Math.round(worldPosition.y - drag.offsetY)
-  targetNode.node.ui_state = { ...targetNode.node.ui_state, x: targetNode.x, y: targetNode.y, width: targetNode.width }
-}
-
-function stopNodeDrag(): void {
-  dragState.value = null
-  document.removeEventListener('mousemove', moveDraggedNode)
-  document.removeEventListener('mouseup', stopNodeDrag)
-}
-
-function startPortConnection(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
-  if (event.button !== 0) return
-  const existingInputEdge = direction === 'input' ? findInputEdge(node.node.node_id, port.name) : null
-  if (existingInputEdge) {
-    startEdgeTargetReconnect(event, existingInputEdge.edge_id)
-    return
-  }
-  startConnectionDraft(event, node, port, direction)
-}
-
-function startBoundaryPortConnection(event: MouseEvent, boundary: AppBoundaryNodeView, binding: FlowApplicationBinding): void {
-  if (event.button !== 0) return
-  const started = startPortConnectionDraft(event, {
-    anchorDirection: boundary.portDirection,
-    anchorNodeId: boundary.id,
-    anchorPort: binding.binding_id,
-    anchorX: boundaryPortX(boundary),
-    anchorY: boundaryPortY(boundary, binding.binding_id),
-    replacingEdgeId: null,
-  })
-  if (!started) return
-  selectApplicationBoundary(boundary.kind, { preserveConnectionDraft: true })
-  errorMessage.value = null
-}
-
-function startConnectionDraft(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, anchorDirection: PortDirection, replacingEdgeId: string | null = null): void {
-  const started = startPortConnectionDraft(event, {
-    anchorDirection,
-    anchorNodeId: node.node.node_id,
-    anchorPort: port.name,
-    anchorX: portX(node, anchorDirection),
-    anchorY: portY(node, port.name, anchorDirection),
-    replacingEdgeId,
-  })
-  if (!started) return
-  selectNode(node.node.node_id, { preserveConnectionDraft: true })
-  errorMessage.value = null
-}
-
-function startEdgeTargetReconnect(event: MouseEvent, edgeId: string): void {
-  const link = graphLinks.value.find((item) => item.edgeId === edgeId && item.linkKind === 'edge')
-  if (!link?.edge) return
-  const edge = link.edge
-  const sourceNode = graphNodes.value.find((node) => node.node.node_id === edge.source_node_id)
-  const sourcePort = sourceNode?.outputs.find((port) => port.name === edge.source_port)
-  if (!sourceNode || !sourcePort) return
-  const started = startPortConnectionDraft(event, {
-    anchorDirection: 'output',
-    anchorNodeId: sourceNode.node.node_id,
-    anchorPort: sourcePort.name,
-    anchorX: link.sourceX,
-    anchorY: link.sourceY,
-    replacingEdgeId: edgeId,
-  })
-  if (!started) return
-  selectEdge(edgeId, { preserveConnectionDraft: true })
-  errorMessage.value = null
-}
-
-function exposeContextPortAsAppInput(): void {
-  const portRef = contextMenu.value?.port
-  if (!portRef || portRef.direction !== 'input') return
-  const node = graphNodes.value.find((item) => item.node.node_id === portRef.nodeId)
-  const port = node?.inputs.find((item) => item.name === portRef.portName)
-  if (!node || !port) return
-  exposeNodeInputAsAppInput(node, port)
-}
-
-function exposeContextPortAsAppOutput(): void {
-  const portRef = contextMenu.value?.port
-  if (!portRef || portRef.direction !== 'output') return
-  const node = graphNodes.value.find((item) => item.node.node_id === portRef.nodeId)
-  const port = node?.outputs.find((item) => item.name === portRef.portName)
-  if (!node || !port) return
-  exposeNodeOutputAsAppOutput(node, port)
-}
-
-function exposeNodeInputAsAppInput(node: GraphNodeView, port: NodePortDefinition, options: { required?: boolean } = {}): void {
-  if (!workflowApp.value) {
-    errorMessage.value = '当前图还没有应用草稿，暂不能创建公开输入'
-    return
-  }
-  const existingInput = templateInputs.value.find((input) => input.target_node_id === node.node.node_id && input.target_port === port.name)
-  if (existingInput) {
-    selectApplicationBoundary('entry')
-    statusMessage.value = `${existingInput.input_id} 已经是应用输入`
-    return
-  }
-  if (findInputEdge(node.node.node_id, port.name) && !port.multiple) {
-    errorMessage.value = '该输入端口已有普通连线，请先删除连线再公开为应用输入'
-    return
-  }
-  const inputId = createUniquePublicId(`${node.node.node_id}_${port.name}`, new Set(templateInputs.value.map((input) => input.input_id)))
-  const displayName = port.display_name || port.name
-  const metadata = buildPublicPortMetadata(node, port)
-  const required = options.required ?? port.required
-  const templateInput: WorkflowGraphInput = {
-    input_id: inputId,
-    display_name: displayName,
-    payload_type_id: port.payload_type_id,
-    target_node_id: node.node.node_id,
-    target_port: port.name,
-    required,
-    metadata,
-  }
-  const binding: FlowApplicationBinding = {
-    binding_id: inputId,
-    direction: 'input',
-    template_port_id: inputId,
-    binding_kind: 'api-request',
-    required,
-    config: { payload_type_id: port.payload_type_id },
-    metadata,
-  }
-  templateInputs.value = [...templateInputs.value, templateInput]
-  applicationBindingsDraft.value = [...applicationBindingsDraft.value, binding]
-  setPreviewInputStateForBinding(binding)
-  selectApplicationBoundary('entry')
-  statusMessage.value = '已公开为应用输入'
-  errorMessage.value = null
-}
-
-function exposeNodeOutputAsAppOutput(node: GraphNodeView, port: NodePortDefinition): void {
-  if (!workflowApp.value) {
-    errorMessage.value = '当前图还没有应用草稿，暂不能创建公开输出'
-    return
-  }
-  const existingOutput = templateOutputs.value.find((output) => output.source_node_id === node.node.node_id && output.source_port === port.name)
-  if (existingOutput) {
-    selectApplicationBoundary('result')
-    statusMessage.value = `${existingOutput.output_id} 已经是应用输出`
-    return
-  }
-  const outputId = createDefaultPublicOutputId(node, port)
-  const displayName = port.display_name || port.name
-  const metadata = buildPublicPortMetadata(node, port)
-  const templateOutput: WorkflowGraphOutput = {
-    output_id: outputId,
-    display_name: displayName,
-    payload_type_id: port.payload_type_id,
-    source_node_id: node.node.node_id,
-    source_port: port.name,
-    metadata,
-  }
-  const binding: FlowApplicationBinding = {
-    binding_id: outputId,
-    direction: 'output',
-    template_port_id: outputId,
-    binding_kind: 'http-response',
-    required: false,
-    config: { payload_type_id: port.payload_type_id },
-    metadata,
-  }
-  templateOutputs.value = [...templateOutputs.value, templateOutput]
-  applicationBindingsDraft.value = [...applicationBindingsDraft.value, binding]
-  selectApplicationBoundary('result')
-  statusMessage.value = '已公开为应用输出'
-  errorMessage.value = null
-}
-
-function createDefaultPublicOutputId(node: GraphNodeView, port: NodePortDefinition): string {
-  const shouldUseNodeId = node.node.node_type_id === 'core.output.http-response' && port.name === 'response'
-  const baseValue = shouldUseNodeId ? node.node.node_id : `${node.node.node_id}_${port.name}`
-  return createUniquePublicId(baseValue, new Set(templateOutputs.value.map((output) => output.output_id)))
 }
 
 function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue): void {
@@ -1489,73 +1275,6 @@ function shouldIgnoreStageWheelTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('input, textarea, select, button, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-node-picker, .image-viewer'))
 }
 
-function deleteSelectedNode(): void {
-  const nodeId = selectedNodeId.value ?? contextMenu.value?.nodeId
-  deleteGraphNode(nodeId)
-}
-
-function deleteSelectedEdge(): void {
-  const edgeId = selectedEdgeId.value ?? contextMenu.value?.edgeId
-  deleteGraphEdge(edgeId)
-}
-
-function openNodeContextMenu(event: MouseEvent, node: GraphNodeView): void {
-  setSelection({ nodeId: node.node.node_id, edgeId: null, boundaryKind: null })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: node.node.node_id, edgeId: null, port: null }
-}
-
-function openPortContextMenu(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
-  setSelection({ nodeId: node.node.node_id, edgeId: null, boundaryKind: null })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = {
-    x: event.clientX,
-    y: event.clientY,
-    worldX: position.x,
-    worldY: position.y,
-    nodeId: node.node.node_id,
-    edgeId: null,
-    port: { nodeId: node.node.node_id, portName: port.name, direction },
-  }
-}
-
-function openBoundaryContextMenu(event: MouseEvent, boundary: AppBoundaryNodeView): void {
-  setSelection({ nodeId: null, edgeId: null, boundaryKind: boundary.kind })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind: boundary.kind, bindingId: null }
-}
-
-function openBoundaryPortContextMenu(event: MouseEvent, boundary: AppBoundaryNodeView, binding: FlowApplicationBinding): void {
-  setSelection({ nodeId: null, edgeId: null, boundaryKind: boundary.kind })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null, boundaryKind: boundary.kind, bindingId: binding.binding_id }
-  statusMessage.value = `已选择 ${binding.binding_id}`
-}
-
-function openEdgeContextMenu(event: MouseEvent, link: GraphLinkView): void {
-  if (!link.edge) return
-  setSelection({ nodeId: null, edgeId: link.edgeId, boundaryKind: null })
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: link.edgeId, port: null }
-}
-
-function openStageContextMenu(event: MouseEvent): void {
-  if (shouldIgnoreStagePointer(event.target)) return
-  const position = screenToWorld(event.clientX, event.clientY)
-  nodePicker.value = null
-  contextMenu.value = { x: event.clientX, y: event.clientY, worldX: position.x, worldY: position.y, nodeId: null, edgeId: null, port: null }
-}
-
-function toggleGraphTheme(): void {
-  preferencesStore.setTheme(graphTheme.value === 'dark' ? 'light' : 'dark')
-  contextMenu.value = null
-}
-
 function previewBindingHelpText(binding: FlowApplicationBinding): string {
   const payloadTypeId = getBindingPayloadTypeId(binding) || 'unknown'
   const requiredText = binding.required ? '必填输入' : '可选输入'
@@ -1563,40 +1282,6 @@ function previewBindingHelpText(binding: FlowApplicationBinding): string {
   if (payloadTypeId === 'image-ref.v1') return `${requiredText}。可填写 ObjectStore object_key，或填写运行内存 image_handle。`
   if (payloadTypeId === 'value.v1') return `${requiredText}。按字段名和值提交 value payload。`
   return `${requiredText}。payload type: ${payloadTypeId}。`
-}
-
-function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument): void {
-  templateInputs.value = appDocument.graphDocument.template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } }))
-  templateOutputs.value = appDocument.graphDocument.template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } }))
-  initializePublicBindings(appDocument)
-  normalizeLoadedHttpResponseOutputIds(appDocument.graphDocument.template.nodes)
-  normalizeLoadedRequestImageInputBindings()
-  initializePreviewInputs(applicationBindingsDraft.value)
-}
-
-function normalizeLoadedHttpResponseOutputIds(nodes: WorkflowGraphNode[]): void {
-  const nodeTypeById = new Map(nodes.map((node) => [node.node_id, node.node_type_id]))
-  for (const output of templateOutputs.value) {
-    if (nodeTypeById.get(output.source_node_id) !== 'core.output.http-response') continue
-    if (output.source_port !== 'response') continue
-    const legacyOutputId = normalizePublicIdentifier(`${output.source_node_id}_${output.source_port}`, output.output_id)
-    if (output.output_id !== legacyOutputId) continue
-    const existingIds = new Set([
-      ...templateOutputs.value.filter((item) => item !== output).map((item) => item.output_id),
-      ...applicationBindingsDraft.value
-        .filter((binding) => binding.template_port_id !== output.output_id && binding.binding_id !== output.output_id)
-        .map((binding) => binding.binding_id),
-    ])
-    const nextOutputId = createUniquePublicId(output.source_node_id, existingIds)
-    if (nextOutputId === output.output_id) continue
-    const previousOutputId = output.output_id
-    output.output_id = nextOutputId
-    for (const binding of applicationBindingsDraft.value) {
-      if (binding.direction !== 'output' || binding.template_port_id !== previousOutputId) continue
-      binding.template_port_id = nextOutputId
-      if (binding.binding_id === previousOutputId) binding.binding_id = nextOutputId
-    }
-  }
 }
 
 async function buildPreviewInputBindings(): Promise<Record<string, unknown> | null> {
@@ -1644,74 +1329,6 @@ function buildCurrentApplication(template: ReturnType<typeof buildCurrentTemplat
       metadata: { ...binding.metadata },
     })),
     metadata: writeBoundaryPositionsToMetadata(sourceApplication.metadata),
-  }
-}
-
-async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
-  const previousSelection = readSelection()
-  const refreshedApp = await getWorkflowApp(selectedProjectId.value, applicationId)
-  workflowApp.value = refreshedApp
-  initializeWorkflowAppDrafts(refreshedApp)
-  complexParameterDrafts.value = {}
-  liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
-  graphEdges.value = refreshedApp.graphDocument.template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
-  graphNodes.value = buildGraphNodeViews(refreshedApp.graphDocument.template.nodes)
-  restoreSelectionAfterGraphRefresh(previousSelection, graphNodes.value[0]?.node.node_id ?? null)
-}
-
-function handleKeydown(event: KeyboardEvent): void {
-  if ((event.key === 'Delete' || event.key === 'Backspace') && (selectedNodeId.value || selectedEdgeId.value)) {
-    const target = event.target
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return
-    event.preventDefault()
-    if (selectedNodeId.value) {
-      deleteSelectedNode()
-    } else {
-      deleteSelectedEdge()
-    }
-  }
-  if (event.key === 'Escape') {
-    connectionDraft.value = null
-    contextMenu.value = null
-    errorMessage.value = null
-  }
-}
-
-async function loadPage(): Promise<void> {
-  loading.value = true
-  clearActionMessages()
-  resetPreviewRun()
-  complexParameterDrafts.value = {}
-  revokePreviewImageObjectUrls()
-  try {
-    nodeCatalog.value = await getWorkflowNodeCatalog()
-    liteGraphAdapter.value = createWorkflowLiteGraphAdapter({ nodeDefinitions: nodeCatalog.value.node_definitions })
-    if (!isNewApp.value && routeApplicationId.value) {
-      workflowApp.value = await getWorkflowApp(selectedProjectId.value, routeApplicationId.value)
-      initializeWorkflowAppDrafts(workflowApp.value)
-      liteGraphAdapter.value.loadTemplate(workflowApp.value.graphDocument.template)
-      graphEdges.value = workflowApp.value.graphDocument.template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } }))
-      graphNodes.value = buildGraphNodeViews(workflowApp.value.graphDocument.template.nodes)
-      setSelection({ nodeId: graphNodes.value[0]?.node.node_id ?? null, edgeId: null, boundaryKind: null })
-    } else {
-      resetNewWorkflowAppDraft()
-      const draftApp = createLocalWorkflowAppDraft()
-      workflowApp.value = draftApp
-      initializeWorkflowAppDrafts(draftApp)
-      liteGraphAdapter.value.loadTemplate(draftApp.graphDocument.template)
-      graphEdges.value = []
-      graphNodes.value = []
-      setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
-    }
-    await nextTick()
-    updateStageSize()
-    if (graphNodes.value.length > 0) {
-      fitView()
-    }
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.messages.loadFailed')
-  } finally {
-    loading.value = false
   }
 }
 
