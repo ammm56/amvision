@@ -502,6 +502,8 @@ import WorkflowPreviewRunResultPanel from '../components/WorkflowPreviewRunResul
 import WorkflowPreviewJsonViewer from '../components/WorkflowPreviewJsonViewer.vue'
 import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer.vue'
 import { useWorkflowCanvasPan } from '../canvas/useWorkflowCanvasPan'
+import { useWorkflowBoundaryDrag } from '../canvas/useWorkflowBoundaryDrag'
+import { useWorkflowPortConnections, type WorkflowConnectionDraftState, type WorkflowPortDirection, type WorkflowPortReference } from '../canvas/useWorkflowPortConnections'
 import { createWorkflowLiteGraphAdapter, type WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
 import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
 import { useWorkflowPreviewDisplays } from '../preview/useWorkflowPreviewDisplays'
@@ -555,33 +557,11 @@ interface BoundaryPosition {
   y: number
 }
 
-interface BoundaryDragState {
-  boundaryKind: AppBoundaryKind
-  offsetX: number
-  offsetY: number
-}
+type PortDirection = WorkflowPortDirection
 
-type PortDirection = 'input' | 'output'
+type PortReference = WorkflowPortReference
 
-interface PortReference {
-  nodeId: string
-  portName: string
-  direction: PortDirection
-}
-
-interface ConnectionDraftState {
-  anchorDirection: PortDirection
-  anchorNodeId: string
-  anchorPort: string
-  anchorX: number
-  anchorY: number
-  pointerX: number
-  pointerY: number
-  startClientX: number
-  startClientY: number
-  hasMoved: boolean
-  replacingEdgeId?: string | null
-}
+type ConnectionDraftState = WorkflowConnectionDraftState
 
 interface ContextMenuState {
   x: number
@@ -691,8 +671,6 @@ const selectedNodeId = ref<string | null>(null)
 const selectedEdgeId = ref<string | null>(null)
 const selectedBoundaryKind = ref<AppBoundaryKind | null>(null)
 const dragState = ref<DragState | null>(null)
-const boundaryDragState = ref<BoundaryDragState | null>(null)
-const connectionDraft = ref<ConnectionDraftState | null>(null)
 const suppressNextNodeClick = ref(false)
 const minimapVisible = ref(true)
 const inspectorCollapsed = ref(false)
@@ -740,6 +718,40 @@ const {
   buildPreviewInputBindings: buildPreviewInputBindingsPayload,
 } = useWorkflowPreviewInputs({ getBindingPayloadTypeId })
 const canvasRef = ref<HTMLElement | null>(null)
+const {
+  connectionDraft,
+  startPortConnectionDraft,
+  stopPortConnection,
+} = useWorkflowPortConnections({
+  screenToWorld,
+  connectDraftToPort,
+  openNodePickerFromConnectionDraft,
+  suppressNodeClickOnce,
+  clearNodePicker: () => {
+    nodePicker.value = null
+  },
+})
+const {
+  boundaryDragState,
+  startBoundaryDrag,
+  stopBoundaryDrag,
+} = useWorkflowBoundaryDrag<AppBoundaryKind>({
+  screenToWorld,
+  canStart: () => !connectionDraft.value,
+  onStart: (boundaryKind) => {
+    selectedBoundaryKind.value = boundaryKind
+    selectedNodeId.value = null
+    selectedEdgeId.value = null
+    contextMenu.value = null
+    nodePicker.value = null
+  },
+  updateBoundaryPosition: (boundaryKind, position) => {
+    boundaryPositions.value = {
+      ...boundaryPositions.value,
+      [boundaryKind]: position,
+    }
+  },
+})
 const liteGraphAdapter = shallowRef<WorkflowLiteGraphAdapter | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
@@ -2032,43 +2044,6 @@ function stopNodeDrag(): void {
   document.removeEventListener('mouseup', stopNodeDrag)
 }
 
-function startBoundaryDrag(event: MouseEvent, boundary: AppBoundaryNodeView): void {
-  if (event.button !== 0 || connectionDraft.value) return
-  const worldPosition = screenToWorld(event.clientX, event.clientY)
-  selectedBoundaryKind.value = boundary.kind
-  selectedNodeId.value = null
-  selectedEdgeId.value = null
-  contextMenu.value = null
-  nodePicker.value = null
-  boundaryDragState.value = {
-    boundaryKind: boundary.kind,
-    offsetX: worldPosition.x - boundary.x,
-    offsetY: worldPosition.y - boundary.y,
-  }
-  event.preventDefault()
-  document.addEventListener('mousemove', moveDraggedBoundary)
-  document.addEventListener('mouseup', stopBoundaryDrag)
-}
-
-function moveDraggedBoundary(event: MouseEvent): void {
-  const drag = boundaryDragState.value
-  if (!drag) return
-  const worldPosition = screenToWorld(event.clientX, event.clientY)
-  boundaryPositions.value = {
-    ...boundaryPositions.value,
-    [drag.boundaryKind]: {
-      x: Math.round(worldPosition.x - drag.offsetX),
-      y: Math.round(worldPosition.y - drag.offsetY),
-    },
-  }
-}
-
-function stopBoundaryDrag(): void {
-  boundaryDragState.value = null
-  document.removeEventListener('mousemove', moveDraggedBoundary)
-  document.removeEventListener('mouseup', stopBoundaryDrag)
-}
-
 function startPortConnection(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, direction: PortDirection): void {
   if (event.button !== 0) return
   const existingInputEdge = direction === 'input' ? findInputEdge(node.node.node_id, port.name) : null
@@ -2081,54 +2056,39 @@ function startPortConnection(event: MouseEvent, node: GraphNodeView, port: NodeP
 
 function startBoundaryPortConnection(event: MouseEvent, boundary: AppBoundaryNodeView, binding: FlowApplicationBinding): void {
   if (event.button !== 0) return
-  const pointer = screenToWorld(event.clientX, event.clientY)
-  connectionDraft.value = {
+  const started = startPortConnectionDraft(event, {
     anchorDirection: boundary.portDirection,
     anchorNodeId: boundary.id,
     anchorPort: binding.binding_id,
     anchorX: boundaryPortX(boundary),
     anchorY: boundaryPortY(boundary, binding.binding_id),
-    pointerX: pointer.x,
-    pointerY: pointer.y,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    hasMoved: false,
     replacingEdgeId: null,
-  }
+  })
+  if (!started) return
   selectedBoundaryKind.value = boundary.kind
   selectedNodeId.value = null
   selectedEdgeId.value = null
   contextMenu.value = null
   nodePicker.value = null
   errorMessage.value = null
-  event.preventDefault()
-  document.addEventListener('mousemove', movePortConnection)
-  document.addEventListener('mouseup', stopPortConnection)
 }
 
 function startConnectionDraft(event: MouseEvent, node: GraphNodeView, port: NodePortDefinition, anchorDirection: PortDirection, replacingEdgeId: string | null = null): void {
-  const pointer = screenToWorld(event.clientX, event.clientY)
-  connectionDraft.value = {
+  const started = startPortConnectionDraft(event, {
     anchorDirection,
     anchorNodeId: node.node.node_id,
     anchorPort: port.name,
     anchorX: portX(node, anchorDirection),
     anchorY: portY(node, port.name, anchorDirection),
-    pointerX: pointer.x,
-    pointerY: pointer.y,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    hasMoved: false,
     replacingEdgeId,
-  }
+  })
+  if (!started) return
   selectedNodeId.value = node.node.node_id
   selectedEdgeId.value = null
   selectedBoundaryKind.value = null
   contextMenu.value = null
   nodePicker.value = null
   errorMessage.value = null
-  document.addEventListener('mousemove', movePortConnection)
-  document.addEventListener('mouseup', stopPortConnection)
 }
 
 function startEdgeTargetReconnect(event: MouseEvent, edgeId: string): void {
@@ -2138,75 +2098,21 @@ function startEdgeTargetReconnect(event: MouseEvent, edgeId: string): void {
   const sourceNode = graphNodes.value.find((node) => node.node.node_id === edge.source_node_id)
   const sourcePort = sourceNode?.outputs.find((port) => port.name === edge.source_port)
   if (!sourceNode || !sourcePort) return
-  const pointer = screenToWorld(event.clientX, event.clientY)
-  connectionDraft.value = {
+  const started = startPortConnectionDraft(event, {
     anchorDirection: 'output',
     anchorNodeId: sourceNode.node.node_id,
     anchorPort: sourcePort.name,
     anchorX: link.sourceX,
     anchorY: link.sourceY,
-    pointerX: pointer.x,
-    pointerY: pointer.y,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    hasMoved: false,
     replacingEdgeId: edgeId,
-  }
+  })
+  if (!started) return
   selectedNodeId.value = null
   selectedEdgeId.value = edgeId
   selectedBoundaryKind.value = null
   contextMenu.value = null
   nodePicker.value = null
   errorMessage.value = null
-  document.addEventListener('mousemove', movePortConnection)
-  document.addEventListener('mouseup', stopPortConnection)
-}
-
-function movePortConnection(event: MouseEvent): void {
-  if (!connectionDraft.value) return
-  const pointer = screenToWorld(event.clientX, event.clientY)
-  const movedDistance = Math.hypot(event.clientX - connectionDraft.value.startClientX, event.clientY - connectionDraft.value.startClientY)
-  connectionDraft.value = {
-    ...connectionDraft.value,
-    pointerX: pointer.x,
-    pointerY: pointer.y,
-    hasMoved: connectionDraft.value.hasMoved || movedDistance > 4,
-  }
-}
-
-function stopPortConnection(event?: MouseEvent): void {
-  const draft = connectionDraft.value
-  let didConnect = false
-  let didOpenNodePicker = false
-  if (draft && event) {
-    const targetPort = resolvePortElement(event.clientX, event.clientY)
-    if (targetPort) {
-      didConnect = connectDraftToPort(draft, targetPort)
-    } else if (draft.hasMoved) {
-      openNodePickerFromConnectionDraft(draft, event)
-      didOpenNodePicker = true
-    }
-    if (draft.hasMoved || didConnect) {
-      suppressNodeClickOnce()
-    }
-  }
-  if (!didOpenNodePicker) {
-    nodePicker.value = null
-  }
-  connectionDraft.value = null
-  document.removeEventListener('mousemove', movePortConnection)
-  document.removeEventListener('mouseup', stopPortConnection)
-}
-
-function resolvePortElement(clientX: number, clientY: number): PortReference | null {
-  const element = document.elementFromPoint(clientX, clientY)
-  const portElement = element instanceof Element ? element.closest<HTMLElement>('.workflow-graph-port') : null
-  if (!portElement) return null
-  const nodeId = portElement.dataset.nodeId
-  const portName = portElement.dataset.portName
-  const direction = portElement.dataset.portDirection
-  if (!nodeId || !portName || (direction !== 'input' && direction !== 'output')) return null
-  return { nodeId, portName, direction }
 }
 
 function connectDraftToPort(draft: ConnectionDraftState, targetPort: PortReference): boolean {
