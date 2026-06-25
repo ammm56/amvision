@@ -28,181 +28,74 @@
       <InlineError v-if="errorMessage" class="workflow-graph-error" :message="errorMessage" />
 
       <div class="workflow-graph-world" :style="worldTransformStyle">
-        <svg class="workflow-graph-links" aria-hidden="true">
-          <path
-            v-for="link in graphLinks"
-            :key="`${link.edgeId}-hit-area`"
-            class="workflow-graph-link-hit-area"
-            :d="linkPath(link)"
-            @click.stop="selectGraphLink(link)"
-            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, link)"
-          />
-          <path
-            v-for="link in graphLinks"
-            :key="link.edgeId"
-            class="workflow-graph-link"
-            :class="{ 'is-selected': isGraphLinkSelected(link), 'workflow-graph-link--boundary': link.linkKind !== 'edge' }"
-            :d="linkPath(link)"
-            @click.stop="selectGraphLink(link)"
-            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, link)"
-          />
-          <circle
-            v-for="marker in graphLinkMidpoints"
-            :key="`${marker.edgeId}-midpoint`"
-            class="workflow-graph-link-midpoint"
-            :class="{ 'is-selected': isGraphLinkSelected(marker.link) }"
-            :cx="marker.x"
-            :cy="marker.y"
-            r="4.5"
-            @click.stop="selectGraphLink(marker.link)"
-            @contextmenu.prevent.stop="openGraphLinkContextMenu($event, marker.link)"
-          />
-          <circle
-            v-for="handle in selectedEdgeReconnectHandles"
-            :key="handle.key"
-            class="workflow-graph-link-handle workflow-graph-link-handle--center"
-            :cx="handle.x"
-            :cy="handle.y"
-            r="6"
-            @mousedown.stop.prevent="startEdgeTargetReconnect($event, handle.edgeId)"
-          >
-            <title>拖到新的输入端口重新连接</title>
-          </circle>
-          <path v-if="connectionDraft" class="workflow-graph-link workflow-graph-link--draft" :d="draftLinkPath" />
-        </svg>
+        <WorkflowGraphLinksLayer
+          :links="graphLinks"
+          :midpoints="graphLinkMidpoints"
+          :reconnect-handles="selectedEdgeReconnectHandles"
+          :show-draft="Boolean(connectionDraft)"
+          :draft-path="draftLinkPath"
+          :link-path="linkPath"
+          :is-link-selected="isGraphLinkSelected"
+          @select-link="selectGraphLink"
+          @open-link-context-menu="openGraphLinkContextMenu"
+          @start-edge-target-reconnect="startEdgeTargetReconnect"
+        />
 
-        <div
-          v-for="boundary in appBoundaryNodes"
-          :key="boundary.id"
-          role="button"
-          tabindex="0"
-          class="workflow-graph-boundary-node"
-          :class="[`workflow-graph-boundary-node--${boundary.kind}`, { 'is-selected': selectedBoundaryKind === boundary.kind, 'is-dragging': boundaryDragState?.boundaryKind === boundary.kind }]"
-          :style="{ left: `${boundary.x}px`, top: `${boundary.y}px`, width: `${boundary.width}px`, height: `${boundaryNodeHeight(boundary)}px` }"
-          @mousedown.stop="startBoundaryDrag($event, boundary)"
-          @click.stop="selectApplicationBoundary(boundary.kind)"
-          @contextmenu.prevent.stop="openBoundaryContextMenu($event, boundary)"
-        >
-          <div class="workflow-graph-boundary-node__header">
-            <span class="workflow-graph-boundary-node__title">{{ boundary.title }}</span>
-            <span class="workflow-graph-boundary-node__type">{{ boundary.description }}</span>
-          </div>
-          <div class="workflow-graph-boundary-node__ports">
-            <span
-              v-for="binding in boundary.bindings"
-              :key="`${boundary.id}-${binding.binding_id}`"
-              class="workflow-graph-port workflow-graph-boundary-port"
-              :class="[
-                `workflow-graph-port--${boundary.portDirection}`,
-                { 'is-connected': isBoundaryPortConnected(boundary.kind, binding), 'is-selected-endpoint': selectedBoundaryKind === boundary.kind },
-              ]"
-              :data-node-id="boundary.id"
-              :data-port-name="binding.binding_id"
-              :data-payload-type-id="getBindingPayloadTypeId(binding)"
-              :data-port-direction="boundary.portDirection"
-              @mousedown.stop="startBoundaryPortConnection($event, boundary, binding)"
-              @click.stop="selectBoundaryBinding(boundary.kind, binding)"
-              @contextmenu.prevent.stop="openBoundaryPortContextMenu($event, boundary, binding)"
-            >
-              <span v-if="boundary.portDirection === 'input'" class="workflow-graph-port__dot" aria-hidden="true" />
-              <span class="workflow-graph-port__label">
-                <strong>{{ binding.binding_id }}</strong>
-                <small>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</small>
-              </span>
-              <span v-if="boundary.portDirection === 'output'" class="workflow-graph-port__dot" aria-hidden="true" />
-            </span>
-          </div>
-        </div>
+        <WorkflowBoundaryNodeLayer
+          :boundaries="appBoundaryNodes"
+          :selected-boundary-kind="selectedBoundaryKind"
+          :dragged-boundary-kind="boundaryDragState?.boundaryKind ?? null"
+          :read-boundary-height="boundaryNodeHeight"
+          :is-boundary-port-connected="isBoundaryPortConnected"
+          :get-binding-payload-type-id="getBindingPayloadTypeId"
+          @start-boundary-drag="startBoundaryDrag"
+          @select-boundary="selectApplicationBoundary"
+          @open-boundary-context-menu="openBoundaryContextMenu"
+          @start-boundary-port-connection="startBoundaryPortConnection"
+          @select-boundary-binding="selectBoundaryBinding"
+          @open-boundary-port-context-menu="openBoundaryPortContextMenu"
+        />
 
-        <div
-          v-for="node in graphNodes"
-          :key="node.node.node_id"
-          role="button"
-          tabindex="0"
-          class="workflow-graph-node"
-          :class="{ 'is-selected': selectedNodeId === node.node.node_id, 'is-runtime-failed': lastPreviewFailureNodeId === node.node.node_id }"
-          :style="{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px`, height: `${nodeVisualHeight(node)}px` }"
-          @mousedown.stop="startNodeDrag($event, node)"
-          @click.stop="handleNodeClick(node.node.node_id)"
-          @contextmenu.prevent.stop="openNodeContextMenu($event, node)"
-        >
-          <span class="workflow-graph-node__title">{{ readGraphNodeTitle(node) }}</span>
-          <span class="workflow-graph-node__type">{{ node.definition?.category || node.node.node_type_id }}</span>
-          <div class="workflow-graph-node__ports">
-            <div v-for="row in nodePortRows(node)" :key="row.key" class="workflow-graph-node__port-row">
-              <span
-                v-if="row.input"
-                class="workflow-graph-port workflow-graph-port--input"
-                :class="{
-                  'is-connected': isPortConnected(node.node.node_id, row.input.name, 'input'),
-                  'is-selected-endpoint': isSelectedEdgeEndpoint(node.node.node_id, row.input.name, 'input'),
-                  'is-draft-anchor': isDraftAnchorPort(node.node.node_id, row.input.name, 'input'),
-                }"
-                :data-node-id="node.node.node_id"
-                :data-port-name="row.input.name"
-                :data-payload-type-id="row.input.payload_type_id"
-                data-port-direction="input"
-                @mousedown.stop.prevent="startPortConnection($event, node, row.input, 'input')"
-                @click.stop="selectPortEndpoint(node, row.input, 'input')"
-                @contextmenu.prevent.stop="openPortContextMenu($event, node, row.input, 'input')"
-              >
-                <span class="workflow-graph-port__dot" aria-hidden="true" />
-                <span class="workflow-graph-port__label">{{ readNodePortLabel(row.input) }}</span>
-              </span>
-              <span v-else class="workflow-graph-port workflow-graph-port--placeholder" />
-              <span
-                v-if="row.output"
-                class="workflow-graph-port workflow-graph-port--output"
-                :class="{
-                  'is-connected': isPortConnected(node.node.node_id, row.output.name, 'output'),
-                  'is-selected-endpoint': isSelectedEdgeEndpoint(node.node.node_id, row.output.name, 'output'),
-                  'is-draft-anchor': isDraftAnchorPort(node.node.node_id, row.output.name, 'output'),
-                }"
-                :data-node-id="node.node.node_id"
-                :data-port-name="row.output.name"
-                :data-payload-type-id="row.output.payload_type_id"
-                data-port-direction="output"
-                @mousedown.stop.prevent="startPortConnection($event, node, row.output, 'output')"
-                @click.stop="selectPortEndpoint(node, row.output, 'output')"
-                @contextmenu.prevent.stop="openPortContextMenu($event, node, row.output, 'output')"
-              >
-                <span class="workflow-graph-port__label">{{ readNodePortLabel(row.output) }}</span>
-                <span class="workflow-graph-port__dot" aria-hidden="true" />
-              </span>
-              <span v-else class="workflow-graph-port workflow-graph-port--placeholder" />
-            </div>
-          </div>
-          <WorkflowNodeParameterWidgets
-            v-if="nodeParameterFieldsForNode(node).length"
-            :node="node"
-            :fields="nodeParameterFieldsForNode(node)"
-            :read-label="readNodeParameterLabel"
-            :read-enum-value="readNodeParameterEnumIndex"
-            :read-enum-options="nodeParameterEnumOptions"
-            :is-boolean="isBooleanParameter"
-            :read-boolean-value="readNodeParameterBooleanValue"
-            :is-number="isNumberParameter"
-            :read-text-value="readNodeParameterTextValue"
-            :is-string="isStringParameter"
-            :is-json="isJsonParameter"
-            :read-json-text-value="readNodeParameterJsonTextValue"
-            :read-json-placeholder="nodeParameterJsonPlaceholder"
-            @update-enum="updateNodeParameterFromEnumValue"
-            @update-checkbox="updateNodeParameterFromCheckboxEvent"
-            @update-number="updateNodeParameterFromNumberEvent"
-            @update-text="updateNodeParameterFromTextEvent"
-            @update-json-draft="updateNodeParameterJsonDraft"
-            @commit-json-draft="commitNodeParameterJsonDraft"
-          />
-          <WorkflowNodePreviewDisplay
-            v-if="previewNodeDisplays[node.node.node_id]"
-            :display="previewNodeDisplays[node.node.node_id]"
-            :tooltip="readPreviewNodeDisplayTooltip(previewNodeDisplays[node.node.node_id])"
-            :fallback-title="readGraphNodeTitle(node)"
-            @open-display="openPreviewDisplayViewer"
-            @open-image="openImageViewer"
-          />
-        </div>
+        <WorkflowGraphNodeLayer
+          :nodes="graphNodes"
+          :selected-node-id="selectedNodeId"
+          :last-preview-failure-node-id="lastPreviewFailureNodeId"
+          :read-node-height="nodeVisualHeight"
+          :read-title="readGraphNodeTitle"
+          :read-port-rows="nodePortRows"
+          :read-port-label="readNodePortLabel"
+          :is-port-connected="isPortConnected"
+          :is-selected-edge-endpoint="isSelectedEdgeEndpoint"
+          :is-draft-anchor-port="isDraftAnchorPort"
+          :read-parameter-fields="nodeParameterFieldsForNode"
+          :read-parameter-label="readNodeParameterLabel"
+          :read-parameter-enum-index="readNodeParameterEnumIndex"
+          :read-parameter-enum-options="nodeParameterEnumOptions"
+          :is-boolean-parameter="isBooleanParameter"
+          :read-parameter-boolean-value="readNodeParameterBooleanValue"
+          :is-number-parameter="isNumberParameter"
+          :read-parameter-text-value="readNodeParameterTextValue"
+          :is-string-parameter="isStringParameter"
+          :is-json-parameter="isJsonParameter"
+          :read-parameter-json-text-value="readNodeParameterJsonTextValue"
+          :read-parameter-json-placeholder="nodeParameterJsonPlaceholder"
+          :read-preview-display="getPreviewNodeDisplay"
+          :read-preview-display-tooltip="readPreviewNodeDisplayTooltip"
+          @start-node-drag="startNodeDrag"
+          @node-click="handleNodeClick"
+          @open-node-context-menu="openNodeContextMenu"
+          @start-port-connection="startPortConnection"
+          @select-port-endpoint="selectPortEndpoint"
+          @open-port-context-menu="openPortContextMenu"
+          @update-enum-parameter="updateNodeParameterFromEnumValue"
+          @update-checkbox-parameter="updateNodeParameterFromCheckboxEvent"
+          @update-number-parameter="updateNodeParameterFromNumberEvent"
+          @update-text-parameter="updateNodeParameterFromTextEvent"
+          @update-json-parameter-draft="updateNodeParameterJsonDraft"
+          @commit-json-parameter-draft="commitNodeParameterJsonDraft"
+          @open-preview-display="openPreviewDisplayViewer"
+          @open-preview-image="openImageViewer"
+        />
       </div>
 
       <aside v-if="!inspectorCollapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
@@ -395,18 +288,19 @@ import type { SupportedLocale } from '@/platform/i18n'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
 import WorkflowCanvasEmptyState from '../components/WorkflowCanvasEmptyState.vue'
 import WorkflowGraphContextMenu from '../components/WorkflowGraphContextMenu.vue'
+import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
 import WorkflowGraphMinimap from '../components/WorkflowGraphMinimap.vue'
+import WorkflowGraphNodeLayer from '../components/WorkflowGraphNodeLayer.vue'
 import WorkflowGraphToolbar from '../components/WorkflowGraphToolbar.vue'
 import WorkflowAppContractPanel from '../components/WorkflowAppContractPanel.vue'
 import WorkflowApplicationSummaryPanel from '../components/WorkflowApplicationSummaryPanel.vue'
 import WorkflowEdgeDetailPanel from '../components/WorkflowEdgeDetailPanel.vue'
 import WorkflowNewAppDraftPanel from '../components/WorkflowNewAppDraftPanel.vue'
 import WorkflowNodeDetailPanel from '../components/WorkflowNodeDetailPanel.vue'
-import WorkflowNodeParameterWidgets from '../components/WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
-import WorkflowNodePreviewDisplay from '../components/WorkflowNodePreviewDisplay.vue'
 import WorkflowPublicBindingEditorPanel from '../components/WorkflowPublicBindingEditorPanel.vue'
 import WorkflowPreviewInputPanel from '../components/WorkflowPreviewInputPanel.vue'
 import WorkflowPreviewRunResultPanel from '../components/WorkflowPreviewRunResultPanel.vue'
@@ -624,7 +518,6 @@ const { startStagePan, stopStagePan } = useWorkflowCanvasPan({
   },
 })
 const {
-  previewNodeDisplays,
   activeImageViewer,
   activePreviewTable,
   activePreviewJson,
