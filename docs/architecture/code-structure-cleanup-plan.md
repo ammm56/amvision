@@ -709,6 +709,15 @@ custom_nodes/sam3_segment_nodes/backend/
 
 ## 第六批：frontend
 
+### 当前进度
+
+- `DatasetOperationsPage.vue` 已拆成页面组合层、`components/` 和 `composables/`。
+- datasets 组件层当前包括导入表单、导出表单、DatasetVersion 选择面板、导入记录和导出记录。
+- datasets composable 层当前包括导入状态、导出状态、格式能力和 DatasetVersion 选择。
+- 已运行 `npm run typecheck` 和 `npm run build`。
+- 已用本地 Vite + Edge / Playwright 做 `/datasets` 真实渲染检查：导入/导出表单、导入/导出记录、DatasetVersion 选择面板和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/datasets-desktop.png` 和 `.tmp/datasets-mobile.png`。
+- `ModelOperationsPage.vue` 和 `WorkflowEditorPage.vue` 尚未进入本批拆分。
+
 ### 当前问题
 
 - `ModelOperationsPage.vue`、`DatasetOperationsPage.vue`、`WorkflowEditorPage.vue` 较大。
