@@ -167,7 +167,7 @@ class C3k(C3):
 
 
 class Attention(nn.Module):
-    """YOLO11 PSA 使用的轻量多头注意力。"""
+    """YOLO11 PSA 使用的多头注意力。"""
 
     def __init__(self, dim: int, num_heads: int = 8, attn_ratio: float = 0.5) -> None:
         """初始化注意力模块。"""

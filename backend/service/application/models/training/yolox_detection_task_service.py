@@ -206,7 +206,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         - requested_by：发起保存请求的主体 id。
 
         返回：
-        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        - TaskDetail：更新后的任务摘要；events 默认返回空列表，不携带历史事件。
         """
 
         task_record = self._require_training_task(task_id)
@@ -256,7 +256,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         - requested_by：发起暂停请求的主体 id。
 
         返回：
-        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        - TaskDetail：更新后的任务摘要；events 默认返回空列表，不携带历史事件。
         """
 
         task_record = self._require_training_task(task_id)
@@ -308,7 +308,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         - requested_by：发起终止请求的主体 id。
 
         返回：
-        - TaskDetail：更新后的轻量任务详情；events 默认返回空列表，不携带历史事件。
+        - TaskDetail：更新后的任务摘要；events 默认返回空列表，不携带历史事件。
         """
 
         task_record = self._require_training_task(task_id)

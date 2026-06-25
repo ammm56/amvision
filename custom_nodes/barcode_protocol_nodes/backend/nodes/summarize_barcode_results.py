@@ -10,7 +10,7 @@ NODE_TYPE_ID = "custom.barcode.results-summary"
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """输出条码结果的轻量摘要对象。
+    """输出条码结果的精简摘要对象。
 
     参数：
     - request：当前 workflow 节点执行请求。

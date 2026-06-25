@@ -1,4 +1,4 @@
-"""YOLOv8 classification 训练期轻量评估。"""
+"""YOLOv8 classification 训练期快速评估。"""
 
 from __future__ import annotations
 

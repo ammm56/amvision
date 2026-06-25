@@ -61,6 +61,16 @@ def test_yolo_model_core_snapshot_records_tensor_output_shape(
     assert snapshot.parameters.trainable_parameter_count == snapshot.parameters.total_parameter_count
     assert snapshot.parameters.state_dict_key_count == len(model.state_dict())
     assert snapshot.parameters.leaf_module_counts["Conv2d"] > 0
+    if model_type == "yolo26":
+        assert snapshot.output_summary is not None
+        assert snapshot.output_summary["kind"] == "tuple"
+        assert snapshot.output_summary["items"][0] == {
+            "kind": "tensor",
+            "shape": expected_output_shape,
+            "dtype": "torch.float32",
+        }
+        assert _is_yolo26_raw_output_summary(snapshot.output_summary["items"][1])
+        return
     assert snapshot.output_summary == {
         "kind": "tensor",
         "shape": expected_output_shape,
@@ -117,13 +127,32 @@ def test_yolo_model_core_snapshot_records_segmentation_tuple_shape(model_type: s
         example_input=torch.randn(1, 3, 64, 64),
     )
 
-    assert snapshot.output_summary == {
+    expected_segmentation_summary = {
         "kind": "tuple",
         "items": (
             {"kind": "tensor", "shape": (1, 84, 38), "dtype": "torch.float32"},
             {"kind": "tensor", "shape": (1, 32, 16, 16), "dtype": "torch.float32"},
         ),
     }
+    if model_type == "yolo26":
+        assert snapshot.output_summary is not None
+        assert snapshot.output_summary["kind"] == "tuple"
+        assert snapshot.output_summary["items"][0] == expected_segmentation_summary
+        assert _is_yolo26_raw_output_summary(snapshot.output_summary["items"][1])
+        return
+
+    assert snapshot.output_summary == expected_segmentation_summary
+
+
+def _is_yolo26_raw_output_summary(summary: dict[str, object]) -> bool:
+    """验证 YOLO26 非 export 路径保留 one2many / one2one raw head 输出。"""
+
+    if summary.get("kind") != "dict":
+        return False
+    items = summary.get("items")
+    if not isinstance(items, dict):
+        return False
+    return set(items) == {"one2many", "one2one"}
 
 
 def test_state_dict_coverage_accepts_exact_project_state_dict() -> None:

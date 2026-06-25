@@ -30,7 +30,7 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.core.nn.modules import (
 
 
 class YoloePromptFreeRegionProposalHead(nn.Module):
-    """YOLOE prompt-free 轻量级候选框与分类头。"""
+    """YOLOE prompt-free 候选框与分类头。"""
 
     def __init__(
         self,

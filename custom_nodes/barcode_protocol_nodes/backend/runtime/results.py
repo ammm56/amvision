@@ -92,7 +92,7 @@ def require_barcode_results_payload(payload: object) -> dict[str, object]:
 
 
 def build_barcode_results_summary(results_payload: object) -> dict[str, object]:
-    """把 barcode-results payload 转换为更轻量的业务摘要对象。
+    """把 barcode-results payload 转换为精简业务摘要对象。
 
     参数：
     - results_payload：输入的 barcode-results.v1 payload。
@@ -261,7 +261,7 @@ def build_bounds_xyxy(polygon_xy: list[list[int]]) -> list[int]:
 
 
 def _build_summary_item(item: dict[str, object]) -> dict[str, object]:
-    """提取单个条码结果的轻量摘要。"""
+    """提取单个条码结果的精简摘要。"""
 
     summary_item: dict[str, object] = {
         "index": int(item.get("index", 0)),
