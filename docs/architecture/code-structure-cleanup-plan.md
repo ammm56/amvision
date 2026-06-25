@@ -717,9 +717,12 @@ custom_nodes/sam3_segment_nodes/backend/
 - `ModelOperationsPage.vue` 已拆成页面组合层、`components/` 和 `composables/`。
 - models 组件层当前包括训练表单、转换表单、训练任务列表、转换任务列表，并继续复用基础模型选择面板和 DatasetExport 选择面板。
 - models composable 层当前包括训练/转换任务列表、基础模型选择、DatasetExport 选择、训练参数、训练提交状态和转换提交状态。
-- `WorkflowEditorPage.vue` 已进入第一轮拆分。
-- workflow editor 组件层当前新增节点参数控件、节点预览展示、Preview 输入面板和公开接口编辑面板。
-- workflow editor 画布层当前新增 `canvas/useWorkflowCanvasPan.ts`，先收口 stage pan 状态和 document mouse 监听；节点拖拽、连线拖拽、minimap 和 `litegraph` 内核暂不在这一轮移动。
+- `WorkflowEditorPage.vue` 已进入第二轮拆分。
+- workflow editor 组件层当前新增节点参数控件、节点预览展示、节点详情面板、Preview 输入面板、运行结果面板、公开接口编辑面板、context menu 和 minimap。
+- workflow editor Preview 展示层当前新增 `preview/useWorkflowPreviewDisplays.ts`，用于收口 Preview 输出解析、图片 artifact 读取、object URL 回收、表格/JSON/图片 viewer 状态和打开逻辑。
+- workflow editor Preview 输入层当前新增 `preview/useWorkflowPreviewInputs.ts`，用于收口 Preview 输入状态、value 字段增删、image-ref 来源切换、binding 状态同步和 input payload 构建。
+- workflow editor 动作层当前新增 `actions/useWorkflowEditorActions.ts`，用于收口 workflow 保存、Preview Run 创建、前端校验调用、动作状态和运行结果状态。
+- workflow editor 画布层当前新增 `canvas/useWorkflowCanvasPan.ts`，先收口 stage pan 状态和 document mouse 监听；节点拖拽、连线拖拽和 `litegraph` 内核暂不在这一轮移动。
 - 已运行 `npm run typecheck` 和 `npm run build`。
 - 已用本地 Vite + Edge / Playwright 做 `/datasets` 真实渲染检查：导入/导出表单、导入/导出记录、DatasetVersion 选择面板和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/datasets-desktop.png` 和 `.tmp/datasets-mobile.png`。
 - 已用本地构建产物 + Playwright + mock API 做 `/models` 真实渲染检查：基础模型选择面板、DatasetExport 选择面板、训练表单、转换表单、桌面布局和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/models-desktop.png` 和 `.tmp/models-mobile.png`。
@@ -727,7 +730,7 @@ custom_nodes/sam3_segment_nodes/backend/
 
 ### 当前问题
 
-- `WorkflowEditorPage.vue` 仍较大，后续继续拆运行结果面板、节点详情面板、context menu 和 minimap。
+- `WorkflowEditorPage.vue` 仍较大，后续继续拆节点端口/连线交互、boundary 节点、Preview 输入/运行前置校验和保存/运行后的画布反馈。
 - `litegraph` 目录是图编辑器内核，体量大但不属于普通业务页面，不和业务页面一起拆。
 
 ### 目标结构

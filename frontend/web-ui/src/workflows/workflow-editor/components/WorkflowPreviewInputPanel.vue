@@ -91,37 +91,14 @@ import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { FlowApplicationBinding } from '../types'
-
-type SelectValue = string | number | boolean | null
-
-interface SelectOption {
-  label: string
-  value: SelectValue
-  description?: string
-}
-
-interface PreviewValueField {
-  id: string
-  key: string
-  value: string
-}
-
-interface PreviewInputState {
-  valueFields: PreviewValueField[]
-  file: File | null
-  mediaType: string
-  imageRefTransportKind: 'storage' | 'memory'
-  objectKey: string
-  imageHandle: string
-  plainValue: string
-}
+import type { PreviewInputState, PreviewSelectOption, PreviewSelectValue } from '../preview/useWorkflowPreviewInputs'
 
 defineProps<{
   bindings: FlowApplicationBinding[]
   states: Record<string, PreviewInputState>
   blockingMessages: string[]
   helpText: string
-  imageRefTransportKindOptions: SelectOption[]
+  imageRefTransportKindOptions: PreviewSelectOption[]
   getPayloadTypeId: (binding: FlowApplicationBinding) => string
   readBindingHelpText: (binding: FlowApplicationBinding) => string
 }>()
@@ -129,6 +106,6 @@ defineProps<{
 const emit = defineEmits<{
   'add-value-field': [bindingId: string]
   'remove-value-field': [bindingId: string, fieldId: string]
-  'set-image-ref-transport-kind': [bindingId: string, value: SelectValue]
+  'set-image-ref-transport-kind': [bindingId: string, value: PreviewSelectValue]
 }>()
 </script>
