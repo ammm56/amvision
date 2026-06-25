@@ -242,96 +242,33 @@
             </button>
           </div>
         </div>
-        <div v-if="workflowApp && isNewApp" class="workflow-graph-new-app-panel">
-          <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-            <div>
-              <p>Draft</p>
-              <h2>首次保存</h2>
-            </div>
-            <StatusBadge :tone="newWorkflowAppSaveBlocker ? 'warning' : 'success'">{{ newWorkflowAppSaveBlocker ? '待完成' : '可保存' }}</StatusBadge>
-          </div>
-          <label class="workflow-graph-preview-field">
-            <span>应用名称</span>
-            <input v-model="newWorkflowAppDraft.displayName" placeholder="检测应用" />
-          </label>
-          <label class="workflow-graph-preview-field">
-            <span>应用 id</span>
-            <input v-model="newWorkflowAppDraft.applicationId" placeholder="inspection-app" @change="normalizeNewWorkflowApplicationId" />
-          </label>
-          <label class="workflow-graph-preview-field">
-            <span>图 id</span>
-            <input v-model="newWorkflowAppDraft.graphId" placeholder="inspection-graph" @change="normalizeNewWorkflowGraphId" />
-          </label>
-          <label class="workflow-graph-preview-field">
-            <span>图版本</span>
-            <input v-model="newWorkflowAppDraft.graphVersion" placeholder="1.0.0" @change="normalizeNewWorkflowGraphVersion" />
-          </label>
-          <label class="workflow-graph-preview-field">
-            <span>说明</span>
-            <input v-model="newWorkflowAppDraft.description" placeholder="可选" />
-          </label>
-          <p class="workflow-graph-preview-hint" :class="{ 'workflow-graph-preview-hint--danger': newWorkflowAppSaveBlocker }">
-            {{ newWorkflowAppSaveBlocker || '首次保存会创建应用和图。' }}
-          </p>
-        </div>
-        <div v-if="workflowApp" class="workflow-graph-app-contract">
-          <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-            <h2>应用输入</h2>
-            <StatusBadge tone="info">{{ appInputBindings.length }} / {{ appOutputBindings.length }}</StatusBadge>
-          </div>
-          <section class="workflow-graph-contract-section">
-            <div class="workflow-graph-contract-actions">
-              <Button size="sm" variant="secondary" type="button" @click="addRequestImageRefInput">
-                <Plus :size="14" />
-                request_image_ref
-              </Button>
-              <Button size="sm" variant="secondary" type="button" @click="addRequestImageBase64Input">
-                <Plus :size="14" />
-                request_image_base64
-              </Button>
-            </div>
-            <div v-for="binding in appInputBindings" :key="`contract-input-${binding.binding_id}`" class="workflow-graph-contract-binding">
-              <div>
-                <strong>{{ binding.binding_id }}</strong>
-                <span>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</span>
-              </div>
-              <small>{{ binding.required ? '必填' : '可选' }} / {{ binding.binding_kind }}</small>
-            </div>
-          </section>
-          <section class="workflow-graph-contract-section">
-            <h3>应用输出</h3>
-            <div v-for="binding in appOutputBindings" :key="`contract-output-${binding.binding_id}`" class="workflow-graph-contract-binding">
-              <div>
-                <strong>{{ binding.binding_id }}</strong>
-                <span>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</span>
-              </div>
-              <small>{{ binding.binding_kind }}</small>
-            </div>
-          </section>
-        </div>
+        <WorkflowNewAppDraftPanel
+          v-if="workflowApp && isNewApp"
+          :draft="newWorkflowAppDraft"
+          :save-blocker="newWorkflowAppSaveBlocker"
+          @update-display-name="updateNewWorkflowDraftField('displayName', $event)"
+          @update-application-id="updateNewWorkflowDraftField('applicationId', $event)"
+          @update-graph-id="updateNewWorkflowDraftField('graphId', $event)"
+          @update-graph-version="updateNewWorkflowDraftField('graphVersion', $event)"
+          @update-description="updateNewWorkflowDraftField('description', $event)"
+          @normalize-application-id="normalizeNewWorkflowApplicationId"
+          @normalize-graph-id="normalizeNewWorkflowGraphId"
+          @normalize-graph-version="normalizeNewWorkflowGraphVersion"
+        />
+        <WorkflowAppContractPanel
+          v-if="workflowApp"
+          :input-bindings="appInputBindings"
+          :output-bindings="appOutputBindings"
+          :get-payload-type-id="getBindingPayloadTypeId"
+          @add-request-image-ref="addRequestImageRefInput"
+          @add-request-image-base64="addRequestImageBase64Input"
+        />
         <WorkflowNodeDetailPanel
           v-if="selectedNode"
           :node="selectedNode"
           :read-title="readGraphNodeTitle"
         />
-        <div v-else-if="selectedEdge" class="workflow-graph-inspector-body">
-          <div class="workflow-graph-inspector-row">
-            <span>Edge</span>
-            <strong>{{ selectedEdge.edge_id }}</strong>
-          </div>
-          <div class="workflow-graph-inspector-row">
-            <span>Source</span>
-            <strong>{{ selectedEdge.source_node_id }} / {{ selectedEdge.source_port }}</strong>
-          </div>
-          <div class="workflow-graph-inspector-row">
-            <span>Target</span>
-            <strong>{{ selectedEdge.target_node_id }} / {{ selectedEdge.target_port }}</strong>
-          </div>
-          <Button variant="danger" @click="deleteSelectedEdge">
-            <Trash2 :size="16" />
-            删除连线
-          </Button>
-        </div>
+        <WorkflowEdgeDetailPanel v-else-if="selectedEdge" :edge="selectedEdge" @delete-edge="deleteSelectedEdge" />
         <WorkflowPublicBindingEditorPanel
           v-else-if="selectedBoundaryKind"
           :title="selectedBoundaryTitle"
@@ -346,24 +283,14 @@
           @update-required="updateBindingRequiredFromEvent"
           @delete-binding="deleteApplicationBinding"
         />
-        <div v-else-if="workflowApp" class="workflow-graph-inspector-body">
-          <div class="workflow-graph-inspector-row">
-            <span>应用</span>
-            <strong>{{ workflowApp.applicationDocument.application_id }}</strong>
-          </div>
-          <div class="workflow-graph-inspector-row">
-            <span>应用输入</span>
-            <strong>{{ workflowApp.graphDocument.template_input_ids.join(', ') || t('common.noValue') }}</strong>
-          </div>
-          <div class="workflow-graph-inspector-row">
-            <span>应用输出</span>
-            <strong>{{ workflowApp.graphDocument.template_output_ids.join(', ') || t('common.noValue') }}</strong>
-          </div>
-          <div v-if="lastPreviewRun" class="workflow-graph-inspector-row">
-            <span>Preview run</span>
-            <strong>{{ lastPreviewRun.preview_run_id }} / {{ lastPreviewRun.state }}</strong>
-          </div>
-        </div>
+        <WorkflowApplicationSummaryPanel
+          v-else-if="workflowApp"
+          :application-id="workflowApp.applicationDocument.application_id"
+          :template-input-text="workflowApp.graphDocument.template_input_ids.join(', ')"
+          :template-output-text="workflowApp.graphDocument.template_output_ids.join(', ')"
+          :empty-text="t('common.noValue')"
+          :preview-run-text="lastPreviewRun ? `${lastPreviewRun.preview_run_id} / ${lastPreviewRun.state}` : null"
+        />
         <EmptyState v-else :title="t('workflowEditor.editor.emptyInspectorTitle')" :description="t('workflowEditor.editor.emptyInspectorDescription')" />
 
         <WorkflowPreviewInputPanel
@@ -477,7 +404,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { ArrowLeft, Moon, PanelRightClose, PanelRightOpen, Play, Plus, RefreshCw, Save, Sun, Trash2, Workflow } from '@lucide/vue'
+import { ArrowLeft, Moon, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, Sun, Workflow } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -492,6 +419,10 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowGraphContextMenu from '../components/WorkflowGraphContextMenu.vue'
 import WorkflowGraphMinimap from '../components/WorkflowGraphMinimap.vue'
+import WorkflowAppContractPanel from '../components/WorkflowAppContractPanel.vue'
+import WorkflowApplicationSummaryPanel from '../components/WorkflowApplicationSummaryPanel.vue'
+import WorkflowEdgeDetailPanel from '../components/WorkflowEdgeDetailPanel.vue'
+import WorkflowNewAppDraftPanel from '../components/WorkflowNewAppDraftPanel.vue'
 import WorkflowNodeDetailPanel from '../components/WorkflowNodeDetailPanel.vue'
 import WorkflowNodeParameterWidgets from '../components/WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
@@ -512,6 +443,7 @@ import { useWorkflowPreviewDisplays } from '../preview/useWorkflowPreviewDisplay
 import { previewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
 import { buildPublicPortMetadata, createUniquePublicId, normalizePublicIdentifier, useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
+import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingEditorActions'
 import { useWorkflowBoundaryNodes, type WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { useWorkflowGraphDeletion } from '../graph/useWorkflowGraphDeletion'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
@@ -714,6 +646,34 @@ const {
   templateOutputs,
   renamePreviewInputState,
   removePreviewInputState,
+})
+const {
+  bindingEndpointText,
+  updateBindingIdFromEvent,
+  updateBindingDisplayNameFromEvent,
+  updateBindingKindFromValue,
+  updateBindingRequiredFromEvent,
+  deleteApplicationBinding,
+  deleteContextApplicationBinding,
+  resetContextBoundaryPosition,
+} = useWorkflowBindingEditorActions({
+  applicationBindingsDraft,
+  selectedBoundaryKind,
+  contextMenu,
+  nodePicker,
+  readTemplatePortForBinding,
+  renameApplicationBinding,
+  setBindingDisplayName,
+  updateApplicationBindingRequired,
+  deletePublicApplicationBinding,
+  resetBoundaryPosition,
+  selectApplicationBoundary,
+  setStatusMessage: (message) => {
+    statusMessage.value = message
+  },
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
 })
 const {
   appEntryBoundaryId,
@@ -1137,6 +1097,12 @@ function createNewWorkflowAppDraftState(): NewWorkflowAppDraftState {
   }
 }
 
+function updateNewWorkflowDraftField(field: keyof NewWorkflowAppDraftState, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  newWorkflowAppDraft.value = { ...newWorkflowAppDraft.value, [field]: target.value }
+}
+
 function normalizeNewWorkflowApplicationId(event?: Event): void {
   const normalizedApplicationId = normalizeWorkflowIdentifier(newWorkflowAppDraft.value.applicationId, 'workflow-app')
   newWorkflowAppDraft.value.applicationId = normalizedApplicationId
@@ -1410,10 +1376,6 @@ function nodePortRows(node: GraphNodeView): NodePortRowView[] {
     input: node.inputs[index] ?? null,
     output: node.outputs[index] ?? null,
   }))
-}
-
-function selectValueToString(value: SelectValue): string {
-  return typeof value === 'string' ? value : String(value ?? '')
 }
 
 function isSelectedEdgeEndpoint(nodeId: string, portName: string, direction: PortDirection): boolean {
@@ -1861,76 +1823,8 @@ function createDefaultPublicOutputId(node: GraphNodeView, port: NodePortDefiniti
   return createUniquePublicId(baseValue, new Set(templateOutputs.value.map((output) => output.output_id)))
 }
 
-function bindingEndpointText(binding: FlowApplicationBinding): string {
-  const templatePort = readTemplatePortForBinding(binding)
-  if (!templatePort) return '未找到 template port'
-  if (binding.direction === 'input' && 'target_node_id' in templatePort) return `${templatePort.target_node_id}.${templatePort.target_port}`
-  if (binding.direction === 'output' && 'source_node_id' in templatePort) return `${templatePort.source_node_id}.${templatePort.source_port}`
-  return binding.template_port_id
-}
-
-function updateBindingIdFromEvent(binding: FlowApplicationBinding, event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
-  const oldBindingId = binding.binding_id
-  const nextBindingId = normalizePublicIdentifier(target.value, oldBindingId)
-  if (!renameApplicationBinding(binding, nextBindingId)) {
-    target.value = oldBindingId
-    errorMessage.value = `公开 id 已存在：${nextBindingId}`
-    return
-  }
-  target.value = binding.binding_id
-  statusMessage.value = '已更新公开 id'
-  errorMessage.value = null
-}
-
-function updateBindingDisplayNameFromEvent(binding: FlowApplicationBinding, event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
-  const nextDisplayName = target.value.trim() || binding.binding_id
-  setBindingDisplayName(binding, nextDisplayName)
-  statusMessage.value = '已更新显示名称'
-}
-
-function updateBindingKindFromValue(binding: FlowApplicationBinding, value: SelectValue): void {
-  const fallbackKind = binding.direction === 'input' ? 'api-request' : 'http-response'
-  binding.binding_kind = selectValueToString(value).trim() || fallbackKind
-  statusMessage.value = '已更新 binding kind'
-}
-
 function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue): void {
   updatePreviewImageRefTransportKind(bindingId, value)
-}
-
-function updateBindingRequiredFromEvent(binding: FlowApplicationBinding, event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
-  updateApplicationBindingRequired(binding, target.checked)
-  statusMessage.value = '已更新输入必填状态'
-}
-
-function deleteApplicationBinding(binding: FlowApplicationBinding): void {
-  selectedBoundaryKind.value = deletePublicApplicationBinding(binding)
-  statusMessage.value = '已删除公开接口'
-  errorMessage.value = null
-}
-
-function deleteContextApplicationBinding(): void {
-  const bindingId = contextMenu.value?.bindingId
-  if (!bindingId) return
-  const binding = applicationBindingsDraft.value.find((item) => item.binding_id === bindingId)
-  if (!binding) return
-  deleteApplicationBinding(binding)
-  contextMenu.value = null
-  nodePicker.value = null
-}
-
-function resetContextBoundaryPosition(): void {
-  const boundaryKind = contextMenu.value?.boundaryKind ?? selectedBoundaryKind.value
-  if (!boundaryKind) return
-  resetBoundaryPosition(boundaryKind)
-  selectApplicationBoundary(boundaryKind)
-  statusMessage.value = '已重置边界位置'
 }
 
 function shouldIgnoreStagePointer(target: EventTarget | null): boolean {
