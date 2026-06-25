@@ -98,142 +98,83 @@
         />
       </div>
 
-      <aside v-if="!inspectorCollapsed" class="workflow-graph-floating-panel workflow-graph-inspector-panel" @mousedown.stop @contextmenu.stop>
-        <div class="workflow-graph-panel__header">
-          <div>
-            <h2>{{ t('workflowEditor.editor.inspectorTitle') }}</h2>
-          </div>
-          <div class="workflow-graph-panel__tools">
-            <button
-              type="button"
-              class="workflow-graph-panel__icon-button"
-              :title="t('workflowEditor.editor.hideInspector')"
-              :aria-label="t('workflowEditor.editor.hideInspector')"
-              @click="collapseInspector"
-            >
-              <PanelRightClose :size="15" />
-            </button>
-          </div>
-        </div>
-        <WorkflowNewAppDraftPanel
-          v-if="showNewAppDraftPanel"
-          :draft="newWorkflowAppDraft"
-          :save-blocker="newWorkflowAppSaveBlocker"
-          @update-display-name="updateNewWorkflowDraftField('displayName', $event)"
-          @update-application-id="updateNewWorkflowDraftField('applicationId', $event)"
-          @update-graph-id="updateNewWorkflowDraftField('graphId', $event)"
-          @update-graph-version="updateNewWorkflowDraftField('graphVersion', $event)"
-          @update-description="updateNewWorkflowDraftField('description', $event)"
-          @normalize-application-id="normalizeNewWorkflowApplicationId"
-          @normalize-graph-id="normalizeNewWorkflowGraphId"
-          @normalize-graph-version="normalizeNewWorkflowGraphVersion"
-        />
-        <WorkflowAppContractPanel
-          v-if="showAppContractPanel"
-          :input-bindings="appInputBindings"
-          :output-bindings="appOutputBindings"
-          :get-payload-type-id="getBindingPayloadTypeId"
-          @add-request-image-ref="addRequestImageRefInput"
-          @add-request-image-base64="addRequestImageBase64Input"
-        />
-        <WorkflowNodeDetailPanel
-          v-if="inspectorDetail.kind === 'node'"
-          :node="inspectorDetail.node"
-          :read-title="readGraphNodeTitle"
-        />
-        <WorkflowEdgeDetailPanel v-else-if="inspectorDetail.kind === 'edge'" :edge="inspectorDetail.edge" @delete-edge="deleteSelectedEdge" />
-        <WorkflowPublicBindingEditorPanel
-          v-else-if="inspectorDetail.kind === 'boundary'"
-          :title="inspectorDetail.title"
-          :bindings="inspectorDetail.bindings"
-          :read-endpoint-text="bindingEndpointText"
-          :read-display-name="bindingDisplayName"
-          :read-kind-options="bindingKindSelectOptions"
-          :get-payload-type-id="getBindingPayloadTypeId"
-          @update-binding-id="updateBindingIdFromEvent"
-          @update-display-name="updateBindingDisplayNameFromEvent"
-          @update-kind="updateBindingKindFromValue"
-          @update-required="updateBindingRequiredFromEvent"
-          @delete-binding="deleteApplicationBinding"
-        />
-        <WorkflowApplicationSummaryPanel
-          v-else-if="inspectorDetail.kind === 'application'"
-          :application-id="inspectorDetail.applicationId"
-          :template-input-text="inspectorDetail.templateInputText"
-          :template-output-text="inspectorDetail.templateOutputText"
-          :empty-text="t('common.noValue')"
-          :preview-run-text="inspectorDetail.previewRunText"
-        />
-        <EmptyState v-else :title="t('workflowEditor.editor.emptyInspectorTitle')" :description="t('workflowEditor.editor.emptyInspectorDescription')" />
-
-        <WorkflowPreviewInputPanel
-          v-if="showAppContractPanel"
-          :bindings="previewInputBindings"
-          :states="previewInputState"
-          :blocking-messages="previewBlockingMessages"
-          :help-text="previewHelpText"
-          :image-ref-transport-kind-options="imageRefTransportKindOptions"
-          :get-payload-type-id="getBindingPayloadTypeId"
-          :read-binding-help-text="previewBindingHelpText"
-          @add-value-field="addPreviewValueField"
-          @remove-value-field="removePreviewValueField"
-          @set-image-ref-transport-kind="setPreviewImageRefTransportKind"
-        />
-        <WorkflowPreviewRunResultPanel
-          v-if="lastPreviewRun"
-          :preview-run="lastPreviewRun"
-          :badge-tone="readPreviewRunBadgeTone(lastPreviewRun.state)"
-          :status-label="formatPreviewRunStatusLabel(lastPreviewRun.state)"
-          :created-at-text="formatSystemDateTime(lastPreviewRun.created_at)"
-          :failure-message="lastPreviewFailureMessage"
-          :failure-node-label="lastPreviewFailureNodeLabel"
-          :failure-location="lastPreviewFailureLocation"
-          :failure-detail-message="lastPreviewFailureDetailMessage"
-          :failure-details="lastPreviewFailureDetails"
-          :failure-details-json="lastPreviewFailureDetailsJson"
-          :http-response="lastPreviewHttpResponse"
-          :http-response-body-value="lastPreviewHttpResponseBodyValue"
-          :http-status="lastPreviewHttpStatus"
-          :http-response-json="lastPreviewHttpResponseJson"
-          :http-response-body-json="lastPreviewHttpResponseBodyJson"
-          :has-node-displays="hasPreviewNodeDisplays"
-          @open-json="openPreviewJsonViewer"
-        />
-      </aside>
-      <button
-        v-else
-        type="button"
-        class="workflow-graph-inspector-toggle"
-        :title="t('workflowEditor.editor.showInspector')"
-        :aria-label="t('workflowEditor.editor.showInspector')"
-        @mousedown.stop
-        @click.stop="expandInspector"
-      >
-        <PanelRightOpen :size="16" />
-      </button>
-
-      <WorkflowGraphMinimap
-        :visible="minimapVisible"
-        :nodes="minimapNodes"
-        :viewport-style="minimapViewportStyle"
-        :is-node-selected="isMinimapNodeSelected"
-        @start-navigation="startMinimapNavigation"
-        @toggle="toggleMinimap"
+      <WorkflowInspectorShell
+        :collapsed="inspectorCollapsed"
+        :show-new-app-draft-panel="showNewAppDraftPanel"
+        :new-workflow-app-draft="newWorkflowAppDraft"
+        :new-workflow-app-save-blocker="newWorkflowAppSaveBlocker"
+        :show-app-contract-panel="showAppContractPanel"
+        :app-input-bindings="appInputBindings"
+        :app-output-bindings="appOutputBindings"
+        :inspector-detail="inspectorDetail"
+        :read-graph-node-title="readGraphNodeTitle"
+        :binding-endpoint-text="bindingEndpointText"
+        :binding-display-name="bindingDisplayName"
+        :binding-kind-select-options="bindingKindSelectOptions"
+        :get-binding-payload-type-id="getBindingPayloadTypeId"
+        :preview-input-bindings="previewInputBindings"
+        :preview-input-state="previewInputState"
+        :preview-blocking-messages="previewBlockingMessages"
+        :preview-help-text="previewHelpText"
+        :image-ref-transport-kind-options="imageRefTransportKindOptions"
+        :preview-binding-help-text="previewBindingHelpText"
+        :last-preview-run="lastPreviewRun"
+        :last-preview-failure-message="lastPreviewFailureMessage"
+        :last-preview-failure-node-label="lastPreviewFailureNodeLabel"
+        :last-preview-failure-location="lastPreviewFailureLocation"
+        :last-preview-failure-detail-message="lastPreviewFailureDetailMessage"
+        :last-preview-failure-details="lastPreviewFailureDetails"
+        :last-preview-failure-details-json="lastPreviewFailureDetailsJson"
+        :last-preview-http-response="lastPreviewHttpResponse"
+        :last-preview-http-response-body-value="lastPreviewHttpResponseBodyValue"
+        :last-preview-http-status="lastPreviewHttpStatus"
+        :last-preview-http-response-json="lastPreviewHttpResponseJson"
+        :last-preview-http-response-body-json="lastPreviewHttpResponseBodyJson"
+        :has-preview-node-displays="hasPreviewNodeDisplays"
+        @collapse="collapseInspector"
+        @expand="expandInspector"
+        @update-new-app-display-name="updateNewWorkflowDraftField('displayName', $event)"
+        @update-new-app-application-id="updateNewWorkflowDraftField('applicationId', $event)"
+        @update-new-app-graph-id="updateNewWorkflowDraftField('graphId', $event)"
+        @update-new-app-graph-version="updateNewWorkflowDraftField('graphVersion', $event)"
+        @update-new-app-description="updateNewWorkflowDraftField('description', $event)"
+        @normalize-new-app-application-id="normalizeNewWorkflowApplicationId"
+        @normalize-new-app-graph-id="normalizeNewWorkflowGraphId"
+        @normalize-new-app-graph-version="normalizeNewWorkflowGraphVersion"
+        @add-request-image-ref="addRequestImageRefInput"
+        @add-request-image-base64="addRequestImageBase64Input"
+        @delete-selected-edge="deleteSelectedEdge"
+        @update-binding-id="updateBindingIdFromEvent"
+        @update-binding-display-name="updateBindingDisplayNameFromEvent"
+        @update-binding-kind="updateBindingKindFromValue"
+        @update-binding-required="updateBindingRequiredFromEvent"
+        @delete-application-binding="deleteApplicationBinding"
+        @add-preview-value-field="addPreviewValueField"
+        @remove-preview-value-field="removePreviewValueField"
+        @set-preview-image-ref-transport-kind="setPreviewImageRefTransportKind"
+        @open-preview-json="openPreviewJsonViewer"
       />
 
-      <WorkflowGraphContextMenu
-        v-if="contextMenu"
-        :context-menu="contextMenu"
-        :menu-style="contextMenuStyle"
+      <WorkflowGraphOverlayLayer
         :minimap-visible="minimapVisible"
+        :minimap-nodes="minimapNodes"
+        :minimap-viewport-style="minimapViewportStyle"
+        :is-minimap-node-selected="isMinimapNodeSelected"
+        :context-menu="contextMenu"
+        :context-menu-style="contextMenuStyle"
         :graph-theme="graphTheme"
         :save-disabled="saveDisabled"
         :preview-disabled="previewDisabled"
-        :add-node-label="t('workflowEditor.nodePicker.addNode')"
-        :light-label="t('preferences.light')"
-        :dark-label="t('preferences.dark')"
-        :save-label="t('workflowEditor.actions.saveWorkflowApp')"
-        :preview-label="t('workflowEditor.actions.previewRun')"
+        :node-picker="nodePicker"
+        :node-picker-definitions="nodePickerDefinitions"
+        :node-picker-title="nodePickerTitle"
+        :node-picker-required-port-direction="nodePickerRequiredPortDirection"
+        :node-picker-required-payload-type-id="nodePickerRequiredPayloadTypeId"
+        :loading="loading"
+        :node-count="graphNodes.length"
+        :is-new-app="isNewApp"
+        @start-minimap-navigation="startMinimapNavigation"
+        @toggle-minimap="toggleMinimap"
         @open-node-picker="openNodePickerFromContextMenu"
         @expose-app-input="exposeContextPortAsAppInput"
         @expose-app-output="exposeContextPortAsAppOutput"
@@ -243,27 +184,12 @@
         @reset-boundary-position="resetContextBoundaryPosition"
         @fit-view="fitView"
         @reset-view="resetView"
-        @toggle-minimap="toggleMinimap"
         @toggle-theme="toggleGraphTheme"
         @save="saveCurrentWorkflowApp"
         @preview="runPreview"
+        @select-node-from-picker="selectNodeFromPicker"
+        @close-node-picker="closeNodePicker"
       />
-
-      <WorkflowNodePicker
-        v-if="nodePicker"
-        :open="Boolean(nodePicker)"
-        :x="nodePicker.x"
-        :y="nodePicker.y"
-        :definitions="nodePickerDefinitions"
-        :mode="nodePicker.mode"
-        :title="nodePickerTitle"
-        :required-port-direction="nodePickerRequiredPortDirection"
-        :required-payload-type-id="nodePickerRequiredPayloadTypeId"
-        @select="selectNodeFromPicker"
-        @close="closeNodePicker"
-      />
-
-      <WorkflowCanvasEmptyState :loading="loading" :node-count="graphNodes.length" :is-new-app="isNewApp" />
     </div>
     <WorkflowPreviewViewers
       :image="activeImageViewer"
@@ -278,32 +204,19 @@
 
 <script setup lang="ts">
 import { computed, ref, shallowRef } from 'vue'
-import { PanelRightClose, PanelRightOpen } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
-import { formatSystemDateTime } from '@/shared/formatters/date-time'
-import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
-import WorkflowCanvasEmptyState from '../components/WorkflowCanvasEmptyState.vue'
-import WorkflowGraphContextMenu from '../components/WorkflowGraphContextMenu.vue'
 import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
-import WorkflowGraphMinimap from '../components/WorkflowGraphMinimap.vue'
 import WorkflowGraphNodeLayer from '../components/WorkflowGraphNodeLayer.vue'
+import WorkflowGraphOverlayLayer from '../components/WorkflowGraphOverlayLayer.vue'
 import WorkflowGraphToolbar from '../components/WorkflowGraphToolbar.vue'
-import WorkflowAppContractPanel from '../components/WorkflowAppContractPanel.vue'
-import WorkflowApplicationSummaryPanel from '../components/WorkflowApplicationSummaryPanel.vue'
-import WorkflowEdgeDetailPanel from '../components/WorkflowEdgeDetailPanel.vue'
-import WorkflowNewAppDraftPanel from '../components/WorkflowNewAppDraftPanel.vue'
-import WorkflowNodeDetailPanel from '../components/WorkflowNodeDetailPanel.vue'
-import WorkflowNodePicker from '../components/WorkflowNodePicker.vue'
-import WorkflowPublicBindingEditorPanel from '../components/WorkflowPublicBindingEditorPanel.vue'
-import WorkflowPreviewInputPanel from '../components/WorkflowPreviewInputPanel.vue'
-import WorkflowPreviewRunResultPanel from '../components/WorkflowPreviewRunResultPanel.vue'
+import WorkflowInspectorShell from '../components/WorkflowInspectorShell.vue'
 import WorkflowPreviewViewers from '../components/WorkflowPreviewViewers.vue'
 import { useWorkflowCanvasPan } from '../canvas/useWorkflowCanvasPan'
 import { useWorkflowCanvasViewport } from '../canvas/useWorkflowCanvasViewport'

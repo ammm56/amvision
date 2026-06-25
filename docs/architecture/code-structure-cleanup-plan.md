@@ -718,7 +718,7 @@ custom_nodes/sam3_segment_nodes/backend/
 - models 组件层当前包括训练表单、转换表单、训练任务列表、转换任务列表，并继续复用基础模型选择面板和 DatasetExport 选择面板。
 - models composable 层当前包括训练/转换任务列表、基础模型选择、DatasetExport 选择、训练参数、训练提交状态和转换提交状态。
 - `WorkflowEditorPage.vue` 已进入第二轮拆分。
-- workflow editor 组件层当前新增 graph toolbar、graph links layer、boundary node layer、graph node layer、canvas 空状态、节点参数控件、节点预览展示、viewer 组装、节点详情面板、Preview 输入面板、运行结果面板、公开接口编辑面板、新建应用草稿面板、应用接口摘要、edge 详情、应用摘要、context menu 和 minimap。
+- workflow editor 组件层当前新增 graph toolbar、graph links layer、boundary node layer、graph node layer、inspector shell、graph overlay layer、canvas 空状态、节点参数控件、节点预览展示、viewer 组装、节点详情面板、Preview 输入面板、运行结果面板、公开接口编辑面板、新建应用草稿面板、应用接口摘要、edge 详情、应用摘要、context menu 和 minimap。
 - workflow editor Preview 展示层当前新增 `preview/useWorkflowPreviewDisplays.ts`，用于收口 Preview 输出解析、图片 artifact 读取、object URL 回收、表格/JSON/图片 viewer 状态、打开逻辑和关闭逻辑。
 - workflow editor Preview 输入层当前新增 `preview/useWorkflowPreviewInputs.ts`，用于收口 Preview 输入状态、value 字段增删、image-ref 来源切换、binding 状态同步和 input payload 构建。
 - workflow editor Preview 校验层当前新增 `preview/useWorkflowPreviewValidation.ts`，用于收口 Preview Run 输入阻塞信息、HTTP response 展示、失败详情解析和状态 badge 口径。
@@ -751,15 +751,16 @@ custom_nodes/sam3_segment_nodes/backend/
 - workflow editor 画布层当前新增 `canvas/useWorkflowCanvasViewport.ts`、`canvas/useWorkflowCanvasPan.ts`、`canvas/useWorkflowPortConnections.ts`、`canvas/useWorkflowConnectionInteractions.ts`、`canvas/useWorkflowNodeDrag.ts`、`canvas/useWorkflowEdgeHandles.ts` 和 `canvas/useWorkflowBoundaryDrag.ts`，分别收口 viewport/zoom/fit/reset/minimap 导航、stage pan、端口连线草稿、端口/edge 重连入口、节点拖拽、edge 中点/重连 handle、边界节点拖拽状态和 document mouse 监听。
 - workflow editor 画布事件过滤层当前新增 `canvas/useWorkflowStageGuards.ts`，用于收口 stage pointer / wheel 的忽略目标规则。
 - workflow editor Preview 输入辅助层当前新增 `preview/useWorkflowPreviewInputHelpers.ts`，用于收口 Preview binding 帮助文本和 Preview input payload 构建前置阻塞检查。
-- workflow editor 页面层仍保留主流程组合、节点编辑入口和主要面板布局；文档加载刷新、文档组装、新建应用 draft、node view 构建、node display helper、node picker、context menu、连接规则、选择状态、公开接口 binding、binding 编辑动作、boundary 视图、boundary node layer、graph node layer、节点删除、Preview 输入辅助、Preview 校验、preflight、参数处理、几何绘制、request image 快捷编排、保存/运行主编排、keyboard/theme、生命周期、toolbar 状态、toolbar action 组装、graph links layer、canvas 空状态、viewer open/close、inspector 折叠、inspector 详情视图模型、graph panel 小状态、画布 viewport/minimap、stage guard、节点拖拽、端口/edge 连接入口和 edge handle 已拆到专题 composable 或组件。
+- workflow editor 页面层仍保留主流程组合、节点编辑入口和顶层布局装配；文档加载刷新、文档组装、新建应用 draft、node view 构建、node display helper、node picker、context menu、连接规则、选择状态、公开接口 binding、binding 编辑动作、boundary 视图、boundary node layer、graph node layer、节点删除、Preview 输入辅助、Preview 校验、preflight、参数处理、几何绘制、request image 快捷编排、保存/运行主编排、keyboard/theme、生命周期、toolbar 状态、toolbar action 组装、graph links layer、canvas 空状态、viewer open/close、inspector shell、overlay layer、inspector 折叠、inspector 详情视图模型、graph panel 小状态、画布 viewport/minimap、stage guard、节点拖拽、端口/edge 连接入口和 edge handle 已拆到专题 composable 或组件。
 - 已运行 `npm run typecheck` 和 `npm run build`。
 - 已用本地 Vite + Edge / Playwright 做 `/datasets` 真实渲染检查：导入/导出表单、导入/导出记录、DatasetVersion 选择面板和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/datasets-desktop.png` 和 `.tmp/datasets-mobile.png`。
 - 已用本地构建产物 + Playwright + mock API 做 `/models` 真实渲染检查：基础模型选择面板、DatasetExport 选择面板、训练表单、转换表单、桌面布局和 390px 窄屏布局均无横向溢出。截图记录在 `.tmp/models-desktop.png` 和 `.tmp/models-mobile.png`。
 - 已用本地构建产物 + mock API 做 `/workflows/graph/new` 真实渲染检查：桌面和 390px 窄屏下均无工作流错误提示、无横向溢出，工具栏、画布、属性面板和 Preview 输入面板均可见；浏览器全页截图接口在画布页超时，本轮以 DOM 布局检查记录结果。
+- 本轮新增 workflow editor inspector shell 和 graph overlay layer 后，已用本地构建产物 + mock API 复查 `/workflows/graph/new`：桌面和 390px 窄屏下画布、工具栏、属性面板和 overlay 均可见，无横向溢出、无 console error 和 page error。
 
 ### 当前问题
 
-- `WorkflowEditorPage.vue` 仍较大，后续继续拆 graph panel 小交互、inspector/overlay shell 和少量页面级组合逻辑。
+- `WorkflowEditorPage.vue` 已收成页面布局、主流程组合和少量 glue code；后续不再按文件体量继续拆，只有在真实交互、渲染或维护边界出现具体问题时再做定点拆分。
 - `litegraph` 目录是图编辑器内核，体量大但不属于普通业务页面，不和业务页面一起拆。
 
 ### 目标结构
