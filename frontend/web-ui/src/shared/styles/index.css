@@ -2448,6 +2448,35 @@ a:hover {
   opacity: 0.52;
 }
 
+@media (max-width: 720px) {
+  .workflow-graph-toolbar {
+    grid-template-columns: max-content max-content max-content;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 10px;
+    scrollbar-width: thin;
+  }
+
+  .workflow-graph-toolbar__title,
+  .workflow-graph-toolbar__actions,
+  .workflow-graph-toolbar__meta {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+
+  .workflow-graph-toolbar__title h1 {
+    max-width: 140px;
+  }
+
+  .workflow-graph-toolbar__back,
+  .workflow-graph-toolbar__meta span,
+  .workflow-graph-toolbar .ui-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
 .workflow-graph-stage {
   position: relative;
   min-height: 0;
