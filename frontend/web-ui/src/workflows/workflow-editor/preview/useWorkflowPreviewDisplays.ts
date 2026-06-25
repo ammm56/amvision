@@ -95,7 +95,7 @@ export function useWorkflowPreviewDisplays() {
     }
     previewImageObjectUrls = []
     previewNodeDisplays.value = {}
-    activeImageViewer.value = null
+    closeImageViewer()
   }
 
   function getPreviewNodeDisplay(nodeId: string): PreviewNodeDisplay | null {
@@ -161,6 +161,18 @@ export function useWorkflowPreviewDisplays() {
     openImageViewer(display?.image ?? null)
   }
 
+  function closeImageViewer(): void {
+    activeImageViewer.value = null
+  }
+
+  function closePreviewTableViewer(): void {
+    activePreviewTable.value = null
+  }
+
+  function closePreviewJsonViewer(): void {
+    activePreviewJson.value = null
+  }
+
   return {
     previewNodeDisplays,
     activeImageViewer,
@@ -174,6 +186,9 @@ export function useWorkflowPreviewDisplays() {
     openPreviewDisplayViewer,
     openImageViewer,
     openPreviewJsonViewer,
+    closeImageViewer,
+    closePreviewTableViewer,
+    closePreviewJsonViewer,
   }
 }
 

@@ -1,42 +1,22 @@
 <template>
   <section class="workflow-graph-workbench" :class="`workflow-graph-workbench--${graphTheme}`">
-    <header class="workflow-graph-toolbar">
-      <div class="workflow-graph-toolbar__title">
-        <RouterLink to="/workflows/apps" class="workflow-graph-toolbar__back">
-          <ArrowLeft :size="16" />
-          {{ t('workflowEditor.actions.backToApps') }}
-        </RouterLink>
-        <div>
-          <h1>{{ editorTitle }}</h1>
-        </div>
-      </div>
-      <div class="workflow-graph-toolbar__meta">
-        <span>{{ t('workflowEditor.fields.nodeCount') }} {{ graphNodes.length }}</span>
-        <span>{{ t('workflowEditor.fields.edgeCount') }} {{ graphLinks.length }}</span>
-        <span v-if="workflowApp?.primaryRuntime?.observed_state">{{ workflowApp.primaryRuntime.observed_state }}</span>
-        <StatusBadge v-if="lastPreviewRun" :tone="readPreviewRunBadgeTone(lastPreviewRun.state)">{{ formatPreviewRunStatusLabel(lastPreviewRun.state) }}</StatusBadge>
-        <span v-if="toolbarStatusMessage">{{ toolbarStatusMessage }}</span>
-      </div>
-      <div class="workflow-graph-toolbar__actions">
-        <Button variant="secondary" :disabled="loading" @click="loadPage">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
-        </Button>
-        <Button variant="secondary" @click="toggleGraphTheme">
-          <Sun v-if="graphTheme === 'dark'" :size="16" />
-          <Moon v-else :size="16" />
-          {{ graphTheme === 'dark' ? t('preferences.light') : t('preferences.dark') }}
-        </Button>
-        <Button variant="secondary" :disabled="previewDisabled" @click="runPreview">
-          <Play :size="16" />
-          {{ t('workflowEditor.actions.previewRun') }}
-        </Button>
-        <Button variant="primary" :disabled="saveDisabled" @click="saveCurrentWorkflowApp">
-          <Save :size="16" />
-          {{ t('workflowEditor.actions.saveWorkflowApp') }}
-        </Button>
-      </div>
-    </header>
+    <WorkflowGraphToolbar
+      :editor-title="editorTitle"
+      :node-count="graphNodes.length"
+      :edge-count="graphLinks.length"
+      :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
+      :preview-run-label="lastPreviewRun ? formatPreviewRunStatusLabel(lastPreviewRun.state) : null"
+      :preview-run-tone="lastPreviewRun ? readPreviewRunBadgeTone(lastPreviewRun.state) : 'neutral'"
+      :status-message="toolbarStatusMessage"
+      :loading="loading"
+      :graph-theme="graphTheme"
+      :preview-disabled="previewDisabled"
+      :save-disabled="saveDisabled"
+      @refresh="loadPage"
+      @toggle-theme="toggleGraphTheme"
+      @preview="runPreview"
+      @save="saveCurrentWorkflowApp"
+    />
 
     <div
       ref="canvasRef"
@@ -390,35 +370,35 @@
         @close="closeNodePicker"
       />
 
-      <div v-if="!loading && graphNodes.length === 0" class="workflow-graph-empty">
-        <Workflow :size="42" />
-        <strong>{{ t('workflowEditor.editor.canvasPlaceholderTitle') }}</strong>
-        <span>{{ isNewApp ? '右键画布添加节点，至少添加一个节点后可以首次保存应用。' : t('workflowEditor.editor.canvasPlaceholderDescription') }}</span>
-      </div>
+      <WorkflowCanvasEmptyState :loading="loading" :node-count="graphNodes.length" :is-new-app="isNewApp" />
     </div>
-    <ImageViewer :open="Boolean(activeImageViewer)" :image="activeImageViewer" @close="activeImageViewer = null" />
-    <WorkflowPreviewTableViewer :open="Boolean(activePreviewTable)" :table="activePreviewTable" @close="activePreviewTable = null" />
-    <WorkflowPreviewJsonViewer :open="Boolean(activePreviewJson)" :viewer="activePreviewJson" @close="activePreviewJson = null" />
+    <WorkflowPreviewViewers
+      :image="activeImageViewer"
+      :table="activePreviewTable"
+      :json="activePreviewJson"
+      @close-image="closeImageViewer"
+      @close-table="closePreviewTableViewer"
+      @close-json="closePreviewJsonViewer"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { ArrowLeft, Moon, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, Sun, Workflow } from '@lucide/vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, ref, shallowRef } from 'vue'
+import { PanelRightClose, PanelRightOpen } from '@lucide/vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
-import Button from '@/shared/ui/components/Button.vue'
-import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowCanvasEmptyState from '../components/WorkflowCanvasEmptyState.vue'
 import WorkflowGraphContextMenu from '../components/WorkflowGraphContextMenu.vue'
 import WorkflowGraphMinimap from '../components/WorkflowGraphMinimap.vue'
+import WorkflowGraphToolbar from '../components/WorkflowGraphToolbar.vue'
 import WorkflowAppContractPanel from '../components/WorkflowAppContractPanel.vue'
 import WorkflowApplicationSummaryPanel from '../components/WorkflowApplicationSummaryPanel.vue'
 import WorkflowEdgeDetailPanel from '../components/WorkflowEdgeDetailPanel.vue'
@@ -430,8 +410,7 @@ import WorkflowNodePreviewDisplay from '../components/WorkflowNodePreviewDisplay
 import WorkflowPublicBindingEditorPanel from '../components/WorkflowPublicBindingEditorPanel.vue'
 import WorkflowPreviewInputPanel from '../components/WorkflowPreviewInputPanel.vue'
 import WorkflowPreviewRunResultPanel from '../components/WorkflowPreviewRunResultPanel.vue'
-import WorkflowPreviewJsonViewer from '../components/WorkflowPreviewJsonViewer.vue'
-import WorkflowPreviewTableViewer from '../components/WorkflowPreviewTableViewer.vue'
+import WorkflowPreviewViewers from '../components/WorkflowPreviewViewers.vue'
 import { useWorkflowCanvasPan } from '../canvas/useWorkflowCanvasPan'
 import { useWorkflowCanvasViewport } from '../canvas/useWorkflowCanvasViewport'
 import { useWorkflowBoundaryDrag } from '../canvas/useWorkflowBoundaryDrag'
@@ -439,25 +418,31 @@ import { useWorkflowConnectionInteractions } from '../canvas/useWorkflowConnecti
 import { useWorkflowEdgeHandles } from '../canvas/useWorkflowEdgeHandles'
 import { useWorkflowNodeDrag } from '../canvas/useWorkflowNodeDrag'
 import { useWorkflowPortConnections } from '../canvas/useWorkflowPortConnections'
+import { useWorkflowStageGuards } from '../canvas/useWorkflowStageGuards'
 import type { WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-adapter'
-import { type WorkflowCanvasGraphSnapshot } from '../canvas/graph-engine/workflow-graph-conversion'
 import { useWorkflowConnectionRules } from '../connections/useWorkflowConnectionRules'
 import { useWorkflowContextMenu, type WorkflowContextMenuState } from '../context/useWorkflowContextMenu'
 import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
 import { useWorkflowPreviewDisplays } from '../preview/useWorkflowPreviewDisplays'
+import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
 import { previewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
+import { useWorkflowDocumentBuilder } from '../documents/useWorkflowDocumentBuilder'
 import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
 import { useWorkflowNewAppDraft } from '../documents/useWorkflowNewAppDraft'
+import { useWorkflowGraphPanelState } from '../panels/useWorkflowGraphPanelState'
 import { useWorkflowInspectorPanel } from '../panels/useWorkflowInspectorPanel'
 import { useWorkflowInspectorViewModel } from '../panels/useWorkflowInspectorViewModel'
 import { useWorkflowEditorKeyboard } from '../shell/useWorkflowEditorKeyboard'
+import { useWorkflowEditorLifecycle } from '../shell/useWorkflowEditorLifecycle'
 import { useWorkflowGraphTheme } from '../shell/useWorkflowGraphTheme'
+import { useWorkflowToolbarStatus } from '../shell/useWorkflowToolbarStatus'
 import { useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingEditorActions'
 import { useWorkflowBoundaryNodes, type WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { useWorkflowGraphDeletion } from '../graph/useWorkflowGraphDeletion'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
+import { useWorkflowNodeDisplayHelpers } from '../nodes/useWorkflowNodeDisplayHelpers'
 import { useWorkflowGraphNodeViews, type WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import { useWorkflowNodePicker } from '../nodes/useWorkflowNodePicker'
 import {
@@ -470,9 +455,8 @@ import { useWorkflowEditorActions } from '../actions/useWorkflowEditorActions'
 import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedback'
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
-import { resolveNodeDefinitionDisplayName, resolveNodeParameterDisplayName, resolveNodePortDisplayName } from '../node-definition-localization'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
-import type { FlowApplication, FlowApplicationBinding, NodeParameterUiField, NodePortDefinition, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
+import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
 type SelectValue = WorkflowNodeParameterSelectValue
@@ -482,12 +466,6 @@ type GraphNodeView = WorkflowGraphNodeView
 type ContextMenuState = WorkflowContextMenuState<AppBoundaryKind>
 
 type AppBoundaryNodeView = WorkflowBoundaryNodeView
-
-interface NodePortRowView {
-  key: string
-  input: NodePortDefinition | null
-  output: NodePortDefinition | null
-}
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -524,10 +502,22 @@ const contextMenu = ref<ContextMenuState | null>(null)
 const complexParameterDrafts = ref<Record<string, string>>({})
 const canvasRef = ref<HTMLElement | null>(null)
 const {
+  shouldIgnoreStagePointer,
+  shouldIgnoreStageWheelTarget,
+} = useWorkflowStageGuards()
+const {
   inspectorCollapsed,
   collapseInspector,
   expandInspector,
 } = useWorkflowInspectorPanel()
+const {
+  readGraphNodeTitle,
+  readNodePortLabel,
+  readNodeParameterLabel,
+  nodePortRows,
+} = useWorkflowNodeDisplayHelpers({
+  currentLocale,
+})
 const {
   graphTheme,
   toggleGraphTheme,
@@ -646,6 +636,9 @@ const {
   openPreviewDisplayViewer,
   openImageViewer,
   openPreviewJsonViewer,
+  closeImageViewer,
+  closePreviewTableViewer,
+  closePreviewJsonViewer,
 } = useWorkflowPreviewDisplays()
 const {
   previewInputState,
@@ -761,6 +754,19 @@ const {
   appOutputBindings,
   templateInputById,
   templateOutputById,
+})
+const {
+  selectBoundaryBinding,
+  isMinimapNodeSelected,
+} = useWorkflowGraphPanelState({
+  selectedNodeId,
+  selectedBoundaryKind,
+  appEntryBoundaryId,
+  appResultBoundaryId,
+  selectApplicationBoundary,
+  setStatusMessage: (message) => {
+    statusMessage.value = message
+  },
 })
 const {
   portsCanConnect,
@@ -892,7 +898,6 @@ const {
   },
 })
 const liteGraphAdapter = shallowRef<WorkflowLiteGraphAdapter | null>(null)
-let resizeObserver: ResizeObserver | null = null
 
 const graphNodeHeaderHeight = 60
 const graphPortRowHeight = 30
@@ -939,6 +944,21 @@ const {
   isNewApp,
   selectedProjectId,
   readNodeCount: () => graphNodes.value.length,
+})
+const {
+  buildCurrentTemplate,
+  buildCurrentApplication,
+} = useWorkflowDocumentBuilder<GraphNodeView>({
+  workflowApp,
+  graphNodes,
+  graphEdges,
+  templateInputs,
+  templateOutputs,
+  applicationBindingsDraft,
+  liteGraphAdapter,
+  applyNewWorkflowTemplateSettings,
+  buildNewWorkflowApplicationPatch,
+  writeBoundaryPositionsToMetadata,
 })
 const {
   runWorkflowPreflight,
@@ -1161,28 +1181,6 @@ const {
   setActionError,
   setActionStatus,
 })
-const {
-  saveCurrentWorkflowApp,
-  runPreview,
-} = useWorkflowSaveRunOrchestration({
-  workflowApp,
-  isNewApp,
-  selectedProjectId,
-  readNewWorkflowAppSaveBlocker,
-  buildCurrentTemplate,
-  buildCurrentApplication,
-  runWorkflowPreflight,
-  applyWorkflowValidationIssue,
-  buildPreviewInputBindings,
-  saveWorkflowDocument,
-  runWorkflowPreview,
-  applyWorkflowSaveFeedback,
-  applyPreviewRunFeedback,
-  clearActionMessages,
-  revokePreviewImageObjectUrls,
-  setActionError,
-  clearContextMenu,
-})
 const previewInputBindings = computed(() => appInputBindings.value)
 const previewAlternativeImageBindingIds = computed(() => {
   const metadata = workflowApp.value?.applicationDocument.application.metadata ?? {}
@@ -1215,48 +1213,48 @@ const {
   previewAlternativeImageBindingIds,
   hasPreviewBindingValue,
 })
-const toolbarStatusMessage = computed(() => {
-  const message = statusMessage.value?.trim()
-  if (!message) return null
-  if (lastPreviewRun.value && message === formatPreviewRunStatusLabel(lastPreviewRun.value.state)) return null
-  return message
+const {
+  previewBindingHelpText,
+  buildPreviewInputBindings,
+} = useWorkflowPreviewInputHelpers({
+  previewInputBindings,
+  previewBlockingMessages,
+  getBindingPayloadTypeId,
+  buildPreviewInputBindingsPayload,
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
 })
-
-function selectBoundaryBinding(kind: 'entry' | 'result', binding: FlowApplicationBinding): void {
-  selectApplicationBoundary(kind)
-  statusMessage.value = `已选择 ${binding.binding_id}`
-}
+const {
+  saveCurrentWorkflowApp,
+  runPreview,
+} = useWorkflowSaveRunOrchestration({
+  workflowApp,
+  isNewApp,
+  selectedProjectId,
+  readNewWorkflowAppSaveBlocker,
+  buildCurrentTemplate,
+  buildCurrentApplication,
+  runWorkflowPreflight,
+  applyWorkflowValidationIssue,
+  buildPreviewInputBindings,
+  saveWorkflowDocument,
+  runWorkflowPreview,
+  applyWorkflowSaveFeedback,
+  applyPreviewRunFeedback,
+  clearActionMessages,
+  revokePreviewImageObjectUrls,
+  setActionError,
+  clearContextMenu,
+})
+const { toolbarStatusMessage } = useWorkflowToolbarStatus({
+  statusMessage,
+  lastPreviewRun,
+  formatPreviewRunStatusLabel,
+})
 
 function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
   return readPublicBindingPayloadTypeId(binding)
-}
-
-function readGraphNodeTitle(node: GraphNodeView): string {
-  return node.definition ? resolveNodeDefinitionDisplayName(node.definition, currentLocale.value) : node.title
-}
-
-function readNodePortLabel(port: NodePortDefinition): string {
-  return resolveNodePortDisplayName(port, currentLocale.value) || port.name
-}
-
-function readNodeParameterLabel(field: NodeParameterUiField): string {
-  return resolveNodeParameterDisplayName(field, currentLocale.value) || field.parameter_name
-}
-
-function nodePortRows(node: GraphNodeView): NodePortRowView[] {
-  const rowCount = Math.max(node.inputs.length, node.outputs.length)
-  return Array.from({ length: rowCount }, (_, index) => ({
-    key: `${node.node.node_id}-port-row-${index}`,
-    input: node.inputs[index] ?? null,
-    output: node.outputs[index] ?? null,
-  }))
-}
-
-function isMinimapNodeSelected(nodeId: string): boolean {
-  if (selectedNodeId.value === nodeId) return true
-  if (selectedBoundaryKind.value === 'entry') return nodeId === appEntryBoundaryId
-  if (selectedBoundaryKind.value === 'result') return nodeId === appResultBoundaryId
-  return false
 }
 
 function clampNumber(value: number, minValue: number, maxValue: number): number {
@@ -1267,90 +1265,16 @@ function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue):
   updatePreviewImageRefTransportKind(bindingId, value)
 }
 
-function shouldIgnoreStagePointer(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('.workflow-graph-node, .workflow-graph-boundary-node, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-node-picker, .workflow-graph-link, .workflow-graph-link-hit-area, .workflow-graph-link-handle, .workflow-graph-port'))
-}
-
-function shouldIgnoreStageWheelTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('input, textarea, select, button, .workflow-graph-floating-panel, .workflow-graph-minimap, .workflow-graph-minimap-toggle, .workflow-graph-context-menu, .workflow-node-picker, .image-viewer'))
-}
-
-function previewBindingHelpText(binding: FlowApplicationBinding): string {
-  const payloadTypeId = getBindingPayloadTypeId(binding) || 'unknown'
-  const requiredText = binding.required ? '必填输入' : '可选输入'
-  if (payloadTypeId === 'image-base64.v1') return `${requiredText}。选择图片文件后会自动转换为 image-base64 payload。`
-  if (payloadTypeId === 'image-ref.v1') return `${requiredText}。可填写 ObjectStore object_key，或填写运行内存 image_handle。`
-  if (payloadTypeId === 'value.v1') return `${requiredText}。按字段名和值提交 value payload。`
-  return `${requiredText}。payload type: ${payloadTypeId}。`
-}
-
-async function buildPreviewInputBindings(): Promise<Record<string, unknown> | null> {
-  if (previewBlockingMessages.value.length > 0) {
-    errorMessage.value = previewBlockingMessages.value.join('；')
-    return null
-  }
-  return buildPreviewInputBindingsPayload(previewInputBindings.value)
-}
-
-function createCanvasSnapshot(): WorkflowCanvasGraphSnapshot {
-  return {
-    nodes: graphNodes.value.map((node) => ({
-      node_id: node.node.node_id,
-      node_type_id: node.node.node_type_id,
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      parameters: { ...node.node.parameters },
-      metadata: { ...node.node.metadata },
-      ui_state: { ...node.node.ui_state, x: node.x, y: node.y, width: node.width },
-    })),
-    edges: graphEdges.value.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
-    template_inputs: templateInputs.value.map((input) => ({ ...input, metadata: { ...input.metadata } })),
-    template_outputs: templateOutputs.value.map((output) => ({ ...output, metadata: { ...output.metadata } })),
-  }
-}
-
-function buildCurrentTemplate() {
-  const sourceTemplate = workflowApp.value?.graphDocument.template
-  if (!sourceTemplate) return null
-  const snapshot = createCanvasSnapshot()
-  const template = liteGraphAdapter.value?.exportTemplate(sourceTemplate, snapshot) ?? sourceTemplate
-  return applyNewWorkflowTemplateSettings(template)
-}
-
-function buildCurrentApplication(template: ReturnType<typeof buildCurrentTemplate>): FlowApplication | null {
-  const sourceApplication = workflowApp.value?.applicationDocument.application
-  if (!sourceApplication || !template) return null
-  return {
-    ...buildNewWorkflowApplicationPatch(sourceApplication, template),
-    bindings: applicationBindingsDraft.value.map((binding) => ({
-      ...binding,
-      config: { ...binding.config },
-      metadata: { ...binding.metadata },
-    })),
-    metadata: writeBoundaryPositionsToMetadata(sourceApplication.metadata),
-  }
-}
-
-onMounted(() => {
-  loadPage()
-  window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('resize', updateStageSize)
-  if (typeof ResizeObserver !== 'undefined' && canvasRef.value) {
-    resizeObserver = new ResizeObserver(updateStageSize)
-    resizeObserver.observe(canvasRef.value)
-  }
-})
-
-onUnmounted(() => {
-  stopNodeDrag()
-  stopBoundaryDrag()
-  stopPortConnection()
-  stopStagePan()
-  stopMinimapNavigation()
-  revokePreviewImageObjectUrls()
-  window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('resize', updateStageSize)
-  resizeObserver?.disconnect()
+useWorkflowEditorLifecycle({
+  canvasRef,
+  loadPage,
+  handleKeydown,
+  updateStageSize,
+  stopNodeDrag,
+  stopBoundaryDrag,
+  stopPortConnection,
+  stopStagePan,
+  stopMinimapNavigation,
+  revokePreviewImageObjectUrls,
 })
 </script>
