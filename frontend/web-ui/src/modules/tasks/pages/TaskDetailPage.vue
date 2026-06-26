@@ -27,14 +27,6 @@
 
     <div v-else-if="taskStore.selectedTask" class="detail-layout">
       <section class="detail-main">
-        <div v-if="taskStore.detailLoading" class="task-detail-loading">
-          <LoadingPanel
-            compact
-            :title="t('tasks.loadingDetailTitle')"
-            :description="t('tasks.loadingDetailDescription')"
-          />
-        </div>
-
         <div class="summary-grid">
           <div>
             <span>{{ t('tasks.columns.state') }}</span>
@@ -56,7 +48,14 @@
 
         <section class="panel-section">
           <h2>{{ t('tasks.events') }}</h2>
-          <TaskEventTimeline :events="taskStore.selectedTaskEvents" />
+          <div v-if="taskStore.detailLoading" class="task-detail-loading">
+            <LoadingPanel
+              compact
+              :title="t('tasks.loadingDetailTitle')"
+              :description="t('tasks.loadingDetailDescription')"
+            />
+          </div>
+          <TaskEventTimeline v-else :events="taskStore.selectedTaskEvents" />
         </section>
       </section>
 
@@ -116,6 +115,6 @@ watch(taskId, async (nextTaskId) => {
 
 <style scoped>
 .task-detail-loading {
-  margin-bottom: 16px;
+  margin: 12px 0 16px;
 }
 </style>

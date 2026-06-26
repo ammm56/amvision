@@ -88,6 +88,7 @@ export const useTaskStore = defineStore('tasks', {
     async loadTask(taskId: string): Promise<void> {
       this.detailLoading = true
       this.error = null
+      this.selectedTaskEvents = []
       try {
         this.selectedTask = await getTask(taskId)
         this.selectedTaskEvents = await getAllTaskEvents(taskId)
