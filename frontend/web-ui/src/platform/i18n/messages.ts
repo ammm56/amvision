@@ -126,6 +126,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: '暂无任务',
       emptyDescription: '训练、转换、部署、推理和 workflow 调用任务会在这里汇总。',
       detailKicker: '任务详情',
+      loadingDetailTitle: '正在加载任务详情',
+      loadingDetailDescription: '正在读取任务记录和完整事件历史，长训练任务可能需要几秒钟。',
       columns: {
         task: '任务',
         type: '类型',
@@ -1183,6 +1185,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: 'No tasks',
       emptyDescription: 'Training, conversion, deployment, inference, and workflow tasks are listed here.',
       detailKicker: 'Task Detail',
+      loadingDetailTitle: 'Loading task detail',
+      loadingDetailDescription: 'Reading the task record and full event history. Long training tasks may take a few seconds.',
       columns: {
         task: 'Task',
         type: 'Type',
@@ -2234,6 +2238,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: 'タスクはありません',
       emptyDescription: '学習、変換、デプロイ、推論、workflow 呼び出しタスクがここに表示されます。',
       detailKicker: 'タスク詳細',
+      loadingDetailTitle: 'タスク詳細を読み込み中',
+      loadingDetailDescription: 'タスク記録と完全なイベント履歴を読み込んでいます。長い学習タスクでは数秒かかることがあります。',
       columns: {
         task: 'タスク',
         type: '種類',
@@ -3285,6 +3291,8 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTitle: '작업 없음',
       emptyDescription: '학습, 변환, 배포, 추론, workflow 호출 작업이 여기에 표시됩니다.',
       detailKicker: '작업 상세',
+      loadingDetailTitle: '작업 상세를 불러오는 중',
+      loadingDetailDescription: '작업 기록과 전체 이벤트 이력을 읽고 있습니다. 긴 학습 작업은 몇 초 걸릴 수 있습니다.',
       columns: {
         task: '작업',
         type: '유형',

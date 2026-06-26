@@ -6,7 +6,7 @@
         <h1>{{ taskStore.selectedTask?.task_id || taskId }}</h1>
       </div>
       <div class="page-actions">
-        <Button variant="secondary" @click="taskStore.loadTask(taskId)">
+        <Button variant="secondary" :disabled="taskStore.detailLoading" @click="taskStore.loadTask(taskId)">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -19,8 +19,22 @@
 
     <InlineError :message="taskStore.error" />
 
-    <div v-if="taskStore.selectedTask" class="detail-layout">
+    <LoadingPanel
+      v-if="taskStore.detailLoading && !taskStore.selectedTask"
+      :title="t('tasks.loadingDetailTitle')"
+      :description="t('tasks.loadingDetailDescription')"
+    />
+
+    <div v-else-if="taskStore.selectedTask" class="detail-layout">
       <section class="detail-main">
+        <div v-if="taskStore.detailLoading" class="task-detail-loading">
+          <LoadingPanel
+            compact
+            :title="t('tasks.loadingDetailTitle')"
+            :description="t('tasks.loadingDetailDescription')"
+          />
+        </div>
+
         <div class="summary-grid">
           <div>
             <span>{{ t('tasks.columns.state') }}</span>
@@ -73,6 +87,7 @@ import { getTaskProgressPercent, normalizeTaskState, useTaskStore } from '../sto
 import { useTaskEvents } from '../composables/useTaskEvents'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 
 const route = useRoute()
 const taskStore = useTaskStore()
@@ -98,3 +113,9 @@ watch(taskId, async (nextTaskId) => {
   taskEvents.start()
 })
 </script>
+
+<style scoped>
+.task-detail-loading {
+  margin-bottom: 16px;
+}
+</style>
