@@ -1,4 +1,4 @@
-"""YOLOv8 core 任务配置兼容入口。"""
+"""YOLOv8 core 任务配置统一导出入口。"""
 
 from __future__ import annotations
 

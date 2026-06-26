@@ -226,8 +226,9 @@ def compute_yolov8_pose_loss(
         + keypoint_loss * kpt_loss_weight
         + visibility_loss * visibility_loss_weight
     )
+    batch_size = max(1, len(batch_targets))
     return {
-        "loss": total_loss,
+        "loss": total_loss * batch_size,
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,
@@ -318,7 +319,7 @@ def yolov8_pose_box_area(*, gt_boxes: Any) -> Any:
 
 
 def build_pose_box_area(*, gt_boxes: Any) -> Any:
-    """兼容当前文件内调用的 YOLOv8 pose 面积构建入口。"""
+    """构建 YOLOv8 pose OKS 和 keypoint loss 使用的目标面积。"""
 
     return yolov8_pose_box_area(gt_boxes=gt_boxes)
 

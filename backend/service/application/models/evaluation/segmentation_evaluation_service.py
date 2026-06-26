@@ -22,6 +22,14 @@ from backend.service.application.models.evaluation.segmentation_evaluation impor
     SegmentationEvaluationRequest,
     run_segmentation_evaluation,
 )
+from backend.service.application.models.yolo11_core.evaluation import (
+    Yolo11SegmentationEvaluationRequest,
+    run_yolo11_segmentation_evaluation,
+)
+from backend.service.application.models.yolo26_core.evaluation import (
+    Yolo26SegmentationEvaluationRequest,
+    run_yolo26_segmentation_evaluation,
+)
 from backend.service.application.models.yolov8_core.evaluation import (
     YoloV8SegmentationEvaluationRequest,
     run_yolov8_segmentation_evaluation,
@@ -46,6 +54,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 SEGMENTATION_EVALUATION_TASK_KIND = "segmentation-evaluation"
 SEGMENTATION_EVALUATION_QUEUE_NAME = "segmentation-evaluations"
+_YOLO_SEGMENTATION_DEFAULT_SCORE_THRESHOLD = 0.001
+_GENERIC_SEGMENTATION_DEFAULT_SCORE_THRESHOLD = 0.01
+_DEFAULT_MASK_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -238,8 +249,14 @@ class SqlAlchemySegmentationEvaluationService:
                 dataset_storage=dataset_storage,
                 runtime_target=runtime_target,
                 manifest=manifest,
-                score_threshold=request.score_threshold or 0.01,
-                mask_threshold=request.mask_threshold or 0.5,
+                score_threshold=_resolve_segmentation_score_threshold(
+                    request.score_threshold,
+                    runtime_target.model_type,
+                ),
+                mask_threshold=_resolve_optional_float(
+                    request.mask_threshold,
+                    _DEFAULT_MASK_THRESHOLD,
+                ),
                 extra_options=dict(request.extra_options),
             )
             dataset_storage.write_json(report_key, eval_result.report_payload)
@@ -472,6 +489,28 @@ def _run_segmentation_evaluation_for_runtime_target(
                 extra_options=extra_options,
             ),
         )
+    if runtime_target.model_type == "yolo11":
+        return run_yolo11_segmentation_evaluation(
+            Yolo11SegmentationEvaluationRequest(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest_payload=manifest,
+                score_threshold=score_threshold,
+                mask_threshold=mask_threshold,
+                extra_options=extra_options,
+            ),
+        )
+    if runtime_target.model_type == "yolo26":
+        return run_yolo26_segmentation_evaluation(
+            Yolo26SegmentationEvaluationRequest(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest_payload=manifest,
+                score_threshold=score_threshold,
+                mask_threshold=mask_threshold,
+                extra_options=extra_options,
+            ),
+        )
     return run_segmentation_evaluation(
         SegmentationEvaluationRequest(
             dataset_storage=dataset_storage,
@@ -482,3 +521,24 @@ def _run_segmentation_evaluation_for_runtime_target(
             extra_options=extra_options,
         ),
     )
+
+
+def _resolve_segmentation_score_threshold(
+    value: object,
+    model_type: str,
+) -> float:
+    """按模型类型解析 segmentation 评估置信度阈值。"""
+
+    if model_type in {"yolov8", "yolo11", "yolo26"}:
+        return _resolve_optional_float(value, _YOLO_SEGMENTATION_DEFAULT_SCORE_THRESHOLD)
+    return _resolve_optional_float(value, _GENERIC_SEGMENTATION_DEFAULT_SCORE_THRESHOLD)
+
+
+def _resolve_optional_float(value: object, default: float) -> float:
+    """按显式值优先解析可选浮点数，避免 0 或空字符串被误判。"""
+
+    if value is None:
+        return default
+    if isinstance(value, str) and not value.strip():
+        return default
+    return float(value)

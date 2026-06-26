@@ -10,6 +10,10 @@ from backend.service.application.models.yolo26_core.losses.detection import (
     compute_yolo26_detection_loss,
     yolo26_distribution_focal_loss,
 )
+from backend.service.application.models.yolo26_core.losses.end2end import (
+    combine_yolo26_end2end_loss_payloads,
+    resolve_yolo26_end2end_loss_weights,
+)
 from backend.service.application.models.yolo26_core.losses.obb import (
     compute_yolo26_obb_loss,
     yolo26_probiou_aligned,
@@ -28,6 +32,7 @@ from backend.service.application.models.yolo26_core.losses.segmentation import (
 
 __all__ = [
     "build_yolo26_pose_rle_weights",
+    "combine_yolo26_end2end_loss_payloads",
     "compute_yolo26_classification_loss",
     "compute_yolo26_detection_loss",
     "compute_yolo26_obb_loss",
@@ -38,6 +43,7 @@ __all__ = [
     "crop_yolo26_segmentation_mask_loss",
     "decode_yolo26_segmentation_training_boxes",
     "normalize_yolo26_classification_training_outputs",
+    "resolve_yolo26_end2end_loss_weights",
     "yolo26_distribution_focal_loss",
     "yolo26_probiou_aligned",
 ]

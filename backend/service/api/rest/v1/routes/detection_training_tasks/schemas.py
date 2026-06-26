@@ -74,11 +74,11 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
     dfl_loss_weight: float | None = Field(default=None, description="DFL 损失权重；YOLO 主线 detection 当前默认 1.5")
     evaluation_confidence_threshold: float | None = Field(
         default=None,
-        description="验证阶段 detection 评估 confidence threshold；YOLO 主线 detection 当前默认 0.01",
+        description="验证阶段 detection 评估 confidence threshold；YOLOX 默认 0.01，YOLOv8/YOLO11/YOLO26 默认 0.001",
     )
     evaluation_nms_threshold: float | None = Field(
         default=None,
-        description="验证阶段 detection 评估 NMS threshold；YOLO 主线 detection 默认 0.65；端到端模型会改走 top-k 语义",
+        description="验证阶段 detection 评估 NMS threshold；YOLOX 默认 0.65，YOLOv8/YOLO11/YOLO26 默认 0.7；端到端模型导出后会改走 top-k 输出",
     )
     assign_topk: int | None = Field(default=None, description="标签分配 top-k；YOLO 主线 detection 当前默认 10")
     assign_alpha: float | None = Field(default=None, description="标签分配 alpha；YOLO 主线 detection 当前默认 0.5")

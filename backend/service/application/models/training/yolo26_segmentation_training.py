@@ -27,8 +27,10 @@ from backend.service.application.models.yolo26_core.evaluation import (
     evaluate_yolo26_segmentation_samples,
 )
 from backend.service.application.models.yolo26_core.losses import (
+    combine_yolo26_end2end_loss_payloads,
     compute_yolo26_segmentation_detection_loss,
     compute_yolo26_segmentation_mask_loss,
+    resolve_yolo26_end2end_loss_weights,
 )
 from backend.service.application.models.yolo26_core.training.segmentation_anchors import (
     build_yolo26_segmentation_anchors_from_features,
@@ -61,8 +63,8 @@ YOLO26_SEGMENTATION_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO26_SEGMENTATION_DEFAULT_BATCH_SIZE = 1
 YOLO26_SEGMENTATION_DEFAULT_MAX_EPOCHS = 1
 YOLO26_SEGMENTATION_DEFAULT_EVAL_INTERVAL = 5
-YOLO26_SEGMENTATION_DEFAULT_EVAL_CONF = 0.01
-YOLO26_SEGMENTATION_DEFAULT_EVAL_NMS = 0.65
+YOLO26_SEGMENTATION_DEFAULT_EVAL_CONF = 0.001
+YOLO26_SEGMENTATION_DEFAULT_EVAL_NMS = 0.7
 YOLO26_SEGMENTATION_DEFAULT_ASSIGN_TOPK = 10
 YOLO26_SEGMENTATION_DEFAULT_CLASS_LOSS = 0.5
 YOLO26_SEGMENTATION_DEFAULT_BOX_LOSS = 7.5
@@ -543,6 +545,8 @@ def _run_yolo26_segmentation_epoch(
                 assign_alpha=assign_alpha,
                 assign_beta=assign_beta,
                 dfl_loss_weight=dfl_loss_weight,
+                epoch=epoch + 1,
+                max_epochs=max_epochs,
             )
         total_loss = (
             class_loss_weight * loss_payload["class_loss"]
@@ -550,6 +554,7 @@ def _run_yolo26_segmentation_epoch(
             + dfl_loss_weight * loss_payload["dfl_loss"]
             + mask_loss_weight * loss_payload["mask_loss"]
         )
+        total_loss = total_loss * max(1, len(batch.targets))
         if not total_loss.requires_grad:
             total_loss = loss_payload["fallback_tensor"].sum() * 0.0
         optimizer.zero_grad()
@@ -592,6 +597,17 @@ def _normalize_yolo26_segmentation_training_outputs(
 ) -> dict[str, Any] | None:
     """把 YOLO26 segmentation 训练输出规整成 loss 输入字典。"""
 
+    if isinstance(outputs, dict) and "one2many" in outputs and "one2one" in outputs:
+        one2many = outputs.get("one2many")
+        one2one = outputs.get("one2one")
+        if (
+            isinstance(one2many, dict)
+            and isinstance(one2one, dict)
+            and "boxes" in one2many
+            and "boxes" in one2one
+        ):
+            return outputs
+        return None
     if isinstance(outputs, dict) and "one2many" in outputs:
         raw_outputs = outputs["one2many"]
     elif isinstance(outputs, dict):
@@ -616,8 +632,51 @@ def _compute_yolo26_segmentation_training_loss(
     assign_alpha: float,
     assign_beta: float,
     dfl_loss_weight: float,
+    assign_topk2: int | None = None,
+    epoch: int = 1,
+    max_epochs: int = 1,
 ) -> dict[str, Any]:
     """计算 YOLO26 segmentation 单个 batch 的训练损失。"""
+
+    if "one2many" in raw_outputs and "one2one" in raw_outputs:
+        one2many_payload = _compute_yolo26_segmentation_training_loss(
+            imports=imports,
+            model=model,
+            raw_outputs=raw_outputs["one2many"],
+            targets_list=targets_list,
+            stride_values=stride_values,
+            device=device,
+            num_classes=num_classes,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk2=None,
+        )
+        one2one_payload = _compute_yolo26_segmentation_training_loss(
+            imports=imports,
+            model=model,
+            raw_outputs=raw_outputs["one2one"],
+            targets_list=targets_list,
+            stride_values=stride_values,
+            device=device,
+            num_classes=num_classes,
+            assign_topk=7,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk2=1,
+        )
+        one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
+            epoch=epoch,
+            max_epochs=max_epochs,
+        )
+        return combine_yolo26_end2end_loss_payloads(
+            one2many_payload=one2many_payload,
+            one2one_payload=one2one_payload,
+            one2many_weight=one2many_weight,
+            one2one_weight=one2one_weight,
+        )
 
     raw_boxes = raw_outputs["boxes"]
     raw_scores = raw_outputs["scores"]
@@ -658,6 +717,7 @@ def _compute_yolo26_segmentation_training_loss(
             alpha=assign_alpha,
             beta=assign_beta,
             num_classes=num_classes,
+            topk2=assign_topk2,
         )
         if assignment is None:
             continue

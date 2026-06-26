@@ -61,8 +61,8 @@ YOLO11_SEGMENTATION_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO11_SEGMENTATION_DEFAULT_BATCH_SIZE = 1
 YOLO11_SEGMENTATION_DEFAULT_MAX_EPOCHS = 1
 YOLO11_SEGMENTATION_DEFAULT_EVAL_INTERVAL = 5
-YOLO11_SEGMENTATION_DEFAULT_EVAL_CONF = 0.01
-YOLO11_SEGMENTATION_DEFAULT_EVAL_NMS = 0.65
+YOLO11_SEGMENTATION_DEFAULT_EVAL_CONF = 0.001
+YOLO11_SEGMENTATION_DEFAULT_EVAL_NMS = 0.7
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_TOPK = 10
 YOLO11_SEGMENTATION_DEFAULT_CLASS_LOSS = 0.5
 YOLO11_SEGMENTATION_DEFAULT_BOX_LOSS = 7.5
@@ -550,6 +550,7 @@ def _run_yolo11_segmentation_epoch(
             + dfl_loss_weight * loss_payload["dfl_loss"]
             + mask_loss_weight * loss_payload["mask_loss"]
         )
+        total_loss = total_loss * max(1, len(batch.targets))
         if not total_loss.requires_grad:
             total_loss = loss_payload["fallback_tensor"].sum() * 0.0
         optimizer.zero_grad()

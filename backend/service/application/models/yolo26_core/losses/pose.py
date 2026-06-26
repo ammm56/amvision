@@ -165,8 +165,9 @@ def compute_yolo26_pose_loss(
         + visibility_loss * visibility_loss_weight
         + rle_loss * rle_loss_weight
     )
+    batch_size = max(1, len(batch_targets))
     return {
-        "loss": total_loss,
+        "loss": total_loss * batch_size,
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,

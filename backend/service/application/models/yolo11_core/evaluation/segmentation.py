@@ -45,7 +45,7 @@ class Yolo11SegmentationEvaluationRequest:
     dataset_storage: LocalDatasetStorage
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
-    score_threshold: float = 0.01
+    score_threshold: float = 0.001
     mask_threshold: float = 0.5
     iou_thresholds: tuple[float, ...] = (
         0.5,

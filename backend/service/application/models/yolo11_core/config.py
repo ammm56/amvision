@@ -1,4 +1,4 @@
-"""YOLO11 core 任务配置兼容入口。"""
+"""YOLO11 core 任务配置统一导出入口。"""
 
 from __future__ import annotations
 

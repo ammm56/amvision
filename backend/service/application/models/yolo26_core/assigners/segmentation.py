@@ -36,6 +36,7 @@ def assign_yolo26_segmentation_targets(
     alpha: float,
     beta: float,
     num_classes: int,
+    topk2: int | None = None,
 ) -> Yolo26SegmentationAssignment | None:
     """根据当前图片 GT 和 anchor 生成 YOLO26 segmentation 正样本。"""
 
@@ -86,6 +87,7 @@ def assign_yolo26_segmentation_targets(
         topk=topk,
         alpha=alpha,
         beta=beta,
+        topk2=topk2,
         candidate_min_box_size=candidate_min_box_size,
         candidate_replace_box_size=candidate_replace_box_size,
     )

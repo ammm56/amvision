@@ -98,8 +98,8 @@
 | warmup_epochs | integer | 5 | 5 | warmup epoch 数。 |
 | no_aug_epochs | integer | 15 | 15 | 训练尾段 no_aug epoch 数。 |
 | min_lr_ratio | number | 0.05 | 0.05 | 余弦退火最小学习率比例。 |
-| evaluation_confidence_threshold | number | 0.01 | 0.01 | 验证阶段 COCO mAP 的 confidence threshold。 |
-| evaluation_nms_threshold | number | 0.65 | 0.65 | 验证阶段 COCO mAP 的 NMS threshold。 |
+| evaluation_confidence_threshold | number | YOLOX: 0.01；YOLOv8/YOLO11/YOLO26: 0.001 | YOLOX: 0.01；Ultralytics 普通 YOLO: 0.001 | 验证阶段 COCO mAP 的 confidence threshold。 |
+| evaluation_nms_threshold | number | YOLOX: 0.65；YOLOv8/YOLO11/YOLO26: 0.7 | YOLOX: 0.65；Ultralytics 普通 YOLO: 0.7 | 验证阶段 COCO mAP 的 NMS threshold。 |
 
 #### extra_options 示例
 

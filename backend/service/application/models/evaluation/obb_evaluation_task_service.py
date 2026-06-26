@@ -30,6 +30,10 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11ObbEvaluationRequest,
     run_yolo11_obb_evaluation,
 )
+from backend.service.application.models.yolo26_core.evaluation import (
+    Yolo26ObbEvaluationRequest,
+    run_yolo26_obb_evaluation,
+)
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
@@ -50,6 +54,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 OBB_EVALUATION_TASK_KIND = "obb-evaluation"
 OBB_EVALUATION_QUEUE_NAME = "obb-evaluations"
+_YOLO_OBB_DEFAULT_SCORE_THRESHOLD = 0.01
 
 
 @dataclass(frozen=True)
@@ -60,7 +65,7 @@ class ObbEvaluationTaskRequest:
     model_version_id: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
-    score_threshold: float = 0.01
+    score_threshold: float = _YOLO_OBB_DEFAULT_SCORE_THRESHOLD
     save_result_package: bool = True
     extra_options: dict[str, object] = field(default_factory=dict)
 
@@ -412,7 +417,10 @@ class SqlAlchemyObbEvaluationTaskService:
             model_version_id=str(spec.get("model_version_id", "")),
             dataset_export_id=spec.get("dataset_export_id"),
             dataset_export_manifest_key=spec.get("dataset_export_manifest_key"),
-            score_threshold=float(spec.get("score_threshold", 0.01)),
+            score_threshold=_resolve_optional_float(
+                spec.get("score_threshold"),
+                _YOLO_OBB_DEFAULT_SCORE_THRESHOLD,
+            ),
             save_result_package=spec.get("save_result_package", True) is not False,
             extra_options=dict(spec.get("extra_options", {})),
         )
@@ -482,6 +490,16 @@ def _run_obb_evaluation_for_runtime_target(
                 extra_options=extra_options,
             ),
         )
+    if runtime_target.model_type == "yolo26":
+        return run_yolo26_obb_evaluation(
+            Yolo26ObbEvaluationRequest(
+                dataset_storage=dataset_storage,
+                runtime_target=runtime_target,
+                manifest_payload=manifest,
+                score_threshold=score_threshold,
+                extra_options=extra_options,
+            ),
+        )
     return run_obb_evaluation(
         ObbEvaluationRequest(
             dataset_storage=dataset_storage,
@@ -491,3 +509,13 @@ def _run_obb_evaluation_for_runtime_target(
             extra_options=extra_options,
         ),
     )
+
+
+def _resolve_optional_float(value: object, default: float) -> float:
+    """按显式值优先解析可选浮点数，避免 None 或空字符串污染默认值。"""
+
+    if value is None:
+        return default
+    if isinstance(value, str) and not value.strip():
+        return default
+    return float(value)

@@ -64,6 +64,16 @@
 - 旧 `yolo_primary_*` 过渡模型构建入口
 - 会让 YOLOv8、YOLO11、YOLO26 隐式混线的任务训练入口
 
+## 2026-06-26 评估默认阈值复核
+
+本轮针对训练中 `map50 / map50_95` 异常偏低的问题，重新核对了 `projectsrc/YOLOX_2026/yolox`、`projectsrc/ultralytics/ultralytics` 和本项目 evaluation / training / frontend 参数链路。结论如下：
+
+- `YOLOX detection` 保持 YOLOX 原生默认：`score_threshold=0.01`、`nms_threshold=0.65`。
+- `YOLOv8 / YOLO11 / YOLO26` 的普通 `detection / segmentation / pose` validation 默认按 Ultralytics validator：`score_threshold=0.001`、`nms_threshold=0.7`。
+- `YOLOv8 / YOLO11 / YOLO26` 的 `OBB` validation 默认按 Ultralytics validator 的 OBB 分支：`score_threshold=0.01`、`nms_threshold=0.7`。
+- `RF-DETR` 和通用 fallback evaluator 不能套普通 YOLO 阈值。RF-DETR 参考实现 predict 默认 `threshold=0.5`，本项目通用 evaluator 的 `0.01 / 0.65` 只作为非普通 YOLO fallback，不作为 YOLOv8 / YOLO11 / YOLO26 的 validation 默认。
+- 前端训练参数、API schema、训练入口和独立 evaluation task service 必须保持同一套默认值；旧任务不会被追溯修改，需要在服务和 worker 重启后重新提交训练或 evaluation。
+
 ## 残留关键词分类
 
 本轮使用下面的范围扫描了 `primary / legacy / minimal / compat / lightweight / stub / NotImplemented / 过渡 / 旧 / 兼容 / 轻量`：

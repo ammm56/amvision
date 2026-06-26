@@ -32,6 +32,10 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11DetectionEvaluationRequest,
     run_yolo11_detection_evaluation,
 )
+from backend.service.application.models.yolo26_core.evaluation import (
+    Yolo26DetectionEvaluationRequest,
+    run_yolo26_detection_evaluation,
+)
 from backend.service.application.models.yolov8_core.evaluation import (
     YoloV8DetectionEvaluationRequest,
     run_yolov8_detection_evaluation,
@@ -56,6 +60,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 DETECTION_EVALUATION_TASK_KIND = "detection-evaluation"
 DETECTION_EVALUATION_QUEUE_NAME = "detection-evaluations"
+_YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD = 0.001
+_YOLO_DETECTION_DEFAULT_NMS_THRESHOLD = 0.7
+_GENERIC_DETECTION_DEFAULT_SCORE_THRESHOLD = 0.01
+_GENERIC_DETECTION_DEFAULT_NMS_THRESHOLD = 0.65
 
 
 @dataclass(frozen=True)
@@ -281,8 +289,14 @@ class SqlAlchemyDetectionEvaluationTaskService:
                         dataset_storage=dataset_storage,
                         runtime_target=runtime_target,
                         manifest_payload=manifest,
-                        score_threshold=request.score_threshold or 0.01,
-                        nms_threshold=request.nms_threshold or 0.65,
+                        score_threshold=_resolve_optional_float(
+                            request.score_threshold,
+                            _YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD,
+                        ),
+                        nms_threshold=_resolve_optional_float(
+                            request.nms_threshold,
+                            _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
+                        ),
                         extra_options=dict(request.extra_options),
                     )
                 )
@@ -292,8 +306,31 @@ class SqlAlchemyDetectionEvaluationTaskService:
                         dataset_storage=dataset_storage,
                         runtime_target=runtime_target,
                         manifest_payload=manifest,
-                        score_threshold=request.score_threshold or 0.01,
-                        nms_threshold=request.nms_threshold or 0.65,
+                        score_threshold=_resolve_optional_float(
+                            request.score_threshold,
+                            _YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD,
+                        ),
+                        nms_threshold=_resolve_optional_float(
+                            request.nms_threshold,
+                            _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
+                        ),
+                        extra_options=dict(request.extra_options),
+                    )
+                )
+            elif runtime_target.model_type == "yolo26":
+                eval_result = run_yolo26_detection_evaluation(
+                    Yolo26DetectionEvaluationRequest(
+                        dataset_storage=dataset_storage,
+                        runtime_target=runtime_target,
+                        manifest_payload=manifest,
+                        score_threshold=_resolve_optional_float(
+                            request.score_threshold,
+                            _YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD,
+                        ),
+                        nms_threshold=_resolve_optional_float(
+                            request.nms_threshold,
+                            _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
+                        ),
                         extra_options=dict(request.extra_options),
                     )
                 )
@@ -303,8 +340,14 @@ class SqlAlchemyDetectionEvaluationTaskService:
                         dataset_storage=dataset_storage,
                         runtime_target=runtime_target,
                         manifest_payload=manifest,
-                        score_threshold=request.score_threshold or 0.01,
-                        nms_threshold=request.nms_threshold or 0.65,
+                        score_threshold=_resolve_optional_float(
+                            request.score_threshold,
+                            _GENERIC_DETECTION_DEFAULT_SCORE_THRESHOLD,
+                        ),
+                        nms_threshold=_resolve_optional_float(
+                            request.nms_threshold,
+                            _GENERIC_DETECTION_DEFAULT_NMS_THRESHOLD,
+                        ),
                         extra_options=dict(request.extra_options),
                     )
                 )
@@ -593,6 +636,16 @@ def _normalize_optional_object_key(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _resolve_optional_float(value: object, default: float) -> float:
+    """按显式值优先解析可选浮点数，避免 0 或空字符串被误判。"""
+
+    if value is None:
+        return default
+    if isinstance(value, str) and not value.strip():
+        return default
+    return float(value)
 
 
 def _require_result_object_key(

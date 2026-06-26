@@ -93,8 +93,9 @@ def compute_yolov8_detection_loss(
         + box_loss * box_loss_weight
         + dfl_loss * dfl_loss_weight
     )
+    batch_size = max(1, len(batch_targets))
     return {
-        "loss": total_loss,
+        "loss": total_loss * batch_size,
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,

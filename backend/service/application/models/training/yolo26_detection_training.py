@@ -745,6 +745,8 @@ def _compute_yolo26_detection_loss(
     assign_alpha: float,
     assign_beta: float,
     assign_topk2: int | None = None,
+    epoch: int = 1,
+    max_epochs: int = 1,
 ) -> dict[str, Any]:
     """调用 YOLO26 core 计算 detection loss。"""
 
@@ -761,6 +763,8 @@ def _compute_yolo26_detection_loss(
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
         assign_topk2=assign_topk2,
+        epoch=epoch,
+        max_epochs=max_epochs,
     )
 
 

@@ -56,8 +56,8 @@ _SEG_DEFAULT_INPUT_SIZE = (640, 640)
 _SEG_DEFAULT_BATCH_SIZE = 1
 _SEG_DEFAULT_MAX_EPOCHS = 1
 _SEG_DEFAULT_EVAL_INTERVAL = 5
-_SEG_DEFAULT_EVAL_CONF = 0.01
-_SEG_DEFAULT_EVAL_NMS = 0.65
+_SEG_DEFAULT_EVAL_CONF = 0.001
+_SEG_DEFAULT_EVAL_NMS = 0.7
 _SEG_DEFAULT_ASSIGN_TOPK = 10
 _SEG_DEFAULT_CLASS_LOSS = 0.5
 _SEG_DEFAULT_BOX_LOSS = 7.5
@@ -445,6 +445,7 @@ def run_yolov8_segmentation_training(
                 + dfl_w * loss_dfl
                 + mask_w * loss_mask_t
             )
+            total_loss = total_loss * max(1, len(targets_list))
             if not total_loss.requires_grad:
                 total_loss = raw_scores.sum() * 0.0
             optimizer.zero_grad()

@@ -88,6 +88,8 @@ def run_yolo26_detection_training_epoch(
                 model=model,
                 raw_outputs=raw_outputs,
                 batch_targets=batch_targets,
+                epoch=epoch,
+                max_epochs=max_epochs,
             )
             loss = loss_components["loss"]
         scaler.scale(loss).backward()

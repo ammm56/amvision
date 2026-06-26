@@ -29,8 +29,8 @@ class Yolo11DetectionEvaluationRequest:
     dataset_storage: LocalDatasetStorage
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
-    score_threshold: float = 0.01
-    nms_threshold: float = 0.65
+    score_threshold: float = 0.001
+    nms_threshold: float = 0.7
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

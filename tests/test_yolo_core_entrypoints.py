@@ -33,6 +33,7 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11DetectionEvaluationRequest,
     Yolo11ObbEvaluationRequest,
     Yolo11PoseEvaluationRequest,
+    Yolo11SegmentationEvaluationRequest,
     evaluate_yolo11_obb_samples,
     evaluate_yolo11_pose_samples,
     run_yolo11_detection_evaluation,
@@ -68,9 +69,11 @@ from backend.service.application.models.yolo26_core.assigners import (
     assign_yolo26_obb_targets,
 )
 from backend.service.application.models.yolo26_core.losses import (
+    combine_yolo26_end2end_loss_payloads,
     compute_yolo26_detection_loss,
     compute_yolo26_obb_loss,
     compute_yolo26_pose_loss,
+    resolve_yolo26_end2end_loss_weights,
 )
 from backend.service.application.models.yolo26_core.training import (
     build_yolo26_classification_checkpoint_bytes,
@@ -417,10 +420,20 @@ from backend.service.application.models.yolov8_core.data import (
     resolve_yolov8_task_batch_input_size,
 )
 from backend.service.application.models.yolov8_core.evaluation import (
+    YoloV8DetectionEvaluationRequest,
+    YoloV8ObbEvaluationRequest,
+    YoloV8PoseEvaluationRequest,
+    YoloV8SegmentationEvaluationRequest,
     evaluate_yolov8_classification_samples,
     evaluate_yolov8_obb_samples,
     evaluate_yolov8_pose_samples,
     evaluate_yolov8_segmentation_samples,
+)
+from backend.service.application.models.yolo26_core.evaluation import (
+    Yolo26DetectionEvaluationRequest,
+    Yolo26ObbEvaluationRequest,
+    Yolo26PoseEvaluationRequest,
+    Yolo26SegmentationEvaluationRequest,
 )
 from backend.service.application.models.yolov8_core.losses import (
     compute_yolov8_segmentation_detection_loss,
@@ -833,6 +846,26 @@ def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
     )
     assert [item.score for item in detections] == pytest.approx([0.90, 0.85, 0.70])
     assert [item.class_id for item in detections] == [1, 1, 0]
+
+
+def test_yolo26_end2end_loss_weights_match_ultralytics_schedule() -> None:
+    """验证 YOLO26 end2end loss 权重按参考训练规则衰减。"""
+
+    first_weights = resolve_yolo26_end2end_loss_weights(epoch=1, max_epochs=100)
+    middle_weights = resolve_yolo26_end2end_loss_weights(epoch=50, max_epochs=100)
+    final_weights = resolve_yolo26_end2end_loss_weights(epoch=100, max_epochs=100)
+    combined = combine_yolo26_end2end_loss_payloads(
+        one2many_payload={"loss": torch.tensor(10.0), "class_loss": torch.tensor(2.0)},
+        one2one_payload={"loss": torch.tensor(2.0), "class_loss": torch.tensor(6.0)},
+        one2many_weight=first_weights[0],
+        one2one_weight=first_weights[1],
+    )
+
+    assert first_weights == pytest.approx((0.8, 0.2))
+    assert middle_weights[0] > final_weights[0]
+    assert final_weights == pytest.approx((0.1, 0.9))
+    assert float(combined["loss"].item()) == pytest.approx(8.4)
+    assert float(combined["class_loss"].item()) == pytest.approx(2.8)
 
 
 @pytest.mark.parametrize(
@@ -1904,6 +1937,37 @@ def test_yolo11_detection_evaluation_has_core_entrypoint() -> None:
     assert run_yolo11_pose_evaluation.__module__.endswith("yolo11_core.evaluation.pose")
     assert Yolo11ObbEvaluationRequest.__module__.endswith("yolo11_core.evaluation.obb")
     assert run_yolo11_obb_evaluation.__module__.endswith("yolo11_core.evaluation.obb")
+
+
+def test_yolo_evaluation_default_thresholds_match_ultralytics_validator() -> None:
+    """验证普通 YOLO validation 默认阈值与 Ultralytics validator 保持一致。"""
+
+    for request_cls in (
+        YoloV8DetectionEvaluationRequest,
+        Yolo11DetectionEvaluationRequest,
+        Yolo26DetectionEvaluationRequest,
+        YoloV8SegmentationEvaluationRequest,
+        Yolo11SegmentationEvaluationRequest,
+        Yolo26SegmentationEvaluationRequest,
+        YoloV8PoseEvaluationRequest,
+        Yolo11PoseEvaluationRequest,
+        Yolo26PoseEvaluationRequest,
+    ):
+        assert request_cls.__dataclass_fields__["score_threshold"].default == 0.001
+
+    for request_cls in (
+        YoloV8DetectionEvaluationRequest,
+        Yolo11DetectionEvaluationRequest,
+        Yolo26DetectionEvaluationRequest,
+    ):
+        assert request_cls.__dataclass_fields__["nms_threshold"].default == 0.7
+
+    for request_cls in (
+        YoloV8ObbEvaluationRequest,
+        Yolo11ObbEvaluationRequest,
+        Yolo26ObbEvaluationRequest,
+    ):
+        assert request_cls.__dataclass_fields__["score_threshold"].default == 0.01
 
 
 def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(

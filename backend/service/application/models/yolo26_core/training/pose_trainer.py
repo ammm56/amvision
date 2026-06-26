@@ -16,7 +16,9 @@ from backend.service.application.models.yolo26_core.evaluation import (
     evaluate_yolo26_pose_samples,
 )
 from backend.service.application.models.yolo26_core.losses import (
+    combine_yolo26_end2end_loss_payloads,
     compute_yolo26_pose_loss,
+    resolve_yolo26_end2end_loss_weights,
 )
 from backend.service.application.models.yolo26_core.training.pose_checkpoint import (
     build_yolo26_pose_checkpoint_bytes,
@@ -304,27 +306,74 @@ def _run_yolo26_pose_epoch(
             continue
         with autocast_context():
             raw_outputs = model(batch.images)
-            raw_for_loss = (
-                raw_outputs["one2many"]
-                if isinstance(raw_outputs, dict) and "one2many" in raw_outputs
-                else raw_outputs
-            )
-            loss_payload = compute_yolo26_pose_loss(
-                torch=imports.torch,
-                model=model,
-                raw_outputs=raw_for_loss,
-                batch_targets=batch.targets,
-                num_classes=0,
-                kpt_shape=kpt_shape,
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                kpt_loss_weight=kpt_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                assign_topk2=assign_topk2,
-            )
+            if (
+                isinstance(raw_outputs, dict)
+                and "one2many" in raw_outputs
+                and "one2one" in raw_outputs
+            ):
+                raw_for_loss = raw_outputs["one2many"]
+                one2many_payload = compute_yolo26_pose_loss(
+                    torch=imports.torch,
+                    model=model,
+                    raw_outputs=raw_outputs["one2many"],
+                    batch_targets=batch.targets,
+                    num_classes=0,
+                    kpt_shape=kpt_shape,
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    kpt_loss_weight=kpt_loss_weight,
+                    assign_topk=assign_topk,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    assign_topk2=None,
+                )
+                one2one_payload = compute_yolo26_pose_loss(
+                    torch=imports.torch,
+                    model=model,
+                    raw_outputs=raw_outputs["one2one"],
+                    batch_targets=batch.targets,
+                    num_classes=0,
+                    kpt_shape=kpt_shape,
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    kpt_loss_weight=kpt_loss_weight,
+                    assign_topk=7,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    assign_topk2=1,
+                )
+                one2many_weight, one2one_weight = (
+                    resolve_yolo26_end2end_loss_weights(
+                        epoch=epoch + 1,
+                        max_epochs=max_epochs,
+                    )
+                )
+                loss_payload = combine_yolo26_end2end_loss_payloads(
+                    one2many_payload=one2many_payload,
+                    one2one_payload=one2one_payload,
+                    one2many_weight=one2many_weight,
+                    one2one_weight=one2one_weight,
+                )
+            else:
+                raw_for_loss = raw_outputs
+                loss_payload = compute_yolo26_pose_loss(
+                    torch=imports.torch,
+                    model=model,
+                    raw_outputs=raw_for_loss,
+                    batch_targets=batch.targets,
+                    num_classes=0,
+                    kpt_shape=kpt_shape,
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    kpt_loss_weight=kpt_loss_weight,
+                    assign_topk=assign_topk,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    assign_topk2=assign_topk2,
+                )
         total_loss = loss_payload["loss"]
         if not total_loss.requires_grad:
             total_loss = _build_zero_grad_loss(raw_for_loss, imports.torch)

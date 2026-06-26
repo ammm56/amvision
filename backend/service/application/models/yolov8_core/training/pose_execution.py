@@ -381,8 +381,8 @@ def run_yolov8_pose_training(
                 input_size=input_size,
                 device=device,
                 precision=precision,
-                score_threshold=float(extra.get("eval_confidence_threshold", 0.01)),
-                nms_threshold=float(extra.get("eval_nms_threshold", 0.65)),
+                score_threshold=float(extra.get("eval_confidence_threshold", 0.001)),
+                nms_threshold=float(extra.get("eval_nms_threshold", 0.7)),
                 keypoint_confidence_threshold=float(
                     extra.get("keypoint_confidence_threshold", 0.25)
                 ),

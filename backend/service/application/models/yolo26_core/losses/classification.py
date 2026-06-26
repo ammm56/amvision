@@ -51,7 +51,7 @@ def compute_yolo26_classification_loss(
 
 
 def _logit_from_probability_tensor(probabilities: Any) -> Any:
-    """把概率张量转换为 BCE 风格 logits，供兼容输出使用。"""
+    """把概率张量转换为 BCE 风格 logits。"""
 
     clamped = probabilities.clamp(1e-12, 1.0 - 1e-12)
     return (clamped / (1.0 - clamped)).log()

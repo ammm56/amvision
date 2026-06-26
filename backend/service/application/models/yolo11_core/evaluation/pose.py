@@ -35,7 +35,7 @@ class Yolo11PoseEvaluationRequest:
     dataset_storage: LocalDatasetStorage
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
-    score_threshold: float = 0.01
+    score_threshold: float = 0.001
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

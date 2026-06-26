@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from backend.service.application.models.yolo26_core.losses import (
+    combine_yolo26_end2end_loss_payloads,
     compute_yolo26_detection_loss,
+    resolve_yolo26_end2end_loss_weights,
 )
 
 
@@ -30,10 +32,49 @@ def compute_yolo26_detection_training_loss(
     assign_alpha: float,
     assign_beta: float,
     assign_topk2: int | None = None,
+    epoch: int = 1,
+    max_epochs: int = 1,
 ) -> dict[str, Any]:
     """按 YOLO26 detection core 规则计算训练损失。"""
 
     detect_head = model.model[-1]
+    if "one2many" in raw_outputs and "one2one" in raw_outputs:
+        one2many_payload = compute_yolo26_detection_loss(
+            torch_module=torch_module,
+            detect_head=detect_head,
+            raw_outputs=raw_outputs["one2many"],
+            batch_targets=batch_targets,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            assign_topk2=None,
+        )
+        one2one_payload = compute_yolo26_detection_loss(
+            torch_module=torch_module,
+            detect_head=detect_head,
+            raw_outputs=raw_outputs["one2one"],
+            batch_targets=batch_targets,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=7,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            assign_topk2=1,
+        )
+        one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
+            epoch=epoch,
+            max_epochs=max_epochs,
+        )
+        return combine_yolo26_end2end_loss_payloads(
+            one2many_payload=one2many_payload,
+            one2one_payload=one2one_payload,
+            one2many_weight=one2many_weight,
+            one2one_weight=one2one_weight,
+        )
     return compute_yolo26_detection_loss(
         torch_module=torch_module,
         detect_head=detect_head,

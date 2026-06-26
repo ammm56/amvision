@@ -15,8 +15,8 @@ YOLO26_DETECTION_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO26_DETECTION_DEFAULT_BATCH_SIZE = 1
 YOLO26_DETECTION_DEFAULT_MAX_EPOCHS = 1
 YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL = 5
-YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.01
-YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD = 0.65
+YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.001
+YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD = 0.7
 YOLO26_DETECTION_DEFAULT_ASSIGN_TOPK = 10
 YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT = 0.5
 YOLO26_DETECTION_DEFAULT_BOX_LOSS_WEIGHT = 7.5
@@ -93,10 +93,22 @@ def resolve_yolo26_detection_runtime(
 
 
 def unwrap_yolo26_detection_outputs(outputs: Any) -> dict[str, Any]:
-    """把 YOLO26 detection 训练输出规整成 one2many 结果。"""
+    """把 YOLO26 detection 训练输出规整成 loss 输入结构。"""
 
     if isinstance(outputs, dict) and "boxes" in outputs and "scores" in outputs:
         return outputs
+    if isinstance(outputs, dict) and "one2many" in outputs and "one2one" in outputs:
+        one2many = outputs.get("one2many")
+        one2one = outputs.get("one2one")
+        if (
+            isinstance(one2many, dict)
+            and isinstance(one2one, dict)
+            and "boxes" in one2many
+            and "scores" in one2many
+            and "boxes" in one2one
+            and "scores" in one2one
+        ):
+            return outputs
     if isinstance(outputs, dict) and "one2many" in outputs:
         one2many = outputs.get("one2many")
         if isinstance(one2many, dict) and "boxes" in one2many and "scores" in one2many:
