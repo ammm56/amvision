@@ -25,7 +25,7 @@
       :description="t('tasks.loadingDetailDescription')"
     />
 
-    <div v-else-if="taskStore.selectedTask" class="detail-layout">
+    <div v-else-if="taskStore.selectedTask" class="detail-layout task-detail-layout">
       <section class="detail-main">
         <div class="summary-grid">
           <div>
@@ -59,15 +59,30 @@
         </section>
       </section>
 
-      <aside class="detail-side">
-        <h2>{{ t('tasks.diagnostics') }}</h2>
-        <dl>
-          <dt>{{ t('common.websocket') }}</dt>
-          <dd>{{ taskEvents.streamState.value?.connected ? t('tasks.connected') : t('tasks.notConnected') }}</dd>
-          <dt>{{ t('tasks.lastDisconnect') }}</dt>
-          <dd>{{ taskEvents.streamState.value?.lastDisconnectReason || '-' }}</dd>
-          <dt>{{ t('tasks.error') }}</dt>
-          <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
+      <aside class="detail-side task-diagnostics-panel">
+        <div class="task-diagnostics-panel__header">
+          <h2>{{ t('tasks.diagnostics') }}</h2>
+        </div>
+        <dl class="task-diagnostics-panel__list">
+          <div>
+            <dt>{{ t('common.websocket') }}</dt>
+            <dd>
+              <span
+                class="status-badge"
+                :class="taskEvents.streamState.value?.connected ? 'status-badge--success' : 'status-badge--neutral'"
+              >
+                {{ taskEvents.streamState.value?.connected ? t('tasks.connected') : t('tasks.notConnected') }}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('tasks.lastDisconnect') }}</dt>
+            <dd>{{ taskEvents.streamState.value?.lastDisconnectReason || '-' }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('tasks.error') }}</dt>
+            <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
+          </div>
         </dl>
       </aside>
     </div>
@@ -95,7 +110,7 @@ const taskId = computed(() => String(route.params.taskId))
 const eventLoadingVisible = ref(false)
 const isTaskDetailLoading = computed(() => taskStore.detailLoading || eventLoadingVisible.value)
 
-const MIN_EVENT_LOADING_MS = 2000
+const MIN_EVENT_LOADING_MS = 1500
 let eventLoadingStartedAt = 0
 let eventLoadingTimer: ReturnType<typeof window.setTimeout> | null = null
 let taskLoadSequence = 0
@@ -156,7 +171,54 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.task-detail-layout {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
 .task-detail-loading {
   margin: 12px 0 16px;
+}
+
+.task-diagnostics-panel {
+  align-self: start;
+  padding: 16px;
+}
+
+.task-diagnostics-panel__header h2 {
+  margin: 0;
+  margin-bottom: 14px;
+}
+
+.task-diagnostics-panel__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.task-diagnostics-panel__list > div {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--summary-bg);
+}
+
+.task-diagnostics-panel__list dt {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-diagnostics-panel__list dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .task-detail-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
