@@ -1687,6 +1687,7 @@ def _convert_yolov8_predictions_to_coco_detections(
         score_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         postprocess_mode=postprocess_mode,
+        box_format="xywh",
         max_detections=max_detections,
     )
     detections: list[dict[str, object]] = []

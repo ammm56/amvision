@@ -74,6 +74,7 @@ def convert_yolo11_predictions_to_coco_detections(
         score_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         postprocess_mode=YOLO11_DETECTION_POSTPROCESS_MODE_NMS,
+        box_format="xywh",
         max_detections=None,
     )
     detections: list[dict[str, object]] = []
