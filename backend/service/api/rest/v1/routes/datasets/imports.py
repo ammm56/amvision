@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
@@ -133,6 +133,39 @@ async def import_dataset_zip(
 		queue_name=queue_task.queue_name,
 		queue_task_id=queue_task.task_id,
 	)
+
+
+@dataset_imports_router.get(
+	"/imports",
+	response_model=list[DatasetImportSummaryResponse],
+)
+def list_project_dataset_imports(
+	project_id: Annotated[str, Query()],
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> list[DatasetImportSummaryResponse]:
+	"""按 Project id 返回导入记录列表。
+
+	数据集页面是项目级工作台，Dataset id 只是新导入时的目标 id。
+	列表按 Project 展示可以避免导入到非默认 Dataset 后回到页面看不到记录。
+
+	参数：
+	- project_id：要查询的 Project id。
+	- principal：具备 datasets:read scope 的调用主体。
+	- unit_of_work：当前请求级 Unit of Work。
+
+	返回：
+	- 当前 Project 下的导入记录摘要列表。
+	"""
+
+	if not _project_visible(principal=principal, project_id=project_id):
+		raise ResourceNotFoundError(
+			"找不到指定的 Project",
+			details={"project_id": project_id},
+		)
+
+	dataset_imports = unit_of_work.dataset_imports.list_dataset_imports_by_project(project_id)
+	return [_build_dataset_import_summary(dataset_import) for dataset_import in dataset_imports]
 
 
 @dataset_imports_router.get(

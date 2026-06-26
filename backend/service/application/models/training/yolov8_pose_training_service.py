@@ -35,6 +35,13 @@ from backend.service.application.models.training.yolov8_pose_training_registrati
     resolve_yolov8_pose_implementation_mode,
     register_yolov8_pose_training_output_model_version,
 )
+from backend.service.application.models.training.yolo_training_warm_start import (
+    build_yolo_warm_start_source_summary,
+    resolve_yolo_warm_start_reference,
+)
+from backend.service.application.models.registry.yolov8_model_service import (
+    SqlAlchemyYoloV8ModelService,
+)
 from backend.service.application.models.training.yolov8_pose_training import (
     YOLOV8_POSE_DEFAULT_EVALUATION_INTERVAL,
     YoloV8PoseTrainingControlCommand,
@@ -51,6 +58,9 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.files.detection_model_file_types import (
+    YOLOV8_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -77,6 +87,7 @@ class YoloV8PoseTrainingRequest:
     output_model_name: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
+    warm_start_model_version_id: str | None = None
     evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
@@ -213,6 +224,17 @@ class SqlAlchemyYoloV8PoseTrainingService:
         legacy_labels_json_object_key = f"{output_prefix}/output-files/labels.json"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
+        warm_start_reference = resolve_yolo_warm_start_reference(
+            model_version_id=(
+                self._read_optional_str(payload.get("warm_start_model_version_id"))
+                if resume_checkpoint_path is None
+                else None
+            ),
+            model_service_cls=SqlAlchemyYoloV8ModelService,
+            file_types=YOLOV8_DETECTION_FILE_TYPES,
+            session_factory=self.session_factory,
+            dataset_storage=self.dataset_storage,
+        )
         self.task_service.append_task_event(
             build_yolov8_pose_training_started_event(
                 task_id=task_record.task_id,
@@ -269,6 +291,16 @@ class SqlAlchemyYoloV8PoseTrainingService:
             ),
             input_size=input_size,
             precision=str(payload.get("precision") or "fp32"),
+            warm_start_checkpoint_path=(
+                warm_start_reference.checkpoint_path
+                if warm_start_reference is not None
+                else None
+            ),
+            warm_start_source_summary=(
+                build_yolo_warm_start_source_summary(warm_start_reference)
+                if warm_start_reference is not None
+                else None
+            ),
             resume_checkpoint_path=resume_checkpoint_path,
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
@@ -635,6 +667,7 @@ class SqlAlchemyYoloV8PoseTrainingService:
             "metrics_payload": execution_result.metrics_payload,
             "validation_metrics_payload": execution_result.validation_metrics_payload,
             "output_prefix": output_prefix,
+            "warm_start": dict(execution_result.warm_start_summary),
         }
 
     def _register_training_output_model_version(

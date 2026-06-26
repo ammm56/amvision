@@ -20,6 +20,9 @@ from backend.service.application.models.validation.model_core_validation import 
 
 
 YOLO_IGNORED_SOURCE_KEY_SUFFIXES = ("dfl.conv.weight",)
+# Ultralytics pretrained transfer 会按 shape 交集加载；小 scale 且类别数变化时，
+# 分类分支中间层也可能随 nc 改变，因此 warm start 不能要求 90% 以上覆盖。
+YOLO_WARM_START_MINIMUM_LOADABLE_RATIO = 0.85
 _PICKLE_CHECKPOINT_MODULE_NAMES = (
     "ultralytics",
     "ultralytics.nn",
@@ -44,6 +47,53 @@ class YoloStateDictLoadResult:
     checkpoint_path: str | None = None
 
 
+def build_yolo_disabled_warm_start_summary() -> dict[str, object]:
+    """构造未启用 warm start 时写入训练摘要的固定结构。"""
+
+    return {
+        "enabled": False,
+        "source_model_version_id": None,
+        "source_kind": None,
+        "source_model_name": None,
+        "source_model_scale": None,
+        "load_summary": None,
+    }
+
+
+def build_yolo_warm_start_summary(
+    *,
+    load_result: YoloStateDictLoadResult,
+    source_summary: dict[str, object] | None,
+) -> dict[str, object]:
+    """把 warm start 来源和 state_dict 加载结果整理成训练摘要。"""
+
+    source = source_summary or {}
+    return {
+        "enabled": True,
+        "source_model_version_id": source.get("source_model_version_id"),
+        "source_kind": source.get("source_kind"),
+        "source_model_name": source.get("source_model_name"),
+        "source_model_scale": source.get("source_model_scale"),
+        "load_summary": {
+            "checkpoint_path": load_result.checkpoint_path,
+            "loaded_key_count": len(load_result.loaded_keys),
+            "missing_keys": list(load_result.missing_keys),
+            "shape_mismatch_keys": list(load_result.shape_mismatch_keys),
+            "unexpected_keys": list(load_result.unexpected_keys),
+            "coverage": {
+                "model_key_count": load_result.coverage.model_key_count,
+                "source_key_count": load_result.coverage.source_key_count,
+                "loadable_key_count": load_result.coverage.loadable_key_count,
+                "loadable_ratio": load_result.coverage.loadable_ratio,
+                "ignored_missing_keys": list(
+                    load_result.coverage.ignored_missing_keys
+                ),
+                "ignored_source_keys": list(load_result.coverage.ignored_source_keys),
+            },
+        },
+    }
+
+
 def analyze_yolo_state_dict_coverage(
     *,
     model: nn.Module,
@@ -64,6 +114,7 @@ def load_yolo_state_dict(
     model: nn.Module,
     source_state_dict: dict[str, Any],
     minimum_loadable_ratio: float = 1.0,
+    strict_shape: bool = True,
 ) -> YoloStateDictLoadResult:
     """加载 YOLO state_dict，并强制返回覆盖率报告。"""
 
@@ -83,7 +134,7 @@ def load_yolo_state_dict(
                 "ignored_source_keys": list(coverage.ignored_source_keys),
             },
         )
-    if coverage.shape_mismatch_keys:
+    if strict_shape and coverage.shape_mismatch_keys:
         raise ServiceConfigurationError(
             "YOLO state_dict 存在 shape mismatch",
             details={"shape_mismatch_keys": list(coverage.shape_mismatch_keys)},
@@ -109,6 +160,7 @@ def load_yolo_checkpoint_file(
     model: nn.Module,
     checkpoint_path: Path,
     minimum_loadable_ratio: float = 1.0,
+    strict_shape: bool = True,
     pickle_class_binders: tuple[Callable[..., None], ...] = (),
 ) -> YoloStateDictLoadResult:
     """读取 checkpoint 文件、提取 state_dict 并加载到 YOLO 模型。"""
@@ -123,6 +175,7 @@ def load_yolo_checkpoint_file(
         model=model,
         source_state_dict=source_state_dict,
         minimum_loadable_ratio=minimum_loadable_ratio,
+        strict_shape=strict_shape,
     )
     return YoloStateDictLoadResult(
         coverage=load_result.coverage,

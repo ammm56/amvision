@@ -57,6 +57,8 @@ class RfdetrPlatformTrainingRequest:
     input_size: tuple[int, int]
     precision: str
     resume_checkpoint_path: Path | None = None
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
 
 
@@ -71,6 +73,7 @@ class RfdetrPlatformTrainingResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     aligned_input_size: tuple[int, int]
+    warm_start_summary: dict[str, object]
 
 
 def run_rfdetr_platform_training(
@@ -108,13 +111,21 @@ def run_rfdetr_platform_training(
         )
         output_dir = temporary_dir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
+        pretrain_checkpoint_path = (
+            request.resume_checkpoint_path or request.warm_start_checkpoint_path
+        )
+        warm_start_summary = _build_warm_start_summary(
+            warm_start_checkpoint_path=request.warm_start_checkpoint_path,
+            source_summary=request.warm_start_source_summary,
+            resume_checkpoint_path=request.resume_checkpoint_path,
+        )
 
         model_config = build_rfdetr_full_core_config(
             task_type=request.task_type,
             model_scale=request.model_scale,
             num_classes=len(prepared_dataset.labels),
             pretrained_path=prepare_pretrain_checkpoint(
-                request.resume_checkpoint_path,
+                pretrain_checkpoint_path,
                 temporary_dir,
             ),
             device=device_name,
@@ -165,7 +176,38 @@ def run_rfdetr_platform_training(
             validation_metrics_payload=validation_metrics_payload,
             labels=prepared_dataset.labels,
             aligned_input_size=aligned_input_size,
+            warm_start_summary=warm_start_summary,
         )
+
+
+def _build_warm_start_summary(
+    *,
+    warm_start_checkpoint_path: Path | None,
+    source_summary: dict[str, object] | None,
+    resume_checkpoint_path: Path | None,
+) -> dict[str, object]:
+    """构建 RF-DETR warm start 训练摘要。"""
+
+    if warm_start_checkpoint_path is None or resume_checkpoint_path is not None:
+        return {
+            "enabled": False,
+            "source_model_version_id": None,
+            "source_kind": None,
+            "source_model_name": None,
+            "source_model_scale": None,
+            "load_summary": None,
+        }
+    summary = dict(source_summary or {})
+    summary.update(
+        {
+            "enabled": True,
+            "load_summary": {
+                "checkpoint_path": str(warm_start_checkpoint_path),
+                "loader": "rfdetr-full-core-pretrain",
+            },
+        }
+    )
+    return summary
 
 
 def _build_train_config(

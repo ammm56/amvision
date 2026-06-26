@@ -34,6 +34,7 @@ def load_yolov8_state_dict(
     model: nn.Module,
     source_state_dict: dict[str, Any],
     minimum_loadable_ratio: float = 1.0,
+    strict_shape: bool = True,
 ) -> YoloStateDictLoadResult:
     """加载 YOLOv8 state_dict，并返回覆盖率报告。"""
 
@@ -41,6 +42,7 @@ def load_yolov8_state_dict(
         model=model,
         source_state_dict=source_state_dict,
         minimum_loadable_ratio=minimum_loadable_ratio,
+        strict_shape=strict_shape,
     )
 
 
@@ -50,6 +52,7 @@ def load_yolov8_checkpoint_file(
     model: nn.Module,
     checkpoint_path: Path,
     minimum_loadable_ratio: float = 1.0,
+    strict_shape: bool = True,
 ) -> YoloStateDictLoadResult:
     """读取并加载 YOLOv8 checkpoint 文件，返回覆盖率报告。"""
 
@@ -58,4 +61,5 @@ def load_yolov8_checkpoint_file(
         model=model,
         checkpoint_path=checkpoint_path,
         minimum_loadable_ratio=minimum_loadable_ratio,
+        strict_shape=strict_shape,
     )

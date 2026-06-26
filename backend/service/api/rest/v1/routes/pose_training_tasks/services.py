@@ -74,6 +74,7 @@ def submit_pose_training_task(
             output_model_name=body.output_model_name,
             dataset_export_id=body.dataset_export_id,
             dataset_export_manifest_key=body.dataset_export_manifest_key,
+            warm_start_model_version_id=body.warm_start_model_version_id,
             evaluation_interval=body.evaluation_interval,
             max_epochs=body.max_epochs,
             batch_size=body.batch_size,

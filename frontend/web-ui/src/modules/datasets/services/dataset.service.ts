@@ -145,6 +145,10 @@ export async function listDatasetImports(datasetId: string): Promise<DatasetImpo
   return apiRequest<DatasetImportSummary[]>(`/datasets/${encodeURIComponent(datasetId)}/imports`)
 }
 
+export async function listProjectDatasetImports(projectId: string): Promise<DatasetImportSummary[]> {
+  return apiRequest<DatasetImportSummary[]>('/datasets/imports', { query: { project_id: projectId } })
+}
+
 export async function getDatasetImportDetail(datasetImportId: string): Promise<DatasetImportDetail> {
   return apiRequest<DatasetImportDetail>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`)
 }

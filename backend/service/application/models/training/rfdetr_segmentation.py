@@ -76,6 +76,8 @@ class RfdetrSegmentationTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
     resume_checkpoint_path: Path | None = None
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable[
         [RfdetrSegmentationTrainingEpochProgress],
@@ -98,6 +100,7 @@ class RfdetrSegmentationTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     aligned_input_size: tuple[int, int]
+    warm_start_summary: dict[str, object]
 
 
 def run_rfdetr_segmentation_training(
@@ -116,6 +119,8 @@ def run_rfdetr_segmentation_training(
             input_size=request.input_size or _RF_SEG_DEFAULT_INPUT,
             precision=request.precision,
             resume_checkpoint_path=request.resume_checkpoint_path,
+            warm_start_checkpoint_path=request.warm_start_checkpoint_path,
+            warm_start_source_summary=request.warm_start_source_summary,
             extra_options=request.extra_options,
         )
     )
@@ -128,6 +133,7 @@ def run_rfdetr_segmentation_training(
         validation_metrics_payload=result.validation_metrics_payload,
         labels=result.labels,
         aligned_input_size=result.aligned_input_size,
+        warm_start_summary=result.warm_start_summary,
     )
 
 

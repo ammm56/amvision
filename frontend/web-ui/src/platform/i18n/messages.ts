@@ -491,7 +491,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     },
     trainingDetail: {
       kicker: '训练任务',
-      description: '查看 YOLOX 训练任务控制状态、执行事件和输出文件。',
+      description: '查看当前模型训练任务控制状态、执行事件和输出文件。',
       summaryKicker: 'Control',
       summaryTitle: '控制状态',
       outputsKicker: 'Outputs',

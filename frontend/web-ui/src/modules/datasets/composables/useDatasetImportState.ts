@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue'
 
 import {
-  listDatasetImports,
+  listProjectDatasetImports,
   submitDatasetImport,
   type DatasetImportSubmissionResponse,
   type DatasetImportSummary,
@@ -10,12 +10,14 @@ import { selectValueToString, type DatasetSelectValue } from './useDatasetFormat
 
 interface UseDatasetImportStateOptions {
   selectedProjectId: Ref<string>
+  importDatasetId: Ref<string>
   datasetId: Ref<string>
   datasetVersionId: Ref<string>
   formatType: Ref<string>
   taskType: Ref<string>
   imports: Ref<DatasetImportSummary[]>
   errorMessage: Ref<string | null>
+  createDatasetId: () => string
   t: (key: string) => string
 }
 
@@ -31,13 +33,21 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
   }
 
   async function refreshImportRecords(): Promise<void> {
-    if (!options.datasetId.value.trim()) return
+    if (!options.selectedProjectId.value.trim()) return
 
-    const nextImports = await listDatasetImports(options.datasetId.value.trim())
+    const nextImports = await listProjectDatasetImports(options.selectedProjectId.value.trim())
     options.imports.value = nextImports
     const currentDatasetVersionId = options.datasetVersionId.value.trim()
-    if (!currentDatasetVersionId || !nextImports.some((item) => item.dataset_version_id === currentDatasetVersionId)) {
-      options.datasetVersionId.value = nextImports.find((item) => item.dataset_version_id)?.dataset_version_id ?? ''
+    const selectedImport = nextImports.find((item) => item.dataset_version_id === currentDatasetVersionId)
+    if (selectedImport) {
+      options.datasetId.value = selectedImport.dataset_id
+      return
+    }
+
+    const latestImportWithVersion = nextImports.find((item) => item.dataset_version_id)
+    options.datasetVersionId.value = latestImportWithVersion?.dataset_version_id ?? ''
+    if (latestImportWithVersion) {
+      options.datasetId.value = latestImportWithVersion.dataset_id
     }
   }
 
@@ -52,7 +62,7 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
     try {
       lastImportSubmission.value = await submitDatasetImport({
         projectId: options.selectedProjectId.value,
-        datasetId: options.datasetId.value.trim(),
+        datasetId: options.importDatasetId.value.trim(),
         packageFile: importFile.value,
         formatType: options.formatType.value || undefined,
         taskType: options.taskType.value,
@@ -60,6 +70,7 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
         classMapJson: classMapJson.value,
       })
       await refreshImportRecords()
+      options.importDatasetId.value = options.createDatasetId()
     } catch (error) {
       options.errorMessage.value = error instanceof Error ? error.message : options.t('datasetOps.messages.submitImportFailed')
     } finally {

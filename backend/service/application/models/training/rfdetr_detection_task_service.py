@@ -26,6 +26,10 @@ from backend.service.application.models.training.rfdetr_detection import (
     RfdetrTrainingExecutionResult,
     run_rfdetr_training,
 )
+from backend.service.application.models.training.rfdetr_training_warm_start import (
+    build_rfdetr_warm_start_source_summary,
+    resolve_rfdetr_warm_start_reference,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -233,6 +237,13 @@ class SqlAlchemyRfdetrTrainingTaskService:
         manifest_payload = dataset_storage.read_json(manifest_object_key)
         if not isinstance(manifest_payload, dict):
             raise InvalidRequestError("RF-DETR detection 训练 manifest 无效")
+        warm_start_reference = resolve_rfdetr_warm_start_reference(
+            model_version_id=self._read_optional_str(
+                payload.get("warm_start_model_version_id")
+            ),
+            session_factory=self.session_factory,
+            dataset_storage=dataset_storage,
+        )
 
         output_prefix = f"task-runs/{task_id}"
         output_files = DetectionTrainingOutputFiles(
@@ -272,6 +283,16 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     max_epochs=int(payload.get("max_epochs") or 1),
                     input_size=self._read_input_size(payload.get("input_size")),
                     precision=str(payload.get("precision") or "fp32"),
+                    warm_start_checkpoint_path=(
+                        warm_start_reference.checkpoint_path
+                        if warm_start_reference is not None
+                        else None
+                    ),
+                    warm_start_source_summary=(
+                        build_rfdetr_warm_start_source_summary(warm_start_reference)
+                        if warm_start_reference is not None
+                        else None
+                    ),
                     extra_options=dict(payload.get("extra_options") or {}),
                 )
             )
@@ -597,6 +618,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "training_config": training_config,
             "metrics_summary": metrics_summary,
             "validation": dict(execution_result.validation_metrics_payload),
+            "warm_start": dict(execution_result.warm_start_summary),
             "output_files": {
                 "output_object_prefix": output_files.output_object_prefix,
                 "checkpoint_object_key": output_files.checkpoint_object_key,
@@ -636,7 +658,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 "precision": str(payload.get("precision") or "fp32"),
                 "distributed_mode": False,
             },
-            warm_start_summary={},
+            warm_start_summary=dict(summary.get("warm_start") or {}),
             registration_kind="best-checkpoint",
             output_files=output_files,
             metrics_summary=dict(summary["metrics_summary"]),

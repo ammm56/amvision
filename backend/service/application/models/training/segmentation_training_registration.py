@@ -71,6 +71,7 @@ def register_segmentation_training_output_model_version(
             model_scale=str(payload.get("model_scale") or ""),
             task_type=SEGMENTATION_TASK_TYPE,
             dataset_version_id=dataset_export.dataset_version_id,
+            parent_version_id=_read_optional_parent_version_id(payload),
             checkpoint_file_id=f"{task_record.task_id}-checkpoint",
             checkpoint_file_uri=checkpoint_object_key,
             labels_file_id=f"{task_record.task_id}-labels",
@@ -85,6 +86,7 @@ def register_segmentation_training_output_model_version(
                 "training_config": dict(summary["training_config"]),
                 "metrics_summary": dict(summary["metrics_summary"]),
                 "output_files": dict(summary["output_files"]),
+                "warm_start": dict(summary.get("warm_start") or {}),
                 "registration_kind": "best-checkpoint",
                 "implementation_mode": resolve_segmentation_implementation_mode(
                     model_type
@@ -92,3 +94,13 @@ def register_segmentation_training_output_model_version(
             },
         )
     )
+
+
+def _read_optional_parent_version_id(payload: dict[str, object]) -> str | None:
+    """读取可选 warm start 父 ModelVersion id。"""
+
+    value = payload.get("warm_start_model_version_id")
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return None

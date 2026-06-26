@@ -303,6 +303,7 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
     recipe_id: input.recipeId || 'default',
     model_scale: input.modelScale,
     output_model_name: input.outputModelName,
+    warm_start_model_version_id: input.warmStartModelVersionId || null,
     max_epochs: input.maxEpochs,
     batch_size: input.batchSize,
     precision: input.precision || null,
@@ -312,7 +313,6 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
   }
 
   if (input.taskType === 'detection') {
-    body.warm_start_model_version_id = input.warmStartModelVersionId || null
     body.evaluation_interval = input.evaluationInterval
     body.gpu_count = input.gpuCount
   } else if (input.taskType === 'pose' || input.taskType === 'obb') {

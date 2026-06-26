@@ -30,6 +30,8 @@ class Yolo11PoseTaskExecutionRequest(Protocol):
     evaluation_interval: int
     input_size: tuple[int, int] | None
     precision: str
+    warm_start_checkpoint_path: Path | None
+    warm_start_source_summary: dict[str, object] | None
     resume_checkpoint_path: Path | None
     extra_options: dict[str, object] | None
     epoch_callback: Any
@@ -60,6 +62,8 @@ def run_yolo11_pose_training_from_task_request(
             evaluation_interval=request.evaluation_interval,
             input_size=request.input_size,
             precision=request.precision,
+            warm_start_checkpoint_path=request.warm_start_checkpoint_path,
+            warm_start_source_summary=request.warm_start_source_summary,
             resume_checkpoint_path=request.resume_checkpoint_path,
             extra_options=request.extra_options,
             epoch_callback=_build_yolo11_epoch_callback(request),

@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 import torch
 
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.yolo11_core import (
     YOLO11_HEAD_MODULES,
     YOLO11_MODEL_CONFIGS,
@@ -101,6 +102,9 @@ from backend.service.application.models.yolo26_core.training import (
     validate_yolo26_obb_resume_parameters,
     validate_yolo26_pose_resume_parameters,
     validate_yolo26_segmentation_resume_parameters,
+)
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
 )
 from backend.service.application.models.yolov8_core import (
     YOLOV8_HEAD_MODULES,
@@ -2505,6 +2509,76 @@ def test_yolo_core_entrypoint_state_dict_coverage_is_complete(
     assert load_result.shape_mismatch_keys == ()
     assert checkpoint_load_result.coverage.loadable_ratio == 1.0
     assert checkpoint_load_result.checkpoint_path == str(checkpoint_path)
+
+
+@pytest.mark.parametrize(
+    ("builder", "load_func", "checkpoint_load_func"),
+    (
+        (build_yolov8_model, load_yolov8_state_dict, load_yolov8_checkpoint_file),
+        (build_yolo11_model, load_yolo11_state_dict, load_yolo11_checkpoint_file),
+        (build_yolo26_model, load_yolo26_state_dict, load_yolo26_checkpoint_file),
+    ),
+)
+@pytest.mark.parametrize(
+    ("task_type", "target_num_classes"),
+    (
+        (DETECTION_TASK_TYPE, 2),
+        (CLASSIFICATION_TASK_TYPE, 3),
+        (SEGMENTATION_TASK_TYPE, 2),
+        (POSE_TASK_TYPE, 2),
+        (OBB_TASK_TYPE, 2),
+    ),
+)
+def test_yolo_warm_start_tolerates_class_head_shape_mismatch(
+    builder,
+    load_func,
+    checkpoint_load_func,
+    task_type: str,
+    target_num_classes: int,
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO warm start 可跳过类别数不同的任务 head。"""
+
+    source_model = builder(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=80,
+    )
+    target_model = builder(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=target_num_classes,
+    )
+    source_state_dict = dict(source_model.state_dict())
+
+    with pytest.raises(ServiceConfigurationError):
+        load_func(
+            model=target_model,
+            source_state_dict=source_state_dict,
+        )
+
+    load_result = load_func(
+        model=target_model,
+        source_state_dict=source_state_dict,
+        minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+        strict_shape=False,
+    )
+    checkpoint_path = tmp_path / f"{task_type}-warm-start.pt"
+    torch.save({"model_state_dict": source_state_dict}, checkpoint_path)
+    checkpoint_load_result = checkpoint_load_func(
+        torch_module=torch,
+        model=target_model,
+        checkpoint_path=checkpoint_path,
+        minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+        strict_shape=False,
+    )
+
+    assert load_result.coverage.loadable_ratio >= YOLO_WARM_START_MINIMUM_LOADABLE_RATIO
+    assert load_result.shape_mismatch_keys
+    assert checkpoint_load_result.coverage.loadable_ratio == (
+        load_result.coverage.loadable_ratio
+    )
+    assert checkpoint_load_result.shape_mismatch_keys == load_result.shape_mismatch_keys
 
 
 def test_yolo_core_checkpoint_file_loader_accepts_pickled_model_payload(

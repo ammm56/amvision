@@ -219,7 +219,7 @@ function normalizeModelType(modelType: string | null | undefined): string {
 }
 
 export function supportsTrainingWarmStart(taskType: ModelTaskType): boolean {
-  return taskType === 'detection'
+  return ['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(taskType)
 }
 
 export function getDefaultTrainingEvaluationInterval(

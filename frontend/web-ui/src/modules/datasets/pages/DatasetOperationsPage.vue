@@ -19,7 +19,7 @@
     <div class="operation-grid dataset-ops-grid">
       <DatasetImportForm
         :selected-project-id="selectedProjectId"
-        :dataset-id="datasetId"
+        :dataset-id="importDatasetId"
         :format-type="formatType"
         :task-type="taskType"
         :split-strategy="splitStrategy"
@@ -31,7 +31,7 @@
         :can-write-datasets="canWriteDatasets"
         :submitting-import="submittingImport"
         :last-import-submission="lastImportSubmission"
-        @update:dataset-id="datasetId = $event"
+        @update:dataset-id="importDatasetId = $event"
         @update:format-type="setFormatType"
         @update:task-type="setTaskType"
         @update:split-strategy="setSplitStrategy"
@@ -122,7 +122,8 @@ const splitStrategyOptions: DatasetSelectOption[] = [
   { label: 'test', value: 'test' },
 ]
 
-const datasetId = ref('dataset-1')
+const importDatasetId = ref(createDefaultDatasetId())
+const datasetId = ref('')
 const datasetVersionId = ref('')
 const imports = ref<DatasetImportSummary[]>([])
 const exports = ref<DatasetExportSummary[]>([])
@@ -183,12 +184,14 @@ const {
   submitImportForm,
 } = useDatasetImportState({
   selectedProjectId,
+  importDatasetId,
   datasetId,
   datasetVersionId,
   formatType,
   taskType,
   imports,
   errorMessage,
+  createDatasetId: createDefaultDatasetId,
   t,
 })
 
@@ -228,6 +231,20 @@ function statusTone(status: string | null | undefined): 'neutral' | 'success' | 
   if (normalized.includes('queue') || normalized.includes('received')) return 'warning'
   if (normalized.includes('run') || normalized.includes('process') || normalized.includes('valid')) return 'info'
   return 'neutral'
+}
+
+function createDefaultDatasetId(): string {
+  const now = new Date()
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const timestamp = [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+  ].join('')
+  return `dataset-${timestamp}`
 }
 
 async function loadInitialData(): Promise<void> {

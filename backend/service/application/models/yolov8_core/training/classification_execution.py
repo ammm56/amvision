@@ -13,6 +13,11 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_disabled_warm_start_summary,
+    build_yolo_warm_start_summary,
+)
 from backend.service.application.models.yolov8_core import build_yolov8_model
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
@@ -22,6 +27,9 @@ from backend.service.application.models.yolov8_core.evaluation import (
 )
 from backend.service.application.models.yolov8_core.losses import (
     compute_yolov8_classification_loss,
+)
+from backend.service.application.models.yolov8_core.weights import (
+    load_yolov8_checkpoint_file,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -132,6 +140,8 @@ class YoloV8ClassificationTrainingExecutionRequest:
     evaluation_interval: int = YOLOV8_CLASSIFICATION_DEFAULT_EVALUATION_INTERVAL
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
@@ -154,6 +164,7 @@ class YoloV8ClassificationTrainingExecutionResult:
     metrics_payload: dict[str, object]
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
+    warm_start_summary: dict[str, object]
 
 
 def run_yolov8_classification_training(
@@ -183,6 +194,24 @@ def run_yolov8_classification_training(
         model_scale=request.model_scale,
         num_classes=len(labels),
     )
+
+    warm_start_summary = build_yolo_disabled_warm_start_summary()
+    if (
+        request.resume_checkpoint_path is None
+        and request.warm_start_checkpoint_path is not None
+        and request.warm_start_checkpoint_path.is_file()
+    ):
+        load_result = load_yolov8_checkpoint_file(
+            torch_module=imports.torch,
+            model=model,
+            checkpoint_path=request.warm_start_checkpoint_path,
+            minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+            strict_shape=False,
+        )
+        warm_start_summary = build_yolo_warm_start_summary(
+            load_result=load_result,
+            source_summary=request.warm_start_source_summary,
+        )
 
     resume_state: _LoadedClassificationResumeState | None = None
     if (
@@ -402,6 +431,7 @@ def run_yolov8_classification_training(
             "epoch_history": validation_history,
         },
         labels=labels,
+        warm_start_summary=warm_start_summary,
     )
 
 

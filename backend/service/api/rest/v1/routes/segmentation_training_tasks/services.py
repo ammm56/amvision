@@ -74,6 +74,7 @@ def submit_segmentation_training_task(
             output_model_name=body.output_model_name,
             dataset_export_id=body.dataset_export_id,
             dataset_export_manifest_key=body.dataset_export_manifest_key,
+            warm_start_model_version_id=body.warm_start_model_version_id,
             max_epochs=body.max_epochs,
             batch_size=body.batch_size,
             input_size=body.input_size,
@@ -90,4 +91,3 @@ def submit_segmentation_training_task(
         queue_name=result["queue_name"],
         queue_task_id=result["queue_task_id"],
     )
-

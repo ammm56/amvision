@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_disabled_warm_start_summary,
+    build_yolo_warm_start_summary,
+)
 from backend.service.application.models.yolo11_core import build_yolo11_model
 from backend.service.application.models.yolo11_core.data import (
     load_yolo11_classification_training_manifest,
@@ -38,6 +43,9 @@ from backend.service.application.models.yolo11_core.training.classification_trai
 from backend.service.application.models.yolo11_core.training.classification_imports import (
     require_yolo11_classification_training_imports,
 )
+from backend.service.application.models.yolo11_core.weights import (
+    load_yolo11_checkpoint_file,
+)
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -60,6 +68,8 @@ class Yolo11ClassificationTrainingExecutionRequest:
     evaluation_interval: int
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
@@ -84,6 +94,7 @@ class Yolo11ClassificationTrainingExecutionResult:
     metrics_payload: dict[str, object]
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
+    warm_start_summary: dict[str, object]
 
 
 class Yolo11ClassificationTrainingPausedError(Exception):
@@ -126,6 +137,24 @@ def run_yolo11_classification_training(
         model_scale=request.model_scale,
         num_classes=len(labels),
     )
+
+    warm_start_summary = build_yolo_disabled_warm_start_summary()
+    if (
+        request.resume_checkpoint_path is None
+        and request.warm_start_checkpoint_path is not None
+        and request.warm_start_checkpoint_path.is_file()
+    ):
+        load_result = load_yolo11_checkpoint_file(
+            torch_module=imports.torch,
+            model=model,
+            checkpoint_path=request.warm_start_checkpoint_path,
+            minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+            strict_shape=False,
+        )
+        warm_start_summary = build_yolo_warm_start_summary(
+            load_result=load_result,
+            source_summary=request.warm_start_source_summary,
+        )
 
     resume_state = None
     if (
@@ -269,6 +298,7 @@ def run_yolo11_classification_training(
             "epoch_history": loop_result.validation_history,
         },
         labels=labels,
+        warm_start_summary=warm_start_summary,
     )
 
 

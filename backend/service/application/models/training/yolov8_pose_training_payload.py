@@ -16,6 +16,7 @@ class YoloV8PoseTrainingRequestPayload(Protocol):
     recipe_id: str
     model_scale: str
     output_model_name: str
+    warm_start_model_version_id: str | None
     evaluation_interval: int | None
     max_epochs: int | None
     batch_size: int | None
@@ -39,6 +40,7 @@ def build_yolov8_pose_training_task_spec(
         "recipe_id": request.recipe_id,
         "model_scale": request.model_scale,
         "output_model_name": request.output_model_name,
+        "warm_start_model_version_id": request.warm_start_model_version_id,
         "evaluation_interval": request.evaluation_interval,
         "max_epochs": request.max_epochs,
         "batch_size": request.batch_size,

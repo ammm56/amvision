@@ -31,6 +31,14 @@ from backend.service.application.models.yolov8_core.evaluation import (
 from backend.service.application.models.yolov8_core.losses import (
     compute_yolov8_pose_loss,
 )
+from backend.service.application.models.yolov8_core.weights import (
+    load_yolov8_checkpoint_file,
+)
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_disabled_warm_start_summary,
+    build_yolo_warm_start_summary,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -121,6 +129,8 @@ class YoloV8PoseTrainingExecutionRequest:
     evaluation_interval: int = YOLOV8_POSE_DEFAULT_EVALUATION_INTERVAL
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable | None = None
@@ -135,6 +145,7 @@ class YoloV8PoseTrainingExecutionResult:
     metrics_payload: dict[str, object]
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
+    warm_start_summary: dict[str, object]
 
 
 def run_yolov8_pose_training(
@@ -181,6 +192,23 @@ def run_yolov8_pose_training(
         model_config_overrides={"kpt_shape": kpt_shape},
     )
     model.to(device)
+    warm_start_summary = build_yolo_disabled_warm_start_summary()
+    if (
+        request.resume_checkpoint_path is None
+        and request.warm_start_checkpoint_path is not None
+        and request.warm_start_checkpoint_path.is_file()
+    ):
+        load_result = load_yolov8_checkpoint_file(
+            torch_module=torch,
+            model=model,
+            checkpoint_path=request.warm_start_checkpoint_path,
+            minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+            strict_shape=False,
+        )
+        warm_start_summary = build_yolo_warm_start_summary(
+            load_result=load_result,
+            source_summary=request.warm_start_source_summary,
+        )
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
     extra = dict(request.extra_options or {})
@@ -413,6 +441,7 @@ def run_yolov8_pose_training(
             "epoch_history": validation_history,
         },
         labels=labels,
+        warm_start_summary=warm_start_summary,
     )
 
 

@@ -32,6 +32,14 @@ from backend.service.application.models.yolo11_core.training.pose_trainer import
     Yolo11PoseTrainingTerminatedError,
     run_yolo11_pose_training_loop,
 )
+from backend.service.application.models.yolo11_core.weights import (
+    load_yolo11_checkpoint_file,
+)
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_disabled_warm_start_summary,
+    build_yolo_warm_start_summary,
+)
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -72,6 +80,8 @@ class Yolo11PoseTrainingExecutionRequest:
     evaluation_interval: int = YOLO11_POSE_DEFAULT_EVAL_INTERVAL
     input_size: tuple[int, int] | None = None
     precision: str = "fp32"
+    warm_start_checkpoint_path: Path | None = None
+    warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
@@ -94,6 +104,7 @@ class Yolo11PoseTrainingExecutionResult:
     metrics_payload: dict[str, object]
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
+    warm_start_summary: dict[str, object]
 
 
 def run_yolo11_pose_training(
@@ -126,6 +137,23 @@ def run_yolo11_pose_training(
         num_classes=len(labels),
         model_config_overrides={"kpt_shape": kpt_shape},
     )
+    warm_start_summary = build_yolo_disabled_warm_start_summary()
+    if (
+        request.resume_checkpoint_path is None
+        and request.warm_start_checkpoint_path is not None
+        and request.warm_start_checkpoint_path.is_file()
+    ):
+        load_result = load_yolo11_checkpoint_file(
+            torch_module=imports.torch,
+            model=model,
+            checkpoint_path=request.warm_start_checkpoint_path,
+            minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+            strict_shape=False,
+        )
+        warm_start_summary = build_yolo_warm_start_summary(
+            load_result=load_result,
+            source_summary=request.warm_start_source_summary,
+        )
 
     resume_state = None
     if (
@@ -303,6 +331,7 @@ def run_yolo11_pose_training(
             "epoch_history": loop_result.validation_history,
         },
         labels=labels,
+        warm_start_summary=warm_start_summary,
     )
 
 

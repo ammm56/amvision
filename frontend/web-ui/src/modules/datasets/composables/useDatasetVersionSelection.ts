@@ -109,6 +109,10 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   function selectDatasetVersion(nextDatasetVersionId: string): void {
     const normalizedDatasetVersionId = nextDatasetVersionId.trim()
     if (!normalizedDatasetVersionId) return
+    const matchedImport = availableDatasetVersions.value.find((item) => item.dataset_version_id === normalizedDatasetVersionId)
+    if (matchedImport) {
+      options.datasetId.value = matchedImport.dataset_id
+    }
     options.datasetVersionId.value = normalizedDatasetVersionId
     closeDatasetVersionPicker()
   }
@@ -135,9 +139,10 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   }
 
   watch(
-    [resolvedDatasetVersionId, () => options.datasetId.value.trim()],
+    [resolvedDatasetVersionId, () => selectedDatasetVersionImport.value?.dataset_id ?? options.datasetId.value.trim()],
     ([nextDatasetVersionId, nextDatasetId]) => {
-      void loadDatasetVersionRelation(nextDatasetId, nextDatasetVersionId)
+      const normalizedDatasetId = typeof nextDatasetId === 'string' ? nextDatasetId.trim() : ''
+      void loadDatasetVersionRelation(normalizedDatasetId, nextDatasetVersionId)
     },
     { immediate: true },
   )

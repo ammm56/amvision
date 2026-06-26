@@ -71,6 +71,11 @@ from backend.service.application.models.yolo26_core.training.detection_support i
 from backend.service.application.models.yolo26_core.weights import (
     load_yolo26_checkpoint_file,
 )
+from backend.service.application.models.yolo_core_common.weights import (
+    YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+    build_yolo_disabled_warm_start_summary,
+    build_yolo_warm_start_summary,
+)
 from backend.service.application.models.yolo26_core.training.execution import (
     YOLO26_DETECTION_CORE_IMPLEMENTATION_MODE,
 )
@@ -564,43 +569,18 @@ def _resolve_yolo26_warm_start_summary(
     """加载 YOLO26 warm start 并返回摘要。"""
 
     if request.warm_start_checkpoint_path is None:
-        return {
-            "enabled": False,
-            "source_model_version_id": None,
-            "source_kind": None,
-            "source_model_name": None,
-            "source_model_scale": None,
-            "load_summary": None,
-        }
+        return build_yolo_disabled_warm_start_summary()
     load_result = load_yolo26_checkpoint_file(
         torch_module=imports.torch,
         model=model,
         checkpoint_path=request.warm_start_checkpoint_path,
+        minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+        strict_shape=False,
     )
-    load_summary = {
-        "checkpoint_path": load_result.checkpoint_path,
-        "loaded_key_count": len(load_result.loaded_keys),
-        "missing_keys": list(load_result.missing_keys),
-        "shape_mismatch_keys": list(load_result.shape_mismatch_keys),
-        "unexpected_keys": list(load_result.unexpected_keys),
-        "coverage": {
-            "model_key_count": load_result.coverage.model_key_count,
-            "source_key_count": load_result.coverage.source_key_count,
-            "loadable_key_count": load_result.coverage.loadable_key_count,
-            "loadable_ratio": load_result.coverage.loadable_ratio,
-            "ignored_missing_keys": list(load_result.coverage.ignored_missing_keys),
-            "ignored_source_keys": list(load_result.coverage.ignored_source_keys),
-        },
-    }
-    source_summary = request.warm_start_source_summary or {}
-    return {
-        "enabled": True,
-        "source_model_version_id": source_summary.get("source_model_version_id"),
-        "source_kind": source_summary.get("source_kind"),
-        "source_model_name": source_summary.get("source_model_name"),
-        "source_model_scale": source_summary.get("source_model_scale"),
-        "load_summary": load_summary,
-    }
+    return build_yolo_warm_start_summary(
+        load_result=load_result,
+        source_summary=request.warm_start_source_summary,
+    )
 
 
 def _load_yolo26_resume_checkpoint(

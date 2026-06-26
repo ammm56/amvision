@@ -43,6 +43,7 @@
           <strong>{{ task.control_status.status }}</strong>
         </div>
       </div>
+      <InlineError v-if="task.error_message" :message="task.error_message" />
       <div class="table-actions table-actions--wrap">
         <Button
           v-for="action in task.available_actions"

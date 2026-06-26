@@ -34,7 +34,7 @@
             type="button"
             class="platform-model-picker__chip"
             :class="{ 'is-active': option.value === selectedTaskType }"
-            @click="$emit('change-task-type', option.value)"
+            @click.stop="$emit('change-task-type', option.value)"
           >
             {{ option.label }}
           </button>
@@ -61,7 +61,7 @@
               type="button"
               class="platform-model-card"
               :class="{ 'is-selected': model.model_id === selectedModelId }"
-              @click="$emit('select-model', model.model_id)"
+              @click.stop="$emit('select-model', model.model_id)"
             >
               <div class="platform-model-card__identity">
                 <strong>{{ model.model_name }}</strong>
@@ -96,7 +96,7 @@
                 <span class="platform-model-pill">{{ scaleLabel }} · {{ selectedModelDetail.model_scale }}</span>
               </div>
               <div v-if="mode === 'training'" class="platform-model-detail__actions">
-                <Button size="sm" variant="secondary" @click="$emit('apply-model', selectedModelDetail)">
+                <Button size="sm" variant="secondary" @click.stop="$emit('apply-model', selectedModelDetail)">
                   {{ applyModelLabel }}
                 </Button>
               </div>
@@ -128,7 +128,7 @@
                         v-if="mode === 'training'"
                         size="sm"
                         variant="secondary"
-                        @click="$emit('apply-training-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
+                        @click.stop="$emit('apply-training-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
                       >
                         {{ applyTrainingVersionLabel }}
                       </Button>
@@ -136,7 +136,7 @@
                         v-if="mode === 'conversion'"
                         size="sm"
                         variant="secondary"
-                        @click="$emit('apply-conversion-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
+                        @click.stop="$emit('apply-conversion-version', { model: selectedModelDetail, modelVersionId: version.model_version_id })"
                       >
                         {{ applyConversionVersionLabel }}
                       </Button>

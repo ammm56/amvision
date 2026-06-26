@@ -41,6 +41,13 @@ from backend.service.application.models.training.yolo11_obb_task_service import 
 from backend.service.application.models.training.yolo11_task_service_support import (
     require_yolo11_model_type,
 )
+from backend.service.application.models.training.yolo_training_warm_start import (
+    build_yolo_warm_start_source_summary,
+    resolve_yolo_warm_start_reference,
+)
+from backend.service.application.models.registry.yolo11_model_service import (
+    SqlAlchemyYolo11ModelService,
+)
 from backend.service.application.models.training.yolo11_obb_training import (
     YOLO11_OBB_DEFAULT_EVAL_INTERVAL,
     Yolo11ObbTrainingControlCommand,
@@ -54,6 +61,9 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.files.detection_model_file_types import (
+    YOLO11_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -76,6 +86,7 @@ class Yolo11ObbTrainingTaskRequest:
     output_model_name: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
+    warm_start_model_version_id: str | None = None
     evaluation_interval: int | None = None
     max_epochs: int | None = None
     batch_size: int | None = None
@@ -232,6 +243,17 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
         legacy_labels_json_object_key = f"{output_prefix}/output-files/labels.json"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
+        warm_start_reference = resolve_yolo_warm_start_reference(
+            model_version_id=(
+                self._read_optional_str(payload.get("warm_start_model_version_id"))
+                if resume_checkpoint_path is None
+                else None
+            ),
+            model_service_cls=SqlAlchemyYolo11ModelService,
+            file_types=YOLO11_DETECTION_FILE_TYPES,
+            session_factory=self.session_factory,
+            dataset_storage=self.dataset_storage,
+        )
         self.task_service.append_task_event(
             build_yolo11_obb_training_started_event(
                 task_id=task_record.task_id,
@@ -294,6 +316,16 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
             ),
             input_size=input_size,
             precision=str(payload.get("precision") or "fp32"),
+            warm_start_checkpoint_path=(
+                warm_start_reference.checkpoint_path
+                if warm_start_reference is not None
+                else None
+            ),
+            warm_start_source_summary=(
+                build_yolo_warm_start_source_summary(warm_start_reference)
+                if warm_start_reference is not None
+                else None
+            ),
             resume_checkpoint_path=resume_checkpoint_path,
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
@@ -645,6 +677,7 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
             "metrics_payload": execution_result.metrics_payload,
             "validation_metrics_payload": execution_result.validation_metrics_payload,
             "output_prefix": output_prefix,
+            "warm_start": dict(execution_result.warm_start_summary),
         }
 
     def _register_training_output_model_version(

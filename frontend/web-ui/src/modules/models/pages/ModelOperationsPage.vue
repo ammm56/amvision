@@ -425,10 +425,13 @@ async function setTaskType(value: SelectValue): Promise<void> {
     return
   }
   selectedTaskType.value = nextValue as ModelTaskType
-  resetPlatformBaseModelSelection()
+  resetPlatformBaseModelSelection({ keepPickerOpen: baseModelPickerOpen.value })
   resetTrainingDatasetExportSelection()
   resetSuggestedOutputModelName()
   await refreshPage()
+  if (baseModelPickerOpen.value && baseModels.value.length > 0) {
+    await selectBaseModel(baseModels.value[0].model_id)
+  }
 }
 
 function setConversionTarget(value: SelectValue): void {

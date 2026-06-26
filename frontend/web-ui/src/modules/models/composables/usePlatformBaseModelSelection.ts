@@ -14,6 +14,10 @@ export interface PlatformBaseModelVersionListItem {
   subtitle: string
 }
 
+interface ResetPlatformBaseModelSelectionOptions {
+  keepPickerOpen?: boolean
+}
+
 export function usePlatformBaseModelSelection(options: {
   baseModels: Ref<PlatformBaseModelSummary[]>
   trainingTasks: Ref<ModelTrainingTaskSummary[]>
@@ -114,7 +118,6 @@ export function usePlatformBaseModelSelection(options: {
   function applyTrainingModelSelection(model: PlatformBaseModelDetail): void {
     trainingSelectedModelId.value = model.model_id
     warmStartModelVersionId.value = ''
-    closeBaseModelPicker()
   }
 
   function applyTrainingVersionSelection(payload: {
@@ -123,7 +126,6 @@ export function usePlatformBaseModelSelection(options: {
   }): void {
     trainingSelectedModelId.value = payload.model.model_id
     warmStartModelVersionId.value = payload.modelVersionId
-    closeBaseModelPicker()
   }
 
   function clearTrainingWarmStart(): void {
@@ -137,12 +139,13 @@ export function usePlatformBaseModelSelection(options: {
     conversionSelectedModelId.value = payload.model.model_id
     conversionModelType.value = payload.model.model_type
     conversionSourceModelVersionId.value = payload.modelVersionId
-    closeBaseModelPicker()
   }
 
-  function resetPlatformBaseModelSelection(): void {
+  function resetPlatformBaseModelSelection(options: ResetPlatformBaseModelSelectionOptions = {}): void {
     selectedModelDetail.value = null
-    baseModelPickerOpen.value = false
+    if (options.keepPickerOpen !== true) {
+      baseModelPickerOpen.value = false
+    }
     trainingSelectedModelId.value = ''
     conversionSelectedModelId.value = ''
     conversionModelType.value = ''

@@ -21,6 +21,9 @@ class SegmentationTrainingTaskCreateRequestBody(BaseModel):
     dataset_export_manifest_key: str | None = Field(
         default=None, description="导出 manifest key"
     )
+    warm_start_model_version_id: str | None = Field(
+        default=None, description="warm start 使用的 ModelVersion id"
+    )
     recipe_id: str = Field(default="default", description="训练 recipe id")
     model_scale: str = Field(description="模型 scale")
     output_model_name: str = Field(description="训练后登记的模型名")
@@ -41,4 +44,3 @@ class SegmentationTrainingTaskSubmissionResponse(BaseModel):
     status: str = Field(description="当前状态")
     queue_name: str = Field(description="提交到的队列名称")
     queue_task_id: str = Field(description="队列任务 id")
-
