@@ -972,6 +972,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         configured: '已配置',
         reachable: '可访问',
         running: '运行中',
+        stale: '心跳过期',
+        offline: '离线',
+        stopped: '已停止',
         notProbed: '未探测',
       },
       projectSources: {
@@ -2031,6 +2034,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         configured: 'Configured',
         reachable: 'Reachable',
         running: 'Running',
+        stale: 'Stale',
+        offline: 'Offline',
+        stopped: 'Stopped',
         notProbed: 'Not probed',
       },
       projectSources: {
@@ -3084,6 +3090,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         configured: '設定済み',
         reachable: '到達可能',
         running: '実行中',
+        stale: '心拍期限切れ',
+        offline: 'オフライン',
+        stopped: '停止済み',
         notProbed: '未確認',
       },
       projectSources: {
@@ -4137,6 +4146,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         configured: '구성됨',
         reachable: '접근 가능',
         running: '실행 중',
+        stale: '하트비트 만료',
+        offline: '오프라인',
+        stopped: '중지됨',
         notProbed: '미확인',
       },
       projectSources: {

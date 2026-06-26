@@ -7,6 +7,7 @@ from backend.workers.consumer_registry import (
     BackgroundTaskConsumerResources,
     build_background_task_consumers,
 )
+from backend.workers.health import BackendWorkerHeartbeat, BackendWorkerHeartbeatInfo
 from backend.workers.task_manager import (
     BackgroundTaskManager,
     BackgroundTaskManagerConfig,
@@ -51,7 +52,19 @@ def run_worker_forever() -> None:
     bootstrap = BackendWorkerBootstrap()
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     bootstrap.initialize(runtime)
+    heartbeat = BackendWorkerHeartbeat(
+        info=BackendWorkerHeartbeatInfo(
+            app_name=runtime.settings.app.app_name,
+            app_version=runtime.settings.app.app_version,
+            workspace_dir=runtime.workspace_dir,
+            queue_root_dir=runtime.queue_backend.root_dir,
+            enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,
+            max_concurrent_tasks=runtime.settings.task_manager.max_concurrent_tasks,
+            poll_interval_seconds=runtime.settings.task_manager.poll_interval_seconds,
+        )
+    )
     try:
+        heartbeat.start()
         task_manager = build_background_task_manager(runtime)
         print(
             "backend-worker ready "
@@ -63,6 +76,7 @@ def run_worker_forever() -> None:
         )
         task_manager.run_forever()
     finally:
+        heartbeat.stop()
         runtime.session_factory.engine.dispose()
 
 

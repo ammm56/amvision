@@ -26,6 +26,7 @@ from backend.service.api.rest.v1.routes.system.services import (
 )
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.settings import BackendServiceSettings
+from backend.workers.health import read_backend_worker_health_summary
 
 
 system_diagnostics_router = APIRouter()
@@ -239,11 +240,7 @@ def _build_service_diagnostics(
             "max_concurrent_tasks": settings.task_manager.max_concurrent_tasks,
             "poll_interval_seconds": settings.task_manager.poll_interval_seconds,
         },
-        "backend_worker": {
-            "status": "external",
-            "entrypoint": "python -m backend.workers.main",
-            "health": "not_probed",
-        },
+        "backend_worker": _build_backend_worker_diagnostics(settings),
         "websocket": {
             "status": "configured",
             "query_token_enabled": settings.auth.websocket_query_token_enabled,
@@ -281,6 +278,19 @@ def _build_database_diagnostics(unit_of_work: UnitOfWork) -> dict[str, object]:
     except Exception as error:  # pragma: no cover - 只在数据库异常时进入
         return {"status": "error", "database": "unreachable", "error": str(error)}
     return {"status": "ok", "database": "reachable", "scalar": health_value}
+
+
+def _build_backend_worker_diagnostics(settings: BackendServiceSettings) -> dict[str, object]:
+    """读取独立 backend-worker 的本地心跳摘要。
+
+    参数：
+    - settings：backend-service 当前配置。
+
+    返回：
+    - dict[str, object]：backend-worker 进程健康摘要。
+    """
+
+    return read_backend_worker_health_summary(queue_root_dir=_resolve_path(settings.queue.root_dir))
 
 
 def _build_zeromq_service_summary(trigger_source_supervisor: object) -> dict[str, object]:
@@ -592,4 +602,3 @@ def _read_git_commit() -> str | None:
         return None
     commit = result.stdout.strip()
     return commit or None
-
