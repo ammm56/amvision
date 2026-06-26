@@ -6,7 +6,7 @@
         <h1>{{ taskStore.selectedTask?.task_id || taskId }}</h1>
       </div>
       <div class="page-actions">
-        <Button variant="secondary" :disabled="taskStore.detailLoading" @click="taskStore.loadTask(taskId)">
+        <Button variant="secondary" :disabled="isTaskDetailLoading" @click="loadTaskDetail(taskId)">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -20,7 +20,7 @@
     <InlineError :message="taskStore.error" />
 
     <LoadingPanel
-      v-if="taskStore.detailLoading && !taskStore.selectedTask"
+      v-if="isTaskDetailLoading && !taskStore.selectedTask"
       :title="t('tasks.loadingDetailTitle')"
       :description="t('tasks.loadingDetailDescription')"
     />
@@ -48,7 +48,7 @@
 
         <section class="panel-section">
           <h2>{{ t('tasks.events') }}</h2>
-          <div v-if="taskStore.detailLoading" class="task-detail-loading">
+          <div v-if="isTaskDetailLoading" class="task-detail-loading">
             <LoadingPanel
               compact
               :title="t('tasks.loadingDetailTitle')"
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Ban, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -92,6 +92,13 @@ const route = useRoute()
 const taskStore = useTaskStore()
 const { t } = useI18n()
 const taskId = computed(() => String(route.params.taskId))
+const eventLoadingVisible = ref(false)
+const isTaskDetailLoading = computed(() => taskStore.detailLoading || eventLoadingVisible.value)
+
+const MIN_EVENT_LOADING_MS = 2000
+let eventLoadingStartedAt = 0
+let eventLoadingTimer: ReturnType<typeof window.setTimeout> | null = null
+let taskLoadSequence = 0
 
 const taskEvents = useTaskEvents(() => taskId.value, (event) => taskStore.appendTaskEvent(event))
 
@@ -101,15 +108,50 @@ const canCancel = computed(() => {
   return state === 'queued' || state === 'running'
 })
 
+function clearEventLoadingTimer(): void {
+  if (eventLoadingTimer !== null) {
+    window.clearTimeout(eventLoadingTimer)
+    eventLoadingTimer = null
+  }
+}
+
+function showEventLoading(): void {
+  clearEventLoadingTimer()
+  eventLoadingStartedAt = Date.now()
+  eventLoadingVisible.value = true
+}
+
+function hideEventLoadingAfterMinimum(loadSequence: number): void {
+  const elapsed = Date.now() - eventLoadingStartedAt
+  const remaining = Math.max(0, MIN_EVENT_LOADING_MS - elapsed)
+  eventLoadingTimer = window.setTimeout(() => {
+    if (loadSequence === taskLoadSequence) {
+      eventLoadingVisible.value = false
+    }
+    eventLoadingTimer = null
+  }, remaining)
+}
+
+async function loadTaskDetail(nextTaskId: string): Promise<void> {
+  const loadSequence = ++taskLoadSequence
+  showEventLoading()
+  await taskStore.loadTask(nextTaskId)
+  hideEventLoadingAfterMinimum(loadSequence)
+}
+
 onMounted(async () => {
-  await taskStore.loadTask(taskId.value)
+  await loadTaskDetail(taskId.value)
   taskEvents.start()
 })
 
 watch(taskId, async (nextTaskId) => {
   taskEvents.stop()
-  await taskStore.loadTask(nextTaskId)
+  await loadTaskDetail(nextTaskId)
   taskEvents.start()
+})
+
+onBeforeUnmount(() => {
+  clearEventLoadingTimer()
 })
 </script>
 
