@@ -139,6 +139,7 @@ def list_task_events(
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     event_type: Annotated[str | None, Query(description="事件类型")] = None,
     after_created_at: Annotated[str | None, Query(description="只返回晚于该时间的事件")] = None,
+    offset: Annotated[int, Query(ge=0, description="结果偏移量")] = 0,
     limit: Annotated[int, Query(ge=1, le=500, description="最大返回数量")] = 100,
 ) -> list[TaskEventResponse]:
     """按任务 id 和筛选条件列出事件。"""
@@ -151,6 +152,7 @@ def list_task_events(
             task_id=task_id,
             event_type=event_type,
             after_created_at=after_created_at,
+            offset=offset,
             limit=limit,
         )
     )

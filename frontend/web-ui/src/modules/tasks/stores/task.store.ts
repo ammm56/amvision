@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import { cancelTask, getTask, getTaskEvents, listTasks } from '../services/task.service'
+import { cancelTask, getAllTaskEvents, getTask, listTasks } from '../services/task.service'
 import type { PaginationMeta } from '@/shared/api/pagination'
 import type { TaskEvent, TaskRecord, TaskState } from '@/shared/contracts'
 import { translate } from '@/platform/i18n'
@@ -90,7 +90,7 @@ export const useTaskStore = defineStore('tasks', {
       this.error = null
       try {
         this.selectedTask = await getTask(taskId)
-        this.selectedTaskEvents = await getTaskEvents(taskId)
+        this.selectedTaskEvents = await getAllTaskEvents(taskId)
       } catch (error) {
         this.error = error instanceof Error ? error.message : translate('tasks.detailLoadFailed')
       } finally {

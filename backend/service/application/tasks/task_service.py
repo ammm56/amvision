@@ -106,12 +106,14 @@ class TaskEventQueryFilters:
     - task_id：所属任务 id。
     - event_type：事件类型。
     - after_created_at：只返回晚于该时间的事件。
+    - offset：结果偏移量。
     - limit：最大返回数量。
     """
 
     task_id: str
     event_type: TaskEventType | None = None
     after_created_at: str | None = None
+    offset: int = 0
     limit: int = 100
 
 
@@ -228,6 +230,8 @@ class SqlAlchemyTaskService:
 
         if not filters.task_id.strip():
             raise InvalidRequestError("查询任务事件时 task_id 不能为空")
+        if filters.offset < 0:
+            raise InvalidRequestError("offset 不能小于 0")
         if filters.limit <= 0:
             raise InvalidRequestError("limit 必须大于 0")
 
@@ -236,7 +240,7 @@ class SqlAlchemyTaskService:
 
         matched_events = [event for event in events if self._event_matches_filters(event, filters)]
         matched_events.sort(key=lambda event: (event.created_at, event.event_id))
-        return tuple(matched_events[: filters.limit])
+        return tuple(matched_events[filters.offset : filters.offset + filters.limit])
 
     def append_task_event(self, request: AppendTaskEventRequest) -> TaskDetail:
         """为指定任务追加一条事件，并同步更新任务快照。

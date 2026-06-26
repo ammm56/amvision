@@ -157,6 +157,48 @@ def test_list_tasks_returns_pagination_headers_and_offset_window(tmp_path: Path)
         session_factory.engine.dispose()
 
 
+def test_list_task_events_returns_offset_window(tmp_path: Path) -> None:
+    """验证任务事件接口支持按 offset 和 limit 读取完整事件窗口。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    service = SqlAlchemyTaskService(session_factory)
+    try:
+        with client:
+            created_task = service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="yolo11-training",
+                    display_name="train yolo11",
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                    task_id="task-many-events",
+                    created_at="2026-01-01T00:00:00Z",
+                )
+            )
+            for index in range(5):
+                service.append_task_event(
+                    AppendTaskEventRequest(
+                        task_id=created_task.task_id,
+                        event_type="progress",
+                        message=f"epoch {index + 1}",
+                        created_at=f"2026-01-01T00:00:0{index + 1}Z",
+                    )
+                )
+
+            events_response = client.get(
+                f"/api/v1/tasks/{created_task.task_id}/events",
+                headers=_build_task_read_headers(),
+                params={"offset": 2, "limit": 2},
+            )
+
+        assert events_response.status_code == 200
+        assert [event["message"] for event in events_response.json()] == [
+            "epoch 2",
+            "epoch 3",
+        ]
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
     """验证任务事件 WebSocket 可以收到新追加的任务事件。"""
 
