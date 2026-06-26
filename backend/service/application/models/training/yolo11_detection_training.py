@@ -76,6 +76,9 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    YoloUltralyticsTrainingSchedule,
+)
 from backend.service.application.models.yolo11_core.training.execution import (
     YOLO11_DETECTION_CORE_IMPLEMENTATION_MODE,
 )
@@ -170,12 +173,16 @@ def run_yolo11_detection_training(
         weight_decay=training_options["weight_decay"],
         max_epochs=max_epochs,
         min_lr_ratio=training_options["min_lr_ratio"],
+        batch_size=batch_size,
+        train_sample_count=len(train_samples),
+        num_classes=len(category_names),
         device=device,
         runtime_precision=runtime_precision,
     )
     optimizer = training_runtime.optimizer
     scheduler = training_runtime.scheduler
     scaler = training_runtime.scaler
+    training_schedule = training_runtime.schedule
 
     resume_state = None
     if request.resume_checkpoint_path is not None:
@@ -275,6 +282,7 @@ def run_yolo11_detection_training(
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
+            training_schedule=training_schedule,
             train_samples=train_samples,
             validation_samples=validation_samples,
             batch_size=batch_size,
@@ -449,6 +457,7 @@ def run_yolo11_detection_training(
         warm_start_summary=warm_start_summary,
         training_options=training_options,
         optimizer=optimizer,
+        training_schedule=training_runtime.schedule,
         validation_metrics_payload=validation_metrics_payload,
         augmentation_options=augmentation_options,
     )
@@ -499,10 +508,10 @@ def _resolve_yolo11_detection_training_options(
 
     return {
         "learning_rate": read_yolo11_float_option(
-            extra_options, "learning_rate", default=1e-3
+            extra_options, "learning_rate", default=0.01
         ),
         "weight_decay": read_yolo11_float_option(
-            extra_options, "weight_decay", default=1e-4
+            extra_options, "weight_decay", default=5e-4
         ),
         "class_loss_weight": read_yolo11_float_option(
             extra_options,
@@ -1143,6 +1152,7 @@ def _build_yolo11_metrics_payload(
     warm_start_summary: dict[str, object],
     training_options: dict[str, Any],
     optimizer: Any,
+    training_schedule: YoloUltralyticsTrainingSchedule,
     validation_metrics_payload: dict[str, object],
     augmentation_options: Any,
 ) -> dict[str, object]:
@@ -1172,13 +1182,19 @@ def _build_yolo11_metrics_payload(
         "parameter_count": parameter_count,
         "warm_start": warm_start_summary,
         "optimizer": {
-            "name": "AdamW",
-            "learning_rate": training_options["learning_rate"],
-            "weight_decay": training_options["weight_decay"],
+            "name": training_schedule.optimizer_name,
+            "learning_rate": training_schedule.initial_lr,
+            "weight_decay": training_schedule.weight_decay,
+            "scaled_weight_decay": training_schedule.scaled_weight_decay,
+            "nominal_batch_size": training_schedule.nominal_batch_size,
+            "accumulate": training_schedule.accumulate,
         },
         "scheduler": {
-            "name": "CosineAnnealingLR",
+            "name": "UltralyticsCosineLambdaLR",
             "min_lr_ratio": training_options["min_lr_ratio"],
+            "warmup_iterations": training_schedule.warmup_iterations,
+            "warmup_momentum": training_schedule.warmup_momentum,
+            "warmup_bias_lr": training_schedule.warmup_bias_lr,
             "latest_learning_rate": float(optimizer.param_groups[0]["lr"]),
         },
         "evaluation": {

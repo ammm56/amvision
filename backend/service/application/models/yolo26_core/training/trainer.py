@@ -26,6 +26,9 @@ from backend.service.application.models.yolo26_core.training.savepoint import (
     Yolo26DetectionTrainingSavepointPayload,
     build_yolo26_detection_training_savepoint_payload,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    YoloUltralyticsTrainingSchedule,
+)
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,7 @@ def run_yolo26_detection_training_loop(
     optimizer: Any,
     scheduler: Any,
     scaler: Any,
+    training_schedule: YoloUltralyticsTrainingSchedule | None,
     train_samples: tuple[Any, ...],
     validation_samples: tuple[Any, ...],
     batch_size: int,
@@ -151,6 +155,7 @@ def run_yolo26_detection_training_loop(
             total_iterations=total_iterations,
             optimizer=optimizer,
             scaler=scaler,
+            training_schedule=training_schedule,
             autocast_context=autocast_context,
             build_batch=build_batch,
             unwrap_outputs=unwrap_outputs,

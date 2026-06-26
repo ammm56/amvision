@@ -6,6 +6,12 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.training import (
+    YoloUltralyticsTrainingSchedule,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
+)
+
 
 @dataclass(frozen=True)
 class YoloV8DetectionTrainingRuntime:
@@ -14,6 +20,7 @@ class YoloV8DetectionTrainingRuntime:
     optimizer: Any
     scheduler: Any
     scaler: Any
+    schedule: YoloUltralyticsTrainingSchedule
 
 
 def build_yolov8_detection_training_runtime(
@@ -24,20 +31,30 @@ def build_yolov8_detection_training_runtime(
     weight_decay: float,
     max_epochs: int,
     min_lr_ratio: float,
+    batch_size: int,
+    train_sample_count: int,
+    num_classes: int,
     device: str,
     runtime_precision: str,
 ) -> YoloV8DetectionTrainingRuntime:
     """构建 YOLOv8 detection optimizer、scheduler 和 GradScaler。"""
 
-    optimizer = torch_module.optim.AdamW(
-        model.parameters(),
-        lr=learning_rate,
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch_module,
+        model=model,
+        num_classes=num_classes,
+        batch_size=batch_size,
+        train_sample_count=train_sample_count,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
         weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
     )
-    scheduler = torch_module.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=max_epochs,
-        eta_min=learning_rate * min_lr_ratio,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=torch_module,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
     )
     scaler_enabled = device.startswith("cuda") and runtime_precision == "fp16"
     amp_module = getattr(torch_module, "amp", None)
@@ -50,6 +67,7 @@ def build_yolov8_detection_training_runtime(
         optimizer=optimizer,
         scheduler=scheduler,
         scaler=scaler,
+        schedule=schedule,
     )
 
 

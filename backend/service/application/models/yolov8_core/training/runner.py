@@ -7,6 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.training import (
+    YoloUltralyticsTrainingSchedule,
+    apply_yolo_ultralytics_warmup,
+)
+
 
 @dataclass(frozen=True)
 class YoloV8DetectionTrainingBatchProgress:
@@ -49,6 +54,7 @@ def run_yolov8_detection_training_epoch(
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
+    training_schedule: YoloUltralyticsTrainingSchedule | None = None,
     batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None,
 ) -> YoloV8DetectionTrainingEpochResult:
     """执行 YOLOv8 detection 一个 epoch 的 batch 循环。"""
@@ -59,14 +65,22 @@ def run_yolov8_detection_training_epoch(
     max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
     epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
     model.train()
+    optimizer.zero_grad(set_to_none=True)
+    last_optimizer_step_iteration = 0
 
     for iteration, sample_batch in enumerate(
         _iter_yolov8_detection_batches(shuffled_samples, batch_size),
         start=1,
     ):
         global_iteration += 1
+        current_accumulate = _resolve_yolov8_current_accumulate(
+            optimizer=optimizer,
+            training_schedule=training_schedule,
+            global_iteration=global_iteration,
+            epoch=epoch,
+            batch_size=batch_size,
+        )
         images, batch_targets = build_batch(sample_batch, available_samples)
-        optimizer.zero_grad(set_to_none=True)
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
@@ -76,11 +90,18 @@ def run_yolov8_detection_training_epoch(
             )
             loss = loss_components["loss"]
         scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
-        if grad_clip_norm > 0:
-            torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
-        scaler.step(optimizer)
-        scaler.update()
+        should_step = (
+            iteration - last_optimizer_step_iteration >= current_accumulate
+            or iteration == max_iterations
+        )
+        if should_step:
+            scaler.unscale_(optimizer)
+            if grad_clip_norm > 0:
+                torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
+            last_optimizer_step_iteration = iteration
 
         for metric_name in epoch_losses:
             epoch_losses[metric_name] += float(loss_components[metric_name].detach().item())
@@ -125,6 +146,27 @@ def _iter_yolov8_detection_batches(
         samples[start:start + resolved_batch_size]
         for start in range(0, len(samples), resolved_batch_size)
     ]
+
+
+def _resolve_yolov8_current_accumulate(
+    *,
+    optimizer: Any,
+    training_schedule: YoloUltralyticsTrainingSchedule | None,
+    global_iteration: int,
+    epoch: int,
+    batch_size: int,
+) -> int:
+    """解析 YOLOv8 detection 当前 batch 使用的梯度累积步数。"""
+
+    if training_schedule is None:
+        return 1
+    return apply_yolo_ultralytics_warmup(
+        optimizer=optimizer,
+        schedule=training_schedule,
+        iteration_index=max(0, int(global_iteration) - 1),
+        epoch=epoch,
+        batch_size=batch_size,
+    )
 
 
 __all__ = [

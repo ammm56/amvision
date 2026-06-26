@@ -334,8 +334,8 @@ def run_yolov8_detection_training(
             requested_precision=request.precision,
         )
     )
-    learning_rate = _read_float_option(extra_options, "learning_rate", default=1e-3)
-    weight_decay = _read_float_option(extra_options, "weight_decay", default=1e-4)
+    learning_rate = _read_float_option(extra_options, "learning_rate", default=0.01)
+    weight_decay = _read_float_option(extra_options, "weight_decay", default=5e-4)
     class_loss_weight = _read_float_option(
         extra_options,
         "class_loss_weight",
@@ -422,12 +422,16 @@ def run_yolov8_detection_training(
         weight_decay=weight_decay,
         max_epochs=max_epochs,
         min_lr_ratio=min_lr_ratio,
+        batch_size=batch_size,
+        train_sample_count=len(train_samples),
+        num_classes=len(category_names),
         device=device,
         runtime_precision=runtime_precision,
     )
     optimizer = training_runtime.optimizer
     scheduler = training_runtime.scheduler
     scaler = training_runtime.scaler
+    training_schedule = training_runtime.schedule
     resume_state: _LoadedResumeState | None = None
     if request.resume_checkpoint_path is not None:
         resume_state = _load_resume_checkpoint(
@@ -542,6 +546,7 @@ def run_yolov8_detection_training(
             total_iterations=total_iterations,
             optimizer=optimizer,
             scaler=scaler,
+            training_schedule=training_schedule,
             autocast_context=autocast_context,
             build_batch=lambda sample_batch, available_samples: (
                 build_yolov8_detection_training_batch(
@@ -819,13 +824,19 @@ def run_yolov8_detection_training(
         "parameter_count": parameter_count,
         "warm_start": warm_start_summary,
         "optimizer": {
-            "name": "AdamW",
-            "learning_rate": learning_rate,
-            "weight_decay": weight_decay,
+            "name": training_runtime.schedule.optimizer_name,
+            "learning_rate": training_runtime.schedule.initial_lr,
+            "weight_decay": training_runtime.schedule.weight_decay,
+            "scaled_weight_decay": training_runtime.schedule.scaled_weight_decay,
+            "nominal_batch_size": training_runtime.schedule.nominal_batch_size,
+            "accumulate": training_runtime.schedule.accumulate,
         },
         "scheduler": {
-            "name": "CosineAnnealingLR",
+            "name": "UltralyticsCosineLambdaLR",
             "min_lr_ratio": min_lr_ratio,
+            "warmup_iterations": training_runtime.schedule.warmup_iterations,
+            "warmup_momentum": training_runtime.schedule.warmup_momentum,
+            "warmup_bias_lr": training_runtime.schedule.warmup_bias_lr,
             "latest_learning_rate": float(optimizer.param_groups[0]["lr"]),
         },
         "evaluation": {

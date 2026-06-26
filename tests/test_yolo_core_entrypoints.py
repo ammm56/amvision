@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -128,6 +129,9 @@ from backend.service.application.models.yolov8_core import (
 )
 from backend.service.application.models.yolov8_core.export import (
     YoloV8ExportSourceSession,
+)
+from backend.service.application.models.yolov8_core.training.segmentation_execution import (
+    run_yolov8_segmentation_training,
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_segmentation_targets,
@@ -1743,6 +1747,46 @@ def test_yolo26_classification_training_loop_lives_in_core() -> None:
     assert build_yolo26_classification_checkpoint_bytes.__module__.endswith(
         "yolo26_core.training.classification_checkpoint"
     )
+
+
+@pytest.mark.parametrize(
+    "training_loop",
+    (
+        run_yolo11_classification_training_loop,
+        run_yolo26_classification_training_loop,
+    ),
+)
+def test_yolo_classification_training_loop_updates_model_weights(
+    training_loop: object,
+) -> None:
+    """验证 YOLO classification 主循环包含真实反向传播和参数更新。"""
+
+    source = inspect.getsource(training_loop)
+
+    assert ".backward()" in source
+    assert "optimizer.step()" in source
+    assert "scheduler.step()" in source
+
+
+@pytest.mark.parametrize(
+    "training_entrypoint",
+    (
+        run_yolov8_segmentation_training,
+        run_yolo11_segmentation_training,
+        run_yolo26_segmentation_training,
+    ),
+)
+def test_yolo_segmentation_training_defaults_do_not_use_legacy_large_values(
+    training_entrypoint: object,
+) -> None:
+    """验证 YOLO segmentation 默认 lr / weight_decay 不再来自旧过渡表达式。"""
+
+    source = inspect.getsource(training_entrypoint)
+
+    assert "GRAD_CLIP / 10" not in source
+    assert 'get("weight_decay", _SEG_DEFAULT_MIN_LR)' not in source
+    assert 'get("weight_decay", YOLO11_SEGMENTATION_DEFAULT_MIN_LR)' not in source
+    assert 'get("weight_decay", YOLO26_SEGMENTATION_DEFAULT_MIN_LR)' not in source
 
 
 @pytest.mark.parametrize(

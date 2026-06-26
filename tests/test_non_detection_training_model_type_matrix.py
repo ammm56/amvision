@@ -346,6 +346,7 @@ def test_non_detection_training_result_registration_model_type_matrix(
             ),
             metrics_payload={"final_metrics": {"loss": 0.1}},
             validation_metrics_payload={spec.best_metric_name: 0.9},
+            warm_start_summary={"enabled": False},
             labels=spec.category_names,
         )
 

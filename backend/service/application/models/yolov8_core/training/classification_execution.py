@@ -323,6 +323,7 @@ def run_yolov8_classification_training(
                 continue
             batch_images = batch.images
             batch_targets = batch.targets
+            optimizer.zero_grad(set_to_none=True)
             with _autocast_context(imports, precision, device_name):
                 outputs = model(batch_images)
                 loss, probabilities = compute_yolov8_classification_loss(
@@ -330,6 +331,14 @@ def run_yolov8_classification_training(
                     outputs=outputs,
                     targets=batch_targets,
                 )
+            if scaler is not None:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
+            scheduler.step()
             _, predicted = imports.torch.max(probabilities, 1)
             train_correct += int((predicted == batch_targets).sum().item())
             train_total += int(batch_targets.size(0))

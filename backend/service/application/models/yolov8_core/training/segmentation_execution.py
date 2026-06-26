@@ -65,6 +65,8 @@ _SEG_DEFAULT_DFL_LOSS = 1.5
 _SEG_DEFAULT_MASK_LOSS = 1.0
 _SEG_DEFAULT_ASSIGN_ALPHA = 0.5
 _SEG_DEFAULT_ASSIGN_BETA = 6.0
+_SEG_DEFAULT_LR = 1e-3
+_SEG_DEFAULT_WEIGHT_DECAY = 1e-4
 _SEG_DEFAULT_MIN_LR = 0.01
 _SEG_DEFAULT_GRAD_CLIP = 10.0
 
@@ -253,8 +255,8 @@ def run_yolov8_segmentation_training(
         resume = _seg_load_resume(request, imports)
 
     extra = dict(request.extra_options or {})
-    lr = float(extra.get("learning_rate", _SEG_DEFAULT_GRAD_CLIP / 10))
-    wd = float(extra.get("weight_decay", _SEG_DEFAULT_MIN_LR))
+    lr = float(extra.get("learning_rate", _SEG_DEFAULT_LR))
+    wd = float(extra.get("weight_decay", _SEG_DEFAULT_WEIGHT_DECAY))
     min_lr = float(extra.get("min_lr_ratio", _SEG_DEFAULT_MIN_LR))
     bs = max(1, int(extra.get("batch_size", request.batch_size)))
     me = max(1, int(extra.get("max_epochs", request.max_epochs)))

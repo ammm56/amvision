@@ -134,6 +134,15 @@ def run_yolo26_classification_training_loop(
                     outputs=outputs,
                     targets=batch.targets,
                 )
+            optimizer.zero_grad(set_to_none=True)
+            if scaler is not None:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
+            scheduler.step()
             _, predicted = imports.torch.max(probabilities, 1)
             train_correct += int((predicted == batch.targets).sum().item())
             train_total += int(batch.targets.size(0))

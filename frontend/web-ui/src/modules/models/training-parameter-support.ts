@@ -36,6 +36,11 @@ const deviceOptions: TrainingParameterFieldOption[] = [
   { label: 'cuda:0', value: 'cuda:0' },
 ]
 
+const yoloDetectionDefaultLearningRate = '0.01'
+const yoloDetectionDefaultWeightDecay = '0.0005'
+const yoloTaskAdamWDefaultLearningRate = '0.001'
+const yoloTaskAdamWDefaultWeightDecay = '0.0001'
+
 function numberField(
   key: string,
   label: string,
@@ -120,8 +125,8 @@ const detectionYoloXFields: TrainingParameterField[] = [
 ]
 
 const detectionYoloPrimaryFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.001' }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultWeightDecay }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, step: 0.1, defaultValue: '1.5' }),
@@ -158,15 +163,15 @@ const detectionRfdetrFields: TrainingParameterField[] = [
 
 const classificationFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.001' }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '1.0' }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.01' }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
@@ -195,8 +200,8 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
 
 const poseFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.001' }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
@@ -210,8 +215,8 @@ const poseFields: TrainingParameterField[] = [
 
 const obbFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.001' }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
 ]
 
 function normalizeModelType(modelType: string | null | undefined): string {

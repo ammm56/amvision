@@ -70,6 +70,8 @@ YOLO11_SEGMENTATION_DEFAULT_DFL_LOSS = 1.5
 YOLO11_SEGMENTATION_DEFAULT_MASK_LOSS = 1.0
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_BETA = 6.0
+YOLO11_SEGMENTATION_DEFAULT_LR = 1e-3
+YOLO11_SEGMENTATION_DEFAULT_WEIGHT_DECAY = 1e-4
 YOLO11_SEGMENTATION_DEFAULT_MIN_LR = 0.01
 YOLO11_SEGMENTATION_DEFAULT_GRAD_CLIP = 10.0
 
@@ -217,9 +219,11 @@ def run_yolo11_segmentation_training(
 
     extra = dict(request.extra_options or {})
     learning_rate = float(
-        extra.get("learning_rate", YOLO11_SEGMENTATION_DEFAULT_GRAD_CLIP / 10)
+        extra.get("learning_rate", YOLO11_SEGMENTATION_DEFAULT_LR)
     )
-    weight_decay = float(extra.get("weight_decay", YOLO11_SEGMENTATION_DEFAULT_MIN_LR))
+    weight_decay = float(
+        extra.get("weight_decay", YOLO11_SEGMENTATION_DEFAULT_WEIGHT_DECAY)
+    )
     min_lr_ratio = float(extra.get("min_lr_ratio", YOLO11_SEGMENTATION_DEFAULT_MIN_LR))
     batch_size = max(1, int(extra.get("batch_size", request.batch_size)))
     max_epochs = max(1, int(extra.get("max_epochs", request.max_epochs)))
