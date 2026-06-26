@@ -232,8 +232,8 @@ class VocExportMixin:
         """把 xywh 检测框转换为 VOC 使用的 xyxy 整数坐标。"""
 
         bbox_x, bbox_y, bbox_w, bbox_h = bbox_xywh
-        xmin = max(0, min(sample.width, int(round(bbox_x))))
-        ymin = max(0, min(sample.height, int(round(bbox_y))))
+        xmin = max(1, min(sample.width, int(round(bbox_x)) + 1))
+        ymin = max(1, min(sample.height, int(round(bbox_y)) + 1))
         xmax = max(xmin, min(sample.width, int(round(bbox_x + bbox_w))))
         ymax = max(ymin, min(sample.height, int(round(bbox_y + bbox_h))))
         return (xmin, ymin, xmax, ymax)

@@ -220,7 +220,7 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
     train_payload = export_result.annotation_payloads_by_split["train"]
     assert train_payload.documents[0].file_name == "sample-1.jpg"
     assert train_payload.documents[0].annotation_relative_path == "Annotations/sample-1.xml"
-    assert train_payload.documents[0].objects[0].bbox_xyxy == (10, 20, 40, 60)
+    assert train_payload.documents[0].objects[0].bbox_xyxy == (11, 21, 40, 60)
 
     manifest_payload = json.loads(
         dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
@@ -235,7 +235,9 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
     assert manifest_payload["format_id"] == VOC_DETECTION_DATASET_FORMAT
     assert manifest_payload["splits"][0]["image_set_file"].endswith("/ImageSets/Main/train.txt")
     assert "<name>bolt</name>" in annotation_xml
-    assert "<xmin>10</xmin>" in annotation_xml
+    assert "<xmin>11</xmin>" in annotation_xml
+    assert "<ymin>21</ymin>" in annotation_xml
+    assert "<xmax>40</xmax>" in annotation_xml
     assert "<ymax>60</ymax>" in annotation_xml
     assert image_set_file == "sample-1\n"
     assert dataset_storage.resolve(f"{export_result.export_path}/JPEGImages/sample-1.jpg").is_file()

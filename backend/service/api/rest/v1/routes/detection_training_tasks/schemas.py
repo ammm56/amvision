@@ -45,16 +45,18 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "learning_rate": 0.001,
-                    "weight_decay": 0.0001,
-                    "flip_prob": 0.0,
-                    "hsv_prob": 0.0,
-                    "mosaic_prob": 0.0,
-                    "enable_mixup": False,
+                    "learning_rate": 0.01,
+                    "weight_decay": 0.0005,
+                    "flip_prob": 0.5,
+                    "hsv_prob": 1.0,
+                    "mosaic_prob": 1.0,
+                    "enable_mixup": True,
                     "mixup_prob": 0.0,
-                    "degrees": 10.0,
+                    "degrees": 0.0,
                     "translate": 0.1,
-                    "shear": 2.0,
+                    "scale": 0.5,
+                    "shear": 0.0,
+                    "close_mosaic": 10,
                 }
             ]
         },
@@ -67,8 +69,8 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
         description="强制指定训练 device；不同 detection backend 会按自身能力解析该字段",
     )
     max_labels: int | None = Field(default=None, description="单张图片保留的最大标签数；YOLOX 当前默认 120")
-    learning_rate: float | None = Field(default=None, description="训练学习率；YOLO 主线 detection 当前默认 1e-3")
-    weight_decay: float | None = Field(default=None, description="训练 weight decay；YOLO 主线 detection 当前默认 1e-4")
+    learning_rate: float | None = Field(default=None, description="训练学习率；YOLOv8/YOLO11/YOLO26 detection 默认 0.01，YOLOX 按 batch size 缩放")
+    weight_decay: float | None = Field(default=None, description="训练 weight decay；YOLOv8/YOLO11/YOLO26 detection 默认 5e-4，YOLOX 默认 5e-4")
     class_loss_weight: float | None = Field(default=None, description="分类损失权重；YOLO 主线 detection 当前默认 0.5")
     box_loss_weight: float | None = Field(default=None, description="框回归损失权重；YOLO 主线 detection 当前默认 7.5")
     dfl_loss_weight: float | None = Field(default=None, description="DFL 损失权重；YOLO 主线 detection 当前默认 1.5")
@@ -85,23 +87,29 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
     assign_beta: float | None = Field(default=None, description="标签分配 beta；YOLO 主线 detection 当前默认 6.0")
     min_lr_ratio: float | None = Field(default=None, description="余弦退火最小学习率比例；YOLO 主线 detection 当前默认 0.01")
     grad_clip_norm: float | None = Field(default=None, description="梯度裁剪上限；YOLO 主线 detection 当前默认 10.0")
-    flip_prob: float | None = Field(default=None, description="随机水平翻转概率；YOLO 主线 detection 当前默认 0.0")
-    hsv_prob: float | None = Field(default=None, description="HSV 抖动概率；YOLO 主线 detection 当前默认 0.0")
-    mosaic_prob: float | None = Field(default=None, description="Mosaic 增强概率；YOLO 主线 detection 当前默认 0.0")
-    mixup_prob: float | None = Field(default=None, description="MixUp 增强概率；YOLO 主线 detection 当前默认 0.0")
-    enable_mixup: bool | None = Field(default=None, description="是否允许在 Mosaic 链路后追加 MixUp；YOLO 主线 detection 当前默认 false")
-    degrees: float | None = Field(default=None, description="随机仿射旋转角度范围；YOLO 主线 detection 当前默认 10.0")
-    translate: float | None = Field(default=None, description="随机仿射平移比例；YOLO 主线 detection 当前默认 0.1")
-    shear: float | None = Field(default=None, description="随机仿射错切角度范围；YOLO 主线 detection 当前默认 2.0")
+    flip_prob: float | None = Field(default=None, description="随机水平翻转概率；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 0.5")
+    hsv_prob: float | None = Field(default=None, description="HSV 抖动概率；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 1.0")
+    mosaic_prob: float | None = Field(default=None, description="Mosaic 增强概率；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 1.0")
+    mixup_prob: float | None = Field(default=None, description="MixUp 增强概率；YOLOv8/YOLO11/YOLO26 默认 0.0，YOLOX 默认 1.0")
+    enable_mixup: bool | None = Field(default=None, description="是否允许在 Mosaic 链路后追加 MixUp；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 true")
+    affine_prob: float | None = Field(default=None, description="随机仿射增强概率；YOLOv8/YOLO11/YOLO26 默认 1.0")
+    degrees: float | None = Field(default=None, description="随机仿射旋转角度范围；YOLOv8/YOLO11/YOLO26 默认 0.0，YOLOX 默认 10.0")
+    translate: float | None = Field(default=None, description="随机仿射平移比例；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 0.1")
+    scale: float | None = Field(default=None, description="随机仿射缩放范围；YOLOv8/YOLO11/YOLO26 默认 0.5")
+    shear: float | None = Field(default=None, description="随机仿射错切角度范围；YOLOv8/YOLO11/YOLO26 默认 0.0，YOLOX 默认 2.0")
+    perspective: float | None = Field(default=None, description="随机透视变换强度；YOLOv8/YOLO11/YOLO26 默认 0.0")
     mosaic_scale: tuple[float, float] | None = Field(
         default=None,
-        description="Mosaic 拼图缩放范围；YOLO 主线 detection 当前默认 [0.1, 2.0]",
+        description="Mosaic 拼图缩放范围；YOLOv8/YOLO11/YOLO26 默认 [0.5, 1.5]，YOLOX 默认 [0.1, 2.0]",
     )
     mixup_scale: tuple[float, float] | None = Field(
         default=None,
         description="MixUp 缩放范围；YOLO 主线 detection 当前默认 [0.5, 1.5]",
     )
-    multiscale_range: int | None = Field(default=None, description="多尺度训练范围；YOLOX 当前默认 0")
+    close_mosaic: int | None = Field(default=None, description="最后关闭 Mosaic 的 epoch 数；YOLOv8/YOLO11/YOLO26 默认 10")
+    multi_scale: float | None = Field(default=None, description="多尺度训练幅度；YOLOv8/YOLO11/YOLO26 默认 0.0 表示关闭")
+    multi_scale_stride: int | None = Field(default=None, description="多尺度训练尺寸对齐 stride；YOLOv8/YOLO11/YOLO26 默认 32")
+    multiscale_range: int | None = Field(default=None, description="多尺度训练范围；YOLOX 当前默认 5")
     ema: bool | None = Field(default=None, description="是否启用 EMA；YOLOX 当前默认 true")
     warmup_epochs: int | None = Field(default=None, description="warmup epoch 数；YOLOX 当前默认 5")
     no_aug_epochs: int | None = Field(default=None, description="训练尾段 no-aug epoch 数；YOLOX 当前默认 15")

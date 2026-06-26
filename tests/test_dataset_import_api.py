@@ -149,7 +149,7 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
         assert dataset_import is not None
         assert dataset_import.validation_report["format_type"] == "voc"
         assert dataset_version is not None
-        assert dataset_version.samples[0].annotations[0].bbox_xywh == (10.0, 20.0, 20.0, 30.0)
+        assert dataset_version.samples[0].annotations[0].bbox_xywh == (9.0, 19.0, 21.0, 31.0)
         assert dataset_version.categories[0].name == "bolt"
 
         validation_report = json.loads(

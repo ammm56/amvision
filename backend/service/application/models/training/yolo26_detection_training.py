@@ -27,6 +27,8 @@ from backend.service.application.models.yolo26_core.model import build_yolo26_mo
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_detection_training_batch,
     build_yolo26_task_augmentation_options,
+    resolve_yolo26_task_augmentation_for_epoch,
+    resolve_yolo26_task_batch_input_size,
     serialize_yolo26_detection_augmentation_options,
 )
 from backend.service.application.models.yolo26_core.training import (
@@ -275,6 +277,32 @@ def run_yolo26_detection_training(
         else b""
     )
 
+    def _build_training_batch_for_epoch(
+        sample_batch: list[Any],
+        available_samples: tuple[Any, ...],
+        current_epoch: int,
+    ) -> tuple[Any, tuple[Any, ...]]:
+        """按当前 epoch 构造 YOLO26 detection 训练 batch。"""
+
+        effective_augmentation_options = resolve_yolo26_task_augmentation_for_epoch(
+            augmentation_options=augmentation_options,
+            epoch_index=max(0, int(current_epoch) - 1),
+            max_epochs=max_epochs,
+        )
+        return build_yolo26_detection_training_batch(
+            imports=imports,
+            samples=sample_batch,
+            input_size=resolve_yolo26_task_batch_input_size(
+                base_input_size=input_size,
+                augmentation_options=effective_augmentation_options,
+            ),
+            device=device,
+            runtime_precision=runtime_precision,
+            augment_training=True,
+            available_samples=available_samples,
+            augmentation_options=effective_augmentation_options,
+        )
+
     try:
         loop_result = run_yolo26_detection_training_loop(
             torch_module=imports.torch,
@@ -292,18 +320,7 @@ def run_yolo26_detection_training(
             initial_global_iteration=execution_plan.initial_global_iteration,
             total_iterations=execution_plan.total_iterations,
             autocast_context=autocast_context,
-            build_batch=lambda sample_batch, available_samples: (
-                build_yolo26_detection_training_batch(
-                    imports=imports,
-                    samples=sample_batch,
-                    input_size=input_size,
-                    device=device,
-                    runtime_precision=runtime_precision,
-                    augment_training=True,
-                    available_samples=available_samples,
-                    augmentation_options=augmentation_options,
-                )
-            ),
+            build_batch=_build_training_batch_for_epoch,
             unwrap_outputs=unwrap_yolo26_detection_outputs,
             compute_loss=lambda **kwargs: _compute_yolo26_detection_loss(
                 imports=imports,

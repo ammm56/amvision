@@ -62,6 +62,7 @@ from backend.service.application.models.yolo26_core.export import (
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_detection_training_batch,
     build_yolo26_task_augmentation_options,
+    resolve_yolo26_task_batch_input_size,
     serialize_yolo26_detection_augmentation_options,
 )
 from backend.service.application.models.yolo26_core.assigners import (
@@ -375,6 +376,7 @@ from backend.service.application.models.yolo11_core.data import (
     build_yolo11_obb_training_batch,
     build_yolo11_pose_training_batch,
     build_yolo11_task_augmentation_options,
+    resolve_yolo11_task_batch_input_size,
     serialize_yolo11_detection_augmentation_options,
 )
 from backend.service.application.models.yolo11_core.inference import (
@@ -3654,6 +3656,28 @@ def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(
     assert obb_batch.targets[0].category_indexes == [0, 1]
 
 
+def test_ordinary_yolo_task_augmentation_defaults_match_reference() -> None:
+    """验证普通 YOLO task 默认增强不会回退到关闭状态。"""
+
+    for build_options in (
+        build_yolov8_task_augmentation_options,
+        build_yolo11_task_augmentation_options,
+        build_yolo26_task_augmentation_options,
+    ):
+        options = build_options({})
+
+        assert options.flip_prob == pytest.approx(0.5)
+        assert options.hsv_prob == pytest.approx(1.0)
+        assert options.mosaic_prob == pytest.approx(1.0)
+        assert options.mixup_prob == pytest.approx(0.0)
+        assert options.enable_mixup is True
+        assert options.degrees == pytest.approx(0.0)
+        assert options.translate == pytest.approx(0.1)
+        assert options.scale == pytest.approx(0.5)
+        assert options.shear == pytest.approx(0.0)
+        assert options.close_mosaic_epochs == 10
+
+
 def test_yolov8_task_close_mosaic_and_multiscale_schedule(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3692,6 +3716,36 @@ def test_yolov8_task_close_mosaic_and_multiscale_schedule(
         base_input_size=(64, 64),
         augmentation_options=options,
     ) == (96, 96)
+
+
+def test_ordinary_yolo_multiscale_keeps_height_width_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证普通 YOLO multi-scale 不会在非正方形输入上交换高宽。"""
+
+    monkeypatch.setattr(
+        "backend.service.application.models.yolov8_core.data.augmentation.random.uniform",
+        lambda low, high: 1.0,
+    )
+    monkeypatch.setattr(
+        "backend.service.application.models.yolo11_core.data.augmentation.random.uniform",
+        lambda low, high: 1.0,
+    )
+    monkeypatch.setattr(
+        "backend.service.application.models.yolo26_core.data.augmentation.random.uniform",
+        lambda low, high: 1.0,
+    )
+    option_builders_and_resolvers = (
+        (build_yolov8_task_augmentation_options, resolve_yolov8_task_batch_input_size),
+        (build_yolo11_task_augmentation_options, resolve_yolo11_task_batch_input_size),
+        (build_yolo26_task_augmentation_options, resolve_yolo26_task_batch_input_size),
+    )
+    for build_options, resolve_input_size in option_builders_and_resolvers:
+        options = build_options({"multi_scale": 0.5, "multi_scale_stride": 32})
+        assert resolve_input_size(
+            base_input_size=(320, 640),
+            augmentation_options=options,
+        ) == (320, 640)
 
 
 class _StaticYoloV8SegmentationModel(torch.nn.Module):

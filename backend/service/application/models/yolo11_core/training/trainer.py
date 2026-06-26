@@ -94,7 +94,7 @@ def run_yolo11_detection_training_loop(
     initial_global_iteration: int,
     total_iterations: int,
     autocast_context: Callable[[], Any],
-    build_batch: Callable[[list[Any], tuple[Any, ...]], tuple[Any, tuple[Any, ...]]],
+    build_batch: Callable[[list[Any], tuple[Any, ...], int], tuple[Any, tuple[Any, ...]]],
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     evaluate_model: Callable[[], dict[str, object]],

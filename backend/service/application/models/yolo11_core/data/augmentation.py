@@ -14,9 +14,9 @@ class Yolo11TaskAugmentationOptions:
 
     hsv_prob: float = 1.0
     flip_prob: float = 0.5
-    mosaic_prob: float = 0.0
+    mosaic_prob: float = 1.0
     mixup_prob: float = 0.0
-    enable_mixup: bool = False
+    enable_mixup: bool = True
     affine_prob: float = 1.0
     degrees: float = 0.0
     translate: float = 0.1
@@ -25,7 +25,7 @@ class Yolo11TaskAugmentationOptions:
     perspective: float = 0.0
     mosaic_scale: tuple[float, float] = (0.5, 1.5)
     mixup_scale: tuple[float, float] = (0.5, 1.5)
-    close_mosaic_epochs: int = 0
+    close_mosaic_epochs: int = 10
     multi_scale: bool = False
     multi_scale_range: tuple[float, float] = (0.5, 1.5)
     multi_scale_stride: int = 32
@@ -111,7 +111,7 @@ def build_yolo11_task_augmentation_options(
         mosaic_scale=_read_float_pair_option(extra, "mosaic_scale", default=(0.5, 1.5)),
         mixup_scale=_read_float_pair_option(extra, "mixup_scale", default=(0.5, 1.5)),
         close_mosaic_epochs=max(
-            0, int(_read_float_option(extra, "close_mosaic", default=0.0))
+            0, int(_read_float_option(extra, "close_mosaic", default=10.0))
         ),
         multi_scale=multi_scale_enabled,
         multi_scale_range=_read_float_pair_option(
@@ -170,13 +170,13 @@ def resolve_yolo11_task_batch_input_size(
 
     if augmentation_options is None or not augmentation_options.multi_scale:
         return base_input_size
-    base_width, base_height = int(base_input_size[0]), int(base_input_size[1])
+    base_height, base_width = int(base_input_size[0]), int(base_input_size[1])
     scale_min, scale_max = augmentation_options.multi_scale_range
     scale_value = random.uniform(float(scale_min), float(scale_max))
     stride = max(1, int(augmentation_options.multi_scale_stride))
     width = max(stride, int(round(base_width * scale_value / stride)) * stride)
     height = max(stride, int(round(base_height * scale_value / stride)) * stride)
-    return width, height
+    return height, width
 
 
 def resize_yolo11_image_to_canvas(

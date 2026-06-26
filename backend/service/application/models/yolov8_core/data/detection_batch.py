@@ -43,11 +43,18 @@ def build_yolov8_detection_training_batch(
         mosaic_prob=0.0,
         mixup_prob=0.0,
         enable_mixup=False,
+        affine_prob=0.0,
         degrees=0.0,
         translate=0.0,
+        scale=0.0,
         shear=0.0,
+        perspective=0.0,
         mosaic_scale=(1.0, 1.0),
         mixup_scale=(1.0, 1.0),
+        close_mosaic_epochs=0,
+        multi_scale=False,
+        multi_scale_range=(1.0, 1.0),
+        multi_scale_stride=32,
     )
     for sample in samples:
         if augment_training:

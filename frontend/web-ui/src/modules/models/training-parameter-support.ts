@@ -41,6 +41,27 @@ const yoloDetectionDefaultWeightDecay = '0.0005'
 const yoloTaskAdamWDefaultLearningRate = '0.001'
 const yoloTaskAdamWDefaultWeightDecay = '0.0001'
 
+const ordinaryYoloAugmentationFields: TrainingParameterField[] = [
+  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
+  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('mixup_prob', 'MixUp 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
+  selectField('enable_mixup', '启用 MixUp', boolOptions, { valueKind: 'bool', defaultValue: 'true' }),
+  numberField('affine_prob', '仿射增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('degrees', '仿射旋转角度', { step: 0.1, defaultValue: '0.0' }),
+  numberField('translate', '仿射平移比例', { step: 0.01, defaultValue: '0.1' }),
+  numberField('scale', '仿射缩放比例', { step: 0.01, defaultValue: '0.5' }),
+  numberField('shear', '仿射错切角度', { step: 0.1, defaultValue: '0.0' }),
+  numberField('perspective', '透视变换比例', { min: 0, step: 0.0001, defaultValue: '0.0' }),
+  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { step: 0.1, defaultValue: '0.5' }),
+  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { step: 0.1, defaultValue: '1.5' }),
+  numberField('mixup_scale_min', 'MixUp 缩放最小值', { step: 0.1, defaultValue: '0.5' }),
+  numberField('mixup_scale_max', 'MixUp 缩放最大值', { step: 0.1, defaultValue: '1.5' }),
+  numberField('close_mosaic', '最后关闭 Mosaic 轮数', { integer: true, min: 0, step: 1, defaultValue: '10' }),
+  numberField('multi_scale', '多尺度范围比例', { min: 0, step: 0.01, defaultValue: '0.0' }),
+  numberField('multi_scale_stride', '多尺度步长', { integer: true, min: 1, step: 1, defaultValue: '32' }),
+]
+
 function numberField(
   key: string,
   label: string,
@@ -138,16 +159,19 @@ const detectionYoloXFields: TrainingParameterField[] = [
   numberField('max_labels', '单图最大标签数', { integer: true, min: 1, step: 1, defaultValue: '120' }),
   numberField('evaluation_confidence_threshold', '验证置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.01' }),
   numberField('evaluation_nms_threshold', '验证 NMS 阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.65' }),
-  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('mixup_prob', 'MixUp 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  selectField('enable_mixup', '启用 MixUp', boolOptions, { valueKind: 'bool', defaultValue: 'false' }),
+  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
+  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('mixup_prob', 'MixUp 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  selectField('enable_mixup', '启用 MixUp', boolOptions, { valueKind: 'bool', defaultValue: 'true' }),
+  numberField('degrees', '仿射旋转角度', { step: 0.1, defaultValue: '10.0' }),
+  numberField('translate', '仿射平移比例', { step: 0.01, defaultValue: '0.1' }),
+  numberField('shear', '仿射错切角度', { step: 0.1, defaultValue: '2.0' }),
   numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { step: 0.1, defaultValue: '0.1' }),
   numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { step: 0.1, defaultValue: '2.0' }),
   numberField('mixup_scale_min', 'MixUp 缩放最小值', { step: 0.1, defaultValue: '0.5' }),
   numberField('mixup_scale_max', 'MixUp 缩放最大值', { step: 0.1, defaultValue: '1.5' }),
-  numberField('multiscale_range', '多尺度训练范围', { integer: true, min: 0, step: 1, defaultValue: '0' }),
+  numberField('multiscale_range', '多尺度训练范围', { integer: true, min: 0, step: 1, defaultValue: '5' }),
   selectField('ema', '启用 EMA', boolOptions, { valueKind: 'bool', defaultValue: 'true' }),
   numberField('warmup_epochs', 'Warmup 轮数', { integer: true, min: 0, step: 1, defaultValue: '5' }),
   numberField('no_aug_epochs', '最后 no-aug 轮数', { integer: true, min: 0, step: 1, defaultValue: '15' }),
@@ -166,18 +190,7 @@ const detectionYoloPrimaryFields: TrainingParameterField[] = [
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, step: 0.1, defaultValue: '6.0' }),
   numberField('grad_clip_norm', '梯度裁剪上限', { min: 0, step: 0.1, defaultValue: '10.0' }),
-  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  numberField('mixup_prob', 'MixUp 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  selectField('enable_mixup', '启用 MixUp', boolOptions, { valueKind: 'bool', defaultValue: 'false' }),
-  numberField('degrees', '仿射旋转角度', { step: 0.1, defaultValue: '10.0' }),
-  numberField('translate', '仿射平移比例', { step: 0.01, defaultValue: '0.1' }),
-  numberField('shear', '仿射错切角度', { step: 0.1, defaultValue: '2.0' }),
-  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { step: 0.1, defaultValue: '0.1' }),
-  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { step: 0.1, defaultValue: '2.0' }),
-  numberField('mixup_scale_min', 'MixUp 缩放最小值', { step: 0.1, defaultValue: '0.5' }),
-  numberField('mixup_scale_max', 'MixUp 缩放最大值', { step: 0.1, defaultValue: '1.5' }),
+  ...ordinaryYoloAugmentationFields,
 ]
 
 const detectionRfdetrFields: TrainingParameterField[] = [
@@ -212,6 +225,7 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, step: 0.1, defaultValue: '6.0' }),
   numberField('grad_clip_norm', '梯度裁剪上限', { min: 0, step: 0.1, defaultValue: '10.0' }),
+  ...ordinaryYoloAugmentationFields,
 ]
 
 const segmentationRfdetrFields: TrainingParameterField[] = [
@@ -244,6 +258,7 @@ const poseFields: TrainingParameterField[] = [
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, step: 0.1, defaultValue: '6.0' }),
   numberField('grad_clip_norm', '梯度裁剪上限', { min: 0, step: 0.1, defaultValue: '10.0' }),
+  ...ordinaryYoloAugmentationFields,
 ]
 
 const obbFields: TrainingParameterField[] = [
@@ -251,6 +266,15 @@ const obbFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   ...obbYoloEvaluationThresholdFields,
+  numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
+  numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
+  numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, step: 0.1, defaultValue: '1.5' }),
+  numberField('angle_loss_weight', '角度损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
+  numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, step: 1, defaultValue: '10' }),
+  numberField('assign_alpha', '正样本匹配 alpha', { min: 0, step: 0.1, defaultValue: '0.5' }),
+  numberField('assign_beta', '正样本匹配 beta', { min: 0, step: 0.1, defaultValue: '6.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0, step: 0.1, defaultValue: '10.0' }),
+  ...ordinaryYoloAugmentationFields,
 ]
 
 function normalizeModelType(modelType: string | null | undefined): string {
@@ -368,6 +392,29 @@ export function buildTrainingExtraOptions(
     result[key] = [minValue, maxValue]
   }
 
+  const assignOrdinaryYoloAugmentationValues = (): void => {
+    for (const key of [
+      'flip_prob',
+      'hsv_prob',
+      'mosaic_prob',
+      'mixup_prob',
+      'enable_mixup',
+      'affine_prob',
+      'degrees',
+      'translate',
+      'scale',
+      'shear',
+      'perspective',
+      'close_mosaic',
+      'multi_scale',
+      'multi_scale_stride',
+    ]) {
+      assignValue(key)
+    }
+    assignPair('mosaic_scale', 'mosaic_scale_min', 'mosaic_scale_max')
+    assignPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
+  }
+
   if (taskType === 'detection') {
     if (normalizedModelType === 'yolox') {
       for (const key of [
@@ -382,6 +429,9 @@ export function buildTrainingExtraOptions(
         'mosaic_prob',
         'mixup_prob',
         'enable_mixup',
+        'degrees',
+        'translate',
+        'shear',
         'multiscale_range',
         'ema',
         'warmup_epochs',
@@ -421,19 +471,10 @@ export function buildTrainingExtraOptions(
       'assign_alpha',
       'assign_beta',
       'grad_clip_norm',
-      'flip_prob',
-      'hsv_prob',
-      'mosaic_prob',
-      'mixup_prob',
-      'enable_mixup',
-      'degrees',
-      'translate',
-      'shear',
     ]) {
       assignValue(key)
     }
-    assignPair('mosaic_scale', 'mosaic_scale_min', 'mosaic_scale_max')
-    assignPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
+    assignOrdinaryYoloAugmentationValues()
     return result
   }
 
@@ -482,6 +523,7 @@ export function buildTrainingExtraOptions(
     ]) {
       assignValue(key)
     }
+    assignOrdinaryYoloAugmentationValues()
     return result
   }
 
@@ -505,6 +547,7 @@ export function buildTrainingExtraOptions(
     ]) {
       assignValue(key)
     }
+    assignOrdinaryYoloAugmentationValues()
     return result
   }
 
@@ -515,9 +558,18 @@ export function buildTrainingExtraOptions(
       'weight_decay',
       'evaluation_confidence_threshold',
       'evaluation_nms_threshold',
+      'class_loss_weight',
+      'box_loss_weight',
+      'dfl_loss_weight',
+      'angle_loss_weight',
+      'assign_topk',
+      'assign_alpha',
+      'assign_beta',
+      'grad_clip_norm',
     ]) {
       assignValue(key)
     }
+    assignOrdinaryYoloAugmentationValues()
   }
 
   return result
@@ -529,7 +581,7 @@ export function validateTrainingModelLayerValues(
   values: TrainingParameterValues,
 ): string | null {
   const normalizedModelType = normalizeModelType(modelType)
-  if (taskType !== 'detection' || !normalizedModelType) {
+  if (!normalizedModelType) {
     return null
   }
 
@@ -549,7 +601,12 @@ export function validateTrainingModelLayerValues(
     return null
   }
 
-  if (normalizedModelType === 'yolox' || normalizedModelType === 'yolov8' || normalizedModelType === 'yolo11' || normalizedModelType === 'yolo26') {
+  const isYoloTask = ['detection', 'segmentation', 'pose', 'obb'].includes(taskType)
+  const isYoloModel = normalizedModelType === 'yolox'
+    || normalizedModelType === 'yolov8'
+    || normalizedModelType === 'yolo11'
+    || normalizedModelType === 'yolo26'
+  if (isYoloTask && isYoloModel) {
     return checkPair('mosaic_scale', 'mosaic_scale_min', 'mosaic_scale_max')
       ?? checkPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
   }

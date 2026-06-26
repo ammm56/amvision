@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+import random
 from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
@@ -85,16 +86,23 @@ YOLOV8_DETECTION_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLOV8_DETECTION_DEFAULT_ASSIGN_BETA = 6.0
 YOLOV8_DETECTION_DEFAULT_MIN_LR_RATIO = 0.01
 YOLOV8_DETECTION_DEFAULT_GRAD_CLIP_NORM = 10.0
-YOLOV8_DETECTION_DEFAULT_FLIP_PROB = 0.0
-YOLOV8_DETECTION_DEFAULT_HSV_PROB = 0.0
-YOLOV8_DETECTION_DEFAULT_MOSAIC_PROB = 0.0
+YOLOV8_DETECTION_DEFAULT_FLIP_PROB = 0.5
+YOLOV8_DETECTION_DEFAULT_HSV_PROB = 1.0
+YOLOV8_DETECTION_DEFAULT_MOSAIC_PROB = 1.0
 YOLOV8_DETECTION_DEFAULT_MIXUP_PROB = 0.0
-YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP = False
-YOLOV8_DETECTION_DEFAULT_AFFINE_DEGREES = 10.0
+YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP = True
+YOLOV8_DETECTION_DEFAULT_AFFINE_PROB = 1.0
+YOLOV8_DETECTION_DEFAULT_AFFINE_DEGREES = 0.0
 YOLOV8_DETECTION_DEFAULT_AFFINE_TRANSLATE = 0.1
-YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR = 2.0
-YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE = (0.1, 2.0)
+YOLOV8_DETECTION_DEFAULT_AFFINE_SCALE = 0.5
+YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR = 0.0
+YOLOV8_DETECTION_DEFAULT_AFFINE_PERSPECTIVE = 0.0
+YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE = (0.5, 1.5)
 YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
+YOLOV8_DETECTION_DEFAULT_CLOSE_MOSAIC_EPOCHS = 10
+YOLOV8_DETECTION_DEFAULT_MULTI_SCALE = False
+YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_RANGE = (0.5, 1.5)
+YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_STRIDE = 32
 
 
 @dataclass(frozen=True)
@@ -257,11 +265,18 @@ class _DetectionAugmentationOptions:
     mosaic_prob: float
     mixup_prob: float
     enable_mixup: bool
+    affine_prob: float
     degrees: float
     translate: float
+    scale: float
     shear: float
+    perspective: float
     mosaic_scale: tuple[float, float]
     mixup_scale: tuple[float, float]
+    close_mosaic_epochs: int
+    multi_scale: bool
+    multi_scale_range: tuple[float, float]
+    multi_scale_stride: int
 
 
 @dataclass(frozen=True)
@@ -548,15 +563,16 @@ def run_yolov8_detection_training(
             scaler=scaler,
             training_schedule=training_schedule,
             autocast_context=autocast_context,
-            build_batch=lambda sample_batch, available_samples: (
-                build_yolov8_detection_training_batch(
+            build_batch=lambda sample_batch, available_samples, current_epoch: (
+                _build_training_batch_for_epoch(
                     imports=imports,
                     samples=sample_batch,
-                    input_size=input_size,
+                    available_samples=available_samples,
+                    base_input_size=input_size,
+                    epoch=current_epoch,
+                    max_epochs=max_epochs,
                     device=device,
                     runtime_precision=runtime_precision,
-                    augment_training=True,
-                    available_samples=available_samples,
                     augmentation_options=augmentation_options,
                 )
             ),
@@ -1916,6 +1932,20 @@ def _resolve_detection_augmentation_options(
 ) -> _DetectionAugmentationOptions:
     """把 detection 训练增强相关 extra_options 解析为稳定配置。"""
 
+    multi_scale_value = extra_options.get(
+        "multi_scale",
+        YOLOV8_DETECTION_DEFAULT_MULTI_SCALE,
+    )
+    multi_scale_enabled = (
+        bool(multi_scale_value)
+        if not isinstance(multi_scale_value, int | float)
+        else float(multi_scale_value) > 0.0
+    )
+    multi_scale_default_range = (
+        (1.0 - float(multi_scale_value), 1.0 + float(multi_scale_value))
+        if isinstance(multi_scale_value, int | float) and float(multi_scale_value) > 0.0
+        else YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_RANGE
+    )
     return _DetectionAugmentationOptions(
         flip_prob=_clamp_probability(
             _read_float_option(
@@ -1950,6 +1980,13 @@ def _resolve_detection_augmentation_options(
             "enable_mixup",
             default=YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP,
         ),
+        affine_prob=_clamp_probability(
+            _read_float_option(
+                extra_options,
+                "affine_prob",
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_PROB,
+            )
+        ),
         degrees=max(
             0.0,
             _read_float_option(
@@ -1966,12 +2003,28 @@ def _resolve_detection_augmentation_options(
                 default=YOLOV8_DETECTION_DEFAULT_AFFINE_TRANSLATE,
             ),
         ),
+        scale=max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "scale",
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_SCALE,
+            ),
+        ),
         shear=max(
             0.0,
             _read_float_option(
                 extra_options,
                 "shear",
                 default=YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR,
+            ),
+        ),
+        perspective=max(
+            0.0,
+            _read_float_option(
+                extra_options,
+                "perspective",
+                default=YOLOV8_DETECTION_DEFAULT_AFFINE_PERSPECTIVE,
             ),
         ),
         mosaic_scale=_read_float_pair_option(
@@ -1984,7 +2037,117 @@ def _resolve_detection_augmentation_options(
             "mixup_scale",
             default=YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE,
         ),
+        close_mosaic_epochs=max(
+            0,
+            int(
+                _read_float_option(
+                    extra_options,
+                    "close_mosaic",
+                    default=float(YOLOV8_DETECTION_DEFAULT_CLOSE_MOSAIC_EPOCHS),
+                )
+            ),
+        ),
+        multi_scale=multi_scale_enabled,
+        multi_scale_range=_read_float_pair_option(
+            extra_options,
+            "multi_scale_range",
+            default=multi_scale_default_range,
+        ),
+        multi_scale_stride=max(
+            1,
+            int(
+                _read_float_option(
+                    extra_options,
+                    "multi_scale_stride",
+                    default=float(YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_STRIDE),
+                )
+            ),
+        ),
     )
+
+
+def _build_training_batch_for_epoch(
+    *,
+    imports: _TrainingImports,
+    samples: list[Any],
+    available_samples: tuple[Any, ...],
+    base_input_size: tuple[int, int],
+    epoch: int,
+    max_epochs: int,
+    device: str,
+    runtime_precision: str,
+    augmentation_options: _DetectionAugmentationOptions,
+) -> tuple[Any, tuple[Any, ...]]:
+    """按当前 epoch 解析增强和输入尺寸后构建 YOLOv8 detection batch。"""
+
+    effective_options = _resolve_detection_augmentation_for_epoch(
+        augmentation_options=augmentation_options,
+        epoch=epoch,
+        max_epochs=max_epochs,
+    )
+    batch_input_size = _resolve_detection_batch_input_size(
+        base_input_size=base_input_size,
+        augmentation_options=effective_options,
+    )
+    return build_yolov8_detection_training_batch(
+        imports=imports,
+        samples=samples,
+        input_size=batch_input_size,
+        device=device,
+        runtime_precision=runtime_precision,
+        augment_training=True,
+        available_samples=available_samples,
+        augmentation_options=effective_options,
+    )
+
+
+def _resolve_detection_augmentation_for_epoch(
+    *,
+    augmentation_options: _DetectionAugmentationOptions,
+    epoch: int,
+    max_epochs: int,
+) -> _DetectionAugmentationOptions:
+    """按 close_mosaic 规则解析当前 epoch 实际生效的增强配置。"""
+
+    close_epochs = int(augmentation_options.close_mosaic_epochs)
+    if close_epochs <= 0 or int(epoch) < max(0, int(max_epochs) - close_epochs + 1):
+        return augmentation_options
+    return _DetectionAugmentationOptions(
+        flip_prob=augmentation_options.flip_prob,
+        hsv_prob=augmentation_options.hsv_prob,
+        mosaic_prob=0.0,
+        mixup_prob=0.0,
+        enable_mixup=False,
+        affine_prob=augmentation_options.affine_prob,
+        degrees=augmentation_options.degrees,
+        translate=augmentation_options.translate,
+        scale=augmentation_options.scale,
+        shear=augmentation_options.shear,
+        perspective=augmentation_options.perspective,
+        mosaic_scale=augmentation_options.mosaic_scale,
+        mixup_scale=augmentation_options.mixup_scale,
+        close_mosaic_epochs=augmentation_options.close_mosaic_epochs,
+        multi_scale=augmentation_options.multi_scale,
+        multi_scale_range=augmentation_options.multi_scale_range,
+        multi_scale_stride=augmentation_options.multi_scale_stride,
+    )
+
+
+def _resolve_detection_batch_input_size(
+    *,
+    base_input_size: tuple[int, int],
+    augmentation_options: _DetectionAugmentationOptions,
+) -> tuple[int, int]:
+    """按 multi-scale 配置解析当前 batch 的输入尺寸。"""
+
+    if not augmentation_options.multi_scale:
+        return base_input_size
+    scale_min, scale_max = augmentation_options.multi_scale_range
+    scale_value = random.uniform(float(scale_min), float(scale_max))
+    stride = max(1, int(augmentation_options.multi_scale_stride))
+    height = max(stride, int(round(int(base_input_size[0]) * scale_value / stride)) * stride)
+    width = max(stride, int(round(int(base_input_size[1]) * scale_value / stride)) * stride)
+    return (height, width)
 
 
 def _serialize_detection_augmentation_options(
@@ -1998,11 +2161,18 @@ def _serialize_detection_augmentation_options(
         "mosaic_prob": options.mosaic_prob,
         "mixup_prob": options.mixup_prob,
         "enable_mixup": options.enable_mixup,
+        "affine_prob": options.affine_prob,
         "degrees": options.degrees,
         "translate": options.translate,
+        "scale": options.scale,
         "shear": options.shear,
+        "perspective": options.perspective,
         "mosaic_scale": list(options.mosaic_scale),
         "mixup_scale": list(options.mixup_scale),
+        "close_mosaic_epochs": options.close_mosaic_epochs,
+        "multi_scale": options.multi_scale,
+        "multi_scale_range": list(options.multi_scale_range),
+        "multi_scale_stride": options.multi_scale_stride,
     }
 
 

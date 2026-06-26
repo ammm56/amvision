@@ -114,7 +114,14 @@ class VocDatasetImportParserMixin:
                 ymin = float((bndbox_node.findtext("ymin") or "0").strip())
                 xmax = float((bndbox_node.findtext("xmax") or "0").strip())
                 ymax = float((bndbox_node.findtext("ymax") or "0").strip())
-                bbox_xywh = (xmin, ymin, xmax - xmin, ymax - ymin)
+                bbox_xywh = self._build_voc_bbox_xywh(
+                    xmin=xmin,
+                    ymin=ymin,
+                    xmax=xmax,
+                    ymax=ymax,
+                    image_width=width,
+                    image_height=height,
+                )
                 if bbox_xywh[2] <= 0 or bbox_xywh[3] <= 0:
                     raise InvalidRequestError(
                         "VOC bndbox 必须是正面积框",
@@ -235,3 +242,26 @@ class VocDatasetImportParserMixin:
                     membership[sample_name] = split_name
 
         return membership
+
+    def _build_voc_bbox_xywh(
+        self,
+        *,
+        xmin: float,
+        ymin: float,
+        xmax: float,
+        ymax: float,
+        image_width: int,
+        image_height: int,
+    ) -> tuple[float, float, float, float]:
+        """把 VOC 的 1-based inclusive xyxy 转换为平台统一的 0-based xywh。"""
+
+        clipped_xmin = max(1.0, min(float(image_width), xmin))
+        clipped_ymin = max(1.0, min(float(image_height), ymin))
+        clipped_xmax = max(clipped_xmin, min(float(image_width), xmax))
+        clipped_ymax = max(clipped_ymin, min(float(image_height), ymax))
+        return (
+            clipped_xmin - 1.0,
+            clipped_ymin - 1.0,
+            clipped_xmax - clipped_xmin + 1.0,
+            clipped_ymax - clipped_ymin + 1.0,
+        )

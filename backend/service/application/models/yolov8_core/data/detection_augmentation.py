@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import math
 import random
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolov8_core.data.augmentation import (
+    apply_yolov8_random_affine,
+    transform_yolov8_boxes_xyxy,
+)
 from backend.service.application.models.yolov8_core.data.detection_types import (
     YoloV8DetectionAugmentationOptions,
     YoloV8DetectionTrainingAnnotation,
@@ -92,14 +95,13 @@ def prepare_yolov8_detection_sample_with_augmentation(
         flip_prob=augmentation_options.flip_prob,
         output_size=input_size,
     )
-    image, boxes_xyxy = _apply_random_affine(
+    image, boxes_xyxy, category_indexes = _apply_random_affine(
         imports=imports,
         image=image,
         boxes_xyxy=boxes_xyxy,
+        category_indexes=category_indexes,
         output_size=input_size,
-        degrees=augmentation_options.degrees,
-        translate=augmentation_options.translate,
-        shear=augmentation_options.shear,
+        augmentation_options=augmentation_options,
     )
     return _filter_training_boxes(
         boxes_xyxy=boxes_xyxy,
@@ -343,71 +345,44 @@ def _apply_random_affine(
     imports: Any,
     image: Any,
     boxes_xyxy: list[tuple[float, float, float, float]],
+    category_indexes: list[int],
     output_size: tuple[int, int],
-    degrees: float,
-    translate: float,
-    shear: float,
-) -> tuple[Any, list[tuple[float, float, float, float]]]:
-    """执行随机仿射增强，并同步变换 bbox。"""
+    augmentation_options: YoloV8DetectionAugmentationOptions,
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """执行 YOLOv8 random affine，并同步过滤 bbox 与类别索引。"""
 
-    if degrees <= 0.0 and translate <= 0.0 and shear <= 0.0:
-        return image, boxes_xyxy
-    output_height, output_width = int(output_size[0]), int(output_size[1])
-    center = (float(output_width) / 2.0, float(output_height) / 2.0)
-    rotation_matrix = imports.cv2.getRotationMatrix2D(
-        center,
-        random.uniform(-degrees, degrees) if degrees > 0.0 else 0.0,
-        1.0,
+    transformed_image, matrix, applied = apply_yolov8_random_affine(
+        imports=imports,
+        image=image,
+        output_size=(int(output_size[1]), int(output_size[0])),
+        augmentation_options=augmentation_options,
     )
-    affine_matrix = imports.np.eye(3, dtype=imports.np.float32)
-    affine_matrix[:2, :] = rotation_matrix
-    shear_x = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
-    shear_y = math.tan(math.radians(random.uniform(-shear, shear))) if shear > 0.0 else 0.0
-    shear_matrix = imports.np.array(
-        [[1.0, shear_x, 0.0], [shear_y, 1.0, 0.0], [0.0, 0.0, 1.0]],
-        dtype=imports.np.float32,
-    )
-    translate_x = random.uniform(-translate, translate) * float(output_width) if translate > 0.0 else 0.0
-    translate_y = random.uniform(-translate, translate) * float(output_height) if translate > 0.0 else 0.0
-    translate_matrix = imports.np.array(
-        [[1.0, 0.0, translate_x], [0.0, 1.0, translate_y], [0.0, 0.0, 1.0]],
-        dtype=imports.np.float32,
-    )
-    composed_matrix = translate_matrix @ shear_matrix @ affine_matrix
-    warped_image = imports.cv2.warpAffine(
-        image,
-        composed_matrix[:2],
-        (output_width, output_height),
-        flags=imports.cv2.INTER_LINEAR,
-        borderValue=(114, 114, 114),
-    )
-    if not boxes_xyxy:
-        return warped_image, boxes_xyxy
+    if not applied or matrix is None:
+        return image, boxes_xyxy, category_indexes
 
-    transformed_boxes: list[tuple[float, float, float, float]] = []
-    for box_xyxy in boxes_xyxy:
-        corners = imports.np.array(
-            [
-                [box_xyxy[0], box_xyxy[1], 1.0],
-                [box_xyxy[2], box_xyxy[1], 1.0],
-                [box_xyxy[2], box_xyxy[3], 1.0],
-                [box_xyxy[0], box_xyxy[3], 1.0],
-            ],
-            dtype=imports.np.float32,
+    transformed_boxes, kept_indices = transform_yolov8_boxes_xyxy(
+        imports=imports,
+        boxes_xyxy=[list(box) for box in boxes_xyxy],
+        matrix=matrix,
+        output_size=(int(output_size[1]), int(output_size[0])),
+        perspective=augmentation_options.perspective,
+        area_threshold=0.01,
+    )
+    transformed_pairs: list[tuple[tuple[float, float, float, float], int]] = []
+    for transformed_box, source_index in zip(transformed_boxes, kept_indices, strict=False):
+        if source_index >= len(category_indexes):
+            continue
+        transformed_pairs.append(
+            (
+                tuple(float(value) for value in transformed_box),
+                int(category_indexes[source_index]),
+            )
         )
-        transformed_corners = corners @ composed_matrix.T
-        clipped_box = _clip_box_xyxy(
-            box_xyxy=(
-                float(transformed_corners[:, 0].min()),
-                float(transformed_corners[:, 1].min()),
-                float(transformed_corners[:, 0].max()),
-                float(transformed_corners[:, 1].max()),
-            ),
-            output_size=output_size,
-        )
-        if clipped_box is not None:
-            transformed_boxes.append(clipped_box)
-    return warped_image, transformed_boxes
+    return (
+        transformed_image,
+        [box for box, _ in transformed_pairs],
+        [category_index for _, category_index in transformed_pairs],
+    )
 
 
 def _filter_training_boxes(

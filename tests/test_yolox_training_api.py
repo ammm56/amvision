@@ -160,9 +160,10 @@ def test_detection_training_create_openapi_exposes_documented_extra_options(tmp_
         assert "mixup_scale" in properties
         assert "assign_topk" in properties
         assert "evaluation_nms_threshold" in properties
-        assert "默认 1e-3" in properties["learning_rate"]["description"]
-        assert "默认 0.0" in properties["flip_prob"]["description"]
-        assert "top-k 语义" in properties["evaluation_nms_threshold"]["description"]
+        assert "默认 0.01" in properties["learning_rate"]["description"]
+        assert "默认 0.5" in properties["flip_prob"]["description"]
+        assert "默认 10" in properties["close_mosaic"]["description"]
+        assert "端到端模型导出后会改走 top-k 输出" in properties["evaluation_nms_threshold"]["description"]
     finally:
         session_factory.engine.dispose()
 

@@ -463,11 +463,18 @@ def test_yolov8_detection_data_resolves_export_and_builds_batch(tmp_path: Path) 
             mosaic_prob=0.0,
             mixup_prob=0.0,
             enable_mixup=False,
+            affine_prob=0.0,
             degrees=0.0,
             translate=0.0,
+            scale=0.0,
             shear=0.0,
+            perspective=0.0,
             mosaic_scale=(1.0, 1.0),
             mixup_scale=(1.0, 1.0),
+            close_mosaic_epochs=0,
+            multi_scale=False,
+            multi_scale_range=(1.0, 1.0),
+            multi_scale_stride=32,
         ),
     )
 
@@ -579,10 +586,12 @@ class _DetectionDataImports:
 def _build_linear_training_batch(
     sample_batch: list[float],
     available_samples: tuple[float, ...],
+    epoch: int,
 ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
     """构建线性模型测试 batch。"""
 
     del available_samples
+    del epoch
     inputs = torch.tensor([[sample_batch[0]]], dtype=torch.float32)
     targets = (torch.tensor([[sample_batch[0] + 1.0]], dtype=torch.float32),)
     return inputs, targets

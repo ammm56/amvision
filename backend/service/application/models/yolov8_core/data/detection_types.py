@@ -57,11 +57,18 @@ class YoloV8DetectionAugmentationOptions:
     mosaic_prob: float
     mixup_prob: float
     enable_mixup: bool
+    affine_prob: float
     degrees: float
     translate: float
+    scale: float
     shear: float
+    perspective: float
     mosaic_scale: tuple[float, float]
     mixup_scale: tuple[float, float]
+    close_mosaic_epochs: int
+    multi_scale: bool
+    multi_scale_range: tuple[float, float]
+    multi_scale_stride: int
 
 
 __all__ = [

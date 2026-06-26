@@ -50,7 +50,7 @@ def run_yolo11_detection_training_epoch(
     optimizer: Any,
     scaler: Any,
     autocast_context: Callable[[], Any],
-    build_batch: Callable[[list[Any], tuple[Any, ...]], tuple[Any, tuple[Any, ...]]],
+    build_batch: Callable[[list[Any], tuple[Any, ...], int], tuple[Any, tuple[Any, ...]]],
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
@@ -81,7 +81,11 @@ def run_yolo11_detection_training_epoch(
             epoch=epoch,
             batch_size=batch_size,
         )
-        images, batch_targets = build_batch(sample_batch, available_samples)
+        images, batch_targets = build_batch(sample_batch, available_samples, epoch)
+        progress_input_size = _read_yolo11_batch_input_size(
+            images=images,
+            fallback=input_size,
+        )
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
@@ -118,7 +122,7 @@ def run_yolo11_detection_training_epoch(
                     max_iterations=max_iterations,
                     global_iteration=global_iteration,
                     total_iterations=total_iterations,
-                    input_size=input_size,
+                    input_size=progress_input_size,
                     learning_rate=float(optimizer.param_groups[0]["lr"]),
                     train_metrics={
                         "loss": float(loss_components["loss"].detach().item()),
@@ -172,6 +176,19 @@ def _resolve_yolo11_current_accumulate(
         epoch=epoch,
         batch_size=batch_size,
     )
+
+
+def _read_yolo11_batch_input_size(
+    *,
+    images: Any,
+    fallback: tuple[int, int],
+) -> tuple[int, int]:
+    """从 batch tensor 读取当前真实输入尺寸，读取失败时使用基础尺寸。"""
+
+    shape = getattr(images, "shape", None)
+    if shape is None or len(shape) < 4:
+        return fallback
+    return (int(shape[-2]), int(shape[-1]))
 
 
 __all__ = [
