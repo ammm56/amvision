@@ -63,12 +63,16 @@ def load_yolo11_obb_resume_state(
         saved_max_epochs=int(checkpoint.get("saved_max_epochs", 0)),
         saved_learning_rate=float(checkpoint.get("saved_lr", 0)),
         saved_weight_decay=float(checkpoint.get("saved_wd", 0)),
-        saved_evaluation_interval=int(checkpoint.get("saved_eval_interval", 0)),
+        saved_evaluation_interval=int(
+            checkpoint.get("saved_evaluation_interval", 0)
+        ),
         saved_min_lr_ratio=float(checkpoint.get("saved_min_lr", 0)),
         saved_evaluation_confidence_threshold=float(
-            checkpoint.get("saved_eval_conf", 0)
+            checkpoint.get("saved_evaluation_confidence_threshold", 0)
         ),
-        saved_evaluation_nms_threshold=float(checkpoint.get("saved_eval_nms", 0)),
+        saved_evaluation_nms_threshold=float(
+            checkpoint.get("saved_evaluation_nms_threshold", 0)
+        ),
     )
 
 
@@ -171,10 +175,10 @@ def build_yolo11_obb_checkpoint_bytes(
         "saved_max_epochs": max_epochs,
         "saved_lr": learning_rate,
         "saved_wd": weight_decay,
-        "saved_eval_interval": evaluation_interval,
+        "saved_evaluation_interval": evaluation_interval,
         "saved_min_lr": min_lr_ratio,
-        "saved_eval_conf": evaluation_confidence_threshold,
-        "saved_eval_nms": evaluation_nms_threshold,
+        "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
+        "saved_evaluation_nms_threshold": evaluation_nms_threshold,
         "model_type": "yolo11",
         "task_type": "obb",
     }

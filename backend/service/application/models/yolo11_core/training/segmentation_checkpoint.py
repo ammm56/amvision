@@ -71,7 +71,9 @@ def load_yolo11_segmentation_resume_state(
         saved_max_epochs=int(checkpoint.get("saved_max_epochs", 0)),
         saved_learning_rate=float(checkpoint.get("saved_lr", 0)),
         saved_weight_decay=float(checkpoint.get("saved_wd", 0)),
-        saved_evaluation_interval=int(checkpoint.get("saved_eval_interval", 0)),
+        saved_evaluation_interval=int(
+            checkpoint.get("saved_evaluation_interval", 0)
+        ),
         saved_min_lr_ratio=float(checkpoint.get("saved_min_lr", 0)),
         saved_class_loss_weight=float(checkpoint.get("saved_class_loss_weight", 0)),
         saved_box_loss_weight=float(checkpoint.get("saved_box_loss_weight", 0)),
@@ -82,9 +84,11 @@ def load_yolo11_segmentation_resume_state(
         saved_assign_beta=float(checkpoint.get("saved_assign_beta", 0)),
         saved_grad_clip_norm=float(checkpoint.get("saved_grad_clip", 0)),
         saved_evaluation_confidence_threshold=float(
-            checkpoint.get("saved_eval_conf", 0)
+            checkpoint.get("saved_evaluation_confidence_threshold", 0)
         ),
-        saved_evaluation_nms_threshold=float(checkpoint.get("saved_eval_nms", 0)),
+        saved_evaluation_nms_threshold=float(
+            checkpoint.get("saved_evaluation_nms_threshold", 0)
+        ),
     )
 
 
@@ -262,7 +266,7 @@ def build_yolo11_segmentation_checkpoint_bytes(
         "saved_max_epochs": max_epochs,
         "saved_lr": learning_rate,
         "saved_wd": weight_decay,
-        "saved_eval_interval": evaluation_interval,
+        "saved_evaluation_interval": evaluation_interval,
         "saved_min_lr": min_lr_ratio,
         "saved_class_loss_weight": class_loss_weight,
         "saved_box_loss_weight": box_loss_weight,
@@ -272,8 +276,8 @@ def build_yolo11_segmentation_checkpoint_bytes(
         "saved_assign_alpha": assign_alpha,
         "saved_assign_beta": assign_beta,
         "saved_grad_clip": grad_clip_norm,
-        "saved_eval_conf": evaluation_confidence_threshold,
-        "saved_eval_nms": evaluation_nms_threshold,
+        "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
+        "saved_evaluation_nms_threshold": evaluation_nms_threshold,
         "model_type": "yolo11",
         "task_type": "segmentation",
     }

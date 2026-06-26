@@ -101,6 +101,36 @@ function selectField(
   }
 }
 
+const ordinaryYoloEvaluationThresholdFields: TrainingParameterField[] = [
+  numberField('evaluation_confidence_threshold', '验证置信度阈值', {
+    min: 0,
+    max: 1,
+    step: 0.001,
+    defaultValue: '0.001',
+  }),
+  numberField('evaluation_nms_threshold', '验证 NMS 阈值', {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    defaultValue: '0.7',
+  }),
+]
+
+const obbYoloEvaluationThresholdFields: TrainingParameterField[] = [
+  numberField('evaluation_confidence_threshold', '验证置信度阈值', {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    defaultValue: '0.01',
+  }),
+  numberField('evaluation_nms_threshold', '验证 NMS 阈值', {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    defaultValue: '0.7',
+  }),
+]
+
 const detectionYoloXFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
   numberField('seed', '随机种子', { integer: true, min: 0, step: 1, defaultValue: '0' }),
@@ -173,6 +203,7 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
+  ...ordinaryYoloEvaluationThresholdFields,
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, step: 0.1, defaultValue: '1.5' }),
@@ -203,6 +234,8 @@ const poseFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
+  ...ordinaryYoloEvaluationThresholdFields,
+  numberField('keypoint_confidence_threshold', '关键点置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.25' }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, step: 0.1, defaultValue: '1.5' }),
@@ -217,6 +250,7 @@ const obbFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
+  ...obbYoloEvaluationThresholdFields,
 ]
 
 function normalizeModelType(modelType: string | null | undefined): string {
@@ -431,13 +465,15 @@ export function buildTrainingExtraOptions(
       return result
     }
     for (const key of [
-        'device',
-        'learning_rate',
-        'weight_decay',
-        'min_lr_ratio',
-        'class_loss_weight',
-        'box_loss_weight',
-        'dfl_loss_weight',
+      'device',
+      'learning_rate',
+      'weight_decay',
+      'min_lr_ratio',
+      'evaluation_confidence_threshold',
+      'evaluation_nms_threshold',
+      'class_loss_weight',
+      'box_loss_weight',
+      'dfl_loss_weight',
       'mask_loss_weight',
       'assign_topk',
       'assign_alpha',
@@ -455,6 +491,9 @@ export function buildTrainingExtraOptions(
       'learning_rate',
       'weight_decay',
       'min_lr_ratio',
+      'evaluation_confidence_threshold',
+      'evaluation_nms_threshold',
+      'keypoint_confidence_threshold',
       'class_loss_weight',
       'box_loss_weight',
       'dfl_loss_weight',
@@ -470,7 +509,13 @@ export function buildTrainingExtraOptions(
   }
 
   if (taskType === 'obb') {
-    for (const key of ['device', 'learning_rate', 'weight_decay']) {
+    for (const key of [
+      'device',
+      'learning_rate',
+      'weight_decay',
+      'evaluation_confidence_threshold',
+      'evaluation_nms_threshold',
+    ]) {
       assignValue(key)
     }
   }

@@ -2905,8 +2905,8 @@ def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
         input_size=(16, 16),
         device="cpu",
         precision="fp32",
-        eval_confidence_threshold=0.01,
-        eval_nms_threshold=0.65,
+        evaluation_confidence_threshold=0.01,
+        evaluation_nms_threshold=0.65,
         imports=imports,
     )
     assert metrics["map50"] > 0.0

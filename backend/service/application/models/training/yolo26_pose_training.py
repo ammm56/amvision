@@ -189,9 +189,13 @@ def run_yolo26_pose_training(
         0.0, float(extra.get("grad_clip_norm", YOLO26_POSE_DEFAULT_GRAD_CLIP))
     )
     eval_conf = float(
-        extra.get("eval_confidence_threshold", YOLO26_POSE_DEFAULT_EVAL_CONF)
+        extra.get(
+            "evaluation_confidence_threshold", YOLO26_POSE_DEFAULT_EVAL_CONF
+        )
     )
-    eval_nms = float(extra.get("eval_nms_threshold", YOLO26_POSE_DEFAULT_EVAL_NMS))
+    eval_nms = float(
+        extra.get("evaluation_nms_threshold", YOLO26_POSE_DEFAULT_EVAL_NMS)
+    )
     keypoint_conf = float(
         extra.get("keypoint_confidence_threshold", YOLO26_POSE_DEFAULT_KPT_CONF)
     )

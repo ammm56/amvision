@@ -362,8 +362,10 @@ def run_yolov8_obb_training(
                 input_size=input_size,
                 device=device,
                 precision=precision,
-                score_threshold=float(extra.get("eval_confidence_threshold", 0.01)),
-                nms_threshold=float(extra.get("eval_nms_threshold", 0.7)),
+                score_threshold=float(
+                    extra.get("evaluation_confidence_threshold", 0.01)
+                ),
+                nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
                 imports=_build_yolov8_training_imports(cv2, np, torch),
             )
             validation_history.append({"epoch": epoch, **val_metrics})

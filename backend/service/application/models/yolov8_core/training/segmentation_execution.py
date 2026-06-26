@@ -135,7 +135,7 @@ class _SegResumedState:
     saved_max_epochs: int
     saved_lr: float
     saved_wd: float
-    saved_eval_interval: int
+    saved_evaluation_interval: int
     saved_min_lr: float
     saved_class_loss_weight: float
     saved_box_loss_weight: float
@@ -145,8 +145,8 @@ class _SegResumedState:
     saved_assign_alpha: float
     saved_assign_beta: float
     saved_grad_clip: float
-    saved_eval_conf: float
-    saved_eval_nms: float
+    saved_evaluation_confidence_threshold: float
+    saved_evaluation_nms_threshold: float
 
 
 @dataclass(frozen=True)
@@ -511,8 +511,8 @@ def run_yolov8_segmentation_training(
                 input_size=input_size,
                 device=device,
                 precision=precision,
-                eval_confidence_threshold=eval_conf,
-                eval_nms_threshold=eval_nms,
+                evaluation_confidence_threshold=eval_conf,
+                evaluation_nms_threshold=eval_nms,
                 imports=imports,
             )
             v_hist.append({"epoch": epoch, **val_metrics})
@@ -842,7 +842,7 @@ def _seg_load_resume(request, imports) -> _SegResumedState | None:
         saved_max_epochs=int(ckpt.get("saved_max_epochs", 0)),
         saved_lr=float(ckpt.get("saved_lr", 0)),
         saved_wd=float(ckpt.get("saved_wd", 0)),
-        saved_eval_interval=int(ckpt.get("saved_eval_interval", 0)),
+        saved_evaluation_interval=int(ckpt.get("saved_evaluation_interval", 0)),
         saved_min_lr=float(ckpt.get("saved_min_lr", 0)),
         saved_class_loss_weight=float(ckpt.get("saved_class_loss_weight", 0)),
         saved_box_loss_weight=float(ckpt.get("saved_box_loss_weight", 0)),
@@ -852,8 +852,12 @@ def _seg_load_resume(request, imports) -> _SegResumedState | None:
         saved_assign_alpha=float(ckpt.get("saved_assign_alpha", 0)),
         saved_assign_beta=float(ckpt.get("saved_assign_beta", 0)),
         saved_grad_clip=float(ckpt.get("saved_grad_clip", 0)),
-        saved_eval_conf=float(ckpt.get("saved_eval_conf", 0)),
-        saved_eval_nms=float(ckpt.get("saved_eval_nms", 0)),
+        saved_evaluation_confidence_threshold=float(
+            ckpt.get("saved_evaluation_confidence_threshold", 0)
+        ),
+        saved_evaluation_nms_threshold=float(
+            ckpt.get("saved_evaluation_nms_threshold", 0)
+        ),
     )
 
 
@@ -956,7 +960,7 @@ def _seg_build_checkpoint(
         "saved_max_epochs": me,
         "saved_lr": lr,
         "saved_wd": wd,
-        "saved_eval_interval": eval_interval,
+        "saved_evaluation_interval": eval_interval,
         "saved_min_lr": min_lr,
         "saved_class_loss_weight": cl_w,
         "saved_box_loss_weight": box_w,
@@ -966,8 +970,8 @@ def _seg_build_checkpoint(
         "saved_assign_alpha": assign_alpha,
         "saved_assign_beta": assign_beta,
         "saved_grad_clip": grad_clip,
-        "saved_eval_conf": eval_conf,
-        "saved_eval_nms": eval_nms,
+        "saved_evaluation_confidence_threshold": eval_conf,
+        "saved_evaluation_nms_threshold": eval_nms,
     }
     buf = io.BytesIO()
     imports.torch.save(payload, buf)

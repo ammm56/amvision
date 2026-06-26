@@ -70,6 +70,9 @@
 - `input_height`
 - `display_name`
 - 按 `task_type / model_type` 切换的高级训练参数
+  - segmentation / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值
+  - pose / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值、关键点置信度阈值
+  - OBB / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值
 
 当前页面还没有暴露的训练输入如下：
 
@@ -147,7 +150,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`mask_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
+| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`mask_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
 | 当前前端已暴露 | 通用层字段 + segmentation / YOLO 主线高级参数面 |
 | 当前缺口 | 公开接口没有显式 `evaluation_interval` 字段；当前靠 `extra_options` 传递；warm start 当前也没有 segmentation 公开入口 |
 
@@ -173,7 +176,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`kpt_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
+| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`keypoint_confidence_threshold`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`kpt_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
 | 当前前端已暴露 | 通用层字段 + pose 高级参数面；`evaluation_interval` 当前对 pose 是有效的 |
 | 当前缺口 | warm start 当前没有 pose 公开入口 |
 
@@ -190,7 +193,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay` |
+| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`evaluation_confidence_threshold`、`evaluation_nms_threshold` |
 | 当前前端已暴露 | 通用层字段 + OBB 高级参数面；`evaluation_interval` 当前对 OBB 是有效的 |
 | 当前缺口 | warm start 当前没有 OBB 公开入口 |
 

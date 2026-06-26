@@ -500,8 +500,8 @@ def evaluate_yolov8_segmentation_samples(
     input_size: tuple[int, int],
     device: str,
     precision: str,
-    eval_confidence_threshold: float,
-    eval_nms_threshold: float,
+    evaluation_confidence_threshold: float,
+    evaluation_nms_threshold: float,
     imports: Any,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLOv8 segmentation 训练期评估。"""
@@ -537,8 +537,8 @@ def evaluate_yolov8_segmentation_samples(
                 outputs=outputs,
                 labels=labels,
                 input_size=input_size,
-                score_threshold=eval_confidence_threshold,
-                nms_threshold=eval_nms_threshold,
+                score_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
                 mask_threshold=0.5,
                 imports=imports,
                 image_index=image_index,

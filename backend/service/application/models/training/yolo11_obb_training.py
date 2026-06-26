@@ -166,9 +166,11 @@ def run_yolo11_obb_training(
     )
     assign_topk2 = int(extra["assign_topk2"]) if "assign_topk2" in extra else None
     eval_conf = float(
-        extra.get("eval_confidence_threshold", YOLO11_OBB_DEFAULT_EVAL_CONF)
+        extra.get("evaluation_confidence_threshold", YOLO11_OBB_DEFAULT_EVAL_CONF)
     )
-    eval_nms = float(extra.get("eval_nms_threshold", YOLO11_OBB_DEFAULT_EVAL_NMS))
+    eval_nms = float(
+        extra.get("evaluation_nms_threshold", YOLO11_OBB_DEFAULT_EVAL_NMS)
+    )
     augmentation_options = build_yolo11_task_augmentation_options(extra)
 
     if resume_state is not None:
