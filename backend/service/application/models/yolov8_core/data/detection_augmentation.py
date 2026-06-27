@@ -364,7 +364,7 @@ def _apply_random_affine(
         matrix=matrix,
         output_size=(int(output_size[1]), int(output_size[0])),
         perspective=augmentation_options.perspective,
-        area_threshold=0.01,
+        area_threshold=0.10,
     )
     transformed_pairs: list[tuple[tuple[float, float, float, float], int]] = []
     for transformed_box, source_index in zip(transformed_boxes, kept_indices, strict=False):

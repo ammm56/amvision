@@ -682,8 +682,8 @@ def _build_yolo11_segmentation_prediction_items(
             )
             mask = _build_yolo11_segmentation_instance_mask(
                 segments=instance.segments,
-                width=int(input_size[0]),
-                height=int(input_size[1]),
+                width=int(input_size[1]),
+                height=int(input_size[0]),
             )
             if mask is not None:
                 mask_items.append(

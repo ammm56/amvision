@@ -629,12 +629,30 @@ def transform_yolo11_obb_boxes(
     kept_indices: list[int] = []
     for box_index, box in enumerate(boxes_xywhr):
         corners = build_yolo11_obb_corners(imports=imports, box_xywhr=box)
+        original_box = _points_to_yolo11_xyxy_bbox(
+            imports=imports,
+            points=corners[:, :2],
+            output_size=None,
+        )
+        if original_box is None:
+            continue
         transformed_corners = _transform_yolo11_points(
             imports=imports,
             points=corners,
             matrix=matrix,
             perspective=perspective,
         )
+        transformed_box = _points_to_yolo11_xyxy_bbox(
+            imports=imports,
+            points=transformed_corners[:, :2],
+            output_size=(output_width, output_height),
+        )
+        if transformed_box is None or not _is_yolo11_box_candidate(
+            original_box=original_box,
+            transformed_box=transformed_box,
+            area_threshold=0.01,
+        ):
+            continue
         transformed_rbox = _min_area_rect_to_yolo11_xywhr(
             imports=imports,
             points=transformed_corners[:, :2],
@@ -821,6 +839,28 @@ def _clip_yolo11_box_xyxy(
     y1 = max(0.0, min(float(box_xyxy[1]), output_height))
     x2 = max(0.0, min(float(box_xyxy[2]), output_width))
     y2 = max(0.0, min(float(box_xyxy[3]), output_height))
+    if x2 - x1 <= 2.0 or y2 - y1 <= 2.0:
+        return None
+    return [x1, y1, x2, y2]
+
+
+def _points_to_yolo11_xyxy_bbox(
+    *,
+    imports: Any,
+    points: Any,
+    output_size: tuple[int, int] | None,
+) -> list[float] | None:
+    """把 polygon / OBB 角点转换为用于候选过滤的 xyxy 外接框。"""
+
+    point_array = points.astype(imports.np.float32).copy()
+    if output_size is not None:
+        output_width, output_height = float(output_size[0]), float(output_size[1])
+        point_array[:, 0] = imports.np.clip(point_array[:, 0], 0.0, output_width)
+        point_array[:, 1] = imports.np.clip(point_array[:, 1], 0.0, output_height)
+    x1 = float(point_array[:, 0].min())
+    y1 = float(point_array[:, 1].min())
+    x2 = float(point_array[:, 0].max())
+    y2 = float(point_array[:, 1].max())
     if x2 - x1 <= 2.0 or y2 - y1 <= 2.0:
         return None
     return [x1, y1, x2, y2]
