@@ -66,6 +66,9 @@ from backend.service.application.models.yolo_core_common.modeling.detection_buil
 from backend.service.application.models.yolo_core_common.geometry import (
     scale_yolo_box_from_letterbox,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+)
 from backend.service.application.models.yolov8_core import (
     build_yolov8_model,
 )
@@ -293,6 +296,8 @@ class _LoadedResumeState:
     best_metric_name: str
     best_metric_value: float | None
     best_checkpoint_state: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
     warm_start_summary: dict[str, object]
 
 
@@ -496,6 +501,12 @@ def run_yolov8_detection_training(
         model.half()
     if resume_state is not None:
         move_yolov8_optimizer_state_to_device(optimizer=optimizer, device=device)
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume_state.ema_updates if resume_state is not None else 0,
+    )
+    if resume_state is not None and resume_state.ema_state_dict is not None:
+        ema.load_state_dict(resume_state.ema_state_dict, strict=False)
     autocast_context = _build_autocast_context(
         imports=imports,
         device=device,
@@ -592,6 +603,7 @@ def run_yolov8_detection_training(
                 **kwargs,
             ),
             grad_clip_norm=grad_clip_norm,
+            ema=ema,
             batch_callback=(
                 on_yolov8_batch_progress if request.batch_callback is not None else None
             ),
@@ -613,7 +625,7 @@ def run_yolov8_detection_training(
         if validation_ran:
             validation_snapshot = _evaluate_detection_model(
                 imports=imports,
-                model=model,
+                model=ema.model,
                 samples=validation_samples,
                 category_ids=category_ids,
                 annotation_file=validation_split.annotation_file
@@ -658,6 +670,8 @@ def run_yolov8_detection_training(
         checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
             torch_module=imports.torch,
             model=model,
+            ema_model=ema.model,
+            ema_updates=ema.updates,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -1081,6 +1095,8 @@ def _load_resume_checkpoint(
         else None
     )
     warm_start_summary = checkpoint_payload.get("warm_start")
+    ema_state_dict = checkpoint_payload.get("ema_state_dict")
+    raw_ema_updates = checkpoint_payload.get("ema_updates")
     return _LoadedResumeState(
         resume_epoch=resume_epoch,
         epoch_history=_normalize_history_items(
@@ -1098,6 +1114,16 @@ def _load_resume_checkpoint(
             dict(checkpoint_payload.get("best_checkpoint_state"))
             if isinstance(checkpoint_payload.get("best_checkpoint_state"), dict)
             else None
+        ),
+        ema_state_dict=(
+            dict(ema_state_dict)
+            if isinstance(ema_state_dict, dict)
+            else None
+        ),
+        ema_updates=(
+            int(raw_ema_updates)
+            if isinstance(raw_ema_updates, int) and raw_ema_updates >= 0
+            else 0
         ),
         warm_start_summary=(
             dict(warm_start_summary)

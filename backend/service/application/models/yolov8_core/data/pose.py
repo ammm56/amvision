@@ -7,6 +7,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic4_canvas,
+)
 from backend.service.application.models.yolov8_core.data.augmentation import (
     YoloV8TaskAugmentationOptions,
     apply_yolov8_random_affine,
@@ -194,44 +197,42 @@ def _build_yolov8_pose_mosaic_sample(
     target_height: int,
     augmentation_options: YoloV8TaskAugmentationOptions,
 ) -> tuple[Any, YoloV8PosePreparedTarget] | None:
-    """构造 2x2 YOLOv8 pose mosaic 样本。"""
+    """按 Mosaic4 placement 同步构造 pose bbox 和 keypoint target。"""
 
-    top_height = target_height // 2
-    left_width = target_width // 2
-    placements = (
-        (0, 0, left_width, top_height),
-        (left_width, 0, target_width - left_width, top_height),
-        (0, top_height, left_width, target_height - top_height),
-        (left_width, top_height, target_width - left_width, target_height - top_height),
-    )
-    canvas = imports.np.full((target_height, target_width, 3), 114, dtype=imports.np.uint8)
     merged_target: YoloV8PosePreparedTarget | None = None
     selected_samples = [primary_sample]
     selected_samples.extend(
         random.choice(tuple(available_samples) or (primary_sample,))
         for _ in range(3)
     )
-    for sample, (left, top, cell_width, cell_height) in zip(selected_samples, placements, strict=True):
-        prepared = _prepare_yolov8_pose_single_sample(
-            imports=imports,
+    selected_items: list[tuple[Any, Any]] = []
+    for sample in selected_samples:
+        image = imports.cv2.imread(str(sample.image_path))
+        if image is not None:
+            selected_items.append((sample, image))
+    if not selected_items:
+        return None
+
+    canvas, placements = build_yolo_mosaic4_canvas(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        images=tuple(image for _, image in selected_items),
+        input_size=(target_height, target_width),
+    )
+    for placement in placements:
+        sample = selected_items[placement.index][0]
+        placed_target = _build_yolov8_pose_sample_targets(
             sample=sample,
-            output_size=(cell_width, cell_height),
-            scale_gain=random.uniform(*augmentation_options.mosaic_scale),
+            resize_ratio=placement.resize_scale,
+            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
         )
-        if prepared is None:
-            continue
-        cell_image, cell_target = prepared
-        canvas[top:top + cell_height, left:left + cell_width] = cell_image
-        shifted_target = _offset_yolov8_pose_target(
-            target=cell_target,
-            offset_xy=(left, top),
-        )
+        placed_target = _filter_yolov8_pose_target(placed_target)
         merged_target = (
-            shifted_target
+            placed_target
             if merged_target is None
             else _merge_yolov8_pose_targets(
                 primary=merged_target,
-                other=shifted_target,
+                other=placed_target,
             )
         )
     if merged_target is None:
@@ -303,43 +304,6 @@ def _build_yolov8_pose_sample_targets(
     )
 
 
-def _offset_yolov8_pose_target(
-    *,
-    target: YoloV8PosePreparedTarget,
-    offset_xy: tuple[int, int],
-) -> YoloV8PosePreparedTarget:
-    """把 cell 内 pose target 平移到 mosaic 画布。"""
-
-    offset_x, offset_y = float(offset_xy[0]), float(offset_xy[1])
-    boxes = [
-        [
-            float(box[0]) + offset_x,
-            float(box[1]) + offset_y,
-            float(box[2]) + offset_x,
-            float(box[3]) + offset_y,
-        ]
-        for box in target.boxes_xyxy
-    ]
-    keypoints = (
-        [
-            _offset_yolov8_pose_keypoints(
-                keypoints=keypoints,
-                offset_xy=(offset_x, offset_y),
-            )
-            for keypoints in target.keypoints
-        ]
-        if target.keypoints
-        else None
-    )
-    return _filter_yolov8_pose_target(
-        YoloV8PosePreparedTarget(
-            boxes_xyxy=boxes,
-            category_indexes=list(target.category_indexes),
-            keypoints=keypoints,
-        )
-    )
-
-
 def _merge_yolov8_pose_targets(
     *,
     primary: YoloV8PosePreparedTarget,
@@ -358,22 +322,6 @@ def _merge_yolov8_pose_targets(
             keypoints=keypoints,
         )
     )
-
-
-def _offset_yolov8_pose_keypoints(
-    *,
-    keypoints: list[float],
-    offset_xy: tuple[float, float],
-) -> list[float]:
-    """平移一组 YOLOv8 pose keypoints。"""
-
-    offset_x, offset_y = float(offset_xy[0]), float(offset_xy[1])
-    transformed = list(keypoints)
-    for keypoint_index in range(len(transformed) // 3):
-        base_index = keypoint_index * 3
-        transformed[base_index] = float(transformed[base_index]) + offset_x
-        transformed[base_index + 1] = float(transformed[base_index + 1]) + offset_y
-    return transformed
 
 
 def _filter_yolov8_pose_target(

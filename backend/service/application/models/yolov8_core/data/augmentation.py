@@ -7,6 +7,10 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_center_canvas_matrix,
+)
+
 
 @dataclass(frozen=True)
 class YoloV8TaskAugmentationOptions:
@@ -261,15 +265,27 @@ def apply_yolov8_random_affine(
     几何矩阵计算保持一致。调用方负责把项目上层的输入尺寸转换清楚。
     """
 
-    if not should_apply_yolov8_random_affine(augmentation_options):
-        return image, None, False
-    matrix = build_yolov8_random_affine_matrix(
-        imports=imports,
-        image_shape=image.shape,
-        output_size=output_size,
-        augmentation_options=augmentation_options,
-    )
     output_width, output_height = int(output_size[0]), int(output_size[1])
+    needs_canvas_transform = (
+        int(image.shape[1]) != output_width or int(image.shape[0]) != output_height
+    )
+    apply_random_transform = should_apply_yolov8_random_affine(augmentation_options)
+    if not apply_random_transform and not needs_canvas_transform:
+        return image, None, False
+    matrix = (
+        build_yolov8_random_affine_matrix(
+            imports=imports,
+            image_shape=image.shape,
+            output_size=output_size,
+            augmentation_options=augmentation_options,
+        )
+        if apply_random_transform
+        else build_yolo_center_canvas_matrix(
+            np_module=imports.np,
+            image_shape=image.shape,
+            output_size=output_size,
+        )
+    )
     if augmentation_options.perspective > 0.0:
         transformed_image = imports.cv2.warpPerspective(
             image,

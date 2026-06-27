@@ -329,6 +329,8 @@ def test_yolov8_detection_epoch_checkpoint_update_builds_best_and_latest() -> No
     update = build_yolov8_detection_epoch_checkpoint_update(
         torch_module=torch,
         model=model,
+        ema_model=model,
+        ema_updates=3,
         optimizer=optimizer,
         scheduler=scheduler,
         scaler=scaler,
@@ -377,6 +379,8 @@ def test_yolov8_detection_epoch_checkpoint_update_builds_best_and_latest() -> No
 
     assert update.best_metric_value == 0.5
     assert latest_state["best_metric_value"] == 0.5
+    assert "ema_state_dict" in latest_state
+    assert latest_state["ema_updates"] == 3
     assert isinstance(latest_state["best_checkpoint_state"], dict)
     assert best_state["best_checkpoint_state"] is None
 

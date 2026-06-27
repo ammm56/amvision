@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import random
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,7 +61,11 @@ from backend.service.application.models.yolo26_core.export import (
     Yolo26ExportSourceSession,
 )
 from backend.service.application.models.yolo26_core.data import (
+    Yolo26TaskAugmentationOptions,
     build_yolo26_detection_training_batch,
+    build_yolo26_obb_training_batch,
+    build_yolo26_pose_training_batch,
+    build_yolo26_segmentation_training_batch,
     build_yolo26_task_augmentation_options,
     resolve_yolo26_task_batch_input_size,
     serialize_yolo26_detection_augmentation_options,
@@ -110,6 +115,9 @@ from backend.service.application.models.yolo26_core.training import (
 )
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
+)
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
 )
 from backend.service.application.models.yolov8_core import (
     YOLOV8_HEAD_MODULES,
@@ -372,9 +380,11 @@ from backend.service.application.models.training.yolov8_training_service import 
     SqlAlchemyYoloV8TrainingTaskService,
 )
 from backend.service.application.models.yolo11_core.data import (
+    Yolo11TaskAugmentationOptions,
     build_yolo11_detection_training_batch,
     build_yolo11_obb_training_batch,
     build_yolo11_pose_training_batch,
+    build_yolo11_segmentation_training_batch,
     build_yolo11_task_augmentation_options,
     resolve_yolo11_task_batch_input_size,
     serialize_yolo11_detection_augmentation_options,
@@ -511,6 +521,16 @@ from backend.workers.conversion.yolo_model_conversion_runner import (
 from backend.workers.conversion.yolov8_conversion_runner import (
     LocalYoloV8ConversionRunner,
 )
+
+
+def _identity_yolo_letterbox(size: int):
+    """构造测试用的无缩放 LetterBox 变换。"""
+
+    return build_yolo_letterbox_transform(
+        source_width=size,
+        source_height=size,
+        input_size=(size, size),
+    )
 
 
 @pytest.mark.parametrize(
@@ -829,9 +849,7 @@ def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
         labels=("a", "b"),
         score_threshold=0.0,
         nms_threshold=0.01,
-        resize_ratio=1.0,
-        image_width=128,
-        image_height=128,
+        letterbox_transform=_identity_yolo_letterbox(128),
         max_detections=3,
     )
 
@@ -956,9 +974,7 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         labels=("background", "part"),
         score_threshold=0.1,
         nms_threshold=0.65,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
+        letterbox_transform=_identity_yolo_letterbox(32),
     )
 
     segmentation_prediction = np.zeros((1, 300, 7), dtype=np.float32)
@@ -972,10 +988,7 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         score_threshold=0.1,
         nms_threshold=0.65,
         mask_threshold=0.5,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
-        input_size=(32, 32),
+        letterbox_transform=_identity_yolo_letterbox(32),
         nms_indices_func=batched_nms_indices,
     )
 
@@ -990,10 +1003,7 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         labels=("person",),
         score_threshold=0.1,
         keypoint_confidence_threshold=0.2,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
-        input_size=(32, 32),
+        letterbox_transform=_identity_yolo_letterbox(32),
         default_kpt_shape=(17, 3),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
@@ -1006,9 +1016,7 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         prediction_array=obb_prediction,
         labels=("part",),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
+        letterbox_transform=_identity_yolo_letterbox(32),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
     )
@@ -1036,9 +1044,7 @@ def test_yolo26_postprocess_normalizes_reversed_xyxy_boxes() -> None:
         labels=("part",),
         score_threshold=0.1,
         nms_threshold=0.65,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
+        letterbox_transform=_identity_yolo_letterbox(32),
     )
 
     segmentation_prediction = np.zeros((1, 300, 7), dtype=np.float32)
@@ -1052,10 +1058,7 @@ def test_yolo26_postprocess_normalizes_reversed_xyxy_boxes() -> None:
         score_threshold=0.1,
         nms_threshold=0.65,
         mask_threshold=0.5,
-        resize_ratio=1.0,
-        image_width=32,
-        image_height=32,
-        input_size=(32, 32),
+        letterbox_transform=_identity_yolo_letterbox(32),
         nms_indices_func=batched_nms_indices,
     )
 
@@ -2057,10 +2060,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
         labels=("person",),
         score_threshold=0.1,
         keypoint_confidence_threshold=0.2,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         default_kpt_shape=(17, 3),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
@@ -2070,9 +2070,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
         prediction_array=normalized_obb,
         labels=("part",),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
     )
@@ -2090,10 +2088,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
             labels=("person",),
             score_threshold=0.1,
             keypoint_confidence_threshold=0.2,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
-            input_size=(16, 16),
+            letterbox_transform=_identity_yolo_letterbox(16),
             default_kpt_shape=(17, 3),
             nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
@@ -2105,9 +2100,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
             prediction_array=normalized_obb,
             labels=("part",),
             score_threshold=0.1,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
+            letterbox_transform=_identity_yolo_letterbox(16),
             nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
         )
@@ -2120,10 +2113,10 @@ def test_yolo11_segmentation_core_inference_and_postprocess_entries() -> None:
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     prediction = torch.zeros(1, 6, 8)
-    prediction[0, 0, 0] = 8.0
-    prediction[0, 1, 0] = 8.0
-    prediction[0, 2, 0] = 8.0
-    prediction[0, 3, 0] = 8.0
+    prediction[0, 0, 0] = 4.0
+    prediction[0, 1, 0] = 4.0
+    prediction[0, 2, 0] = 12.0
+    prediction[0, 3, 0] = 12.0
     prediction[0, 4, 0] = 0.95
     prediction[0, 5, 0] = 8.0
     proto = torch.ones(1, 1, 4, 4)
@@ -2143,10 +2136,7 @@ def test_yolo11_segmentation_core_inference_and_postprocess_entries() -> None:
         score_threshold=0.1,
         nms_threshold=0.65,
         mask_threshold=0.5,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_indices_func=batched_nms_indices,
     )
 
@@ -2173,10 +2163,7 @@ def test_yolo11_segmentation_core_inference_and_postprocess_entries() -> None:
             score_threshold=0.1,
             nms_threshold=0.65,
             mask_threshold=0.5,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
-            input_size=(16, 16),
+            letterbox_transform=_identity_yolo_letterbox(16),
             nms_indices_func=batched_nms_indices,
         )
     ) == len(instances)
@@ -2188,10 +2175,10 @@ def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
     prediction = torch.zeros(1, 6, 8)
-    prediction[0, 0, 0] = 8.0
-    prediction[0, 1, 0] = 8.0
-    prediction[0, 2, 0] = 8.0
-    prediction[0, 3, 0] = 8.0
+    prediction[0, 0, 0] = 4.0
+    prediction[0, 1, 0] = 4.0
+    prediction[0, 2, 0] = 12.0
+    prediction[0, 3, 0] = 12.0
     prediction[0, 4, 0] = 0.95
     prediction[0, 5, 0] = 8.0
     proto = torch.ones(1, 1, 4, 4)
@@ -2211,10 +2198,7 @@ def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
         score_threshold=0.1,
         nms_threshold=0.65,
         mask_threshold=0.5,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_indices_func=batched_nms_indices,
     )
 
@@ -2241,10 +2225,7 @@ def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
             score_threshold=0.1,
             nms_threshold=0.65,
             mask_threshold=0.5,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
-            input_size=(16, 16),
+            letterbox_transform=_identity_yolo_letterbox(16),
             nms_indices_func=batched_nms_indices,
         )
     ) == len(instances)
@@ -2276,10 +2257,7 @@ def test_yolo26_pose_core_inference_postprocess_and_export_entries() -> None:
         labels=("person",),
         score_threshold=0.1,
         keypoint_confidence_threshold=0.2,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         default_kpt_shape=(17, 3),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
@@ -2309,10 +2287,7 @@ def test_yolo26_pose_core_inference_postprocess_and_export_entries() -> None:
             labels=("person",),
             score_threshold=0.1,
             keypoint_confidence_threshold=0.2,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
-            input_size=(16, 16),
+            letterbox_transform=_identity_yolo_letterbox(16),
             default_kpt_shape=(17, 3),
             nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
@@ -2341,9 +2316,7 @@ def test_yolo26_obb_core_inference_postprocess_and_export_entries() -> None:
         prediction_array=normalized,
         labels=("part",),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
     )
@@ -2372,9 +2345,7 @@ def test_yolo26_obb_core_inference_postprocess_and_export_entries() -> None:
             prediction_array=normalized,
             labels=("part",),
             score_threshold=0.1,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
+            letterbox_transform=_identity_yolo_letterbox(16),
             nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
         )
@@ -2931,10 +2902,7 @@ def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
         score_threshold=0.01,
         nms_threshold=0.65,
         mask_threshold=0.5,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_indices_func=batched_nms_indices,
     )
     assert len(instances) == 1
@@ -3027,10 +2995,7 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
         labels=("person", "defect"),
         score_threshold=0.1,
         keypoint_confidence_threshold=0.2,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
-        input_size=(16, 16),
+        letterbox_transform=_identity_yolo_letterbox(16),
         default_kpt_shape=(17, 3),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
@@ -3040,9 +3005,7 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
         prediction_array=obb_prediction_array,
         labels=("part", "defect"),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
     )
@@ -3061,10 +3024,7 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
             labels=("person", "defect"),
             score_threshold=0.1,
             keypoint_confidence_threshold=0.2,
-            resize_ratio=1.0,
-            image_width=16,
-            image_height=16,
-            input_size=(16, 16),
+            letterbox_transform=_identity_yolo_letterbox(16),
             default_kpt_shape=(17, 3),
             nms_threshold=0.65,
             nms_indices_func=batched_nms_indices,
@@ -3075,9 +3035,7 @@ def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
         prediction_array=runtime_obb_prediction,
         labels=("part", "defect"),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_threshold=0.65,
         nms_indices_func=batched_nms_indices,
     )
@@ -3129,9 +3087,7 @@ def test_yolov8_obb_postprocess_uses_class_aware_rotated_nms() -> None:
         prediction_array=prediction_array,
         labels=("part", "defect"),
         score_threshold=0.1,
-        resize_ratio=1.0,
-        image_width=16,
-        image_height=16,
+        letterbox_transform=_identity_yolo_letterbox(16),
         nms_threshold=0.5,
         nms_indices_func=batched_nms_indices,
     )
@@ -3320,6 +3276,7 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
     augmentation_options = YoloV8TaskAugmentationOptions(
         hsv_prob=0.0,
         flip_prob=1.0,
+        mosaic_prob=0.0,
         affine_prob=0.0,
     )
 
@@ -3409,6 +3366,7 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
     augmentation_options = YoloV8TaskAugmentationOptions(
         hsv_prob=0.0,
         flip_prob=0.0,
+        mosaic_prob=0.0,
         affine_prob=1.0,
         degrees=0.0,
         translate=0.25,
@@ -3480,10 +3438,10 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
     assert obb_batch.targets[0].boxes_xywhr[0][3] == pytest.approx(4.0)
 
 
-def test_yolov8_task_mosaic_builds_segmentation_pose_and_obb_targets(
+def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
     tmp_path: Path,
 ) -> None:
-    """验证 YOLOv8 mosaic 会为三类 task 构造四象限目标。"""
+    """验证普通 YOLO 三代 Mosaic4 会为三类 task 同步构造有效目标。"""
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
@@ -3492,36 +3450,12 @@ def test_yolov8_task_mosaic_builds_segmentation_pose_and_obb_targets(
         cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
     )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
-    augmentation_options = YoloV8TaskAugmentationOptions(
-        hsv_prob=0.0,
-        flip_prob=0.0,
-        mosaic_prob=1.0,
-        affine_prob=0.0,
-        mosaic_scale=(1.0, 1.0),
-    )
-
     segmentation_sample = SimpleNamespace(
         image_path=str(image_path),
         boxes_xywh=[[4.0, 4.0, 8.0, 8.0]],
         class_ids=[0],
         segmentations=[[4.0, 4.0, 12.0, 4.0, 12.0, 12.0, 4.0, 12.0]],
     )
-    segmentation_batch = build_yolov8_segmentation_training_batch(
-        samples=[segmentation_sample],
-        input_size=(16, 16),
-        device="cpu",
-        precision="fp32",
-        imports=imports,
-        augmentation_options=augmentation_options,
-    )
-    assert segmentation_batch is not None
-    assert segmentation_batch.targets[0]["boxes"] == [
-        [2.0, 2.0, 6.0, 6.0],
-        [10.0, 2.0, 14.0, 6.0],
-        [2.0, 10.0, 6.0, 14.0],
-        [10.0, 10.0, 14.0, 14.0],
-    ]
-
     keypoints = [coordinate for _ in range(17) for coordinate in (4.0, 4.0, 2.0)]
     pose_sample = SimpleNamespace(
         image_path=str(image_path),
@@ -3529,36 +3463,105 @@ def test_yolov8_task_mosaic_builds_segmentation_pose_and_obb_targets(
         class_ids=[0],
         keypoints=[keypoints],
     )
-    pose_batch = build_yolov8_pose_training_batch(
-        samples=[pose_sample],
-        input_size=(16, 16),
-        device="cpu",
-        precision="fp32",
-        imports=imports,
-        augmentation_options=augmentation_options,
-    )
-    assert pose_batch is not None
-    assert len(pose_batch.targets[0].boxes_xyxy) == 4
-    assert pose_batch.targets[0].keypoints is not None
-    assert pose_batch.targets[0].keypoints[1][0] == pytest.approx(10.0)
-
     obb_sample = SimpleNamespace(
         image_path=str(image_path),
         boxes_xywhr=[[8.0, 8.0, 8.0, 8.0, 0.0]],
         class_ids=[0],
     )
-    obb_batch = build_yolov8_obb_training_batch(
-        samples=[obb_sample],
-        input_size=(16, 16),
-        device="cpu",
-        precision="fp32",
-        imports=imports,
-        augmentation_options=augmentation_options,
+
+    builders = (
+        (
+            build_yolov8_segmentation_training_batch,
+            build_yolov8_pose_training_batch,
+            build_yolov8_obb_training_batch,
+            YoloV8TaskAugmentationOptions,
+        ),
+        (
+            build_yolo11_segmentation_training_batch,
+            build_yolo11_pose_training_batch,
+            build_yolo11_obb_training_batch,
+            Yolo11TaskAugmentationOptions,
+        ),
+        (
+            build_yolo26_segmentation_training_batch,
+            build_yolo26_pose_training_batch,
+            build_yolo26_obb_training_batch,
+            Yolo26TaskAugmentationOptions,
+        ),
     )
-    assert obb_batch is not None
-    assert len(obb_batch.targets[0].boxes_xywhr) == 4
-    assert obb_batch.targets[0].boxes_xywhr[3][0] == pytest.approx(12.0)
-    assert obb_batch.targets[0].boxes_xywhr[3][1] == pytest.approx(12.0)
+    for segmentation_builder, pose_builder, obb_builder, options_class in builders:
+        augmentation_options = options_class(
+            hsv_prob=0.0,
+            flip_prob=0.0,
+            mosaic_prob=1.0,
+            affine_prob=0.0,
+            mosaic_scale=(1.0, 1.0),
+        )
+        random.seed(17)
+        segmentation_batch = segmentation_builder(
+            samples=[segmentation_sample],
+            input_size=(16, 16),
+            device="cpu",
+            precision="fp32",
+            imports=imports,
+            augmentation_options=augmentation_options,
+        )
+        assert segmentation_batch is not None
+        segmentation_boxes = segmentation_batch.targets[0]["boxes"]
+        assert segmentation_boxes
+        for x1, y1, x2, y2 in segmentation_boxes:
+            assert 0.0 <= x1 < x2 <= 16.0
+            assert 0.0 <= y1 < y2 <= 16.0
+        assert tuple(segmentation_batch.targets[0]["masks"].shape) == (
+            len(segmentation_boxes),
+            16,
+            16,
+        )
+        assert tuple(segmentation_batch.targets[0]["mask_valid"].shape) == (
+            len(segmentation_boxes),
+        )
+
+        random.seed(17)
+        pose_batch = pose_builder(
+            samples=[pose_sample],
+            input_size=(16, 16),
+            device="cpu",
+            precision="fp32",
+            imports=imports,
+            augmentation_options=augmentation_options,
+        )
+        assert pose_batch is not None
+        assert pose_batch.targets[0].boxes_xyxy
+        for x1, y1, x2, y2 in pose_batch.targets[0].boxes_xyxy:
+            assert 0.0 <= x1 < x2 <= 16.0
+            assert 0.0 <= y1 < y2 <= 16.0
+        assert pose_batch.targets[0].keypoints is not None
+        assert len(pose_batch.targets[0].keypoints) == len(
+            pose_batch.targets[0].boxes_xyxy
+        )
+        for keypoint_row in pose_batch.targets[0].keypoints:
+            for keypoint_index in range(len(keypoint_row) // 3):
+                base_index = keypoint_index * 3
+                if keypoint_row[base_index + 2] > 0.0:
+                    assert 0.0 <= keypoint_row[base_index] <= 16.0
+                    assert 0.0 <= keypoint_row[base_index + 1] <= 16.0
+
+        random.seed(17)
+        obb_batch = obb_builder(
+            samples=[obb_sample],
+            input_size=(16, 16),
+            device="cpu",
+            precision="fp32",
+            imports=imports,
+            augmentation_options=augmentation_options,
+        )
+        assert obb_batch is not None
+        assert obb_batch.targets[0].boxes_xywhr
+        for cx, cy, width, height, _angle in obb_batch.targets[0].boxes_xywhr:
+            assert 0.0 <= cx <= 16.0
+            assert 0.0 <= cy <= 16.0
+            assert width > 0.0
+            assert height > 0.0
 
 
 def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(

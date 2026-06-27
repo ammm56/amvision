@@ -379,7 +379,7 @@ def _extract_checkpoint_state_dict(checkpoint_payload: object) -> dict[str, obje
         return dict(checkpoint_payload)
 
     if isinstance(checkpoint_payload, dict):
-        for key in ("model_state_dict", "state_dict", "ema_state_dict"):
+        for key in ("ema_state_dict", "model_state_dict", "state_dict"):
             candidate = checkpoint_payload.get(key)
             if _looks_like_state_dict(candidate):
                 return dict(candidate)

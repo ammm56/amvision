@@ -7,6 +7,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic4_canvas,
+)
 from backend.service.application.models.yolo26_core.data.augmentation import (
     Yolo26TaskAugmentationOptions,
     apply_yolo26_random_affine,
@@ -194,44 +197,39 @@ def _build_yolo26_obb_mosaic_sample(
     target_height: int,
     augmentation_options: Yolo26TaskAugmentationOptions,
 ) -> tuple[Any, Yolo26ObbPreparedTarget] | None:
-    """构造 2x2 YOLO26 OBB mosaic 样本。"""
+    """按 Mosaic4 placement 同步构造 OBB xywhr target。"""
 
-    top_height = target_height // 2
-    left_width = target_width // 2
-    placements = (
-        (0, 0, left_width, top_height),
-        (left_width, 0, target_width - left_width, top_height),
-        (0, top_height, left_width, target_height - top_height),
-        (left_width, top_height, target_width - left_width, target_height - top_height),
-    )
-    canvas = imports.np.full(
-        (target_height, target_width, 3), 114, dtype=imports.np.uint8
-    )
     merged_target: Yolo26ObbPreparedTarget | None = None
     selected_samples = [primary_sample]
     selected_samples.extend(
         random.choice(tuple(available_samples) or (primary_sample,)) for _ in range(3)
     )
-    for sample, (left, top, cell_width, cell_height) in zip(
-        selected_samples, placements, strict=True
-    ):
-        prepared = _prepare_yolo26_obb_single_sample(
-            imports=imports,
+    selected_items: list[tuple[Any, Any]] = []
+    for sample in selected_samples:
+        image = imports.cv2.imread(str(sample.image_path))
+        if image is not None:
+            selected_items.append((sample, image))
+    if not selected_items:
+        return None
+
+    canvas, placements = build_yolo_mosaic4_canvas(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        images=tuple(image for _, image in selected_items),
+        input_size=(target_height, target_width),
+    )
+    for placement in placements:
+        sample = selected_items[placement.index][0]
+        placed_target = _build_yolo26_obb_sample_targets(
             sample=sample,
-            output_size=(cell_width, cell_height),
-            scale_gain=random.uniform(*augmentation_options.mosaic_scale),
+            resize_ratio=placement.resize_scale,
+            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
         )
-        if prepared is None:
-            continue
-        cell_image, cell_target = prepared
-        canvas[top : top + cell_height, left : left + cell_width] = cell_image
-        shifted_target = _offset_yolo26_obb_target(
-            target=cell_target, offset_xy=(left, top)
-        )
+        placed_target = _filter_yolo26_obb_target(placed_target)
         merged_target = (
-            shifted_target
+            placed_target
             if merged_target is None
-            else _merge_yolo26_obb_targets(primary=merged_target, other=shifted_target)
+            else _merge_yolo26_obb_targets(primary=merged_target, other=placed_target)
         )
     if merged_target is None:
         return None
@@ -292,31 +290,6 @@ def _build_yolo26_obb_sample_targets(
         category_indexes.append(int(class_id))
     return Yolo26ObbPreparedTarget(
         boxes_xywhr=scaled_boxes, category_indexes=category_indexes
-    )
-
-
-def _offset_yolo26_obb_target(
-    *,
-    target: Yolo26ObbPreparedTarget,
-    offset_xy: tuple[int, int],
-) -> Yolo26ObbPreparedTarget:
-    """把 cell 内 YOLO26 OBB target 平移到 mosaic 画布。"""
-
-    offset_x, offset_y = float(offset_xy[0]), float(offset_xy[1])
-    return _filter_yolo26_obb_target(
-        Yolo26ObbPreparedTarget(
-            boxes_xywhr=[
-                [
-                    float(box[0]) + offset_x,
-                    float(box[1]) + offset_y,
-                    float(box[2]),
-                    float(box[3]),
-                    normalize_yolo26_obb_angle(float(box[4])),
-                ]
-                for box in target.boxes_xywhr
-            ],
-            category_indexes=list(target.category_indexes),
-        )
     )
 
 

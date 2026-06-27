@@ -85,6 +85,7 @@ def run_yolo26_detection_training_loop(
     scheduler: Any,
     scaler: Any,
     training_schedule: YoloUltralyticsTrainingSchedule | None,
+    ema: Any | None,
     train_samples: tuple[Any, ...],
     validation_samples: tuple[Any, ...],
     batch_size: int,
@@ -161,6 +162,7 @@ def run_yolo26_detection_training_loop(
             unwrap_outputs=unwrap_outputs,
             compute_loss=compute_loss,
             grad_clip_norm=grad_clip_norm,
+            ema=ema,
             batch_callback=batch_callback,
         )
         global_iteration = epoch_result.global_iteration
@@ -194,6 +196,8 @@ def run_yolo26_detection_training_loop(
         checkpoint_update = build_yolo26_detection_epoch_checkpoint_update(
             torch_module=torch_module,
             model=model,
+            ema_model=getattr(ema, "model", None),
+            ema_updates=getattr(ema, "updates", None),
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,

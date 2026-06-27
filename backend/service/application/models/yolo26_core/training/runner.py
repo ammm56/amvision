@@ -54,6 +54,7 @@ def run_yolo26_detection_training_epoch(
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
+    ema: Any | None = None,
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
@@ -107,6 +108,8 @@ def run_yolo26_detection_training_epoch(
                 torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             scaler.step(optimizer)
             scaler.update()
+            if ema is not None:
+                ema.update(model)
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
 

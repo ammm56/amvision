@@ -212,6 +212,29 @@ def scale_yolo_xywh_from_letterbox(
     return (center_x, center_y, width, height)
 
 
+def build_yolo_center_canvas_matrix(
+    *,
+    np_module: Any,
+    image_shape: tuple[int, ...],
+    output_size: tuple[int, int],
+) -> Any:
+    """构造只把大画布中心裁回目标尺寸的 3x3 affine 矩阵。
+
+    ``output_size`` 使用 ``(width, height)``。该矩阵用于 Mosaic 后没有启用
+    随机透视/仿射时的必需裁剪，不引入额外旋转、缩放或平移扰动。
+    """
+
+    source_height, source_width = int(image_shape[0]), int(image_shape[1])
+    output_width, output_height = int(output_size[0]), int(output_size[1])
+    center_matrix = np_module.eye(3, dtype=np_module.float32)
+    center_matrix[0, 2] = -float(source_width) / 2.0
+    center_matrix[1, 2] = -float(source_height) / 2.0
+    translate_matrix = np_module.eye(3, dtype=np_module.float32)
+    translate_matrix[0, 2] = float(output_width) / 2.0
+    translate_matrix[1, 2] = float(output_height) / 2.0
+    return translate_matrix @ center_matrix
+
+
 def make_anchors(
     *,
     feature_maps: tuple[torch.Tensor, ...] | list[torch.Tensor],

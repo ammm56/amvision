@@ -60,6 +60,46 @@ def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) ->
     assert load_summary["unexpected_keys"] == []
 
 
+def test_yolo_checkpoint_loader_prefers_ema_state_dict(tmp_path: Path) -> None:
+    """验证导出和登记入口优先使用 checkpoint 中的 EMA 权重。"""
+
+    checkpoint_path = tmp_path / "yolo-project-ema.pt"
+    source_model = build_yolo_detection_model_for_type(
+        model_type="yolo11",
+        model_scale="nano",
+        num_classes=1,
+    )
+    model_state_dict = source_model.state_dict()
+    float_key = next(
+        key for key, value in model_state_dict.items() if value.is_floating_point()
+    )
+    ema_state_dict = {
+        key: value.detach().clone() for key, value in model_state_dict.items()
+    }
+    ema_state_dict[float_key] = ema_state_dict[float_key] + 1.0
+    torch.save(
+        {
+            "model_state_dict": model_state_dict,
+            "ema_state_dict": ema_state_dict,
+        },
+        checkpoint_path,
+    )
+
+    target_model = build_yolo_detection_model_for_type(
+        model_type="yolo11",
+        model_scale="nano",
+        num_classes=1,
+    )
+    load_summary = load_yolo_checkpoint(
+        imports=SimpleNamespace(torch=torch),
+        model=target_model,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert load_summary["checkpoint_path"] == str(checkpoint_path)
+    assert torch.equal(target_model.state_dict()[float_key], ema_state_dict[float_key])
+
+
 def test_yolov8_checkpoint_loader_tolerates_class_head_shape_mismatch(tmp_path: Path) -> None:
     """验证加载不同类别数 checkpoint 时会跳过不兼容分类头。"""
 

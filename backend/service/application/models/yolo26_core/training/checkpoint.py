@@ -21,6 +21,8 @@ class Yolo26DetectionEpochCheckpointUpdate:
 def build_yolo26_detection_checkpoint_state(
     *,
     model: Any,
+    ema_model: Any | None,
+    ema_updates: int | None,
     optimizer: Any,
     scheduler: Any,
     scaler: Any,
@@ -58,7 +60,7 @@ def build_yolo26_detection_checkpoint_state(
 ) -> dict[str, object]:
     """构建 YOLO26 detection 可恢复 checkpoint state。"""
 
-    return {
+    checkpoint_state: dict[str, object] = {
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
@@ -95,6 +97,10 @@ def build_yolo26_detection_checkpoint_state(
         "best_metric_value": best_metric_value,
         "best_checkpoint_state": best_checkpoint_state,
     }
+    if ema_model is not None:
+        checkpoint_state["ema_state_dict"] = ema_model.state_dict()
+        checkpoint_state["ema_updates"] = max(0, int(ema_updates or 0))
+    return checkpoint_state
 
 
 def encode_yolo26_detection_checkpoint_state(
@@ -128,6 +134,8 @@ def build_yolo26_detection_epoch_checkpoint_update(
     *,
     torch_module: Any,
     model: Any,
+    ema_model: Any | None,
+    ema_updates: int | None,
     optimizer: Any,
     scheduler: Any,
     scaler: Any,
@@ -176,6 +184,8 @@ def build_yolo26_detection_epoch_checkpoint_update(
     )
     current_checkpoint_state = build_yolo26_detection_checkpoint_state(
         model=model,
+        ema_model=ema_model,
+        ema_updates=ema_updates,
         optimizer=optimizer,
         scheduler=scheduler,
         scaler=scaler,

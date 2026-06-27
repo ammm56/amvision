@@ -79,6 +79,7 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
 )
 from backend.service.application.models.yolo26_core.training.execution import (
@@ -110,6 +111,8 @@ class _Yolo26LoadedResumeState:
     best_metric_name: str
     best_metric_value: float | None
     best_checkpoint_state: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
     warm_start_summary: dict[str, object]
 
 
@@ -232,6 +235,12 @@ def run_yolo26_detection_training(
         model.half()
     if resume_state is not None:
         move_yolo26_optimizer_state_to_device(optimizer=optimizer, device=device)
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume_state.ema_updates if resume_state is not None else 0,
+    )
+    if resume_state is not None and resume_state.ema_state_dict is not None:
+        ema.load_state_dict(resume_state.ema_state_dict, strict=False)
 
     autocast_context = build_yolo26_autocast_context(
         torch_module=imports.torch,
@@ -311,6 +320,7 @@ def run_yolo26_detection_training(
             scheduler=scheduler,
             scaler=scaler,
             training_schedule=training_schedule,
+            ema=ema,
             train_samples=train_samples,
             validation_samples=validation_samples,
             batch_size=batch_size,
@@ -335,7 +345,7 @@ def run_yolo26_detection_training(
             ),
             evaluate_model=lambda: _evaluate_yolo26_detection_model(
                 imports=imports,
-                model=model,
+                model=ema.model,
                 samples=validation_samples,
                 category_ids=category_ids,
                 annotation_file=(
@@ -702,6 +712,8 @@ def _load_yolo26_resume_checkpoint(
         else None
     )
     warm_start_summary = checkpoint_payload.get("warm_start")
+    ema_state_dict = checkpoint_payload.get("ema_state_dict")
+    raw_ema_updates = checkpoint_payload.get("ema_updates")
     return _Yolo26LoadedResumeState(
         resume_epoch=resume_epoch,
         epoch_history=_normalize_yolo26_history_items(
@@ -719,6 +731,16 @@ def _load_yolo26_resume_checkpoint(
             dict(checkpoint_payload.get("best_checkpoint_state"))
             if isinstance(checkpoint_payload.get("best_checkpoint_state"), dict)
             else None
+        ),
+        ema_state_dict=(
+            dict(ema_state_dict)
+            if isinstance(ema_state_dict, dict)
+            else None
+        ),
+        ema_updates=(
+            int(raw_ema_updates)
+            if isinstance(raw_ema_updates, int) and raw_ema_updates >= 0
+            else 0
         ),
         warm_start_summary=(
             dict(warm_start_summary)

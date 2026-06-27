@@ -15,6 +15,10 @@ from backend.service.application.models.yolo_core_common.geometry import (
     letterbox_yolo_image,
     scale_yolo_box_to_letterbox,
 )
+from backend.service.application.models.yolo_core_common.data.mosaic import (
+    YoloDetectionMosaicItem,
+    build_yolo_detection_mosaic4,
+)
 from backend.service.application.models.yolov8_core.data.detection_types import (
     YoloV8DetectionAugmentationOptions,
     YoloV8DetectionTrainingAnnotation,
@@ -124,50 +128,46 @@ def _build_mosaic_detection_sample(
     input_size: tuple[int, int],
     augmentation_options: YoloV8DetectionAugmentationOptions,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
-    """构造一张 2x2 Mosaic YOLOv8 detection 样本。"""
+    """构造一张 Ultralytics 风格 YOLOv8 detection Mosaic 样本。"""
 
-    np_module = imports.np
-    output_height, output_width = int(input_size[0]), int(input_size[1])
-    top_height = output_height // 2
-    left_width = output_width // 2
-    placements = (
-        (0, 0, top_height, left_width),
-        (0, left_width, top_height, output_width - left_width),
-        (top_height, 0, output_height - top_height, left_width),
-        (top_height, left_width, output_height - top_height, output_width - left_width),
-    )
-    canvas = np_module.full((output_height, output_width, 3), 114, dtype=np_module.uint8)
-    boxes_xyxy: list[tuple[float, float, float, float]] = []
-    category_indexes: list[int] = []
     selected_samples = [primary_sample]
     selected_samples.extend(
         random.choice(available_samples) if available_samples else primary_sample
         for _ in range(3)
     )
-
-    for sample, (top, left, cell_height, cell_width) in zip(selected_samples, placements, strict=True):
-        scale_gain = random.uniform(
-            augmentation_options.mosaic_scale[0],
-            augmentation_options.mosaic_scale[1],
-        )
-        cell_image, cell_boxes, cell_categories = _build_scaled_cell_sample(
+    items = tuple(
+        _build_mosaic_item(
             imports=imports,
             sample=sample,
-            output_size=(cell_height, cell_width),
-            scale_gain=scale_gain,
         )
-        canvas[top:top + cell_height, left:left + cell_width] = cell_image
-        for box in cell_boxes:
-            boxes_xyxy.append(
-                (
-                    float(box[0] + left),
-                    float(box[1] + top),
-                    float(box[2] + left),
-                    float(box[3] + top),
-                )
-            )
-        category_indexes.extend(cell_categories)
-    return canvas, boxes_xyxy, category_indexes
+        for sample in selected_samples
+    )
+    return build_yolo_detection_mosaic4(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        items=items,
+        input_size=input_size,
+    )
+
+
+def _build_mosaic_item(
+    *,
+    imports: Any,
+    sample: YoloV8DetectionTrainingSample,
+) -> YoloDetectionMosaicItem:
+    """把 YOLOv8 detection 样本转换为 Mosaic 输入对象。"""
+
+    image = _load_training_image_array(imports=imports, sample=sample)
+    return YoloDetectionMosaicItem(
+        image=image,
+        boxes_xyxy=tuple(
+            tuple(float(value) for value in annotation.bbox_xyxy)
+            for annotation in sample.annotations
+        ),
+        category_indexes=tuple(
+            int(annotation.category_index) for annotation in sample.annotations
+        ),
+    )
 
 
 def _build_scaled_mixup_sample(
