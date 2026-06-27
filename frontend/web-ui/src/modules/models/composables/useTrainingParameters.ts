@@ -5,6 +5,7 @@ import {
   getDefaultTrainingEvaluationInterval,
   getDefaultTrainingModelParameterValues,
   getModelLayerTrainingFields,
+  isTrainingAugmentationField,
   supportsTrainingWarmStart,
   type TrainingParameterValues,
 } from '../training-parameter-support'
@@ -79,13 +80,23 @@ export function useTrainingParameters(options: {
   const inputHeight = ref(640)
   const trainingDisplayName = ref('')
   const trainingModelParameterValues = reactive<TrainingParameterValues>({})
+  const trainingAugmentationEnabled = ref(true)
 
   const trainingTaskSupportsWarmStart = computed(
     () => supportsTrainingWarmStart(options.selectedTaskType.value),
   )
   const trainingSupportsGpuCount = computed(() => options.selectedTaskType.value === 'detection')
-  const trainingModelParameterFields = computed(
+  const allTrainingModelParameterFields = computed(
     () => getModelLayerTrainingFields(options.selectedTaskType.value, options.resolvedTrainingModelType.value),
+  )
+  const trainingModelParameterFields = computed(
+    () => allTrainingModelParameterFields.value.filter((field) => !isTrainingAugmentationField(field)),
+  )
+  const trainingAugmentationParameterFields = computed(
+    () => allTrainingModelParameterFields.value.filter(isTrainingAugmentationField),
+  )
+  const trainingSupportsAugmentationToggle = computed(
+    () => trainingAugmentationParameterFields.value.length > 0,
   )
   const trainingModelParameterSectionTitle = computed(() => {
     if (!options.resolvedTrainingModelType.value) {
@@ -159,6 +170,7 @@ export function useTrainingParameters(options: {
         trainingModelParameterValues[key] = value
       }
       evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
+      trainingAugmentationEnabled.value = true
       if (taskType !== 'detection') {
         gpuCount.value = 1
       }
@@ -177,9 +189,12 @@ export function useTrainingParameters(options: {
     inputHeight,
     trainingDisplayName,
     trainingModelParameterValues,
+    trainingAugmentationEnabled,
     trainingTaskSupportsWarmStart,
     trainingSupportsGpuCount,
     trainingModelParameterFields,
+    trainingAugmentationParameterFields,
+    trainingSupportsAugmentationToggle,
     trainingModelParameterSectionTitle,
     setPrecision,
     setTrainingModelParameterValue,

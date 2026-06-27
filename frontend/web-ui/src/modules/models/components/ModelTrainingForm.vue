@@ -199,6 +199,60 @@
           </label>
         </div>
       </section>
+
+      <section
+        v-if="trainingSupportsAugmentationToggle"
+        class="training-parameter-section training-augmentation-section field field--wide"
+      >
+        <div class="training-parameter-section__header">
+          <div>
+            <p class="page-kicker">AUGMENTATION</p>
+            <h3>数据增强参数</h3>
+          </div>
+          <label class="training-augmentation-switch">
+            <input
+              type="checkbox"
+              :checked="trainingAugmentationEnabled"
+              @change="emitBoolean('update:trainingAugmentationEnabled', $event)"
+            />
+            <span>{{ trainingAugmentationEnabled ? '启用数据增强' : '已关闭数据增强' }}</span>
+          </label>
+        </div>
+        <p class="training-parameter-section__description">
+          默认开启。关闭后提交训练时会关闭 Mosaic、MixUp、HSV、翻转、仿射和多尺度增强。
+        </p>
+        <div
+          class="form-grid training-parameter-grid"
+          :class="{ 'training-parameter-grid--disabled': !trainingAugmentationEnabled }"
+        >
+          <label
+            v-for="field in trainingAugmentationParameterFields"
+            :key="field.key"
+            class="field"
+            :class="{ 'field--wide': field.wide }"
+          >
+            <span>{{ field.label }}</span>
+            <SelectField
+              v-if="field.inputKind === 'select'"
+              :model-value="trainingModelParameterValues[field.key] ?? ''"
+              :options="field.options ?? []"
+              :disabled="!trainingAugmentationEnabled"
+              @update:model-value="$emit('update:trainingModelParameterValue', field.key, normalizeSelectValue($event))"
+            />
+            <input
+              v-else
+              :value="trainingModelParameterValues[field.key] ?? ''"
+              :type="field.inputKind"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              :placeholder="field.placeholder"
+              :disabled="!trainingAugmentationEnabled"
+              @input="emitModelParameterValue(field.key, $event)"
+            />
+          </label>
+        </div>
+      </section>
     </div>
     <div class="form-actions">
       <Button
@@ -247,6 +301,7 @@ type UpdateNumberEvent =
 type UpdateStringEvent =
   | 'update:outputModelName'
   | 'update:trainingDisplayName'
+type UpdateBooleanEvent = 'update:trainingAugmentationEnabled'
 
 defineProps<{
   selectedTaskType: ModelTaskType
@@ -268,6 +323,9 @@ defineProps<{
   trainingSupportsGpuCount: boolean
   trainingTaskSupportsWarmStart: boolean
   trainingModelParameterFields: TrainingParameterField[]
+  trainingAugmentationParameterFields: TrainingParameterField[]
+  trainingAugmentationEnabled: boolean
+  trainingSupportsAugmentationToggle: boolean
   trainingModelParameterValues: TrainingParameterValues
   trainingModelParameterSectionTitle: string
   precisionOptions: Array<{ label: string; value: string }>
@@ -291,6 +349,7 @@ const emit = defineEmits<{
   'update:inputHeight': [value: number]
   'update:trainingDisplayName': [value: string]
   'update:trainingModelParameterValue': [key: string, value: string]
+  'update:trainingAugmentationEnabled': [value: boolean]
 }>()
 
 const { t } = useI18n()
@@ -339,6 +398,12 @@ function emitNumber(eventName: UpdateNumberEvent, event: Event): void {
   emit('update:inputHeight', normalizedValue)
 }
 
+function emitBoolean(eventName: UpdateBooleanEvent, event: Event): void {
+  const input = event.target
+  const value = input instanceof HTMLInputElement && input.checked
+  emit(eventName, value)
+}
+
 function emitModelParameterValue(key: string, event: Event): void {
   emit('update:trainingModelParameterValue', key, getInputValue(event))
 }
@@ -378,8 +443,47 @@ function emitModelParameterValue(key: string, event: Event): void {
   font-weight: 600;
 }
 
+.training-parameter-section__description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .training-parameter-grid {
   align-content: start;
+}
+
+.training-parameter-grid--disabled {
+  opacity: 0.72;
+}
+
+.training-augmentation-section {
+  border-color: rgba(14, 148, 167, 0.28);
+  background:
+    linear-gradient(135deg, rgba(14, 148, 167, 0.08), transparent 42%),
+    var(--surface);
+}
+
+.training-augmentation-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--summary-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.training-augmentation-switch input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 
 .training-inline-summary {

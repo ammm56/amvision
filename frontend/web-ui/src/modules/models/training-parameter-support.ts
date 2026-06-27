@@ -2,6 +2,7 @@ import type { ModelTaskType } from './services/model.service'
 
 export type TrainingParameterInputKind = 'text' | 'number' | 'select'
 export type TrainingParameterValueKind = 'string' | 'int' | 'float' | 'bool'
+export type TrainingParameterGroup = 'model' | 'augmentation'
 
 export interface TrainingParameterFieldOption {
   label: string
@@ -13,6 +14,7 @@ export interface TrainingParameterField {
   label: string
   inputKind: TrainingParameterInputKind
   valueKind: TrainingParameterValueKind
+  group?: TrainingParameterGroup
   defaultValue?: string
   min?: number
   max?: number
@@ -41,7 +43,18 @@ const yoloDetectionDefaultWeightDecay = '0.0005'
 const yoloTaskAdamWDefaultLearningRate = '0.001'
 const yoloTaskAdamWDefaultWeightDecay = '0.0001'
 
-const ordinaryYoloAugmentationFields: TrainingParameterField[] = [
+function withTrainingParameterGroup(
+  fields: TrainingParameterField[],
+  group: TrainingParameterGroup,
+): TrainingParameterField[] {
+  return fields.map((field) => ({ ...field, group }))
+}
+
+export function isTrainingAugmentationField(field: TrainingParameterField): boolean {
+  return field.group === 'augmentation'
+}
+
+const ordinaryYoloAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
   numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
   numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
   numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
@@ -60,7 +73,7 @@ const ordinaryYoloAugmentationFields: TrainingParameterField[] = [
   numberField('close_mosaic', '最后关闭 Mosaic 轮数', { integer: true, min: 0, step: 1, defaultValue: '10' }),
   numberField('multi_scale', '多尺度范围比例', { min: 0, step: 0.01, defaultValue: '0.0' }),
   numberField('multi_scale_stride', '多尺度步长', { integer: true, min: 1, step: 1, defaultValue: '32' }),
-]
+], 'augmentation')
 
 function numberField(
   key: string,
@@ -152,13 +165,7 @@ const obbYoloEvaluationThresholdFields: TrainingParameterField[] = [
   }),
 ]
 
-const detectionYoloXFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
-  numberField('seed', '随机种子', { integer: true, min: 0, step: 1, defaultValue: '0' }),
-  numberField('num_workers', '数据加载 worker 数', { integer: true, min: 0, step: 1, defaultValue: '0' }),
-  numberField('max_labels', '单图最大标签数', { integer: true, min: 1, step: 1, defaultValue: '120' }),
-  numberField('evaluation_confidence_threshold', '验证置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.01' }),
-  numberField('evaluation_nms_threshold', '验证 NMS 阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.65' }),
+const detectionYoloXAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
   numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
   numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
   numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
@@ -172,9 +179,19 @@ const detectionYoloXFields: TrainingParameterField[] = [
   numberField('mixup_scale_min', 'MixUp 缩放最小值', { step: 0.1, defaultValue: '0.5' }),
   numberField('mixup_scale_max', 'MixUp 缩放最大值', { step: 0.1, defaultValue: '1.5' }),
   numberField('multiscale_range', '多尺度训练范围', { integer: true, min: 0, step: 1, defaultValue: '5' }),
+  numberField('no_aug_epochs', '最后 no-aug 轮数', { integer: true, min: 0, step: 1, defaultValue: '15' }),
+], 'augmentation')
+
+const detectionYoloXFields: TrainingParameterField[] = [
+  selectField('device', '训练设备', deviceOptions),
+  numberField('seed', '随机种子', { integer: true, min: 0, step: 1, defaultValue: '0' }),
+  numberField('num_workers', '数据加载 worker 数', { integer: true, min: 0, step: 1, defaultValue: '0' }),
+  numberField('max_labels', '单图最大标签数', { integer: true, min: 1, step: 1, defaultValue: '120' }),
+  numberField('evaluation_confidence_threshold', '验证置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.01' }),
+  numberField('evaluation_nms_threshold', '验证 NMS 阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.65' }),
+  ...detectionYoloXAugmentationFields,
   selectField('ema', '启用 EMA', boolOptions, { valueKind: 'bool', defaultValue: 'true' }),
   numberField('warmup_epochs', 'Warmup 轮数', { integer: true, min: 0, step: 1, defaultValue: '5' }),
-  numberField('no_aug_epochs', '最后 no-aug 轮数', { integer: true, min: 0, step: 1, defaultValue: '15' }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.05' }),
 ]
 
@@ -339,12 +356,14 @@ export function buildTrainingExtraOptions(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
   values: TrainingParameterValues,
+  options: { augmentationEnabled?: boolean } = {},
 ): Record<string, unknown> {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) {
     return {}
   }
 
+  const augmentationEnabled = options.augmentationEnabled !== false
   const result: Record<string, unknown> = {}
   const visibleFields = getModelLayerTrainingFields(taskType, normalizedModelType)
   const visibleFieldMap = new Map(visibleFields.map((field) => [field.key, field]))
@@ -415,6 +434,35 @@ export function buildTrainingExtraOptions(
     assignPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
   }
 
+  const disableOrdinaryYoloAugmentationValues = (): void => {
+    result.flip_prob = 0
+    result.hsv_prob = 0
+    result.mosaic_prob = 0
+    result.mixup_prob = 0
+    result.enable_mixup = false
+    result.affine_prob = 0
+    result.degrees = 0
+    result.translate = 0
+    result.scale = 0
+    result.shear = 0
+    result.perspective = 0
+    result.close_mosaic = 0
+    result.multi_scale = 0
+  }
+
+  const disableYoloXAugmentationValues = (): void => {
+    result.flip_prob = 0
+    result.hsv_prob = 0
+    result.mosaic_prob = 0
+    result.mixup_prob = 0
+    result.enable_mixup = false
+    result.degrees = 0
+    result.translate = 0
+    result.shear = 0
+    result.multiscale_range = 0
+    result.no_aug_epochs = 0
+  }
+
   if (taskType === 'detection') {
     if (normalizedModelType === 'yolox') {
       for (const key of [
@@ -442,6 +490,9 @@ export function buildTrainingExtraOptions(
       }
       assignPair('mosaic_scale', 'mosaic_scale_min', 'mosaic_scale_max')
       assignPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
+      if (!augmentationEnabled) {
+        disableYoloXAugmentationValues()
+      }
       return result
     }
     if (normalizedModelType === 'rfdetr') {
@@ -475,6 +526,9 @@ export function buildTrainingExtraOptions(
       assignValue(key)
     }
     assignOrdinaryYoloAugmentationValues()
+    if (!augmentationEnabled) {
+      disableOrdinaryYoloAugmentationValues()
+    }
     return result
   }
 
@@ -524,6 +578,9 @@ export function buildTrainingExtraOptions(
       assignValue(key)
     }
     assignOrdinaryYoloAugmentationValues()
+    if (!augmentationEnabled) {
+      disableOrdinaryYoloAugmentationValues()
+    }
     return result
   }
 
@@ -548,6 +605,9 @@ export function buildTrainingExtraOptions(
       assignValue(key)
     }
     assignOrdinaryYoloAugmentationValues()
+    if (!augmentationEnabled) {
+      disableOrdinaryYoloAugmentationValues()
+    }
     return result
   }
 
@@ -570,6 +630,9 @@ export function buildTrainingExtraOptions(
       assignValue(key)
     }
     assignOrdinaryYoloAugmentationValues()
+    if (!augmentationEnabled) {
+      disableOrdinaryYoloAugmentationValues()
+    }
   }
 
   return result
@@ -579,9 +642,13 @@ export function validateTrainingModelLayerValues(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
   values: TrainingParameterValues,
+  options: { augmentationEnabled?: boolean } = {},
 ): string | null {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) {
+    return null
+  }
+  if (options.augmentationEnabled === false) {
     return null
   }
 

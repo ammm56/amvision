@@ -37,6 +37,9 @@
         :training-supports-gpu-count="trainingSupportsGpuCount"
         :training-task-supports-warm-start="trainingTaskSupportsWarmStart"
         :training-model-parameter-fields="trainingModelParameterFields"
+        :training-augmentation-parameter-fields="trainingAugmentationParameterFields"
+        :training-augmentation-enabled="trainingAugmentationEnabled"
+        :training-supports-augmentation-toggle="trainingSupportsAugmentationToggle"
         :training-model-parameter-values="trainingModelParameterValues"
         :training-model-parameter-section-title="trainingModelParameterSectionTitle"
         :precision-options="precisionOptions"
@@ -57,6 +60,7 @@
         @update:input-height="inputHeight = $event"
         @update:training-display-name="trainingDisplayName = $event"
         @update:training-model-parameter-value="setTrainingModelParameterValue"
+        @update:training-augmentation-enabled="trainingAugmentationEnabled = $event"
       />
 
       <ModelConversionForm
@@ -336,9 +340,12 @@ const {
   inputHeight,
   trainingDisplayName,
   trainingModelParameterValues,
+  trainingAugmentationEnabled,
   trainingTaskSupportsWarmStart,
   trainingSupportsGpuCount,
   trainingModelParameterFields,
+  trainingAugmentationParameterFields,
+  trainingSupportsAugmentationToggle,
   trainingModelParameterSectionTitle,
   setPrecision,
   setTrainingModelParameterValue,
@@ -377,6 +384,7 @@ const {
   inputHeight,
   trainingDisplayName,
   trainingModelParameterValues,
+  trainingAugmentationEnabled,
   alignTrainingInputSizeForSubmit,
   refreshTrainingTasks,
   setErrorMessage,

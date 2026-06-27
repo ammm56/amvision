@@ -56,6 +56,7 @@ export function useModelTrainingState(options: {
   inputHeight: Ref<number>
   trainingDisplayName: Ref<string>
   trainingModelParameterValues: TrainingParameterValues
+  trainingAugmentationEnabled: Ref<boolean>
   alignTrainingInputSizeForSubmit: () => { width: number; height: number }
   refreshTrainingTasks: () => Promise<void>
   setErrorMessage: (message: string | null) => void
@@ -119,6 +120,7 @@ export function useModelTrainingState(options: {
       options.selectedTaskType.value,
       options.resolvedTrainingModelType.value,
       options.trainingModelParameterValues,
+      { augmentationEnabled: options.trainingAugmentationEnabled.value },
     )
     if (parameterError) {
       options.setErrorMessage(parameterError)
@@ -154,6 +156,7 @@ export function useModelTrainingState(options: {
           options.selectedTaskType.value,
           options.resolvedTrainingModelType.value,
           options.trainingModelParameterValues,
+          { augmentationEnabled: options.trainingAugmentationEnabled.value },
         ),
       })
       await options.refreshTrainingTasks()
