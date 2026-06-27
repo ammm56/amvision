@@ -58,6 +58,15 @@ function isPlainJsonBody(body: unknown): body is object {
 async function parseErrorPayload(response: Response): Promise<{ message: string; code?: string; details?: unknown }> {
   try {
     const payload = (await response.json()) as Record<string, unknown>
+    const errorPayload = payload.error
+    if (errorPayload && typeof errorPayload === 'object') {
+      const errorRecord = errorPayload as Record<string, unknown>
+      return {
+        message: String(errorRecord.message ?? payload.message ?? response.statusText),
+        code: typeof errorRecord.code === 'string' ? errorRecord.code : undefined,
+        details: errorRecord.details,
+      }
+    }
     const detail = payload.detail
     if (typeof detail === 'string') {
       return { message: detail }

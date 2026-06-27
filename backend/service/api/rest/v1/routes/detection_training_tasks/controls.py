@@ -12,7 +12,6 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.training.yolox_detection_task_service import SqlAlchemyYoloXTrainingTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -201,16 +200,22 @@ def register_detection_training_latest_checkpoint_model_version(
         include_events=False,
     )
     model_type = _resolve_detection_training_model_type_from_task(task_detail.task)
-    if model_type != "yolox":
+    service = _build_detection_training_service_for_task(
+        task=task_detail.task,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    register_latest_checkpoint = getattr(
+        service,
+        "register_latest_checkpoint_model_version",
+        None,
+    )
+    if not callable(register_latest_checkpoint):
         raise InvalidRequestError(
             "当前模型分类尚未接通 latest checkpoint 手动登记",
             details={"task_id": task_id, "model_type": model_type},
         )
-    service = SqlAlchemyYoloXTrainingTaskService(
-        session_factory=session_factory,
-        dataset_storage=dataset_storage,
-    )
-    updated_task_detail = service.register_latest_checkpoint_model_version(
+    updated_task_detail = register_latest_checkpoint(
         task_id,
         registered_by=principal.principal_id,
     )

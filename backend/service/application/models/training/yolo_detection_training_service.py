@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -16,6 +16,7 @@ from backend.service.application.models.training.detection_training_rules import
     DetectionTrainingOutputFiles,
 )
 from backend.service.application.models.training.yolo_detection_task_registration import (
+    register_yolo_detection_checkpoint_model_version,
     register_yolo_detection_training_output_model_version,
 )
 from backend.service.application.models.training.yolo_detection_task_control import (
@@ -64,6 +65,7 @@ from backend.service.application.models.training.yolo_detection_task_outputs imp
     require_complete_yolo_detection_training_output_files,
     write_yolo_detection_epoch_metric_snapshots,
     write_yolo_detection_training_execution_outputs,
+    write_yolo_detection_training_labels_file,
     write_yolo_detection_training_savepoint_outputs,
     write_yolo_detection_training_summary_payload,
 )
@@ -85,8 +87,10 @@ from backend.service.application.models.training.yolo_detection_task_warm_start 
     resolve_yolo_detection_warm_start_reference,
 )
 from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskDetail,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -99,6 +103,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 YOLO_DETECTION_TRAINING_TASK_KIND = "yolo-detection-training"
 YOLO_DETECTION_TRAINING_QUEUE_NAME = "yolo-detection-trainings"
 YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY = "training_control"
+YOLO_DETECTION_MANUAL_LATEST_REGISTRATION_METADATA_KEY = (
+    "manual_model_version_registration"
+)
+YOLO_DETECTION_MANUAL_LATEST_OUTPUT_FILE_TOKEN = "manual-latest"
 YOLO_DETECTION_DEFAULT_EVALUATION_INTERVAL = 5
 YOLO_DETECTION_IMPLEMENTATION_MODE = "yolo-detection-core"
 
@@ -635,6 +643,98 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         if dataset_storage is not None and output_object_prefix is not None:
             dataset_storage.delete_tree(output_object_prefix)
         self.task_service.delete_task(task_id)
+
+    def register_latest_checkpoint_model_version(
+        self,
+        task_id: str,
+        *,
+        registered_by: str | None = None,
+    ) -> TaskDetail:
+        """把当前训练任务的 latest checkpoint 手动登记为 ModelVersion。"""
+
+        dataset_storage = self._require_dataset_storage()
+        task_record = self._require_training_task(task_id)
+        if task_record.state == "queued":
+            raise InvalidRequestError(
+                "当前训练任务尚未产生可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        request = self._build_request_from_task_record(task_record)
+        dataset_export = self._resolve_dataset_export(request)
+        existing_result = self._build_existing_result(task_record)
+        if existing_result is None:
+            raise InvalidRequestError(
+                "当前训练任务缺少可登记的训练输出结果",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        latest_checkpoint_object_key = resolve_yolo_detection_resume_checkpoint_object_key(
+            metadata=dict(task_record.metadata),
+            result=dict(task_record.result),
+            control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+        )
+        if latest_checkpoint_object_key is None:
+            raise InvalidRequestError(
+                "当前训练任务缺少可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        if not dataset_storage.resolve(latest_checkpoint_object_key).is_file():
+            raise InvalidRequestError(
+                "当前训练任务的 latest checkpoint 文件不存在，不能登记 ModelVersion",
+                details={
+                    "task_id": task_id,
+                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                },
+            )
+
+        manifest_object_key = (
+            dataset_export.manifest_object_key
+            or existing_result.dataset_export_manifest_key
+        )
+        category_names = self._read_manifest_category_names(manifest_object_key)
+        if existing_result.labels_object_key is not None:
+            labels_path = dataset_storage.resolve(existing_result.labels_object_key)
+            if not labels_path.is_file():
+                write_yolo_detection_training_labels_file(
+                    dataset_storage=dataset_storage,
+                    labels_object_key=existing_result.labels_object_key,
+                    category_names=category_names,
+                )
+
+        registration_source = existing_result
+        if category_names and not self._read_str_tuple(
+            existing_result.summary.get("category_names")
+        ):
+            registration_source = replace(
+                existing_result,
+                summary={
+                    **dict(existing_result.summary),
+                    "category_names": list(category_names),
+                },
+            )
+
+        persisted_result, registration_metadata, _ = (
+            self._register_latest_checkpoint_model_version_result(
+                task_record=task_record,
+                request=request,
+                dataset_export=dataset_export,
+                task_result=registration_source,
+                latest_checkpoint_object_key=latest_checkpoint_object_key,
+                registered_by=registered_by,
+            )
+        )
+        return self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message=f"{self.model_type} training latest checkpoint registered as model version",
+                payload={
+                    "result": self._serialize_task_result(persisted_result),
+                    "metadata": registration_metadata,
+                },
+            )
+        )
 
     def process_training_task(self, task_id: str) -> YoloDetectionTrainingTaskResult:
         """执行一条已入队的 YOLO detection 训练任务。"""
@@ -1281,9 +1381,83 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             build_training_output_file_id=self._build_training_output_file_id,
         )
 
-    def _build_training_output_file_id(self, task_id: str, output_name: str) -> str:
+    def _register_latest_checkpoint_model_version_result(
+        self,
+        *,
+        task_record: TaskRecord,
+        request: YoloDetectionTrainingTaskRequest,
+        dataset_export: DatasetExport,
+        task_result: YoloDetectionTrainingTaskResult,
+        latest_checkpoint_object_key: str,
+        registered_by: str | None,
+    ) -> tuple[YoloDetectionTrainingTaskResult, dict[str, object], str]:
+        """把 latest checkpoint 登记为当前训练任务固定的 ModelVersion。"""
+
+        registration_result = replace(
+            task_result,
+            checkpoint_object_key=latest_checkpoint_object_key,
+        )
+        existing_registration = self._read_manual_model_version_registration(
+            task_record
+        )
+        model_version_id = register_yolo_detection_checkpoint_model_version(
+            session_factory=self.session_factory,
+            model_service_cls=self._resolve_model_service_cls(),
+            output_registration_cls=self._resolve_output_registration_cls(),
+            task_record=task_record,
+            request=request,
+            dataset_export=dataset_export,
+            task_result=registration_result,
+            build_training_output_file_id=self._build_training_output_file_id,
+            model_version_id=self._read_optional_str(
+                existing_registration.get("model_version_id")
+            ),
+            output_file_token=YOLO_DETECTION_MANUAL_LATEST_OUTPUT_FILE_TOKEN,
+            registration_kind="latest-checkpoint",
+        )
+
+        updated_summary = dict(task_result.summary)
+        updated_summary["latest_checkpoint_model_version_id"] = model_version_id
+        if task_record.state != "succeeded":
+            updated_summary["model_version_id"] = model_version_id
+        persisted_result = replace(task_result, summary=updated_summary)
+        return (
+            persisted_result,
+            {
+                YOLO_DETECTION_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
+                    "model_version_id": model_version_id,
+                    "checkpoint_object_key": latest_checkpoint_object_key,
+                    "registered_by": registered_by,
+                    "registered_at": self._now_iso(),
+                }
+            },
+            model_version_id,
+        )
+
+    def _read_manual_model_version_registration(
+        self,
+        task_record: TaskRecord,
+    ) -> dict[str, object]:
+        """读取任务 metadata 中的手动 latest checkpoint 登记信息。"""
+
+        registration = dict(task_record.metadata).get(
+            YOLO_DETECTION_MANUAL_LATEST_REGISTRATION_METADATA_KEY
+        )
+        if isinstance(registration, dict):
+            return {str(key): value for key, value in registration.items()}
+        return {}
+
+    def _build_training_output_file_id(
+        self,
+        task_id: str,
+        output_name: str,
+        *,
+        output_file_token: str | None = None,
+    ) -> str:
         """基于训练任务 id 生成输出文件记录 id。"""
 
+        if output_file_token is not None:
+            return f"{task_id}-{output_file_token}-{output_name}"
         return f"{task_id}-{output_name}"
 
     def _build_existing_result(
@@ -1311,6 +1485,20 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         if isinstance(value, str) and value.strip():
             return value
         return None
+
+    def _read_optional_int(self, value: object) -> int | None:
+        """读取可选整数字段。"""
+
+        if isinstance(value, int):
+            return value
+        return None
+
+    def _read_str_tuple(self, value: object) -> tuple[str, ...]:
+        """把任意列表或元组值转换为字符串元组。"""
+
+        if not isinstance(value, list | tuple):
+            return ()
+        return tuple(item for item in value if isinstance(item, str) and item.strip())
 
     def _resolve_requested_evaluation_interval(
         self, request: YoloDetectionTrainingTaskRequest

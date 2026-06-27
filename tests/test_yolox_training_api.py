@@ -6,13 +6,31 @@ from datetime import datetime, timezone
 import io
 from pathlib import Path
 from threading import Event, Thread
+import pytest
 import torch
 
 from fastapi.testclient import TestClient
 
+from backend.service.application.models.training.yolo26_training_service import (
+    SqlAlchemyYolo26TrainingTaskService,
+)
+from backend.service.application.models.training.yolo11_training_service import (
+    SqlAlchemyYolo11TrainingTaskService,
+)
+from backend.service.application.models.training.yolov8_training_service import (
+    SqlAlchemyYoloV8TrainingTaskService,
+)
+from backend.service.application.models.training.rfdetr_detection_task_service import (
+    RFDETR_TRAINING_TASK_KIND,
+)
 import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
 from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.service.application.models.training.yolo_detection_training_control import (
+    YoloDetectionTrainingEpochProgress,
+    YoloDetectionTrainingPausedError,
+    YoloDetectionTrainingSavePoint,
+)
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
@@ -26,12 +44,19 @@ from backend.service.application.models.yolox_core.training import (
 )
 from backend.service.application.models.registry.model_service import SqlAlchemyModelService
 from backend.service.application.models.training.yolox_detection_task_service import YOLOX_TRAINING_QUEUE_NAME
-from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
+from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
+    CreateTaskRequest,
+    SqlAlchemyTaskService,
+)
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
+from backend.workers.training.yolo11_training_queue_worker import Yolo11TrainingQueueWorker
+from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
 from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
 from tests.api_test_support import (
     build_test_headers,
@@ -1269,6 +1294,313 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         session_factory.engine.dispose()
 
 
+@pytest.mark.parametrize(
+    ("model_type", "service_cls", "worker_cls", "checkpoint_file_type"),
+    [
+        ("yolov8", SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingQueueWorker, "yolov8-checkpoint"),
+        ("yolo11", SqlAlchemyYolo11TrainingTaskService, Yolo11TrainingQueueWorker, "yolo11-checkpoint"),
+        ("yolo26", SqlAlchemyYolo26TrainingTaskService, Yolo26TrainingQueueWorker, "yolo26-checkpoint"),
+    ],
+)
+def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused_task(
+    tmp_path: Path,
+    monkeypatch,
+    model_type,
+    service_cls,
+    worker_cls,
+    checkpoint_file_type,
+) -> None:
+    """验证普通 YOLO detection paused 任务都可以手动登记 latest checkpoint。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id=f"dataset-export-register-{model_type}-latest-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            f"dataset-export-register-{model_type}-latest-1/manifest.json"
+        ),
+    )
+    task_id = ""
+
+    def fake_run(request):
+        _pause_detection_training_from_fake_run(
+            client=client,
+            task_id=task_id,
+            request=request,
+            max_epochs=4,
+            first_best_metric_value=0.22,
+            pause_best_metric_value=0.36,
+            savepoint=_build_fake_detection_savepoint(epoch=2, best_metric_value=0.36),
+        )
+
+    monkeypatch.setattr(
+        service_cls,
+        "training_runner",
+        staticmethod(fake_run),
+    )
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/training-tasks",
+                headers=_build_training_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": model_type,
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "recipe_id": "default",
+                    "model_scale": "nano",
+                    "output_model_name": f"{model_type}-n-register-latest",
+                    "max_epochs": 4,
+                    "batch_size": 1,
+                    "precision": "fp32",
+                    "input_size": [64, 64],
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+
+            assert _run_yolo_detection_training_worker_once(
+                worker_cls=worker_cls,
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            paused_detail_response = client.get(
+                f"/api/v1/models/detection/training-tasks/{task_id}",
+                headers=_build_training_headers(),
+            )
+            assert paused_detail_response.status_code == 200
+            paused_payload = paused_detail_response.json()
+            assert paused_payload["state"] == "paused"
+            assert paused_payload["model_type"] == model_type
+            latest_checkpoint_object_key = paused_payload["latest_checkpoint_object_key"]
+            labels_path = dataset_storage.resolve(paused_payload["labels_object_key"])
+            assert labels_path.is_file()
+            labels_path.unlink()
+
+            first_register_response = client.post(
+                f"/api/v1/models/detection/training-tasks/{task_id}/register-model-version",
+                headers=_build_training_model_write_headers(),
+            )
+            second_register_response = client.post(
+                f"/api/v1/models/detection/training-tasks/{task_id}/register-model-version",
+                headers=_build_training_model_write_headers(),
+            )
+
+        assert first_register_response.status_code == 200
+        assert second_register_response.status_code == 200
+        first_payload = first_register_response.json()
+        payload = second_register_response.json()
+        assert payload["state"] == "paused"
+        assert payload["model_type"] == model_type
+        assert payload["model_version_id"] == first_payload["model_version_id"]
+        assert payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        assert payload["training_summary"]["model_version_id"] == payload["model_version_id"]
+        assert (
+            payload["training_summary"]["latest_checkpoint_model_version_id"]
+            == payload["latest_checkpoint_model_version_id"]
+        )
+        assert payload["latest_checkpoint_object_key"] == latest_checkpoint_object_key
+        assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
+        assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert any(
+            event["message"] == f"{model_type} training latest checkpoint registered as model version"
+            for event in payload["events"]
+        )
+
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
+        model_version = model_service.get_model_version(payload["model_version_id"])
+        assert model_version is not None
+        assert model_version.training_task_id == task_id
+        checkpoint_files = [
+            model_file
+            for model_file in model_service.list_model_files(model_version_id=model_version.model_version_id)
+            if model_file.file_type == checkpoint_file_type
+        ]
+        assert len(checkpoint_files) == 1
+        assert checkpoint_files[0].storage_uri == latest_checkpoint_object_key
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task(
+    tmp_path: Path,
+) -> None:
+    """验证 RF-DETR detection 任务也可以通过通用 detection 入口登记 latest checkpoint。"""
+
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-register-rfdetr-latest-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-register-rfdetr-latest-1/manifest.json"
+        ),
+    )
+    task_service = SqlAlchemyTaskService(session_factory=session_factory)
+    output_prefix = "task-runs/rfdetr-register-latest"
+    checkpoint_object_key = f"{output_prefix}/output-files/best-checkpoint.pt"
+    latest_checkpoint_object_key = f"{output_prefix}/output-files/latest-checkpoint.pt"
+    labels_object_key = f"{output_prefix}/output-files/labels.txt"
+    metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
+    validation_metrics_object_key = f"{output_prefix}/output-files/validation-metrics.json"
+    summary_object_key = f"{output_prefix}/output-files/training-summary.json"
+    dataset_storage.write_bytes(checkpoint_object_key, b"rfdetr-best")
+    dataset_storage.write_bytes(latest_checkpoint_object_key, b"rfdetr-latest")
+    dataset_storage.write_json(metrics_object_key, {"loss": 0.5})
+    dataset_storage.write_json(validation_metrics_object_key, {"map50": 0.72})
+    summary = {
+        "task_id": "task-rfdetr-register-latest",
+        "dataset_export_id": dataset_export.dataset_export_id,
+        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+        "dataset_version_id": dataset_export.dataset_version_id,
+        "format_id": dataset_export.format_id,
+        "model_type": "rfdetr",
+        "task_type": "detection",
+        "implementation_mode": "rfdetr-detection-core",
+        "category_names": ["bolt"],
+        "input_size": [384, 384],
+        "training_config": {
+            "recipe_id": "default",
+            "model_scale": "nano",
+            "output_model_name": "rfdetr-n-register-latest",
+            "batch_size": 1,
+            "max_epochs": 1,
+            "precision": "fp32",
+            "input_size": [384, 384],
+            "extra_options": {},
+        },
+        "metrics_summary": {"best_metric_name": "map50", "best_metric_value": 0.72},
+        "validation": {"map50": 0.72},
+        "warm_start": {},
+        "output_files": {
+            "output_object_prefix": output_prefix,
+            "checkpoint_object_key": checkpoint_object_key,
+            "latest_checkpoint_object_key": latest_checkpoint_object_key,
+            "labels_object_key": labels_object_key,
+            "metrics_object_key": metrics_object_key,
+            "validation_metrics_object_key": validation_metrics_object_key,
+            "summary_object_key": summary_object_key,
+        },
+    }
+    dataset_storage.write_json(summary_object_key, summary)
+
+    try:
+        created_task = task_service.create_task(
+            CreateTaskRequest(
+                project_id="project-1",
+                task_kind=RFDETR_TRAINING_TASK_KIND,
+                display_name="rfdetr register latest",
+                task_spec={
+                    "project_id": "project-1",
+                    "recipe_id": "default",
+                    "model_type": "rfdetr",
+                    "task_type": "detection",
+                    "model_scale": "nano",
+                    "output_model_name": "rfdetr-n-register-latest",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                    "dataset_version_id": dataset_export.dataset_version_id,
+                    "format_id": dataset_export.format_id,
+                    "batch_size": 1,
+                    "max_epochs": 1,
+                    "precision": "fp32",
+                    "input_size": [384, 384],
+                    "extra_options": {},
+                },
+                metadata={
+                    "model_type": "rfdetr",
+                    "task_type": "detection",
+                    "dataset_export_id": dataset_export.dataset_export_id,
+                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                    "dataset_version_id": dataset_export.dataset_version_id,
+                    "format_id": dataset_export.format_id,
+                },
+            )
+        )
+        task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=created_task.task_id,
+                event_type="result",
+                message="rfdetr training succeeded",
+                payload={
+                    "state": "succeeded",
+                    "result": {
+                        "status": "succeeded",
+                        "task_id": created_task.task_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
+                        "output_prefix": output_prefix,
+                        "output_object_prefix": output_prefix,
+                        "checkpoint_object_key": checkpoint_object_key,
+                        "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                        "labels_object_key": labels_object_key,
+                        "metrics_object_key": metrics_object_key,
+                        "validation_metrics_object_key": validation_metrics_object_key,
+                        "summary_object_key": summary_object_key,
+                        "best_metric_name": "map50",
+                        "best_metric_value": 0.72,
+                        "labels": ["bolt"],
+                        "summary": summary,
+                    },
+                },
+            )
+        )
+
+        with client:
+            first_register_response = client.post(
+                (
+                    "/api/v1/models/detection/training-tasks/"
+                    f"{created_task.task_id}/register-model-version"
+                ),
+                headers=_build_training_model_write_headers(),
+            )
+            second_register_response = client.post(
+                (
+                    "/api/v1/models/detection/training-tasks/"
+                    f"{created_task.task_id}/register-model-version"
+                ),
+                headers=_build_training_model_write_headers(),
+            )
+
+        assert first_register_response.status_code == 200
+        assert second_register_response.status_code == 200
+        first_payload = first_register_response.json()
+        payload = second_register_response.json()
+        assert payload["model_type"] == "rfdetr"
+        assert payload["state"] == "succeeded"
+        assert payload["model_version_id"] == first_payload["model_version_id"]
+        assert payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        assert payload["latest_checkpoint_object_key"] == latest_checkpoint_object_key
+        assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
+        assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert any(
+            event["message"] == "rfdetr training latest checkpoint registered as model version"
+            for event in payload["events"]
+        )
+        model_service = SqlAlchemyModelService(session_factory=session_factory)
+        model_version = model_service.get_model_version(payload["model_version_id"])
+        assert model_version is not None
+        checkpoint_files = [
+            model_file
+            for model_file in model_service.list_model_files(
+                model_version_id=model_version.model_version_id
+            )
+            if model_file.file_type == "rfdetr-checkpoint"
+        ]
+        assert len(checkpoint_files) == 1
+        assert checkpoint_files[0].storage_uri == latest_checkpoint_object_key
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpoint_file(
     tmp_path: Path,
     monkeypatch,
@@ -2152,6 +2484,55 @@ def _build_fake_savepoint(*, epoch: int, best_metric_value: float) -> YoloXTrain
     )
 
 
+def _build_fake_detection_savepoint(
+    *,
+    epoch: int,
+    best_metric_value: float,
+) -> YoloDetectionTrainingSavePoint:
+    """构建用于普通 YOLO detection 训练控制测试的最小 savepoint。"""
+
+    return YoloDetectionTrainingSavePoint(
+        epoch=epoch,
+        latest_checkpoint_bytes=f"latest-{epoch}".encode("utf-8"),
+        best_checkpoint_bytes=f"best-{epoch}".encode("utf-8"),
+        best_metric_name="val_map50_95",
+        best_metric_value=best_metric_value,
+    )
+
+
+def _build_fake_detection_epoch_progress(
+    *,
+    epoch: int,
+    max_epochs: int,
+    best_metric_value: float,
+) -> YoloDetectionTrainingEpochProgress:
+    """构建用于普通 YOLO detection 训练控制测试的最小 epoch 进度对象。"""
+
+    yolo_progress = _build_fake_epoch_progress(
+        epoch=epoch,
+        max_epochs=max_epochs,
+        best_metric_value=best_metric_value,
+    )
+    return YoloDetectionTrainingEpochProgress(
+        epoch=yolo_progress.epoch,
+        max_epochs=yolo_progress.max_epochs,
+        evaluation_interval=yolo_progress.evaluation_interval,
+        validation_ran=yolo_progress.validation_ran,
+        evaluated_epochs=yolo_progress.evaluated_epochs,
+        train_metrics=yolo_progress.train_metrics,
+        validation_metrics=yolo_progress.validation_metrics,
+        train_metrics_snapshot={
+            **dict(yolo_progress.train_metrics_snapshot),
+            "implementation_mode": "yolo-detection-core",
+        },
+        validation_snapshot=yolo_progress.validation_snapshot,
+        current_metric_name=yolo_progress.current_metric_name,
+        current_metric_value=yolo_progress.current_metric_value,
+        best_metric_name=yolo_progress.best_metric_name,
+        best_metric_value=yolo_progress.best_metric_value,
+    )
+
+
 def _pause_training_from_fake_run(
     *,
     client: TestClient,
@@ -2208,6 +2589,48 @@ def _pause_training_from_fake_run(
     assert request.savepoint_callback is not None
     request.savepoint_callback(savepoint)
     raise YoloXTrainingPausedError(savepoint)
+
+
+def _pause_detection_training_from_fake_run(
+    *,
+    client: TestClient,
+    task_id: str,
+    request,
+    max_epochs: int,
+    first_best_metric_value: float,
+    pause_best_metric_value: float,
+    savepoint: YoloDetectionTrainingSavePoint,
+) -> None:
+    """在普通 YOLO detection fake runner 中驱动一次 pause 并写出 savepoint。"""
+
+    first_control = request.epoch_callback(
+        _build_fake_detection_epoch_progress(
+            epoch=1,
+            max_epochs=max_epochs,
+            best_metric_value=first_best_metric_value,
+        )
+    )
+    if first_control is not None:
+        assert first_control.save_checkpoint is False
+
+    pause_response = client.post(
+        f"/api/v1/models/detection/training-tasks/{task_id}/pause",
+        headers=_build_training_headers(),
+    )
+    assert pause_response.status_code == 200
+    second_control = request.epoch_callback(
+        _build_fake_detection_epoch_progress(
+            epoch=2,
+            max_epochs=max_epochs,
+            best_metric_value=pause_best_metric_value,
+        )
+    )
+    assert second_control is not None
+    assert second_control.save_checkpoint is True
+    assert second_control.pause_training is True
+    assert request.savepoint_callback is not None
+    request.savepoint_callback(savepoint)
+    raise YoloDetectionTrainingPausedError(savepoint)
 
 
 def _build_fake_resume_checkpoint_savepoint(
@@ -2522,6 +2945,24 @@ def _run_yolox_training_worker_once(
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
         worker_id="test-yolox-training-worker",
+    )
+    return worker.run_once()
+
+
+def _run_yolo_detection_training_worker_once(
+    *,
+    worker_cls,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    queue_backend: LocalFileQueueBackend,
+) -> bool:
+    """执行一次普通 YOLO detection 训练队列 worker。"""
+
+    worker = worker_cls(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        worker_id=f"test-{worker_cls.__name__}",
     )
     return worker.run_once()
 

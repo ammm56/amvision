@@ -34,6 +34,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskDetail,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
@@ -48,6 +49,8 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 RFDETR_TRAINING_TASK_KIND = "rfdetr-training"
 RFDETR_TRAINING_QUEUE_NAME = "rfdetr-trainings"
+RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY = "manual_model_version_registration"
+RFDETR_MANUAL_LATEST_OUTPUT_FILE_TOKEN = "manual-latest"
 
 
 @dataclass(frozen=True)
@@ -407,6 +410,121 @@ class SqlAlchemyRfdetrTrainingTaskService:
             result=task_result,
         )
 
+    def register_latest_checkpoint_model_version(
+        self,
+        task_id: str,
+        *,
+        registered_by: str | None = None,
+    ) -> TaskDetail:
+        """把 RF-DETR detection 任务的 latest checkpoint 登记为 ModelVersion。"""
+
+        dataset_storage = self._require_dataset_storage()
+        task_record = self.task_service.get_task(task_id).task
+        if task_record.task_kind != self.training_task_kind:
+            raise InvalidRequestError(
+                "当前任务不是 RF-DETR detection 训练任务",
+                details={"task_id": task_id, "task_kind": task_record.task_kind},
+            )
+        if task_record.state == "queued":
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务尚未产生可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+
+        payload = self._read_task_payload(task_record)
+        dataset_export = self._resolve_dataset_export_from_payload(
+            project_id=task_record.project_id,
+            payload=payload,
+        )
+        result = dict(task_record.result)
+        summary = dict(result.get("summary") or {})
+        latest_checkpoint_object_key = self._read_optional_str(
+            result.get("latest_checkpoint_object_key")
+        )
+        if latest_checkpoint_object_key is None:
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务缺少可登记的 latest checkpoint",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        if not dataset_storage.resolve(latest_checkpoint_object_key).is_file():
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务的 latest checkpoint 文件不存在，不能登记 ModelVersion",
+                details={
+                    "task_id": task_id,
+                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                },
+            )
+
+        output_files = self._build_output_files_from_result(task_id, result)
+        category_names = self._resolve_result_category_names(result=result, summary=summary)
+        if output_files.labels_object_key is not None:
+            labels_path = dataset_storage.resolve(output_files.labels_object_key)
+            if not labels_path.is_file():
+                self._write_labels_text(
+                    labels_object_key=output_files.labels_object_key,
+                    labels=category_names,
+                )
+
+        model_version_id = self._resolve_existing_latest_model_version_id(
+            task_record=task_record,
+            result=result,
+            latest_checkpoint_object_key=latest_checkpoint_object_key,
+        )
+        if model_version_id is None:
+            model_version_id = self._register_task_checkpoint_model_version(
+                task_record=task_record,
+                payload=payload,
+                dataset_export=dataset_export,
+                output_files=output_files,
+                summary=summary,
+                checkpoint_object_key=latest_checkpoint_object_key,
+                category_names=category_names,
+                model_version_id=self._read_optional_str(
+                    self._read_manual_model_version_registration(task_record).get(
+                        "model_version_id"
+                    )
+                ),
+                output_file_token=RFDETR_MANUAL_LATEST_OUTPUT_FILE_TOKEN,
+                registration_kind="latest-checkpoint",
+            )
+
+        updated_summary = dict(summary)
+        updated_summary["latest_checkpoint_model_version_id"] = model_version_id
+        if (
+            task_record.state != "succeeded"
+            or self._read_optional_str(result.get("model_version_id")) is None
+        ):
+            updated_summary["model_version_id"] = model_version_id
+        updated_result = {
+            **result,
+            "summary": updated_summary,
+            "latest_checkpoint_model_version_id": model_version_id,
+        }
+        if (
+            task_record.state != "succeeded"
+            or self._read_optional_str(result.get("model_version_id")) is None
+        ):
+            updated_result["model_version_id"] = model_version_id
+
+        return self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="rfdetr training latest checkpoint registered as model version",
+                payload={
+                    "result": updated_result,
+                    "metadata": {
+                        RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
+                            "model_version_id": model_version_id,
+                            "checkpoint_object_key": latest_checkpoint_object_key,
+                            "registered_by": registered_by,
+                            "registered_at": self._now_iso(),
+                        }
+                    },
+                },
+            )
+        )
+
     def _validate_request(self, request: RfdetrTrainingTaskRequest) -> None:
         """校验 RF-DETR detection 训练请求。"""
 
@@ -685,6 +803,176 @@ class SqlAlchemyRfdetrTrainingTaskService:
             )
         )
 
+    def _register_task_checkpoint_model_version(
+        self,
+        *,
+        task_record: TaskRecord,
+        payload: dict[str, object],
+        dataset_export: DatasetExport,
+        output_files: DetectionTrainingOutputFiles,
+        summary: dict[str, object],
+        checkpoint_object_key: str,
+        category_names: tuple[str, ...],
+        model_version_id: str | None,
+        output_file_token: str | None,
+        registration_kind: str,
+    ) -> str:
+        """把指定 RF-DETR checkpoint 登记为 ModelVersion。"""
+
+        checkpoint_output_files = DetectionTrainingOutputFiles(
+            output_object_prefix=output_files.output_object_prefix,
+            checkpoint_object_key=checkpoint_object_key,
+            latest_checkpoint_object_key=output_files.latest_checkpoint_object_key,
+            labels_object_key=output_files.labels_object_key,
+            metrics_object_key=output_files.metrics_object_key,
+            validation_metrics_object_key=output_files.validation_metrics_object_key,
+            summary_object_key=output_files.summary_object_key,
+        )
+        training_config = dict(summary.get("training_config") or {})
+        metrics_summary = dict(summary.get("metrics_summary") or {})
+        runtime_summary = {
+            "device": "cpu",
+            "gpu_count": int(payload.get("gpu_count") or 0),
+            "device_ids": [],
+            "precision": str(payload.get("precision") or "fp32"),
+            "distributed_mode": False,
+        }
+        model_version_metadata = build_detection_training_model_version_metadata(
+            dataset_export_id=dataset_export.dataset_export_id,
+            manifest_object_key=dataset_export.manifest_object_key,
+            category_names=category_names,
+            input_size=self._read_optional_int_tuple(summary.get("input_size")),
+            training_config=training_config,
+            runtime_summary=runtime_summary,
+            warm_start_summary=dict(summary.get("warm_start") or {}),
+            registration_kind=registration_kind,
+            output_files=checkpoint_output_files,
+            metrics_summary=metrics_summary,
+        )
+        model_version_metadata["implementation_mode"] = RFDETR_IMPL_MODE
+        checkpoint_file_id = f"{task_record.task_id}-checkpoint"
+        labels_file_id = f"{task_record.task_id}-labels"
+        metrics_file_id = f"{task_record.task_id}-metrics"
+        if output_file_token is not None:
+            checkpoint_file_id = f"{task_record.task_id}-{output_file_token}-checkpoint"
+            labels_file_id = f"{task_record.task_id}-{output_file_token}-labels"
+            metrics_file_id = f"{task_record.task_id}-{output_file_token}-metrics"
+        model_service = SqlAlchemyRfdetrModelService(
+            session_factory=self.session_factory
+        )
+        return model_service.register_training_output(
+            RfdetrTrainingOutputRegistration(
+                project_id=task_record.project_id,
+                training_task_id=task_record.task_id,
+                model_version_id=model_version_id,
+                model_name=str(payload.get("output_model_name") or "rfdetr"),
+                model_scale=str(payload.get("model_scale") or "nano"),
+                dataset_version_id=dataset_export.dataset_version_id,
+                parent_version_id=self._read_optional_str(
+                    payload.get("warm_start_model_version_id")
+                ),
+                checkpoint_file_id=checkpoint_file_id,
+                checkpoint_file_uri=checkpoint_object_key,
+                task_type=self.task_type,
+                labels_file_id=labels_file_id,
+                labels_file_uri=output_files.labels_object_key,
+                metrics_file_id=metrics_file_id,
+                metrics_file_uri=output_files.metrics_object_key,
+                metadata=model_version_metadata,
+            )
+        )
+
+    def _build_output_files_from_result(
+        self,
+        task_id: str,
+        result: dict[str, object],
+    ) -> DetectionTrainingOutputFiles:
+        """从任务 result 还原 RF-DETR detection 输出文件键。"""
+
+        output_object_prefix = self._read_optional_str(
+            result.get("output_object_prefix")
+        ) or self._read_optional_str(result.get("output_prefix")) or f"task-runs/{task_id}"
+        checkpoint_object_key = self._read_optional_str(
+            result.get("checkpoint_object_key")
+        )
+        if checkpoint_object_key is None:
+            checkpoint_object_key = f"{output_object_prefix}/output-files/best-checkpoint.pt"
+        return DetectionTrainingOutputFiles(
+            output_object_prefix=output_object_prefix,
+            checkpoint_object_key=checkpoint_object_key,
+            latest_checkpoint_object_key=self._read_optional_str(
+                result.get("latest_checkpoint_object_key")
+            ),
+            labels_object_key=self._read_optional_str(result.get("labels_object_key")),
+            metrics_object_key=self._read_optional_str(result.get("metrics_object_key")),
+            validation_metrics_object_key=self._read_optional_str(
+                result.get("validation_metrics_object_key")
+            ),
+            summary_object_key=self._read_optional_str(result.get("summary_object_key")),
+        )
+
+    def _resolve_result_category_names(
+        self,
+        *,
+        result: dict[str, object],
+        summary: dict[str, object],
+    ) -> tuple[str, ...]:
+        """从 result 或 summary 解析训练类别名。"""
+
+        labels = result.get("labels")
+        if isinstance(labels, (list, tuple)):
+            return tuple(str(label) for label in labels)
+        category_names = summary.get("category_names")
+        if isinstance(category_names, (list, tuple)):
+            return tuple(str(label) for label in category_names)
+        return ()
+
+    def _resolve_existing_latest_model_version_id(
+        self,
+        *,
+        task_record: TaskRecord,
+        result: dict[str, object],
+        latest_checkpoint_object_key: str,
+    ) -> str | None:
+        """优先复用已有的 RF-DETR latest checkpoint ModelVersion id。"""
+
+        registration = self._read_manual_model_version_registration(task_record)
+        registered_checkpoint = self._read_optional_str(
+            registration.get("checkpoint_object_key")
+        )
+        registered_model_version_id = self._read_optional_str(
+            registration.get("model_version_id")
+        )
+        if (
+            registered_model_version_id is not None
+            and registered_checkpoint == latest_checkpoint_object_key
+        ):
+            return registered_model_version_id
+        best_checkpoint_object_key = self._read_optional_str(
+            result.get("checkpoint_object_key")
+        )
+        best_model_version_id = self._read_optional_str(result.get("model_version_id"))
+        if (
+            task_record.state == "succeeded"
+            and best_model_version_id is not None
+            and best_checkpoint_object_key == latest_checkpoint_object_key
+        ):
+            return best_model_version_id
+        return None
+
+    def _read_manual_model_version_registration(
+        self,
+        task_record: TaskRecord,
+    ) -> dict[str, object]:
+        """读取任务 metadata 中的手动 latest checkpoint 登记信息。"""
+
+        registration = dict(task_record.metadata).get(
+            RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY
+        )
+        if isinstance(registration, dict):
+            return {str(key): value for key, value in registration.items()}
+        return {}
+
     def _write_labels_text(self, *, labels_object_key: str, labels: tuple[str, ...]) -> None:
         """写出 RF-DETR detection 标签文本文件。"""
 
@@ -750,6 +1038,13 @@ class SqlAlchemyRfdetrTrainingTaskService:
 
         if isinstance(value, (list, tuple)) and len(value) == 2:
             return (int(value[0]), int(value[1]))
+        return None
+
+    def _read_optional_int_tuple(self, value: object) -> tuple[int, ...] | None:
+        """读取可选整数 tuple。"""
+
+        if isinstance(value, (list, tuple)):
+            return tuple(int(item) for item in value)
         return None
 
     def _read_optional_str(self, value: object) -> str | None:
