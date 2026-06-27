@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.runtime.support.detection import (
     load_prediction_image,
     preprocess_image,
@@ -36,7 +39,7 @@ def preprocess_yolo26_segmentation_image(
     np_module: Any,
     image: Any,
     input_size: tuple[int, int],
-) -> tuple[Any, float]:
+) -> tuple[Any, YoloLetterboxTransform]:
     """按 YOLO26 segmentation 推理规则构造输入张量。"""
 
     return preprocess_image(

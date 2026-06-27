@@ -7,6 +7,9 @@ from typing import Any
 from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolov8_core.inference import (
     build_yolov8_segmentation_inference_instances,
 )
@@ -25,10 +28,7 @@ def build_yolov8_segmentation_runtime_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     mask_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
 ) -> tuple[YoloV8SegmentationPredictionInstance, ...]:
     """把 YOLOv8 segmentation 输出数组转换成平台实例记录。"""
 
@@ -41,10 +41,7 @@ def build_yolov8_segmentation_runtime_instances(
         score_threshold=score_threshold,
         nms_threshold=DEFAULT_YOLOV8_SEGMENTATION_NMS_THRESHOLD,
         mask_threshold=mask_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
-        input_size=input_size,
+        letterbox_transform=letterbox_transform,
         nms_indices_func=batched_yolox_nms_indices,
     )
     return tuple(

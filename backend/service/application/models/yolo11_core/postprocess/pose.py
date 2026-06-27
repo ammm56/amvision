@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_box_from_letterbox,
+    scale_yolo_point_from_letterbox,
+)
 
 
 @dataclass(frozen=True)
@@ -47,17 +52,13 @@ def build_yolo11_pose_postprocess_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     keypoint_confidence_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[tuple[Yolo11PosePostprocessInstance, ...], tuple[int, int]]:
     """把 YOLO11 pose 输出转换为实例记录。"""
 
-    _ = input_size
     prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if prediction.ndim == 2:
         prediction = np_module.expand_dims(prediction, axis=0)
@@ -131,9 +132,7 @@ def build_yolo11_pose_postprocess_instances(
                     keypoint_row=keypoint_row,
                     labels=labels,
                     keypoint_confidence_threshold=keypoint_confidence_threshold,
-                    resize_ratio=resize_ratio,
-                    image_width=image_width,
-                    image_height=image_height,
+                    letterbox_transform=letterbox_transform,
                     default_kpt_shape=default_kpt_shape,
                 )
             )
@@ -174,26 +173,28 @@ def _build_yolo11_pose_instance(
     keypoint_row: Any,
     labels: tuple[str, ...],
     keypoint_confidence_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
 ) -> Yolo11PosePostprocessInstance:
     """构建单个 YOLO11 pose 后处理实例。"""
 
-    scaled_box = box / max(resize_ratio, 1e-8)
-    x1 = float(max(0.0, min(float(scaled_box[0]), float(image_width))))
-    y1 = float(max(0.0, min(float(scaled_box[1]), float(image_height))))
-    x2 = float(max(0.0, min(float(scaled_box[2]), float(image_width))))
-    y2 = float(max(0.0, min(float(scaled_box[3]), float(image_height))))
+    scaled_box = scale_yolo_box_from_letterbox(
+        box_xyxy=(float(box[0]), float(box[1]), float(box[2]), float(box[3])),
+        transform=letterbox_transform,
+    )
+    if scaled_box is None:
+        scaled_box = (0.0, 0.0, 0.0, 0.0)
+    x1, y1, x2, y2 = scaled_box
     class_name = labels[class_id] if 0 <= class_id < len(labels) else None
     keypoints: list[Yolo11PosePostprocessKeypoint] = []
     has_confidence = int(default_kpt_shape[1]) > 2
     keypoint_row = np_module.asarray(keypoint_row, dtype=np_module.float32)
     for keypoint_index in range(int(default_kpt_shape[0])):
         base_index = keypoint_index * int(default_kpt_shape[1])
-        x_value = float(keypoint_row[base_index] / max(resize_ratio, 1e-8))
-        y_value = float(keypoint_row[base_index + 1] / max(resize_ratio, 1e-8))
+        x_value, y_value = scale_yolo_point_from_letterbox(
+            point_xy=(float(keypoint_row[base_index]), float(keypoint_row[base_index + 1])),
+            transform=letterbox_transform,
+        )
         confidence = (
             float(keypoint_row[base_index + 2])
             if has_confidence and base_index + 2 < int(keypoint_row.shape[0])

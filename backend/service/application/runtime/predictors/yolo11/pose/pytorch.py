@@ -144,11 +144,10 @@ class PyTorchYolo11PoseRuntimeSession:
         )
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolo11_pose_image(
+        input_tensor, letterbox_transform = preprocess_yolo11_pose_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_tensor = (
             self.imports.torch.from_numpy(input_tensor)
@@ -189,10 +188,7 @@ class PyTorchYolo11PoseRuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
-            resize_ratio=resize_ratio,
-            image_width=int(image.shape[1]),
-            image_height=int(image.shape[0]),
-            input_size=self.runtime_target.input_size,
+            letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolo11_pose_keypoint_shape(self.runtime_target),
         )
         postprocess_ms = measure_yolo11_pose_stage_elapsed_ms(

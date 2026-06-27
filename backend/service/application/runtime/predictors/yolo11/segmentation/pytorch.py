@@ -142,11 +142,10 @@ class PyTorchYolo11SegmentationRuntimeSession:
         )
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolo11_segmentation_image(
+        input_tensor, letterbox_transform = preprocess_yolo11_segmentation_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_tensor = (
             self.imports.torch.from_numpy(input_tensor)
@@ -194,10 +193,7 @@ class PyTorchYolo11SegmentationRuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
-            resize_ratio=resize_ratio,
-            image_width=image_width,
-            image_height=image_height,
-            input_size=self.runtime_target.input_size,
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = measure_yolo11_segmentation_stage_elapsed_ms(
             imports=self.imports,
@@ -216,8 +212,6 @@ class PyTorchYolo11SegmentationRuntimeSession:
         return Yolo11SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
-            image_width=image_width,
-            image_height=image_height,
             preview_image_bytes=preview_image_bytes,
             runtime_session_info=Yolo11SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,

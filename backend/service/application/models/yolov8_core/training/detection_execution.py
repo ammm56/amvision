@@ -63,6 +63,9 @@ from backend.service.application.models.yolov8_core.training.validation import (
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
     load_yolo_checkpoint,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    scale_yolo_box_from_letterbox,
+)
 from backend.service.application.models.yolov8_core import (
     build_yolov8_model,
 )
@@ -1722,18 +1725,29 @@ def _convert_yolov8_predictions_to_coco_detections(
         if result is None:
             continue
         target = batch_targets[batch_index]
-        scale_x = float(input_size[1]) / max(1.0, float(target.image_width))
-        scale_y = float(input_size[0]) / max(1.0, float(target.image_height))
+        if target.letterbox_transform is None:
+            raise InvalidRequestError(
+                "YOLOv8 detection 验证缺少 LetterBox 坐标变换信息",
+                details={"image_id": target.image_id, "input_size": input_size},
+            )
         for bbox, score, class_id in zip(
             result.boxes_xyxy,
             result.scores,
             result.class_ids,
             strict=True,
         ):
-            x1 = max(0.0, min(float(bbox[0]) / scale_x, float(target.image_width)))
-            y1 = max(0.0, min(float(bbox[1]) / scale_y, float(target.image_height)))
-            x2 = max(0.0, min(float(bbox[2]) / scale_x, float(target.image_width)))
-            y2 = max(0.0, min(float(bbox[3]) / scale_y, float(target.image_height)))
+            mapped_box = scale_yolo_box_from_letterbox(
+                box_xyxy=(
+                    float(bbox[0]),
+                    float(bbox[1]),
+                    float(bbox[2]),
+                    float(bbox[3]),
+                ),
+                transform=target.letterbox_transform,
+            )
+            if mapped_box is None:
+                continue
+            x1, y1, x2, y2 = mapped_box
             width = max(0.0, x2 - x1)
             height = max(0.0, y2 - y1)
             resolved_class_id = int(class_id)

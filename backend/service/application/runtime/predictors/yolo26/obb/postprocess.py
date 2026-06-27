@@ -7,6 +7,9 @@ from typing import Any
 from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolo26_core.inference import (
     build_yolo26_obb_inference_instances,
 )
@@ -24,9 +27,7 @@ def build_yolo26_obb_runtime_instances(
     prediction_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
 ) -> tuple[ObbPredictionInstance, ...]:
     """把 YOLO26 OBB 输出数组转换成平台实例记录。"""
 
@@ -35,9 +36,7 @@ def build_yolo26_obb_runtime_instances(
         prediction_array=prediction_array,
         labels=labels,
         score_threshold=score_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
+        letterbox_transform=letterbox_transform,
         nms_threshold=DEFAULT_YOLO26_OBB_NMS_THRESHOLD,
         nms_indices_func=batched_yolox_nms_indices,
     )

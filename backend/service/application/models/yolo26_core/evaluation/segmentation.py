@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 import time
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
+)
+
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
@@ -654,6 +658,11 @@ def _build_yolo26_segmentation_prediction_items(
             np_module=imports.np,
             num_classes=len(labels),
         )
+        letterbox_transform = build_yolo_letterbox_transform(
+            source_width=int(input_size[1]),
+            source_height=int(input_size[0]),
+            input_size=input_size,
+        )
         instances = build_yolo26_segmentation_postprocess_instances(
             cv2_module=imports.cv2,
             np_module=imports.np,
@@ -663,10 +672,7 @@ def _build_yolo26_segmentation_prediction_items(
             score_threshold=score_threshold,
             nms_threshold=nms_threshold,
             mask_threshold=mask_threshold,
-            resize_ratio=1.0,
-            image_width=int(input_size[0]),
-            image_height=int(input_size[1]),
-            input_size=input_size,
+            letterbox_transform=letterbox_transform,
             nms_indices_func=batched_nms_indices,
         )
         for instance in instances:

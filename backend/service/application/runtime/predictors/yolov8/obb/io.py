@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.runtime.predictors.yolov8.segmentation.io import (
     load_yolov8_segmentation_prediction_image,
     preprocess_yolov8_segmentation_image,
@@ -34,7 +37,7 @@ def preprocess_yolov8_obb_image(
     np_module: Any,
     image: Any,
     input_size: tuple[int, int],
-) -> tuple[Any, float]:
+) -> tuple[Any, YoloLetterboxTransform]:
     """按 YOLOv8 OBB 推理规则构造输入张量。"""
 
     return preprocess_yolov8_segmentation_image(

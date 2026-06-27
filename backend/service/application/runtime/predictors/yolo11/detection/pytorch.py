@@ -149,7 +149,7 @@ class PyTorchYolo11RuntimeSession:
         )
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_image(
+        input_tensor, letterbox_transform = preprocess_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
@@ -203,9 +203,7 @@ class PyTorchYolo11RuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             nms_threshold=nms_threshold,
-            resize_ratio=resize_ratio,
-            image_width=image_width,
-            image_height=image_height,
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = measure_stage_elapsed_ms(
             imports=self.imports,

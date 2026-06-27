@@ -7,6 +7,9 @@ from typing import Any
 from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolo26_core.inference import (
     build_yolo26_pose_inference_instances,
 )
@@ -43,10 +46,7 @@ def build_yolo26_pose_runtime_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     keypoint_confidence_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
 ) -> tuple[tuple[PosePredictionInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose 输出数组转换成平台实例记录。"""
@@ -57,10 +57,7 @@ def build_yolo26_pose_runtime_instances(
         labels=labels,
         score_threshold=score_threshold,
         keypoint_confidence_threshold=keypoint_confidence_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
-        input_size=input_size,
+        letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
         nms_threshold=DEFAULT_YOLO26_POSE_NMS_THRESHOLD,
         nms_indices_func=batched_yolox_nms_indices,

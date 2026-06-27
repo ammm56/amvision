@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    letterbox_yolo_image,
+)
 from backend.service.application.runtime.targets.runtime_target import resolve_local_file_path
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -58,23 +62,20 @@ def preprocess_yolov8_detection_image(
     np_module: Any,
     image: Any,
     input_size: tuple[int, int],
-) -> tuple[Any, float]:
+) -> tuple[Any, YoloLetterboxTransform]:
     """按 YOLOv8 detection 推理规则构造输入张量。"""
 
-    target_height, target_width = input_size
-    source_height, source_width = int(image.shape[0]), int(image.shape[1])
-    resize_ratio = min(target_height / source_height, target_width / source_width)
-    resized_width = max(1, int(round(source_width * resize_ratio)))
-    resized_height = max(1, int(round(source_height * resize_ratio)))
-    resized_image = cv2_module.resize(
-        image,
-        (resized_width, resized_height),
-        interpolation=cv2_module.INTER_LINEAR,
+    letterboxed_image, transform = letterbox_yolo_image(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image=image,
+        input_size=input_size,
     )
-    padded_image = np_module.full((target_height, target_width, 3), 114, dtype=np_module.uint8)
-    padded_image[:resized_height, :resized_width] = resized_image
-    tensor = padded_image[:, :, ::-1].transpose(2, 0, 1)
-    return np_module.ascontiguousarray(tensor, dtype=np_module.float32), float(resize_ratio)
+    tensor = (
+        letterboxed_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
+        / 255.0
+    )
+    return np_module.ascontiguousarray(tensor, dtype=np_module.float32), transform
 
 
 __all__ = [

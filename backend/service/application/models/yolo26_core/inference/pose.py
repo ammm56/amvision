@@ -6,6 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolo26_core.postprocess import (
     Yolo26PosePostprocessInstance,
     build_yolo26_pose_postprocess_instances,
@@ -44,10 +47,7 @@ def build_yolo26_pose_inference_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     keypoint_confidence_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
@@ -60,10 +60,7 @@ def build_yolo26_pose_inference_instances(
         labels=labels,
         score_threshold=score_threshold,
         keypoint_confidence_threshold=keypoint_confidence_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
-        input_size=input_size,
+        letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
         nms_threshold=nms_threshold,
         nms_indices_func=nms_indices_func,

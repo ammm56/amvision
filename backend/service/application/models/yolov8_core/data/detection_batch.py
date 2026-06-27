@@ -57,6 +57,7 @@ def build_yolov8_detection_training_batch(
         multi_scale_stride=32,
     )
     for sample in samples:
+        letterbox_transform = None
         if augment_training:
             prepared_image, resized_boxes, resized_categories = (
                 prepare_yolov8_detection_sample_with_augmentation(
@@ -68,7 +69,12 @@ def build_yolov8_detection_training_batch(
                 )
             )
         else:
-            prepared_image, resized_boxes, resized_categories = (
+            (
+                prepared_image,
+                resized_boxes,
+                resized_categories,
+                letterbox_transform,
+            ) = (
                 prepare_yolov8_detection_sample_without_augmentation(
                     imports=imports,
                     sample=sample,
@@ -86,6 +92,7 @@ def build_yolov8_detection_training_batch(
                 image_height=input_size[0] if augment_training else sample.image_height,
                 boxes_xyxy=tuple(resized_boxes),
                 category_indexes=tuple(resized_categories),
+                letterbox_transform=letterbox_transform,
             )
         )
     images = torch.stack(image_tensors, dim=0).to(device)

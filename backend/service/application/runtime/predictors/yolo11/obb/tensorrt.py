@@ -256,11 +256,10 @@ class TensorRTYolo11ObbRuntimeSession:
             started_at=decode_started_at,
         )
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolo11_obb_image(
+        input_tensor, letterbox_transform = preprocess_yolo11_obb_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             resolve_yolo11_obb_numpy_dtype(
@@ -357,9 +356,7 @@ class TensorRTYolo11ObbRuntimeSession:
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
-            resize_ratio=resize_ratio,
-            image_width=int(image.shape[1]),
-            image_height=int(image.shape[0]),
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms

@@ -9,6 +9,10 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.postprocess.detection import (
     DetectionBoxFormat,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_box_from_letterbox,
+)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
 )
@@ -34,9 +38,7 @@ def build_yolo26_detection_records(
     labels: tuple[str, ...],
     score_threshold: float,
     nms_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     max_detections: int | None = None,
 ) -> tuple[DetectionPredictionDetection, ...]:
     """把 YOLO26 detection 输出转换成平台 detection 记录。"""
@@ -64,11 +66,13 @@ def build_yolo26_detection_records(
         prediction.class_ids,
         strict=True,
     ):
-        scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
+        scaled_bbox = scale_yolo_box_from_letterbox(
+            box_xyxy=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+            transform=letterbox_transform,
+        )
+        if scaled_bbox is None:
+            continue
+        x1, y1, x2, y2 = scaled_bbox
         resolved_class_id = int(class_id)
         class_name = (
             labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None

@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
+
 
 @dataclass(frozen=True)
 class YoloV8DetectionResolvedSplit:
@@ -46,6 +50,7 @@ class YoloV8DetectionPreparedTarget:
     image_height: int
     boxes_xyxy: tuple[tuple[float, float, float, float], ...]
     category_indexes: tuple[int, ...]
+    letterbox_transform: YoloLetterboxTransform | None = None
 
 
 @dataclass(frozen=True)

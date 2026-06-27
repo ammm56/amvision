@@ -144,7 +144,7 @@ class OpenVINOYoloV8RuntimeSession:
         decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolov8_detection_image(
+        input_tensor, letterbox_transform = preprocess_yolov8_detection_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
@@ -182,9 +182,7 @@ class OpenVINOYoloV8RuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             nms_threshold=nms_threshold,
-            resize_ratio=resize_ratio,
-            image_width=image_width,
-            image_height=image_height,
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms

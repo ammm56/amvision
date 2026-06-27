@@ -124,11 +124,10 @@ class OnnxRuntimeYolo26PoseRuntimeSession:
         )
         decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolo26_pose_image(
+        input_tensor, letterbox_transform = preprocess_yolo26_pose_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             self.imports.np.float32,
@@ -151,10 +150,7 @@ class OnnxRuntimeYolo26PoseRuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             keypoint_confidence_threshold=request.keypoint_confidence_threshold,
-            resize_ratio=resize_ratio,
-            image_width=int(image.shape[1]),
-            image_height=int(image.shape[0]),
-            input_size=self.runtime_target.input_size,
+            letterbox_transform=letterbox_transform,
             default_kpt_shape=infer_yolo26_pose_keypoint_shape(self.runtime_target),
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)

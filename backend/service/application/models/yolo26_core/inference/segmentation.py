@@ -6,6 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolo26_core.postprocess import (
     Yolo26SegmentationPostprocessInstance,
     build_yolo26_segmentation_postprocess_instances,
@@ -41,10 +44,7 @@ def build_yolo26_segmentation_inference_instances(
     score_threshold: float,
     nms_threshold: float,
     mask_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26SegmentationPostprocessInstance, ...]:
     """把 YOLO26 segmentation inference 输出转换为 core 实例记录。"""
@@ -58,10 +58,7 @@ def build_yolo26_segmentation_inference_instances(
         score_threshold=score_threshold,
         nms_threshold=nms_threshold,
         mask_threshold=mask_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
-        input_size=input_size,
+        letterbox_transform=letterbox_transform,
         nms_indices_func=nms_indices_func,
     )
 

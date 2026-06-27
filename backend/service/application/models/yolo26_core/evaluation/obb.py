@@ -6,6 +6,10 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
+)
+
 from backend.service.application.models.evaluation.coco_style_metrics import (
     compute_coco_style_ap,
     rotated_iou_xywhr,
@@ -90,14 +94,17 @@ def evaluate_yolo26_obb_samples(
             with _yolo26_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
             prediction_array = _yolo26_tensor_to_np(outputs, imports)
+            letterbox_transform = build_yolo_letterbox_transform(
+                source_width=int(input_size[1]),
+                source_height=int(input_size[0]),
+                input_size=input_size,
+            )
             instances = build_yolo26_obb_postprocess_instances(
                 np_module=imports.np,
                 prediction_array=prediction_array,
                 labels=labels,
                 score_threshold=score_threshold,
-                resize_ratio=1.0,
-                image_width=int(input_size[0]),
-                image_height=int(input_size[1]),
+                letterbox_transform=letterbox_transform,
                 nms_threshold=nms_threshold,
                 nms_indices_func=batched_nms_indices,
             )

@@ -6,6 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.models.yolov8_core.postprocess import (
     YoloV8ObbPostprocessInstance,
     build_yolov8_obb_postprocess_instances,
@@ -48,9 +51,7 @@ def build_yolov8_obb_inference_instances(
     prediction_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[YoloV8ObbPostprocessInstance, ...]:
@@ -61,9 +62,7 @@ def build_yolov8_obb_inference_instances(
         prediction_array=prediction_array,
         labels=labels,
         score_threshold=score_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
+        letterbox_transform=letterbox_transform,
         nms_threshold=nms_threshold,
         nms_indices_func=nms_indices_func,
     )

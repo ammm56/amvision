@@ -164,11 +164,10 @@ class OpenVINOYolo26SegmentationRuntimeSession:
         decode_ms = round((perf_counter() - decode_started_at) * 1000, 3)
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolo26_segmentation_image(
+        input_tensor, letterbox_transform = preprocess_yolo26_segmentation_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             self.imports.np.float32,
@@ -198,10 +197,7 @@ class OpenVINOYolo26SegmentationRuntimeSession:
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
             mask_threshold=request.mask_threshold,
-            resize_ratio=resize_ratio,
-            image_width=image_width,
-            image_height=image_height,
-            input_size=self.runtime_target.input_size,
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         latency_ms = decode_ms + preprocess_ms + infer_ms + postprocess_ms
@@ -216,8 +212,6 @@ class OpenVINOYolo26SegmentationRuntimeSession:
         return Yolo26SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
-            image_width=image_width,
-            image_height=image_height,
             preview_image_bytes=preview_image_bytes,
             runtime_session_info=Yolo26SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,

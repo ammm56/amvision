@@ -11,6 +11,10 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     polygon_bounds_xyxy,
     xywhr_to_polygon,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_xywh_from_letterbox,
+)
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
     is_yolo26_processed_class_id_column,
@@ -45,9 +49,7 @@ def build_yolo26_obb_postprocess_instances(
     prediction_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26ObbPostprocessInstance, ...]:
@@ -72,9 +74,7 @@ def build_yolo26_obb_postprocess_instances(
         prediction=prediction,
         labels=labels,
         score_threshold=score_threshold,
-        resize_ratio=resize_ratio,
-        image_width=image_width,
-        image_height=image_height,
+        letterbox_transform=letterbox_transform,
     )
     if processed_instances is not None:
         return processed_instances
@@ -116,18 +116,16 @@ def build_yolo26_obb_postprocess_instances(
             angles,
             strict=True,
         ):
-            results.append(
-                _build_yolo26_obb_instance(
-                    box_xywh=box,
-                    score=score,
-                    class_id=int(class_id),
-                    angle=float(angle),
-                    labels=labels,
-                    resize_ratio=resize_ratio,
-                    image_width=image_width,
-                    image_height=image_height,
-                )
+            instance = _build_yolo26_obb_instance(
+                box_xywh=box,
+                score=score,
+                class_id=int(class_id),
+                angle=float(angle),
+                labels=labels,
+                letterbox_transform=letterbox_transform,
             )
+            if instance is not None:
+                results.append(instance)
     results.sort(key=lambda item: item.score, reverse=True)
     return tuple(results[:MAX_YOLO26_OBB_DETECTIONS])
 
@@ -138,9 +136,7 @@ def _build_yolo26_obb_processed_instances(
     prediction: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
 ) -> tuple[Yolo26ObbPostprocessInstance, ...] | None:
     """解析官方 YOLO26 export processed OBB 输出。"""
 
@@ -169,18 +165,16 @@ def _build_yolo26_obb_processed_instances(
             image_prediction[keep_mask, 6],
             strict=True,
         ):
-            results.append(
-                _build_yolo26_obb_instance(
-                    box_xywh=box,
-                    score=score,
-                    class_id=int(class_id),
-                    angle=float(angle),
-                    labels=labels,
-                    resize_ratio=resize_ratio,
-                    image_width=image_width,
-                    image_height=image_height,
-                )
+            instance = _build_yolo26_obb_instance(
+                box_xywh=box,
+                score=score,
+                class_id=int(class_id),
+                angle=float(angle),
+                labels=labels,
+                letterbox_transform=letterbox_transform,
             )
+            if instance is not None:
+                results.append(instance)
     results.sort(key=lambda item: item.score, reverse=True)
     return tuple(results[:MAX_YOLO26_OBB_DETECTIONS])
 
@@ -192,22 +186,22 @@ def _build_yolo26_obb_instance(
     class_id: int,
     angle: float,
     labels: tuple[str, ...],
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-) -> Yolo26ObbPostprocessInstance:
+    letterbox_transform: YoloLetterboxTransform,
+) -> Yolo26ObbPostprocessInstance | None:
     """构建单个 YOLO26 OBB 后处理实例。"""
 
-    scaled_box = box_xywh / max(resize_ratio, 1e-8)
-    cx = float(max(0.0, min(float(scaled_box[0]), float(image_width))))
-    cy = float(max(0.0, min(float(scaled_box[1]), float(image_height))))
-    width = float(max(0.0, min(float(scaled_box[2]), float(image_width))))
-    height = float(max(0.0, min(float(scaled_box[3]), float(image_height))))
+    scaled_box = scale_yolo_xywh_from_letterbox(
+        box_xywh=tuple(float(value) for value in box_xywh[:4]),
+        transform=letterbox_transform,
+    )
+    if scaled_box is None:
+        return None
+    cx, cy, width, height = scaled_box
     bbox_xywhr = (cx, cy, width, height, float(angle))
     x1, y1, x2, y2 = _clip_yolo26_obb_bounds(
         bbox_xywhr=bbox_xywhr,
-        image_width=image_width,
-        image_height=image_height,
+        image_width=letterbox_transform.source_width,
+        image_height=letterbox_transform.source_height,
     )
     class_name = labels[class_id] if 0 <= class_id < len(labels) else None
     return Yolo26ObbPostprocessInstance(

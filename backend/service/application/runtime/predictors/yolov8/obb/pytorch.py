@@ -134,11 +134,10 @@ class PyTorchYoloV8ObbRuntimeSession:
         )
 
         preprocess_started_at = perf_counter()
-        input_tensor, resize_ratio = preprocess_yolov8_obb_image(
+        input_tensor, letterbox_transform = preprocess_yolov8_obb_image(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
-            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
         input_tensor = input_tensor.float()
@@ -174,9 +173,7 @@ class PyTorchYoloV8ObbRuntimeSession:
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
-            resize_ratio=resize_ratio,
-            image_width=int(image.shape[1]),
-            image_height=int(image.shape[0]),
+            letterbox_transform=letterbox_transform,
         )
         postprocess_ms = measure_yolov8_obb_stage_elapsed_ms(
             imports=self.imports,

@@ -12,6 +12,10 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     rotated_iou_xywhr,
     xywhr_to_polygon,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_xywh_from_letterbox,
+)
 from backend.service.application.models.yolo_core_common.postprocess import (
     select_top_scoring_candidate_indices,
 )
@@ -45,9 +49,7 @@ def build_yolov8_obb_postprocess_instances(
     prediction_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     nms_threshold: float,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[YoloV8ObbPostprocessInstance, ...]:
@@ -129,18 +131,16 @@ def build_yolov8_obb_postprocess_instances(
             angles[keep_indices],
             strict=True,
         ):
-            results.append(
-                _build_yolov8_obb_instance(
-                    box_xywh=box,
-                    score=score,
-                    class_id=int(class_id),
-                    angle=float(angle),
-                    labels=labels,
-                    resize_ratio=resize_ratio,
-                    image_width=image_width,
-                    image_height=image_height,
-                )
+            instance = _build_yolov8_obb_instance(
+                box_xywh=box,
+                score=score,
+                class_id=int(class_id),
+                angle=float(angle),
+                labels=labels,
+                letterbox_transform=letterbox_transform,
             )
+            if instance is not None:
+                results.append(instance)
     results.sort(key=lambda item: item.score, reverse=True)
     return tuple(results[:MAX_YOLOV8_OBB_DETECTIONS])
 
@@ -152,22 +152,22 @@ def _build_yolov8_obb_instance(
     class_id: int,
     angle: float,
     labels: tuple[str, ...],
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-) -> YoloV8ObbPostprocessInstance:
+    letterbox_transform: YoloLetterboxTransform,
+) -> YoloV8ObbPostprocessInstance | None:
     """构建单个 YOLOv8 OBB 后处理实例。"""
 
-    scaled_box = box_xywh / max(resize_ratio, 1e-8)
-    cx = float(max(0.0, min(float(scaled_box[0]), float(image_width))))
-    cy = float(max(0.0, min(float(scaled_box[1]), float(image_height))))
-    width = float(max(0.0, min(float(scaled_box[2]), float(image_width))))
-    height = float(max(0.0, min(float(scaled_box[3]), float(image_height))))
+    scaled_box = scale_yolo_xywh_from_letterbox(
+        box_xywh=tuple(float(value) for value in box_xywh[:4]),
+        transform=letterbox_transform,
+    )
+    if scaled_box is None:
+        return None
+    cx, cy, width, height = scaled_box
     bbox_xywhr = (cx, cy, width, height, float(angle))
     x1, y1, x2, y2 = _clip_yolov8_obb_bounds(
         bbox_xywhr=bbox_xywhr,
-        image_width=image_width,
-        image_height=image_height,
+        image_width=letterbox_transform.source_width,
+        image_height=letterbox_transform.source_height,
     )
     class_name = labels[class_id] if 0 <= class_id < len(labels) else None
     return YoloV8ObbPostprocessInstance(

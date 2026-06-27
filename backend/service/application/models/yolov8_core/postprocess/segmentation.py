@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_box_from_letterbox,
+)
 
 
 @dataclass(frozen=True)
@@ -73,10 +77,7 @@ def build_yolov8_segmentation_postprocess_instances(
     score_threshold: float,
     nms_threshold: float,
     mask_threshold: float,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     nms_indices_func: Callable[..., Any],
 ) -> tuple[YoloV8SegmentationPostprocessInstance, ...]:
     """把 YOLOv8 segmentation 输出转换为实例记录。"""
@@ -96,18 +97,12 @@ def build_yolov8_segmentation_postprocess_instances(
         return ()
 
     proto = proto_array[0]
-    resized_height = min(int(round(image_height * resize_ratio)), int(input_size[0]))
-    resized_width = min(int(round(image_width * resize_ratio)), int(input_size[1]))
     masks = decode_yolov8_segmentation_masks(
         cv2_module=cv2_module,
         np_module=np_module,
         proto=proto,
         mask_coefficients=prediction.mask_coefficients,
-        input_size=input_size,
-        resized_width=resized_width,
-        resized_height=resized_height,
-        image_width=image_width,
-        image_height=image_height,
+        letterbox_transform=letterbox_transform,
         mask_threshold=mask_threshold,
     )
 
@@ -119,11 +114,13 @@ def build_yolov8_segmentation_postprocess_instances(
         masks,
         strict=True,
     ):
-        scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
+        scaled_bbox = scale_yolo_box_from_letterbox(
+            box_xyxy=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+            transform=letterbox_transform,
+        )
+        if scaled_bbox is None:
+            continue
+        x1, y1, x2, y2 = scaled_bbox
         resolved_class_id = int(class_id)
         class_name = labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
         segments = extract_yolov8_mask_segments(cv2_module=cv2_module, binary_mask=binary_mask)
@@ -271,11 +268,7 @@ def decode_yolov8_segmentation_masks(
     np_module: Any,
     proto: Any,
     mask_coefficients: Any,
-    input_size: tuple[int, int],
-    resized_width: int,
-    resized_height: int,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     mask_threshold: float,
 ) -> list[Any]:
     """根据 YOLOv8 proto 与 mask coeff 解码实例 mask。"""
@@ -293,13 +286,23 @@ def decode_yolov8_segmentation_masks(
         probability_mask = 1.0 / (1.0 + np_module.exp(-mask_logit))
         resized_mask = cv2_module.resize(
             probability_mask,
-            (int(input_size[1]), int(input_size[0])),
+            (letterbox_transform.target_width, letterbox_transform.target_height),
             interpolation=cv2_module.INTER_LINEAR,
         )
-        cropped_mask = resized_mask[:resized_height, :resized_width]
+        crop_top = letterbox_transform.pad_top
+        crop_left = letterbox_transform.pad_left
+        crop_bottom = min(
+            letterbox_transform.target_height,
+            crop_top + letterbox_transform.resized_height,
+        )
+        crop_right = min(
+            letterbox_transform.target_width,
+            crop_left + letterbox_transform.resized_width,
+        )
+        cropped_mask = resized_mask[crop_top:crop_bottom, crop_left:crop_right]
         restored_mask = cv2_module.resize(
             cropped_mask,
-            (int(image_width), int(image_height)),
+            (letterbox_transform.source_width, letterbox_transform.source_height),
             interpolation=cv2_module.INTER_LINEAR,
         )
         binary_mask = (restored_mask >= mask_threshold).astype(np_module.uint8)

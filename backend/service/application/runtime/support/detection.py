@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    letterbox_yolo_image,
+)
 from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices as batched_nms_indices,
     yolox_prediction_to_numpy_array as prediction_to_numpy_array,
@@ -27,7 +33,6 @@ from backend.service.application.runtime.predictors.yolox import (
     _normalize_openvino_outputs as normalize_openvino_outputs,
     _normalize_tensorrt_outputs as normalize_tensorrt_outputs,
     _normalize_tensor_shape as normalize_tensor_shape,
-    _preprocess_image as preprocess_image,
     _require_cuda_inference_imports as require_cuda_inference_imports,
     _require_inference_imports as require_inference_imports,
     _resolve_cuda_device_index as resolve_cuda_device_index,
@@ -48,6 +53,28 @@ from backend.service.application.runtime.predictors.yolox.backend import (
 from backend.service.application.runtime.support.detection_preview import (
     render_detection_preview_image as render_preview_image,
 )
+
+
+def preprocess_image(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image: Any,
+    input_size: tuple[int, int],
+) -> tuple[Any, YoloLetterboxTransform]:
+    """按普通 YOLO detection LetterBox 规则构造输入张量和反算信息。"""
+
+    letterboxed_image, transform = letterbox_yolo_image(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image=image,
+        input_size=input_size,
+    )
+    tensor = (
+        letterboxed_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
+        / 255.0
+    )
+    return np_module.ascontiguousarray(tensor, dtype=np_module.float32), transform
 
 
 def resolve_openvino_compiled_runtime_precision(

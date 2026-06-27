@@ -18,6 +18,11 @@ from backend.service.application.models.yolo26_core.data.augmentation import (
     should_apply_yolo26_horizontal_flip,
     transform_yolo26_boxes_xyxy,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    letterbox_yolo_image,
+    scale_yolo_box_to_letterbox,
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,7 @@ class Yolo26DetectionPreparedTarget:
     image_height: int
     boxes_xyxy: tuple[tuple[float, float, float, float], ...]
     category_indexes: tuple[int, ...]
+    letterbox_transform: YoloLetterboxTransform | None = None
 
 
 def build_yolo26_detection_training_batch(
@@ -82,6 +88,7 @@ def build_yolo26_detection_training_batch(
         augmentation_options or _build_disabled_yolo26_detection_augmentation()
     )
     for sample in samples:
+        letterbox_transform = None
         if augment_training:
             prepared_image, resized_boxes, resized_categories = (
                 _prepare_yolo26_detection_sample_with_augmentation(
@@ -93,7 +100,12 @@ def build_yolo26_detection_training_batch(
                 )
             )
         else:
-            prepared_image, resized_boxes, resized_categories = (
+            (
+                prepared_image,
+                resized_boxes,
+                resized_categories,
+                letterbox_transform,
+            ) = (
                 _prepare_yolo26_detection_sample_without_augmentation(
                     imports=imports,
                     sample=sample,
@@ -115,6 +127,7 @@ def build_yolo26_detection_training_batch(
                 ),
                 boxes_xyxy=tuple(resized_boxes),
                 category_indexes=tuple(resized_categories),
+                letterbox_transform=letterbox_transform,
             )
         )
 
@@ -163,11 +176,11 @@ def _prepare_yolo26_detection_sample_without_augmentation(
     imports: Any,
     sample: Any,
     input_size: tuple[int, int],
-) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
-    """按当前输入尺寸直接缩放单张 YOLO26 detection 样本。"""
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
+    """按 YOLO LetterBox 规则准备单张 YOLO26 detection 样本。"""
 
     image = _load_yolo26_detection_image(imports=imports, sample=sample)
-    return _resize_yolo26_detection_sample_to_size(
+    return _letterbox_yolo26_detection_sample_to_size(
         imports=imports,
         image=image,
         annotations=tuple(sample.annotations),
@@ -197,7 +210,7 @@ def _prepare_yolo26_detection_sample_with_augmentation(
             augmentation_options=augmentation_options,
         )
     else:
-        image, boxes_xyxy, category_indexes = (
+        image, boxes_xyxy, category_indexes, _ = (
             _prepare_yolo26_detection_sample_without_augmentation(
                 imports=imports,
                 sample=primary_sample,
@@ -377,40 +390,33 @@ def _build_yolo26_detection_scaled_cell(
     return canvas, boxes_xyxy, category_indexes
 
 
-def _resize_yolo26_detection_sample_to_size(
+def _letterbox_yolo26_detection_sample_to_size(
     *,
     imports: Any,
     image: Any,
     annotations: tuple[Any, ...],
     input_size: tuple[int, int],
-) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
-    """把单张 YOLO26 detection 样本直接缩放到目标尺寸。"""
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
+    """把单张 YOLO26 detection 样本按 LetterBox 映射到目标尺寸。"""
 
-    output_height, output_width = int(input_size[0]), int(input_size[1])
-    resized = imports.cv2.resize(
-        image,
-        (output_width, output_height),
-        interpolation=imports.cv2.INTER_LINEAR,
+    letterboxed, transform = letterbox_yolo_image(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        image=image,
+        input_size=input_size,
     )
-    scale_x = float(output_width) / max(1.0, float(image.shape[1]))
-    scale_y = float(output_height) / max(1.0, float(image.shape[0]))
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []
     for annotation in annotations:
-        clipped_box = _clip_yolo26_detection_box(
-            box_xyxy=(
-                float(annotation.bbox_xyxy[0]) * scale_x,
-                float(annotation.bbox_xyxy[1]) * scale_y,
-                float(annotation.bbox_xyxy[2]) * scale_x,
-                float(annotation.bbox_xyxy[3]) * scale_y,
-            ),
-            input_size=input_size,
+        clipped_box = scale_yolo_box_to_letterbox(
+            box_xyxy=annotation.bbox_xyxy,
+            transform=transform,
         )
         if clipped_box is None:
             continue
         boxes_xyxy.append(clipped_box)
         category_indexes.append(int(annotation.category_index))
-    return resized, boxes_xyxy, category_indexes
+    return letterboxed, boxes_xyxy, category_indexes, transform
 
 
 def _load_yolo26_detection_image(*, imports: Any, sample: Any) -> Any:
