@@ -64,6 +64,38 @@
 - 旧 `yolo_primary_*` 过渡模型构建入口
 - 会让 YOLOv8、YOLO11、YOLO26 隐式混线的任务训练入口
 
+## 图像预处理与输出坐标规则
+
+模型预处理不按项目统一成同一种 LetterBox。每个模型必须保持和自身参考实现一致的训练、验证、导出和 runtime 预处理规则；项目层统一的是公开输出坐标和字段语义。
+
+- `YOLOv8 / YOLO11 / YOLO26` 的 `detection / segmentation / pose / obb` 按 Ultralytics `LetterBox(center=True, scale_fill=False)` 语义处理非正方形图片。训练、验证、导出和 runtime 必须共享同一套中心 padding、gain、pad_left、pad_top 和原图坐标反算规则，禁止再回到直接拉伸到正方形后用 `scale_x / scale_y` 反算 bbox、mask、keypoint 或 rotated box。
+- `YOLOX detection` 保持 YOLOX 参考实现的左上角 padding 预处理：按最小缩放比 resize 后写入输入画布左上角，其余区域填充 `114`。训练、validation、evaluation 和 runtime 必须统一使用这套 `resize_ratio` 规则，不为了项目表面一致性强行改成 center LetterBox。
+- `RF-DETR detection / segmentation` 保持 RF-DETR 参考实现的固定尺寸 resize 和归一化输入规则。RF-DETR 内部可使用 normalized `cxcywh` 或固定输入尺寸坐标，runtime 和 export 后处理必须在边界处转换为任务原生结果：detection 输出原图 detection box，segmentation 输出原图 mask / polygon / instance result。
+- `classification` 任务没有 bbox 坐标反算，允许按模型参考实现使用 resize / crop / normalize，但训练、验证、转换和 runtime 的输入规则必须一致。
+- `mask / proto / heatmap / preview` 的 resize 是任务后处理或显示步骤，不等同于输入几何拉伸错误；它们仍必须明确输入尺寸、原图尺寸和坐标系。
+
+对外公开结果按任务原生语义输出，不强行把所有任务压成 `xyxy`：
+
+- detection 的主输出是原图坐标 `bbox_xyxy`。
+- segmentation 的主输出是 `segments / mask / mask_area` 等实例分割结果；`bbox_xyxy` 只能作为普通显示、筛选或流程节点辅助外接框，不能替代 mask / polygon。
+- pose 的主输出是原图坐标 keypoints 与置信度；`bbox_xyxy` 只能作为人体、手部或对象实例的辅助外接框。
+- OBB 的主输出是 rotated box，例如 `bbox_xywhr` 或 polygon；`bbox_xyxy` 只能作为普通显示和粗筛选外接矩形，不能替代角度和旋转框语义。
+- 模型内部可以使用 `xywh`、`cxcywh`、`xywhr`、normalized 坐标或 feature map 坐标，但这些表示只允许存在于 core 内部或 task 内部边界，并且必须在公开结果边界转换为对应 task 的原生输出。
+- 公开字段中图片尺寸统一使用 `image_width`、`image_height`；张量形状和 `input_size` 若使用 `(height, width)`，必须在函数名、参数名或注释中写清楚，避免 `width / height` 与 `height / width` 混用。
+
+### 模型内部 box 格式契约
+
+本项目统一的是公开输出，不强行统一模型内部 raw tensor。内部格式必须和对应参考实现一致，并在 validation、export 和 runtime 边界明确转换。
+
+- `YOLOv8 / YOLO11` 非 end2end detection、segmentation、pose raw head 输出按 Ultralytics 默认使用 `xywh`。runtime 和 validation 必须先按 `xywh` 完成候选筛选、NMS 和 LetterBox 反算，再输出对应 task 的原生结果。COCO detection 结果文件中的 `bbox` 使用 `[x, y, width, height]` 是 COCO 文件格式要求，不是模型公开输出契约。
+- `YOLOv8 / YOLO11` 训练 loss / assigner 可以在 core 内部把距离分布 decode 成 `xyxy` 参与 IoU、TAL assigner 和 bbox loss。该训练内部 `xyxy` 不改变 inference raw output 的 `xywh` 语义。
+- `YOLO26` detection / segmentation / pose 默认按 end2end processed layout 使用 `xyxy` box 和 top-k 输出；export 后端、OpenVINO、TensorRT 和 deployment runtime 必须按 processed layout 解析，不能回退到普通 YOLO NMS raw 语义。该 `xyxy` 只是 detection box 或 segmentation / pose 的实例外接框来源，不替代 mask 或 keypoints。
+- `YOLO26 OBB` 和 `YOLOv8 / YOLO11 OBB` 保留 rotated box 的 `xywhr` 语义。公开结果的主字段必须是 OBB 专用的 `bbox_xywhr` 或 polygon；`bbox_xyxy` 只作为普通显示和流程节点的外接矩形辅助字段。
+- `YOLOX` 保持参考实现输出和左上角 padding 反算规则；平台公开 detection record 仍输出原图 `bbox_xyxy`。
+- `RF-DETR` 保持参考实现的固定 resize / normalized box 处理；detection 公开原图 detection box，segmentation 公开 mask / polygon / instance result，并可附带辅助外接框。
+
+这些转换只是在坐标系之间做线性映射或格式重排，不应引入显著精度损失；允许的误差主要来自 float32、NMS 阈值和最终 payload / 显示层的 round。若 mAP 或显示框异常，优先检查同一模型的训练、验证、导出和 runtime 是否共享同一套预处理、box format 和坐标反算规则。
+
 ## 2026-06-26 评估默认阈值复核
 
 本轮针对训练中 `map50 / map50_95` 异常偏低的问题，重新核对了 `projectsrc/YOLOX_2026/yolox`、`projectsrc/ultralytics/ultralytics` 和本项目 evaluation / training / frontend 参数链路。结论如下：

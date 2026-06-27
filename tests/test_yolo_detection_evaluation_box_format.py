@@ -4,6 +4,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
+)
 from backend.service.application.models.yolo11_core.evaluation.detection import (
     convert_yolo11_predictions_to_coco_detections,
 )
@@ -28,24 +31,33 @@ class _FakePredictionTensor:
         return self._array
 
 
-def _build_xywh_prediction() -> _FakePredictionTensor:
-    """构造一个 YOLO raw detection 输出，前四位是 cx/cy/w/h。"""
+def _build_letterbox_xywh_prediction() -> _FakePredictionTensor:
+    """构造一个 YOLO raw detection 输出，前四位是 LetterBox 输入坐标 cx/cy/w/h。"""
 
     return _FakePredictionTensor(
-        np.asarray([[[320.0, 320.0, 100.0, 200.0, 0.9, 0.1]]], dtype=np.float32)
+        np.asarray([[[320.0, 320.0, 160.0, 80.0, 0.9, 0.1]]], dtype=np.float32)
     )
 
 
 def _build_target() -> SimpleNamespace:
-    """构造 COCO 转换需要的最小 target 对象。"""
+    """构造 COCO 转换需要的非方形原图 target 对象。"""
 
-    return SimpleNamespace(image_id=7, image_width=640, image_height=640)
+    return SimpleNamespace(
+        image_id=7,
+        image_width=1920,
+        image_height=1080,
+        letterbox_transform=build_yolo_letterbox_transform(
+            source_width=1920,
+            source_height=1080,
+            input_size=(640, 640),
+        ),
+    )
 
 
 def test_yolo11_evaluation_converts_raw_xywh_boxes_to_coco_bbox() -> None:
     detections = convert_yolo11_predictions_to_coco_detections(
         np_module=np,
-        prediction_tensor=_build_xywh_prediction(),
+        prediction_tensor=_build_letterbox_xywh_prediction(),
         batch_targets=(_build_target(),),
         input_size=(640, 640),
         category_ids=(1, 2),
@@ -57,7 +69,7 @@ def test_yolo11_evaluation_converts_raw_xywh_boxes_to_coco_bbox() -> None:
         {
             "image_id": 7,
             "category_id": 1,
-            "bbox": [270.0, 220.0, 100.0, 200.0],
+            "bbox": [720.0, 420.0, 480.0, 240.0],
             "score": 0.8999999761581421,
         }
     ]
@@ -66,7 +78,7 @@ def test_yolo11_evaluation_converts_raw_xywh_boxes_to_coco_bbox() -> None:
 def test_yolov8_evaluation_converts_raw_xywh_boxes_to_coco_bbox() -> None:
     detections = _convert_yolov8_predictions_to_coco_detections(
         imports=SimpleNamespace(np=np),
-        prediction_tensor=_build_xywh_prediction(),
+        prediction_tensor=_build_letterbox_xywh_prediction(),
         batch_targets=(_build_target(),),
         input_size=(640, 640),
         category_ids=(1, 2),
@@ -78,7 +90,7 @@ def test_yolov8_evaluation_converts_raw_xywh_boxes_to_coco_bbox() -> None:
         {
             "image_id": 7,
             "category_id": 1,
-            "bbox": [270.0, 220.0, 100.0, 200.0],
+            "bbox": [720.0, 420.0, 480.0, 240.0],
             "score": 0.8999999761581421,
         }
     ]
