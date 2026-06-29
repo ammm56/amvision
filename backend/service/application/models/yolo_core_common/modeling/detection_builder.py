@@ -34,128 +34,15 @@ from backend.service.application.models.yolo_core_common.modeling.detection_mode
     SPPF,
     YoloDetectionModel,
 )
-
-
-YOLOV8_DETECTION_MODEL_CONFIG: dict[str, object] = {
-    "reg_max": 16,
-    "strides": (8, 16, 32),
-    "legacy_class_head": True,
-    "scales": {
-        "nano": (0.33, 0.25, 1024),
-        "s": (0.33, 0.50, 1024),
-        "m": (0.67, 0.75, 768),
-        "l": (1.00, 1.00, 512),
-        "x": (1.00, 1.25, 512),
-    },
-    "backbone": [
-        (-1, 1, "Conv", (64, 3, 2)),
-        (-1, 1, "Conv", (128, 3, 2)),
-        (-1, 3, "C2f", (128, True)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        (-1, 6, "C2f", (256, True)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        (-1, 6, "C2f", (512, True)),
-        (-1, 1, "Conv", (1024, 3, 2)),
-        (-1, 3, "C2f", (1024, True)),
-        (-1, 1, "SPPF", (1024, 5)),
-    ],
-    "head": [
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 6), 1, "Concat", (1,)),
-        (-1, 3, "C2f", (512,)),
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 4), 1, "Concat", (1,)),
-        (-1, 3, "C2f", (256,)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        ((-1, 12), 1, "Concat", (1,)),
-        (-1, 3, "C2f", (512,)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        ((-1, 9), 1, "Concat", (1,)),
-        (-1, 3, "C2f", (1024,)),
-        ((15, 18, 21), 1, "Detect", ("nc",)),
-    ],
-}
-
-YOLO11_DETECTION_MODEL_CONFIG: dict[str, object] = {
-    "reg_max": 16,
-    "strides": (8, 16, 32),
-    "scales": {
-        "nano": (0.50, 0.25, 1024),
-        "s": (0.50, 0.50, 1024),
-        "m": (0.50, 1.00, 512),
-        "l": (1.00, 1.00, 512),
-        "x": (1.00, 1.50, 512),
-    },
-    "backbone": [
-        (-1, 1, "Conv", (64, 3, 2)),
-        (-1, 1, "Conv", (128, 3, 2)),
-        (-1, 2, "C3k2", (256, False, 0.25)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        (-1, 2, "C3k2", (512, False, 0.25)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        (-1, 2, "C3k2", (512, True)),
-        (-1, 1, "Conv", (1024, 3, 2)),
-        (-1, 2, "C3k2", (1024, True)),
-        (-1, 1, "SPPF", (1024, 5)),
-        (-1, 2, "C2PSA", (1024,)),
-    ],
-    "head": [
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 6), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (512, False)),
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 4), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (256, False)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        ((-1, 13), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (512, False)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        ((-1, 10), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (1024, True)),
-        ((16, 19, 22), 1, "Detect", ("nc",)),
-    ],
-}
-
-YOLO26_DETECTION_MODEL_CONFIG: dict[str, object] = {
-    "reg_max": 1,
-    "end2end": True,
-    "strides": (8, 16, 32),
-    "scales": {
-        "nano": (0.50, 0.25, 1024),
-        "s": (0.50, 0.50, 1024),
-        "m": (0.50, 1.00, 512),
-        "l": (1.00, 1.00, 512),
-        "x": (1.00, 1.50, 512),
-    },
-    "backbone": [
-        (-1, 1, "Conv", (64, 3, 2)),
-        (-1, 1, "Conv", (128, 3, 2)),
-        (-1, 2, "C3k2", (256, False, 0.25)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        (-1, 2, "C3k2", (512, False, 0.25)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        (-1, 2, "C3k2", (512, True)),
-        (-1, 1, "Conv", (1024, 3, 2)),
-        (-1, 2, "C3k2", (1024, True)),
-        (-1, 1, "SPPF", (1024, 5, 3, True)),
-        (-1, 2, "C2PSA", (1024,)),
-    ],
-    "head": [
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 6), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (512, True)),
-        (-1, 1, "nn.Upsample", (None, 2, "nearest")),
-        ((-1, 4), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (256, True)),
-        (-1, 1, "Conv", (256, 3, 2)),
-        ((-1, 13), 1, "Concat", (1,)),
-        (-1, 2, "C3k2", (512, True)),
-        (-1, 1, "Conv", (512, 3, 2)),
-        ((-1, 10), 1, "Concat", (1,)),
-        (-1, 1, "C3k2", (1024, True, 0.5, True)),
-        ((16, 19, 22), 1, "Detect", ("nc",)),
-    ],
-}
+from backend.service.application.models.yolo11_core.cfg.detection import (
+    YOLO11_DETECTION_MODEL_CONFIG,
+)
+from backend.service.application.models.yolo26_core.cfg.detection import (
+    YOLO26_DETECTION_MODEL_CONFIG,
+)
+from backend.service.application.models.yolov8_core.cfg.detection import (
+    YOLOV8_DETECTION_MODEL_CONFIG,
+)
 
 YOLO_DETECTION_MODEL_CONFIGS: dict[str, dict[str, object]] = {
     "yolov8": YOLOV8_DETECTION_MODEL_CONFIG,

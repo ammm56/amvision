@@ -111,6 +111,7 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
             metrics_payload={"final_metrics": {"loss": 0.12, "accuracy": 0.88}},
             validation_metrics_payload={"top1_accuracy": 0.88, "top5_accuracy": 1.0},
             labels=("bolt", "nut"),
+            warm_start_summary={"enabled": False},
         )
 
     monkeypatch.setattr(
@@ -213,6 +214,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
             metrics_payload={"final_metrics": {"loss": 0.45, "mask_loss": 0.22}},
             validation_metrics_payload={"map50": 0.63, "map50_95": 0.51},
             labels=("part-a", "part-b", "part-c"),
+            warm_start_summary={"enabled": False},
         )
 
     monkeypatch.setattr(
@@ -315,6 +317,7 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
             metrics_payload={"final_metrics": {"loss": 0.33, "kpt_loss": 0.09}},
             validation_metrics_payload={"map50": 0.52, "map50_95": 0.41},
             labels=("worker",),
+            warm_start_summary={"enabled": False},
         )
 
     monkeypatch.setattr(
@@ -417,6 +420,7 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
             metrics_payload={"final_metrics": {"loss": 0.29, "angle_loss": 0.05}},
             validation_metrics_payload={"loss": 0.29},
             labels=("plate", "label"),
+            warm_start_summary={"enabled": False},
         )
 
     monkeypatch.setattr(
