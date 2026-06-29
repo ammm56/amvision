@@ -145,7 +145,7 @@ class YoloXTrainingLoopRequest:
 
     字段：
     - torch_module：当前训练使用的 torch 模块。
-    - base_model：未包 DataParallel 的原始 YOLOX 模型。
+    - base_model：原始 YOLOX 模型。
     - training_model：实际执行 forward/backward 的模型。
     - train_dataset：训练数据集，可能是 MosaicDetection 包装后的数据集。
     - train_loader：训练 DataLoader。
@@ -158,6 +158,10 @@ class YoloXTrainingLoopRequest:
     - batch_callback：batch heartbeat 回调。
     - epoch_callback：epoch 结束控制回调。
     - savepoint_callback：save/pause savepoint 回调。
+    - rank：当前 DDP 全局 rank；单进程训练为 0。
+    - local_rank：当前 DDP 本机 rank；单进程训练为 0。
+    - world_size：DDP 总进程数；单进程训练为 1。
+    - is_rank_zero：是否允许写平台事件、指标和 checkpoint。
     """
 
     torch_module: Any
@@ -207,6 +211,10 @@ class YoloXTrainingLoopRequest:
     random_seed: int = 0
     evaluation_confidence_threshold: float | None = None
     evaluation_nms_threshold: float | None = None
+    rank: int = 0
+    local_rank: int = 0
+    world_size: int = 1
+    is_rank_zero: bool = True
 
 
 @dataclass(frozen=True)
@@ -728,6 +736,7 @@ def build_yolox_checkpoint_state(
 def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingLoopResult:
     """执行 YOLOX epoch/batch 训练循环和验证编排。"""
 
+    is_rank_zero = request.is_rank_zero
     epoch_history = [dict(item) for item in request.epoch_history or []]
     validation_epoch_history = [
         dict(item)
@@ -768,6 +777,7 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
             train_loader=request.train_loader,
             enabled=not no_aug_enabled,
         )
+        _set_epoch_on_yolox_train_loader(request.train_loader, epoch_index)
         set_yolox_head_use_l1(model=request.training_model, enabled=no_aug_enabled)
         request.training_model.train()
         epoch_totals: dict[str, float] = {}
@@ -817,7 +827,7 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                 epoch_totals[target_metric_name] = (
                     epoch_totals.get(target_metric_name, 0.0) + metric_value
                 )
-            if request.batch_callback is not None:
+            if is_rank_zero and request.batch_callback is not None:
                 request.batch_callback(
                     YoloXTrainingBatchProgress(
                         epoch=current_epoch,
@@ -862,7 +872,9 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                 evaluation_interval=request.evaluation_interval,
             )
             if validation_ran:
-                validation_metrics = request.validation_evaluator(evaluation_model)
+                if is_rank_zero:
+                    validation_metrics = request.validation_evaluator(evaluation_model)
+                _barrier_yolox_ddp_rank(request)
             for metric_name, metric_value in validation_metrics.items():
                 epoch_metrics[f"val_{metric_name}"] = metric_value
         epoch_metrics["epoch"] = current_epoch
@@ -872,7 +884,7 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
             epoch_metrics=epoch_metrics,
             metric_name=best_metric_name,
         )
-        if current_metric_value is not None and is_yolox_metric_improved(
+        if is_rank_zero and current_metric_value is not None and is_yolox_metric_improved(
             current_metric_value=current_metric_value,
             best_metric_value=best_metric_value,
             higher_is_better=request.validation_loader is not None,
@@ -907,7 +919,7 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                 ),
             )
 
-        if validation_ran:
+        if is_rank_zero and validation_ran:
             validation_epoch_history.append(
                 {
                     "epoch": current_epoch,
@@ -926,32 +938,36 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                 validation_history=validation_epoch_history,
             )
 
-        train_metrics_snapshot = build_yolox_train_metrics_payload(
-            device=request.device,
-            gpu_count=request.gpu_count,
-            device_ids=request.device_ids,
-            distributed_mode=request.distributed_mode,
-            precision=request.precision,
-            batch_size=request.batch_size,
-            max_epochs=request.max_epochs,
-            evaluation_interval=request.evaluation_interval,
-            input_size=request.input_size,
-            train_split_name=request.train_split_name,
-            validation_split_name=request.validation_split_name,
-            sample_count=request.total_sample_count,
-            train_sample_count=request.train_sample_count,
-            validation_sample_count=request.validation_sample_count,
-            category_names=request.train_category_names,
-            best_metric_name=best_metric_name,
-            best_metric_value=best_metric_value,
-            final_metrics=epoch_metrics,
-            epoch_history=epoch_history,
-            parameter_count=int(request.parameter_count),
-            warm_start_summary=request.warm_start_summary,
+        train_metrics_snapshot = (
+            build_yolox_train_metrics_payload(
+                device=request.device,
+                gpu_count=request.gpu_count,
+                device_ids=request.device_ids,
+                distributed_mode=request.distributed_mode,
+                precision=request.precision,
+                batch_size=request.batch_size,
+                max_epochs=request.max_epochs,
+                evaluation_interval=request.evaluation_interval,
+                input_size=request.input_size,
+                train_split_name=request.train_split_name,
+                validation_split_name=request.validation_split_name,
+                sample_count=request.total_sample_count,
+                train_sample_count=request.train_sample_count,
+                validation_sample_count=request.validation_sample_count,
+                category_names=request.train_category_names,
+                best_metric_name=best_metric_name,
+                best_metric_value=best_metric_value,
+                final_metrics=epoch_metrics,
+                epoch_history=epoch_history,
+                parameter_count=int(request.parameter_count),
+                warm_start_summary=request.warm_start_summary,
+            )
+            if is_rank_zero
+            else {}
         )
 
         control_command = None
-        if request.epoch_callback is not None:
+        if is_rank_zero and request.epoch_callback is not None:
             control_command = request.epoch_callback(
                 YoloXTrainingEpochProgress(
                     epoch=current_epoch,
@@ -975,6 +991,10 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                     best_metric_value=best_metric_value,
                 )
             )
+        control_command = _broadcast_yolox_control_command(
+            request=request,
+            command=control_command,
+        )
 
         if control_command is not None and control_command.terminate_training:
             return YoloXTrainingLoopResult(status="terminated")
@@ -982,6 +1002,10 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
         if control_command is not None and (
             control_command.save_checkpoint or control_command.pause_training
         ):
+            if not is_rank_zero:
+                if control_command.pause_training:
+                    return YoloXTrainingLoopResult(status="paused")
+                continue
             latest_checkpoint_state = build_yolox_checkpoint_state(
                 model=checkpoint_model,
                 optimizer=request.optimizer,
@@ -1037,10 +1061,16 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
                 best_metric_name=best_metric_name,
                 best_metric_value=best_metric_value,
             )
-            if request.savepoint_callback is not None:
+            if is_rank_zero and request.savepoint_callback is not None:
                 request.savepoint_callback(savepoint)
             if control_command.pause_training:
-                return YoloXTrainingLoopResult(status="paused", savepoint=savepoint)
+                return YoloXTrainingLoopResult(
+                    status="paused",
+                    savepoint=savepoint if is_rank_zero else None,
+                )
+
+    if not is_rank_zero:
+        return YoloXTrainingLoopResult(status="completed")
 
     if best_checkpoint_state is None or best_metric_value is None:
         raise ServiceConfigurationError("YOLOX 训练没有生成有效 checkpoint")
@@ -1137,6 +1167,61 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
         best_metric_value=best_metric_value,
         final_metrics=final_metrics,
     )
+
+
+def _set_epoch_on_yolox_train_loader(train_loader: Any, epoch_index: int) -> None:
+    """在支持 `set_epoch` 的 sampler 上同步当前 epoch。
+
+    普通 YOLOX InfiniteSampler 不需要 set_epoch；当 DDP 路径使用
+    torch DistributedSampler 时，需要每个 epoch 更新随机种子。
+    """
+
+    candidate_samplers = []
+    sampler = getattr(train_loader, "sampler", None)
+    if sampler is not None:
+        candidate_samplers.append(sampler)
+    batch_sampler = getattr(train_loader, "batch_sampler", None)
+    batch_inner_sampler = getattr(batch_sampler, "sampler", None)
+    if batch_inner_sampler is not None:
+        candidate_samplers.append(batch_inner_sampler)
+    for candidate_sampler in candidate_samplers:
+        set_epoch = getattr(candidate_sampler, "set_epoch", None)
+        if callable(set_epoch):
+            set_epoch(epoch_index)
+
+
+def _broadcast_yolox_control_command(
+    *,
+    request: YoloXTrainingLoopRequest,
+    command: YoloXTrainingControlCommand | None,
+) -> YoloXTrainingControlCommand | None:
+    """把 rank0 读取到的平台控制命令广播给所有 DDP rank。"""
+
+    if request.world_size <= 1:
+        return command
+    distributed = getattr(request.torch_module, "distributed", None)
+    if distributed is None or not distributed.is_available() or not distributed.is_initialized():
+        return command
+    command_payload = command if request.is_rank_zero else None
+    objects: list[object] = [command_payload]
+    distributed.broadcast_object_list(objects, src=0)
+    received_command = objects[0]
+    if received_command is None:
+        return None
+    if not isinstance(received_command, YoloXTrainingControlCommand):
+        raise ServiceConfigurationError("YOLOX DDP 控制命令广播结果不合法")
+    return received_command
+
+
+def _barrier_yolox_ddp_rank(request: YoloXTrainingLoopRequest) -> None:
+    """在 DDP rank 间同步验证、checkpoint 等 rank0-only 阶段。"""
+
+    if request.world_size <= 1:
+        return
+    distributed = getattr(request.torch_module, "distributed", None)
+    if distributed is None or not distributed.is_available() or not distributed.is_initialized():
+        return
+    distributed.barrier()
 
 
 def extract_yolox_train_progress_metrics(epoch_metrics: dict[str, object]) -> dict[str, float]:

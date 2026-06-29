@@ -71,6 +71,11 @@ from backend.service.application.models.yolox_core.training.execution import (
     release_yolox_training_runtime_resources,
     run_yolox_detection_training_execution,
 )
+from backend.service.application.models.yolox_core.training.ddp import (
+    YOLOX_DDP_ENTRY_MODULE,
+    YoloXDdpTrainingLaunchRequest,
+    prepare_yolox_detection_ddp_launch,
+)
 
 __all__ = [
     "YOLOX_DEFAULT_TRAIN_ENABLE_MIXUP",
@@ -86,6 +91,7 @@ __all__ = [
     "YOLOX_CORE_DEFAULT_INPUT_SIZE",
     "YOLOX_CORE_DEFAULT_MAX_EPOCHS",
     "YOLOX_DETECTION_CORE_IMPLEMENTATION_MODE",
+    "YOLOX_DDP_ENTRY_MODULE",
     "YOLOX_REFERENCE_DEFAULT_DEGREES",
     "YOLOX_REFERENCE_DEFAULT_EMA_DECAY",
     "YOLOX_REFERENCE_DEFAULT_EMA_ENABLED",
@@ -110,6 +116,7 @@ __all__ = [
     "YoloXTrainingControlCommand",
     "YoloXDetectionTrainingExecutionRequest",
     "YoloXDetectionTrainingExecutionResult",
+    "YoloXDdpTrainingLaunchRequest",
     "YoloXTrainingEpochProgress",
     "YoloXTrainingPausedError",
     "YoloXTrainingSavePoint",
@@ -129,6 +136,7 @@ __all__ = [
     "load_yolox_resume_checkpoint",
     "normalize_yolox_history_items",
     "preprocess_yolox_training_batch",
+    "prepare_yolox_detection_ddp_launch",
     "random_resize_yolox_input_size",
     "release_yolox_training_runtime_resources",
     "resolve_yolox_evaluation_model",

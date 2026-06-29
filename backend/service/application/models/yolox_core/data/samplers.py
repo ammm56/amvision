@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import torch
 import torch.distributed as dist
@@ -100,7 +101,7 @@ class InfiniteSampler(Sampler[int]):
     def __len__(self) -> int:
         """返回单个 rank 在一个逻辑 epoch 内应消费的样本数。"""
 
-        return self._size // self._world_size
+        return max(1, math.ceil(self._size / self._world_size))
 
     def _infinite_indices(self):
         """持续生成打乱或顺序索引流。"""
