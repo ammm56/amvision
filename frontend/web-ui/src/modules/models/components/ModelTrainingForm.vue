@@ -202,7 +202,7 @@
 
       <section
         v-if="trainingSupportsAugmentationToggle"
-        class="training-parameter-section training-augmentation-section field field--wide"
+        class="training-parameter-section field field--wide"
       >
         <div class="training-parameter-section__header">
           <div>
@@ -456,13 +456,6 @@ function emitModelParameterValue(key: string, event: Event): void {
 
 .training-parameter-grid--disabled {
   opacity: 0.72;
-}
-
-.training-augmentation-section {
-  border-color: rgba(14, 148, 167, 0.28);
-  background:
-    linear-gradient(135deg, rgba(14, 148, 167, 0.08), transparent 42%),
-    var(--surface);
 }
 
 .training-augmentation-switch {
