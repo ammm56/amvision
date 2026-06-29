@@ -209,7 +209,7 @@ def _build_yolo_detection_checkpoint_metadata(
         precision=_read_optional_str(summary, "precision"),
         distributed_mode=(
             summary.get("distributed_mode")
-            if isinstance(summary.get("distributed_mode"), bool)
+            if isinstance(summary.get("distributed_mode"), str)
             else None
         ),
     )

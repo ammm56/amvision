@@ -214,7 +214,7 @@ class YoloXTrainingTaskRegistrationMixin:
             precision=self._read_optional_str(task_result.summary, "precision"),
             distributed_mode=(
                 task_result.summary.get("distributed_mode")
-                if isinstance(task_result.summary.get("distributed_mode"), bool)
+                if isinstance(task_result.summary.get("distributed_mode"), str)
                 else None
             ),
         )
