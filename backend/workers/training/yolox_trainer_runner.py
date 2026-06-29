@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 from backend.service.application.backends import (
@@ -31,6 +29,7 @@ from backend.service.application.models.training.yolox_detection_task_types impo
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.training.ddp_process_launcher import run_ddp_launch_processes
 
 
 # 沿用统一训练执行规则的 YOLOX 命名导出。
@@ -129,14 +128,7 @@ class SqlAlchemyYoloXTrainerRunner:
                     "reason": str(exc),
                 },
             ) from exc
-        launch_env = dict(os.environ)
-        launch_env.update(launch.env)
-        completed_process = subprocess.run(
-            launch.command,
-            cwd=Path.cwd(),
-            env=launch_env,
-            check=False,
-        )
+        completed_process = run_ddp_launch_processes(launch=launch, cwd=Path.cwd())
         if completed_process.returncode != 0:
             raise ServiceConfigurationError(
                 "YOLOX DDP 子进程训练失败",

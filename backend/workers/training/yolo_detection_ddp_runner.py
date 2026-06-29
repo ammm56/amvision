@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-import subprocess
 from typing import Any
 
 from backend.service.application.errors import ServiceConfigurationError
@@ -16,6 +14,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionDdpTrainingLaunchRequest,
     prepare_yolo_detection_ddp_launch,
 )
+from backend.workers.training.ddp_process_launcher import run_ddp_launch_processes
 
 
 def run_yolo_detection_training_with_optional_ddp(
@@ -86,14 +85,7 @@ def run_yolo_detection_training_with_ddp(
             },
         ) from exc
 
-    launch_env = dict(os.environ)
-    launch_env.update(launch.env)
-    completed_process = subprocess.run(
-        launch.command,
-        cwd=Path.cwd(),
-        env=launch_env,
-        check=False,
-    )
+    completed_process = run_ddp_launch_processes(launch=launch, cwd=Path.cwd())
     if completed_process.returncode != 0:
         raise ServiceConfigurationError(
             f"{model_type} detection DDP 子进程训练失败",

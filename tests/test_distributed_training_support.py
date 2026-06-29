@@ -13,6 +13,7 @@ from backend.service.application.models.support.distributed_training import (
     build_torchrun_module_command,
     choose_ddp_backend,
     prepare_torchrun_launch,
+    initialize_torch_distributed,
     validate_ddp_world_size,
 )
 
@@ -113,6 +114,8 @@ def test_torchrun_module_command_contains_expected_arguments() -> None:
         "127.0.0.1",
         "--master_port",
         "29601",
+        "--rdzv_conf",
+        "use_libuv=0",
         "--module",
         "backend.workers.training.yolox_ddp_entry",
         "--task-id",
@@ -135,9 +138,68 @@ def test_prepare_torchrun_launch_sets_shared_environment() -> None:
     assert launch.world_size == 4
     assert launch.backend == "gloo"
     assert launch.env["AMVISION_TASK_ID"] == "task-2"
+    assert launch.env["USE_LIBUV"] == "0"
     assert launch.env["MASTER_PORT"] == "29602"
     assert launch.env["AMVISION_DDP_WORLD_SIZE"] == "4"
     assert launch.command[0] == "python"
+
+
+def test_initialize_torch_distributed_can_disable_libuv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store_calls: list[dict[str, object]] = []
+    init_calls: list[dict[str, object]] = []
+
+    class _FakeCuda:
+        @staticmethod
+        def set_device(_: int) -> None:
+            return None
+
+    class _FakeDistributed:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def is_initialized() -> bool:
+            return False
+
+        @staticmethod
+        def TCPStore(*args: object, **kwargs: object) -> str:
+            store_calls.append({"args": args, "kwargs": kwargs})
+            return "store"
+
+        @staticmethod
+        def init_process_group(**kwargs: object) -> None:
+            init_calls.append(kwargs)
+
+    class _FakeTorch:
+        cuda = _FakeCuda()
+        distributed = _FakeDistributed()
+
+    monkeypatch.setenv("AMVISION_DDP_DISABLE_LIBUV", "1")
+    context = DdpTrainingContext(
+        rank=0,
+        local_rank=0,
+        world_size=2,
+        device="cuda:0",
+        backend="gloo",
+        master_addr="127.0.0.1",
+        master_port=29601,
+    )
+
+    initialize_torch_distributed(torch_module=_FakeTorch(), context=context)
+
+    assert store_calls
+    assert store_calls[0]["kwargs"]["use_libuv"] is False
+    assert init_calls == [
+        {
+            "backend": "gloo",
+            "store": "store",
+            "rank": 0,
+            "world_size": 2,
+        }
+    ]
 
 
 def test_rank_zero_reporter_only_emits_from_rank_zero() -> None:

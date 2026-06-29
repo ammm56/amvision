@@ -8,6 +8,7 @@ from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.models.training.yolo26_training_service import YOLO26_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.training.training_task_failure import mark_training_task_failed
 from backend.workers.training.yolo26_trainer_runner import SqlAlchemyYolo26TrainerRunner
 
 
@@ -56,6 +57,11 @@ class Yolo26TrainingQueueWorker:
                 )
             )
         except ServiceError as error:
+            mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=queue_task.payload,
+                error_message=error.message,
+            )
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
@@ -66,6 +72,11 @@ class Yolo26TrainingQueueWorker:
             )
             return True
         except Exception as error:
+            mark_training_task_failed(
+                session_factory=self.session_factory,
+                payload=queue_task.payload,
+                error_message=str(error),
+            )
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),

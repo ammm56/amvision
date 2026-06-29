@@ -178,19 +178,16 @@ def test_yolo_detection_worker_starts_torchrun_for_multi_gpu_task(
         assert request.backend_availability.gloo is True
         return fake_launch
 
-    def _fake_subprocess_run(
-        command: tuple[str, ...],
+    def _fake_run_ddp_launch_processes(
         *,
+        launch: SimpleNamespace,
         cwd: Path,
-        env: dict[str, str],
-        check: bool,
     ) -> SimpleNamespace:
         subprocess_calls.append(
             {
-                "command": command,
+                "command": launch.command,
                 "cwd": cwd,
-                "env": env,
-                "check": check,
+                "env": launch.env,
             }
         )
         return SimpleNamespace(returncode=0)
@@ -206,9 +203,9 @@ def test_yolo_detection_worker_starts_torchrun_for_multi_gpu_task(
         _fake_prepare_launch,
     )
     monkeypatch.setattr(
-        yolo_detection_ddp_runner.subprocess,
-        "run",
-        _fake_subprocess_run,
+        yolo_detection_ddp_runner,
+        "run_ddp_launch_processes",
+        _fake_run_ddp_launch_processes,
     )
 
     result = yolo_detection_ddp_runner.run_yolo_detection_training_with_optional_ddp(
@@ -237,7 +234,7 @@ def test_yolo_detection_worker_rejects_ddp_when_machine_has_single_gpu(
         def process_training_task(self, task_id: str) -> object:
             raise AssertionError(f"DDP 请求不应回退到单进程训练: {task_id}")
 
-    def _fail_subprocess_run(*_: object, **__: object) -> SimpleNamespace:
+    def _fail_run_ddp_launch_processes(*_: object, **__: object) -> SimpleNamespace:
         raise AssertionError("GPU 数量不足时不应启动 torchrun 子进程")
 
     monkeypatch.setattr(
@@ -246,9 +243,9 @@ def test_yolo_detection_worker_rejects_ddp_when_machine_has_single_gpu(
         lambda: _FakeSingleGpuTorch(),
     )
     monkeypatch.setattr(
-        yolo_detection_ddp_runner.subprocess,
-        "run",
-        _fail_subprocess_run,
+        yolo_detection_ddp_runner,
+        "run_ddp_launch_processes",
+        _fail_run_ddp_launch_processes,
     )
 
     with pytest.raises(ServiceConfigurationError, match="无法启动 yolo11 detection DDP"):

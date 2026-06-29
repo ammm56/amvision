@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from os import environ
 from typing import Any, Mapping
 
@@ -129,6 +130,23 @@ def initialize_torch_distributed(
     if context.device.startswith("cuda"):
         torch_module.cuda.set_device(context.local_rank)
     if distributed.is_initialized():
+        return
+    if environ.get("AMVISION_DDP_DISABLE_LIBUV") == "1":
+        store = distributed.TCPStore(
+            context.master_addr,
+            context.master_port,
+            context.world_size,
+            context.rank == 0,
+            timedelta(minutes=5),
+            multi_tenant=True,
+            use_libuv=False,
+        )
+        distributed.init_process_group(
+            backend=context.backend,
+            store=store,
+            rank=context.rank,
+            world_size=context.world_size,
+        )
         return
     distributed.init_process_group(
         backend=context.backend,
