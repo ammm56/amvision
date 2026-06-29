@@ -80,13 +80,23 @@ def resolve_yolo_training_runtime_resources(
             },
         )
 
+    if gpu_count > 1:
+        raise InvalidRequestError(
+            "普通 YOLO 多 GPU 训练必须使用 DDP TrainingBackend，"
+            "不再支持单进程 DataParallel",
+            details={
+                "requested_gpu_count": gpu_count,
+                "available_gpu_count": available_gpu_count,
+            },
+        )
+
     device_ids = tuple(range(start_device_index, start_device_index + gpu_count))
     runtime_precision = "fp16" if requested_precision == "fp16" else "fp32"
     return YoloTrainingRuntimeResources(
         device=f"cuda:{device_ids[0]}",
         gpu_count=gpu_count,
         device_ids=device_ids,
-        distributed_mode="data-parallel" if gpu_count > 1 else "single-device",
+        distributed_mode="single-device",
         precision=runtime_precision,
     )
 
@@ -97,11 +107,15 @@ def build_yolo_data_parallel_model(
     model: Any,
     device_ids: tuple[int, ...],
 ) -> Any:
-    """按 device_ids 构建单机 DataParallel 训练模型。"""
+    """保留单设备模型返回，禁止继续构建单进程 DataParallel。"""
 
     if len(device_ids) <= 1:
         return model
-    return torch_module.nn.DataParallel(model, device_ids=list(device_ids))
+    raise InvalidRequestError(
+        "普通 YOLO 多 GPU 训练必须通过 DDP 子进程入口执行，"
+        "不能再构建 torch.nn.DataParallel",
+        details={"device_ids": list(device_ids)},
+    )
 
 
 def _read_requested_device(extra_options: dict[str, object]) -> str | None:

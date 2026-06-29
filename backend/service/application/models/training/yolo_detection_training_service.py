@@ -86,6 +86,9 @@ from backend.service.application.models.training.yolo_detection_task_warm_start 
     build_yolo_detection_warm_start_source_summary,
     resolve_yolo_detection_warm_start_reference,
 )
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -739,12 +742,32 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
     def process_training_task(self, task_id: str) -> YoloDetectionTrainingTaskResult:
         """执行一条已入队的 YOLO detection 训练任务。"""
 
+        task_result = self._process_training_task_internal(
+            task_id=task_id,
+            ddp_context=None,
+        )
+        if task_result is None:
+            raise ServiceConfigurationError(
+                "单进程 YOLO detection 训练没有写回任务结果",
+                details={"task_id": task_id, "model_type": self.model_type},
+            )
+        return task_result
+
+    def _process_training_task_internal(
+        self,
+        *,
+        task_id: str,
+        ddp_context: DdpTrainingContext | None,
+    ) -> YoloDetectionTrainingTaskResult | None:
+        """执行 YOLO detection 训练任务，可选接入 DDP rank 上下文。"""
+
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
+        is_rank_zero = ddp_context is None or ddp_context.is_rank_zero
         existing_result = self._build_existing_result(task_record)
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and is_rank_zero:
             raise InvalidRequestError(
                 "当前训练任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -807,70 +830,79 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         output_files = build_yolo_detection_training_output_files(output_object_prefix)
         require_complete_yolo_detection_training_output_files(output_files)
 
-        self.task_service.append_task_event(
-            build_yolo_detection_training_started_event(
-                task_id=task_id,
-                model_type=self.model_type,
-                started_at=self._now_iso(),
-                attempt_no=attempt_no,
-                output_files=output_files,
-                requested_precision=request.precision,
-                requested_gpu_count=request.gpu_count,
-                requested_evaluation_interval=resolved_evaluation_interval,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=clear_yolo_detection_training_control_requests(control),
+        if is_rank_zero:
+            self.task_service.append_task_event(
+                build_yolo_detection_training_started_event(
+                    task_id=task_id,
+                    model_type=self.model_type,
+                    started_at=self._now_iso(),
+                    attempt_no=attempt_no,
+                    output_files=output_files,
+                    requested_precision=request.precision,
+                    requested_gpu_count=request.gpu_count,
+                    requested_evaluation_interval=resolved_evaluation_interval,
+                    control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+                    control=clear_yolo_detection_training_control_requests(control),
+                )
             )
-        )
 
         try:
-            execution_result = self._resolve_training_runner()(
-                self._resolve_execution_request_cls()(
-                    dataset_storage=dataset_storage,
-                    manifest_payload=manifest_payload,
-                    model_scale=request.model_scale,
-                    model_type=self.model_type,
-                    implementation_mode=self.implementation_mode,
-                    evaluation_interval=request.evaluation_interval,
-                    max_epochs=request.max_epochs,
-                    batch_size=request.batch_size,
-                    gpu_count=request.gpu_count,
-                    precision=request.precision,
-                    warm_start_checkpoint_path=(
-                        warm_start_reference.checkpoint_path
-                        if warm_start_reference is not None
-                        else None
-                    ),
-                    resume_checkpoint_path=(
-                        dataset_storage.resolve(resume_checkpoint_object_key)
-                        if resume_checkpoint_object_key is not None
-                        else None
-                    ),
-                    warm_start_source_summary=(
-                        build_yolo_detection_warm_start_source_summary(
-                            warm_start_reference
-                        )
-                        if warm_start_reference is not None
-                        else None
-                    ),
-                    input_size=request.input_size,
-                    extra_options=dict(request.extra_options),
-                    batch_callback=lambda progress: self._append_batch_progress(
+            execution_request_kwargs = {
+                "dataset_storage": dataset_storage,
+                "manifest_payload": manifest_payload,
+                "model_scale": request.model_scale,
+                "model_type": self.model_type,
+                "implementation_mode": self.implementation_mode,
+                "evaluation_interval": request.evaluation_interval,
+                "max_epochs": request.max_epochs,
+                "batch_size": request.batch_size,
+                "gpu_count": request.gpu_count,
+                "precision": request.precision,
+                "warm_start_checkpoint_path": (
+                    warm_start_reference.checkpoint_path
+                    if warm_start_reference is not None
+                    else None
+                ),
+                "resume_checkpoint_path": (
+                    dataset_storage.resolve(resume_checkpoint_object_key)
+                    if resume_checkpoint_object_key is not None
+                    else None
+                ),
+                "warm_start_source_summary": (
+                    build_yolo_detection_warm_start_source_summary(
+                        warm_start_reference
+                    )
+                    if warm_start_reference is not None
+                    else None
+                ),
+                "input_size": request.input_size,
+                "extra_options": dict(request.extra_options),
+                "batch_callback": (
+                    (lambda progress: self._append_batch_progress(
                         task_id=task_id,
                         request=request,
                         output_files=output_files,
                         attempt_no=attempt_no,
                         resolved_evaluation_interval=resolved_evaluation_interval,
                         progress=progress,
-                    ),
-                    epoch_callback=lambda progress: self._handle_epoch_progress(
+                    ))
+                    if is_rank_zero
+                    else None
+                ),
+                "epoch_callback": (
+                    (lambda progress: self._handle_epoch_progress(
                         task_id=task_id,
                         request=request,
                         output_files=output_files,
                         attempt_no=attempt_no,
                         resolved_evaluation_interval=resolved_evaluation_interval,
                         progress=progress,
-                    ),
-                    savepoint_callback=lambda savepoint: (
+                    ))
+                    if is_rank_zero
+                    else None
+                ),
+                "savepoint_callback": (
+                    (lambda savepoint: (
                         self._handle_training_savepoint(
                             task_id=task_id,
                             request=request,
@@ -878,9 +910,18 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                             output_files=output_files,
                             savepoint=savepoint,
                         )
-                    ),
-                )
+                    ))
+                    if is_rank_zero
+                    else None
+                ),
+            }
+            if ddp_context is not None:
+                execution_request_kwargs["ddp_context"] = ddp_context
+            execution_result = self._resolve_training_runner()(
+                self._resolve_execution_request_cls()(**execution_request_kwargs)
             )
+            if not is_rank_zero:
+                return None
             write_yolo_detection_training_execution_outputs(
                 dataset_storage=dataset_storage,
                 output_files=output_files,
@@ -977,6 +1018,51 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 )
             )
             raise
+
+    def read_requested_gpu_count(self, task_id: str) -> int:
+        """读取训练任务请求的 GPU 数量，用于 worker 选择执行后端。"""
+
+        request = self._build_request_from_task_record(
+            self._require_training_task(task_id)
+        )
+        if request.gpu_count is None:
+            return 1
+        return max(1, int(request.gpu_count))
+
+    def get_existing_training_result(
+        self,
+        task_id: str,
+    ) -> YoloDetectionTrainingTaskResult | None:
+        """从任务结果中读取已写回的训练结果。"""
+
+        return self._build_existing_result(self._require_training_task(task_id))
+
+    def process_detection_ddp_rank(
+        self,
+        *,
+        task_id: str,
+        ddp_context: DdpTrainingContext,
+    ) -> None:
+        """普通 YOLO detection DDP rank 执行入口。
+
+        YOLOv8 / YOLO11 / YOLO26 detection 在各自 core 中执行真实 rank
+        训练语义，service 只负责把平台任务交给当前 rank。
+        """
+
+        self._require_training_task(task_id)
+        if not ddp_context.is_distributed:
+            raise ServiceConfigurationError(
+                f"{self.model_label} detection DDP rank 入口必须在 torchrun 中执行",
+                details={
+                    "task_id": task_id,
+                    "model_type": self.model_type,
+                    "world_size": ddp_context.world_size,
+                },
+            )
+        self._process_training_task_internal(
+            task_id=task_id,
+            ddp_context=ddp_context,
+        )
 
     def _validate_request(self, request: YoloDetectionTrainingTaskRequest) -> None:
         """校验训练任务创建请求。"""

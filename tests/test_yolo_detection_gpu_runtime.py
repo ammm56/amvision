@@ -42,35 +42,30 @@ class _FakeTorch:
         )
 
 
-def test_yolo_detection_runtime_uses_requested_gpu_count() -> None:
-    """gpu_count 大于 1 时应解析成单进程 DataParallel 资源。"""
+def test_yolo_detection_runtime_rejects_multi_gpu_data_parallel_path() -> None:
+    """gpu_count 大于 1 时必须走 DDP TrainingBackend，不能再解析为 DataParallel。"""
+
+    with pytest.raises(InvalidRequestError, match="DDP TrainingBackend"):
+        resolve_yolo_training_runtime_resources(
+            torch_module=_FakeTorch(cuda_available=True, device_count=4),
+            requested_gpu_count=2,
+            requested_precision="fp16",
+        )
+
+
+def test_yolo_detection_runtime_respects_single_cuda_device_offset() -> None:
+    """device=cuda:<index> 时单 GPU 训练应从指定设备启动。"""
 
     runtime = resolve_yolo_training_runtime_resources(
         torch_module=_FakeTorch(cuda_available=True, device_count=4),
-        requested_gpu_count=2,
-        requested_precision="fp16",
-    )
-
-    assert runtime.device == "cuda:0"
-    assert runtime.gpu_count == 2
-    assert runtime.device_ids == (0, 1)
-    assert runtime.distributed_mode == "data-parallel"
-    assert runtime.precision == "fp16"
-
-
-def test_yolo_detection_runtime_respects_cuda_device_offset() -> None:
-    """device=cuda:<index> 时应从指定 GPU 开始分配连续设备。"""
-
-    runtime = resolve_yolo_training_runtime_resources(
-        torch_module=_FakeTorch(cuda_available=True, device_count=4),
-        requested_gpu_count=2,
+        requested_gpu_count=1,
         requested_precision="fp32",
         extra_options={"device": "cuda:1"},
     )
 
     assert runtime.device == "cuda:1"
-    assert runtime.device_ids == (1, 2)
-    assert runtime.distributed_mode == "data-parallel"
+    assert runtime.device_ids == (1,)
+    assert runtime.distributed_mode == "single-device"
 
 
 def test_yolo_detection_runtime_rejects_gpu_count_without_cuda() -> None:

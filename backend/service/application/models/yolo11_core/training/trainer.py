@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
+)
 from backend.service.application.models.yolo11_core.training.checkpoint import (
     build_yolo11_detection_epoch_checkpoint_update,
 )
@@ -139,12 +142,14 @@ def run_yolo11_detection_training_loop(
     | None = None,
     savepoint_callback: Callable[[Yolo11DetectionTrainingSavepointPayload], None]
     | None = None,
+    ddp_context: DdpTrainingContext | None = None,
 ) -> Yolo11DetectionTrainingLoopResult:
     """执行 YOLO11 detection 从 resume epoch 到 max epoch 的完整训练循环。"""
 
     resolved_checkpoint_model = (
         checkpoint_model if checkpoint_model is not None else model
     )
+    is_rank_zero = ddp_context is None or ddp_context.is_rank_zero
     global_iteration = int(initial_global_iteration)
     latest_checkpoint_bytes = b""
     best_checkpoint_bytes = previous_best_checkpoint_bytes
@@ -173,6 +178,7 @@ def run_yolo11_detection_training_loop(
             compute_loss=compute_loss,
             grad_clip_norm=grad_clip_norm,
             ema=ema,
+            ddp_context=ddp_context,
             batch_callback=batch_callback,
         )
         global_iteration = epoch_result.global_iteration
@@ -180,95 +186,131 @@ def run_yolo11_detection_training_loop(
         train_metrics["epoch"] = epoch
         metrics_history.append(train_metrics)
 
-        validation_snapshot, validation_metrics, current_metric_value = (
-            _run_yolo11_epoch_validation(
+        validation_should_run = should_run_yolo11_detection_validation(
+            epoch=epoch,
+            max_epochs=max_epochs,
+            evaluation_interval=evaluation_interval,
+            validation_sample_count=len(validation_samples),
+        )
+        if validation_should_run and is_rank_zero:
+            validation_snapshot, validation_metrics, current_metric_value = (
+                _run_yolo11_epoch_validation(
+                    epoch=epoch,
+                    max_epochs=max_epochs,
+                    evaluation_interval=evaluation_interval,
+                    validation_sample_count=len(validation_samples),
+                    best_metric_name=best_metric_name,
+                    evaluate_model=evaluate_model,
+                    validation_history=validation_history,
+                    evaluated_epochs=evaluated_epochs,
+                )
+            )
+        else:
+            validation_snapshot, validation_metrics, current_metric_value = None, {}, None
+        if validation_should_run:
+            _barrier_yolo11_detection_ddp_rank(
+                torch_module=torch_module,
+                ddp_context=ddp_context,
+            )
+        validation_ran = validation_snapshot is not None
+        if is_rank_zero:
+            best_metric_update = resolve_yolo11_detection_best_metric_update(
+                validation_ran=validation_ran,
+                current_metric_value=current_metric_value,
+                train_loss=float(train_metrics["loss"]),
+                best_metric_value=current_best_metric_value,
+            )
+            improved_best = best_metric_update.improved
+            candidate_best_metric_value = best_metric_update.candidate_value
+        else:
+            improved_best = False
+            candidate_best_metric_value = current_best_metric_value
+
+        scheduler.step()
+        if is_rank_zero:
+            checkpoint_update = build_yolo11_detection_epoch_checkpoint_update(
+                torch_module=torch_module,
+                model=resolved_checkpoint_model,
+                ema_model=getattr(ema, "model", None),
+                ema_updates=getattr(ema, "updates", None),
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                model_type="yolo11",
+                model_scale=model_scale,
+                category_names=category_names,
+                input_size=input_size,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                epoch=epoch,
+                precision=precision,
+                validation_split_name=validation_split_name,
+                evaluation_interval=evaluation_interval,
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if has_validation else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if has_validation else None
+                ),
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                min_lr_ratio=min_lr_ratio,
+                grad_clip_norm=grad_clip_norm,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                evaluated_epochs=tuple(evaluated_epochs),
+                warm_start_summary=warm_start_summary,
+                implementation_mode=implementation_mode,
+                augmentation_options=augmentation_options,
+                best_metric_name=best_metric_name,
+                candidate_best_metric_value=candidate_best_metric_value,
+                previous_best_checkpoint_bytes=best_checkpoint_bytes,
+                improved_best=improved_best,
+            )
+            latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
+            best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
+            current_best_metric_value = checkpoint_update.best_metric_value
+
+        control_decision = (
+            _resolve_yolo11_epoch_control_decision(
+                epoch_callback=epoch_callback,
                 epoch=epoch,
                 max_epochs=max_epochs,
                 evaluation_interval=evaluation_interval,
-                validation_sample_count=len(validation_samples),
+                validation_ran=validation_ran,
+                evaluated_epochs=tuple(evaluated_epochs),
+                train_metrics=train_metrics,
+                validation_metrics=validation_metrics,
+                validation_snapshot=validation_snapshot,
                 best_metric_name=best_metric_name,
-                evaluate_model=evaluate_model,
-                validation_history=validation_history,
-                evaluated_epochs=evaluated_epochs,
+                current_metric_value=current_metric_value,
+                best_metric_value=current_best_metric_value,
+                has_validation=has_validation,
+                metrics_history=metrics_history,
             )
+            if is_rank_zero
+            else None
         )
-        validation_ran = validation_snapshot is not None
-        best_metric_update = resolve_yolo11_detection_best_metric_update(
-            validation_ran=validation_ran,
-            current_metric_value=current_metric_value,
-            train_loss=float(train_metrics["loss"]),
-            best_metric_value=current_best_metric_value,
-        )
-        improved_best = best_metric_update.improved
-        candidate_best_metric_value = best_metric_update.candidate_value
-
-        scheduler.step()
-        checkpoint_update = build_yolo11_detection_epoch_checkpoint_update(
+        control_decision = _broadcast_yolo11_detection_epoch_control(
             torch_module=torch_module,
-            model=resolved_checkpoint_model,
-            ema_model=getattr(ema, "model", None),
-            ema_updates=getattr(ema, "updates", None),
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            model_type="yolo11",
-            model_scale=model_scale,
-            category_names=category_names,
-            input_size=input_size,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            epoch=epoch,
-            precision=precision,
-            validation_split_name=validation_split_name,
-            evaluation_interval=evaluation_interval,
-            evaluation_confidence_threshold=(
-                evaluation_confidence_threshold if has_validation else None
-            ),
-            evaluation_nms_threshold=(
-                evaluation_nms_threshold if has_validation else None
-            ),
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            min_lr_ratio=min_lr_ratio,
-            grad_clip_norm=grad_clip_norm,
-            metrics_history=metrics_history,
-            validation_history=validation_history,
-            evaluated_epochs=tuple(evaluated_epochs),
-            warm_start_summary=warm_start_summary,
-            implementation_mode=implementation_mode,
-            augmentation_options=augmentation_options,
-            best_metric_name=best_metric_name,
-            candidate_best_metric_value=candidate_best_metric_value,
-            previous_best_checkpoint_bytes=best_checkpoint_bytes,
-            improved_best=improved_best,
-        )
-        latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
-        best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
-        current_best_metric_value = checkpoint_update.best_metric_value
-
-        control_decision = _resolve_yolo11_epoch_control_decision(
-            epoch_callback=epoch_callback,
-            epoch=epoch,
-            max_epochs=max_epochs,
-            evaluation_interval=evaluation_interval,
-            validation_ran=validation_ran,
-            evaluated_epochs=tuple(evaluated_epochs),
-            train_metrics=train_metrics,
-            validation_metrics=validation_metrics,
-            validation_snapshot=validation_snapshot,
-            best_metric_name=best_metric_name,
-            current_metric_value=current_metric_value,
-            best_metric_value=current_best_metric_value,
-            has_validation=has_validation,
-            metrics_history=metrics_history,
+            ddp_context=ddp_context,
+            control_decision=control_decision,
         )
         if control_decision.save_checkpoint:
+            if not is_rank_zero:
+                if control_decision.pause_training:
+                    return _build_non_rank0_yolo11_detection_training_loop_result(
+                        best_metric_name=best_metric_name,
+                        best_metric_value=current_best_metric_value,
+                        metrics_history=metrics_history,
+                    )
+                continue
             savepoint = build_yolo11_detection_training_savepoint_payload(
                 epoch=epoch,
                 latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -282,8 +324,20 @@ def run_yolo11_detection_training_loop(
             if control_decision.pause_training:
                 raise Yolo11DetectionTrainingPausedError(savepoint)
         if control_decision.terminate_training:
+            if not is_rank_zero:
+                return _build_non_rank0_yolo11_detection_training_loop_result(
+                    best_metric_name=best_metric_name,
+                    best_metric_value=current_best_metric_value,
+                    metrics_history=metrics_history,
+                )
             raise Yolo11DetectionTrainingTerminatedError()
 
+    if not is_rank_zero:
+        return _build_non_rank0_yolo11_detection_training_loop_result(
+            best_metric_name=best_metric_name,
+            best_metric_value=current_best_metric_value,
+            metrics_history=metrics_history,
+        )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
     return Yolo11DetectionTrainingLoopResult(
@@ -330,6 +384,65 @@ def _run_yolo11_epoch_validation(
     }
     evaluated_epochs.append(epoch)
     return validation_snapshot, validation_metrics, validation_metrics[best_metric_name]
+
+
+def _barrier_yolo11_detection_ddp_rank(
+    *,
+    torch_module: Any,
+    ddp_context: DdpTrainingContext | None,
+) -> None:
+    """在 YOLO11 detection DDP rank 之间等待 rank0 完成 validation。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return
+    torch_module.distributed.barrier()
+
+
+def _broadcast_yolo11_detection_epoch_control(
+    *,
+    torch_module: Any,
+    ddp_context: DdpTrainingContext | None,
+    control_decision: Yolo11DetectionEpochControlDecision | None,
+) -> Yolo11DetectionEpochControlDecision:
+    """把 rank0 的 epoch 控制命令广播到所有 YOLO11 detection rank。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        if control_decision is None:
+            return resolve_yolo11_detection_epoch_control(
+                save_checkpoint_requested=False,
+                pause_training_requested=False,
+                terminate_training_requested=False,
+            )
+        return control_decision
+    objects = [control_decision if ddp_context.is_rank_zero else None]
+    torch_module.distributed.broadcast_object_list(objects, src=0)
+    broadcast_decision = objects[0]
+    if isinstance(broadcast_decision, Yolo11DetectionEpochControlDecision):
+        return broadcast_decision
+    return resolve_yolo11_detection_epoch_control(
+        save_checkpoint_requested=False,
+        pause_training_requested=False,
+        terminate_training_requested=False,
+    )
+
+
+def _build_non_rank0_yolo11_detection_training_loop_result(
+    *,
+    best_metric_name: str,
+    best_metric_value: float,
+    metrics_history: list[dict[str, object]],
+) -> Yolo11DetectionTrainingLoopResult:
+    """生成非 rank0 的空产物结果，避免重复写 checkpoint 和平台状态。"""
+
+    return Yolo11DetectionTrainingLoopResult(
+        latest_checkpoint_bytes=b"",
+        best_checkpoint_bytes=b"",
+        best_metric_name=best_metric_name,
+        best_metric_value=float(best_metric_value),
+        metrics_history=metrics_history,
+        validation_history=[],
+        evaluated_epochs=[],
+    )
 
 
 def _resolve_yolo11_epoch_control_decision(

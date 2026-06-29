@@ -10,6 +10,9 @@ from backend.service.application.backends import (
 from backend.service.application.models.training.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
 )
+from backend.workers.training.yolo_detection_ddp_runner import (
+    run_yolo_detection_training_with_optional_ddp,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -40,7 +43,11 @@ class SqlAlchemyYoloV8TrainerRunner:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
-        task_result = service.process_training_task(request.training_task_id)
+        task_result = run_yolo_detection_training_with_optional_ddp(
+            service=service,
+            model_type="yolov8",
+            training_task_id=request.training_task_id,
+        )
         return YoloV8TrainingRunResult(
             training_task_id=task_result.task_id,
             status=task_result.status,

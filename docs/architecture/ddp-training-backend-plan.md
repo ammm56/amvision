@@ -11,7 +11,7 @@
 | 模型 | 当前多 GPU 行为 | 结论 |
 | --- | --- | --- |
 | YOLOX detection | `gpu_count > 1` 已走 torchrun DDP 子进程；同步训练入口拒绝 `DataParallel`；rank0 写任务事件和产物，rank>0 只参与训练 | 代码链路已接入，仍需真实多 GPU 硬件 smoke |
-| YOLOv8 / YOLO11 / YOLO26 detection | `gpu_count > 1` 当前走单进程 `torch.nn.DataParallel` | 过渡实现，需要替换为普通 YOLO core 内 DDP |
+| YOLOv8 / YOLO11 / YOLO26 detection | `gpu_count > 1` 已进入普通 YOLO detection torchrun 启动入口；各自 core 已接入 per-rank batch、`DistributedSampler`、`DistributedDataParallel`、rank0 validation/checkpoint 和控制广播 | 代码链路已接入，仍需真实多 GPU 硬件 smoke |
 | YOLOv8 / YOLO11 / YOLO26 classification / segmentation / pose / obb | 当前没有公开顶层 `gpu_count`，主要按单设备训练 | 需要按任务逐项补 DDP |
 | RF-DETR detection / segmentation | core 内已接近 Lightning DDP 的 `devices / strategy` 语义 | 需要统一平台 TrainingBackend 字段、事件和产物规则 |
 
@@ -133,4 +133,30 @@ YOLOX DDP 仍需在真实多 GPU 机器上补硬件 smoke：短训练、pause / 
 
 当前单 GPU 开发机已验证：当训练请求 `gpu_count > 1` 且机器 GPU 数量不足时，YOLOX worker 会明确拒绝 DDP 启动，不会静默回退到单 GPU 或 `DataParallel`。真实 2 GPU 机器上的吞吐、collective、checkpoint resume 和 deployment smoke 仍需单独记录。
 
-YOLOv8 / YOLO11 / YOLO26 的 `gpu_count > 1` 仍是待替换的过渡行为。
+普通 YOLO detection 已新增：
+
+- `backend/service/application/models/yolo_core_common/training/ddp.py`
+- `backend/workers/training/yolo_detection_ddp_entry.py`
+- `backend/workers/training/yolo_detection_ddp_runner.py`
+
+当前普通 YOLO detection 已完成第一阶段：
+
+- YOLOv8 / YOLO11 / YOLO26 worker 会在 `gpu_count > 1` 时启动 torchrun 子进程。
+- torchrun 子进程会解析 `rank / local_rank / world_size / backend`，并进入对应模型 detection service。
+- 单进程训练资源解析不再构建 `torch.nn.DataParallel`，直接提示必须使用 DDP TrainingBackend。
+
+YOLOv8 / YOLO11 / YOLO26 detection 已接入真实 core rank 训练语义：
+
+- 前端 / API `batch_size` 仍按总 batch size 解释，DDP rank 内按 `world_size` 拆成 per-rank batch，不能整除时明确拒绝。
+- 训练样本通过 `torch.utils.data.distributed.DistributedSampler` 按 rank 分片。
+- 训练模型使用 `torch.nn.parallel.DistributedDataParallel` 包装，不再经过 `DataParallel`。
+- rank0 执行 validation、checkpoint、任务事件、对象存储写入和 task result 回写。
+- rank0 读取 pause / save / terminate 控制状态，并广播给其他 rank。
+- rank>0 只参与训练和 collective，不写数据库、不写对象存储、不发送任务事件。
+
+普通 YOLO detection 仍需在真实 2 GPU 硬件上补 smoke：
+
+- 短训练、pause / save / terminate、resume。
+- validation、rank0-only checkpoint 和 task result 回写。
+- conversion 与 deployment 回归。
+- 吞吐、日志、失败诊断和 rank 退出状态记录。

@@ -7,6 +7,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
@@ -59,15 +62,20 @@ def run_yolo26_detection_training_epoch(
     ema_model: Any | None = None,
     gradient_model: Any | None = None,
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
+    ddp_context: DdpTrainingContext | None = None,
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
 ) -> Yolo26DetectionTrainingEpochResult:
     """执行 YOLO26 detection 一个 epoch 的 batch 循环。"""
 
-    shuffled_samples = list(samples)
-    random.shuffle(shuffled_samples)
-    available_samples = tuple(shuffled_samples)
-    max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
+    epoch_samples = _resolve_yolo26_detection_epoch_samples(
+        torch_module=torch_module,
+        samples=samples,
+        epoch=epoch,
+        ddp_context=ddp_context,
+    )
+    available_samples = tuple(samples if ddp_context is not None else epoch_samples)
+    max_iterations = max(1, (len(epoch_samples) + batch_size - 1) // batch_size)
     epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
     resolved_loss_model = loss_model if loss_model is not None else model
     resolved_ema_model = ema_model if ema_model is not None else resolved_loss_model
@@ -79,7 +87,7 @@ def run_yolo26_detection_training_epoch(
     last_optimizer_step_iteration = 0
 
     for iteration, sample_batch in enumerate(
-        _iter_yolo26_detection_batches(shuffled_samples, batch_size),
+        _iter_yolo26_detection_batches(epoch_samples, batch_size),
         start=1,
     ):
         global_iteration += 1
@@ -128,7 +136,7 @@ def run_yolo26_detection_training_epoch(
                 loss_components[metric_name].detach().item()
             )
 
-        if batch_callback is not None:
+        if batch_callback is not None and _is_yolo26_detection_rank_zero(ddp_context):
             batch_callback(
                 Yolo26DetectionTrainingBatchProgress(
                     epoch=epoch,
@@ -150,13 +158,76 @@ def run_yolo26_detection_training_epoch(
                 )
             )
 
-    return Yolo26DetectionTrainingEpochResult(
-        global_iteration=global_iteration,
+    train_metrics = _all_reduce_yolo26_detection_train_metrics(
+        torch_module=torch_module,
         train_metrics={
             metric_name: round(metric_total / max_iterations, 6)
             for metric_name, metric_total in epoch_losses.items()
         },
+        ddp_context=ddp_context,
     )
+    return Yolo26DetectionTrainingEpochResult(
+        global_iteration=global_iteration,
+        train_metrics=train_metrics,
+    )
+
+
+def _resolve_yolo26_detection_epoch_samples(
+    *,
+    torch_module: Any,
+    samples: tuple[Any, ...],
+    epoch: int,
+    ddp_context: DdpTrainingContext | None,
+) -> list[Any]:
+    """按单卡或 DDP rank 解析当前 epoch 应训练的样本 shard。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        shuffled_samples = list(samples)
+        random.shuffle(shuffled_samples)
+        return shuffled_samples
+    sampler = torch_module.utils.data.distributed.DistributedSampler(
+        list(range(len(samples))),
+        num_replicas=ddp_context.world_size,
+        rank=ddp_context.rank,
+        shuffle=True,
+        seed=0,
+        drop_last=False,
+    )
+    sampler.set_epoch(max(0, int(epoch) - 1))
+    return [samples[index] for index in sampler]
+
+
+def _all_reduce_yolo26_detection_train_metrics(
+    *,
+    torch_module: Any,
+    train_metrics: dict[str, float],
+    ddp_context: DdpTrainingContext | None,
+) -> dict[str, float]:
+    """在 DDP rank 间平均训练指标，保证 rank0 事件展示全局均值。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return train_metrics
+    metric_names = tuple(train_metrics)
+    metric_tensor = torch_module.tensor(
+        [float(train_metrics[name]) for name in metric_names],
+        dtype=torch_module.float32,
+        device=ddp_context.device,
+    )
+    torch_module.distributed.all_reduce(
+        metric_tensor,
+        op=torch_module.distributed.ReduceOp.SUM,
+    )
+    metric_tensor /= max(1, int(ddp_context.world_size))
+    return {
+        name: round(float(metric_tensor[index].item()), 6)
+        for index, name in enumerate(metric_names)
+    }
+
+
+def _is_yolo26_detection_rank_zero(ddp_context: DdpTrainingContext | None) -> bool:
+    """判断当前进程是否可以发出 YOLO26 detection 训练进度事件。"""
+
+    return ddp_context is None or ddp_context.is_rank_zero
 
 
 def _iter_yolo26_detection_batches(

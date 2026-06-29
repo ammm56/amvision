@@ -6,6 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
+)
 from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingBatchProgress,
     YoloDetectionTrainingControlCommand,
@@ -36,6 +39,7 @@ class YoloDetectionTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
+    ddp_context: DdpTrainingContext | None = None
     batch_callback: Callable[[YoloDetectionTrainingBatchProgress], None] | None = None
     epoch_callback: (
         Callable[

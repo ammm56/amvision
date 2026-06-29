@@ -67,8 +67,11 @@ from backend.service.application.models.yolo11_core.training.detection_support i
     read_yolo11_int_option,
     require_yolo11_detection_training_imports,
     resolve_yolo11_detection_input_size,
-    resolve_yolo11_detection_runtime,
+    resolve_yolo11_detection_runtime as resolve_yolo11_detection_single_process_runtime,
     unwrap_yolo11_detection_outputs,
+)
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
 )
 from backend.service.application.models.yolo11_core.weights import (
     load_yolo11_checkpoint_file,
@@ -148,13 +151,20 @@ def run_yolo11_detection_training(
         ),
     )
     extra_options = dict(request.extra_options or {})
+    ddp_context = request.ddp_context
     device, gpu_count, device_ids, distributed_mode, runtime_precision = (
         resolve_yolo11_detection_runtime(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
             extra_options=extra_options,
+            ddp_context=ddp_context,
         )
+    )
+    is_rank_zero = ddp_context is None or ddp_context.is_rank_zero
+    rank_batch_size = _resolve_yolo11_per_rank_batch_size(
+        global_batch_size=batch_size,
+        ddp_context=ddp_context,
     )
     training_options = _resolve_yolo11_detection_training_options(extra_options)
     augmentation_options = build_yolo11_task_augmentation_options(extra_options)
@@ -243,10 +253,11 @@ def run_yolo11_detection_training(
     )
     if resume_state is not None and resume_state.ema_state_dict is not None:
         ema.load_state_dict(resume_state.ema_state_dict, strict=False)
-    training_model = build_yolo_data_parallel_model(
-        torch_module=imports.torch,
+    training_model = _wrap_yolo11_detection_training_model(
+        imports=imports,
         model=model,
         device_ids=device_ids,
+        ddp_context=ddp_context,
     )
 
     autocast_context = build_yolo11_autocast_context(
@@ -270,7 +281,7 @@ def run_yolo11_detection_training(
     execution_plan = plan_yolo11_detection_training_execution(
         train_sample_count=len(train_samples),
         validation_sample_count=len(validation_samples),
-        batch_size=batch_size,
+        batch_size=rank_batch_size,
         max_epochs=max_epochs,
         resume_epoch=resume_state.resume_epoch if resume_state is not None else 0,
         resume_best_metric_name=(
@@ -334,7 +345,7 @@ def run_yolo11_detection_training(
             ema=ema,
             train_samples=train_samples,
             validation_samples=validation_samples,
-            batch_size=batch_size,
+            batch_size=rank_batch_size,
             input_size=input_size,
             max_epochs=max_epochs,
             resume_epoch=resume_state.resume_epoch if resume_state is not None else 0,
@@ -422,19 +433,20 @@ def run_yolo11_detection_training(
             previous_best_checkpoint_bytes=best_checkpoint_bytes,
             batch_callback=(
                 _build_yolo11_batch_progress_adapter(request.batch_callback)
-                if request.batch_callback is not None
+                if request.batch_callback is not None and is_rank_zero
                 else None
             ),
             epoch_callback=(
                 _build_yolo11_epoch_progress_adapter(request.epoch_callback)
-                if request.epoch_callback is not None
+                if request.epoch_callback is not None and is_rank_zero
                 else None
             ),
             savepoint_callback=(
                 _build_yolo11_savepoint_adapter(request.savepoint_callback)
-                if request.savepoint_callback is not None
+                if request.savepoint_callback is not None and is_rank_zero
                 else None
             ),
+            ddp_context=ddp_context,
         )
     except Yolo11DetectionTrainingPausedError as error:
         raise YoloDetectionTrainingPausedError(
@@ -537,6 +549,140 @@ def _require_yolo11_detection_request(
             "YOLO11 detection 训练入口只支持 yolo11 model_type",
             details={"model_type": request.model_type},
         )
+
+
+def resolve_yolo11_detection_runtime(
+    *,
+    imports: Any,
+    requested_gpu_count: int | None,
+    requested_precision: str | None,
+    extra_options: dict[str, object] | None,
+    ddp_context: DdpTrainingContext | None,
+) -> tuple[str, int, tuple[int, ...], str, str]:
+    """解析 YOLO11 detection 单进程或 DDP rank 使用的运行时资源。"""
+
+    if ddp_context is None:
+        return resolve_yolo11_detection_single_process_runtime(
+            imports=imports,
+            requested_gpu_count=requested_gpu_count,
+            requested_precision=requested_precision,
+            extra_options=extra_options,
+        )
+    if not ddp_context.is_distributed:
+        raise InvalidRequestError("YOLO11 detection DDP 上下文的 world_size 必须大于 1")
+    if requested_gpu_count is not None and requested_gpu_count != ddp_context.world_size:
+        raise InvalidRequestError(
+            "YOLO11 detection DDP 上下文与训练请求 gpu_count 不一致",
+            details={
+                "requested_gpu_count": requested_gpu_count,
+                "world_size": ddp_context.world_size,
+            },
+        )
+    if ddp_context.device.startswith("cuda") and not imports.torch.cuda.is_available():
+        raise InvalidRequestError("YOLO11 detection DDP 请求使用 CUDA，但当前环境没有可用 GPU")
+    if ddp_context.device.startswith("cuda"):
+        imports.torch.cuda.set_device(ddp_context.local_rank)
+    precision = _resolve_yolo11_ddp_runtime_precision(
+        imports=imports,
+        requested_precision=requested_precision,
+        extra_options=extra_options,
+        device=ddp_context.device,
+    )
+    return (
+        ddp_context.device,
+        ddp_context.world_size,
+        tuple(range(ddp_context.world_size)),
+        "ddp",
+        precision,
+    )
+
+
+def _resolve_yolo11_ddp_runtime_precision(
+    *,
+    imports: Any,
+    requested_precision: str | None,
+    extra_options: dict[str, object] | None,
+    device: str,
+) -> str:
+    """解析 YOLO11 detection DDP rank 内使用的 precision。"""
+
+    raw_precision = requested_precision or (
+        str(extra_options.get("precision"))
+        if isinstance(extra_options, dict) and extra_options.get("precision") is not None
+        else None
+    )
+    precision = raw_precision or "fp32"
+    if precision not in {"fp8", "fp16", "fp32"}:
+        raise InvalidRequestError(
+            "precision 必须是 fp8、fp16 或 fp32",
+            details={"precision": precision},
+        )
+    if precision == "fp8":
+        raise InvalidRequestError("YOLO11 detection DDP 训练暂不支持 fp8")
+    if precision == "fp16" and not device.startswith("cuda"):
+        raise InvalidRequestError("fp16 DDP 训练需要 CUDA 环境")
+    if precision == "fp16" and not hasattr(imports.torch, "autocast"):
+        raise ServiceConfigurationError("当前 torch 版本缺少 autocast，无法执行 fp16 DDP 训练")
+    return precision
+
+
+def _resolve_yolo11_per_rank_batch_size(
+    *,
+    global_batch_size: int,
+    ddp_context: DdpTrainingContext | None,
+) -> int:
+    """把前端总 batch size 拆成单个 YOLO11 detection DDP rank 的 batch size。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return global_batch_size
+    if global_batch_size < ddp_context.world_size:
+        raise InvalidRequestError(
+            "YOLO11 detection DDP 总 batch size 不能小于 GPU 数量",
+            details={
+                "batch_size": global_batch_size,
+                "world_size": ddp_context.world_size,
+            },
+        )
+    if global_batch_size % ddp_context.world_size != 0:
+        raise InvalidRequestError(
+            "YOLO11 detection DDP 总 batch size 必须能被 GPU 数量整除",
+            details={
+                "batch_size": global_batch_size,
+                "world_size": ddp_context.world_size,
+            },
+        )
+    return max(1, global_batch_size // ddp_context.world_size)
+
+
+def _wrap_yolo11_detection_training_model(
+    *,
+    imports: Any,
+    model: Any,
+    device_ids: tuple[int, ...],
+    ddp_context: DdpTrainingContext | None,
+) -> Any:
+    """按单进程或 DDP rank 包装 YOLO11 detection 训练模型。"""
+
+    if ddp_context is None:
+        return build_yolo_data_parallel_model(
+            torch_module=imports.torch,
+            model=model,
+            device_ids=device_ids,
+        )
+    distributed = imports.torch.distributed
+    if not distributed.is_available() or not distributed.is_initialized():
+        raise InvalidRequestError("YOLO11 detection DDP 训练必须先初始化 torch.distributed")
+    if ddp_context.device.startswith("cuda"):
+        return imports.torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=(ddp_context.local_rank,),
+            output_device=ddp_context.local_rank,
+            broadcast_buffers=False,
+        )
+    return imports.torch.nn.parallel.DistributedDataParallel(
+        model,
+        broadcast_buffers=False,
+    )
 
 
 def _resolve_yolo11_detection_training_options(

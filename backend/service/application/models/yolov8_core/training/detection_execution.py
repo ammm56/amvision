@@ -60,6 +60,9 @@ from backend.service.application.models.yolov8_core.training.savepoint import (
 from backend.service.application.models.yolov8_core.training.validation import (
     evaluate_yolov8_detection_validation_losses,
 )
+from backend.service.application.models.support.distributed_training import (
+    DdpTrainingContext,
+)
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
     load_yolo_checkpoint,
 )
@@ -171,6 +174,7 @@ class YoloV8DetectionTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
+    ddp_context: DdpTrainingContext | None = None
     batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None
     epoch_callback: (
         Callable[
@@ -352,13 +356,20 @@ def run_yolov8_detection_training(
         int(request.evaluation_interval or YOLOV8_DETECTION_DEFAULT_EVALUATION_INTERVAL),
     )
     extra_options = dict(request.extra_options or {})
+    ddp_context = request.ddp_context
     device, gpu_count, device_ids, distributed_mode, runtime_precision = (
         _resolve_runtime(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
             extra_options=extra_options,
+            ddp_context=ddp_context,
         )
+    )
+    is_rank_zero = ddp_context is None or ddp_context.is_rank_zero
+    rank_batch_size = _resolve_per_rank_batch_size(
+        global_batch_size=batch_size,
+        ddp_context=ddp_context,
     )
     learning_rate = _read_float_option(extra_options, "learning_rate", default=0.01)
     weight_decay = _read_float_option(extra_options, "weight_decay", default=5e-4)
@@ -510,10 +521,11 @@ def run_yolov8_detection_training(
     )
     if resume_state is not None and resume_state.ema_state_dict is not None:
         ema.load_state_dict(resume_state.ema_state_dict, strict=False)
-    training_model = build_yolo_data_parallel_model(
-        torch_module=imports.torch,
+    training_model = _wrap_yolov8_detection_training_model(
+        imports=imports,
         model=model,
         device_ids=device_ids,
+        ddp_context=ddp_context,
     )
     autocast_context = _build_autocast_context(
         imports=imports,
@@ -535,7 +547,7 @@ def run_yolov8_detection_training(
     )
     execution_plan = plan_yolov8_detection_training_execution(
         data_context=yolov8_data_context,
-        batch_size=batch_size,
+        batch_size=rank_batch_size,
         max_epochs=max_epochs,
         resume_epoch=resume_state.resume_epoch if resume_state is not None else 0,
         resume_best_metric_name=(
@@ -578,7 +590,7 @@ def run_yolov8_detection_training(
             ema_model=model,
             gradient_model=model,
             samples=train_samples,
-            batch_size=batch_size,
+            batch_size=rank_batch_size,
             input_size=input_size,
             epoch=epoch,
             max_epochs=max_epochs,
@@ -615,8 +627,11 @@ def run_yolov8_detection_training(
             ),
             grad_clip_norm=grad_clip_norm,
             ema=ema,
+            ddp_context=ddp_context,
             batch_callback=(
-                on_yolov8_batch_progress if request.batch_callback is not None else None
+                on_yolov8_batch_progress
+                if request.batch_callback is not None and is_rank_zero
+                else None
             ),
         )
         global_iteration = epoch_result.global_iteration
@@ -633,7 +648,7 @@ def run_yolov8_detection_training(
         validation_snapshot: dict[str, object] | None = None
         validation_metrics: dict[str, float] = {}
         current_metric_value: float | None = None
-        if validation_ran:
+        if validation_ran and is_rank_zero:
             validation_snapshot = _evaluate_detection_model(
                 imports=imports,
                 model=ema.model,
@@ -667,70 +682,79 @@ def run_yolov8_detection_training(
             }
             evaluated_epochs.append(epoch)
             current_metric_value = validation_metrics[best_metric_name]
+        if validation_ran:
+            _barrier_yolov8_detection_ddp_rank(
+                imports=imports,
+                ddp_context=ddp_context,
+            )
 
-        best_metric_update = resolve_yolov8_detection_best_metric_update(
-            validation_ran=validation_ran,
-            current_metric_value=current_metric_value,
-            train_loss=float(train_metrics["loss"]),
-            best_metric_value=best_metric_value,
-        )
-        improved_best = best_metric_update.improved
-        candidate_best_metric_value = best_metric_update.candidate_value
+        improved_best = False
+        candidate_best_metric_value = best_metric_value
+        if is_rank_zero:
+            best_metric_update = resolve_yolov8_detection_best_metric_update(
+                validation_ran=validation_ran,
+                current_metric_value=current_metric_value,
+                train_loss=float(train_metrics["loss"]),
+                best_metric_value=best_metric_value,
+            )
+            improved_best = best_metric_update.improved
+            candidate_best_metric_value = best_metric_update.candidate_value
 
         scheduler.step()
-        checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
-            torch_module=imports.torch,
-            model=model,
-            ema_model=ema.model,
-            ema_updates=ema.updates,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            model_type=request.model_type,
-            model_scale=request.model_scale,
-            category_names=category_names,
-            input_size=input_size,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            epoch=epoch,
-            precision=runtime_precision,
-            validation_split_name=validation_split_name,
-            evaluation_interval=evaluation_interval,
-            evaluation_confidence_threshold=(
-                evaluation_confidence_threshold if has_validation else None
-            ),
-            evaluation_nms_threshold=(
-                evaluation_nms_threshold if has_validation else None
-            ),
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            min_lr_ratio=min_lr_ratio,
-            grad_clip_norm=grad_clip_norm,
-            metrics_history=metrics_history,
-            validation_history=validation_history,
-            evaluated_epochs=tuple(evaluated_epochs),
-            warm_start_summary=warm_start_summary,
-            implementation_mode=request.implementation_mode,
-            augmentation_options=_serialize_detection_augmentation_options(
-                augmentation_options
-            ),
-            best_metric_name=best_metric_name,
-            candidate_best_metric_value=candidate_best_metric_value,
-            previous_best_checkpoint_bytes=best_checkpoint_bytes,
-            improved_best=improved_best,
-        )
-        latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
-        best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
-        best_metric_value = checkpoint_update.best_metric_value
+        if is_rank_zero:
+            checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
+                torch_module=imports.torch,
+                model=model,
+                ema_model=ema.model,
+                ema_updates=ema.updates,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                model_type=request.model_type,
+                model_scale=request.model_scale,
+                category_names=category_names,
+                input_size=input_size,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                epoch=epoch,
+                precision=runtime_precision,
+                validation_split_name=validation_split_name,
+                evaluation_interval=evaluation_interval,
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if has_validation else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if has_validation else None
+                ),
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                min_lr_ratio=min_lr_ratio,
+                grad_clip_norm=grad_clip_norm,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                evaluated_epochs=tuple(evaluated_epochs),
+                warm_start_summary=warm_start_summary,
+                implementation_mode=request.implementation_mode,
+                augmentation_options=_serialize_detection_augmentation_options(
+                    augmentation_options
+                ),
+                best_metric_name=best_metric_name,
+                candidate_best_metric_value=candidate_best_metric_value,
+                previous_best_checkpoint_bytes=best_checkpoint_bytes,
+                improved_best=improved_best,
+            )
+            latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
+            best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
+            best_metric_value = checkpoint_update.best_metric_value
 
         control_command = None
-        if request.epoch_callback is not None:
+        if is_rank_zero and request.epoch_callback is not None:
             control_command = request.epoch_callback(
                 YoloV8DetectionTrainingEpochProgress(
                     epoch=epoch,
@@ -754,23 +778,61 @@ def run_yolov8_detection_training(
                     ),
                 )
             )
-        control_decision = resolve_yolov8_detection_epoch_control(
-            save_checkpoint_requested=(
-                control_command.save_checkpoint if control_command is not None else False
-            ),
-            pause_training_requested=(
-                control_command.pause_training if control_command is not None else False
-            ),
-            terminate_training_requested=(
-                control_command.terminate_training
-                if control_command is not None
-                else False
+        control_decision = (
+            resolve_yolov8_detection_epoch_control(
+                save_checkpoint_requested=(
+                    control_command.save_checkpoint
+                    if control_command is not None
+                    else False
+                ),
+                pause_training_requested=(
+                    control_command.pause_training
+                    if control_command is not None
+                    else False
+                ),
+                terminate_training_requested=(
+                    control_command.terminate_training
+                    if control_command is not None
+                    else False
+                )
             )
+            if is_rank_zero
+            else None
+        )
+        control_decision = _broadcast_yolov8_detection_epoch_control(
+            imports=imports,
+            ddp_context=ddp_context,
+            control_decision=control_decision,
         )
         should_write_savepoint = control_decision.save_checkpoint
         should_pause_training = control_decision.pause_training
         should_terminate_training = control_decision.terminate_training
         if should_write_savepoint:
+            if not is_rank_zero:
+                if should_pause_training:
+                    return _build_non_rank0_yolov8_detection_training_result(
+                        warm_start_summary=warm_start_summary,
+                        implementation_mode=request.implementation_mode,
+                        best_metric_name=best_metric_name,
+                        best_metric_value=best_metric_value,
+                        evaluation_interval=evaluation_interval,
+                        category_names=category_names,
+                        split_names=tuple(split.name for split in resolved_splits),
+                        sample_count=sum(split.sample_count for split in resolved_splits),
+                        train_sample_count=len(train_samples),
+                        input_size=input_size,
+                        batch_size=batch_size,
+                        max_epochs=max_epochs,
+                        device=device,
+                        gpu_count=gpu_count,
+                        device_ids=device_ids,
+                        distributed_mode=distributed_mode,
+                        precision=runtime_precision,
+                        validation_split_name=validation_split_name,
+                        validation_sample_count=len(validation_samples),
+                        parameter_count=parameter_count,
+                    )
+                continue
             savepoint_payload = build_yolov8_detection_training_savepoint_payload(
                 epoch=epoch,
                 latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -791,7 +853,54 @@ def run_yolov8_detection_training(
             if should_pause_training:
                 raise YoloV8DetectionTrainingPausedError(savepoint)
         if should_terminate_training:
+            if not is_rank_zero:
+                return _build_non_rank0_yolov8_detection_training_result(
+                    warm_start_summary=warm_start_summary,
+                    implementation_mode=request.implementation_mode,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=best_metric_value,
+                    evaluation_interval=evaluation_interval,
+                    category_names=category_names,
+                    split_names=tuple(split.name for split in resolved_splits),
+                    sample_count=sum(split.sample_count for split in resolved_splits),
+                    train_sample_count=len(train_samples),
+                    input_size=input_size,
+                    batch_size=batch_size,
+                    max_epochs=max_epochs,
+                    device=device,
+                    gpu_count=gpu_count,
+                    device_ids=device_ids,
+                    distributed_mode=distributed_mode,
+                    precision=runtime_precision,
+                    validation_split_name=validation_split_name,
+                    validation_sample_count=len(validation_samples),
+                    parameter_count=parameter_count,
+                )
             raise YoloV8DetectionTrainingTerminatedError()
+
+    if not is_rank_zero:
+        return _build_non_rank0_yolov8_detection_training_result(
+            warm_start_summary=warm_start_summary,
+            implementation_mode=request.implementation_mode,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            evaluation_interval=evaluation_interval,
+            category_names=category_names,
+            split_names=tuple(split.name for split in resolved_splits),
+            sample_count=sum(split.sample_count for split in resolved_splits),
+            train_sample_count=len(train_samples),
+            input_size=input_size,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            device=device,
+            gpu_count=gpu_count,
+            device_ids=device_ids,
+            distributed_mode=distributed_mode,
+            precision=runtime_precision,
+            validation_split_name=validation_split_name,
+            validation_sample_count=len(validation_samples),
+            parameter_count=parameter_count,
+        )
 
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
@@ -945,6 +1054,68 @@ def run_yolov8_detection_training(
     )
 
 
+def _build_non_rank0_yolov8_detection_training_result(
+    *,
+    warm_start_summary: dict[str, object],
+    implementation_mode: str,
+    best_metric_name: str,
+    best_metric_value: float,
+    evaluation_interval: int,
+    category_names: tuple[str, ...],
+    split_names: tuple[str, ...],
+    sample_count: int,
+    train_sample_count: int,
+    input_size: tuple[int, int],
+    batch_size: int,
+    max_epochs: int,
+    device: str,
+    gpu_count: int,
+    device_ids: tuple[int, ...],
+    distributed_mode: str,
+    precision: str,
+    validation_split_name: str | None,
+    validation_sample_count: int,
+    parameter_count: int,
+) -> YoloV8DetectionTrainingExecutionResult:
+    """构造非 rank0 子进程返回值。
+
+    非 rank0 只参与 collective 训练，不写平台事件、对象存储和 ModelVersion。
+    该返回值只用于 rank 子进程正常退出。
+    """
+
+    resolved_best_metric_value = (
+        0.0
+        if best_metric_value in {float("inf"), float("-inf")}
+        else round(float(best_metric_value), 6)
+    )
+    return YoloV8DetectionTrainingExecutionResult(
+        checkpoint_bytes=b"",
+        latest_checkpoint_bytes=b"",
+        metrics_payload={},
+        validation_metrics_payload={},
+        warm_start_summary=warm_start_summary,
+        implementation_mode=implementation_mode,
+        best_metric_name=best_metric_name,
+        best_metric_value=resolved_best_metric_value,
+        evaluation_interval=evaluation_interval,
+        category_names=category_names,
+        split_names=split_names,
+        sample_count=sample_count,
+        train_sample_count=train_sample_count,
+        input_size=input_size,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        device=device,
+        gpu_count=gpu_count,
+        device_ids=device_ids,
+        distributed_mode=distributed_mode,
+        precision=precision,
+        validation_split_name=validation_split_name,
+        validation_sample_count=validation_sample_count,
+        parameter_count=parameter_count,
+    )
+
+
 def _require_training_imports() -> _TrainingImports:
     """导入 YOLO 主线 detection 训练所需依赖。"""
 
@@ -980,8 +1151,38 @@ def _resolve_runtime(
     requested_gpu_count: int | None,
     requested_precision: str | None,
     extra_options: dict[str, object] | None = None,
+    ddp_context: DdpTrainingContext | None = None,
 ) -> tuple[str, int, tuple[int, ...], str, str]:
     """解析当前训练真正使用的运行时资源。"""
+
+    if ddp_context is not None:
+        if not ddp_context.is_distributed:
+            raise InvalidRequestError("YOLOv8 detection DDP 上下文的 world_size 必须大于 1")
+        if requested_gpu_count is not None and requested_gpu_count != ddp_context.world_size:
+            raise InvalidRequestError(
+                "YOLOv8 detection DDP 上下文与训练请求 gpu_count 不一致",
+                details={
+                    "requested_gpu_count": requested_gpu_count,
+                    "world_size": ddp_context.world_size,
+                },
+            )
+        if ddp_context.device.startswith("cuda") and not imports.torch.cuda.is_available():
+            raise InvalidRequestError("YOLOv8 detection DDP 请求使用 CUDA，但当前环境没有可用 GPU")
+        if ddp_context.device.startswith("cuda"):
+            imports.torch.cuda.set_device(ddp_context.local_rank)
+        precision = _resolve_ddp_runtime_precision(
+            imports=imports,
+            requested_precision=requested_precision,
+            extra_options=extra_options,
+            device=ddp_context.device,
+        )
+        return (
+            ddp_context.device,
+            ddp_context.world_size,
+            tuple(range(ddp_context.world_size)),
+            "ddp",
+            precision,
+        )
 
     runtime = resolve_yolo_training_runtime_resources(
         torch_module=imports.torch,
@@ -995,6 +1196,134 @@ def _resolve_runtime(
         runtime.device_ids,
         runtime.distributed_mode,
         runtime.precision,
+    )
+
+
+def _resolve_ddp_runtime_precision(
+    *,
+    imports: _TrainingImports,
+    requested_precision: str | None,
+    extra_options: dict[str, object] | None,
+    device: str,
+) -> str:
+    """解析 DDP rank 内的 precision，不再走单进程资源解析。"""
+
+    raw_precision = requested_precision or (
+        str(extra_options.get("precision"))
+        if isinstance(extra_options, dict) and extra_options.get("precision") is not None
+        else None
+    )
+    precision = raw_precision or "fp32"
+    if precision not in {"fp8", "fp16", "fp32"}:
+        raise InvalidRequestError(
+            "precision 必须是 fp8、fp16 或 fp32",
+            details={"precision": precision},
+        )
+    if precision == "fp8":
+        raise InvalidRequestError("YOLOv8 detection DDP 训练暂不支持 fp8")
+    if precision == "fp16" and not device.startswith("cuda"):
+        raise InvalidRequestError("fp16 DDP 训练需要 CUDA 环境")
+    if precision == "fp16" and not hasattr(imports.torch, "autocast"):
+        raise ServiceConfigurationError("当前 torch 版本缺少 autocast，无法执行 fp16 DDP 训练")
+    return precision
+
+
+def _resolve_per_rank_batch_size(
+    *,
+    global_batch_size: int,
+    ddp_context: DdpTrainingContext | None,
+) -> int:
+    """把前端总 batch size 拆成单个 DDP rank 的 batch size。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return global_batch_size
+    if global_batch_size < ddp_context.world_size:
+        raise InvalidRequestError(
+            "YOLOv8 detection DDP 总 batch size 不能小于 GPU 数量",
+            details={
+                "batch_size": global_batch_size,
+                "world_size": ddp_context.world_size,
+            },
+        )
+    if global_batch_size % ddp_context.world_size != 0:
+        raise InvalidRequestError(
+            "YOLOv8 detection DDP 总 batch size 必须能被 GPU 数量整除",
+            details={
+                "batch_size": global_batch_size,
+                "world_size": ddp_context.world_size,
+            },
+        )
+    return max(1, global_batch_size // ddp_context.world_size)
+
+
+def _wrap_yolov8_detection_training_model(
+    *,
+    imports: _TrainingImports,
+    model: Any,
+    device_ids: tuple[int, ...],
+    ddp_context: DdpTrainingContext | None,
+) -> Any:
+    """按单进程或 DDP rank 包装 YOLOv8 detection 训练模型。"""
+
+    if ddp_context is None:
+        return build_yolo_data_parallel_model(
+            torch_module=imports.torch,
+            model=model,
+            device_ids=device_ids,
+        )
+    distributed = imports.torch.distributed
+    if not distributed.is_available() or not distributed.is_initialized():
+        raise InvalidRequestError("YOLOv8 detection DDP 训练必须先初始化 torch.distributed")
+    if ddp_context.device.startswith("cuda"):
+        return imports.torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=(ddp_context.local_rank,),
+            output_device=ddp_context.local_rank,
+            broadcast_buffers=False,
+        )
+    return imports.torch.nn.parallel.DistributedDataParallel(
+        model,
+        broadcast_buffers=False,
+    )
+
+
+def _barrier_yolov8_detection_ddp_rank(
+    *,
+    imports: _TrainingImports,
+    ddp_context: DdpTrainingContext | None,
+) -> None:
+    """在 rank0-only validation 后同步所有 DDP rank。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return
+    distributed = imports.torch.distributed
+    if distributed.is_available() and distributed.is_initialized():
+        distributed.barrier()
+
+
+def _broadcast_yolov8_detection_epoch_control(
+    *,
+    imports: _TrainingImports,
+    ddp_context: DdpTrainingContext | None,
+    control_decision: Any | None,
+) -> Any:
+    """把 rank0 读取到的平台控制命令广播给所有 DDP rank。"""
+
+    if ddp_context is None or not ddp_context.is_distributed:
+        return control_decision or resolve_yolov8_detection_epoch_control(
+            save_checkpoint_requested=False,
+            pause_training_requested=False,
+            terminate_training_requested=False,
+        )
+    distributed = imports.torch.distributed
+    if not distributed.is_available() or not distributed.is_initialized():
+        raise InvalidRequestError("YOLOv8 detection DDP 控制广播需要 torch.distributed")
+    objects = [control_decision if ddp_context.is_rank_zero else None]
+    distributed.broadcast_object_list(objects, src=0)
+    return objects[0] or resolve_yolov8_detection_epoch_control(
+        save_checkpoint_requested=False,
+        pause_training_requested=False,
+        terminate_training_requested=False,
     )
 
 

@@ -1066,7 +1066,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求，并真实消费 `tensorrt-engine` ModelBuild。
 - 当前 YOLOX detection 真实训练执行链支持 `coco-detection-v1` 和 `voc-detection-v1` 输入；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
-- YOLOX 已删除同步训练入口里的 `DataParallel` 路径，`gpu_count` 大于 1 时必须进入 DDP TrainingBackend。YOLOv8 / YOLO11 / YOLO26 当前 GPU 数量控制仍是待替换的单机单进程过渡路径。RF-DETR detection 会把 `gpu_count` 转入 RF-DETR core 的 Lightning `devices` 配置。
+- YOLOX 已删除同步训练入口里的 `DataParallel` 路径，`gpu_count` 大于 1 时必须进入 DDP TrainingBackend。YOLOv8 / YOLO11 / YOLO26 detection 已接入 torchrun DDP、per-rank batch、`DistributedSampler`、`DistributedDataParallel`、rank0 validation/checkpoint 和控制广播。RF-DETR detection 会把 `gpu_count` 转入 RF-DETR core 的 Lightning `devices` 配置。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证。
