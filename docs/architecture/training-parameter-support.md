@@ -38,6 +38,7 @@
 - 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
 - detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
 - detection 公开接口里的 `gpu_count` 当前已经有前端输入，但不是所有 detection 模型都真正执行：当前只有 `yolox` 真正使用，`yolov8 / yolo11 / yolo26` 与 `rfdetr` 还没有在执行层生效。
+- 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
 
 ## 通用参数层现状
 
