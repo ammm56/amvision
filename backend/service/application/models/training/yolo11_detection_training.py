@@ -81,6 +81,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
+    build_yolo_data_parallel_model,
 )
 from backend.service.application.models.yolo11_core.training.execution import (
     YOLO11_DETECTION_CORE_IMPLEMENTATION_MODE,
@@ -152,6 +153,7 @@ def run_yolo11_detection_training(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
+            extra_options=extra_options,
         )
     )
     training_options = _resolve_yolo11_detection_training_options(extra_options)
@@ -241,6 +243,11 @@ def run_yolo11_detection_training(
     )
     if resume_state is not None and resume_state.ema_state_dict is not None:
         ema.load_state_dict(resume_state.ema_state_dict, strict=False)
+    training_model = build_yolo_data_parallel_model(
+        torch_module=imports.torch,
+        model=model,
+        device_ids=device_ids,
+    )
 
     autocast_context = build_yolo11_autocast_context(
         torch_module=imports.torch,
@@ -315,7 +322,11 @@ def run_yolo11_detection_training(
     try:
         loop_result = run_yolo11_detection_training_loop(
             torch_module=imports.torch,
-            model=model,
+            model=training_model,
+            checkpoint_model=model,
+            loss_model=model,
+            ema_model=model,
+            gradient_model=model,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -1182,7 +1193,7 @@ def _build_yolo11_metrics_payload(
     device: str,
     gpu_count: int,
     device_ids: tuple[int, ...],
-    distributed_mode: bool,
+    distributed_mode: str,
     runtime_precision: str,
     best_metric_name: str,
     best_metric_value: float,

@@ -100,6 +100,10 @@ def run_yolo26_detection_training_loop(
     compute_loss: Callable[..., dict[str, Any]],
     evaluate_model: Callable[[], dict[str, object]],
     grad_clip_norm: float,
+    checkpoint_model: Any | None = None,
+    loss_model: Any | None = None,
+    ema_model: Any | None = None,
+    gradient_model: Any | None = None,
     category_names: tuple[str, ...],
     model_scale: str,
     precision: str,
@@ -142,6 +146,9 @@ def run_yolo26_detection_training_loop(
     latest_checkpoint_bytes = b""
     best_checkpoint_bytes = previous_best_checkpoint_bytes
     current_best_metric_value = float(best_metric_value)
+    resolved_checkpoint_model = (
+        checkpoint_model if checkpoint_model is not None else model
+    )
 
     for epoch in range(int(resume_epoch) + 1, int(max_epochs) + 1):
         epoch_result = run_yolo26_detection_training_epoch(
@@ -162,7 +169,10 @@ def run_yolo26_detection_training_loop(
             unwrap_outputs=unwrap_outputs,
             compute_loss=compute_loss,
             grad_clip_norm=grad_clip_norm,
+            loss_model=loss_model,
             ema=ema,
+            ema_model=ema_model,
+            gradient_model=gradient_model,
             batch_callback=batch_callback,
         )
         global_iteration = epoch_result.global_iteration
@@ -195,7 +205,7 @@ def run_yolo26_detection_training_loop(
         scheduler.step()
         checkpoint_update = build_yolo26_detection_epoch_checkpoint_update(
             torch_module=torch_module,
-            model=model,
+            model=resolved_checkpoint_model,
             ema_model=getattr(ema, "model", None),
             ema_updates=getattr(ema, "updates", None),
             optimizer=optimizer,

@@ -37,7 +37,7 @@
   - classification / segmentation 走 `extra_options.evaluation_interval`
 - 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
 - detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
-- detection 公开接口里的 `gpu_count` 当前已经有前端输入，但不是所有 detection 模型都真正执行：当前只有 `yolox` 真正使用，`yolov8 / yolo11 / yolo26` 与 `rfdetr` 还没有在执行层生效。
+- detection 公开接口里的 `gpu_count` 当前已经有前端输入，并在 detection 执行层生效：`yolox / yolov8 / yolo11 / yolo26` 使用单机单进程 `DataParallel`，`rfdetr` 转入 RF-DETR core 的 Lightning `devices` 配置。classification / segmentation / pose / obb 当前没有公开顶层 `gpu_count`，默认仍按各自单设备训练路径执行。
 - 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
 
 ## 通用参数层现状
@@ -53,7 +53,7 @@
 | `recipe_id` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 固定默认值 | 当前实际只有 `default` 生效，前端不再单独暴露 |
 | `evaluation_interval` | 公开 + 执行 | 执行层已有，公开接口未收 | 执行层已有，公开接口未收 | 公开 + 执行 | 公开 + 执行 | 已暴露 | classification / segmentation 当前由前端写入 `extra_options.evaluation_interval` |
 | `warm_start_model_version_id` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只在 detection 前端显示 |
-| `gpu_count` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只有 `yolox` 真正执行，`yolov8 / yolo11 / yolo26 / rfdetr` 未生效 |
+| `gpu_count` | 公开 + 执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | detection 已生效；非 detection 当前不公开顶层多 GPU 参数 |
 
 ## 当前前端页面已暴露的训练输入
 
@@ -107,18 +107,18 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.learning_rate`、`weight_decay`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`degrees`、`translate`、`shear`、`mosaic_scale`、`mixup_scale` |
+| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`extra_options.device`、`extra_options.learning_rate`、`weight_decay`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`degrees`、`translate`、`shear`、`mosaic_scale`、`mixup_scale` |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + detection / YOLO 主线高级参数面 |
-| 当前缺口 | `gpu_count` 虽然公开接口接受，但当前执行层 `_resolve_runtime(...)` 里直接忽略了它 |
+| 当前缺口 | 多 GPU 当前是单进程 `DataParallel`，不是多进程 DDP；如需 DDP，需要后续作为独立 TrainingBackend 能力设计 |
 
 #### detection / rfdetr
 
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight` |
+| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight` |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + RF-DETR detection 高级参数面 |
-| 当前缺口 | `warm_start_model_version_id`、`evaluation_interval`、`gpu_count` 当前没有真正进入执行；公开接口说明里的 `weight_decay` 当前执行层也没有按请求值切换 |
+| 当前缺口 | 多 GPU 由 RF-DETR core 的 Lightning `devices` 承接；当前未在非 detection RF-DETR segmentation 页面公开顶层 `gpu_count` |
 
 ### classification
 

@@ -231,6 +231,7 @@ def _build_train_config(
         if request.task_type == SEGMENTATION_TASK_TYPE
         else TrainConfig
     )
+    device_name = _resolve_device_name(extra_options)
     return config_cls(
         dataset_file="roboflow",
         dataset_dir=str(dataset_dir),
@@ -241,8 +242,11 @@ def _build_train_config(
         lr=float(extra_options.get("learning_rate", 1e-4)),
         weight_decay=float(extra_options.get("weight_decay", 1e-4)),
         eval_interval=max(1, int(extra_options.get("evaluation_interval", 1))),
-        accelerator="cpu" if _resolve_device_name(extra_options) == "cpu" else "gpu",
-        devices=max(1, int(extra_options.get("gpu_count", 1))),
+        accelerator="cpu" if device_name == "cpu" else "gpu",
+        devices=_resolve_rfdetr_device_count(
+            device_name=device_name,
+            extra_options=extra_options,
+        ),
         num_workers=max(0, int(extra_options.get("num_workers", 0))),
         progress_bar=None,
         tensorboard=False,
@@ -261,10 +265,34 @@ def _build_train_config(
 def _resolve_device_name(extra_options: dict[str, object]) -> str:
     """解析训练设备名称。"""
 
-    requested = str(extra_options.get("device", "cpu")).strip().lower()
+    requested = str(extra_options.get("device", "auto")).strip().lower()
+    if requested in {"", "auto"}:
+        return "cuda" if torch.cuda.is_available() else "cpu"
     if requested == "cuda" or requested.startswith("cuda:"):
         return requested if torch.cuda.is_available() else "cpu"
     return "cpu"
+
+
+def _resolve_rfdetr_device_count(
+    *,
+    device_name: str,
+    extra_options: dict[str, object],
+) -> int:
+    """解析 RF-DETR Lightning trainer 使用的设备数量。"""
+
+    if device_name == "cpu":
+        return 1
+    requested_gpu_count = max(1, int(extra_options.get("gpu_count", 1)))
+    available_gpu_count = int(torch.cuda.device_count())
+    if requested_gpu_count > available_gpu_count:
+        raise InvalidRequestError(
+            "RF-DETR 训练请求的 GPU 数量超过当前可用 GPU 数量",
+            details={
+                "requested_gpu_count": requested_gpu_count,
+                "available_gpu_count": available_gpu_count,
+            },
+        )
+    return requested_gpu_count
 
 
 def _resolve_rfdetr_aug_config(

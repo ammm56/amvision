@@ -81,6 +81,10 @@ def run_yolo11_detection_training_loop(
     *,
     torch_module: Any,
     model: Any,
+    checkpoint_model: Any | None = None,
+    loss_model: Any | None = None,
+    ema_model: Any | None = None,
+    gradient_model: Any | None = None,
     optimizer: Any,
     scheduler: Any,
     scaler: Any,
@@ -138,6 +142,9 @@ def run_yolo11_detection_training_loop(
 ) -> Yolo11DetectionTrainingLoopResult:
     """执行 YOLO11 detection 从 resume epoch 到 max epoch 的完整训练循环。"""
 
+    resolved_checkpoint_model = (
+        checkpoint_model if checkpoint_model is not None else model
+    )
     global_iteration = int(initial_global_iteration)
     latest_checkpoint_bytes = b""
     best_checkpoint_bytes = previous_best_checkpoint_bytes
@@ -147,6 +154,9 @@ def run_yolo11_detection_training_loop(
         epoch_result = run_yolo11_detection_training_epoch(
             torch_module=torch_module,
             model=model,
+            loss_model=loss_model,
+            ema_model=ema_model,
+            gradient_model=gradient_model,
             samples=train_samples,
             batch_size=batch_size,
             input_size=input_size,
@@ -195,7 +205,7 @@ def run_yolo11_detection_training_loop(
         scheduler.step()
         checkpoint_update = build_yolo11_detection_epoch_checkpoint_update(
             torch_module=torch_module,
-            model=model,
+            model=resolved_checkpoint_model,
             ema_model=getattr(ema, "model", None),
             ema_updates=getattr(ema, "updates", None),
             optimizer=optimizer,

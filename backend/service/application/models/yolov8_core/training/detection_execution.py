@@ -68,6 +68,8 @@ from backend.service.application.models.yolo_core_common.geometry import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    build_yolo_data_parallel_model,
+    resolve_yolo_training_runtime_resources,
 )
 from backend.service.application.models.yolov8_core import (
     build_yolov8_model,
@@ -355,6 +357,7 @@ def run_yolov8_detection_training(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
+            extra_options=extra_options,
         )
     )
     learning_rate = _read_float_option(extra_options, "learning_rate", default=0.01)
@@ -507,6 +510,11 @@ def run_yolov8_detection_training(
     )
     if resume_state is not None and resume_state.ema_state_dict is not None:
         ema.load_state_dict(resume_state.ema_state_dict, strict=False)
+    training_model = build_yolo_data_parallel_model(
+        torch_module=imports.torch,
+        model=model,
+        device_ids=device_ids,
+    )
     autocast_context = _build_autocast_context(
         imports=imports,
         device=device,
@@ -565,7 +573,10 @@ def run_yolov8_detection_training(
 
         epoch_result = run_yolov8_detection_training_epoch(
             torch_module=imports.torch,
-            model=model,
+            model=training_model,
+            loss_model=model,
+            ema_model=model,
+            gradient_model=model,
             samples=train_samples,
             batch_size=batch_size,
             input_size=input_size,
@@ -968,16 +979,23 @@ def _resolve_runtime(
     imports: _TrainingImports,
     requested_gpu_count: int | None,
     requested_precision: str | None,
+    extra_options: dict[str, object] | None = None,
 ) -> tuple[str, int, tuple[int, ...], str, str]:
     """解析当前训练真正使用的运行时资源。"""
 
-    del requested_gpu_count
-    torch = imports.torch
-    cuda_available = bool(torch.cuda.is_available())
-    if cuda_available:
-        runtime_precision = "fp16" if requested_precision == "fp16" else "fp32"
-        return "cuda:0", 1, (0,), "single-process", runtime_precision
-    return "cpu", 0, (), "single-process", "fp32"
+    runtime = resolve_yolo_training_runtime_resources(
+        torch_module=imports.torch,
+        requested_gpu_count=requested_gpu_count,
+        requested_precision=requested_precision,
+        extra_options=extra_options,
+    )
+    return (
+        runtime.device,
+        runtime.gpu_count,
+        runtime.device_ids,
+        runtime.distributed_mode,
+        runtime.precision,
+    )
 
 
 def _load_warm_start_checkpoint(

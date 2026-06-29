@@ -54,7 +54,10 @@ def run_yolo26_detection_training_epoch(
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
+    loss_model: Any | None = None,
     ema: Any | None = None,
+    ema_model: Any | None = None,
+    gradient_model: Any | None = None,
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
@@ -66,6 +69,11 @@ def run_yolo26_detection_training_epoch(
     available_samples = tuple(shuffled_samples)
     max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
     epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    resolved_loss_model = loss_model if loss_model is not None else model
+    resolved_ema_model = ema_model if ema_model is not None else resolved_loss_model
+    resolved_gradient_model = (
+        gradient_model if gradient_model is not None else resolved_loss_model
+    )
     model.train()
     optimizer.zero_grad(set_to_none=True)
     last_optimizer_step_iteration = 0
@@ -90,7 +98,7 @@ def run_yolo26_detection_training_epoch(
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
-                model=model,
+                model=resolved_loss_model,
                 raw_outputs=raw_outputs,
                 batch_targets=batch_targets,
                 epoch=epoch,
@@ -105,11 +113,13 @@ def run_yolo26_detection_training_epoch(
         if should_step:
             scaler.unscale_(optimizer)
             if grad_clip_norm > 0:
-                torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                torch_module.nn.utils.clip_grad_norm_(
+                    resolved_gradient_model.parameters(), grad_clip_norm
+                )
             scaler.step(optimizer)
             scaler.update()
             if ema is not None:
-                ema.update(model)
+                ema.update(resolved_ema_model)
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
 

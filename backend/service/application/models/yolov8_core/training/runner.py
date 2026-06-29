@@ -40,6 +40,9 @@ def run_yolov8_detection_training_epoch(
     *,
     torch_module: Any,
     model: Any,
+    loss_model: Any | None = None,
+    ema_model: Any | None = None,
+    gradient_model: Any | None = None,
     samples: tuple[Any, ...],
     batch_size: int,
     input_size: tuple[int, int],
@@ -60,6 +63,11 @@ def run_yolov8_detection_training_epoch(
 ) -> YoloV8DetectionTrainingEpochResult:
     """执行 YOLOv8 detection 一个 epoch 的 batch 循环。"""
 
+    resolved_loss_model = loss_model if loss_model is not None else model
+    resolved_ema_model = ema_model if ema_model is not None else resolved_loss_model
+    resolved_gradient_model = (
+        gradient_model if gradient_model is not None else resolved_loss_model
+    )
     shuffled_samples = list(samples)
     random.shuffle(shuffled_samples)
     available_samples = tuple(shuffled_samples)
@@ -89,7 +97,7 @@ def run_yolov8_detection_training_epoch(
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
-                model=model,
+                model=resolved_loss_model,
                 raw_outputs=raw_outputs,
                 batch_targets=batch_targets,
             )
@@ -102,11 +110,13 @@ def run_yolov8_detection_training_epoch(
         if should_step:
             scaler.unscale_(optimizer)
             if grad_clip_norm > 0:
-                torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+                torch_module.nn.utils.clip_grad_norm_(
+                    resolved_gradient_model.parameters(), grad_clip_norm
+                )
             scaler.step(optimizer)
             scaler.update()
             if ema is not None:
-                ema.update(model)
+                ema.update(resolved_ema_model)
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
 
