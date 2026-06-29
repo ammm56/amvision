@@ -18,6 +18,9 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
+from backend.service.application.models.yolo_core_common.data import (
+    build_yolo_classification_augmentation_options,
+)
 from backend.service.application.models.yolov8_core import build_yolov8_model
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
@@ -241,6 +244,7 @@ def run_yolov8_classification_training(
     evaluation_interval = int(
         extra.get("evaluation_interval", request.evaluation_interval)
     )
+    augmentation_options = build_yolo_classification_augmentation_options(extra)
 
     if resume_state is not None:
         _validate_resume_parameters(
@@ -318,6 +322,7 @@ def run_yolov8_classification_training(
                 device=device_name,
                 precision=precision,
                 imports=imports,
+                augmentation_options=augmentation_options,
             )
             if batch is None:
                 continue

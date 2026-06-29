@@ -219,7 +219,7 @@
           </label>
         </div>
         <p class="training-parameter-section__description">
-          默认开启。关闭后提交训练时会关闭 Mosaic、MixUp、HSV、翻转、仿射和多尺度增强。
+          默认开启。关闭后提交训练时会按当前模型任务关闭对应的数据增强。
         </p>
         <div
           class="form-grid training-parameter-grid"

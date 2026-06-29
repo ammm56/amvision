@@ -13,6 +13,12 @@ from backend.service.application.models.rfdetr_core.config import (
     SegmentationTrainConfig,
     TrainConfig,
 )
+from backend.service.application.models.rfdetr_core.datasets.aug_config import (
+    AUG_AERIAL,
+    AUG_AGGRESSIVE,
+    AUG_CONSERVATIVE,
+    AUG_INDUSTRIAL,
+)
 from backend.service.application.models.rfdetr_core.factory import (
     align_rfdetr_full_core_input_size,
     build_rfdetr_full_core_config,
@@ -247,6 +253,8 @@ def _build_train_config(
         checkpoint_interval=1,
         run_test=False,
         log_per_class_metrics=False,
+        aug_config=_resolve_rfdetr_aug_config(extra_options),
+        augmentation_backend=_resolve_rfdetr_augmentation_backend(extra_options),
     )
 
 
@@ -257,6 +265,57 @@ def _resolve_device_name(extra_options: dict[str, object]) -> str:
     if requested == "cuda" or requested.startswith("cuda:"):
         return requested if torch.cuda.is_available() else "cpu"
     return "cpu"
+
+
+def _resolve_rfdetr_aug_config(
+    extra_options: dict[str, object],
+) -> dict[str, object] | None:
+    """解析 RF-DETR 训练增强配置。"""
+
+    if _read_bool_option(
+        extra_options,
+        "disable_augmentation",
+        extra_options.get("no_augmentation", extra_options.get("no_aug", False)),
+    ):
+        return {}
+
+    custom_config = extra_options.get("aug_config")
+    if isinstance(custom_config, dict):
+        return dict(custom_config)
+
+    preset = str(extra_options.get("rfdetr_augmentation_preset", "default")).strip().lower()
+    presets: dict[str, dict[str, object] | None] = {
+        "default": None,
+        "conservative": AUG_CONSERVATIVE,
+        "aggressive": AUG_AGGRESSIVE,
+        "aerial": AUG_AERIAL,
+        "industrial": AUG_INDUSTRIAL,
+    }
+    return presets.get(preset, None)
+
+
+def _resolve_rfdetr_augmentation_backend(extra_options: dict[str, object]) -> str:
+    """解析 RF-DETR 增强执行后端。"""
+
+    backend = str(extra_options.get("augmentation_backend", "cpu")).strip().lower()
+    if backend in {"cpu", "auto", "gpu"}:
+        return backend
+    return "cpu"
+
+
+def _read_bool_option(
+    extra_options: dict[str, object],
+    key: str,
+    default: object,
+) -> bool:
+    """读取布尔训练选项。"""
+
+    value = extra_options.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _precision_enables_amp(precision: str) -> bool:

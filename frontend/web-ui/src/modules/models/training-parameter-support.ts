@@ -38,6 +38,20 @@ const deviceOptions: TrainingParameterFieldOption[] = [
   { label: 'cuda:0', value: 'cuda:0' },
 ]
 
+const rfdetrAugmentationBackendOptions: TrainingParameterFieldOption[] = [
+  { label: 'CPU（默认）', value: 'cpu' },
+  { label: '自动选择', value: 'auto' },
+  { label: 'GPU', value: 'gpu' },
+]
+
+const rfdetrAugmentationPresetOptions: TrainingParameterFieldOption[] = [
+  { label: '默认：水平翻转', value: 'default' },
+  { label: '保守：小数据集', value: 'conservative' },
+  { label: '强增强：大数据集', value: 'aggressive' },
+  { label: '航拍：俯视图像', value: 'aerial' },
+  { label: '工业：光照与噪声', value: 'industrial' },
+]
+
 const yoloDetectionDefaultLearningRate = '0.01'
 const yoloDetectionDefaultWeightDecay = '0.0005'
 const yoloTaskAdamWDefaultLearningRate = '0.001'
@@ -182,6 +196,21 @@ const detectionYoloXAugmentationFields: TrainingParameterField[] = withTrainingP
   numberField('no_aug_epochs', '最后 no-aug 轮数', { integer: true, min: 0, step: 1, defaultValue: '15' }),
 ], 'augmentation')
 
+const classificationYoloAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
+  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
+  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('random_erasing_prob', '随机擦除概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
+], 'augmentation')
+
+const rfdetrAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
+  selectField('rfdetr_augmentation_preset', 'RF-DETR 增强预设', rfdetrAugmentationPresetOptions, {
+    defaultValue: 'default',
+  }),
+  selectField('augmentation_backend', '增强执行后端', rfdetrAugmentationBackendOptions, {
+    defaultValue: 'cpu',
+  }),
+], 'augmentation')
+
 const detectionYoloXFields: TrainingParameterField[] = [
   selectField('device', '训练设备', deviceOptions),
   numberField('seed', '随机种子', { integer: true, min: 0, step: 1, defaultValue: '0' }),
@@ -219,6 +248,7 @@ const detectionRfdetrFields: TrainingParameterField[] = [
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '1.0' }),
   numberField('bbox_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '5.0' }),
   numberField('giou_loss_weight', 'GIoU 损失权重', { min: 0, step: 0.1, defaultValue: '2.0' }),
+  ...rfdetrAugmentationFields,
 ]
 
 const classificationFields: TrainingParameterField[] = [
@@ -226,6 +256,7 @@ const classificationFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
+  ...classificationYoloAugmentationFields,
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
@@ -258,6 +289,7 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
   numberField('giou_loss_weight', 'GIoU 损失权重', { min: 0, step: 0.1, defaultValue: '2.0' }),
   numberField('mask_ce_weight', '掩码 CE 损失权重', { min: 0, step: 0.1, defaultValue: '5.0' }),
   numberField('mask_dice_weight', '掩码 Dice 损失权重', { min: 0, step: 0.1, defaultValue: '5.0' }),
+  ...rfdetrAugmentationFields,
 ]
 
 const poseFields: TrainingParameterField[] = [
@@ -463,6 +495,28 @@ export function buildTrainingExtraOptions(
     result.no_aug_epochs = 0
   }
 
+  const assignClassificationAugmentationValues = (): void => {
+    for (const key of ['flip_prob', 'hsv_prob', 'random_erasing_prob']) {
+      assignValue(key)
+    }
+  }
+
+  const disableClassificationAugmentationValues = (): void => {
+    result.flip_prob = 0
+    result.hsv_prob = 0
+    result.random_erasing_prob = 0
+    result.disable_augmentation = true
+  }
+
+  const assignRfdetrAugmentationValues = (): void => {
+    assignValue('rfdetr_augmentation_preset')
+    assignValue('augmentation_backend')
+  }
+
+  const disableRfdetrAugmentationValues = (): void => {
+    result.disable_augmentation = true
+  }
+
   if (taskType === 'detection') {
     if (normalizedModelType === 'yolox') {
       for (const key of [
@@ -508,6 +562,10 @@ export function buildTrainingExtraOptions(
       ]) {
         assignValue(key)
       }
+      assignRfdetrAugmentationValues()
+      if (!augmentationEnabled) {
+        disableRfdetrAugmentationValues()
+      }
       return result
     }
     for (const key of [
@@ -536,6 +594,10 @@ export function buildTrainingExtraOptions(
     for (const key of ['device', 'learning_rate', 'weight_decay', 'min_lr_ratio']) {
       assignValue(key)
     }
+    assignClassificationAugmentationValues()
+    if (!augmentationEnabled) {
+      disableClassificationAugmentationValues()
+    }
     return result
   }
 
@@ -556,6 +618,10 @@ export function buildTrainingExtraOptions(
         'mask_dice_weight',
       ]) {
         assignValue(key)
+      }
+      assignRfdetrAugmentationValues()
+      if (!augmentationEnabled) {
+        disableRfdetrAugmentationValues()
       }
       return result
     }

@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.yolo_core_common.data import (
+    YoloClassificationAugmentationOptions,
+    apply_yolo_classification_augmentation,
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,7 @@ def build_yolo26_classification_training_batch(
     device: str,
     precision: str,
     imports: Any,
+    augmentation_options: YoloClassificationAugmentationOptions | None = None,
 ) -> Yolo26ClassificationTrainingBatch | None:
     """把样本列表编码为 YOLO26 classification 训练 batch。"""
 
@@ -38,6 +43,7 @@ def build_yolo26_classification_training_batch(
             input_size=input_size,
             cv2_module=imports.cv2,
             np_module=imports.np,
+            augmentation_options=augmentation_options,
         )
         image_tensor = imports.torch.from_numpy(image_array).to(device).float()
         if precision == "fp16":
@@ -63,6 +69,7 @@ def load_yolo26_classification_image(
     input_size: tuple[int, int],
     cv2_module: Any,
     np_module: Any,
+    augmentation_options: YoloClassificationAugmentationOptions | None = None,
 ) -> Any:
     """读取并缩放 YOLO26 classification 图片。"""
 
@@ -71,6 +78,12 @@ def load_yolo26_classification_image(
         raise InvalidRequestError(
             f"无法读取 YOLO26 classification 训练图片: {image_path}"
         )
+    image = apply_yolo_classification_augmentation(
+        image=image,
+        options=augmentation_options,
+        cv2_module=cv2_module,
+        np_module=np_module,
+    )
     resized = cv2_module.resize(
         image,
         (int(input_size[1]), int(input_size[0])),

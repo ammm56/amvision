@@ -9,6 +9,9 @@ from typing import Any
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_classification_training_batch,
 )
+from backend.service.application.models.yolo_core_common.data import (
+    YoloClassificationAugmentationOptions,
+)
 from backend.service.application.models.yolo26_core.evaluation import (
     evaluate_yolo26_classification_samples,
 )
@@ -89,6 +92,7 @@ def run_yolo26_classification_training_loop(
     input_size: tuple[int, int],
     precision: str,
     device_name: str,
+    augmentation_options: YoloClassificationAugmentationOptions | None,
     learning_rate: float,
     weight_decay: float,
     min_lr_ratio: float,
@@ -124,6 +128,7 @@ def run_yolo26_classification_training_loop(
                 device=device_name,
                 precision=precision,
                 imports=imports,
+                augmentation_options=augmentation_options,
             )
             if batch is None:
                 continue
