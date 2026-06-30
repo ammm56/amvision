@@ -65,7 +65,7 @@ watchfiles>=1.2,<2
 psutil>=7.2.2,<8
 
 # 如需通过 PyTorch 官方 CUDA 12.6 源安装：
-# 当前基线为 PyTorch 2.12.1 + CUDA 12.6，Windows 单机多 GPU DDP 使用 Gloo。
+# 当前基线为 PyTorch 2.12.1 + CUDA 12.6；平台训练链路当前只支持 CPU 或单 GPU。
 # pip install torch==2.12.1 torchvision==0.27.1 --index-url https://download.pytorch.org/whl/cu126
 
 

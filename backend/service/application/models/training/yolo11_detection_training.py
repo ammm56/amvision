@@ -1183,7 +1183,7 @@ def _build_yolo11_metrics_payload(
     device: str,
     gpu_count: int,
     device_ids: tuple[int, ...],
-    distributed_mode: bool,
+    distributed_mode: str,
     runtime_precision: str,
     best_metric_name: str,
     best_metric_value: float,
