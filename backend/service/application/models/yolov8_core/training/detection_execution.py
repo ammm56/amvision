@@ -19,6 +19,9 @@ from backend.service.application.models.postprocess.detection_postprocess import
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_detection_training_batch,
 )
@@ -355,6 +358,7 @@ def run_yolov8_detection_training(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
+            extra_options=extra_options,
         )
     )
     learning_rate = _read_float_option(extra_options, "learning_rate", default=0.01)
@@ -968,16 +972,27 @@ def _resolve_runtime(
     imports: _TrainingImports,
     requested_gpu_count: int | None,
     requested_precision: str | None,
+    extra_options: dict[str, object] | None,
 ) -> tuple[str, int, tuple[int, ...], str, str]:
     """解析当前训练真正使用的运行时资源。"""
 
-    del requested_gpu_count
+    if requested_gpu_count is not None and int(requested_gpu_count) > 1:
+        raise InvalidRequestError("当前版本只支持单 GPU 训练，gpu_count 必须为 1")
     torch = imports.torch
-    cuda_available = bool(torch.cuda.is_available())
-    if cuda_available:
-        runtime_precision = "fp16" if requested_precision == "fp16" else "fp32"
-        return "cuda:0", 1, (0,), "single-process", runtime_precision
-    return "cpu", 0, (), "single-process", "fp32"
+    selection = resolve_single_training_device(
+        torch_module=torch,
+        extra_options=extra_options,
+    )
+    runtime_precision = (
+        "fp16" if selection.is_cuda and requested_precision == "fp16" else "fp32"
+    )
+    return (
+        selection.device_name,
+        selection.gpu_count,
+        selection.device_ids,
+        "single-process",
+        runtime_precision,
+    )
 
 
 def _load_warm_start_checkpoint(

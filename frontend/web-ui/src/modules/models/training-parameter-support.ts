@@ -36,6 +36,13 @@ const deviceOptions: TrainingParameterFieldOption[] = [
   { label: 'cpu', value: 'cpu' },
   { label: 'cuda', value: 'cuda' },
   { label: 'cuda:0', value: 'cuda:0' },
+  { label: 'cuda:1', value: 'cuda:1' },
+  { label: 'cuda:2', value: 'cuda:2' },
+  { label: 'cuda:3', value: 'cuda:3' },
+  { label: 'cuda:4', value: 'cuda:4' },
+  { label: 'cuda:5', value: 'cuda:5' },
+  { label: 'cuda:6', value: 'cuda:6' },
+  { label: 'cuda:7', value: 'cuda:7' },
 ]
 
 const rfdetrAugmentationBackendOptions: TrainingParameterFieldOption[] = [
@@ -225,6 +232,7 @@ const detectionYoloXFields: TrainingParameterField[] = [
 ]
 
 const detectionYoloPrimaryFields: TrainingParameterField[] = [
+  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultWeightDecay }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
@@ -569,6 +577,7 @@ export function buildTrainingExtraOptions(
       return result
     }
     for (const key of [
+      'device',
       'learning_rate',
       'weight_decay',
       'class_loss_weight',

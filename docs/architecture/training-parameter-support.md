@@ -37,7 +37,8 @@
   - classification / segmentation 走 `extra_options.evaluation_interval`
 - 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
 - detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
-- 当前版本训练链路统一按单 GPU 或 CPU 执行；`gpu_count` 只作为 detection 公开接口的保留字段接受空值或 `1`，前端不再显示该输入，传入大于 `1` 会被拒绝。
+- 当前版本训练链路统一按单进程单 GPU 或 CPU 执行；`gpu_count` 只作为 detection 公开接口的保留字段接受空值或 `1`，前端不再显示该输入，传入大于 `1` 会被拒绝。
+- `extra_options.device` 用于指定单卡训练设备，支持空值 / `auto` / `cpu` / `cuda` / `cuda:<index>`。空值或 `auto` 表示有 CUDA 时默认 `cuda:0`，否则使用 `cpu`；显式传入越界的 `cuda:<index>` 会被拒绝，不会静默回退。
 - 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
 
 ## 通用参数层现状
@@ -54,6 +55,21 @@
 | `evaluation_interval` | 公开 + 执行 | 执行层已有，公开接口未收 | 执行层已有，公开接口未收 | 公开 + 执行 | 公开 + 执行 | 已暴露 | classification / segmentation 当前由前端写入 `extra_options.evaluation_interval` |
 | `warm_start_model_version_id` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只在 detection 前端显示 |
 | `gpu_count` | 公开保留 | 未公开 | 未公开 | 未公开 | 未公开 | 未暴露 | 当前只接受空值或 `1`；大于 `1` 会被拒绝 |
+| `extra_options.device` | 执行 | 执行 | 执行 | 执行 | 执行 | 已暴露 | 用于选择单卡训练设备；不是多 GPU 并行训练开关 |
+
+### 单卡 GPU 选择
+
+当前训练链路支持在多 GPU 设备上指定其中一张卡执行单进程训练，但不支持多 GPU 并行训练。
+
+| 模型族 | 支持任务 | 支持写法 | 执行边界 |
+| --- | --- | --- | --- |
+| `yolox` | detection | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLOX core 自行解析并绑定单张 CUDA 设备 |
+| `rfdetr` | detection / segmentation | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | RF-DETR core 把 `cuda:<index>` 映射为 Lightning `devices=[index]` |
+| `yolov8` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLOv8 core 使用统一单卡设备解析，不静默回退显式错误设备 |
+| `yolo11` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO11 core 使用统一单卡设备解析，不静默回退显式错误设备 |
+| `yolo26` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO26 core 使用统一单卡设备解析，不静默回退显式错误设备 |
+
+前端 `/models` 页面提供 `auto`、`cpu`、`cuda`、`cuda:0` 到 `cuda:7` 的常用选项；API 可以传入本机真实存在的更高序号 `cuda:<index>`。显式指定不存在的 CUDA 序号会返回错误，避免任务误跑到 `cuda:0`。
 
 ## 当前前端页面已暴露的训练输入
 

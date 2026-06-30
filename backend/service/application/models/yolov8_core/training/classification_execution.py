@@ -13,6 +13,10 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+    resolve_torch_amp_device_type,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -267,7 +271,7 @@ def run_yolov8_classification_training(
     )
     scaler = (
         imports.torch.GradScaler(
-            device_name,
+            resolve_torch_amp_device_type(device_name),
             enabled=(precision == "fp16"),
         )
         if hasattr(imports.torch, "GradScaler")
@@ -557,17 +561,15 @@ def _resolve_training_device(extra_options: dict[str, object] | None) -> str:
 
     import torch
 
-    requested = str((extra_options or {}).get("device", "cpu")).strip().lower()
-    if requested == "cuda" and torch.cuda.is_available():
-        return "cuda:0"
-    if requested.startswith("cuda:") and torch.cuda.is_available():
-        return requested
-    return "cpu"
+    return resolve_single_training_device_name(
+        torch_module=torch,
+        extra_options=extra_options,
+    )
 
 
 def _autocast_context(imports: Any, precision: str, device_name: str):
     if precision == "fp16" and "cuda" in device_name:
-        return imports.torch.amp.autocast(device_name)
+        return imports.torch.amp.autocast(resolve_torch_amp_device_type(device_name))
     return nullcontext()
 
 

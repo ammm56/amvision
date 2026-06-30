@@ -14,6 +14,9 @@ from backend.contracts.datasets.exports.dataset_formats import (
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+)
 from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
@@ -163,13 +166,10 @@ def run_yolov8_pose_training(
     import numpy as np
     import torch
 
-    device = "cpu"
-    if (
-        request.extra_options
-        and str(request.extra_options.get("device", "")).startswith("cuda")
-        and torch.cuda.is_available()
-    ):
-        device = str(request.extra_options["device"]).strip()
+    device = resolve_single_training_device_name(
+        torch_module=torch,
+        extra_options=request.extra_options,
+    )
 
     precision = request.precision
     input_size = request.input_size or _POSE_DEF_INPUT_SIZE

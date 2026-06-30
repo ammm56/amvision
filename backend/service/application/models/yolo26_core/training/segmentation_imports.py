@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+    resolve_torch_amp_device_type,
+)
 
 
 @dataclass(frozen=True)
@@ -40,12 +44,10 @@ def resolve_yolo26_segmentation_training_device(
 ) -> str:
     """根据训练参数解析 YOLO26 segmentation 训练设备。"""
 
-    requested = str((extra_options or {}).get("device", "cpu")).strip().lower()
-    if requested == "cuda" and torch_module.cuda.is_available():
-        return "cuda:0"
-    if requested.startswith("cuda:") and torch_module.cuda.is_available():
-        return requested
-    return "cpu"
+    return resolve_single_training_device_name(
+        torch_module=torch_module,
+        extra_options=extra_options,
+    )
 
 
 def build_yolo26_segmentation_autocast_context(
@@ -57,7 +59,7 @@ def build_yolo26_segmentation_autocast_context(
     """构建 YOLO26 segmentation 训练使用的 autocast context。"""
 
     if precision == "fp16" and "cuda" in device_name:
-        return torch_module.amp.autocast(device_name)
+        return torch_module.amp.autocast(resolve_torch_amp_device_type(device_name))
     return nullcontext()
 
 

@@ -9,6 +9,10 @@ from pathlib import Path
 import torch
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.device_selection import (
+    SingleTrainingDeviceSelection,
+    resolve_single_training_device,
+)
 from backend.service.application.models.rfdetr_core.config import (
     SegmentationTrainConfig,
     TrainConfig,
@@ -100,7 +104,8 @@ def run_rfdetr_platform_training(
         input_size=request.input_size,
     )
     resolution = max(aligned_input_size)
-    device_name = _resolve_device_name(extra_options)
+    device_selection = _resolve_device_selection(extra_options)
+    device_name = device_selection.device_name
 
     temp_root = request.dataset_storage.root_dir / ".tmp" / "rfdetr-core-training"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -145,13 +150,14 @@ def run_rfdetr_platform_training(
             output_dir=output_dir,
             labels=prepared_dataset.labels,
             extra_options=extra_options,
+            device_selection=device_selection,
         )
         module = RFDETRModelModule(model_config, train_config)
         data_module = RFDETRDataModule(model_config, train_config)
         trainer = build_trainer(
             train_config,
             model_config,
-            accelerator="cpu" if device_name == "cpu" else "gpu",
+            accelerator=device_selection.lightning_accelerator,
             num_sanity_val_steps=0,
             enable_model_summary=False,
         )
@@ -223,6 +229,7 @@ def _build_train_config(
     output_dir: Path,
     labels: tuple[str, ...],
     extra_options: dict[str, object],
+    device_selection: SingleTrainingDeviceSelection,
 ) -> TrainConfig:
     """把平台训练参数转换成 RF-DETR core 训练配置。"""
 
@@ -247,8 +254,8 @@ def _build_train_config(
         lr=float(extra_options.get("learning_rate", 1e-4)),
         weight_decay=float(extra_options.get("weight_decay", 1e-4)),
         eval_interval=max(1, int(extra_options.get("evaluation_interval", 1))),
-        accelerator="cpu" if _resolve_device_name(extra_options) == "cpu" else "gpu",
-        devices=1,
+        accelerator=device_selection.lightning_accelerator,
+        devices=device_selection.lightning_devices,
         num_workers=max(0, int(extra_options.get("num_workers", 0))),
         progress_bar=None,
         tensorboard=False,
@@ -264,13 +271,15 @@ def _build_train_config(
     )
 
 
-def _resolve_device_name(extra_options: dict[str, object]) -> str:
-    """解析训练设备名称。"""
+def _resolve_device_selection(
+    extra_options: dict[str, object],
+) -> SingleTrainingDeviceSelection:
+    """解析 RF-DETR 单卡训练设备。"""
 
-    requested = str(extra_options.get("device", "cpu")).strip().lower()
-    if requested == "cuda" or requested.startswith("cuda:"):
-        return requested if torch.cuda.is_available() else "cpu"
-    return "cpu"
+    return resolve_single_training_device(
+        torch_module=torch,
+        extra_options=extra_options,
+    )
 
 
 def _resolve_rfdetr_aug_config(

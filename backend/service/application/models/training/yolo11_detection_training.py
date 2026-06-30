@@ -152,6 +152,7 @@ def run_yolo11_detection_training(
             imports=imports,
             requested_gpu_count=request.gpu_count,
             requested_precision=request.precision,
+            extra_options=extra_options,
         )
     )
     training_options = _resolve_yolo11_detection_training_options(extra_options)

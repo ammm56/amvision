@@ -71,7 +71,7 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
     num_workers: int | None = Field(default=None, description="DataLoader worker 数量；YOLOX 当前默认 0")
     device: str | None = Field(
         default=None,
-        description="强制指定训练 device；不同 detection backend 会按自身能力解析该字段",
+        description="单卡训练 device；支持 auto、cpu、cuda、cuda:<index>，空值按 CUDA 可用性自动选择",
     )
     max_labels: int | None = Field(default=None, description="单张图片保留的最大标签数；YOLOX 当前默认 120")
     learning_rate: float | None = Field(default=None, description="训练学习率；YOLOv8/YOLO11/YOLO26 detection 默认 0.01，YOLOX 按 batch size 缩放")

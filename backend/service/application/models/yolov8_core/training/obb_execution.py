@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+)
 from backend.service.application.models.yolov8_core import build_yolov8_model
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_obb_training_batch,
@@ -145,13 +148,10 @@ def run_yolov8_obb_training(
     import numpy as np
     import torch
 
-    device = "cpu"
-    if (
-        request.extra_options
-        and str(request.extra_options.get("device", "")).startswith("cuda")
-        and torch.cuda.is_available()
-    ):
-        device = str(request.extra_options["device"]).strip()
+    device = resolve_single_training_device_name(
+        torch_module=torch,
+        extra_options=request.extra_options,
+    )
 
     precision = request.precision
     input_size = request.input_size or _OBB_DEF_INPUT

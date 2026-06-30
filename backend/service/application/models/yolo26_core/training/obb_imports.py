@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+)
 
 
 @dataclass(frozen=True)
@@ -40,12 +43,10 @@ def resolve_yolo26_obb_training_device(
 ) -> str:
     """根据训练参数解析 YOLO26 OBB 训练设备。"""
 
-    requested = str((extra_options or {}).get("device", "cpu")).strip().lower()
-    if requested == "cuda" and torch_module.cuda.is_available():
-        return "cuda:0"
-    if requested.startswith("cuda:") and torch_module.cuda.is_available():
-        return requested
-    return "cpu"
+    return resolve_single_training_device_name(
+        torch_module=torch_module,
+        extra_options=extra_options,
+    )
 
 
 def build_yolo26_obb_autocast_context(

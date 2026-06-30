@@ -17,6 +17,10 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.training.device_selection import (
+    resolve_single_training_device_name,
+    resolve_torch_amp_device_type,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -302,7 +306,10 @@ def run_yolov8_segmentation_training(
     trainable = [p for p in model.parameters() if p.requires_grad]
     optimizer = imports.torch.optim.AdamW(trainable, lr=lr, weight_decay=wd)
     scaler = (
-        imports.torch.amp.GradScaler(device, enabled=precision == "fp16")
+        imports.torch.amp.GradScaler(
+            resolve_torch_amp_device_type(device),
+            enabled=precision == "fp16",
+        )
         if hasattr(imports.torch, "amp") and hasattr(imports.torch.amp, "GradScaler")
         else None
     )
@@ -604,17 +611,15 @@ def _seg_resolve_device(extra: dict[str, object] | None) -> str:
 
     import torch
 
-    requested = str((extra or {}).get("device", "cpu")).strip().lower()
-    if (
-        requested == "cuda" or requested.startswith("cuda:")
-    ) and torch.cuda.is_available():
-        return requested
-    return "cpu"
+    return resolve_single_training_device_name(
+        torch_module=torch,
+        extra_options=extra,
+    )
 
 
 def _seg_autocast(imports: Any, precision: str, device: str):
     if precision == "fp16" and "cuda" in device:
-        return imports.torch.amp.autocast(device)
+        return imports.torch.amp.autocast(resolve_torch_amp_device_type(device))
     return nullcontext()
 
 

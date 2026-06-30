@@ -564,7 +564,7 @@ class TrainConfig(BaseModel):
     seed: Optional[int] = None
     sync_bn: bool = False
     strategy: str = "auto"
-    devices: Union[int, str] = 1
+    devices: Union[int, str, list[int]] = 1
     num_nodes: int = 1
     fp16_eval: bool = False
     lr_scheduler: Literal["step", "cosine"] = "step"
