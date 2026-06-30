@@ -9,9 +9,6 @@ from typing import Any
 import torch
 
 from backend.service.application.models.rfdetr_core.config import TrainConfig
-from backend.service.application.models.rfdetr_core.training.module_model import (
-    RFDETRModelModule,
-)
 from backend.service.domain.models.model_task_types import (
     ModelTaskType,
     SEGMENTATION_TASK_TYPE,
@@ -44,7 +41,7 @@ def prepare_pretrain_checkpoint(
 def read_or_build_checkpoint_bytes(
     *,
     output_dir: Path,
-    module: RFDETRModelModule,
+    module: Any,
     model_config: Any,
     train_config: TrainConfig,
     trainer: Any,

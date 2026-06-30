@@ -1,5 +1,7 @@
 """RF-DETR core 训练处理模块：`training.module_model`。"""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import math
@@ -10,6 +12,13 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn.functional as F  # noqa: N812 -- 项目约定别名，见 AGENTS.md
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import LightningModule, seed_everything
 
 from backend.service.application.models.rfdetr_core._namespace import _namespace_from_configs

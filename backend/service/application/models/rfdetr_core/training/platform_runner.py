@@ -27,12 +27,6 @@ from backend.service.application.models.rfdetr_core.factory import (
     align_rfdetr_full_core_input_size,
     build_rfdetr_full_core_config,
 )
-from backend.service.application.models.rfdetr_core.training.module_data import (
-    RFDETRDataModule,
-)
-from backend.service.application.models.rfdetr_core.training.module_model import (
-    RFDETRModelModule,
-)
 from backend.service.application.models.rfdetr_core.training.platform_artifacts import (
     build_metrics_payload,
     build_validation_metrics_payload,
@@ -43,7 +37,6 @@ from backend.service.application.models.rfdetr_core.training.platform_artifacts 
 from backend.service.application.models.rfdetr_core.training.platform_dataset import (
     prepare_roboflow_coco_dataset,
 )
-from backend.service.application.models.rfdetr_core.training.trainer import build_trainer
 from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
@@ -152,6 +145,9 @@ def run_rfdetr_platform_training(
             extra_options=extra_options,
             device_selection=device_selection,
         )
+        RFDETRDataModule, RFDETRModelModule, build_trainer = (
+            _load_rfdetr_lightning_training_components()
+        )
         module = RFDETRModelModule(model_config, train_config)
         data_module = RFDETRDataModule(model_config, train_config)
         trainer = build_trainer(
@@ -190,6 +186,22 @@ def run_rfdetr_platform_training(
             aligned_input_size=aligned_input_size,
             warm_start_summary=warm_start_summary,
         )
+
+
+def _load_rfdetr_lightning_training_components():
+    """训练真正执行时再加载 Lightning 相关组件，避免 API 启动触发重依赖。"""
+
+    from backend.service.application.models.rfdetr_core.training.module_data import (
+        RFDETRDataModule,
+    )
+    from backend.service.application.models.rfdetr_core.training.module_model import (
+        RFDETRModelModule,
+    )
+    from backend.service.application.models.rfdetr_core.training.trainer import (
+        build_trainer,
+    )
+
+    return RFDETRDataModule, RFDETRModelModule, build_trainer
 
 
 def _build_warm_start_summary(

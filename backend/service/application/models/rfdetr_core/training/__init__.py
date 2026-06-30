@@ -5,6 +5,10 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
 _EXPORTS: dict[str, tuple[str, str]] = {
     "BestModelCallback": (
         "backend.service.application.models.rfdetr_core.training.callbacks",
@@ -53,6 +57,7 @@ def __getattr__(name: str) -> Any:
     if name not in _EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, attr_name = _EXPORTS[name]
+    disable_lightning_model_summary_import()
     module = import_module(module_name)
     value = getattr(module, attr_name)
     globals()[name] = value

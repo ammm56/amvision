@@ -1,5 +1,7 @@
 """RF-DETR core 训练处理模块：`training.callbacks.ema`。"""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import math
@@ -8,6 +10,13 @@ from copy import deepcopy
 from typing import Any, Optional
 
 import torch
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import Callback, LightningModule, Trainer
 from torch.optim.swa_utils import AveragedModel
 

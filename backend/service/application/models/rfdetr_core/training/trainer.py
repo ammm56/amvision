@@ -1,9 +1,18 @@
 """RF-DETR core 训练处理模块：`training.trainer`。"""
 
+# ruff: noqa: E402
+
 import warnings
 from typing import Any
 
 import torch
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, RichProgressBar, TQDMProgressBar
 from pytorch_lightning.callbacks.progress.rich_progress import RichProgressBarTheme

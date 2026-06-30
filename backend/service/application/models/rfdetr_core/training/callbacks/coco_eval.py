@@ -1,10 +1,19 @@
 """RF-DETR core 训练处理模块：`training.callbacks.coco_eval`。"""
 
+# ruff: noqa: E402
+
 from typing import Any
 
 import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import Callback
 from torchmetrics.detection import MeanAveragePrecision
 

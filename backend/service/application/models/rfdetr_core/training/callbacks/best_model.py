@@ -1,5 +1,7 @@
 """RF-DETR core 训练处理模块：`training.callbacks.best_model`。"""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import math
@@ -11,6 +13,13 @@ if TYPE_CHECKING:
     from typing import Any
 
 import torch
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning import __version__ as ptl_version
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint

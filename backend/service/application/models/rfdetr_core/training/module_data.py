@@ -1,9 +1,18 @@
 """RF-DETR core 训练处理模块：`training.module_data`。"""
 
+# ruff: noqa: E402
+
 from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.utils.data
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 

@@ -1,10 +1,19 @@
 """RF-DETR core 训练处理模块：`training.callbacks.drop_schedule`。"""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
 import numpy as np
+
+from backend.service.application.models.rfdetr_core.training.lightning_bootstrap import (
+    disable_lightning_model_summary_import,
+)
+
+disable_lightning_model_summary_import()
+
 from pytorch_lightning import Callback, LightningModule, Trainer
 
 from backend.service.application.models.rfdetr_core.training.drop_schedule import drop_scheduler
