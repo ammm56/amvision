@@ -182,7 +182,7 @@ def build_device_diagnostics() -> dict[str, object]:
             "cuda_path": os.environ.get("CUDA_PATH"),
             "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         },
-        "openvino": _build_dependency_status("openvino", "openvino"),
+        "openvino": _build_openvino_summary(),
         "tensorrt": _build_dependency_status("tensorrt", "tensorrt"),
         "onnxruntime": onnxruntime_summary,
         "npu_runtime": {
@@ -402,6 +402,35 @@ def _build_onnxruntime_summary() -> dict[str, object]:
         except Exception as error:  # pragma: no cover - 运行时库加载异常时进入
             summary["error"] = str(error)
     summary["providers"] = providers
+    return summary
+
+
+def _build_openvino_summary() -> dict[str, object]:
+    """读取 OpenVINO 安装状态和本机可用 device 列表。
+
+    返回：
+    - dict[str, object]：OpenVINO 摘要，available_devices 使用 OpenVINO runtime 原始设备名。
+    """
+
+    summary = _build_dependency_status("openvino", "openvino")
+    available_devices: list[str] = []
+    if summary["installed"]:
+        try:
+            try:
+                from openvino import Core
+            except ImportError:
+                from openvino.runtime import Core  # type: ignore[no-redef]
+
+            core = Core()
+            available_devices = [str(device) for device in core.available_devices]
+        except Exception as error:  # pragma: no cover - 运行时库或设备探测异常时进入
+            summary["error"] = str(error)
+    normalized_devices = [device.upper() for device in available_devices]
+    summary["available_devices"] = available_devices
+    summary["device_count"] = len(available_devices)
+    summary["supports_cpu"] = any(device == "CPU" or device.startswith("CPU.") for device in normalized_devices)
+    summary["supports_gpu"] = any(device == "GPU" or device.startswith("GPU.") for device in normalized_devices)
+    summary["supports_npu"] = any(device == "NPU" or device.startswith("NPU.") for device in normalized_devices)
     return summary
 
 

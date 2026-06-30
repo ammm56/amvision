@@ -87,7 +87,7 @@
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.deviceName') }}</span>
-          <input v-model="deviceName" />
+          <SelectField :model-value="deviceName" :options="deploymentDeviceOptions" @update:model-value="setDeviceName" />
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.instanceCount') }}</span>
@@ -279,6 +279,7 @@ import {
 } from '../services/deployment.service'
 import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
+import { buildDeploymentDeviceOptions } from '../deployment-device-support'
 import {
   getPlatformBaseModelDetail,
   listPlatformBaseModels,
@@ -343,7 +344,7 @@ const modelBuildId = ref('')
 const runtimeProfileId = ref('')
 const runtimeBackend = ref('')
 const runtimePrecision = ref('fp32')
-const deviceName = ref('cpu')
+const deviceName = ref('')
 const instanceCount = ref(1)
 const displayName = ref('')
 const runtimeMode = ref<DeploymentRuntimeMode>('sync')
@@ -358,6 +359,10 @@ const runtimeBackendOptions = computed(() => [
   { label: 'openvino', value: 'openvino' },
   { label: 'tensorrt', value: 'tensorrt' },
 ])
+const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
+  sessionStore.bootstrap?.devices ?? null,
+  runtimeBackend.value,
+))
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
@@ -378,6 +383,13 @@ watch(selectedTaskType, () => {
   lastRuntimeHealth.value = null
   resetDeploymentSourceSelection()
   void refreshPage()
+})
+
+watch(deploymentDeviceOptions, (options) => {
+  if (!deviceName.value) return
+  if (!options.some((option) => option.value === deviceName.value)) {
+    deviceName.value = ''
+  }
 })
 
 function selectValueToString(value: SelectValue): string {
@@ -403,6 +415,10 @@ function setRuntimePrecision(value: SelectValue): void {
   runtimePrecision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
 }
 
+function setDeviceName(value: SelectValue): void {
+  deviceName.value = selectValueToString(value)
+}
+
 function resetDeploymentSourceSelection(): void {
   deploymentSourcePickerOpen.value = false
   sourceModels.value = []
@@ -415,6 +431,7 @@ function resetDeploymentSourceSelection(): void {
   runtimeProfileId.value = ''
   runtimeBackend.value = ''
   runtimePrecision.value = 'fp32'
+  deviceName.value = ''
 }
 
 async function openDeploymentSourcePicker(): Promise<void> {
