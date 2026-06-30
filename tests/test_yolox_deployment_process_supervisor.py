@@ -124,6 +124,66 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         supervisor.stop()
 
 
+def test_deployment_process_supervisor_limits_running_processes_across_supervisors(tmp_path: Path) -> None:
+    """验证运行中 deployment 子进程上限会跨 sync/async supervisor 生效。"""
+
+    runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
+    runtime_artifact_path.write_bytes(b"fake-runtime-artifact")
+    running_config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-running",
+        runtime_target=_build_runtime_target(runtime_artifact_path),
+        instance_count=1,
+    )
+    blocked_config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-blocked",
+        runtime_target=_build_runtime_target(runtime_artifact_path),
+        instance_count=1,
+    )
+    settings = BackendServiceDeploymentProcessSupervisorConfig(
+        auto_restart=False,
+        monitor_interval_seconds=0.05,
+        request_timeout_seconds=30.0,
+        shutdown_timeout_seconds=1.0,
+        max_running_process_count=1,
+        operator_thread_count=1,
+    )
+    sync_supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="sync",
+        settings=settings,
+        worker_target=fake_deployment_process_worker,
+    )
+    async_supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="async",
+        settings=settings,
+        worker_target=fake_deployment_process_worker,
+    )
+
+    sync_supervisor.start()
+    async_supervisor.start()
+    try:
+        started_status = sync_supervisor.start_deployment(running_config)
+        assert started_status.process_state == "running"
+
+        with pytest.raises(InvalidRequestError, match="达到配置上限"):
+            async_supervisor.start_deployment(blocked_config)
+
+        blocked_status = async_supervisor.get_status(blocked_config)
+        assert blocked_status.process_state == "stopped"
+        assert blocked_status.desired_state == "stopped"
+        assert blocked_status.last_error is not None
+        assert "max_running_process_count=1" in blocked_status.last_error
+
+        sync_supervisor.stop_deployment(running_config)
+        resumed_status = async_supervisor.start_deployment(blocked_config)
+        assert resumed_status.process_state == "running"
+        assert resumed_status.last_error is None
+    finally:
+        sync_supervisor.stop()
+        async_supervisor.stop()
+
+
 def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:
     """构建测试使用的最小 runtime target。"""
 

@@ -14,6 +14,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     - startup_timeout_seconds：启动 deployment 子进程后等待 ready 响应的最长秒数。
     - request_timeout_seconds：父进程等待子进程返回控制面或推理结果的最长秒数。
     - shutdown_timeout_seconds：停止 deployment 进程时等待优雅退出的最长秒数。
+    - max_running_process_count：当前 backend-service 进程内允许同时运行的独立 deployment 子进程总数。
     - operator_thread_count：deployment 子进程内部推理库允许使用的算子线程数。
     - warmup_dummy_inference_count：显式 warmup 时追加执行的 dummy infer 次数。
     - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸，格式为 width、height 二元组。
@@ -29,6 +30,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     startup_timeout_seconds: float = Field(default=30.0, gt=0.0)
     request_timeout_seconds: float = 30.0
     shutdown_timeout_seconds: float = 5.0
+    max_running_process_count: int = Field(default=32, ge=1)
     operator_thread_count: int = 1
     warmup_dummy_inference_count: int = Field(default=6, ge=0)
     warmup_dummy_image_size: tuple[int, int] = (64, 64)

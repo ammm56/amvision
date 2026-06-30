@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import weakref
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Event, Lock, Thread
@@ -243,6 +244,81 @@ class _DeploymentProcessState:
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
+class _DeploymentProcessFleetLimiter:
+    """统计当前 backend-service 进程内所有 supervisor 的运行中 deployment 子进程。"""
+
+    def __init__(self) -> None:
+        """初始化进程级 deployment 子进程上限计数器。"""
+
+        self._lock = Lock()
+        self._supervisors: weakref.WeakSet[DeploymentProcessSupervisor] = weakref.WeakSet()
+
+    def register(self, supervisor: DeploymentProcessSupervisor) -> None:
+        """登记一个 deployment supervisor 到进程级计数范围。"""
+
+        with self._lock:
+            self._supervisors.add(supervisor)
+
+    def start_with_capacity(
+        self,
+        *,
+        state: _DeploymentProcessState,
+        max_running_process_count: int,
+        starter: Callable[[], None],
+    ) -> None:
+        """在进程级上限允许时执行实际子进程启动。
+
+        参数：
+        - state：即将启动的 deployment 状态。
+        - max_running_process_count：允许同时运行的独立子进程上限。
+        - starter：真实启动函数；调用方必须已经持有 state.lock。
+        """
+
+        with self._lock:
+            process = state.process
+            if process is not None and process.is_alive():
+                starter()
+                return
+            running_count = self._count_running_processes_locked(excluded_state=state)
+            if running_count >= max_running_process_count:
+                message = (
+                    "当前 backend-service 已启动 "
+                    f"{running_count} 个 deployment 子进程，达到配置上限 "
+                    f"deployment_process_supervisor.max_running_process_count={max_running_process_count}；"
+                    "请停止不需要的 deployment 后再启动新的部署实例，或按设备能力调整配置。"
+                )
+                state.last_error = message
+                raise InvalidRequestError(
+                    message,
+                    details={
+                        "running_process_count": running_count,
+                        "max_running_process_count": max_running_process_count,
+                        "deployment_instance_id": state.config.deployment_instance_id,
+                    },
+                )
+            starter()
+
+    def _count_running_processes_locked(
+        self,
+        *,
+        excluded_state: _DeploymentProcessState | None = None,
+    ) -> int:
+        """统计所有已登记 supervisor 中仍存活的 deployment 子进程数量。"""
+
+        running_count = 0
+        for supervisor in tuple(self._supervisors):
+            for state in tuple(supervisor._deployments.values()):
+                if state is excluded_state:
+                    continue
+                process = state.process
+                if process is not None and process.is_alive():
+                    running_count += 1
+        return running_count
+
+
+_DEPLOYMENT_PROCESS_FLEET_LIMITER = _DeploymentProcessFleetLimiter()
+
+
 class DeploymentProcessSupervisor:
     """按 deployment 管理独立子进程，并负责崩溃自动拉起。"""
 
@@ -287,6 +363,7 @@ class DeploymentProcessSupervisor:
         self._lock = Lock()
         self._monitor_stop_event = Event()
         self._monitor_thread: Thread | None = None
+        _DEPLOYMENT_PROCESS_FLEET_LIMITER.register(self)
 
     @property
     def is_running(self) -> bool:
@@ -335,8 +412,8 @@ class DeploymentProcessSupervisor:
         state = self._ensure_state(config)
         with state.lock:
             previous_status = self._build_status_from_locked_state(state)
+            self._start_process_with_capacity_locked(state)
             state.desired_running = True
-            self._start_process_locked(state)
             current_status = self._build_status_from_locked_state(state)
         if current_status.process_state == "running":
             self._send_request(
@@ -375,8 +452,8 @@ class DeploymentProcessSupervisor:
 
         state = self._ensure_state(config)
         with state.lock:
+            self._start_process_with_capacity_locked(state)
             state.desired_running = True
-            self._start_process_locked(state)
         payload = self._send_request(state=state, action="warmup")
         health = self._build_health(state, payload)
         self._record_deployment_health_event(
@@ -586,6 +663,7 @@ class DeploymentProcessSupervisor:
         state.local_buffer_broker_event_channel = local_buffer_broker_event_channel
         state.started_at_monotonic = monotonic()
         state.last_exit_code = None
+        state.last_error = None
         state.response_thread = Thread(
             target=self._run_response_loop,
             args=(state,),
@@ -593,6 +671,15 @@ class DeploymentProcessSupervisor:
             name=f"deployment-response-{self.runtime_mode}-{state.config.deployment_instance_id}",
         )
         state.response_thread.start()
+
+    def _start_process_with_capacity_locked(self, state: _DeploymentProcessState) -> None:
+        """在进程级运行数量上限内启动 deployment 子进程。"""
+
+        _DEPLOYMENT_PROCESS_FLEET_LIMITER.start_with_capacity(
+            state=state,
+            max_running_process_count=self.settings.max_running_process_count,
+            starter=lambda: self._start_process_locked(state),
+        )
 
     def _stop_process_locked(self, state: _DeploymentProcessState) -> None:
         """在持有状态锁时停止 deployment 子进程。"""
@@ -668,19 +755,33 @@ class DeploymentProcessSupervisor:
             for state in states:
                 crashed_status: DeploymentProcessStatus | None = None
                 restarted_status: DeploymentProcessStatus | None = None
+                restart_deferred_status: DeploymentProcessStatus | None = None
                 with state.lock:
                     process = state.process
                     if process is None:
-                        continue
-                    if process.is_alive():
-                        continue
-                    state.last_exit_code = process.exitcode
-                    crashed_status = self._build_status_from_locked_state(state)
-                    self._cleanup_process_locked(state)
-                    if state.desired_running and self.settings.auto_restart:
-                        increment_safe_counter(state.restart_counter)
-                        self._start_process_locked(state)
-                        restarted_status = self._build_status_from_locked_state(state)
+                        if state.desired_running and self.settings.auto_restart:
+                            try:
+                                self._start_process_with_capacity_locked(state)
+                            except InvalidRequestError:
+                                pass
+                            else:
+                                restarted_status = self._build_status_from_locked_state(state)
+                        if restarted_status is None:
+                            continue
+                    else:
+                        if process.is_alive():
+                            continue
+                        state.last_exit_code = process.exitcode
+                        crashed_status = self._build_status_from_locked_state(state)
+                        self._cleanup_process_locked(state)
+                        if state.desired_running and self.settings.auto_restart:
+                            increment_safe_counter(state.restart_counter)
+                            try:
+                                self._start_process_with_capacity_locked(state)
+                            except InvalidRequestError:
+                                restart_deferred_status = self._build_status_from_locked_state(state)
+                            else:
+                                restarted_status = self._build_status_from_locked_state(state)
                 if crashed_status is not None:
                     self._record_deployment_status_event(
                         crashed_status,
@@ -692,6 +793,13 @@ class DeploymentProcessSupervisor:
                         restarted_status,
                         event_type="deployment.restarted",
                         message="deployment 进程已自动拉起",
+                        payload={"restart_trigger": "process_exit"},
+                    )
+                if restart_deferred_status is not None:
+                    self._record_deployment_status_event(
+                        restart_deferred_status,
+                        event_type="deployment.restart.deferred",
+                        message="deployment 进程自动拉起已延后",
                         payload={"restart_trigger": "process_exit"},
                     )
             self._monitor_stop_event.wait(max(0.1, self.settings.monitor_interval_seconds))

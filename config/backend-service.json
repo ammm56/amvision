@@ -67,6 +67,7 @@
     "monitor_interval_seconds": 0.5,
     "request_timeout_seconds": 30.0,
     "shutdown_timeout_seconds": 5.0,
+    "max_running_process_count": 32,
     "operator_thread_count": 1,
     "warmup_dummy_inference_count": 6,
     "warmup_dummy_image_size": [64, 64],

@@ -35,7 +35,7 @@
 - `task_manager.enabled_consumer_kinds`：当前独立 worker 需要托管的消费者种类
 - `task_manager.max_concurrent_tasks`：最大并发任务数
 - `task_manager.poll_interval_seconds`：空闲轮询间隔秒数
-- `deployment_process_supervisor.*`：沿用历史字段名；当前 inference worker 主要复用 `request_timeout_seconds` 作为 async inference gateway 等待超时
+- `deployment_process_supervisor.*`：沿用历史字段名；当前 inference worker 主要复用 `request_timeout_seconds` 作为 async inference gateway 等待超时；`max_running_process_count` 的真实 enforcement 在 backend-service 的 deployment supervisor 中执行
 
 当前默认启用的消费者种类为：
 
