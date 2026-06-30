@@ -29,26 +29,53 @@
         <p class="page-kicker">{{ t('deploymentOps.createKicker') }}</p>
         <h2>{{ t('deploymentOps.createTitle') }}</h2>
       </div>
+      <section class="deployment-source-summary">
+        <div class="section-heading">
+          <div>
+            <p class="page-kicker">SOURCE</p>
+            <h3>部署来源模型</h3>
+          </div>
+          <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
+            {{ selectedDeploymentSource ? '更换来源' : '选择部署来源' }}
+          </Button>
+        </div>
+        <div v-if="selectedDeploymentSource" class="summary-grid">
+          <div>
+            <span>模型</span>
+            <strong>{{ selectedDeploymentSource.modelName }}</strong>
+          </div>
+          <div>
+            <span>model_type</span>
+            <strong>{{ selectedDeploymentSource.modelType }}</strong>
+          </div>
+          <div>
+            <span>来源类型</span>
+            <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
+          </div>
+          <div>
+            <span>来源 id</span>
+            <strong>
+              {{ selectedDeploymentSource.modelBuildId || selectedDeploymentSource.modelVersionId }}
+            </strong>
+          </div>
+          <div>
+            <span>Build format</span>
+            <strong>{{ selectedDeploymentSource.buildFormat || '-' }}</strong>
+          </div>
+          <div>
+            <span>RuntimeProfile id</span>
+            <strong>{{ selectedDeploymentSource.runtimeProfileId || '-' }}</strong>
+          </div>
+        </div>
+        <div v-else class="source-empty-card">
+          <strong>尚未选择部署来源模型</strong>
+          <span>先选择训练完成的 ModelVersion 或转换完成的 ModelBuild，再创建部署实例。</span>
+        </div>
+      </section>
       <div class="form-grid">
         <label class="field">
           <span>{{ t('deploymentOps.fields.projectId') }}</span>
           <input :value="selectedProjectId" disabled />
-        </label>
-        <label class="field">
-          <span>model_type</span>
-          <input v-model="modelType" placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr" />
-        </label>
-        <label class="field">
-          <span>{{ t('deploymentOps.fields.modelVersionId') }}</span>
-          <input v-model="modelVersionId" />
-        </label>
-        <label class="field">
-          <span>{{ t('deploymentOps.fields.modelBuildId') }}</span>
-          <input v-model="modelBuildId" />
-        </label>
-        <label class="field">
-          <span>{{ t('deploymentOps.fields.runtimeProfileId') }}</span>
-          <input v-model="runtimeProfileId" />
         </label>
         <label class="field">
           <span>{{ t('deploymentOps.fields.runtimeBackend') }}</span>
@@ -81,6 +108,21 @@
         {{ t('deploymentOps.messages.created') }} {{ lastCreatedDeployment.deployment_instance_id }}
       </p>
     </form>
+
+    <DeploymentSourcePickerDialog
+      :open="deploymentSourcePickerOpen"
+      :loading="sourceModelsLoading"
+      :task-type="selectedTaskType"
+      :models="sourceModels"
+      :selected-model-id="selectedSourceModelId"
+      :selected-model-detail="selectedSourceModelDetail"
+      :selected-version-id="modelVersionId"
+      :selected-build-id="modelBuildId"
+      @close="deploymentSourcePickerOpen = false"
+      @refresh="loadDeploymentSourceModels"
+      @select-model="selectDeploymentSourceModel"
+      @apply-source="applyDeploymentSource"
+    />
 
     <section v-if="lastRuntimeStatus" class="resource-section">
       <div>
@@ -235,6 +277,14 @@ import {
   type TaskDeploymentProcessStatus,
   type TaskDeploymentRuntimeHealth,
 } from '../services/deployment.service'
+import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
+import type { DeploymentSourceSelection } from '../components/deployment-source.types'
+import {
+  getPlatformBaseModelDetail,
+  listPlatformBaseModels,
+  type PlatformBaseModelDetail,
+  type PlatformBaseModelSummary,
+} from '@/modules/models/services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -280,6 +330,12 @@ const lastRuntimeStatus = ref<TaskDeploymentProcessStatus | null>(null)
 const lastRuntimeHealth = ref<TaskDeploymentRuntimeHealth | null>(null)
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
+const deploymentSourcePickerOpen = ref(false)
+const sourceModelsLoading = ref(false)
+const sourceModels = ref<PlatformBaseModelSummary[]>([])
+const selectedSourceModelId = ref('')
+const selectedSourceModelDetail = ref<PlatformBaseModelDetail | null>(null)
+const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
 
 const modelType = ref('')
 const modelVersionId = ref('')
@@ -320,6 +376,7 @@ watch(selectedTaskType, () => {
   lastCreatedDeployment.value = null
   lastRuntimeStatus.value = null
   lastRuntimeHealth.value = null
+  resetDeploymentSourceSelection()
   void refreshPage()
 })
 
@@ -344,6 +401,73 @@ function setRuntimeBackend(value: SelectValue): void {
 
 function setRuntimePrecision(value: SelectValue): void {
   runtimePrecision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
+}
+
+function resetDeploymentSourceSelection(): void {
+  deploymentSourcePickerOpen.value = false
+  sourceModels.value = []
+  selectedSourceModelId.value = ''
+  selectedSourceModelDetail.value = null
+  selectedDeploymentSource.value = null
+  modelType.value = ''
+  modelVersionId.value = ''
+  modelBuildId.value = ''
+  runtimeProfileId.value = ''
+  runtimeBackend.value = ''
+  runtimePrecision.value = 'fp32'
+}
+
+async function openDeploymentSourcePicker(): Promise<void> {
+  deploymentSourcePickerOpen.value = true
+  await loadDeploymentSourceModels()
+}
+
+async function loadDeploymentSourceModels(): Promise<void> {
+  sourceModelsLoading.value = true
+  errorMessage.value = null
+  try {
+    sourceModels.value = await listPlatformBaseModels(selectedTaskType.value)
+    if (sourceModels.value.length === 0) {
+      selectedSourceModelId.value = ''
+      selectedSourceModelDetail.value = null
+      return
+    }
+    const preferredModelId = selectedSourceModelId.value
+      || selectedDeploymentSource.value?.modelId
+      || sourceModels.value[0].model_id
+    if (preferredModelId) {
+      await selectDeploymentSourceModel(preferredModelId)
+    }
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '部署来源模型加载失败'
+  } finally {
+    sourceModelsLoading.value = false
+  }
+}
+
+async function selectDeploymentSourceModel(modelId: string): Promise<void> {
+  selectedSourceModelId.value = modelId
+  errorMessage.value = null
+  try {
+    selectedSourceModelDetail.value = await getPlatformBaseModelDetail(modelId)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '模型详情加载失败'
+  }
+}
+
+function applyDeploymentSource(selection: DeploymentSourceSelection): void {
+  selectedDeploymentSource.value = selection
+  selectedSourceModelId.value = selection.modelId
+  modelType.value = selection.modelType
+  modelVersionId.value = selection.modelVersionId
+  modelBuildId.value = selection.modelBuildId
+  runtimeProfileId.value = selection.runtimeProfileId
+  runtimeBackend.value = selection.runtimeBackend
+  runtimePrecision.value = selection.runtimePrecision === 'fp16' ? 'fp16' : 'fp32'
+  if (!displayName.value.trim()) {
+    const sourceLabel = selection.modelBuildId || selection.modelVersionId
+    displayName.value = `${selection.modelName} ${sourceLabel}`
+  }
 }
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -392,12 +516,8 @@ async function loadDeploymentEvents(): Promise<void> {
 }
 
 async function submitDeployment(): Promise<void> {
-  if (!modelType.value.trim()) {
-    errorMessage.value = 'model_type 不能为空'
-    return
-  }
-  if (!modelVersionId.value.trim() && !modelBuildId.value.trim()) {
-    errorMessage.value = t('deploymentOps.messages.modelInputRequired')
+  if (!selectedDeploymentSource.value || !modelType.value.trim()) {
+    errorMessage.value = '请选择部署来源模型'
     return
   }
   creating.value = true
@@ -458,3 +578,33 @@ async function runHealthAction(deploymentId: string, action: DeploymentHealthAct
   }
 }
 </script>
+
+<style scoped>
+.deployment-source-summary {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--summary-bg);
+}
+
+.deployment-source-summary h3 {
+  margin: 0;
+}
+
+.source-empty-card {
+  display: grid;
+  gap: 4px;
+  min-height: 96px;
+  align-content: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.source-empty-card span {
+  color: var(--muted);
+}
+</style>
