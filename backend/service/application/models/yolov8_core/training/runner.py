@@ -7,9 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from backend.service.application.models.support.distributed_training import (
-    DdpTrainingContext,
-)
 from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
@@ -43,9 +40,6 @@ def run_yolov8_detection_training_epoch(
     *,
     torch_module: Any,
     model: Any,
-    loss_model: Any | None = None,
-    ema_model: Any | None = None,
-    gradient_model: Any | None = None,
     samples: tuple[Any, ...],
     batch_size: int,
     input_size: tuple[int, int],
@@ -62,31 +56,21 @@ def run_yolov8_detection_training_epoch(
     grad_clip_norm: float,
     ema: Any | None = None,
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
-    ddp_context: DdpTrainingContext | None = None,
     batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None,
 ) -> YoloV8DetectionTrainingEpochResult:
     """执行 YOLOv8 detection 一个 epoch 的 batch 循环。"""
 
-    resolved_loss_model = loss_model if loss_model is not None else model
-    resolved_ema_model = ema_model if ema_model is not None else resolved_loss_model
-    resolved_gradient_model = (
-        gradient_model if gradient_model is not None else resolved_loss_model
-    )
-    epoch_samples = _resolve_yolov8_detection_epoch_samples(
-        torch_module=torch_module,
-        samples=samples,
-        epoch=epoch,
-        ddp_context=ddp_context,
-    )
-    available_samples = tuple(samples if ddp_context is not None else epoch_samples)
-    max_iterations = max(1, (len(epoch_samples) + batch_size - 1) // batch_size)
+    shuffled_samples = list(samples)
+    random.shuffle(shuffled_samples)
+    available_samples = tuple(shuffled_samples)
+    max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
     epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
     model.train()
     optimizer.zero_grad(set_to_none=True)
     last_optimizer_step_iteration = 0
 
     for iteration, sample_batch in enumerate(
-        _iter_yolov8_detection_batches(epoch_samples, batch_size),
+        _iter_yolov8_detection_batches(shuffled_samples, batch_size),
         start=1,
     ):
         global_iteration += 1
@@ -105,7 +89,7 @@ def run_yolov8_detection_training_epoch(
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
-                model=resolved_loss_model,
+                model=model,
                 raw_outputs=raw_outputs,
                 batch_targets=batch_targets,
             )
@@ -118,20 +102,18 @@ def run_yolov8_detection_training_epoch(
         if should_step:
             scaler.unscale_(optimizer)
             if grad_clip_norm > 0:
-                torch_module.nn.utils.clip_grad_norm_(
-                    resolved_gradient_model.parameters(), grad_clip_norm
-                )
+                torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
             scaler.step(optimizer)
             scaler.update()
             if ema is not None:
-                ema.update(resolved_ema_model)
+                ema.update(model)
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
 
         for metric_name in epoch_losses:
             epoch_losses[metric_name] += float(loss_components[metric_name].detach().item())
 
-        if batch_callback is not None and _is_yolov8_rank_zero(ddp_context):
+        if batch_callback is not None:
             batch_callback(
                 YoloV8DetectionTrainingBatchProgress(
                     epoch=epoch,
@@ -151,82 +133,13 @@ def run_yolov8_detection_training_epoch(
                 )
             )
 
-    train_metrics = {
-        metric_name: round(metric_total / max_iterations, 6)
-        for metric_name, metric_total in epoch_losses.items()
-    }
-    train_metrics = _all_reduce_yolov8_detection_train_metrics(
-        torch_module=torch_module,
-        ddp_context=ddp_context,
-        train_metrics=train_metrics,
-    )
     return YoloV8DetectionTrainingEpochResult(
         global_iteration=global_iteration,
-        train_metrics=train_metrics,
+        train_metrics={
+            metric_name: round(metric_total / max_iterations, 6)
+            for metric_name, metric_total in epoch_losses.items()
+        },
     )
-
-
-def _resolve_yolov8_detection_epoch_samples(
-    *,
-    torch_module: Any,
-    samples: tuple[Any, ...],
-    epoch: int,
-    ddp_context: DdpTrainingContext | None,
-) -> list[Any]:
-    """按当前 rank 解析一个 epoch 应读取的训练样本。"""
-
-    if ddp_context is None:
-        shuffled_samples = list(samples)
-        random.shuffle(shuffled_samples)
-        return shuffled_samples
-    sampler = torch_module.utils.data.distributed.DistributedSampler(
-        list(range(len(samples))),
-        num_replicas=ddp_context.world_size,
-        rank=ddp_context.rank,
-        shuffle=True,
-        seed=0,
-        drop_last=False,
-    )
-    sampler.set_epoch(max(0, int(epoch) - 1))
-    return [samples[index] for index in sampler]
-
-
-def _all_reduce_yolov8_detection_train_metrics(
-    *,
-    torch_module: Any,
-    ddp_context: DdpTrainingContext | None,
-    train_metrics: dict[str, float],
-) -> dict[str, float]:
-    """把各 rank 的训练指标求平均，保证 rank0 看到全局训练摘要。"""
-
-    if ddp_context is None or not ddp_context.is_distributed:
-        return train_metrics
-    distributed = torch_module.distributed
-    if not distributed.is_available() or not distributed.is_initialized():
-        return train_metrics
-    metric_names = tuple(train_metrics.keys())
-    reduce_device = (
-        ddp_context.device
-        if ddp_context.backend == "nccl" and ddp_context.device.startswith("cuda")
-        else "cpu"
-    )
-    values = torch_module.tensor(
-        [float(train_metrics[name]) for name in metric_names],
-        dtype=torch_module.float64,
-        device=reduce_device,
-    )
-    distributed.all_reduce(values, op=distributed.ReduceOp.SUM)
-    values = values / max(1, int(ddp_context.world_size))
-    return {
-        metric_name: round(float(values[index].item()), 6)
-        for index, metric_name in enumerate(metric_names)
-    }
-
-
-def _is_yolov8_rank_zero(ddp_context: DdpTrainingContext | None) -> bool:
-    """判断当前 YOLOv8 detection 训练进程是否允许上报平台进度。"""
-
-    return ddp_context is None or ddp_context.is_rank_zero
 
 
 def _iter_yolov8_detection_batches(

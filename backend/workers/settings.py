@@ -217,32 +217,6 @@ class BackendWorkerTaskManagerConfig(BaseModel):
         return tuple(normalized_items)
 
 
-class BackendWorkerDistributedTrainingConfig(BaseModel):
-    """描述 backend-worker 的分布式训练启动配置。
-
-    字段：
-    - gloo_socket_ifname：Windows / Gloo DDP 需要显式绑定的网卡名称。
-    - disable_libuv：是否禁用 torchrun / TCPStore 的 libuv 路径。
-    - use_native_rank_launch：是否绕过 torchrun，直接按 rank 启动本机子进程。
-    """
-
-    gloo_socket_ifname: str | None = None
-    disable_libuv: bool = True
-    use_native_rank_launch: bool = True
-
-    @field_validator("gloo_socket_ifname", mode="before")
-    @classmethod
-    def _normalize_gloo_socket_ifname(cls, value: object) -> str | None:
-        """规范化 Gloo 网卡名称配置。"""
-
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            raise ValueError("gloo_socket_ifname 必须是字符串")
-        normalized_value = value.strip()
-        return normalized_value or None
-
-
 class BackendWorkerSettings(BaseSettings):
     """描述 backend-worker 启动阶段使用的统一配置。
 
@@ -253,7 +227,6 @@ class BackendWorkerSettings(BaseSettings):
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：后台任务管理器配置。
-    - distributed_training：DDP 子进程启动和 Windows / Gloo 配置。
     - deployment_process_supervisor：沿用历史字段名；当前主要复用 request_timeout_seconds 作为 async inference gateway 等待超时。
     """
 
@@ -274,9 +247,6 @@ class BackendWorkerSettings(BaseSettings):
     queue: BackendWorkerQueueConfig = Field(default_factory=BackendWorkerQueueConfig)
     task_manager: BackendWorkerTaskManagerConfig = Field(
         default_factory=BackendWorkerTaskManagerConfig
-    )
-    distributed_training: BackendWorkerDistributedTrainingConfig = Field(
-        default_factory=BackendWorkerDistributedTrainingConfig
     )
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig

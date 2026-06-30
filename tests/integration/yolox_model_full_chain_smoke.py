@@ -134,7 +134,6 @@ def main(argv: list[str] | None = None) -> int:
                         target_formats=args.target_formats,
                         max_epochs=args.max_epochs,
                         batch_size=args.batch_size,
-                        gpu_count=args.gpu_count,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
                         run_workflow=args.run_workflow,
@@ -200,12 +199,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument(
-        "--gpu-count",
-        type=int,
-        default=None,
-        help="训练请求的 GPU 数量；不指定时沿用服务端默认解析",
-    )
     parser.add_argument(
         "--start-processes",
         action="store_true",

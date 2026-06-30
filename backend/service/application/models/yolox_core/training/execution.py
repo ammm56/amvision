@@ -15,9 +15,6 @@ from backend.service.application.errors import (
 from backend.service.application.models.yolox_core.cfg import (
     resolve_yolox_input_size,
 )
-from backend.service.application.models.support.distributed_training import (
-    DdpTrainingContext,
-)
 from backend.service.application.models.yolox_core.data.datasets import (
     CocoDetectionExportDataset as _CocoDetectionExportDataset,
     VocDetectionExportDataset as _VocDetectionExportDataset,
@@ -117,7 +114,6 @@ class YoloXDetectionTrainingExecutionRequest:
     - warm_start_source_summary：warm start 来源摘要。
     - input_size：训练输入尺寸；为空时使用最小默认值。
     - extra_options：附加训练选项。
-    - ddp_context：torchrun 子进程传入的 DDP rank 上下文；为空时按单进程训练解析。
     - batch_callback：每个 batch 完成后的 heartbeat 回调。
     - epoch_callback：每轮训练结束后的进度回写回调；返回值可携带 save/pause 控制命令。
     - savepoint_callback：当训练收到手动保存或暂停请求时回传当前 savepoint。
@@ -136,7 +132,6 @@ class YoloXDetectionTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
-    ddp_context: DdpTrainingContext | None = None
     batch_callback: Callable[["YoloXTrainingBatchProgress"], None] | None = None
     epoch_callback: Callable[
         ["YoloXTrainingEpochProgress"],
@@ -215,20 +210,12 @@ class _ResolvedTrainingRuntime:
     - gpu_count：实际参与训练的 GPU 数量。
     - device_ids：实际参与训练的 GPU 编号列表。
     - distributed_mode：当前训练的设备并行模式。
-    - rank：当前 DDP 全局 rank；单进程训练为 0。
-    - local_rank：当前 DDP 本机 rank；单进程训练为 0。
-    - world_size：DDP 总进程数；单进程训练为 1。
-    - is_rank_zero：当前进程是否允许写平台事件和产物。
     """
 
     device: str
     gpu_count: int
     device_ids: tuple[int, ...]
     distributed_mode: str
-    rank: int = 0
-    local_rank: int = 0
-    world_size: int = 1
-    is_rank_zero: bool = True
 
 
 class YoloXTrainingPausedError(Exception):
@@ -288,11 +275,6 @@ def run_yolox_detection_training_execution(
         imports=imports,
         requested_gpu_count=request.gpu_count,
         extra_options=extra_options,
-        ddp_context=request.ddp_context,
-    )
-    per_rank_batch_size = _resolve_per_rank_batch_size(
-        global_batch_size=batch_size,
-        runtime=runtime,
     )
     precision = _resolve_precision(
         imports=imports,
@@ -422,13 +404,8 @@ def run_yolox_detection_training_execution(
 
     if use_augmentation_data_pipeline:
         train_batch_sampler = imports.YoloBatchSampler(
-            imports.InfiniteSampler(
-                len(train_dataset),
-                seed=random_seed,
-                rank=runtime.rank,
-                world_size=runtime.world_size,
-            ),
-            per_rank_batch_size,
+            imports.InfiniteSampler(len(train_dataset), seed=random_seed),
+            batch_size,
             False,
             mosaic=mosaic_augmentation_enabled,
             input_dimension=input_size,
@@ -441,21 +418,10 @@ def run_yolox_detection_training_execution(
             worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
         )
     else:
-        train_sampler = None
-        if runtime.world_size > 1:
-            train_sampler = imports.torch.utils.data.distributed.DistributedSampler(
-                train_dataset,
-                num_replicas=runtime.world_size,
-                rank=runtime.rank,
-                shuffle=True,
-                seed=random_seed,
-                drop_last=False,
-            )
         train_loader = imports.torch.utils.data.DataLoader(
             train_dataset,
-            batch_size=per_rank_batch_size,
-            shuffle=train_sampler is None,
-            sampler=train_sampler,
+            batch_size=batch_size,
+            shuffle=True,
             num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
@@ -483,7 +449,7 @@ def run_yolox_detection_training_execution(
         )
         validation_loader = imports.torch.utils.data.DataLoader(
             validation_dataset,
-            batch_size=per_rank_batch_size,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
@@ -534,11 +500,12 @@ def run_yolox_detection_training_execution(
                     "max_epochs": max_epochs,
                 },
             )
-    training_model = _wrap_yolox_training_model_for_ddp(
-        imports=imports,
-        model=base_model,
-        runtime=runtime,
-    )
+    training_model = base_model
+    if runtime.distributed_mode == "data-parallel":
+        training_model = imports.torch.nn.DataParallel(
+            base_model,
+            device_ids=list(runtime.device_ids),
+        )
     training_model.train()
     parameter_count = sum(parameter.numel() for parameter in base_model.parameters())
     scheduler = build_yolox_lr_scheduler(
@@ -711,10 +678,6 @@ def run_yolox_detection_training_execution(
                 random_seed=random_seed,
                 evaluation_confidence_threshold=evaluation_confidence_threshold,
                 evaluation_nms_threshold=evaluation_nms_threshold,
-                rank=runtime.rank,
-                local_rank=runtime.local_rank,
-                world_size=runtime.world_size,
-                is_rank_zero=runtime.is_rank_zero,
             )
         )
     except Exception:
@@ -727,52 +690,11 @@ def run_yolox_detection_training_execution(
 
     if loop_result.status == "paused":
         savepoint = loop_result.savepoint
-        if not runtime.is_rank_zero:
-            _release_current_training_objects()
-            return _build_non_rank0_yolox_training_result(
-                warm_start_summary=warm_start_summary,
-                implementation_mode=YOLOX_DETECTION_CORE_IMPLEMENTATION_MODE,
-                loop_result=loop_result,
-                evaluation_interval=evaluation_interval,
-                category_names=train_category_names,
-                split_names=tuple(resolved_splits.keys()),
-                sample_count=total_sample_count,
-                train_sample_count=train_sample_count,
-                input_size=input_size,
-                batch_size=batch_size,
-                max_epochs=max_epochs,
-                runtime=runtime,
-                precision=precision,
-                validation_split_name=validation_split_name,
-                validation_sample_count=validation_sample_count,
-                parameter_count=int(parameter_count),
-            )
         if savepoint is None:
             _release_current_training_objects()
             raise ServiceConfigurationError("YOLOX 训练暂停时没有生成 savepoint")
         _release_current_training_objects()
         raise YoloXTrainingPausedError(savepoint)
-
-    if not runtime.is_rank_zero:
-        _release_current_training_objects()
-        return _build_non_rank0_yolox_training_result(
-            warm_start_summary=warm_start_summary,
-            implementation_mode=YOLOX_DETECTION_CORE_IMPLEMENTATION_MODE,
-            loop_result=loop_result,
-            evaluation_interval=evaluation_interval,
-            category_names=train_category_names,
-            split_names=tuple(resolved_splits.keys()),
-            sample_count=total_sample_count,
-            train_sample_count=train_sample_count,
-            input_size=input_size,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            runtime=runtime,
-            precision=precision,
-            validation_split_name=validation_split_name,
-            validation_sample_count=validation_sample_count,
-            parameter_count=int(parameter_count),
-        )
 
     if (
         loop_result.checkpoint_bytes is None
@@ -892,35 +814,8 @@ def _resolve_training_runtime(
     imports: YoloXCoreDependencies,
     requested_gpu_count: int | None,
     extra_options: dict[str, object],
-    ddp_context: DdpTrainingContext | None,
 ) -> _ResolvedTrainingRuntime:
     """解析当前训练应使用的设备资源。"""
-
-    if ddp_context is not None:
-        if not ddp_context.is_distributed:
-            raise InvalidRequestError("YOLOX DDP 上下文的 world_size 必须大于 1")
-        if requested_gpu_count is not None and requested_gpu_count != ddp_context.world_size:
-            raise InvalidRequestError(
-                "YOLOX DDP 上下文与训练请求 gpu_count 不一致",
-                details={
-                    "requested_gpu_count": requested_gpu_count,
-                    "world_size": ddp_context.world_size,
-                },
-            )
-        if ddp_context.device.startswith("cuda") and not imports.torch.cuda.is_available():
-            raise InvalidRequestError("YOLOX DDP 请求使用 CUDA，但当前环境没有可用 GPU")
-        if ddp_context.device.startswith("cuda"):
-            imports.torch.cuda.set_device(ddp_context.local_rank)
-        return _ResolvedTrainingRuntime(
-            device=ddp_context.device,
-            gpu_count=ddp_context.world_size,
-            device_ids=tuple(range(ddp_context.world_size)),
-            distributed_mode="ddp",
-            rank=ddp_context.rank,
-            local_rank=ddp_context.local_rank,
-            world_size=ddp_context.world_size,
-            is_rank_zero=ddp_context.is_rank_zero,
-        )
 
     requested_device = _read_str_option(extra_options, "device")
     if requested_device == "cpu":
@@ -976,16 +871,7 @@ def _resolve_training_runtime(
             )
 
     device_ids = tuple(range(start_device_index, start_device_index + gpu_count))
-    if gpu_count > 1:
-        raise InvalidRequestError(
-            "YOLOX 多 GPU 训练必须使用 DDP TrainingBackend，不再支持单进程 DataParallel",
-            details={
-                "requested_gpu_count": gpu_count,
-                "available_gpu_count": available_gpu_count,
-                "required_backend": "ddp",
-            },
-        )
-    distributed_mode = "single-device"
+    distributed_mode = "data-parallel" if gpu_count > 1 else "single-device"
     return _ResolvedTrainingRuntime(
         device=f"cuda:{device_ids[0]}",
         gpu_count=gpu_count,
@@ -1016,113 +902,6 @@ def _resolve_precision(
     if precision == "fp16" and not hasattr(imports.torch, "autocast"):
         raise ServiceConfigurationError("当前 torch 版本缺少 autocast，无法执行 fp16 训练")
     return precision
-
-
-def _resolve_per_rank_batch_size(
-    *,
-    global_batch_size: int,
-    runtime: _ResolvedTrainingRuntime,
-) -> int:
-    """把前端总 batch size 拆成单个 DDP rank 的 batch size。"""
-
-    if runtime.world_size <= 1:
-        return global_batch_size
-    if global_batch_size < runtime.world_size:
-        raise InvalidRequestError(
-            "YOLOX DDP 总 batch size 不能小于 GPU 数量",
-            details={
-                "batch_size": global_batch_size,
-                "world_size": runtime.world_size,
-            },
-        )
-    if global_batch_size % runtime.world_size != 0:
-        raise InvalidRequestError(
-            "YOLOX DDP 总 batch size 必须能被 GPU 数量整除",
-            details={
-                "batch_size": global_batch_size,
-                "world_size": runtime.world_size,
-            },
-        )
-    return max(1, global_batch_size // runtime.world_size)
-
-
-def _wrap_yolox_training_model_for_ddp(
-    *,
-    imports: YoloXCoreDependencies,
-    model: Any,
-    runtime: _ResolvedTrainingRuntime,
-) -> Any:
-    """在 DDP rank 内包装 YOLOX 训练模型。"""
-
-    if runtime.world_size <= 1:
-        return model
-    distributed = imports.torch.distributed
-    if not distributed.is_available() or not distributed.is_initialized():
-        raise InvalidRequestError("YOLOX DDP 训练必须先初始化 torch.distributed")
-    if runtime.device.startswith("cuda"):
-        return imports.torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=(runtime.local_rank,),
-            output_device=runtime.local_rank,
-            broadcast_buffers=False,
-        )
-    return imports.torch.nn.parallel.DistributedDataParallel(
-        model,
-        broadcast_buffers=False,
-    )
-
-
-def _build_non_rank0_yolox_training_result(
-    *,
-    warm_start_summary: dict[str, object],
-    implementation_mode: str,
-    loop_result: Any,
-    evaluation_interval: int,
-    category_names: tuple[str, ...],
-    split_names: tuple[str, ...],
-    sample_count: int,
-    train_sample_count: int,
-    input_size: tuple[int, int],
-    batch_size: int,
-    max_epochs: int,
-    runtime: _ResolvedTrainingRuntime,
-    precision: str,
-    validation_split_name: str | None,
-    validation_sample_count: int,
-    parameter_count: int,
-) -> YoloXDetectionTrainingExecutionResult:
-    """构造非 rank0 子进程的空执行结果。
-
-    非 rank0 只参与 collective 训练，不写平台事件和产物；返回值仅用于子进程
-    正常退出，worker 不会登记这些空产物。
-    """
-
-    return YoloXDetectionTrainingExecutionResult(
-        checkpoint_bytes=b"",
-        latest_checkpoint_bytes=b"",
-        metrics_payload={},
-        validation_metrics_payload={},
-        warm_start_summary=warm_start_summary,
-        implementation_mode=implementation_mode,
-        best_metric_name=loop_result.best_metric_name,
-        best_metric_value=float(loop_result.best_metric_value or 0.0),
-        evaluation_interval=evaluation_interval,
-        category_names=category_names,
-        split_names=split_names,
-        sample_count=sample_count,
-        train_sample_count=train_sample_count,
-        input_size=input_size,
-        batch_size=batch_size,
-        max_epochs=max_epochs,
-        device=runtime.device,
-        gpu_count=runtime.gpu_count,
-        device_ids=runtime.device_ids,
-        distributed_mode=runtime.distributed_mode,
-        precision=precision,
-        validation_split_name=validation_split_name,
-        validation_sample_count=validation_sample_count,
-        parameter_count=parameter_count,
-    )
 
 
 def _read_bool_option(extra_options: dict[str, object], key: str, *, default: bool) -> bool:

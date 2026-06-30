@@ -9,9 +9,6 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.yolo_core_common.training import (
-    resolve_yolo_training_runtime_resources,
-)
 
 
 YOLO11_DETECTION_DEFAULT_INPUT_SIZE = (640, 640)
@@ -83,23 +80,16 @@ def resolve_yolo11_detection_runtime(
     imports: Yolo11DetectionTrainingImports,
     requested_gpu_count: int | None,
     requested_precision: str | None,
-    extra_options: dict[str, object] | None = None,
 ) -> tuple[str, int, tuple[int, ...], str, str]:
     """解析 YOLO11 detection 训练真正使用的运行时资源。"""
 
-    runtime = resolve_yolo_training_runtime_resources(
-        torch_module=imports.torch,
-        requested_gpu_count=requested_gpu_count,
-        requested_precision=requested_precision,
-        extra_options=extra_options,
-    )
-    return (
-        runtime.device,
-        runtime.gpu_count,
-        runtime.device_ids,
-        runtime.distributed_mode,
-        runtime.precision,
-    )
+    del requested_gpu_count
+    torch = imports.torch
+    cuda_available = bool(torch.cuda.is_available())
+    if cuda_available:
+        runtime_precision = "fp16" if requested_precision == "fp16" else "fp32"
+        return "cuda:0", 1, (0,), "single-process", runtime_precision
+    return "cpu", 0, (), "single-process", "fp32"
 
 
 def unwrap_yolo11_detection_outputs(outputs: Any) -> dict[str, Any]:

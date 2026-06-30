@@ -59,7 +59,6 @@ from backend.service.application.models.training.detection_training_rules import
     build_detection_training_summary_base,
     build_detection_validation_summary_payload,
 )
-from backend.service.application.models.support.distributed_training import DdpTrainingContext
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.application.tasks.task_service import (
@@ -883,86 +882,6 @@ class SqlAlchemyYoloXTrainingTaskService(
             summary=training_result.summary,
         )
         return training_result
-
-    def read_requested_gpu_count(self, task_id: str) -> int:
-        """读取训练任务请求的 GPU 数量，不修改任务状态。"""
-
-        task_record = self._require_training_task(task_id)
-        request = self._build_request_from_task_record(task_record)
-        return int(request.gpu_count or 1)
-
-    def get_existing_training_result(self, task_id: str) -> YoloXTrainingTaskResult | None:
-        """读取已经由 rank0 写回的训练结果。"""
-
-        return self._build_existing_result(self._require_training_task(task_id))
-
-    def process_training_ddp_rank(
-        self,
-        *,
-        task_id: str,
-        ddp_context: DdpTrainingContext,
-    ) -> None:
-        """执行 YOLOX DDP 子进程训练。
-
-        rank0 继续走完整任务服务，负责状态事件、对象存储和 ModelVersion；
-        其他 rank 只参与模型训练和 collective，不写平台状态。
-        """
-
-        if ddp_context.is_rank_zero:
-            self.process_training_task(task_id)
-            return
-
-        dataset_storage = self._require_dataset_storage()
-        task_record = self._require_training_task(task_id)
-        request = self._build_request_from_task_record(task_record)
-        dataset_export = self._resolve_dataset_export(request)
-        require_supported_dataset_export_format(
-            model_type="yolox",
-            task_type=DETECTION_TASK_TYPE,
-            format_id=dataset_export.format_id,
-            dataset_export_id=dataset_export.dataset_export_id,
-            unsupported_message="YOLOX detection 训练不支持当前 DatasetExport 格式",
-        )
-        manifest_payload = self._read_manifest_payload(dataset_export.manifest_object_key or "")
-        warm_start_reference = self._resolve_warm_start_reference(request)
-        resume_checkpoint_object_key = (
-            self._resolve_resume_checkpoint_object_key(task_record)
-            if read_yolox_training_control_flag(
-                read_yolox_training_control(task_record.metadata),
-                "resume_pending",
-            )
-            else None
-        )
-        run_yolox_detection_training(
-            YoloXDetectionTrainingExecutionRequest(
-                dataset_storage=dataset_storage,
-                manifest_payload=manifest_payload,
-                model_scale=request.model_scale,
-                evaluation_interval=request.evaluation_interval,
-                max_epochs=request.max_epochs,
-                batch_size=request.batch_size,
-                gpu_count=request.gpu_count,
-                precision=request.precision,
-                warm_start_checkpoint_path=(
-                    warm_start_reference.checkpoint_path
-                    if warm_start_reference is not None
-                    else None
-                ),
-                resume_checkpoint_path=(
-                    dataset_storage.resolve(resume_checkpoint_object_key)
-                    if resume_checkpoint_object_key is not None
-                    else None
-                ),
-                warm_start_source_summary=(
-                    self._build_warm_start_source_summary(warm_start_reference)
-                    if warm_start_reference is not None
-                    else None
-                ),
-                input_size=request.input_size,
-                extra_options=dict(request.extra_options),
-                ddp_context=ddp_context,
-            )
-        )
 
     def _validate_request(self, request: YoloXTrainingTaskRequest) -> None:
         """校验训练任务创建请求。"""

@@ -37,7 +37,7 @@
   - classification / segmentation 走 `extra_options.evaluation_interval`
 - 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
 - detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
-- detection 公开接口里的 `gpu_count` 当前已经有前端输入，并在 detection 执行层生效：`yolox` 已删除同步 `DataParallel` 路径，`gpu_count > 1` 会要求走 DDP TrainingBackend；`yolov8 / yolo11 / yolo26` 已接入 torchrun DDP、per-rank batch、`DistributedSampler`、`DistributedDataParallel`、rank0 validation/checkpoint 和控制广播；`rfdetr` 转入 RF-DETR core 的 Lightning `devices` 配置。当前只实现 Windows 单机 PyTorch DDP + Gloo，`MASTER_ADDR` 固定为 `127.0.0.1`；`distributed_training.gloo_socket_ifname` 仅作为 Windows Gloo 本机 socket device 选择失败时的兜底配置。完整 DDP TrainingBackend 的目标边界、实现顺序和验收标准见 [DDP TrainingBackend 实现计划](ddp-training-backend-plan.md)。classification / segmentation / pose / obb 当前没有公开顶层 `gpu_count`，默认仍按各自单设备训练路径执行。
+- detection 公开接口里的 `gpu_count` 当前已经有前端输入，但不是所有 detection 模型都真正执行：当前只有 `yolox` 真正使用，`yolov8 / yolo11 / yolo26` 与 `rfdetr` 还没有在执行层生效。
 - 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
 
 ## 通用参数层现状
@@ -53,7 +53,7 @@
 | `recipe_id` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 固定默认值 | 当前实际只有 `default` 生效，前端不再单独暴露 |
 | `evaluation_interval` | 公开 + 执行 | 执行层已有，公开接口未收 | 执行层已有，公开接口未收 | 公开 + 执行 | 公开 + 执行 | 已暴露 | classification / segmentation 当前由前端写入 `extra_options.evaluation_interval` |
 | `warm_start_model_version_id` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只在 detection 前端显示 |
-| `gpu_count` | 公开 + 执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | detection 已禁止单进程 DataParallel；YOLOX / YOLOv8 / YOLO11 / YOLO26 detection 已接入 Windows 单机 DDP + Gloo，仍待真实双卡硬件 smoke；非 detection 当前不公开顶层多 GPU 参数 |
+| `gpu_count` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只有 `yolox` 真正执行，`yolov8 / yolo11 / yolo26 / rfdetr` 未生效 |
 
 ## 当前前端页面已暴露的训练输入
 
@@ -100,25 +100,25 @@
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
 | 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`extra_options.device`、`seed`、`num_workers`、`max_labels`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`mosaic_scale`、`mixup_scale`、`multiscale_range`、`ema`、`warmup_epochs`、`no_aug_epochs`、`min_lr_ratio` |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + YOLOX 高级参数面 |
-| 当前缺口 | 公开字段里常见的 `learning_rate / weight_decay` 对当前 YOLOX 执行并没有实际切换作用；高级参数当前还没有继续按能力组分块显示；YOLOX DDP 已接入 torchrun 子进程、rank0 产物回写和单 GPU 保护，仍待 Windows 单机 Gloo 真实 2 GPU 硬件 smoke |
+| 当前缺口 | 公开字段里常见的 `learning_rate / weight_decay` 对当前 YOLOX 执行并没有实际切换作用；高级参数当前还没有继续按能力组分块显示 |
 
 #### detection / yolov8、yolo11、yolo26
 
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`extra_options.device`、`extra_options.learning_rate`、`weight_decay`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`degrees`、`translate`、`shear`、`mosaic_scale`、`mixup_scale` |
+| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.learning_rate`、`weight_decay`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`degrees`、`translate`、`shear`、`mosaic_scale`、`mixup_scale` |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + detection / YOLO 主线高级参数面 |
-| 当前缺口 | 多 GPU 已进入 torchrun DDP 启动边界，且不再允许单进程 `DataParallel`；YOLOv8 / YOLO11 / YOLO26 detection 已接入 DistributedSampler、DDP model、rank0 validation/checkpoint 和控制广播，仍待 Windows 单机 Gloo 真实 2 GPU 硬件 smoke |
+| 当前缺口 | `gpu_count` 虽然公开接口接受，但当前执行层 `_resolve_runtime(...)` 里直接忽略了它 |
 
 #### detection / rfdetr
 
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight` |
+| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight` |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + RF-DETR detection 高级参数面 |
-| 当前缺口 | 多 GPU 由 RF-DETR core 的 Lightning `devices` 承接；当前未在非 detection RF-DETR segmentation 页面公开顶层 `gpu_count` |
+| 当前缺口 | `warm_start_model_version_id`、`evaluation_interval`、`gpu_count` 当前没有真正进入执行；公开接口说明里的 `weight_decay` 当前执行层也没有按请求值切换 |
 
 ### classification
 

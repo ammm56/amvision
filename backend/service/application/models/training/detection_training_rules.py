@@ -72,7 +72,7 @@ def build_detection_runtime_summary_payload(
     gpu_count: int | None,
     device_ids: Sequence[int] | None,
     precision: str | None,
-    distributed_mode: str | None,
+    distributed_mode: bool | None,
 ) -> dict[str, object]:
     """构建 detection 推理与训练运行时公共摘要。"""
 
@@ -146,7 +146,7 @@ def build_detection_training_summary_base(
     device: str,
     gpu_count: int,
     device_ids: Sequence[int],
-    distributed_mode: str,
+    distributed_mode: bool,
     requested_gpu_count: int | None,
     precision: str,
     requested_precision: str | None,

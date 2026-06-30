@@ -68,7 +68,7 @@ def test_assemble_release_materializes_full_layout(
     assert result.bundled_python_mode == "placeholder-empty"
 
     requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
-    assert "torch==2.12.1" in requirements_text
+    assert "torch==2.8.0" in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
     assert "tensorrt-cu12==10.16.1.11" in requirements_text

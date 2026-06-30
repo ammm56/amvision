@@ -13,8 +13,8 @@ opencv-python>=4.11,<5
 Pillow>=12.2.0,<13
 regex>=2026.5.0,<2027
 tensorboard>=2.19,<3
-torch==2.12.1
-torchvision==0.27.1
+torch==2.8.0
+torchvision==0.23.0
 transformers>=5.9.0,<6
 httpx2>=2.3,<3
 
@@ -64,9 +64,10 @@ watchfiles>=1.2,<2
 # 可选
 psutil>=7.2.2,<8
 
-# 如需通过 PyTorch 官方 CUDA 12.6 源安装：
-# 当前基线为 PyTorch 2.12.1 + CUDA 12.6，Windows 单机多 GPU DDP 使用 Gloo。
-# pip install torch==2.12.1 torchvision==0.27.1 --index-url https://download.pytorch.org/whl/cu126
+# 如需通过 PyTorch 官方 CUDA 12.8 源安装：
+# pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+
+
 
 
 

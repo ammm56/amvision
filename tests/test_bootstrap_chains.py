@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap
@@ -21,7 +20,6 @@ from backend.workers.settings import (
     BackendWorkerAppSettings,
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
-    BackendWorkerDistributedTrainingConfig,
     BackendWorkerQueueConfig,
     BackendWorkerTaskManagerConfig,
     BackendWorkerSettings,
@@ -125,50 +123,8 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
         assert runtime.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
         assert bootstrap.get_step_names() == (
             "prepare-worker-workspace",
-            "apply-worker-distributed-training-environment",
             "load-worker-node-catalog",
         )
-    finally:
-        runtime.session_factory.engine.dispose()
-
-
-def test_worker_bootstrap_applies_distributed_training_environment(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """验证 worker 会把 Windows / Gloo DDP 配置写入子进程环境。"""
-
-    monkeypatch.delenv("USE_LIBUV", raising=False)
-    monkeypatch.delenv("AMVISION_DDP_DISABLE_LIBUV", raising=False)
-    monkeypatch.delenv("AMVISION_DDP_USE_NATIVE_RANK_LAUNCH", raising=False)
-    monkeypatch.delenv("AMVISION_DDP_GLOO_SOCKET_IFNAME", raising=False)
-    monkeypatch.delenv("GLOO_SOCKET_IFNAME", raising=False)
-    settings = BackendWorkerSettings(
-        workspace=BackendWorkerWorkspaceConfig(root_dir=str(tmp_path / "worker-root")),
-        database=BackendWorkerDatabaseConfig(
-            url=f"sqlite:///{(tmp_path / 'worker.db').as_posix()}"
-        ),
-        dataset_storage=BackendWorkerDatasetStorageConfig(
-            root_dir=str(tmp_path / "dataset-files")
-        ),
-        queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
-        distributed_training=BackendWorkerDistributedTrainingConfig(
-            gloo_socket_ifname="Ethernet",
-            disable_libuv=True,
-            use_native_rank_launch=True,
-        ),
-    )
-    bootstrap = BackendWorkerBootstrap(settings=settings)
-    runtime = bootstrap.build_runtime(bootstrap.load_settings())
-
-    try:
-        bootstrap.initialize(runtime)
-
-        assert os.environ["USE_LIBUV"] == "0"
-        assert "AMVISION_DDP_DISABLE_LIBUV" not in os.environ
-        assert os.environ["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] == "1"
-        assert os.environ["AMVISION_DDP_GLOO_SOCKET_IFNAME"] == "Ethernet"
-        assert os.environ["GLOO_SOCKET_IFNAME"] == "Ethernet"
     finally:
         runtime.session_factory.engine.dispose()
 

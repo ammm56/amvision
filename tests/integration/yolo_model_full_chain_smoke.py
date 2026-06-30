@@ -242,7 +242,6 @@ def main(argv: list[str] | None = None) -> int:
                         target_formats=args.target_formats,
                         max_epochs=args.max_epochs,
                         batch_size=args.batch_size,
-                        gpu_count=args.gpu_count,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
                         run_workflow=args.run_workflow,
@@ -301,12 +300,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument(
-        "--gpu-count",
-        type=int,
-        default=None,
-        help="训练请求的 GPU 数量；不指定时沿用服务端默认解析",
-    )
     parser.add_argument(
         "--start-processes", action="store_true", help="由脚本启动 service 和 worker"
     )
@@ -417,19 +410,6 @@ def stop_managed_processes(processes: Iterable[ManagedProcess]) -> None:
     for item in processes:
         if item.process.poll() is not None:
             continue
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(item.process.pid), "/T", "/F"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            try:
-                item.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                item.process.kill()
-                item.process.wait(timeout=10)
-            continue
         item.process.terminate()
         try:
             item.process.wait(timeout=10)
@@ -489,7 +469,6 @@ def run_task_case(
     target_formats: tuple[str, ...],
     max_epochs: int,
     batch_size: int,
-    gpu_count: int | None,
     timeout_seconds: float,
     skip_deployment: bool,
     run_workflow: bool,
@@ -564,7 +543,6 @@ def run_task_case(
         output_model_name=output_model_name,
         max_epochs=max_epochs,
         batch_size=batch_size,
-        gpu_count=gpu_count,
     )
     training_detail = poll_task(
         client=client,
@@ -933,7 +911,6 @@ def submit_training_task(
     output_model_name: str,
     max_epochs: int,
     batch_size: int,
-    gpu_count: int | None,
 ) -> dict[str, Any]:
     """提交训练任务。"""
 
@@ -955,8 +932,6 @@ def submit_training_task(
         },
         "display_name": f"smoke {model_type} {case.task_type}",
     }
-    if gpu_count is not None:
-        payload["gpu_count"] = gpu_count
     if case.task_type in {"detection", "pose", "obb"}:
         payload["evaluation_interval"] = 1
     return client.post(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
@@ -80,33 +79,6 @@ class LoadBackendWorkerNodeCatalogStep:
         _ = runtime
 
 
-class ApplyBackendWorkerDistributedTrainingEnvironmentStep:
-    """把 worker 配置中的 DDP 启动参数写入当前进程环境。"""
-
-    def get_step_name(self) -> str:
-        """返回当前步骤名称。"""
-
-        return "apply-worker-distributed-training-environment"
-
-    def run(self, runtime: BackendWorkerRuntime) -> None:
-        """准备 DDP 子进程需要继承的稳定环境变量。
-
-        参数：
-        - runtime：当前 worker 进程使用的运行时资源。
-        """
-
-        distributed_training = runtime.settings.distributed_training
-        if distributed_training.disable_libuv:
-            os.environ["USE_LIBUV"] = "0"
-        if distributed_training.use_native_rank_launch:
-            os.environ["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] = "1"
-        if distributed_training.gloo_socket_ifname:
-            os.environ["AMVISION_DDP_GLOO_SOCKET_IFNAME"] = (
-                distributed_training.gloo_socket_ifname
-            )
-            os.environ["GLOO_SOCKET_IFNAME"] = distributed_training.gloo_socket_ifname
-
-
 class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWorkerRuntime]):
     """按固定步骤准备 backend-worker 运行环境。"""
 
@@ -170,6 +142,5 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
 
         return (
             PrepareBackendWorkerWorkspaceStep(),
-            ApplyBackendWorkerDistributedTrainingEnvironmentStep(),
             LoadBackendWorkerNodeCatalogStep(),
         )

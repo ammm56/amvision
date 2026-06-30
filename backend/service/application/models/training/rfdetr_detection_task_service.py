@@ -277,7 +277,6 @@ class SqlAlchemyRfdetrTrainingTaskService:
         )
 
         try:
-            execution_extra_options = self._build_execution_extra_options(payload)
             execution_result = run_rfdetr_training(
                 RfdetrTrainingExecutionRequest(
                     dataset_storage=dataset_storage,
@@ -297,7 +296,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         if warm_start_reference is not None
                         else None
                     ),
-                    extra_options=execution_extra_options,
+                    extra_options=dict(payload.get("extra_options") or {}),
                 )
             )
         except Exception as exc:
@@ -697,57 +696,6 @@ class SqlAlchemyRfdetrTrainingTaskService:
             )
         )
 
-    def _build_execution_extra_options(
-        self,
-        payload: dict[str, object],
-    ) -> dict[str, object]:
-        """合并 RF-DETR detection 顶层训练参数和 extra_options。"""
-
-        extra_options = dict(payload.get("extra_options") or {})
-        requested_gpu_count = self._read_requested_gpu_count(payload)
-        if requested_gpu_count > 0:
-            extra_options["gpu_count"] = requested_gpu_count
-        evaluation_interval = payload.get("evaluation_interval")
-        if isinstance(evaluation_interval, int) and evaluation_interval > 0:
-            extra_options["evaluation_interval"] = int(evaluation_interval)
-        return extra_options
-
-    def _build_runtime_summary(self, payload: dict[str, object]) -> dict[str, object]:
-        """按请求参数记录 RF-DETR detection 训练运行时资源。"""
-
-        extra_options = dict(payload.get("extra_options") or {})
-        requested_device = str(extra_options.get("device") or "auto")
-        gpu_count = self._read_requested_gpu_count(payload)
-        if requested_device == "cpu":
-            return {
-                "device": "cpu",
-                "gpu_count": 0,
-                "device_ids": [],
-                "precision": str(payload.get("precision") or "fp32"),
-                "distributed_mode": "single-device",
-            }
-        return {
-            "device": requested_device,
-            "gpu_count": gpu_count,
-            "device_ids": list(range(max(0, gpu_count))),
-            "precision": str(payload.get("precision") or "fp32"),
-            "distributed_mode": (
-                "lightning-devices" if gpu_count > 1 else "single-device"
-            ),
-        }
-
-    def _read_requested_gpu_count(self, payload: dict[str, object]) -> int:
-        """读取 RF-DETR detection 训练请求中的 GPU 数量。"""
-
-        value = payload.get("gpu_count")
-        if isinstance(value, int) and value > 0:
-            return int(value)
-        extra_options = dict(payload.get("extra_options") or {})
-        extra_value = extra_options.get("gpu_count")
-        if isinstance(extra_value, int) and extra_value > 0:
-            return int(extra_value)
-        return 1
-
     def _build_training_summary(
         self,
         *,
@@ -767,8 +715,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "max_epochs": int(payload.get("max_epochs") or 1),
             "precision": str(payload.get("precision") or "fp32"),
             "input_size": list(execution_result.aligned_input_size),
-            "extra_options": self._build_execution_extra_options(payload),
-            "gpu_count": self._read_requested_gpu_count(payload),
+            "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {
             "best_metric_name": execution_result.best_metric_name,
@@ -822,7 +769,13 @@ class SqlAlchemyRfdetrTrainingTaskService:
             category_names=execution_result.labels,
             input_size=execution_result.aligned_input_size,
             training_config=dict(summary["training_config"]),
-            runtime_summary=self._build_runtime_summary(payload),
+            runtime_summary={
+                "device": "cpu",
+                "gpu_count": int(payload.get("gpu_count") or 0),
+                "device_ids": [],
+                "precision": str(payload.get("precision") or "fp32"),
+                "distributed_mode": False,
+            },
             warm_start_summary=dict(summary.get("warm_start") or {}),
             registration_kind="best-checkpoint",
             output_files=output_files,
@@ -877,7 +830,13 @@ class SqlAlchemyRfdetrTrainingTaskService:
         )
         training_config = dict(summary.get("training_config") or {})
         metrics_summary = dict(summary.get("metrics_summary") or {})
-        runtime_summary = self._build_runtime_summary(payload)
+        runtime_summary = {
+            "device": "cpu",
+            "gpu_count": int(payload.get("gpu_count") or 0),
+            "device_ids": [],
+            "precision": str(payload.get("precision") or "fp32"),
+            "distributed_mode": False,
+        }
         model_version_metadata = build_detection_training_model_version_metadata(
             dataset_export_id=dataset_export.dataset_export_id,
             manifest_object_key=dataset_export.manifest_object_key,
