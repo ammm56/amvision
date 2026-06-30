@@ -49,7 +49,7 @@
       "pose-training",
       "obb-training"
     ],
-    "max_concurrent_tasks": 2,
+    "max_concurrent_tasks": 16,
     "poll_interval_seconds": 1.0
   },
   "deployment_process_supervisor": {

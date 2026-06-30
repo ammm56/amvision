@@ -12,6 +12,7 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.training.device_assignment import assigned_training_device
 
 
 # 沿用统一训练执行规则的别名导出
@@ -47,8 +48,12 @@ class SqlAlchemyRfdetrTrainerRunner:
         返回：
         - TrainingBackendRunResult：训练执行结果。
         """
-        service = SqlAlchemyRfdetrTrainingTaskService(
+        with assigned_training_device(
             session_factory=self.session_factory,
-            dataset_storage=self.dataset_storage,
-        )
-        return service.process_training_task(request.training_task_id)
+            task_id=request.training_task_id,
+        ):
+            service = SqlAlchemyRfdetrTrainingTaskService(
+                session_factory=self.session_factory,
+                dataset_storage=self.dataset_storage,
+            )
+            return service.process_training_task(request.training_task_id)

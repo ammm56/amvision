@@ -278,7 +278,7 @@ class BackendServiceTaskManagerConfig(BaseModel):
     """
 
     enabled: bool = True
-    max_concurrent_tasks: int = 2
+    max_concurrent_tasks: int = 16
     poll_interval_seconds: float = 1.0
 
 

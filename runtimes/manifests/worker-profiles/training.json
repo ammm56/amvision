@@ -13,6 +13,6 @@
     "pose-training",
     "obb-training"
   ],
-  "max_concurrent_tasks": 1,
+  "max_concurrent_tasks": 16,
   "poll_interval_seconds": 1.0
 }

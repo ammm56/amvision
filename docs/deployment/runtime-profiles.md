@@ -58,7 +58,7 @@
 | `evaluation` | `detection-evaluation`、`classification-evaluation`、`segmentation-evaluation`、`pose-evaluation`、`obb-evaluation` | 数据集级评估和指标回写 |
 | `inference` | `detection-inference`、`classification-inference`、`segmentation-inference`、`pose-inference`、`obb-inference` | async inference 队列消费和 gateway 转发 |
 
-当前每个 profile 默认 `max_concurrent_tasks = 1`。这是更保守、也更贴现场的默认值，先保证隔离和可观测，再按设备与任务类型调高。
+当前训练 profile 默认 `max_concurrent_tasks = 16`，用于支持多张 GPU 上同时运行多个单卡训练任务；其他 profile 默认仍为 `max_concurrent_tasks = 1`，先保证导入、导出、转换、评估和推理队列的隔离与可观测。训练任务进入模型执行前会先获取单卡训练设备租约，`auto` / `cuda` 会解析到空闲 `cuda:n`，显式 `cuda:n` 会等待对应设备空闲，避免多个训练任务同时落到同一张 GPU。
 
 ## release/full 关键目录
 

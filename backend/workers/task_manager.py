@@ -73,10 +73,20 @@ class BackgroundTaskManager:
         """
 
         event = stop_event or Event()
-        while not event.is_set():
-            processed_count = self.run_available_tasks()
-            if processed_count == 0:
-                event.wait(max(0.1, self.config.poll_interval_seconds))
+        max_workers = max(1, self.config.max_concurrent_tasks)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(self._run_worker_loop, event)
+                for _ in range(max_workers)
+            ]
+            while not event.is_set():
+                for future in futures:
+                    if future.done():
+                        error = future.exception()
+                        if error is not None:
+                            event.set()
+                            raise error
+                event.wait(0.2)
 
     def _run_next_available_task(self) -> bool:
         """尝试从已注册消费者中执行下一条可用任务。
@@ -90,6 +100,20 @@ class BackgroundTaskManager:
                 return True
 
         return False
+
+    def _run_worker_loop(self, stop_event: Event) -> None:
+        """持续占用一个 worker 槽位并轮询可执行任务。
+
+        说明：
+        - 旧实现按批次提交 future，并等待整批 future 完成。
+        - 当一个长训练任务占住批次时，后续新入队任务无法被空闲槽继续领取。
+        - 这里让每个槽位常驻轮询，保证后续提交的任务能被空闲槽及时消费。
+        """
+
+        while not stop_event.is_set():
+            processed = self._run_next_available_task()
+            if not processed:
+                stop_event.wait(max(0.1, self.config.poll_interval_seconds))
 
 
 class HostedBackgroundTaskManager:

@@ -47,7 +47,7 @@
   },
   "task_manager": {
     "enabled": false,
-    "max_concurrent_tasks": 2,
+    "max_concurrent_tasks": 16,
     "poll_interval_seconds": 1.0
   },
   "async_inference_gateway": {

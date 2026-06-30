@@ -49,7 +49,7 @@
 - 嵌套字段分隔符：__
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
-- 默认 task manager 配置：enabled=false、max_concurrent_tasks=2、poll_interval_seconds=1.0
+- 默认 task manager 配置：enabled=false、max_concurrent_tasks=16、poll_interval_seconds=1.0
 - 默认 deployment supervisor 配置：warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=false、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
 
 常见示例：
@@ -78,7 +78,7 @@
   },
   "task_manager": {
     "enabled": false,
-    "max_concurrent_tasks": 2,
+    "max_concurrent_tasks": 16,
     "poll_interval_seconds": 1.0
   },
   "async_inference_gateway": {
@@ -112,7 +112,7 @@
 - AMVISION_QUEUE__FAILED_RETENTION_SECONDS=604800.0
 - AMVISION_QUEUE__RESPONSE_QUEUE_RETENTION_SECONDS=3600.0
 - AMVISION_TASK_MANAGER__ENABLED=false
-- AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=2
+- AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=16
 - AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
 - AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true

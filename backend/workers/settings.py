@@ -177,7 +177,7 @@ class BackendWorkerTaskManagerConfig(BaseModel):
     enabled_consumer_kinds: tuple[str, ...] = Field(
         default_factory=lambda: DEFAULT_BACKEND_WORKER_CONSUMER_KINDS
     )
-    max_concurrent_tasks: int = 2
+    max_concurrent_tasks: int = 16
     poll_interval_seconds: float = 1.0
 
     @field_validator("enabled_consumer_kinds", mode="before")
