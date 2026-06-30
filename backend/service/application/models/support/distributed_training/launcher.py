@@ -75,8 +75,6 @@ def build_torchrun_module_command(config: DdpLocalLaunchConfig) -> tuple[str, ..
         config.master_addr,
         "--master_port",
         str(master_port),
-        "--rdzv_conf",
-        "use_libuv=0",
         "--module",
         config.module,
         *config.args,
@@ -98,7 +96,6 @@ def prepare_torchrun_launch(config: DdpLocalLaunchConfig) -> DdpPreparedLaunch:
         python_executable=config.python_executable,
     )
     env = dict(config.env)
-    env.setdefault("USE_LIBUV", "0")
     env.update(
         {
             "MASTER_ADDR": config.master_addr,

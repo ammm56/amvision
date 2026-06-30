@@ -43,7 +43,7 @@ def run_ddp_launch_processes(
 def should_use_native_rank_process_launch(launch: Any) -> bool:
     """判断当前 DDP 启动是否需要绕过 torchrun。"""
 
-    return os.name == "nt" and str(getattr(launch, "backend", "")).lower() == "gloo"
+    return os.environ.get("AMVISION_DDP_USE_NATIVE_RANK_LAUNCH") == "1"
 
 
 def _run_native_rank_processes(

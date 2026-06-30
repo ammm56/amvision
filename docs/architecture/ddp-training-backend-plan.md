@@ -10,8 +10,8 @@
 
 | 模型 | 当前多 GPU 行为 | 结论 |
 | --- | --- | --- |
-| YOLOX detection | `gpu_count > 1` 已走 DDP 子进程；同步训练入口拒绝 `DataParallel`；rank0 写任务事件和产物，rank>0 只参与训练 | 代码链路已接入；2026-06-30 Windows 双卡 smoke 卡在 PyTorch distributed backend，未进入模型 core |
-| YOLOv8 / YOLO11 / YOLO26 detection | `gpu_count > 1` 已进入普通 YOLO detection DDP 启动入口；各自 core 已接入 per-rank batch、`DistributedSampler`、`DistributedDataParallel`、rank0 validation/checkpoint 和控制广播 | 代码链路已接入；2026-06-30 Windows 双卡 smoke 卡在 PyTorch distributed backend，未进入模型 core |
+| YOLOX detection | `gpu_count > 1` 已走 DDP 子进程；同步训练入口拒绝 `DataParallel`；rank0 写任务事件和产物，rank>0 只参与训练 | 代码链路已接入；2026-06-30 Windows 双卡 smoke 卡在当前 PyTorch distributed backend，未进入模型 core |
+| YOLOv8 / YOLO11 / YOLO26 detection | `gpu_count > 1` 已进入普通 YOLO detection DDP 启动入口；各自 core 已接入 per-rank batch、`DistributedSampler`、`DistributedDataParallel`、rank0 validation/checkpoint 和控制广播 | 代码链路已接入；2026-06-30 Windows 双卡 smoke 卡在当前 PyTorch distributed backend，未进入模型 core |
 | YOLOv8 / YOLO11 / YOLO26 classification / segmentation / pose / obb | 当前没有公开顶层 `gpu_count`，主要按单设备训练 | 需要按任务逐项补 DDP |
 | RF-DETR detection / segmentation | core 内已接近 Lightning DDP 的 `devices / strategy` 语义 | 需要统一平台 TrainingBackend 字段、事件和产物规则 |
 
@@ -133,7 +133,7 @@ YOLOX DDP 仍需在真实多 GPU 机器上补硬件 smoke：短训练、pause / 
 
 当前单 GPU 开发机已验证：当训练请求 `gpu_count > 1` 且机器 GPU 数量不足时，YOLOX worker 会明确拒绝 DDP 启动，不会静默回退到单 GPU 或 `DataParallel`。真实 2 GPU 机器上的吞吐、collective、checkpoint resume 和 deployment smoke 仍需单独记录。
 
-2026-06-30 在 Windows 双 RTX 4070 机器上执行 YOLOX detection DDP smoke，`torch.cuda.device_count()==2`，但当前 PyTorch 2.8.0+cu128 环境 `torch.distributed.is_nccl_available()==False`，Gloo 在 `ProcessGroupGloo` 初始化阶段报 `makeDeviceForHostname(): unsupported gloo device`。该失败发生在 DDP 进程组初始化阶段，未进入 YOLOX core 训练；完整短训练、pause / save / terminate、resume、conversion 和 deployment 仍需在可用 distributed backend 的环境补测。
+2026-06-30 在 Windows 双 RTX 4070 机器上执行 YOLOX detection DDP smoke。YOLOX 参考实现默认使用 `torch.multiprocessing.spawn` + `dist.init_process_group(backend='nccl')`，工程落地到 Windows 时需要使用当前 PyTorch 可用的 distributed backend。本机 `torch.cuda.device_count()==2`，但当前 PyTorch 2.8.0+cu128 环境 `torch.distributed.is_nccl_available()==False`。标准 `torch.distributed.run` 路径在 `TCPStore` rendezvous 阶段报 `use_libuv was requested but PyTorch was built without libuv support`；可选 native rank 探针继续验证 Gloo 时，又在 `ProcessGroupGloo` 初始化阶段报 `makeDeviceForHostname(): unsupported gloo device`。这些失败都发生在 DDP 进程组初始化阶段，未进入 YOLOX core 训练；完整短训练、pause / save / terminate、resume、conversion 和 deployment 仍需在可用 distributed backend 的 Windows CUDA 环境补测。
 
 普通 YOLO detection 已新增：
 
@@ -163,4 +163,4 @@ YOLOv8 / YOLO11 / YOLO26 detection 已接入真实 core rank 训练语义：
 - conversion 与 deployment 回归。
 - 吞吐、日志、失败诊断和 rank 退出状态记录。
 
-2026-06-30 在同一台 Windows 双 RTX 4070 机器上分别执行 YOLOv8、YOLO11、YOLO26 detection DDP smoke，三者都在 DDP 进程组初始化阶段失败，底层错误同为 `ProcessGroupGloo` 的 `makeDeviceForHostname(): unsupported gloo device`。该结果说明当前机器的 PyTorch distributed backend 不满足真实 DDP 训练条件，尚不能证明三代 detection core 的完整 DDP 训练、validation、checkpoint、conversion 和 deployment 已通过硬件验收。
+2026-06-30 在同一台 Windows 双 RTX 4070 机器上分别执行 YOLOv8、YOLO11、YOLO26 detection DDP smoke。Ultralytics 参考实现使用标准 `torch.distributed.run` 启动临时 DDP 脚本，并在 rank 内执行 `dist.init_process_group(backend='nccl' if dist.is_nccl_available() else 'gloo')`。本项目默认 DDP 启动方式保持与该路径一致，不默认禁用 libuv 或替换 torchrun。当前本机标准 torchrun smoke 在 `TCPStore` rendezvous 阶段报 `use_libuv was requested but PyTorch was built without libuv support`；可选 native rank 探针继续验证 Gloo 时，底层错误为 `ProcessGroupGloo` 的 `makeDeviceForHostname(): unsupported gloo device`。该结果说明当前机器的 PyTorch distributed backend 不满足真实 DDP 训练条件，尚不能证明三代 detection core 的完整 DDP 训练、validation、checkpoint、conversion 和 deployment 已通过硬件验收。

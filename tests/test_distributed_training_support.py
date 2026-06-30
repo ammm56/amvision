@@ -114,8 +114,6 @@ def test_torchrun_module_command_contains_expected_arguments() -> None:
         "127.0.0.1",
         "--master_port",
         "29601",
-        "--rdzv_conf",
-        "use_libuv=0",
         "--module",
         "backend.workers.training.yolox_ddp_entry",
         "--task-id",
@@ -138,7 +136,6 @@ def test_prepare_torchrun_launch_sets_shared_environment() -> None:
     assert launch.world_size == 4
     assert launch.backend == "gloo"
     assert launch.env["AMVISION_TASK_ID"] == "task-2"
-    assert launch.env["USE_LIBUV"] == "0"
     assert launch.env["MASTER_PORT"] == "29602"
     assert launch.env["AMVISION_DDP_WORLD_SIZE"] == "4"
     assert launch.command[0] == "python"
