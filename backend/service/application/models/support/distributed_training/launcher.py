@@ -25,6 +25,9 @@ class DdpLocalLaunchConfig:
     env: Mapping[str, str] = field(default_factory=dict)
     master_addr: str = "127.0.0.1"
     master_port: int | None = None
+    gloo_socket_ifname: str | None = None
+    disable_libuv: bool = True
+    use_native_rank_launch: bool = False
     python_executable: str = sys.executable
 
 
@@ -65,7 +68,7 @@ def build_torchrun_module_command(config: DdpLocalLaunchConfig) -> tuple[str, ..
     """构造 `python -m torch.distributed.run --module ...` 命令。"""
 
     master_port = config.master_port or find_free_tcp_port(config.master_addr)
-    return (
+    command_parts = [
         config.python_executable,
         "-m",
         "torch.distributed.run",
@@ -75,10 +78,11 @@ def build_torchrun_module_command(config: DdpLocalLaunchConfig) -> tuple[str, ..
         config.master_addr,
         "--master_port",
         str(master_port),
-        "--module",
-        config.module,
-        *config.args,
-    )
+    ]
+    if config.disable_libuv:
+        command_parts.extend(("--rdzv_conf", "use_libuv=0"))
+    command_parts.extend(("--module", config.module, *config.args))
+    return tuple(command_parts)
 
 
 def prepare_torchrun_launch(config: DdpLocalLaunchConfig) -> DdpPreparedLaunch:
@@ -93,9 +97,19 @@ def prepare_torchrun_launch(config: DdpLocalLaunchConfig) -> DdpPreparedLaunch:
         env=config.env,
         master_addr=config.master_addr,
         master_port=master_port,
+        gloo_socket_ifname=config.gloo_socket_ifname,
+        disable_libuv=config.disable_libuv,
+        use_native_rank_launch=config.use_native_rank_launch,
         python_executable=config.python_executable,
     )
     env = dict(config.env)
+    if config.disable_libuv:
+        env.setdefault("USE_LIBUV", "0")
+    if config.use_native_rank_launch:
+        env.setdefault("AMVISION_DDP_USE_NATIVE_RANK_LAUNCH", "1")
+    gloo_socket_ifname = _resolve_gloo_socket_ifname(config)
+    if gloo_socket_ifname:
+        env.setdefault("GLOO_SOCKET_IFNAME", gloo_socket_ifname)
     env.update(
         {
             "MASTER_ADDR": config.master_addr,
@@ -118,3 +132,17 @@ def normalize_cli_args(args: Sequence[object]) -> tuple[str, ...]:
     """把 worker 传入的参数转换成命令行字符串。"""
 
     return tuple(str(arg) for arg in args)
+
+
+def _resolve_gloo_socket_ifname(config: DdpLocalLaunchConfig) -> str | None:
+    """解析当前 Gloo 进程组要绑定的网卡名称。"""
+
+    if config.backend.lower() != "gloo":
+        return None
+    configured_value = (config.gloo_socket_ifname or "").strip()
+    if configured_value:
+        return configured_value
+    env_value = str(config.env.get("AMVISION_DDP_GLOO_SOCKET_IFNAME", "")).strip()
+    if env_value:
+        return env_value
+    return None

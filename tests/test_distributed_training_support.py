@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from backend.service.application.models.support.distributed_training import (
@@ -15,6 +17,9 @@ from backend.service.application.models.support.distributed_training import (
     prepare_torchrun_launch,
     initialize_torch_distributed,
     validate_ddp_world_size,
+)
+from backend.workers.training.ddp_process_launcher import (
+    should_use_native_rank_process_launch,
 )
 
 
@@ -64,13 +69,13 @@ def test_ddp_context_rejects_missing_rank_for_multi_process() -> None:
         )
 
 
-def test_choose_ddp_backend_prefers_nccl_for_cuda() -> None:
+def test_choose_ddp_backend_uses_gloo_for_windows_single_node() -> None:
     backend = choose_ddp_backend(
         DdpBackendAvailability(nccl=True, gloo=True),
         prefer_cuda=True,
     )
 
-    assert backend == "nccl"
+    assert backend == "gloo"
 
 
 def test_choose_ddp_backend_uses_gloo_without_nccl() -> None:
@@ -114,6 +119,8 @@ def test_torchrun_module_command_contains_expected_arguments() -> None:
         "127.0.0.1",
         "--master_port",
         "29601",
+        "--rdzv_conf",
+        "use_libuv=0",
         "--module",
         "backend.workers.training.yolox_ddp_entry",
         "--task-id",
@@ -138,7 +145,80 @@ def test_prepare_torchrun_launch_sets_shared_environment() -> None:
     assert launch.env["AMVISION_TASK_ID"] == "task-2"
     assert launch.env["MASTER_PORT"] == "29602"
     assert launch.env["AMVISION_DDP_WORLD_SIZE"] == "4"
+    assert launch.env["USE_LIBUV"] == "0"
+    assert "AMVISION_DDP_DISABLE_LIBUV" not in launch.env
     assert launch.command[0] == "python"
+
+
+def test_torchrun_command_respects_disable_libuv_flag() -> None:
+    command = build_torchrun_module_command(
+        DdpLocalLaunchConfig(
+            module="backend.workers.training.yolox_ddp_entry",
+            world_size=2,
+            backend="gloo",
+            master_port=29607,
+            disable_libuv=False,
+            python_executable="python",
+        )
+    )
+
+    assert "--rdzv_conf" not in command
+
+
+def test_prepare_torchrun_launch_respects_disable_libuv_flag() -> None:
+    launch = prepare_torchrun_launch(
+        DdpLocalLaunchConfig(
+            module="backend.workers.training.yolox_ddp_entry",
+            world_size=2,
+            backend="gloo",
+            master_port=29610,
+            disable_libuv=False,
+            python_executable="python",
+        )
+    )
+
+    assert "USE_LIBUV" not in launch.env
+    assert "AMVISION_DDP_DISABLE_LIBUV" not in launch.env
+
+
+def test_prepare_torchrun_launch_sets_gloo_socket_ifname() -> None:
+    launch = prepare_torchrun_launch(
+        DdpLocalLaunchConfig(
+            module="backend.workers.training.yolo_ddp_entry",
+            world_size=2,
+            backend="gloo",
+            master_port=29608,
+            gloo_socket_ifname="Ethernet",
+            python_executable="python",
+        )
+    )
+
+    assert launch.env["GLOO_SOCKET_IFNAME"] == "Ethernet"
+
+
+def test_prepare_torchrun_launch_sets_native_rank_flag() -> None:
+    launch = prepare_torchrun_launch(
+        DdpLocalLaunchConfig(
+            module="backend.workers.training.yolo_ddp_entry",
+            world_size=2,
+            backend="gloo",
+            master_port=29609,
+            use_native_rank_launch=True,
+            python_executable="python",
+        )
+    )
+
+    assert launch.env["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] == "1"
+
+
+def test_native_rank_launcher_reads_launch_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AMVISION_DDP_USE_NATIVE_RANK_LAUNCH", raising=False)
+
+    assert should_use_native_rank_process_launch(
+        SimpleNamespace(env={"AMVISION_DDP_USE_NATIVE_RANK_LAUNCH": "1"})
+    )
 
 
 def test_initialize_torch_distributed_can_disable_libuv(

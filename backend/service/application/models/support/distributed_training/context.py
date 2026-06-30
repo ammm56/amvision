@@ -69,16 +69,13 @@ def choose_ddp_backend(
 ) -> str:
     """根据环境能力选择 DDP backend。
 
-    CUDA 多卡优先使用 NCCL；Windows 或 CPU-only 环境通常只能使用 Gloo。
+    当前项目只实现 Windows 单机多 GPU 训练路径，固定使用 PyTorch DDP + Gloo。
     """
 
-    if prefer_cuda and availability.nccl:
-        return "nccl"
+    _ = prefer_cuda
     if availability.gloo:
         return "gloo"
-    if availability.mpi:
-        return "mpi"
-    raise DistributedTrainingError("当前运行环境没有可用的 torch.distributed backend")
+    raise DistributedTrainingError("当前只支持 Windows 单机 DDP + Gloo backend")
 
 
 def build_ddp_context_from_env(
