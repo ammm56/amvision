@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 from backend.service.application.models.yolov8_core.data.detection_augmentation import (
     prepare_yolov8_detection_sample_with_augmentation,
     prepare_yolov8_detection_sample_without_augmentation,
@@ -95,9 +98,11 @@ def build_yolov8_detection_training_batch(
                 letterbox_transform=letterbox_transform,
             )
         )
-    images = torch.stack(image_tensors, dim=0).to(device)
-    if runtime_precision == "fp16":
-        images = images.half()
+    images = move_yolo_tensor_to_training_device(
+        torch.stack(image_tensors, dim=0),
+        device=device,
+        runtime_precision=runtime_precision,
+    )
     return images, tuple(prepared_targets)
 
 

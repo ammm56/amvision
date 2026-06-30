@@ -106,6 +106,16 @@
 - `RF-DETR` 和通用 fallback evaluator 不能套普通 YOLO 阈值。RF-DETR 参考实现 predict 默认 `threshold=0.5`，本项目通用 evaluator 的 `0.01 / 0.65` 只作为非普通 YOLO fallback，不作为 YOLOv8 / YOLO11 / YOLO26 的 validation 默认。
 - 前端训练参数、API schema、训练入口和独立 evaluation task service 必须保持同一套默认值；旧任务不会被追溯修改，需要在服务和 worker 重启后重新提交训练或 evaluation。
 
+## 2026-06-30 普通 YOLO 训练输入流水线复核
+
+本轮针对 YOLO11 detection 真实训练时 GPU 利用率和显存占用呈周期波动的问题，重新核对了 `projectsrc/ultralytics/ultralytics` 的 `Trainer`、`YOLODataset`、`InfiniteDataLoader`、`preprocess_batch`、`ModelEMA` 和 validator 执行边界。当前结论如下：
+
+- 本项目不直接复制 `projectsrc/ultralytics/ultralytics` 作为运行时代码。参考仓库只作为行为核对来源，项目内仍按 `yolov8_core / yolo11_core / yolo26_core` 的分层边界重新实现，避免后续商业版本产生授权和维护风险。
+- 普通 YOLO 的 `detection / classification / segmentation / pose / obb` 训练当前已经修正 CPU tensor 到 CUDA 设备的搬运方式：batch tensor 统一在 batch 维度 stack 后再搬到训练设备，CUDA 训练使用 pinned memory 和 non-blocking transfer，避免每个 sample 单独阻塞式 `.to(device)` 造成额外同步。
+- 这次修复只处理数据搬运阻塞问题，不改变模型结构、loss、assigner、target、坐标格式、数据增强语义或公开输出 schema。
+- 当前仍需继续对齐的核心差距是普通 YOLO 训练输入流水线：参考实现使用 `DataLoader / InfiniteDataLoader / worker prefetch / pin_memory / preprocess_batch / EMA / validator` 组合；本项目仍以显式 epoch loop 加同步 batch 构建为主。该差距会影响 GPU 利用率、训练吞吐和真实生产长训练稳定性，不能用“已经 full core 完成”概括。
+- 下一轮普通 YOLO full core 收口应优先从 `YOLOv8 detection` 开始建立正式 PyTorch Dataset / DataLoader / worker prefetch / rank-safe trainer 边界，验证稳定后再复制到 `YOLO11 / YOLO26` 和非 detection task，避免一次性改动五类任务导致 mask、keypoint、rotated box target 同步出错。
+
 ## 残留关键词分类
 
 本轮使用下面的范围扫描了 `primary / legacy / minimal / compat / lightweight / stub / NotImplemented / 过渡 / 旧 / 兼容 / 轻量`：

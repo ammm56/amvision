@@ -11,6 +11,9 @@ from backend.service.application.models.yolo_core_common.data import (
     YoloClassificationAugmentationOptions,
     apply_yolo_classification_augmentation,
 )
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 
 
 @dataclass(frozen=True)
@@ -45,16 +48,17 @@ def build_yolo26_classification_training_batch(
             np_module=imports.np,
             augmentation_options=augmentation_options,
         )
-        image_tensor = imports.torch.from_numpy(image_array).to(device).float()
-        if precision == "fp16":
-            image_tensor = image_tensor.half()
-        image_tensors.append(image_tensor)
+        image_tensors.append(imports.torch.from_numpy(image_array).float())
         target_indexes.append(int(sample.class_id))
 
     if not image_tensors:
         return None
     return Yolo26ClassificationTrainingBatch(
-        images=imports.torch.stack(image_tensors, dim=0),
+        images=move_yolo_tensor_to_training_device(
+            imports.torch.stack(image_tensors, dim=0),
+            device=device,
+            runtime_precision=precision,
+        ),
         targets=imports.torch.tensor(
             target_indexes,
             dtype=imports.torch.long,

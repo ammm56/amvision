@@ -10,6 +10,9 @@ from typing import Any
 from backend.service.application.models.yolo_core_common.data.mosaic import (
     build_yolo_mosaic4_canvas,
 )
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 from backend.service.application.models.yolo11_core.data.augmentation import (
     Yolo11TaskAugmentationOptions,
     apply_yolo11_random_affine,
@@ -88,16 +91,17 @@ def build_yolo11_segmentation_training_batch(
         tensor = (
             canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
         )
-        image_tensor = imports.torch.from_numpy(tensor).to(device).float()
-        if precision == "fp16":
-            image_tensor = image_tensor.half()
-        images.append(image_tensor)
+        images.append(imports.torch.from_numpy(tensor).float())
         targets.append(target)
 
     if not images:
         return None
     return Yolo11SegmentationTrainingBatch(
-        images=imports.torch.stack(images, dim=0),
+        images=move_yolo_tensor_to_training_device(
+            imports.torch.stack(images, dim=0),
+            device=device,
+            runtime_precision=precision,
+        ),
         targets=targets,
     )
 
@@ -602,7 +606,10 @@ def _finalize_yolo11_segmentation_target(
     masks = finalized.pop("masks_array", None)
     mask_valid = finalized.pop("mask_valid_array", None)
     if masks is not None:
-        finalized["masks"] = imports.torch.from_numpy(masks).to(device)
+        finalized["masks"] = move_yolo_tensor_to_training_device(
+            imports.torch.from_numpy(masks),
+            device=device,
+        )
         finalized["mask_valid"] = imports.torch.tensor(
             mask_valid,
             dtype=imports.torch.bool,

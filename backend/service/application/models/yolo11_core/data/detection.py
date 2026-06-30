@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 from backend.service.application.models.yolo11_core.data.augmentation import (
     Yolo11TaskAugmentationOptions,
     apply_yolo11_random_affine,
@@ -135,9 +138,11 @@ def build_yolo11_detection_training_batch(
             )
         )
 
-    images = imports.torch.stack(image_tensors, dim=0).to(device)
-    if runtime_precision == "fp16":
-        images = images.half()
+    images = move_yolo_tensor_to_training_device(
+        imports.torch.stack(image_tensors, dim=0),
+        device=device,
+        runtime_precision=runtime_precision,
+    )
     return images, tuple(prepared_targets)
 
 

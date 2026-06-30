@@ -10,6 +10,9 @@ from typing import Any
 from backend.service.application.models.yolo_core_common.data.mosaic import (
     build_yolo_mosaic4_canvas,
 )
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 from backend.service.application.models.yolo26_core.data.augmentation import (
     Yolo26TaskAugmentationOptions,
     apply_yolo26_random_affine,
@@ -82,16 +85,17 @@ def build_yolo26_obb_training_batch(
         tensor = (
             canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
         )
-        image_tensor = imports.torch.from_numpy(tensor).to(device).float()
-        if precision == "fp16":
-            image_tensor = image_tensor.half()
-        images.append(image_tensor)
+        images.append(imports.torch.from_numpy(tensor).float())
         targets.append(target)
 
     if not images:
         return None
     return Yolo26ObbTrainingBatch(
-        images=imports.torch.stack(images, dim=0),
+        images=move_yolo_tensor_to_training_device(
+            imports.torch.stack(images, dim=0),
+            device=device,
+            runtime_precision=precision,
+        ),
         targets=tuple(targets),
     )
 
