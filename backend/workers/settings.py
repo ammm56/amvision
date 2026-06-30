@@ -228,7 +228,7 @@ class BackendWorkerDistributedTrainingConfig(BaseModel):
 
     gloo_socket_ifname: str | None = None
     disable_libuv: bool = True
-    use_native_rank_launch: bool = False
+    use_native_rank_launch: bool = True
 
     @field_validator("gloo_socket_ifname", mode="before")
     @classmethod

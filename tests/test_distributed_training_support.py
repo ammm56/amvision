@@ -147,6 +147,7 @@ def test_prepare_torchrun_launch_sets_shared_environment() -> None:
     assert launch.env["AMVISION_DDP_WORLD_SIZE"] == "4"
     assert launch.env["USE_LIBUV"] == "0"
     assert "AMVISION_DDP_DISABLE_LIBUV" not in launch.env
+    assert launch.env["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] == "1"
     assert launch.command[0] == "python"
 
 
@@ -179,6 +180,7 @@ def test_prepare_torchrun_launch_respects_disable_libuv_flag() -> None:
 
     assert "USE_LIBUV" not in launch.env
     assert "AMVISION_DDP_DISABLE_LIBUV" not in launch.env
+    assert launch.env["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] == "1"
 
 
 def test_prepare_torchrun_launch_sets_gloo_socket_ifname() -> None:
@@ -209,6 +211,21 @@ def test_prepare_torchrun_launch_sets_native_rank_flag() -> None:
     )
 
     assert launch.env["AMVISION_DDP_USE_NATIVE_RANK_LAUNCH"] == "1"
+
+
+def test_prepare_torchrun_launch_can_disable_native_rank_flag() -> None:
+    launch = prepare_torchrun_launch(
+        DdpLocalLaunchConfig(
+            module="backend.workers.training.yolo_ddp_entry",
+            world_size=2,
+            backend="gloo",
+            master_port=29611,
+            use_native_rank_launch=False,
+            python_executable="python",
+        )
+    )
+
+    assert "AMVISION_DDP_USE_NATIVE_RANK_LAUNCH" not in launch.env
 
 
 def test_native_rank_launcher_reads_launch_environment(

@@ -55,7 +55,7 @@
   "distributed_training": {
     "gloo_socket_ifname": null,
     "disable_libuv": true,
-    "use_native_rank_launch": false
+    "use_native_rank_launch": true
   },
   "deployment_process_supervisor": {
     "auto_restart": true,

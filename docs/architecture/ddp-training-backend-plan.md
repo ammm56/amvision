@@ -137,7 +137,7 @@ YOLOX DDP 仍需在真实多 GPU 机器上补硬件 smoke：短训练、pause / 
 
 当前单 GPU 开发机已验证：当训练请求 `gpu_count > 1` 且机器 GPU 数量不足时，YOLOX worker 会明确拒绝 DDP 启动，不会静默回退到单 GPU 或 `DataParallel`。真实 2 GPU 机器上的吞吐、collective、checkpoint resume 和 deployment smoke 仍需单独记录。
 
-2026-06-30 在 Windows 双 RTX 4070 机器上执行 YOLOX detection DDP smoke。YOLOX 参考实现使用 DDP 子进程、`DistributedSampler` 和 `DistributedDataParallel`；工程落地到 Windows 时固定使用 DDP + Gloo。本机 `torch.cuda.device_count()==2`，当前 PyTorch 2.8.0+cu128 环境 `torch.distributed.is_gloo_available()==True`。早期 smoke 失败点发生在 DDP 进程组初始化阶段：标准 `torch.distributed.run` 路径先遇到 `TCPStore` 的 libuv 配置问题，native rank 探针继续验证 Gloo 时遇到 `ProcessGroupGloo` 的 `makeDeviceForHostname(): unsupported gloo device`。这些失败都发生在本机进程组初始化阶段，不是 YOLOX core 训练逻辑失败，也不是多机网络训练需求。当前 worker 已默认写入 `USE_LIBUV=0` 并为 torchrun 增加 `--rdzv_conf use_libuv=0`；`AMVISION_DDP_DISABLE_LIBUV=1` 只在可选 native rank launcher 中使用，避免和 torchrun rendezvous 抢占同一个端口。`config/backend-worker.json` 提供 `distributed_training.gloo_socket_ifname`，只用于 Windows Gloo 在本机多网卡环境下选错 socket device 时兜底。
+2026-06-30 在 Windows 双 RTX 4070 机器上执行 YOLOX detection DDP smoke。YOLOX 参考实现使用 DDP 子进程、`DistributedSampler` 和 `DistributedDataParallel`；工程落地到 Windows 时固定使用 DDP + Gloo。本机 `torch.cuda.device_count()==2`，当前 PyTorch 2.8.0+cu128 环境 `torch.distributed.is_gloo_available()==True`。早期 smoke 失败点发生在 DDP 进程组初始化阶段：标准 `torch.distributed.run` 路径先遇到 `TCPStore` 的 libuv 配置问题，native rank 探针继续验证 Gloo 时遇到 `ProcessGroupGloo` 的 `makeDeviceForHostname(): unsupported gloo device`。这些失败都发生在本机进程组初始化阶段，不是 YOLOX core 训练逻辑失败，也不是多机网络训练需求。当前 worker 已默认启用 native rank launcher，并在子 rank 中写入 `AMVISION_DDP_DISABLE_LIBUV=1`，由项目初始化逻辑显式创建 `TCPStore(use_libuv=False)`；torchrun 路径仍保留 `USE_LIBUV=0` 和 `--rdzv_conf use_libuv=0`，只作为显式关闭 native rank launcher 后的兼容路径。`config/backend-worker.json` 提供 `distributed_training.gloo_socket_ifname`，只用于 Windows Gloo 在本机多网卡环境下选错 socket device 时兜底。
 
 普通 YOLO detection 已新增：
 
@@ -167,7 +167,18 @@ YOLOv8 / YOLO11 / YOLO26 detection 已接入真实 core rank 训练语义：
 - conversion 与 deployment 回归。
 - 吞吐、日志、失败诊断和 rank 退出状态记录。
 
-2026-06-30 在同一台 Windows 双 RTX 4070 机器上分别执行 YOLOv8、YOLO11、YOLO26 detection DDP smoke。Ultralytics 参考实现使用标准 `torch.distributed.run` 启动临时 DDP 脚本，并在 rank 内执行 `dist.init_process_group(...)`。本项目当前只实现 Windows 单机 Gloo 路径，默认 DDP 启动方式保持 torchrun 子进程形态，并针对 Windows PyTorch 发行版补充 `--rdzv_conf use_libuv=0`、`USE_LIBUV=0`。如果 Gloo 仍因为 hostname / socket device 选择失败，可在 `config/backend-worker.json` 的 `distributed_training.gloo_socket_ifname` 中指定本机实际可用接口，再复跑 YOLOv8 / YOLO11 / YOLO26 detection 的短训练、validation、checkpoint、conversion 和 deployment smoke。
+2026-06-30 在同一台 Windows 双 RTX 4070 机器上分别执行 YOLOv8、YOLO11、YOLO26 detection DDP smoke。Ultralytics 参考实现使用标准 `torch.distributed.run` 启动临时 DDP 脚本，并在 rank 内执行 `dist.init_process_group(...)`。本项目当前只实现 Windows 单机 Gloo 路径，默认 DDP 启动方式使用本机 native rank 子进程，避免 torchrun static rendezvous 在部分 Windows PyTorch 发行版中无法显式传入 `use_libuv=False` 的问题。如果 Gloo 仍因为 hostname / socket device 选择失败，可在 `config/backend-worker.json` 的 `distributed_training.gloo_socket_ifname` 中指定本机实际可用接口，再复跑 YOLOv8 / YOLO11 / YOLO26 detection 的短训练、validation、checkpoint、conversion 和 deployment smoke。
+
+2026-06-30 使用正式 full-chain smoke 入口在 Windows 双 RTX 4070 机器上执行 `gpu_count=2` 验收：
+
+- YOLOX：`ddp-yolox-full-20260630-01`
+- YOLOv8：`ddp-yolov8-full-20260630-01`
+- YOLO11：`ddp-yolo11-full-20260630-01`
+- YOLO26：`ddp-yolo26-full-20260630-01`
+
+四个 run 均完成 DatasetImport 和 DatasetExport，并在训练任务进入 DDP 子 rank 后失败。worker 日志显示失败点一致，均为 `initialize_torch_distributed -> dist.init_process_group(backend='gloo') -> ProcessGroupGloo`，底层错误为 `makeDeviceForHostname(): unsupported gloo device`。独立最小 Gloo 探针已确认，即使不进入模型训练、只执行 CPU tensor all-reduce，也会在同一位置失败；显式设置 `GLOO_SOCKET_IFNAME` 为 `以太网`、`vEthernet (Default Switch)`、`Loopback Pseudo-Interface 1`、`lo` 等候选时会变为 `makeDeviceForInterface(): unsupported gloo device`。因此本轮未进入 validation / checkpoint / ModelVersion / ONNX / OpenVINO / TensorRT / deployment sync-async / inference / workflow 阶段，当前阻塞属于本机 PyTorch Gloo 进程组设备创建问题，不是四个 detection 模型 core 的训练逻辑失败。
+
+现有 `tests.integration.yolo_model_full_chain_smoke` 和 `tests.integration.yolox_model_full_chain_smoke` 已覆盖 DatasetImport、DatasetExport、训练、独立 evaluation、conversion、deployment sync / async、inference 和 workflow 参数化入口，但尚未自动覆盖 save / pause / terminate / resume 控制流。DDP 初始化修复后，需要补一个训练控制 smoke，至少在 YOLOv8 detection 上完成 save、pause、resume、terminate，再复用到 YOLOX / YOLO11 / YOLO26。
 
 ## Windows / Gloo 配置
 
@@ -182,11 +193,11 @@ backend-worker 提供以下正式配置：
   "distributed_training": {
     "gloo_socket_ifname": null,
     "disable_libuv": true,
-    "use_native_rank_launch": false
+    "use_native_rank_launch": true
   }
 }
 ```
 
 - `gloo_socket_ifname`：Gloo 要绑定的网卡名称。默认 `null` 表示交给 PyTorch 自动选择；Windows 双卡 smoke 如出现 `makeDeviceForHostname(): unsupported gloo device`，应填入当前机器实际可用的本地网卡名称。
-- `disable_libuv`：默认 `true`，用于给 torchrun 写入 `--rdzv_conf use_libuv=0` 和 `USE_LIBUV=0`，规避部分 Windows PyTorch 发行版未启用 libuv 时的 `TCPStore` rendezvous 问题。
-- `use_native_rank_launch`：默认 `false`，表示优先使用参考实现一致的 `torch.distributed.run`。只有当 torchrun 在当前 Windows 发行版上仍不可用时，才启用本项目的本机 rank 子进程 launcher。
+- `disable_libuv`：默认 `true`。native rank launcher 会在子 rank 中写入 `AMVISION_DDP_DISABLE_LIBUV=1`，由项目初始化逻辑显式创建 `TCPStore(use_libuv=False)`；torchrun 兼容路径会写入 `--rdzv_conf use_libuv=0` 和 `USE_LIBUV=0`。
+- `use_native_rank_launch`：默认 `true`，表示 Windows / Gloo 路径优先使用本项目的本机 rank 子进程 launcher。只有需要复现 Ultralytics 原生 torchrun 行为时，才显式关闭该选项。

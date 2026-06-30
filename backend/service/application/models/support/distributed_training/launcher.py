@@ -27,7 +27,7 @@ class DdpLocalLaunchConfig:
     master_port: int | None = None
     gloo_socket_ifname: str | None = None
     disable_libuv: bool = True
-    use_native_rank_launch: bool = False
+    use_native_rank_launch: bool = True
     python_executable: str = sys.executable
 
 
