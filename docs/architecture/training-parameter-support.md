@@ -38,7 +38,7 @@
 - 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
 - detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
 - 当前版本训练链路统一按单进程单 GPU 或 CPU 执行；`gpu_count` 只作为 detection 公开接口的保留字段接受空值或 `1`，前端不再显示该输入，传入大于 `1` 会被拒绝。
-- `extra_options.device` 用于指定单卡训练设备，支持空值 / `auto` / `cpu` / `cuda` / `cuda:<index>`。空值或 `auto` 表示有 CUDA 时默认 `cuda:0`，否则使用 `cpu`；显式传入越界的 `cuda:<index>` 会被拒绝，不会静默回退。
+- `extra_options.device` 用于指定单卡训练设备，支持空值 / `auto` / `cpu` / `cuda` / `cuda:<index>`。通过 backend-worker 执行训练时，空值、`auto` 或 `cuda` 会先由 worker 分配到当前空闲的具体 `cuda:<index>`；显式传入 `cuda:<index>` 会等待并使用指定 GPU。无可用 CUDA 时 `auto` 回退到 `cpu`，显式传入越界的 `cuda:<index>` 会被拒绝，不会静默回退。
 - 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
 
 ## 通用参数层现状
@@ -59,7 +59,7 @@
 
 ### 单卡 GPU 选择
 
-当前训练链路支持在多 GPU 设备上指定其中一张卡执行单进程训练，但不支持多 GPU 并行训练。
+当前训练链路支持在多 GPU 设备上指定其中一张卡执行单进程训练，也支持同一个训练 worker 进程内并发运行多个单卡训练任务；但不支持一个训练任务同时使用多张 GPU 做 DDP / DataParallel 并行训练。
 
 | 模型族 | 支持任务 | 支持写法 | 执行边界 |
 | --- | --- | --- | --- |
@@ -69,7 +69,9 @@
 | `yolo11` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO11 core 使用统一单卡设备解析，不静默回退显式错误设备 |
 | `yolo26` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO26 core 使用统一单卡设备解析，不静默回退显式错误设备 |
 
-前端 `/models` 页面根据 `/system/bootstrap` 返回的设备摘要动态生成训练设备选项。无 GPU 时只显示自动选择和 `cpu`；检测到 CUDA GPU 时显示 `cuda` 和真实存在的 `cuda:<index>`。API 仍会在后端校验显式设备，指定不存在的 CUDA 序号会返回错误，避免任务误跑到 `cuda:0`。
+前端 `/models` 页面根据 `/system/bootstrap` 返回的设备摘要动态生成训练设备选项。无 GPU 时只显示自动选择和 `cpu`；检测到 CUDA GPU 时显示 `cuda` 和真实存在的 `cuda:<index>`。API 仍会在后端校验显式设备，指定不存在的 CUDA 序号会返回错误。worker 执行时还会为 `auto` / `cuda` 建立进程内设备租约，并把训练线程的当前 CUDA device 切到实际租约设备，避免多个训练任务或临时张量默认落到 `cuda:0`。
+
+当前设备租约面向单个训练 worker 进程内的并发任务；默认 backend-service 不直接消费训练队列，发布和开发环境应使用一个 training worker 进程承载多个并发训练 slot。不要同时启动多个消费同一训练队列的 training worker 进程，否则进程之间无法共享当前进程内的 GPU 租约状态。
 
 ## 当前前端页面已暴露的训练输入
 

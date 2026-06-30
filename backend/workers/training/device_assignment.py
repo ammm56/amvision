@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -35,13 +36,14 @@ def assigned_training_device(
     task_record = task_service.get_task(task_id).task
     requested_device = read_requested_training_device(task_record)
     with acquire_training_device_lease(requested_device) as lease:
-        write_resolved_training_device(
-            task_service=task_service,
-            task_record=task_record,
-            requested_device=requested_device,
-            lease=lease,
-        )
-        yield lease
+        with activate_training_cuda_device(lease):
+            write_resolved_training_device(
+                task_service=task_service,
+                task_record=task_record,
+                requested_device=requested_device,
+                lease=lease,
+            )
+            yield lease
 
 
 def read_requested_training_device(task_record: TaskRecord) -> str | None:
@@ -110,7 +112,48 @@ def write_resolved_training_device(
     )
 
 
+@contextmanager
+def activate_training_cuda_device(
+    lease: TrainingDeviceLease,
+    *,
+    torch_module: Any | None = None,
+) -> Iterator[None]:
+    """把当前线程的 CUDA 默认设备切到本次训练租约设备。
+
+    说明：
+    - 训练代码应优先显式使用 `cuda:n`。
+    - 这里额外设置 current device，是为了防止第三方或临时 tensor 使用
+      `cuda` 默认设备时落回 `cuda:0`。
+    """
+
+    cuda_index = lease.info.cuda_index
+    if cuda_index is None:
+        yield
+        return
+
+    torch = torch_module
+    if torch is None:
+        import torch as torch  # type: ignore[no-redef]
+
+    cuda = getattr(torch, "cuda", None)
+    if cuda is None:
+        yield
+        return
+
+    current_device = getattr(cuda, "current_device", None)
+    set_device = getattr(cuda, "set_device", None)
+    previous_index = int(current_device()) if callable(current_device) else None
+    if callable(set_device):
+        set_device(cuda_index)
+    try:
+        yield
+    finally:
+        if previous_index is not None and callable(set_device):
+            set_device(previous_index)
+
+
 __all__ = [
+    "activate_training_cuda_device",
     "assigned_training_device",
     "read_requested_training_device",
     "write_resolved_training_device",

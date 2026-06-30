@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.tasks.task_records import TaskRecord
-from backend.workers.training.device_assignment import read_requested_training_device
-from backend.workers.training.device_leases import TrainingDeviceLeaseManager
+from backend.workers.training.device_assignment import (
+    activate_training_cuda_device,
+    read_requested_training_device,
+)
+from backend.workers.training.device_leases import (
+    TrainingDeviceLeaseInfo,
+    TrainingDeviceLeaseManager,
+    TrainingDeviceLease,
+)
 
 
 class _FakeCuda:
@@ -25,6 +32,29 @@ class _FakeTorch:
 
     def __init__(self, *, cuda_available: bool, device_count: int) -> None:
         self.cuda = _FakeCuda(available=cuda_available, device_count=device_count)
+
+
+class _FakeCurrentCuda(_FakeCuda):
+    """模拟 torch.cuda current device 切换。"""
+
+    def __init__(self) -> None:
+        super().__init__(available=True, device_count=2)
+        self.current_index = 0
+        self.set_history: list[int] = []
+
+    def current_device(self) -> int:
+        return self.current_index
+
+    def set_device(self, cuda_index: int) -> None:
+        self.current_index = cuda_index
+        self.set_history.append(cuda_index)
+
+
+class _FakeCurrentTorch:
+    """模拟带 current device 的 torch 模块。"""
+
+    def __init__(self) -> None:
+        self.cuda = _FakeCurrentCuda()
 
 
 def test_auto_training_device_lease_uses_next_free_cuda() -> None:
@@ -82,3 +112,23 @@ def test_training_device_assignment_prefers_original_requested_device() -> None:
     )
 
     assert read_requested_training_device(task_record) == "auto"
+
+
+def test_training_device_assignment_activates_cuda_current_device() -> None:
+    manager = TrainingDeviceLeaseManager()
+    lease = TrainingDeviceLease(
+        manager=manager,
+        info=TrainingDeviceLeaseInfo(
+            requested_device="auto",
+            resolved_device="cuda:1",
+            cuda_index=1,
+            waited_seconds=0.0,
+        ),
+    )
+    torch_module = _FakeCurrentTorch()
+
+    with activate_training_cuda_device(lease, torch_module=torch_module):
+        assert torch_module.cuda.current_index == 1
+
+    assert torch_module.cuda.current_index == 0
+    assert torch_module.cuda.set_history == [1, 0]
