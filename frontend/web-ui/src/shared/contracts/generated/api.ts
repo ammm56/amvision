@@ -70,6 +70,7 @@ export interface SystemBootstrapResponse {
   providers: AuthProvider[]
   visible_projects: ProjectCatalogItem[]
   capabilities: SystemCapabilities
+  devices?: Record<string, unknown>
 }
 
 export interface AuthLoginResponse {

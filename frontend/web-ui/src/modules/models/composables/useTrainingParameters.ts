@@ -74,6 +74,7 @@ export function useTrainingParameters(options: {
   const maxEpochs = ref(100)
   const batchSize = ref(1)
   const gpuCount = ref(1)
+  const trainingDevice = ref('')
   const evaluationInterval = ref(5)
   const precision = ref('fp32')
   const inputWidth = ref(640)
@@ -134,6 +135,10 @@ export function useTrainingParameters(options: {
     precision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
   }
 
+  function setTrainingDevice(value: SelectValue): void {
+    trainingDevice.value = selectValueToString(value)
+  }
+
   function setTrainingModelParameterValue(key: string, value: SelectValue): void {
     trainingModelParameterValues[key] = selectValueToString(value)
   }
@@ -183,6 +188,7 @@ export function useTrainingParameters(options: {
     maxEpochs,
     batchSize,
     gpuCount,
+    trainingDevice,
     evaluationInterval,
     precision,
     inputWidth,
@@ -197,6 +203,7 @@ export function useTrainingParameters(options: {
     trainingSupportsAugmentationToggle,
     trainingModelParameterSectionTitle,
     setPrecision,
+    setTrainingDevice,
     setTrainingModelParameterValue,
     syncSuggestedOutputModelName,
     resetSuggestedOutputModelName,

@@ -51,6 +51,7 @@ export function useModelTrainingState(options: {
   maxEpochs: Ref<number>
   batchSize: Ref<number>
   gpuCount: Ref<number>
+  trainingDevice: Ref<string>
   precision: Ref<string>
   inputWidth: Ref<number>
   inputHeight: Ref<number>
@@ -156,7 +157,10 @@ export function useModelTrainingState(options: {
           options.selectedTaskType.value,
           options.resolvedTrainingModelType.value,
           options.trainingModelParameterValues,
-          { augmentationEnabled: options.trainingAugmentationEnabled.value },
+          {
+            augmentationEnabled: options.trainingAugmentationEnabled.value,
+            device: options.trainingDevice.value,
+          },
         ),
       })
       await options.refreshTrainingTasks()

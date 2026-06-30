@@ -133,6 +133,14 @@
             <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
             <input :value="evaluationInterval" type="number" min="1" @input="emitNumber('update:evaluationInterval', $event)" />
           </label>
+          <label class="field">
+            <span>训练设备</span>
+            <SelectField
+              :model-value="trainingDevice"
+              :options="trainingDeviceOptions"
+              @update:model-value="$emit('update:trainingDevice', normalizeSelectValue($event))"
+            />
+          </label>
           <label v-if="trainingSupportsGpuCount" class="field">
             <span>{{ t('modelOps.fields.gpuCount') }}</span>
             <input :value="gpuCount" type="number" min="1" step="1" @input="emitNumber('update:gpuCount', $event)" />
@@ -284,6 +292,7 @@ import type {
 } from '../services/model.service'
 import type {
   TrainingParameterField,
+  TrainingParameterFieldOption,
   TrainingParameterValues,
 } from '../training-parameter-support'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -310,10 +319,12 @@ defineProps<{
   trainingDatasetExportsCount: number
   trainingSelectedModelSummary: PlatformBaseModelSummary | null
   selectedTrainingDatasetExport: DatasetExportSummary | null
+  trainingDeviceOptions: TrainingParameterFieldOption[]
   outputModelName: string
   maxEpochs: number
   batchSize: number
   gpuCount: number
+  trainingDevice: string
   evaluationInterval: number
   precision: string
   inputWidth: number
@@ -343,6 +354,7 @@ const emit = defineEmits<{
   'update:maxEpochs': [value: number]
   'update:batchSize': [value: number]
   'update:gpuCount': [value: number]
+  'update:trainingDevice': [value: string]
   'update:evaluationInterval': [value: number]
   'update:precision': [value: string]
   'update:inputWidth': [value: number]

@@ -24,10 +24,12 @@
         :training-dataset-exports-count="trainingDatasetExports.length"
         :training-selected-model-summary="trainingSelectedModelSummary"
         :selected-training-dataset-export="selectedTrainingDatasetExport"
+        :training-device-options="trainingDeviceOptions"
         :output-model-name="outputModelName"
         :max-epochs="maxEpochs"
         :batch-size="batchSize"
         :gpu-count="gpuCount"
+        :training-device="trainingDevice"
         :evaluation-interval="evaluationInterval"
         :precision="precision"
         :input-width="inputWidth"
@@ -54,6 +56,7 @@
         @update:max-epochs="maxEpochs = $event"
         @update:batch-size="batchSize = $event"
         @update:gpu-count="gpuCount = $event"
+        @update:training-device="setTrainingDevice"
         @update:evaluation-interval="evaluationInterval = $event"
         @update:precision="setPrecision"
         @update:input-width="inputWidth = $event"
@@ -173,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
@@ -204,6 +207,7 @@ import { useModelTrainingState } from '../composables/useModelTrainingState'
 import { usePlatformBaseModelSelection } from '../composables/usePlatformBaseModelSelection'
 import { useTrainingDatasetExportSelection } from '../composables/useTrainingDatasetExportSelection'
 import { useTrainingParameters } from '../composables/useTrainingParameters'
+import { buildTrainingDeviceOptions } from '../training-parameter-support'
 
 type SelectValue = string | number | boolean | null
 
@@ -244,6 +248,7 @@ const conversionDisplayName = ref('')
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const trainingDeviceOptions = computed(() => buildTrainingDeviceOptions(sessionStore.bootstrap?.devices ?? null))
 const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   const rawValue = sessionStore.bootstrap?.capabilities.platform_model_types_by_task_type
   if (!rawValue || typeof rawValue !== 'object') {
@@ -334,6 +339,7 @@ const {
   maxEpochs,
   batchSize,
   gpuCount,
+  trainingDevice,
   evaluationInterval,
   precision,
   inputWidth,
@@ -348,6 +354,7 @@ const {
   trainingSupportsAugmentationToggle,
   trainingModelParameterSectionTitle,
   setPrecision,
+  setTrainingDevice,
   setTrainingModelParameterValue,
   syncSuggestedOutputModelName,
   resetSuggestedOutputModelName,
@@ -357,6 +364,12 @@ const {
   resolvedTrainingModelType,
   resolvedTrainingModelScale,
 })
+
+watch(trainingDeviceOptions, (options) => {
+  if (!trainingDevice.value) return
+  if (options.some((option) => option.value === trainingDevice.value)) return
+  setTrainingDevice('')
+}, { immediate: true })
 
 const {
   trainingSubmitting,
@@ -379,6 +392,7 @@ const {
   maxEpochs,
   batchSize,
   gpuCount,
+  trainingDevice,
   precision,
   inputWidth,
   inputHeight,

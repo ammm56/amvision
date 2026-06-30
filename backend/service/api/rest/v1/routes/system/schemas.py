@@ -90,6 +90,7 @@ class SystemBootstrapResponse(BaseModel):
         description="当前主体当前可访问的 Project 列表；每个元素通过 project_source 标记来自配置目录还是本地磁盘",
     )
     capabilities: SystemBootstrapCapabilitiesContract = Field(description="前端需要读取的关键能力摘要")
+    devices: dict[str, object] = Field(default_factory=dict, description="设备与推理运行时摘要")
 
 
 class SystemDiagnosticsResponse(BaseModel):
@@ -112,4 +113,3 @@ class SystemDiagnosticsResponse(BaseModel):
     python_runtime: dict[str, object] = Field(default_factory=dict, description="Python 解释器、环境和关键依赖摘要")
     devices: dict[str, object] = Field(default_factory=dict, description="设备与推理运行时摘要")
     services: dict[str, object] = Field(default_factory=dict, description="服务组件运行摘要")
-

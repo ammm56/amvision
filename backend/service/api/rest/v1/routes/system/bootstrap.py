@@ -20,6 +20,7 @@ from backend.service.api.rest.v1.routes.system.responses import (
     build_auth_provider_contract,
     build_current_principal_contract,
 )
+from backend.service.api.rest.v1.routes.system.diagnostics import build_device_diagnostics
 from backend.service.api.rest.v1.routes.system.schemas import (
     DatasetExportCapabilityContract,
     DatasetImportCapabilityContract,
@@ -100,5 +101,5 @@ def get_system_bootstrap(
                 for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
             },
         ),
+        devices=build_device_diagnostics(),
     )
-

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildTrainingExtraOptions,
+  buildTrainingDeviceOptions,
   getDefaultTrainingModelParameterValues,
   getModelLayerTrainingFields,
   isTrainingAugmentationField,
@@ -23,6 +24,36 @@ function defaultValues(taskType: ModelTaskType, modelType: string): Record<strin
 }
 
 describe('training parameter augmentation support', () => {
+  it('builds training device options from backend device diagnostics', () => {
+    expect(buildTrainingDeviceOptions(null)).toEqual([
+      { label: '自动选择（默认）', value: '' },
+      { label: 'cpu', value: 'cpu' },
+    ])
+    expect(
+      buildTrainingDeviceOptions({
+        gpu: {
+          available: true,
+          devices: [{ name: 'GPU 0' }, { name: 'GPU 1' }],
+        },
+        cuda: { available: true },
+      }),
+    ).toEqual([
+      { label: '自动选择（默认）', value: '' },
+      { label: 'cpu', value: 'cpu' },
+      { label: 'cuda', value: 'cuda' },
+      { label: 'cuda:0', value: 'cuda:0' },
+      { label: 'cuda:1', value: 'cuda:1' },
+    ])
+  })
+
+  it('does not expose fake indexed CUDA devices when only CUDA availability is known', () => {
+    expect(buildTrainingDeviceOptions({ cuda: { available: true } })).toEqual([
+      { label: '自动选择（默认）', value: '' },
+      { label: 'cpu', value: 'cpu' },
+      { label: 'cuda', value: 'cuda' },
+    ])
+  })
+
   it('exposes YOLOX detection augmentation fields', () => {
     expect(augmentationFieldKeys('detection', 'yolox')).toEqual(
       expect.arrayContaining([
@@ -86,6 +117,19 @@ describe('training parameter augmentation support', () => {
     expect(buildTrainingExtraOptions('detection', 'rfdetr', values)).toMatchObject({
       rfdetr_augmentation_preset: 'industrial',
       augmentation_backend: 'auto',
+    })
+  })
+
+  it('submits the common training device outside model-specific fields', () => {
+    const values = defaultValues('detection', 'yolo11')
+
+    expect(fieldKeys('detection', 'yolo11')).not.toContain('device')
+    expect(
+      buildTrainingExtraOptions('detection', 'yolo11', values, {
+        device: 'cuda:1',
+      }),
+    ).toMatchObject({
+      device: 'cuda:1',
     })
   })
 

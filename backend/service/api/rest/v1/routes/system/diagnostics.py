@@ -56,7 +56,7 @@ def get_system_diagnostics(
         about=_build_about_diagnostics(settings),
         system=_build_system_diagnostics(settings),
         python_runtime=_build_python_runtime_diagnostics(),
-        devices=_build_device_diagnostics(),
+        devices=build_device_diagnostics(),
         services=_build_service_diagnostics(
             request=request,
             settings=settings,
@@ -159,7 +159,7 @@ def _build_python_runtime_diagnostics() -> dict[str, object]:
     }
 
 
-def _build_device_diagnostics() -> dict[str, object]:
+def build_device_diagnostics() -> dict[str, object]:
     """构造设备与推理运行时可用性摘要。
 
     返回：
@@ -168,14 +168,17 @@ def _build_device_diagnostics() -> dict[str, object]:
 
     onnxruntime_summary = _build_onnxruntime_summary()
     nvidia_smi_devices = _probe_nvidia_smi_devices()
+    torch_cuda_devices = _probe_torch_cuda_devices()
+    gpu_devices = nvidia_smi_devices or torch_cuda_devices
     return {
         "gpu": {
-            "available": bool(nvidia_smi_devices),
-            "devices": nvidia_smi_devices,
-            "probe": "nvidia-smi" if nvidia_smi_devices else "not_detected",
+            "available": bool(gpu_devices),
+            "devices": gpu_devices,
+            "probe": _select_gpu_probe(nvidia_smi_devices, torch_cuda_devices),
         },
         "cuda": {
-            "available": bool(nvidia_smi_devices or os.environ.get("CUDA_PATH")),
+            "available": bool(gpu_devices or os.environ.get("CUDA_PATH")),
+            "device_count": len(gpu_devices),
             "cuda_path": os.environ.get("CUDA_PATH"),
             "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         },
@@ -493,6 +496,62 @@ def _probe_nvidia_smi_devices() -> list[dict[str, object]]:
             }
         )
     return devices
+
+
+def _probe_torch_cuda_devices() -> list[dict[str, object]]:
+    """通过 PyTorch 读取 CUDA GPU 摘要。
+
+    返回：
+    - list[dict[str, object]]：PyTorch 可见的 CUDA GPU 摘要列表；不可用时为空列表。
+    """
+
+    if util.find_spec("torch") is None:
+        return []
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return []
+        devices: list[dict[str, object]] = []
+        for index in range(torch.cuda.device_count()):
+            memory_total_mib: int | None = None
+            try:
+                properties = torch.cuda.get_device_properties(index)
+                memory_total_mib = int(properties.total_memory // (1024 * 1024))
+            except Exception:
+                memory_total_mib = None
+            devices.append(
+                {
+                    "index": index,
+                    "name": torch.cuda.get_device_name(index),
+                    "driver_version": None,
+                    "memory_total_mib": memory_total_mib,
+                }
+            )
+        return devices
+    except Exception:
+        return []
+
+
+def _select_gpu_probe(
+    nvidia_smi_devices: list[dict[str, object]],
+    torch_cuda_devices: list[dict[str, object]],
+) -> str:
+    """返回当前 GPU 摘要采用的探测来源。
+
+    参数：
+    - nvidia_smi_devices：nvidia-smi 探测到的 GPU 列表。
+    - torch_cuda_devices：PyTorch CUDA 探测到的 GPU 列表。
+
+    返回：
+    - str：探测来源标识。
+    """
+
+    if nvidia_smi_devices:
+        return "nvidia-smi"
+    if torch_cuda_devices:
+        return "torch.cuda"
+    return "not_detected"
 
 
 def _resolve_path(value: str) -> Path:

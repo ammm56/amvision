@@ -69,7 +69,7 @@
 | `yolo11` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO11 core 使用统一单卡设备解析，不静默回退显式错误设备 |
 | `yolo26` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO26 core 使用统一单卡设备解析，不静默回退显式错误设备 |
 
-前端 `/models` 页面提供 `auto`、`cpu`、`cuda`、`cuda:0` 到 `cuda:7` 的常用选项；API 可以传入本机真实存在的更高序号 `cuda:<index>`。显式指定不存在的 CUDA 序号会返回错误，避免任务误跑到 `cuda:0`。
+前端 `/models` 页面根据 `/system/bootstrap` 返回的设备摘要动态生成训练设备选项。无 GPU 时只显示自动选择和 `cpu`；检测到 CUDA GPU 时显示 `cuda` 和真实存在的 `cuda:<index>`。API 仍会在后端校验显式设备，指定不存在的 CUDA 序号会返回错误，避免任务误跑到 `cuda:0`。
 
 ## 当前前端页面已暴露的训练输入
 
@@ -85,6 +85,7 @@
 - `input_width`
 - `input_height`
 - `display_name`
+- `extra_options.device` 对应的训练设备选择
 - 按 `task_type / model_type` 切换的高级训练参数
   - segmentation / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值
   - pose / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值、关键点置信度阈值
@@ -94,7 +95,7 @@
 
 - 当前没有新增独立的 `task_type` 参数层
 - 仍未把所有训练后端字段都完全前端化
-- 当前高级参数还没有按“数据增强 / 优化器 / 损失权重 / 运行设备”继续分组显示
+- 当前高级参数还没有按“优化器 / 损失权重 / 评估阈值”继续分组显示
 
 ## 按任务和模型整理
 

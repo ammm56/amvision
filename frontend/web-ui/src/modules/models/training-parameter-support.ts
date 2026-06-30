@@ -31,19 +31,51 @@ const boolOptions: TrainingParameterFieldOption[] = [
   { label: '关闭', value: 'false' },
 ]
 
-const deviceOptions: TrainingParameterFieldOption[] = [
-  { label: '自动选择（默认）', value: '' },
-  { label: 'cpu', value: 'cpu' },
-  { label: 'cuda', value: 'cuda' },
-  { label: 'cuda:0', value: 'cuda:0' },
-  { label: 'cuda:1', value: 'cuda:1' },
-  { label: 'cuda:2', value: 'cuda:2' },
-  { label: 'cuda:3', value: 'cuda:3' },
-  { label: 'cuda:4', value: 'cuda:4' },
-  { label: 'cuda:5', value: 'cuda:5' },
-  { label: 'cuda:6', value: 'cuda:6' },
-  { label: 'cuda:7', value: 'cuda:7' },
-]
+export function buildTrainingDeviceOptions(
+  devices: Record<string, unknown> | null | undefined,
+): TrainingParameterFieldOption[] {
+  const options: TrainingParameterFieldOption[] = [
+    { label: '自动选择（默认）', value: '' },
+    { label: 'cpu', value: 'cpu' },
+  ]
+  const cuda = readRecord(devices, 'cuda')
+  const gpuCount = readGpuDeviceCount(devices)
+  const cudaAvailable = cuda?.available === true || gpuCount > 0
+  if (!cudaAvailable) return options
+  options.push({ label: 'cuda', value: 'cuda' })
+  for (let index = 0; index < gpuCount; index += 1) {
+    options.push({ label: `cuda:${index}`, value: `cuda:${index}` })
+  }
+  return options
+}
+
+function readRecord(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+): Record<string, unknown> | null {
+  const value = record?.[key]
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function readPositiveInteger(value: unknown): number {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return 0
+  return Math.floor(numberValue)
+}
+
+function readGpuDeviceCount(devices: Record<string, unknown> | null | undefined): number {
+  const gpu = readRecord(devices, 'gpu')
+  const rows = Array.isArray(gpu?.devices) ? gpu.devices : []
+  if (rows.length > 0) return rows.length
+  return Math.max(
+    readPositiveInteger(gpu?.count),
+    readPositiveInteger(gpu?.device_count),
+    readPositiveInteger(readRecord(devices, 'cuda')?.device_count),
+    readPositiveInteger(readRecord(devices, 'cuda')?.count),
+  )
+}
 
 const rfdetrAugmentationBackendOptions: TrainingParameterFieldOption[] = [
   { label: 'CPU（默认）', value: 'cpu' },
@@ -219,7 +251,6 @@ const rfdetrAugmentationFields: TrainingParameterField[] = withTrainingParameter
 ], 'augmentation')
 
 const detectionYoloXFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('seed', '随机种子', { integer: true, min: 0, step: 1, defaultValue: '0' }),
   numberField('num_workers', '数据加载 worker 数', { integer: true, min: 0, step: 1, defaultValue: '0' }),
   numberField('max_labels', '单图最大标签数', { integer: true, min: 1, step: 1, defaultValue: '120' }),
@@ -232,7 +263,6 @@ const detectionYoloXFields: TrainingParameterField[] = [
 ]
 
 const detectionYoloPrimaryFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultWeightDecay }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
@@ -248,7 +278,6 @@ const detectionYoloPrimaryFields: TrainingParameterField[] = [
 ]
 
 const detectionRfdetrFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
   numberField('class_cost', '分类匹配代价', { min: 0, step: 0.1, defaultValue: '2.0' }),
   numberField('bbox_cost', '框匹配代价', { min: 0, step: 0.1, defaultValue: '5.0' }),
@@ -260,7 +289,6 @@ const detectionRfdetrFields: TrainingParameterField[] = [
 ]
 
 const classificationFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
@@ -268,7 +296,6 @@ const classificationFields: TrainingParameterField[] = [
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
@@ -285,7 +312,6 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
 ]
 
 const segmentationRfdetrFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
@@ -301,7 +327,6 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
 ]
 
 const poseFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
@@ -319,7 +344,6 @@ const poseFields: TrainingParameterField[] = [
 ]
 
 const obbFields: TrainingParameterField[] = [
-  selectField('device', '训练设备', deviceOptions),
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
   ...obbYoloEvaluationThresholdFields,
@@ -396,7 +420,7 @@ export function buildTrainingExtraOptions(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
   values: TrainingParameterValues,
-  options: { augmentationEnabled?: boolean } = {},
+  options: { augmentationEnabled?: boolean; device?: string } = {},
 ): Record<string, unknown> {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) {
@@ -405,6 +429,10 @@ export function buildTrainingExtraOptions(
 
   const augmentationEnabled = options.augmentationEnabled !== false
   const result: Record<string, unknown> = {}
+  const trainingDevice = String(options.device ?? '').trim()
+  if (trainingDevice) {
+    result.device = trainingDevice
+  }
   const visibleFields = getModelLayerTrainingFields(taskType, normalizedModelType)
   const visibleFieldMap = new Map(visibleFields.map((field) => [field.key, field]))
 
@@ -528,7 +556,6 @@ export function buildTrainingExtraOptions(
   if (taskType === 'detection') {
     if (normalizedModelType === 'yolox') {
       for (const key of [
-        'device',
         'seed',
         'num_workers',
         'max_labels',
@@ -559,7 +586,6 @@ export function buildTrainingExtraOptions(
     }
     if (normalizedModelType === 'rfdetr') {
       for (const key of [
-        'device',
         'learning_rate',
         'class_cost',
         'bbox_cost',
@@ -577,7 +603,6 @@ export function buildTrainingExtraOptions(
       return result
     }
     for (const key of [
-      'device',
       'learning_rate',
       'weight_decay',
       'class_loss_weight',
@@ -600,7 +625,7 @@ export function buildTrainingExtraOptions(
   }
 
   if (taskType === 'classification') {
-    for (const key of ['device', 'learning_rate', 'weight_decay', 'min_lr_ratio']) {
+    for (const key of ['learning_rate', 'weight_decay', 'min_lr_ratio']) {
       assignValue(key)
     }
     assignClassificationAugmentationValues()
@@ -613,7 +638,6 @@ export function buildTrainingExtraOptions(
   if (taskType === 'segmentation') {
     if (normalizedModelType === 'rfdetr') {
       for (const key of [
-        'device',
         'learning_rate',
         'weight_decay',
         'min_lr_ratio',
@@ -635,7 +659,6 @@ export function buildTrainingExtraOptions(
       return result
     }
     for (const key of [
-      'device',
       'learning_rate',
       'weight_decay',
       'min_lr_ratio',
@@ -661,7 +684,6 @@ export function buildTrainingExtraOptions(
 
   if (taskType === 'pose') {
     for (const key of [
-      'device',
       'learning_rate',
       'weight_decay',
       'min_lr_ratio',
@@ -688,7 +710,6 @@ export function buildTrainingExtraOptions(
 
   if (taskType === 'obb') {
     for (const key of [
-      'device',
       'learning_rate',
       'weight_decay',
       'evaluation_confidence_threshold',
