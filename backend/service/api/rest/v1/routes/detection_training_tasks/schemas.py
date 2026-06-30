@@ -24,7 +24,12 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     evaluation_interval: int | None = Field(default=5, ge=1, description="每隔多少轮执行一次真实验证评估；未指定时默认 5")
     max_epochs: int | None = Field(default=None, description="最大训练轮数")
     batch_size: int | None = Field(default=None, description="batch size")
-    gpu_count: int | None = Field(default=None, ge=1, description="请求参与训练的 GPU 数量")
+    gpu_count: int | None = Field(
+        default=None,
+        ge=1,
+        le=1,
+        description="当前版本只支持单 GPU 训练；可省略或填写 1",
+    )
     precision: Literal["fp16", "fp32"] | None = Field(
         default=None,
         description="请求使用的训练 precision；未指定时由具体 detection training backend 解析默认值",

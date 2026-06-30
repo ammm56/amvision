@@ -85,7 +85,7 @@ export function useTrainingParameters(options: {
   const trainingTaskSupportsWarmStart = computed(
     () => supportsTrainingWarmStart(options.selectedTaskType.value),
   )
-  const trainingSupportsGpuCount = computed(() => options.selectedTaskType.value === 'detection')
+  const trainingSupportsGpuCount = computed(() => false)
   const allTrainingModelParameterFields = computed(
     () => getModelLayerTrainingFields(options.selectedTaskType.value, options.resolvedTrainingModelType.value),
   )

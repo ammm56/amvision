@@ -145,7 +145,7 @@ class YoloXTrainingLoopRequest:
 
     字段：
     - torch_module：当前训练使用的 torch 模块。
-    - base_model：未包 DataParallel 的原始 YOLOX 模型。
+    - base_model：原始 YOLOX 模型。
     - training_model：实际执行 forward/backward 的模型。
     - train_dataset：训练数据集，可能是 MosaicDetection 包装后的数据集。
     - train_loader：训练 DataLoader。

@@ -107,7 +107,7 @@ class YoloXDetectionTrainingExecutionRequest:
     - evaluation_interval：每隔多少个 epoch 执行一次真实验证评估；为空时使用默认值。
     - max_epochs：最大训练 epoch 数；为空时使用最小默认值。
     - batch_size：训练 batch size；为空时使用最小默认值。
-    - gpu_count：请求参与训练的 GPU 数量；为空时按本机可用资源回退。
+    - gpu_count：当前只接受 1；为空时按单 GPU 或 CPU 回退。
     - precision：请求使用的训练 precision。
     - warm_start_checkpoint_path：warm start checkpoint 的绝对路径。
     - resume_checkpoint_path：恢复训练使用的 latest checkpoint 绝对路径。
@@ -501,11 +501,6 @@ def run_yolox_detection_training_execution(
                 },
             )
     training_model = base_model
-    if runtime.distributed_mode == "data-parallel":
-        training_model = imports.torch.nn.DataParallel(
-            base_model,
-            device_ids=list(runtime.device_ids),
-        )
     training_model.train()
     parameter_count = sum(parameter.numel() for parameter in base_model.parameters())
     scheduler = build_yolox_lr_scheduler(
@@ -842,6 +837,11 @@ def _resolve_training_runtime(
     gpu_count = requested_gpu_count or _read_int_option(extra_options, "gpu_count", default=1)
     if gpu_count < 1:
         raise InvalidRequestError("gpu_count 必须大于 0")
+    if gpu_count > 1:
+        raise InvalidRequestError(
+            "当前版本只支持单 GPU 训练，gpu_count 必须为 1",
+            details={"requested_gpu_count": gpu_count},
+        )
     if gpu_count > available_gpu_count:
         raise InvalidRequestError(
             "指定的 gpu_count 超过了本机可用 GPU 数量",
@@ -860,18 +860,17 @@ def _resolve_training_runtime(
                 details={"device": requested_device},
             )
         start_device_index = int(raw_device_index)
-        if start_device_index + gpu_count > available_gpu_count:
+        if start_device_index + 1 > available_gpu_count:
             raise InvalidRequestError(
-                "指定的 device 和 gpu_count 超出了本机可用 GPU 范围",
+                "指定的 device 超出了本机可用 GPU 范围",
                 details={
                     "device": requested_device,
-                    "requested_gpu_count": gpu_count,
                     "available_gpu_count": available_gpu_count,
                 },
             )
 
-    device_ids = tuple(range(start_device_index, start_device_index + gpu_count))
-    distributed_mode = "data-parallel" if gpu_count > 1 else "single-device"
+    device_ids = (start_device_index,)
+    distributed_mode = "single-device"
     return _ResolvedTrainingRuntime(
         device=f"cuda:{device_ids[0]}",
         gpu_count=gpu_count,

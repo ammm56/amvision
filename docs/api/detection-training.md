@@ -67,7 +67,7 @@
 | evaluation_interval | integer \| null | 否 | 每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估。 |
 | max_epochs | integer \| null | 否 | 最大训练轮数。 |
 | batch_size | integer \| null | 否 | batch size。 |
-| gpu_count | integer \| null | 否 | 请求参与训练的 GPU 数量；需要是正整数。未指定时按运行环境自动解析，无可用 GPU 时会回退到 CPU 训练。 |
+| gpu_count | integer \| null | 否 | 当前版本只支持单 GPU 或 CPU 训练；该字段只能省略或填写 1，大于 1 会被拒绝。 |
 | precision | string \| null | 否 | 请求使用的训练 precision；当前接口字段只接受 fp16、fp32。未指定时默认 fp32。 |
 | input_size | array[integer] \| null | 否 | 训练输入尺寸；未指定时默认使用 [640, 640]。 |
 | extra_options | object | 否 | 附加训练选项；当前 Swagger/OpenAPI 已展开公开可选字段。 |
@@ -1066,7 +1066,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求，并真实消费 `tensorrt-engine` ModelBuild。
 - 当前 YOLOX detection 真实训练执行链支持 `coco-detection-v1` 和 `voc-detection-v1` 输入；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
-- 当前 GPU 数量控制采用单机单进程模式；gpu_count 大于 1 时使用 DataParallel，不引入 exp 文件体系或分布式脚本。
+- 当前训练链路只支持单 GPU 或 CPU；`gpu_count` 只接受空值或 `1`，大于 `1` 的请求会被拒绝，不再使用 DataParallel 或 DDP 多 GPU 路径。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证。

@@ -907,6 +907,8 @@ class SqlAlchemyYoloXTrainingTaskService(
             raise InvalidRequestError("batch_size 必须大于 0")
         if request.gpu_count is not None and request.gpu_count < 1:
             raise InvalidRequestError("gpu_count 必须大于 0")
+        if request.gpu_count is not None and request.gpu_count > 1:
+            raise InvalidRequestError("当前版本只支持单 GPU 训练，gpu_count 必须为 1")
         if request.precision is not None and request.precision not in {"fp8", "fp16", "fp32"}:
             raise InvalidRequestError("precision 必须是 fp8、fp16 或 fp32")
         if request.precision == "fp8":

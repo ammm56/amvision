@@ -8,12 +8,6 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, RichProgressBar, TQDMProgressBar
 from pytorch_lightning.callbacks.progress.rich_progress import RichProgressBarTheme
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy as _DDPStrategy
-
-try:
-    from pytorch_lightning.strategies.launchers.multiprocessing import _MultiProcessingLauncher
-except ImportError:  # pragma: no cover - exercised in unit tests via monkeypatch
-    _MultiProcessingLauncher = None  # type: ignore[assignment]
 
 from backend.service.application.models.rfdetr_core.config import ModelConfig, TrainConfig
 from backend.service.application.models.rfdetr_core.training.callbacks import (
@@ -26,44 +20,6 @@ from backend.service.application.models.rfdetr_core.training.callbacks.coco_eval
 from backend.service.application.models.rfdetr_core.utilities.logger import get_logger
 
 _logger = get_logger()
-
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-#
-#
-
-
-if _MultiProcessingLauncher is not None:
-
-    class _InteractiveSpawnLauncher(_MultiProcessingLauncher):
-        """RF-DETR core 类：`_InteractiveSpawnLauncher`。"""
-
-        @property
-        def is_interactive_compatible(self) -> bool:  # type: ignore[override]
-            return True
-
-else:
-    _InteractiveSpawnLauncher = None
-
-
-class _NotebookSpawnDDPStrategy(_DDPStrategy):
-    """RF-DETR core 类：`_NotebookSpawnDDPStrategy`。"""
-
-    def _configure_launcher(self) -> None:
-        if self.cluster_environment is None:
-            raise RuntimeError(
-                "_NotebookSpawnDDPStrategy requires a cluster environment; "
-                "ensure the strategy is initialised through PTL's Trainer."
-            )
-        if _InteractiveSpawnLauncher is None:
-            raise RuntimeError(
-                "Notebook spawn strategy requires "
-                "pytorch_lightning.strategies.launchers.multiprocessing._MultiProcessingLauncher. "
-                "Your installed PyTorch Lightning version changed this private API; "
-                "pin/upgrade PTL to a compatible version in the supported >=2.6,<3 range."
-            )
-        self._launcher = _InteractiveSpawnLauncher(self, start_method=self._start_method)
 
 
 def build_trainer(
@@ -101,16 +57,9 @@ def build_trainer(
 
     strategy = tc.strategy
 
-    if strategy in ("ddp_notebook", "ddp_spawn"):
-        strategy = _NotebookSpawnDDPStrategy(start_method="spawn", find_unused_parameters=True)
-        _logger.info(
-            "%s → spawn-based DDP to avoid OpenMP thread pool corruption after fork.",
-            tc.strategy,
-        )
-    elif strategy == "ddp" and model_config.segmentation_head:
-        strategy = _DDPStrategy(find_unused_parameters=True)
-        _logger.info(
-            "segmentation_head=True with strategy='ddp' → DDPStrategy(find_unused_parameters=True).",
+    if strategy in ("ddp", "ddp_notebook", "ddp_spawn"):
+        raise ValueError(
+            "当前平台版本只支持 RF-DETR 单 GPU 或 CPU 训练，不支持 DDP strategy"
         )
     sharded = any(s in str(strategy).lower() for s in ("fsdp", "deepspeed"))
     enable_ema = bool(tc.use_ema) and not sharded

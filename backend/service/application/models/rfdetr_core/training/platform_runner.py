@@ -226,6 +226,12 @@ def _build_train_config(
 ) -> TrainConfig:
     """把平台训练参数转换成 RF-DETR core 训练配置。"""
 
+    gpu_count = int(extra_options.get("gpu_count", 1))
+    if gpu_count < 1:
+        raise InvalidRequestError("gpu_count 必须大于 0")
+    if gpu_count > 1:
+        raise InvalidRequestError("当前版本只支持单 GPU 训练，gpu_count 必须为 1")
+
     config_cls = (
         SegmentationTrainConfig
         if request.task_type == SEGMENTATION_TASK_TYPE
@@ -242,7 +248,7 @@ def _build_train_config(
         weight_decay=float(extra_options.get("weight_decay", 1e-4)),
         eval_interval=max(1, int(extra_options.get("evaluation_interval", 1))),
         accelerator="cpu" if _resolve_device_name(extra_options) == "cpu" else "gpu",
-        devices=max(1, int(extra_options.get("gpu_count", 1))),
+        devices=1,
         num_workers=max(0, int(extra_options.get("num_workers", 0))),
         progress_bar=None,
         tensorboard=False,

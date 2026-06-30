@@ -542,6 +542,10 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     "supported_scales": list(RFDETR_DETECTION_SCALES),
                 },
             )
+        if request.gpu_count is not None and request.gpu_count < 1:
+            raise InvalidRequestError("gpu_count 必须大于 0")
+        if request.gpu_count is not None and request.gpu_count > 1:
+            raise InvalidRequestError("当前版本只支持单 GPU 训练，gpu_count 必须为 1")
         if not request.dataset_export_id and not request.dataset_export_manifest_key:
             raise InvalidRequestError(
                 "dataset_export_id 和 dataset_export_manifest_key 至少需要提供一个"

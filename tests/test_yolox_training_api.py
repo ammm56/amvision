@@ -90,7 +90,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bolt",
                     "evaluation_interval": 3,
-                    "gpu_count": 2,
+                    "gpu_count": 1,
                     "precision": "fp16",
                 },
             )
@@ -107,7 +107,7 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_spec["dataset_export_id"] == dataset_export.dataset_export_id
         assert task_detail.task.task_spec["dataset_export_manifest_key"] == dataset_export.manifest_object_key
         assert task_detail.task.task_spec["manifest_object_key"] == dataset_export.manifest_object_key
-        assert task_detail.task.task_spec["gpu_count"] == 2
+        assert task_detail.task.task_spec["gpu_count"] == 1
         assert task_detail.task.task_spec["precision"] == "fp16"
         assert task_detail.task.task_spec["evaluation_interval"] == 3
         assert task_detail.task.state == "queued"
@@ -193,8 +193,8 @@ def test_detection_training_create_openapi_exposes_documented_extra_options(tmp_
         session_factory.engine.dispose()
 
 
-def test_create_yolox_training_task_accepts_gpu_count_above_three(tmp_path: Path) -> None:
-    """验证训练创建接口不会在提交阶段人为限制超过 3 卡的请求。"""
+def test_create_yolox_training_task_rejects_multi_gpu_count(tmp_path: Path) -> None:
+    """验证训练创建接口会明确拒绝当前不支持的多 GPU 请求。"""
 
     client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
     dataset_export = _seed_completed_dataset_export(
@@ -217,16 +217,14 @@ def test_create_yolox_training_task_accepts_gpu_count_above_three(tmp_path: Path
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-gpu4",
-                    "gpu_count": 4,
+                    "gpu_count": 2,
                     "precision": "fp16",
                 },
             )
 
-        assert response.status_code == 202
+        assert response.status_code == 422
         payload = response.json()
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
-        assert task_detail.task.task_spec["gpu_count"] == 4
-        assert task_detail.task.task_spec["precision"] == "fp16"
+        assert "gpu_count" in str(payload)
     finally:
         session_factory.engine.dispose()
 
@@ -382,7 +380,7 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-a",
-                    "gpu_count": 2,
+                    "gpu_count": 1,
                     "precision": "fp16",
                 },
             )
@@ -416,7 +414,7 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
         assert payload[0]["dataset_export_id"] == dataset_export_a.dataset_export_id
         assert payload[0]["recipe_id"] == "yolox-default"
         assert payload[0]["model_scale"] == "s"
-        assert payload[0]["gpu_count"] == 2
+        assert payload[0]["gpu_count"] == 1
         assert payload[0]["precision"] == "fp16"
         assert payload[0]["state"] == "queued"
         assert payload[0]["model_version_id"] is None

@@ -103,6 +103,7 @@ def test_rfdetr_trainer_runner_reads_task_spec_without_queue_payload(
                 latest_checkpoint_bytes=b"fake-rfdetr-checkpoint",
                 metrics_payload={"train_loss": 1.0},
                 validation_metrics_payload={"map50": 0.75},
+                warm_start_summary={"enabled": False},
                 labels=("part",),
                 aligned_input_size=(384, 384),
             )
