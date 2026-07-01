@@ -43,7 +43,6 @@
         >
           <span>
             <strong>{{ source.label }}</strong>
-            <small>{{ source.description }}</small>
           </span>
           <em>{{ source.count }}</em>
           <ChevronRight :size="14" />
@@ -140,10 +139,12 @@ const activeSourceId = ref('')
 const activeCategoryId = ref('')
 const { t, locale } = useI18n()
 const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
+const nodePickerWidth = 860
+const nodePickerHeight = 560
 
 const pickerStyle = computed(() => ({
-  left: `${clampToViewport(props.x, 640, 'width')}px`,
-  top: `${clampToViewport(props.y, 520, 'height')}px`,
+  left: `${clampToViewport(props.x, nodePickerWidth, 'width')}px`,
+  top: `${clampToViewport(props.y, nodePickerHeight, 'height')}px`,
 }))
 
 const displayTitle = computed(() => props.title ?? t('workflowEditor.nodePicker.addNode'))
@@ -283,7 +284,7 @@ function readDefinitionDescription(definition: NodeDefinition): string {
 }
 
 function formatNodePackLabel(packId: string): string {
-  return packId.replaceAll('.', ' ').replaceAll('-', ' ')
+  return packId.replace(/[._-]+/g, ' ')
 }
 
 function clampToViewport(value: number, size: number, axis: 'width' | 'height'): number {

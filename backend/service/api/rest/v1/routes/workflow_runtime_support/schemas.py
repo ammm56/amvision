@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.contracts.workflows import FlowApplication, WorkflowGraphTemplate
 
@@ -63,6 +63,26 @@ class WorkflowAppRuntimeCreateRequestBody(BaseModel):
 class WorkflowRuntimeInvokeRequestBody(BaseModel):
     """描述 runtime 同步调用请求体。"""
 
-    input_bindings: dict[str, object] = Field(default_factory=dict, description="输入绑定 payload")
+    model_config = ConfigDict(extra="allow")
+
+    input_bindings: dict[str, object] | None = Field(default=None, description="输入绑定 payload")
     execution_metadata: dict[str, object] = Field(default_factory=dict, description="执行元数据")
     timeout_seconds: int | None = Field(default=None, description="可选同步等待超时秒数")
+
+    def resolve_input_bindings(self) -> dict[str, object]:
+        """返回最终输入绑定。
+
+        app runtime 的公开 HTTP 调用应能直接用公开输入 id 作为顶层字段；平台内部调用也可以继续
+        使用 input_bindings 包装字段。两个形态不能混用，避免同一个请求里出现两套输入来源。
+        """
+
+        direct_bindings = dict(self.model_extra or {})
+        if self.input_bindings is not None:
+            if direct_bindings:
+                direct_names = ", ".join(sorted(direct_bindings))
+                raise ValueError(
+                    "不能同时使用 input_bindings 包装字段和顶层公开输入字段："
+                    f"{direct_names}"
+                )
+            return dict(self.input_bindings)
+        return direct_bindings

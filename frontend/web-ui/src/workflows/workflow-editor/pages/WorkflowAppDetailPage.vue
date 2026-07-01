@@ -459,8 +459,19 @@ function formatSummary(value: WorkflowJsonObject | null | undefined): string {
 
 function sampleValueForPayloadType(payloadTypeId: string, bindingId: string): unknown {
   if (bindingId.includes('deployment_request')) return { request_id: 'manual-test', source: 'web-ui' }
-  if (payloadTypeId.includes('image-ref')) return { object_key: 'workflows/inputs/sample.png' }
-  if (payloadTypeId.includes('image-base64')) return 'data:image/png;base64,...'
+  if (payloadTypeId === 'image-ref.v1') {
+    return {
+      transport_kind: 'storage',
+      object_key: 'workflows/inputs/sample.png',
+      media_type: 'image/png',
+    }
+  }
+  if (payloadTypeId === 'image-base64.v1') {
+    return {
+      image_base64: '<base64>',
+      media_type: 'image/png',
+    }
+  }
   if (payloadTypeId.includes('boolean')) return false
   if (payloadTypeId.includes('number') || payloadTypeId.includes('float') || payloadTypeId.includes('integer')) return 0
   if (payloadTypeId.includes('object') || payloadTypeId.includes('json')) return {}
@@ -488,9 +499,70 @@ function parseInputBindings(): WorkflowJsonObject {
   const candidate = parsedValue.input_bindings
   if (candidate !== undefined) {
     if (!isRecord(candidate)) throw new Error('input_bindings 必须是 JSON object')
+    validateInputBindingPayloads(candidate)
     return candidate
   }
+  validateInputBindingPayloads(parsedValue)
   return parsedValue
+}
+
+function validateInputBindingPayloads(inputBindingPayloads: Record<string, unknown>): void {
+  for (const binding of inputBindings.value) {
+    if (!Object.prototype.hasOwnProperty.call(inputBindingPayloads, binding.binding_id)) continue
+    const payload = inputBindingPayloads[binding.binding_id]
+    if (payload === null || payload === undefined) {
+      if (binding.required) throw new Error(`${binding.binding_id} 是必填输入，不能为 null`)
+      continue
+    }
+    const payloadTypeId = getBindingPayloadTypeId(binding)
+    if (payloadTypeId === 'image-base64.v1') validateImageBase64BindingPayload(binding.binding_id, payload)
+    else if (payloadTypeId === 'image-ref.v1') validateImageRefBindingPayload(binding.binding_id, payload)
+  }
+}
+
+function validateImageBase64BindingPayload(bindingId: string, payload: unknown): void {
+  if (!isRecord(payload)) {
+    throw new Error(`${bindingId} 必须是 image-base64.v1 对象，例如 {"image_base64":"<base64>","media_type":"image/png"}`)
+  }
+  const imageBase64 = payload.image_base64
+  if (typeof imageBase64 !== 'string' || !imageBase64.trim()) {
+    throw new Error(`${bindingId} 缺少有效 image_base64 字段`)
+  }
+}
+
+function validateImageRefBindingPayload(bindingId: string, payload: unknown): void {
+  if (!isRecord(payload)) {
+    throw new Error(`${bindingId} 必须是 image-ref.v1 对象，例如 {"transport_kind":"storage","object_key":"workflows/inputs/sample.png"}`)
+  }
+  const transportKind = payload.transport_kind
+  if (transportKind === undefined || transportKind === null || transportKind === '') {
+    const objectKey = payload.object_key
+    if (typeof objectKey !== 'string' || !objectKey.trim()) {
+      throw new Error(`${bindingId} 缺少有效 object_key 字段`)
+    }
+    return
+  }
+  if (transportKind === 'storage') {
+    const objectKey = payload.object_key
+    if (typeof objectKey !== 'string' || !objectKey.trim()) {
+      throw new Error(`${bindingId} 的 storage 输入缺少有效 object_key 字段`)
+    }
+  } else if (transportKind === 'memory') {
+    const imageHandle = payload.image_handle
+    if (typeof imageHandle !== 'string' || !imageHandle.trim()) {
+      throw new Error(`${bindingId} 的 memory 输入缺少有效 image_handle 字段`)
+    }
+  } else if (transportKind === 'buffer') {
+    const bufferRef = payload.buffer_ref
+    if (typeof bufferRef !== 'string' || !bufferRef.trim()) {
+      throw new Error(`${bindingId} 的 buffer 输入缺少有效 buffer_ref 字段`)
+    }
+  } else if (transportKind === 'frame') {
+    const frameRef = payload.frame_ref
+    if (typeof frameRef !== 'string' || !frameRef.trim()) {
+      throw new Error(`${bindingId} 的 frame 输入缺少有效 frame_ref 字段`)
+    }
+  }
 }
 
 function selectRuntime(runtimeId: string): void {

@@ -21,10 +21,21 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.services import
 from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import (
     build_multipart_runtime_invoke_request as _build_multipart_runtime_invoke_request,
 )
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
 
 
 workflow_runtime_runs_router = APIRouter()
+
+
+def _resolve_input_bindings(body: WorkflowRuntimeInvokeRequestBody) -> dict[str, object]:
+    """解析 runtime invoke 输入绑定。"""
+
+    try:
+        return body.resolve_input_bindings()
+    except ValueError as exc:
+        raise InvalidRequestError(str(exc)) from exc
+
 
 @workflow_runtime_runs_router.post(
     "/app-runtimes/{workflow_runtime_id}/runs",
@@ -44,7 +55,7 @@ def create_workflow_run(
     workflow_run = _build_workflow_runtime_service(request).create_workflow_run(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
-            input_bindings=dict(body.input_bindings),
+            input_bindings=_resolve_input_bindings(body),
             execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
             timeout_seconds=body.timeout_seconds,
         ),
@@ -97,7 +108,7 @@ def invoke_workflow_app_runtime(
     invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
-            input_bindings=dict(body.input_bindings),
+            input_bindings=_resolve_input_bindings(body),
             execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
             timeout_seconds=body.timeout_seconds,
         ),
