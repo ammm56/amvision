@@ -64,9 +64,6 @@ from backend.service.application.models.yolov8_core.training.runtime import (
 from backend.service.application.models.yolov8_core.training.savepoint import (
     build_yolov8_detection_training_savepoint_payload,
 )
-from backend.service.application.models.yolov8_core.training.validation import (
-    evaluate_yolov8_detection_validation_losses,
-)
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
@@ -1505,6 +1502,8 @@ def _iter_batches(
 def _unwrap_detection_outputs(outputs: Any) -> dict[str, Any]:
     """把 detection 训练输出规整成 one2many 结果。"""
 
+    if isinstance(outputs, list | tuple) and len(outputs) >= 2:
+        outputs = outputs[1]
     if isinstance(outputs, dict) and "boxes" in outputs and "scores" in outputs:
         return outputs
     if isinstance(outputs, dict) and "one2many" in outputs:
@@ -1576,10 +1575,13 @@ def _evaluate_detection_model(
 ) -> dict[str, object]:
     """在验证 split 上执行真实 detection loss 与 COCO mAP 评估。"""
 
-    validation_losses = _evaluate_detection_validation_losses(
+    validation_losses, validation_map = _evaluate_detection_model_once(
         imports=imports,
         model=model,
         samples=samples,
+        category_ids=category_ids,
+        annotation_file=annotation_file,
+        annotation_payload=annotation_payload,
         input_size=input_size,
         batch_size=batch_size,
         device=device,
@@ -1591,19 +1593,6 @@ def _evaluate_detection_model(
         assign_topk=assign_topk,
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
-        dataloader_plan=dataloader_plan,
-    )
-    validation_map = _evaluate_validation_map(
-        imports=imports,
-        model=model,
-        samples=samples,
-        input_size=input_size,
-        batch_size=batch_size,
-        device=device,
-        runtime_precision=runtime_precision,
-        category_ids=category_ids,
-        annotation_file=annotation_file,
-        annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
@@ -1630,11 +1619,14 @@ def _evaluate_detection_model(
     return evaluation_summary
 
 
-def _evaluate_detection_validation_losses(
+def _evaluate_detection_model_once(
     *,
     imports: _TrainingImports,
     model: Any,
     samples: tuple[_ResolvedTrainingSample, ...],
+    category_ids: tuple[int, ...],
+    annotation_file: Path | None,
+    annotation_payload: dict[str, object] | None,
     input_size: tuple[int, int],
     batch_size: int,
     device: str,
@@ -1646,23 +1638,21 @@ def _evaluate_detection_validation_losses(
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
+    confidence_threshold: float,
+    nms_threshold: float,
     dataloader_plan: YoloV8DetectionDataLoaderPlan,
-) -> dict[str, float]:
-    """在验证集上统计真实 detection 验证损失。"""
+) -> tuple[dict[str, float], dict[str, float]]:
+    """按 Ultralytics validator 语义一次 forward 统计 loss 和 mAP。"""
 
     if not samples:
-        return {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-
-    torch = imports.torch
-    autocast_context = _build_autocast_context(
-        imports=imports,
-        device=device,
-        runtime_precision=runtime_precision,
-    )
+        empty_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+        return empty_losses, {"map50": 0.0, "map50_95": 0.0}
     if not is_yolov8_detection_core_model(model):
         raise ServiceConfigurationError(
             "YOLOv8 detection 训练验证只接受 YOLOv8 core 模型"
         )
+
+    torch = imports.torch
     validation_dataloader = build_yolov8_detection_training_dataloader(
         torch_module=torch,
         samples=samples,
@@ -1673,84 +1663,23 @@ def _evaluate_detection_validation_losses(
         plan=_replace_dataloader_plan_seed(plan=dataloader_plan, seed=100_000),
         shuffle=False,
     )
-    return evaluate_yolov8_detection_validation_losses(
-        torch_module=torch,
-        model=model,
-        samples=samples,
-        batch_size=batch_size,
-        build_batch=lambda batch_samples: build_yolov8_detection_training_batch(
-            imports=imports,
-            samples=batch_samples,
-            input_size=input_size,
-            device=device,
-            runtime_precision=runtime_precision,
-            augment_training=False,
-        ),
-        unwrap_outputs=_unwrap_detection_outputs,
-        compute_loss=lambda **kwargs: _compute_detection_loss(
-            imports=imports,
-            num_classes=num_classes,
-            **kwargs,
-        ),
-        autocast_context=autocast_context,
-        freeze_batch_norm=lambda: _freeze_batch_norm_modules(
-            imports=imports,
-            model=model,
-        ),
-        restore_batch_norm=_restore_batch_norm_modules,
-        class_loss_weight=class_loss_weight,
-        box_loss_weight=box_loss_weight,
-        dfl_loss_weight=dfl_loss_weight,
-        assign_topk=assign_topk,
-        assign_alpha=assign_alpha,
-        assign_beta=assign_beta,
-        dataloader_batches=validation_dataloader,
+    autocast_context = _build_autocast_context(
+        imports=imports,
         device=device,
         runtime_precision=runtime_precision,
     )
-
-
-def _evaluate_validation_map(
-    *,
-    imports: _TrainingImports,
-    model: Any,
-    samples: tuple[_ResolvedTrainingSample, ...],
-    input_size: tuple[int, int],
-    batch_size: int,
-    device: str,
-    runtime_precision: str,
-    category_ids: tuple[int, ...],
-    annotation_file: Path | None,
-    annotation_payload: dict[str, object] | None,
-    confidence_threshold: float,
-    nms_threshold: float,
-    dataloader_plan: YoloV8DetectionDataLoaderPlan,
-) -> dict[str, float]:
-    """执行一次真实 COCO mAP 评估。"""
-
-    if not samples or annotation_payload is None:
-        return {"map50": 0.0, "map50_95": 0.0}
-    if imports.COCO is None or imports.COCOeval is None:
+    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    batch_count = 0
+    detections: list[dict[str, object]] = []
+    can_compute_map = annotation_payload is not None
+    if can_compute_map and (imports.COCO is None or imports.COCOeval is None):
         raise ServiceConfigurationError(
             "当前环境缺少 pycocotools，无法执行 detection mAP 验证"
         )
 
-    torch = imports.torch
     previous_training_mode = bool(model.training)
     model.eval()
-    detections: list[dict[str, object]] = []
-    evaluation_postprocess_mode = DETECTION_POSTPROCESS_MODE_NMS
     try:
-        validation_dataloader = build_yolov8_detection_training_dataloader(
-            torch_module=torch,
-            samples=samples,
-            batch_size=batch_size,
-            input_size=input_size,
-            augment_training=False,
-            augmentation_options=None,
-            plan=_replace_dataloader_plan_seed(plan=dataloader_plan, seed=200_000),
-            shuffle=False,
-        )
         with torch.no_grad():
             for batch in validation_dataloader:
                 images = move_yolo_tensor_to_training_device(
@@ -1759,25 +1688,53 @@ def _evaluate_validation_map(
                     runtime_precision=runtime_precision,
                 )
                 batch_targets = batch.targets
-                prediction_tensor = model(images)
-                detections.extend(
-                    _convert_yolov8_predictions_to_coco_detections(
+                with autocast_context():
+                    outputs = model(images)
+                    raw_outputs = _unwrap_detection_outputs(outputs)
+                    loss_components = _compute_detection_loss(
                         imports=imports,
-                        prediction_tensor=prediction_tensor,
+                        model=model,
+                        raw_outputs=raw_outputs,
                         batch_targets=batch_targets,
-                        input_size=input_size,
-                        category_ids=category_ids,
-                        confidence_threshold=confidence_threshold,
-                        nms_threshold=nms_threshold,
-                        postprocess_mode=evaluation_postprocess_mode,
-                        max_detections=None,
+                        num_classes=num_classes,
+                        class_loss_weight=class_loss_weight,
+                        box_loss_weight=box_loss_weight,
+                        dfl_loss_weight=dfl_loss_weight,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
                     )
-                )
+                batch_count += 1
+                for metric_name in epoch_totals:
+                    epoch_totals[metric_name] += float(
+                        loss_components[metric_name].detach().item()
+                    )
+                if can_compute_map:
+                    detections.extend(
+                        _convert_yolov8_predictions_to_coco_detections(
+                            imports=imports,
+                            prediction_tensor=outputs,
+                            batch_targets=batch_targets,
+                            input_size=input_size,
+                            category_ids=category_ids,
+                            confidence_threshold=confidence_threshold,
+                            nms_threshold=nms_threshold,
+                            postprocess_mode=DETECTION_POSTPROCESS_MODE_NMS,
+                            max_detections=None,
+                        )
+                    )
     finally:
         model.train(previous_training_mode)
 
-    if not detections:
-        return {"map50": 0.0, "map50_95": 0.0}
+    if batch_count <= 0:
+        losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    else:
+        losses = {
+            metric_name: round(metric_total / batch_count, 6)
+            for metric_name, metric_total in epoch_totals.items()
+        }
+    if not can_compute_map or not detections:
+        return losses, {"map50": 0.0, "map50_95": 0.0}
 
     ground_truth = _load_coco_ground_truth_silently(
         imports=imports,
@@ -1790,7 +1747,7 @@ def _evaluate_validation_map(
         coco_evaluator.evaluate()
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
-    return {
+    return losses, {
         "map50_95": float(coco_evaluator.stats[0]),
         "map50": float(coco_evaluator.stats[1]),
     }
@@ -1811,6 +1768,7 @@ def _convert_yolov8_predictions_to_coco_detections(
     """把主线 detection 预测结果转换为 COCO detection 列表。"""
 
     np_module = imports.np
+    prediction_tensor = _extract_yolov8_processed_prediction(prediction_tensor)
     prediction_array = prediction_tensor.detach().cpu().numpy()
     postprocess_results = postprocess_detection_prediction_array(
         prediction_array=prediction_array,
@@ -1871,6 +1829,16 @@ def _convert_yolov8_predictions_to_coco_detections(
     return detections
 
 
+def _extract_yolov8_processed_prediction(prediction_tensor: Any) -> Any:
+    """从 YOLOv8 eval 输出中取用于后处理的 processed prediction。"""
+
+    if isinstance(prediction_tensor, list | tuple):
+        if not prediction_tensor:
+            raise ServiceConfigurationError("YOLOv8 detection 预测输出为空")
+        return prediction_tensor[0]
+    return prediction_tensor
+
+
 def _load_coco_ground_truth_silently(
     *,
     imports: _TrainingImports,
@@ -1890,30 +1858,6 @@ def _load_coco_ground_truth_silently(
         ground_truth.dataset = annotation_payload
         ground_truth.createIndex()
         return ground_truth
-
-
-def _freeze_batch_norm_modules(
-    *,
-    imports: _TrainingImports,
-    model: Any,
-) -> tuple[tuple[Any, bool], ...]:
-    """在验证阶段冻结 BatchNorm 的统计更新。"""
-
-    batch_norm_states: list[tuple[Any, bool]] = []
-    for module in model.modules():
-        if isinstance(module, imports.torch.nn.BatchNorm2d):
-            batch_norm_states.append((module, bool(module.training)))
-            module.eval()
-    return tuple(batch_norm_states)
-
-
-def _restore_batch_norm_modules(
-    batch_norm_states: tuple[tuple[Any, bool], ...],
-) -> None:
-    """恢复验证前 BatchNorm 的训练状态。"""
-
-    for module, was_training in batch_norm_states:
-        module.train(was_training)
 
 
 def _normalize_history_items(value: object) -> list[dict[str, object]]:

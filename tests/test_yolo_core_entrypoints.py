@@ -169,7 +169,6 @@ from backend.service.application.models.yolo11_core.training import (
     build_yolo11_pose_checkpoint_bytes,
     build_yolo11_obb_checkpoint_bytes,
     encode_yolo11_detection_checkpoint_state,
-    evaluate_yolo11_detection_validation_losses,
     load_yolo11_segmentation_resume_state,
     load_yolo11_segmentation_training_manifest,
     load_yolo11_pose_resume_state,
@@ -565,13 +564,13 @@ def test_yolo_core_entrypoint_builds_detection_model(
         prediction = model(torch.randn(1, 3, 64, 64))
 
     assert model.model_name == f"{model_type}-detection"
+    assert isinstance(prediction, tuple)
+    assert prediction[0].shape == (1, 84, 6)
+    assert isinstance(prediction[1], dict)
     if model_type == "yolo26":
-        assert isinstance(prediction, tuple)
-        assert prediction[0].shape == (1, 84, 6)
-        assert isinstance(prediction[1], dict)
         assert set(prediction[1]) == {"one2many", "one2one"}
         return
-    assert prediction.shape == (1, 84, 6)
+    assert {"boxes", "scores"}.issubset(prediction[1])
 
 
 def test_yolo_core_head_module_maps_are_model_specific() -> None:
@@ -1152,9 +1151,6 @@ def test_yolo11_pose_and_obb_training_side_entries_are_model_specific() -> None:
     )
     assert yolo11_decode_distances_to_rboxes.__module__.endswith(
         "yolo11_core.targets.obb"
-    )
-    assert evaluate_yolo11_detection_validation_losses.__module__.endswith(
-        "yolo11_core.training.validation"
     )
     assert run_yolo11_detection_training_epoch.__module__.endswith(
         "yolo11_core.training.runner"
@@ -2711,11 +2707,13 @@ def test_yolov8_core_config_and_validation_are_model_local() -> None:
     assert snapshot.model_type == "yolov8"
     assert snapshot.task_type == DETECTION_TASK_TYPE
     assert snapshot.parameters.state_dict_key_count > 0
-    assert snapshot.output_summary == {
+    assert snapshot.output_summary["kind"] == "tuple"
+    assert snapshot.output_summary["items"][0] == {
         "kind": "tensor",
         "shape": (1, 84, 6),
         "dtype": "torch.float32",
     }
+    assert snapshot.output_summary["items"][1]["kind"] == "dict"
 
 
 def test_yolov8_segmentation_core_targets_and_loss_backpropagate() -> None:

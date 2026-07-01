@@ -109,6 +109,8 @@ def resolve_yolo11_detection_runtime(
 def unwrap_yolo11_detection_outputs(outputs: Any) -> dict[str, Any]:
     """把 YOLO11 detection 训练输出规整成 one2many 结果。"""
 
+    if isinstance(outputs, list | tuple) and len(outputs) >= 2:
+        outputs = outputs[1]
     if isinstance(outputs, dict) and "boxes" in outputs and "scores" in outputs:
         return outputs
     if isinstance(outputs, dict) and "one2many" in outputs:

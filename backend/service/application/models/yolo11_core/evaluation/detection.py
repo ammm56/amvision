@@ -70,6 +70,7 @@ def convert_yolo11_predictions_to_coco_detections(
 ) -> list[dict[str, object]]:
     """把 YOLO11 detection 预测转换为 COCO detection 结果列表。"""
 
+    prediction_tensor = _extract_yolo11_processed_prediction(prediction_tensor)
     prediction_array = prediction_tensor.detach().cpu().numpy()
     postprocess_results = postprocess_detection_prediction_array(
         prediction_array=prediction_array,
@@ -128,6 +129,16 @@ def convert_yolo11_predictions_to_coco_detections(
                 }
             )
     return detections
+
+
+def _extract_yolo11_processed_prediction(prediction_tensor: Any) -> Any:
+    """从 YOLO11 eval 输出中取用于后处理的 processed prediction。"""
+
+    if isinstance(prediction_tensor, list | tuple):
+        if not prediction_tensor:
+            raise InvalidRequestError("YOLO11 detection 预测输出为空")
+        return prediction_tensor[0]
+    return prediction_tensor
 
 
 __all__ = [

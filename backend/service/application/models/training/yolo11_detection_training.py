@@ -45,7 +45,6 @@ from backend.service.application.models.yolo11_core.training import (
     build_yolo11_detection_training_runtime,
     compute_yolo11_detection_training_loss,
     encode_yolo11_detection_checkpoint_state,
-    evaluate_yolo11_detection_validation_losses,
     move_yolo11_optimizer_state_to_device,
     plan_yolo11_detection_training_execution,
     prepare_yolo11_detection_training_data_context,
@@ -864,69 +863,24 @@ def _evaluate_yolo11_detection_model(
 ) -> dict[str, object]:
     """执行 YOLO11 detection validation loss 与 COCO bbox mAP。"""
 
-    validation_dataloader = build_yolo11_detection_training_dataloader(
-        torch_module=imports.torch,
-        samples=samples,
-        batch_size=batch_size,
-        input_size=input_size,
-        augment_training=False,
-        augmentation_options=None,
-        plan=_replace_yolo11_dataloader_plan_seed(
-            plan=dataloader_plan,
-            seed=100_000,
-        ),
-        shuffle=False,
-    )
-    validation_losses = evaluate_yolo11_detection_validation_losses(
-        torch_module=imports.torch,
+    validation_losses, validation_map = _evaluate_yolo11_detection_model_once(
+        imports=imports,
         model=model,
         samples=samples,
+        category_ids=category_ids,
+        annotation_file=annotation_file,
+        annotation_payload=annotation_payload,
+        input_size=input_size,
         batch_size=batch_size,
-        build_batch=lambda batch_samples: build_yolo11_detection_training_batch(
-            imports=imports,
-            samples=batch_samples,
-            input_size=input_size,
-            device=device,
-            runtime_precision=runtime_precision,
-            augment_training=False,
-        ),
-        unwrap_outputs=unwrap_yolo11_detection_outputs,
-        compute_loss=lambda **kwargs: _compute_yolo11_detection_loss(
-            imports=imports,
-            num_classes=num_classes,
-            **kwargs,
-        ),
-        autocast_context=lambda: build_yolo11_autocast_context(
-            torch_module=imports.torch,
-            device=device,
-            runtime_precision=runtime_precision,
-        )(),
-        freeze_batch_norm=lambda: _freeze_yolo11_batch_norm_modules(
-            imports=imports,
-            model=model,
-        ),
-        restore_batch_norm=_restore_yolo11_batch_norm_modules,
+        device=device,
+        runtime_precision=runtime_precision,
+        num_classes=num_classes,
         class_loss_weight=class_loss_weight,
         box_loss_weight=box_loss_weight,
         dfl_loss_weight=dfl_loss_weight,
         assign_topk=assign_topk,
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
-        dataloader_batches=validation_dataloader,
-        device=device,
-        runtime_precision=runtime_precision,
-    )
-    validation_map = _evaluate_yolo11_validation_map(
-        imports=imports,
-        model=model,
-        samples=samples,
-        input_size=input_size,
-        batch_size=batch_size,
-        device=device,
-        runtime_precision=runtime_precision,
-        category_ids=category_ids,
-        annotation_file=annotation_file,
-        annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
@@ -942,48 +896,63 @@ def _evaluate_yolo11_detection_model(
     }
 
 
-def _evaluate_yolo11_validation_map(
+def _evaluate_yolo11_detection_model_once(
     *,
     imports: Any,
     model: Any,
     samples: tuple[Any, ...],
+    category_ids: tuple[int, ...],
+    annotation_file: Any,
+    annotation_payload: dict[str, object] | None,
     input_size: tuple[int, int],
     batch_size: int,
     device: str,
     runtime_precision: str,
-    category_ids: tuple[int, ...],
-    annotation_file: Any,
-    annotation_payload: dict[str, object] | None,
+    num_classes: int,
+    class_loss_weight: float,
+    box_loss_weight: float,
+    dfl_loss_weight: float,
+    assign_topk: int,
+    assign_alpha: float,
+    assign_beta: float,
     confidence_threshold: float,
     nms_threshold: float,
     dataloader_plan: Yolo11DetectionDataLoaderPlan,
-) -> dict[str, float]:
-    """执行 YOLO11 detection COCO bbox mAP。"""
+) -> tuple[dict[str, float], dict[str, float]]:
+    """按 Ultralytics validator 语义一次 forward 统计 YOLO11 loss 和 mAP。"""
 
-    if not samples or annotation_payload is None:
-        return {"map50": 0.0, "map50_95": 0.0}
-    if imports.COCO is None or imports.COCOeval is None:
+    if not samples:
+        empty_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+        return empty_losses, {"map50": 0.0, "map50_95": 0.0}
+    if annotation_payload is not None and (imports.COCO is None or imports.COCOeval is None):
         raise ServiceConfigurationError(
             "当前环境缺少 pycocotools，无法执行 YOLO11 detection mAP 验证"
         )
 
+    validation_dataloader = build_yolo11_detection_training_dataloader(
+        torch_module=imports.torch,
+        samples=samples,
+        batch_size=batch_size,
+        input_size=input_size,
+        augment_training=False,
+        augmentation_options=None,
+        plan=_replace_yolo11_dataloader_plan_seed(
+            plan=dataloader_plan,
+            seed=100_000,
+        ),
+        shuffle=False,
+    )
+    autocast_context = build_yolo11_autocast_context(
+        torch_module=imports.torch,
+        device=device,
+        runtime_precision=runtime_precision,
+    )
+    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    batch_count = 0
+    detections: list[dict[str, object]] = []
     previous_training_mode = bool(model.training)
     model.eval()
-    detections: list[dict[str, object]] = []
     try:
-        validation_dataloader = build_yolo11_detection_training_dataloader(
-            torch_module=imports.torch,
-            samples=samples,
-            batch_size=batch_size,
-            input_size=input_size,
-            augment_training=False,
-            augmentation_options=None,
-            plan=_replace_yolo11_dataloader_plan_seed(
-                plan=dataloader_plan,
-                seed=200_000,
-            ),
-            shuffle=False,
-        )
         with imports.torch.no_grad():
             for batch in validation_dataloader:
                 images = move_yolo_tensor_to_training_device(
@@ -992,23 +961,50 @@ def _evaluate_yolo11_validation_map(
                     runtime_precision=runtime_precision,
                 )
                 batch_targets = batch.targets
-                prediction_tensor = model(images)
-                detections.extend(
-                    convert_yolo11_predictions_to_coco_detections(
-                        np_module=imports.np,
-                        prediction_tensor=prediction_tensor,
+                with autocast_context():
+                    outputs = model(images)
+                    loss_components = _compute_yolo11_detection_loss(
+                        imports=imports,
+                        model=model,
+                        raw_outputs=unwrap_yolo11_detection_outputs(outputs),
                         batch_targets=batch_targets,
-                        input_size=input_size,
-                        category_ids=category_ids,
-                        confidence_threshold=confidence_threshold,
-                        nms_threshold=nms_threshold,
+                        num_classes=num_classes,
+                        class_loss_weight=class_loss_weight,
+                        box_loss_weight=box_loss_weight,
+                        dfl_loss_weight=dfl_loss_weight,
+                        assign_topk=assign_topk,
+                        assign_alpha=assign_alpha,
+                        assign_beta=assign_beta,
                     )
-                )
+                batch_count += 1
+                for metric_name in epoch_totals:
+                    epoch_totals[metric_name] += float(
+                        loss_components[metric_name].detach().item()
+                    )
+                if annotation_payload is not None:
+                    detections.extend(
+                        convert_yolo11_predictions_to_coco_detections(
+                            np_module=imports.np,
+                            prediction_tensor=outputs,
+                            batch_targets=batch_targets,
+                            input_size=input_size,
+                            category_ids=category_ids,
+                            confidence_threshold=confidence_threshold,
+                            nms_threshold=nms_threshold,
+                        )
+                    )
     finally:
         model.train(previous_training_mode)
 
-    if not detections:
-        return {"map50": 0.0, "map50_95": 0.0}
+    if batch_count <= 0:
+        losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    else:
+        losses = {
+            metric_name: round(metric_total / batch_count, 6)
+            for metric_name, metric_total in epoch_totals.items()
+        }
+    if annotation_payload is None or not detections:
+        return losses, {"map50": 0.0, "map50_95": 0.0}
 
     ground_truth = _load_yolo11_coco_ground_truth_silently(
         imports=imports,
@@ -1021,7 +1017,7 @@ def _evaluate_yolo11_validation_map(
         coco_evaluator.evaluate()
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
-    return {
+    return losses, {
         "map50_95": float(coco_evaluator.stats[0]),
         "map50": float(coco_evaluator.stats[1]),
     }
@@ -1046,30 +1042,6 @@ def _load_yolo11_coco_ground_truth_silently(
         ground_truth.dataset = annotation_payload
         ground_truth.createIndex()
         return ground_truth
-
-
-def _freeze_yolo11_batch_norm_modules(
-    *,
-    imports: Any,
-    model: Any,
-) -> tuple[tuple[Any, bool], ...]:
-    """在 YOLO11 validation loss 统计阶段冻结 BatchNorm。"""
-
-    batch_norm_states: list[tuple[Any, bool]] = []
-    for module in model.modules():
-        if isinstance(module, imports.torch.nn.BatchNorm2d):
-            batch_norm_states.append((module, bool(module.training)))
-            module.eval()
-    return tuple(batch_norm_states)
-
-
-def _restore_yolo11_batch_norm_modules(
-    batch_norm_states: tuple[tuple[Any, bool], ...],
-) -> None:
-    """恢复 YOLO11 validation 前的 BatchNorm 状态。"""
-
-    for module, was_training in batch_norm_states:
-        module.train(was_training)
 
 
 def _resolve_yolo11_detection_dataloader_plan(

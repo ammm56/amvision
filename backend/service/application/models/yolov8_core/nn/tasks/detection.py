@@ -149,7 +149,7 @@ class Detect(nn.Module):
         )
         if self.export:
             return prediction
-        return prediction.transpose(1, 2).contiguous()
+        return prediction.transpose(1, 2).contiguous(), raw_outputs
 
     def _build_head_outputs(
         self,

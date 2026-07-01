@@ -456,6 +456,8 @@ def yolov8_detection_prediction_to_numpy_array(*, prediction_tensor: Any, np_mod
     """把 Tensor 或数组形式的 YOLOv8 detection 输出转换为 NumPy 数组。"""
 
     normalized_value = prediction_tensor
+    if isinstance(normalized_value, list | tuple):
+        normalized_value = normalized_value[0] if normalized_value else normalized_value
     if hasattr(normalized_value, "detach"):
         normalized_value = normalized_value.detach()
     if hasattr(normalized_value, "cpu"):

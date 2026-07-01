@@ -549,11 +549,14 @@ def test_yolov8_detection_dataloader_builds_cpu_batch(tmp_path: Path) -> None:
         shuffle=False,
     )
 
+    assert len(dataloader) == 1
+    assert callable(getattr(dataloader, "reset", None))
     batch = next(iter(dataloader))
     assert tuple(batch.images.shape) == (1, 3, 64, 64)
     assert batch.input_size == (64, 64)
     assert len(batch.targets) == 1
     assert batch.targets[0].boxes_xyxy[0] == (18.0, 12.0, 40.0, 36.0)
+    dataloader.reset()
 
 
 def test_yolov8_detection_training_epoch_runner_updates_model() -> None:

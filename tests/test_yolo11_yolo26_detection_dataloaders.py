@@ -51,6 +51,8 @@ def test_yolo11_detection_dataloader_returns_cpu_batch(tmp_path: Path) -> None:
         shuffle=False,
     )
 
+    assert len(dataloader) == 1
+    assert callable(getattr(dataloader, "reset", None))
     batch = next(iter(dataloader))
 
     assert tuple(batch.images.shape) == (2, 3, 64, 64)
@@ -58,6 +60,7 @@ def test_yolo11_detection_dataloader_returns_cpu_batch(tmp_path: Path) -> None:
     assert len(batch.targets) == 2
     assert batch.targets[0].letterbox_transform is not None
     assert batch.targets[0].boxes_xyxy
+    dataloader.reset()
 
 
 def test_yolo26_detection_dataloader_returns_cpu_batch(tmp_path: Path) -> None:
@@ -81,6 +84,8 @@ def test_yolo26_detection_dataloader_returns_cpu_batch(tmp_path: Path) -> None:
         shuffle=False,
     )
 
+    assert len(dataloader) == 1
+    assert callable(getattr(dataloader, "reset", None))
     batch = next(iter(dataloader))
 
     assert tuple(batch.images.shape) == (2, 3, 64, 64)
@@ -88,6 +93,7 @@ def test_yolo26_detection_dataloader_returns_cpu_batch(tmp_path: Path) -> None:
     assert len(batch.targets) == 2
     assert batch.targets[1].letterbox_transform is not None
     assert batch.targets[1].boxes_xyxy
+    dataloader.reset()
 
 
 def test_yolo11_yolo26_cpu_batch_builders_keep_images_on_cpu(

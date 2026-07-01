@@ -195,10 +195,6 @@ from backend.service.application.models.yolo11_core.training.trainer import (
     Yolo11DetectionTrainingTerminatedError,
     run_yolo11_detection_training_loop,
 )
-from backend.service.application.models.yolo11_core.training.validation import (
-    evaluate_yolo11_detection_validation_losses,
-)
-
 __all__ = [
     "YOLO11_CLASSIFICATION_DEFAULT_INPUT_SIZE",
     "YOLO11_CLASSIFICATION_DEFAULT_LR",
@@ -286,7 +282,6 @@ __all__ = [
     "compute_yolo11_detection_training_loss",
     "decode_yolo11_detection_checkpoint_state",
     "encode_yolo11_detection_checkpoint_state",
-    "evaluate_yolo11_detection_validation_losses",
     "is_yolo11_detection_core_model",
     "load_yolo11_classification_model_state",
     "load_yolo11_classification_resume_state",

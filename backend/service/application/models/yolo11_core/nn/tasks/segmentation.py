@@ -99,6 +99,7 @@ class Segment(Detect):
             )
         outputs = super().forward(x)
         raw_outputs = outputs[1] if isinstance(outputs, tuple) else outputs
+        processed_outputs = outputs[0] if isinstance(outputs, tuple) else outputs
         proto = self.proto(x[0])
         if self.training:
             if self.end2end:
@@ -107,7 +108,7 @@ class Segment(Detect):
             else:
                 raw_outputs["proto"] = proto
             return raw_outputs
-        return (outputs, proto) if self.export else (outputs, proto)
+        return processed_outputs, proto
 
     def _inference(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """按 Ultralytics Segment 推理路径拼接 detection 输出和 mask coefficients。"""

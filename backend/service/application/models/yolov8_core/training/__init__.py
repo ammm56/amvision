@@ -118,10 +118,6 @@ from backend.service.application.models.yolov8_core.training.resume import (
     YoloV8DetectionResumeValidationRequest,
     validate_yolov8_detection_resume_checkpoint,
 )
-from backend.service.application.models.yolov8_core.training.validation import (
-    evaluate_yolov8_detection_validation_losses,
-)
-
 __all__ = [
     "YoloV8DetectionTrainingRuntime",
     "YOLOV8_CLASSIFICATION_IMPLEMENTATION_MODE",
@@ -188,7 +184,6 @@ __all__ = [
     "compute_yolov8_detection_training_loss",
     "decode_yolov8_detection_checkpoint_state",
     "encode_yolov8_detection_checkpoint_state",
-    "evaluate_yolov8_detection_validation_losses",
     "is_yolov8_detection_core_model",
     "move_yolov8_optimizer_state_to_device",
     "plan_yolov8_detection_training_dataloader",

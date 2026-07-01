@@ -10,7 +10,7 @@ from backend.service.application.models.yolo_core_common.geometry import (
 )
 from backend.service.application.models.yolox_core.postprocess import (
     batched_yolox_nms_indices as batched_nms_indices,
-    yolox_prediction_to_numpy_array as prediction_to_numpy_array,
+    yolox_prediction_to_numpy_array,
 )
 from backend.service.application.models.yolox_core.utils import (
     enable_yolox_cuda_inference_fast_path as enable_pytorch_cuda_inference_fast_path,
@@ -75,6 +75,22 @@ def preprocess_image(
         / 255.0
     )
     return np_module.ascontiguousarray(tensor, dtype=np_module.float32), transform
+
+
+def prediction_to_numpy_array(*, prediction_tensor: Any, np_module: Any) -> Any:
+    """把普通 detection runtime 输出转换为 NumPy 数组。
+
+    普通 YOLO PyTorch eval 会返回 `(processed prediction, raw outputs)`；
+    runtime 只消费对外预测结果，raw outputs 只服务训练 loss。
+    """
+
+    normalized_value = prediction_tensor
+    if isinstance(normalized_value, list | tuple):
+        normalized_value = normalized_value[0] if normalized_value else normalized_value
+    return yolox_prediction_to_numpy_array(
+        prediction_tensor=normalized_value,
+        np_module=np_module,
+    )
 
 
 def resolve_openvino_compiled_runtime_precision(

@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.training import (
+    YoloInfiniteDataLoader,
+    resolve_yolo_dataloader_batch_size,
+    resolve_yolo_dataloader_worker_count,
+)
 from backend.service.application.models.yolov8_core.data.detection_batch import (
     build_yolov8_detection_training_batch_cpu,
 )
@@ -120,9 +125,16 @@ def build_yolov8_detection_training_dataloader(
     dataset = YoloV8DetectionTrainingDataset(samples=tuple(samples))
     generator = torch_module.Generator()
     generator.manual_seed(max(0, int(plan.seed)))
-    num_workers = max(0, int(plan.num_workers))
+    num_workers = resolve_yolo_dataloader_worker_count(
+        torch_module=torch_module,
+        requested_workers=plan.num_workers,
+    )
+    resolved_batch_size = resolve_yolo_dataloader_batch_size(
+        dataset_size=len(dataset),
+        batch_size=batch_size,
+    )
     loader_kwargs: dict[str, Any] = {
-        "batch_size": max(1, int(batch_size)),
+        "batch_size": resolved_batch_size,
         "shuffle": bool(shuffle),
         "num_workers": num_workers,
         "collate_fn": YoloV8DetectionBatchCollator(
@@ -139,7 +151,7 @@ def build_yolov8_detection_training_dataloader(
         loader_kwargs["worker_init_fn"] = seed_yolov8_detection_dataloader_worker
         loader_kwargs["persistent_workers"] = bool(plan.persistent_workers)
         loader_kwargs["prefetch_factor"] = max(1, int(plan.prefetch_factor))
-    return torch_module.utils.data.DataLoader(dataset, **loader_kwargs)
+    return YoloInfiniteDataLoader(dataset, torch_module=torch_module, **loader_kwargs)
 
 
 def load_yolov8_detection_dataloader_imports() -> Any:

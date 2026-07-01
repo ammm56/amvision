@@ -29,9 +29,11 @@ def test_yolov8_detection_model_forward_returns_detection_tensor() -> None:
     model.eval()
 
     with torch.inference_mode():
-        prediction = model(torch.randn(1, 3, 64, 64))
+        prediction, raw_outputs = model(torch.randn(1, 3, 64, 64))
 
     assert prediction.shape == (1, 84, 6)
+    assert isinstance(raw_outputs, dict)
+    assert {"boxes", "scores"}.issubset(raw_outputs)
 
 
 def test_yolov8_detection_model_can_reload_project_checkpoint(tmp_path: Path) -> None:
@@ -174,9 +176,11 @@ def test_yolo11_detection_model_forward_returns_detection_tensor() -> None:
     model.eval()
 
     with torch.inference_mode():
-        prediction = model(torch.randn(1, 3, 64, 64))
+        prediction, raw_outputs = model(torch.randn(1, 3, 64, 64))
 
     assert prediction.shape == (1, 84, 6)
+    assert isinstance(raw_outputs, dict)
+    assert {"boxes", "scores"}.issubset(raw_outputs)
 
 
 def test_yolo11_detection_model_uses_current_class_head() -> None:

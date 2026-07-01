@@ -562,7 +562,6 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.service.application.models.yolo11_core.training.runner",
     "backend.service.application.models.yolo11_core.training.savepoint",
     "backend.service.application.models.yolo11_core.training.trainer",
-    "backend.service.application.models.yolo11_core.training.validation",
     "backend.service.application.models.yolo11_core.evaluation.obb",
     "backend.service.application.models.yolo11_core.evaluation.pose",
     "backend.service.application.models.training.yolo_detection_training_control",

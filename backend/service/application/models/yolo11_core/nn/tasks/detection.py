@@ -154,7 +154,7 @@ class Detect(nn.Module):
         prediction = self._inference(inference_outputs)
         if self.export:
             return prediction
-        return prediction.transpose(1, 2).contiguous()
+        return prediction.transpose(1, 2).contiguous(), raw_outputs
 
     def _inference(self, raw_outputs: dict[str, torch.Tensor]) -> torch.Tensor:
         """按 Ultralytics Detect 推理路径解码 detection 输出。"""
