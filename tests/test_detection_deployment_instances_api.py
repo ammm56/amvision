@@ -333,6 +333,7 @@ def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
         model_version_id=model_version_id,
         build_format="openvino-ir",
         build_uri="projects/project-1/models/builds/build-1/yolox.openvino.xml",
+        runtime_precision="fp16",
     )
     try:
         with client:
@@ -426,7 +427,7 @@ def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
 def test_create_tensorrt_deployment_instance_defaults_to_engine_precision(
     tmp_path: Path,
 ) -> None:
-    """验证 TensorRT Deployment 会继承 engine build_precision 作为默认 runtime_precision。"""
+    """验证 TensorRT Deployment 会继承 ModelBuild runtime_precision。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
     model_version_id = _seed_model_version(
@@ -439,7 +440,8 @@ def test_create_tensorrt_deployment_instance_defaults_to_engine_precision(
         model_version_id=model_version_id,
         build_format="tensorrt-engine",
         build_uri="projects/project-1/models/builds/build-1/yolox.tensorrt.engine",
-        metadata={"build_precision": "fp16", "tensorrt_version": "10.13.2.6"},
+        metadata={"tensorrt_version": "10.13.2.6"},
+        runtime_precision="fp16",
     )
     try:
         with client:
@@ -483,7 +485,7 @@ def test_create_tensorrt_deployment_instance_defaults_to_engine_precision(
 def test_create_tensorrt_deployment_instance_rejects_precision_mismatch(
     tmp_path: Path,
 ) -> None:
-    """验证 TensorRT Deployment 不允许 runtime_precision 与 engine build_precision 不一致。"""
+    """验证 TensorRT Deployment 不允许 runtime_precision 与 ModelBuild 记录不一致。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
     model_version_id = _seed_model_version(
@@ -496,7 +498,8 @@ def test_create_tensorrt_deployment_instance_rejects_precision_mismatch(
         model_version_id=model_version_id,
         build_format="tensorrt-engine",
         build_uri="projects/project-1/models/builds/build-1/yolox.tensorrt.engine",
-        metadata={"build_precision": "fp16", "tensorrt_version": "10.13.2.6"},
+        metadata={"tensorrt_version": "10.13.2.6"},
+        runtime_precision="fp16",
     )
     try:
         with client:
@@ -517,11 +520,11 @@ def test_create_tensorrt_deployment_instance_rejects_precision_mismatch(
             assert create_response.status_code == 400
             payload = create_response.json()["error"]
             assert payload["code"] == "invalid_request"
-            assert payload["message"] == "tensorrt runtime_precision 必须与 engine build_precision 一致"
+            assert payload["message"] == "runtime_precision 与 ModelBuild 记录不一致"
             assert payload["details"] == {
                 "model_build_id": model_build_id,
                 "runtime_precision": "fp32",
-                "build_precision": "fp16",
+                "model_build_runtime_precision": "fp16",
             }
     finally:
         session_factory.engine.dispose()
@@ -807,6 +810,8 @@ def _seed_model_build(
     build_format: str = "onnx",
     build_uri: str | None = None,
     metadata: dict[str, object] | None = None,
+    runtime_backend: str | None = None,
+    runtime_precision: str | None = None,
 ) -> str:
     """写入一个与 ModelVersion 绑定的最小 ModelBuild。"""
 
@@ -817,6 +822,8 @@ def _seed_model_build(
         build_format=build_format,
         build_uri=build_uri,
         metadata=metadata,
+        runtime_backend=runtime_backend,
+        runtime_precision=runtime_precision,
     )
 
 

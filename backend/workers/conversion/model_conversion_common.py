@@ -15,6 +15,20 @@ OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
 TENSORRT_ENGINE_PRECISION_OPTION_KEY = "tensorrt_engine_precision"
 SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
 SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS = frozenset({"fp32", "fp16"})
+_CONVERSION_RUNTIME_BACKEND_BY_TARGET_FORMAT = {
+    "onnx": "onnxruntime",
+    "onnx-optimized": "onnxruntime",
+    "openvino-ir": "openvino",
+    "tensorrt-engine": "tensorrt",
+    "rknn": "rknn",
+}
+_CONVERSION_RUNTIME_PRECISIONS_BY_TARGET_FORMAT = {
+    "onnx": frozenset({"fp32"}),
+    "onnx-optimized": frozenset({"fp32"}),
+    "openvino-ir": SUPPORTED_OPENVINO_IR_BUILD_PRECISIONS,
+    "tensorrt-engine": SUPPORTED_TENSORRT_ENGINE_BUILD_PRECISIONS,
+    "rknn": frozenset({"fp32"}),
+}
 
 
 def resolve_openvino_ir_build_precision(metadata: dict[str, object]) -> str:
@@ -63,6 +77,39 @@ def build_conversion_options_metadata(
     if "tensorrt-engine" in target_formats:
         metadata[TENSORRT_ENGINE_PRECISION_OPTION_KEY] = tensorrt_engine_build_precision
     return metadata
+
+
+def build_conversion_output_runtime_fields(
+    *,
+    target_format: str,
+    build_precision: str | None = None,
+) -> dict[str, str]:
+    """生成单个转换输出的明确部署 runtime 字段。"""
+
+    normalized_format = target_format.strip().lower()
+    runtime_backend = _CONVERSION_RUNTIME_BACKEND_BY_TARGET_FORMAT.get(normalized_format)
+    if runtime_backend is None:
+        raise InvalidRequestError(
+            "不支持的转换输出格式",
+            details={"target_format": target_format},
+        )
+
+    supported_precisions = _CONVERSION_RUNTIME_PRECISIONS_BY_TARGET_FORMAT[normalized_format]
+    normalized_precision = (build_precision or "fp32").strip().lower()
+    if normalized_precision not in supported_precisions:
+        raise InvalidRequestError(
+            "转换输出 runtime_precision 与目标格式不匹配",
+            details={
+                "target_format": normalized_format,
+                "runtime_precision": normalized_precision,
+                "supported_precisions": sorted(supported_precisions),
+            },
+        )
+
+    return {
+        "runtime_backend": runtime_backend,
+        "runtime_precision": normalized_precision,
+    }
 
 
 def import_onnx_conversion_dependencies() -> tuple[object, object, object]:

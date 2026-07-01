@@ -150,10 +150,12 @@ def test_deployment_source_models_include_project_training_builds(tmp_path: Path
             project_id="project-1",
             source_model_version_id=project_version_id,
             build_format="onnx",
+            runtime_backend="onnxruntime",
+            runtime_precision="fp32",
             build_file_id="model-file-project-yolox-m-onnx",
             build_file_uri="projects/project-1/models/builds/yolox-m.onnx",
             conversion_task_id="conversion-task-deployable",
-            metadata={"runtime_backend": "onnxruntime", "runtime_precision": "fp32"},
+            metadata={},
         )
     )
     try:
@@ -181,7 +183,10 @@ def test_deployment_source_models_include_project_training_builds(tmp_path: Path
             assert detail_payload["versions"][0]["model_version_id"] == project_version_id
             assert detail_payload["builds"][0]["model_build_id"] == project_build_id
             assert detail_payload["builds"][0]["build_format"] == "onnx"
-            assert detail_payload["builds"][0]["metadata"]["runtime_backend"] == "onnxruntime"
+            assert detail_payload["builds"][0]["runtime_backend"] == "onnxruntime"
+            assert detail_payload["builds"][0]["runtime_precision"] == "fp32"
+            assert "runtime_backend" not in detail_payload["builds"][0]["metadata"]
+            assert "runtime_precision" not in detail_payload["builds"][0]["metadata"]
 
             hidden_response = client.get(
                 f"/api/v1/models/deployment-sources/{project_model.model_id}?project_id=project-2",

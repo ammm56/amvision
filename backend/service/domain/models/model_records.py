@@ -75,6 +75,8 @@ class ModelBuild:
     - model_id：所属 Model id。
     - source_model_version_id：来源 ModelVersion id。
     - build_format：build 格式。
+    - runtime_backend：部署运行 backend。
+    - runtime_precision：部署运行 precision。
     - runtime_profile_id：关联的 RuntimeProfile id。
     - conversion_task_id：关联的转换任务 id。
     - file_ids：关联的文件 id 列表。
@@ -85,6 +87,8 @@ class ModelBuild:
     model_id: str
     source_model_version_id: str
     build_format: str
+    runtime_backend: str
+    runtime_precision: str
     runtime_profile_id: str | None = None
     conversion_task_id: str | None = None
     file_ids: tuple[str, ...] = ()

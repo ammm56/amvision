@@ -299,6 +299,8 @@ def _seed_tensorrt_model_build(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="tensorrt-engine",
+            runtime_backend="tensorrt",
+            runtime_precision=runtime_precision,
             build_file_id=f"build-file-tensorrt-engine-{runtime_precision}-1",
             build_file_uri=engine_uri,
             conversion_task_id=f"conversion-task-tensorrt-inference-{runtime_precision}-1",

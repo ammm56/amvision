@@ -97,6 +97,8 @@ class YoloConversionBuildSummary:
 
     model_build_id: str
     build_format: str
+    runtime_backend: str
+    runtime_precision: str
     build_file_id: str
     build_file_uri: str
     metadata: dict[str, object] = field(default_factory=dict)
@@ -656,6 +658,8 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     project_id=project_id,
                     source_model_version_id=source_model_version_id,
                     build_format=output.target_format,
+                    runtime_backend=output.runtime_backend,
+                    runtime_precision=output.runtime_precision,
                     build_file_id=build_file_id,
                     build_file_uri=output.object_uri,
                     runtime_profile_id=runtime_profile_id,
@@ -667,6 +671,8 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 self._resolve_build_summary_cls()(
                     model_build_id=model_build_id,
                     build_format=output.target_format,
+                    runtime_backend=output.runtime_backend,
+                    runtime_precision=output.runtime_precision,
                     build_file_id=build_file_id,
                     build_file_uri=output.object_uri,
                     metadata=dict(output.metadata),
@@ -786,6 +792,8 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     "target_format": item.target_format,
                     "object_uri": item.object_uri,
                     "file_type": item.file_type,
+                    "runtime_backend": item.runtime_backend,
+                    "runtime_precision": item.runtime_precision,
                     "metadata": dict(item.metadata),
                 }
                 for item in run_result.outputs
@@ -909,6 +917,8 @@ def serialize_yolo_conversion_build_summary(summary: YoloConversionBuildSummary)
     return {
         "model_build_id": summary.model_build_id,
         "build_format": summary.build_format,
+        "runtime_backend": summary.runtime_backend,
+        "runtime_precision": summary.runtime_precision,
         "build_file_id": summary.build_file_id,
         "build_file_uri": summary.build_file_uri,
         "metadata": dict(summary.metadata),
@@ -947,6 +957,8 @@ def deserialize_yolo_conversion_build_summary(payload: dict[str, object]) -> Yol
     return YoloConversionBuildSummary(
         model_build_id=_require_payload_str(payload, "model_build_id"),
         build_format=_require_payload_str(payload, "build_format"),
+        runtime_backend=_require_payload_str(payload, "runtime_backend"),
+        runtime_precision=_require_payload_str(payload, "runtime_precision"),
         build_file_id=_require_payload_str(payload, "build_file_id"),
         build_file_uri=_require_payload_str(payload, "build_file_uri"),
         metadata=dict(metadata) if isinstance(metadata, dict) else {},

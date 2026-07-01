@@ -69,6 +69,8 @@ class ModelBuildRecord(Base):
     )
     source_model_version_id: Mapped[str] = mapped_column(String(128), index=True)
     build_format: Mapped[str] = mapped_column(String(128))
+    runtime_backend: Mapped[str] = mapped_column(String(64), nullable=False)
+    runtime_precision: Mapped[str] = mapped_column(String(32), nullable=False)
     runtime_profile_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     conversion_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     file_ids_json: Mapped[list[str]] = mapped_column(JSON, default=list)

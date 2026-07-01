@@ -27,6 +27,7 @@ from backend.service.domain.files.yolox_file_types import (
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
+    build_conversion_output_runtime_fields,
     build_output_base_name,
     import_onnx_conversion_dependencies,
     resolve_conversion_phase,
@@ -92,11 +93,17 @@ class LocalYoloXConversionRunner:
                     session=session,
                     output_object_key=onnx_object_key,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(target_format="onnx")
                 onnx_output = YoloXConversionOutput(
                     target_format="onnx",
                     object_uri=onnx_object_key,
                     file_type=YOLOX_ONNX_FILE,
-                    metadata=export_summary,
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
+                    metadata={
+                        **export_summary,
+                        **runtime_fields,
+                    },
                 )
                 continue
             if step.kind == "validate-onnx":
@@ -111,6 +118,8 @@ class LocalYoloXConversionRunner:
                         target_format=onnx_output.target_format,
                         object_uri=onnx_output.object_uri,
                         file_type=onnx_output.file_type,
+                        runtime_backend=onnx_output.runtime_backend,
+                        runtime_precision=onnx_output.runtime_precision,
                         metadata={**onnx_output.metadata, "validation_summary": validation_summary},
                     )
                 continue
@@ -123,12 +132,16 @@ class LocalYoloXConversionRunner:
                     onnx_module=onnx_module,
                     onnx_simplify=onnx_simplify,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(target_format="onnx-optimized")
                 optimized_output = YoloXConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
                     file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **optimize_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -142,12 +155,19 @@ class LocalYoloXConversionRunner:
                     output_object_key=openvino_object_key,
                     build_precision=openvino_ir_build_precision,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="openvino-ir",
+                    build_precision=openvino_ir_build_precision,
+                )
                 openvino_output = YoloXConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
                     file_type=YOLOX_OPENVINO_IR_FILE,
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **build_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -161,12 +181,19 @@ class LocalYoloXConversionRunner:
                     output_object_key=tensorrt_object_key,
                     build_precision=tensorrt_engine_build_precision,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="tensorrt-engine",
+                    build_precision=tensorrt_engine_build_precision,
+                )
                 tensorrt_output = YoloXConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
                     file_type=YOLOX_TENSORRT_ENGINE_FILE,
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **build_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },

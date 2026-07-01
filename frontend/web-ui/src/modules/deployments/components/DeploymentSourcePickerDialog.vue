@@ -105,9 +105,13 @@
                   class="compact-list__item"
                   :class="{ 'is-active': build.model_build_id === selectedBuildId }"
                 >
-                  <div>
+                  <div class="deployment-source-build-meta">
                     <strong>{{ build.model_build_id }}</strong>
-                    <span>{{ build.build_format }} · {{ build.runtime_profile_id || '无 RuntimeProfile' }}</span>
+                    <span>
+                      {{ build.build_format }} · {{ build.runtime_backend }} ·
+                      {{ build.runtime_precision.toUpperCase() }}
+                    </span>
+                    <small>RuntimeProfile（可选）：{{ build.runtime_profile_id || '未绑定' }}</small>
                   </div>
                   <div class="table-actions">
                     <Button size="sm" variant="secondary" @click.stop="$emit('apply-source', buildSelection(build))">
@@ -194,36 +198,6 @@ defineEmits<{
   'apply-source': [selection: DeploymentSourceSelection]
 }>()
 
-function metadataStringValue(metadata: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = metadata[key]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-  return ''
-}
-
-function inferRuntimeBackend(buildFormat: string, metadata: Record<string, unknown>): string {
-  const explicitBackend = metadataStringValue(metadata, ['runtime_backend', 'backend'])
-  if (explicitBackend) return explicitBackend
-
-  const normalized = buildFormat.toLowerCase()
-  if (normalized.includes('tensorrt')) return 'tensorrt'
-  if (normalized.includes('openvino')) return 'openvino'
-  if (normalized.includes('onnx')) return 'onnxruntime'
-  return ''
-}
-
-function inferRuntimePrecision(buildFormat: string, metadata: Record<string, unknown>): string {
-  const explicitPrecision = metadataStringValue(metadata, ['runtime_precision', 'precision'])
-  if (explicitPrecision === 'fp16' || explicitPrecision === 'fp32') return explicitPrecision
-
-  const normalized = buildFormat.toLowerCase()
-  if (normalized.includes('fp16')) return 'fp16'
-  return 'fp32'
-}
-
 function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSelection {
   const model = props.selectedModelDetail
   if (!model) {
@@ -240,8 +214,8 @@ function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSele
     modelBuildId: build.model_build_id,
     buildFormat: build.build_format,
     runtimeProfileId: build.runtime_profile_id ?? '',
-    runtimeBackend: inferRuntimeBackend(build.build_format, build.metadata),
-    runtimePrecision: inferRuntimePrecision(build.build_format, build.metadata),
+    runtimeBackend: build.runtime_backend,
+    runtimePrecision: build.runtime_precision,
   }
 }
 
@@ -384,6 +358,7 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 
 .deployment-source-card__identity,
 .deployment-source-detail__identity,
+.deployment-source-build-meta,
 .deployment-source-detail__empty {
   display: grid;
   gap: 4px;
@@ -401,6 +376,8 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 
 .deployment-source-card__identity span,
 .deployment-source-detail__identity span,
+.deployment-source-build-meta span,
+.deployment-source-build-meta small,
 .deployment-source-detail__empty span,
 .deployment-source-card__footer {
   color: var(--muted);

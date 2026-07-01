@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from backend.contracts.files.yolox_model_files import YoloXFileNamingContext, build_default_file_name
+from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
@@ -28,6 +29,22 @@ from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+
+
+_MODEL_BUILD_RUNTIME_BACKEND_BY_FORMAT = {
+    "onnx": "onnxruntime",
+    "onnx-optimized": "onnxruntime",
+    "openvino-ir": "openvino",
+    "tensorrt-engine": "tensorrt",
+    "rknn": "rknn",
+}
+_MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT = {
+    "onnx": frozenset({"fp32"}),
+    "onnx-optimized": frozenset({"fp32"}),
+    "openvino-ir": frozenset({"fp32", "fp16"}),
+    "tensorrt-engine": frozenset({"fp32", "fp16"}),
+    "rknn": frozenset({"fp32"}),
+}
 
 
 @dataclass(frozen=True)
@@ -100,6 +117,8 @@ class ModelBuildRegistration:
     - project_id：所属项目 id。
     - source_model_version_id：来源 ModelVersion id。
     - build_format：build 格式。
+    - runtime_backend：部署运行 backend。
+    - runtime_precision：部署运行 precision。
     - build_file_id：build 文件 id。
     - build_file_uri：build 文件 URI。
     - runtime_profile_id：目标 RuntimeProfile id。
@@ -110,6 +129,8 @@ class ModelBuildRegistration:
     project_id: str
     source_model_version_id: str
     build_format: str
+    runtime_backend: str
+    runtime_precision: str
     build_file_id: str
     build_file_uri: str | None = None
     runtime_profile_id: str | None = None
@@ -214,6 +235,8 @@ class PlatformBaseModelBuildView:
     - model_build_id：ModelBuild id。
     - source_model_version_id：来源 ModelVersion id。
     - build_format：构建格式。
+    - runtime_backend：部署运行 backend。
+    - runtime_precision：部署运行 precision。
     - runtime_profile_id：目标 RuntimeProfile id。
     - conversion_task_id：来源转换任务 id。
     - file_ids：关联文件 id 列表。
@@ -224,6 +247,8 @@ class PlatformBaseModelBuildView:
     model_build_id: str
     source_model_version_id: str
     build_format: str
+    runtime_backend: str
+    runtime_precision: str
     runtime_profile_id: str | None
     conversion_task_id: str | None
     file_ids: tuple[str, ...]
@@ -484,7 +509,16 @@ class SqlAlchemyModelService:
         - 新登记的 ModelBuild id。
         """
 
-        self._validate_build_format(request.build_format)
+        build_format = request.build_format.strip().lower()
+        self._validate_build_format(build_format)
+        runtime_backend = self._validate_build_runtime_backend(
+            build_format=build_format,
+            runtime_backend=request.runtime_backend,
+        )
+        runtime_precision = self._validate_build_runtime_precision(
+            build_format=build_format,
+            runtime_precision=request.runtime_precision,
+        )
         with self._open_unit_of_work() as unit_of_work:
             source_version = unit_of_work.models.get_model_version(request.source_model_version_id)
             if source_version is None:
@@ -502,28 +536,31 @@ class SqlAlchemyModelService:
                 scope_kind=model.scope_kind,
                 model_id=model.model_id,
                 model_build_id=model_build_id,
-                file_type=self._resolve_build_file_type(request.build_format),
+                file_type=self._resolve_build_file_type(build_format),
                 logical_name=build_default_file_name(
                     YoloXFileNamingContext(
                         model_name=model.model_name,
                         model_scale=model.model_scale,
                         source_version=source_version.model_version_id,
-                        file_kind=request.build_format,
+                        file_kind=build_format,
                         suffix=self._guess_suffix(request.build_file_uri or request.build_file_id),
                     )
                 ),
                 storage_uri=request.build_file_uri or f"registered://{request.build_file_id}",
-                metadata={"build_format": request.build_format},
+                metadata={"build_format": build_format},
             )
+            build_metadata = self._strip_deprecated_build_runtime_metadata(request.metadata)
             model_build = ModelBuild(
                 model_build_id=model_build_id,
                 model_id=model.model_id,
                 source_model_version_id=request.source_model_version_id,
-                build_format=request.build_format,
+                build_format=build_format,
+                runtime_backend=runtime_backend,
+                runtime_precision=runtime_precision,
                 runtime_profile_id=request.runtime_profile_id,
                 conversion_task_id=request.conversion_task_id,
                 file_ids=(build_file.file_id,),
-                metadata=request.metadata,
+                metadata=build_metadata,
             )
             unit_of_work.models.save_model_build(model_build)
             unit_of_work.commit()
@@ -882,6 +919,48 @@ class SqlAlchemyModelService:
         if not self.spec.supports_build_format(build_format):
             raise ValueError(f"不支持的 build 格式: {build_format}")
 
+    def _validate_build_runtime_backend(self, *, build_format: str, runtime_backend: str) -> str:
+        """校验 ModelBuild runtime backend 与 build_format 是否一致。"""
+
+        normalized_backend = runtime_backend.strip().lower()
+        expected_backend = _MODEL_BUILD_RUNTIME_BACKEND_BY_FORMAT.get(build_format)
+        if expected_backend is None:
+            raise InvalidRequestError(
+                "不支持的 ModelBuild build_format",
+                details={"build_format": build_format},
+            )
+        if normalized_backend != expected_backend:
+            raise InvalidRequestError(
+                "ModelBuild runtime_backend 与 build_format 不一致",
+                details={
+                    "build_format": build_format,
+                    "runtime_backend": runtime_backend,
+                    "expected_runtime_backend": expected_backend,
+                },
+            )
+        return normalized_backend
+
+    def _validate_build_runtime_precision(self, *, build_format: str, runtime_precision: str) -> str:
+        """校验 ModelBuild runtime precision 是否被 build_format 支持。"""
+
+        normalized_precision = runtime_precision.strip().lower()
+        supported_precisions = _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT.get(build_format)
+        if supported_precisions is None:
+            raise InvalidRequestError(
+                "不支持的 ModelBuild build_format",
+                details={"build_format": build_format},
+            )
+        if normalized_precision not in supported_precisions:
+            raise InvalidRequestError(
+                "ModelBuild runtime_precision 与 build_format 不一致",
+                details={
+                    "build_format": build_format,
+                    "runtime_precision": runtime_precision,
+                    "supported_precisions": sorted(supported_precisions),
+                },
+            )
+        return normalized_precision
+
     def _build_pretrained_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
         """构建平台级预训练模型登记元数据。
 
@@ -1004,14 +1083,17 @@ class SqlAlchemyModelService:
         model_files = unit_of_work.model_files.list_model_files(
             model_build_id=model_build.model_build_id,
         )
+        build_metadata = dict(model_build.metadata)
         return PlatformBaseModelBuildView(
             model_build_id=model_build.model_build_id,
             source_model_version_id=model_build.source_model_version_id,
             build_format=model_build.build_format,
+            runtime_backend=model_build.runtime_backend,
+            runtime_precision=model_build.runtime_precision,
             runtime_profile_id=model_build.runtime_profile_id,
             conversion_task_id=model_build.conversion_task_id,
             file_ids=model_build.file_ids,
-            metadata=dict(model_build.metadata),
+            metadata=build_metadata,
             files=tuple(self._build_platform_base_model_file_view(model_file) for model_file in model_files),
         )
 
@@ -1056,6 +1138,24 @@ class SqlAlchemyModelService:
         build_order = 0 if model.build_count > 0 else 1
         version_order = 0 if model.version_count > 0 else 1
         return (scope_order, build_order, version_order, model.model_name, model.model_id)
+
+    def _strip_deprecated_build_runtime_metadata(
+        self,
+        metadata: dict[str, object],
+    ) -> dict[str, object]:
+        """移除旧的构建运行时 metadata，避免和一等字段形成双来源。"""
+
+        build_metadata = dict(metadata)
+        for key in (
+            "runtime_backend",
+            "runtime_precision",
+            "build_precision",
+            "compress_to_fp16",
+            "openvino_ir_precision",
+            "tensorrt_engine_precision",
+        ):
+            build_metadata.pop(key, None)
+        return build_metadata
 
     def _register_training_files(
         self,

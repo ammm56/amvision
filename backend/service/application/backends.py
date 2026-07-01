@@ -134,12 +134,16 @@ class ConversionBackendOutput:
     - target_format：目标格式。
     - object_uri：输出文件 URI。
     - file_type：登记到平台的 file type。
+    - runtime_backend：该输出对应的部署 runtime backend。
+    - runtime_precision：该输出对应的部署 runtime precision。
     - metadata：输出元数据摘要。
     """
 
     target_format: str
     object_uri: str
     file_type: str
+    runtime_backend: str
+    runtime_precision: str
     metadata: dict[str, object] = field(default_factory=dict)
 
 

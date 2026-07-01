@@ -117,6 +117,8 @@ def build_platform_base_model_build_response(
         model_build_id=build.model_build_id,
         source_model_version_id=build.source_model_version_id,
         build_format=build.build_format,
+        runtime_backend=build.runtime_backend,
+        runtime_precision=build.runtime_precision,
         runtime_profile_id=build.runtime_profile_id,
         conversion_task_id=build.conversion_task_id,
         file_ids=build.file_ids,

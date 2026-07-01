@@ -345,6 +345,8 @@ class SqlAlchemyRfdetrConversionTaskService:
                 outputs=tuple(
                     {
                         "target_format": item.target_format,
+                        "runtime_backend": item.runtime_backend,
+                        "runtime_precision": item.runtime_precision,
                         "object_uri": item.object_uri,
                         "file_type": item.file_type,
                         "metadata": dict(item.metadata),
@@ -484,6 +486,8 @@ class SqlAlchemyRfdetrConversionTaskService:
                     project_id=project_id,
                     source_model_version_id=source_model_version_id,
                     build_format=output.target_format,
+                    runtime_backend=output.runtime_backend,
+                    runtime_precision=output.runtime_precision,
                     build_file_id=build_file_id,
                     build_file_uri=output.object_uri,
                     runtime_profile_id=runtime_profile_id,
@@ -499,6 +503,8 @@ class SqlAlchemyRfdetrConversionTaskService:
                 {
                     "model_build_id": model_build_id,
                     "build_format": output.target_format,
+                    "runtime_backend": output.runtime_backend,
+                    "runtime_precision": output.runtime_precision,
                     "build_file_id": build_file_id,
                     "build_file_uri": output.object_uri,
                     "metadata": {

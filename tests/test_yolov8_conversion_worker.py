@@ -231,12 +231,16 @@ class _FakeYoloV8ConversionRunner:
                 target_format="onnx",
                 object_uri=onnx_object_key,
                 file_type=YOLOV8_ONNX_FILE,
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
                 metadata={"stage": "export-onnx", "object_uri": onnx_object_key},
             ),
             YoloV8ConversionOutput(
                 target_format="onnx-optimized",
                 object_uri=optimized_object_key,
                 file_type=YOLOV8_ONNX_OPTIMIZED_FILE,
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
                 metadata={
                     "stage": "optimize-onnx",
                     "object_uri": optimized_object_key,
@@ -254,6 +258,8 @@ class _FakeYoloV8ConversionRunner:
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
                     file_type=YOLOV8_OPENVINO_IR_FILE,
+                    runtime_backend="openvino",
+                    runtime_precision=build_precision,
                     metadata={
                         "stage": "build-openvino-ir",
                         "object_uri": openvino_object_key,
@@ -272,6 +278,8 @@ class _FakeYoloV8ConversionRunner:
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
                     file_type=YOLOV8_TENSORRT_ENGINE_FILE,
+                    runtime_backend="tensorrt",
+                    runtime_precision=build_precision,
                     metadata={
                         "stage": "build-tensorrt-engine",
                         "object_uri": tensorrt_object_key,

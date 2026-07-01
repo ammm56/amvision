@@ -216,6 +216,8 @@ class SqlAlchemyModelRepository:
             existing_record.model_id = model_build.model_id
             existing_record.source_model_version_id = model_build.source_model_version_id
             existing_record.build_format = model_build.build_format
+            existing_record.runtime_backend = model_build.runtime_backend
+            existing_record.runtime_precision = model_build.runtime_precision
             existing_record.runtime_profile_id = model_build.runtime_profile_id
             existing_record.conversion_task_id = model_build.conversion_task_id
             existing_record.file_ids_json = list(model_build.file_ids)
@@ -296,6 +298,8 @@ class SqlAlchemyModelRepository:
             model_id=model_build.model_id,
             source_model_version_id=model_build.source_model_version_id,
             build_format=model_build.build_format,
+            runtime_backend=model_build.runtime_backend,
+            runtime_precision=model_build.runtime_precision,
             runtime_profile_id=model_build.runtime_profile_id,
             conversion_task_id=model_build.conversion_task_id,
             file_ids_json=list(model_build.file_ids),
@@ -339,6 +343,8 @@ class SqlAlchemyModelRepository:
             model_id=record.model_id,
             source_model_version_id=record.source_model_version_id,
             build_format=record.build_format,
+            runtime_backend=record.runtime_backend,
+            runtime_precision=record.runtime_precision,
             runtime_profile_id=record.runtime_profile_id,
             conversion_task_id=record.conversion_task_id,
             file_ids=tuple(record.file_ids_json or []),

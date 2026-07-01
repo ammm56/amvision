@@ -36,6 +36,8 @@ export interface PlatformBaseModelBuild {
   model_build_id: string
   source_model_version_id: string
   build_format: string
+  runtime_backend: string
+  runtime_precision: string
   runtime_profile_id?: string | null
   conversion_task_id?: string | null
   file_ids: string[]
@@ -190,6 +192,8 @@ export interface ModelTrainingTaskCreateInput {
 export interface ModelConversionBuildSummary {
   model_build_id: string
   build_format: string
+  runtime_backend: string
+  runtime_precision: string
   build_file_id: string
   build_file_uri: string
   metadata: Record<string, unknown>

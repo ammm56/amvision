@@ -78,6 +78,8 @@ class PlatformBaseModelBuildResponse(BaseModel):
     - model_build_id：ModelBuild id。
     - source_model_version_id：来源 ModelVersion id。
     - build_format：构建格式。
+    - runtime_backend：部署运行 backend。
+    - runtime_precision：部署运行 precision。
     - runtime_profile_id：目标 RuntimeProfile id。
     - conversion_task_id：来源转换任务 id。
     - file_ids：关联文件 id 列表。
@@ -88,6 +90,8 @@ class PlatformBaseModelBuildResponse(BaseModel):
     model_build_id: str = Field(description="ModelBuild id")
     source_model_version_id: str = Field(description="来源 ModelVersion id")
     build_format: str = Field(description="构建格式")
+    runtime_backend: str = Field(description="部署运行 backend")
+    runtime_precision: str = Field(description="部署运行 precision")
     runtime_profile_id: str | None = Field(default=None, description="目标 RuntimeProfile id")
     conversion_task_id: str | None = Field(default=None, description="来源转换任务 id")
     file_ids: tuple[str, ...] = Field(default_factory=tuple, description="关联文件 id 列表")

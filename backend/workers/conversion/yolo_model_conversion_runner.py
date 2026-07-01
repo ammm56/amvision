@@ -29,6 +29,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
+    build_conversion_output_runtime_fields,
     build_output_base_name,
     import_onnx_conversion_dependencies,
     resolve_conversion_phase,
@@ -116,6 +117,9 @@ class LocalYoloModelConversionRunner:
                     output_object_key=onnx_object_key,
                     export_plan=export_plan,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="onnx",
+                )
                 onnx_output = YoloModelConversionOutput(
                     target_format="onnx",
                     object_uri=onnx_object_key,
@@ -124,7 +128,12 @@ class LocalYoloModelConversionRunner:
                         self.onnx_file_type,
                         model_label=self.model_label,
                     ),
-                    metadata=export_summary,
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
+                    metadata={
+                        **export_summary,
+                        **runtime_fields,
+                    },
                 )
                 continue
             if step.kind == "validate-onnx":
@@ -140,6 +149,8 @@ class LocalYoloModelConversionRunner:
                         target_format=onnx_output.target_format,
                         object_uri=onnx_output.object_uri,
                         file_type=onnx_output.file_type,
+                        runtime_backend=onnx_output.runtime_backend,
+                        runtime_precision=onnx_output.runtime_precision,
                         metadata={
                             **onnx_output.metadata,
                             "validation_summary": validation_summary,
@@ -157,6 +168,9 @@ class LocalYoloModelConversionRunner:
                     onnx_module=onnx_module,
                     onnx_simplify=onnx_simplify,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="onnx-optimized",
+                )
                 optimized_output = YoloModelConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
@@ -165,8 +179,11 @@ class LocalYoloModelConversionRunner:
                         self.onnx_optimized_file_type,
                         model_label=self.model_label,
                     ),
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **optimize_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -182,6 +199,10 @@ class LocalYoloModelConversionRunner:
                     output_object_key=openvino_object_key,
                     build_precision=openvino_ir_build_precision,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="openvino-ir",
+                    build_precision=openvino_ir_build_precision,
+                )
                 openvino_output = YoloModelConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
@@ -190,8 +211,11 @@ class LocalYoloModelConversionRunner:
                         self.openvino_ir_file_type,
                         model_label=self.model_label,
                     ),
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **build_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -207,6 +231,10 @@ class LocalYoloModelConversionRunner:
                     output_object_key=tensorrt_object_key,
                     build_precision=tensorrt_engine_build_precision,
                 )
+                runtime_fields = build_conversion_output_runtime_fields(
+                    target_format="tensorrt-engine",
+                    build_precision=tensorrt_engine_build_precision,
+                )
                 tensorrt_output = YoloModelConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
@@ -215,8 +243,11 @@ class LocalYoloModelConversionRunner:
                         self.tensorrt_engine_file_type,
                         model_label=self.model_label,
                     ),
+                    runtime_backend=runtime_fields["runtime_backend"],
+                    runtime_precision=runtime_fields["runtime_precision"],
                     metadata={
                         **build_summary,
+                        **runtime_fields,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },

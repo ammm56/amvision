@@ -82,6 +82,8 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="onnx",
+            runtime_backend="onnxruntime",
+            runtime_precision="fp32",
             build_file_id="build-file-1",
             build_file_uri="memory://exports/yolox_s.onnx",
             conversion_task_id="conversion-1",
@@ -145,10 +147,12 @@ def test_register_build_rejects_unsupported_build_format() -> None:
 
     with pytest.raises(ValueError, match="build"):
         service.register_build(
-        ModelBuildRegistration(
+            ModelBuildRegistration(
                 project_id="project-1",
                 source_model_version_id=model_version_id,
                 build_format="unsupported-build",
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
                 build_file_id="build-file-1",
             )
         )

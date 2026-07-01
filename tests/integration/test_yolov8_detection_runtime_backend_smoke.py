@@ -234,6 +234,8 @@ def _build_runtime_target_from_conversion(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format=target_format,
+            runtime_backend=runtime_backend,
+            runtime_precision=_RUNTIME_PRECISION_BY_BACKEND[runtime_backend],
             build_file_id=f"build-file-yolov8-detection-{target_format}",
             build_file_uri=converted_output.object_uri,
             metadata=dict(converted_output.metadata),

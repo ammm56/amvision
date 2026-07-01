@@ -62,6 +62,20 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 from tests.api_test_support import ApiTestContext, create_api_test_context, create_test_runtime
 
 
+_TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT = {
+    "onnx": "onnxruntime",
+    "onnx-optimized": "onnxruntime",
+    "openvino-ir": "openvino",
+    "tensorrt-engine": "tensorrt",
+}
+_TEST_RUNTIME_PRECISION_BY_BUILD_FORMAT = {
+    "onnx": "fp32",
+    "onnx-optimized": "fp32",
+    "openvino-ir": "fp32",
+    "tensorrt-engine": "fp32",
+}
+
+
 @dataclass(frozen=True)
 class YoloXApiTestContext(ApiTestContext):
     """描述一个带 deployment fake supervisor 的 YOLOX API 测试上下文。
@@ -236,6 +250,8 @@ def seed_yolox_model_build(
     metadata: dict[str, object] | None = None,
     project_id: str = "project-1",
     build_bytes: bytes = b"fake-build",
+    runtime_backend: str | None = None,
+    runtime_precision: str | None = None,
 ) -> str:
     """写入一个与 ModelVersion 绑定的最小 ModelBuild。
 
@@ -248,6 +264,8 @@ def seed_yolox_model_build(
     - metadata：ModelBuild 附加元数据。
     - project_id：项目 id。
     - build_bytes：写入的占位 build 文件内容。
+    - runtime_backend：测试 build 对应的运行 backend。
+    - runtime_precision：测试 build 对应的运行精度。
 
     返回：
     - str：新建的 ModelBuild id。
@@ -263,15 +281,20 @@ def seed_yolox_model_build(
     dataset_storage.write_bytes(resolved_build_uri, build_bytes)
 
     service = SqlAlchemyModelService(session_factory=session_factory)
+    normalized_metadata = dict(metadata or {})
+    resolved_runtime_backend = runtime_backend or _TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT[build_format]
+    resolved_runtime_precision = runtime_precision or _TEST_RUNTIME_PRECISION_BY_BUILD_FORMAT[build_format]
     return service.register_build(
         ModelBuildRegistration(
             project_id=project_id,
             source_model_version_id=model_version_id,
             build_format=build_format,
+            runtime_backend=resolved_runtime_backend,
+            runtime_precision=resolved_runtime_precision,
             build_file_id=f"build-file-{build_format}-1",
             build_file_uri=resolved_build_uri,
             conversion_task_id="conversion-task-1",
-            metadata=dict(metadata or {}),
+            metadata=normalized_metadata,
         )
     )
 

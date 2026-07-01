@@ -149,15 +149,17 @@ def test_conversion_queue_worker_executes_supported_targets(
             assert build_summary.metadata["compress_to_fp16"] is (
                 expected_conversion_options["openvino_ir_precision"] == "fp16"
             )
-            assert model_build.metadata["build_precision"] == expected_conversion_options["openvino_ir_precision"]
-            assert model_build.metadata["compress_to_fp16"] is (
-                expected_conversion_options["openvino_ir_precision"] == "fp16"
-            )
+            assert model_build.runtime_backend == "openvino"
+            assert model_build.runtime_precision == expected_conversion_options["openvino_ir_precision"]
+            assert "build_precision" not in model_build.metadata
+            assert "compress_to_fp16" not in model_build.metadata
         if build_summary.build_format == "tensorrt-engine":
             assert build_path.suffix == ".engine"
             expected_tensorrt_precision = str(expected_conversion_options["tensorrt_engine_precision"])
             assert build_summary.metadata["build_precision"] == expected_tensorrt_precision
-            assert model_build.metadata["build_precision"] == expected_tensorrt_precision
+            assert model_build.runtime_backend == "tensorrt"
+            assert model_build.runtime_precision == expected_tensorrt_precision
+            assert "build_precision" not in model_build.metadata
 
 
 def _create_test_runtime(
@@ -233,6 +235,8 @@ class _FakeYoloXConversionRunner:
                 target_format="onnx",
                 object_uri=onnx_object_key,
                 file_type=YOLOX_ONNX_FILE,
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
                 metadata={
                     "stage": "export-onnx",
                     "object_uri": onnx_object_key,
@@ -247,6 +251,8 @@ class _FakeYoloXConversionRunner:
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
                     file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+                    runtime_backend="onnxruntime",
+                    runtime_precision="fp32",
                     metadata={
                         "stage": "optimize-onnx",
                         "object_uri": optimized_object_key,
@@ -265,6 +271,8 @@ class _FakeYoloXConversionRunner:
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
                     file_type=YOLOX_OPENVINO_IR_FILE,
+                    runtime_backend="openvino",
+                    runtime_precision=build_precision,
                     metadata={
                         "stage": "build-openvino-ir",
                         "object_uri": openvino_object_key,
@@ -285,6 +293,8 @@ class _FakeYoloXConversionRunner:
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
                     file_type=YOLOX_TENSORRT_ENGINE_FILE,
+                    runtime_backend="tensorrt",
+                    runtime_precision=build_precision,
                     metadata={
                         "stage": "build-tensorrt-engine",
                         "object_uri": tensorrt_object_key,

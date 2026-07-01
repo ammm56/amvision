@@ -63,6 +63,14 @@
             <strong>{{ selectedDeploymentSource.buildFormat || '-' }}</strong>
           </div>
           <div>
+            <span>Runtime backend</span>
+            <strong>{{ selectedDeploymentSource.runtimeBackend || '-' }}</strong>
+          </div>
+          <div>
+            <span>Runtime precision</span>
+            <strong>{{ selectedDeploymentSource.runtimePrecision || '-' }}</strong>
+          </div>
+          <div>
             <span>RuntimeProfile id</span>
             <strong>{{ selectedDeploymentSource.runtimeProfileId || '-' }}</strong>
           </div>

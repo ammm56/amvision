@@ -208,6 +208,8 @@ def test_model_repository_round_trip_persists_model_lineage() -> None:
         model_id="model-1",
         source_model_version_id="model-version-1",
         build_format="onnx",
+        runtime_backend="onnxruntime",
+        runtime_precision="fp32",
         runtime_profile_id="runtime-1",
         conversion_task_id="conversion-1",
         file_ids=("file-2",),
