@@ -140,3 +140,17 @@ class PlatformBaseModelDetailResponse(PlatformBaseModelSummaryResponse):
 
     versions: list[PlatformBaseModelVersionDetailResponse] = Field(default_factory=list, description="完整版本列表")
     builds: list[PlatformBaseModelBuildResponse] = Field(default_factory=list, description="完整构建列表")
+
+
+class DeploymentSourceModelSummaryResponse(PlatformBaseModelSummaryResponse):
+    """描述部署来源模型列表项。
+
+    字段与平台基础模型摘要保持一致，但来源包含当前 Project 训练产物和平台预训练模型。
+    """
+
+
+class DeploymentSourceModelDetailResponse(PlatformBaseModelDetailResponse):
+    """描述部署来源模型详情。
+
+    字段与平台基础模型详情保持一致，用于部署页选择 ModelVersion 或 ModelBuild。
+    """

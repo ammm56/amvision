@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.service.application.models.registry.model_service import (
+    ModelBuildRegistration,
     PretrainedRegistrationRequest,
     SqlAlchemyModelService,
     TrainingOutputRegistration,
@@ -121,6 +122,73 @@ def test_list_platform_base_models_requires_models_read_scope(tmp_path: Path) ->
         assert response.status_code == 403
         payload = response.json()
         assert payload["error"]["code"] == "permission_denied"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_deployment_source_models_include_project_training_builds(tmp_path: Path) -> None:
+    """验证部署来源接口会返回当前 Project 的训练版本和转换 build。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    _seed_platform_and_project_models(session_factory)
+    service = SqlAlchemyModelService(session_factory=session_factory)
+    project_version_id = service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-task-deployable",
+            model_name="yolox",
+            model_scale="m",
+            dataset_version_id="dataset-version-deployable",
+            checkpoint_file_id="model-file-project-yolox-m-checkpoint",
+            checkpoint_file_uri="task-runs/training/task-2/artifacts/checkpoints/best_ckpt.pth",
+            metadata={"dataset_export_id": "dataset-export-deployable"},
+        )
+    )
+    project_model = service.get_model(service.get_model_version(project_version_id).model_id)
+    project_build_id = service.register_build(
+        ModelBuildRegistration(
+            project_id="project-1",
+            source_model_version_id=project_version_id,
+            build_format="onnx",
+            build_file_id="model-file-project-yolox-m-onnx",
+            build_file_uri="projects/project-1/models/builds/yolox-m.onnx",
+            conversion_task_id="conversion-task-deployable",
+            metadata={"runtime_backend": "onnxruntime", "runtime_precision": "fp32"},
+        )
+    )
+    try:
+        with client:
+            list_response = client.get(
+                "/api/v1/models/deployment-sources?project_id=project-1&task_type=detection",
+                headers=_build_model_headers(),
+            )
+
+            assert list_response.status_code == 200
+            list_payload = list_response.json()
+            assert list_payload[0]["model_id"] == project_model.model_id
+            assert list_payload[0]["scope_kind"] == "project"
+            assert list_payload[0]["project_id"] == "project-1"
+            assert list_payload[0]["version_count"] == 1
+            assert list_payload[0]["build_count"] == 1
+
+            detail_response = client.get(
+                f"/api/v1/models/deployment-sources/{project_model.model_id}?project_id=project-1",
+                headers=_build_model_headers(),
+            )
+
+            assert detail_response.status_code == 200
+            detail_payload = detail_response.json()
+            assert detail_payload["versions"][0]["model_version_id"] == project_version_id
+            assert detail_payload["builds"][0]["model_build_id"] == project_build_id
+            assert detail_payload["builds"][0]["build_format"] == "onnx"
+            assert detail_payload["builds"][0]["metadata"]["runtime_backend"] == "onnxruntime"
+
+            hidden_response = client.get(
+                f"/api/v1/models/deployment-sources/{project_model.model_id}?project_id=project-2",
+                headers=_build_model_headers(),
+            )
+
+            assert hidden_response.status_code == 404
     finally:
         session_factory.engine.dispose()
 

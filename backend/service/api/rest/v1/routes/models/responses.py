@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from backend.service.api.rest.v1.routes.models.schemas import (
+    DeploymentSourceModelDetailResponse,
+    DeploymentSourceModelSummaryResponse,
     PlatformBaseModelBuildResponse,
     PlatformBaseModelDetailResponse,
     PlatformBaseModelFileResponse,
@@ -53,6 +55,26 @@ def build_platform_base_model_detail_response(
         **build_platform_base_model_summary_response(model).model_dump(),
         versions=[build_platform_base_model_version_detail_response(version) for version in model.versions],
         builds=[build_platform_base_model_build_response(build) for build in model.builds],
+    )
+
+
+def build_deployment_source_model_summary_response(
+    model: PlatformBaseModelSummaryView,
+) -> DeploymentSourceModelSummaryResponse:
+    """把部署来源模型摘要视图转换为响应对象。"""
+
+    return DeploymentSourceModelSummaryResponse(
+        **build_platform_base_model_summary_response(model).model_dump(),
+    )
+
+
+def build_deployment_source_model_detail_response(
+    model: PlatformBaseModelDetailView,
+) -> DeploymentSourceModelDetailResponse:
+    """把部署来源模型详情视图转换为响应对象。"""
+
+    return DeploymentSourceModelDetailResponse(
+        **build_platform_base_model_detail_response(model).model_dump(),
     )
 
 

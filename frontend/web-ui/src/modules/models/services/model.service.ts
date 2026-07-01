@@ -63,6 +63,11 @@ export interface PlatformBaseModelDetail extends PlatformBaseModelSummary {
   builds: PlatformBaseModelBuild[]
 }
 
+export type DeploymentSourceModelSummary = PlatformBaseModelSummary
+export type DeploymentSourceModelDetail = PlatformBaseModelDetail
+export type DeploymentSourceModelBuild = PlatformBaseModelBuild
+export type DeploymentSourceModelVersionDetail = PlatformBaseModelVersionDetail
+
 export interface ModelTrainingTaskSubmissionResponse {
   task_id: string
   status: string
@@ -282,6 +287,28 @@ export async function listPlatformBaseModels(taskType?: ModelTaskType): Promise<
 
 export async function getPlatformBaseModelDetail(modelId: string): Promise<PlatformBaseModelDetail> {
   return apiRequest<PlatformBaseModelDetail>(`/models/platform-base/${encodeURIComponent(modelId)}`)
+}
+
+export async function listDeploymentSourceModels(
+  projectId: string,
+  taskType?: ModelTaskType,
+): Promise<DeploymentSourceModelSummary[]> {
+  return apiRequest<DeploymentSourceModelSummary[]>('/models/deployment-sources', {
+    query: {
+      project_id: projectId,
+      task_type: taskType || undefined,
+      limit: 100,
+    },
+  })
+}
+
+export async function getDeploymentSourceModelDetail(
+  projectId: string,
+  modelId: string,
+): Promise<DeploymentSourceModelDetail> {
+  return apiRequest<DeploymentSourceModelDetail>(`/models/deployment-sources/${encodeURIComponent(modelId)}`, {
+    query: { project_id: projectId },
+  })
 }
 
 export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput): Promise<ModelTrainingTaskSubmissionResponse> {

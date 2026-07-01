@@ -166,10 +166,10 @@
 import { X, RefreshCw } from '@lucide/vue'
 
 import type {
-  PlatformBaseModelBuild,
-  PlatformBaseModelDetail,
-  PlatformBaseModelSummary,
-  PlatformBaseModelVersionDetail,
+  DeploymentSourceModelBuild,
+  DeploymentSourceModelDetail,
+  DeploymentSourceModelSummary,
+  DeploymentSourceModelVersionDetail,
 } from '@/modules/models/services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -180,9 +180,9 @@ const props = defineProps<{
   open: boolean
   loading: boolean
   taskType: ModelTaskType
-  models: PlatformBaseModelSummary[]
+  models: DeploymentSourceModelSummary[]
   selectedModelId: string
-  selectedModelDetail: PlatformBaseModelDetail | null
+  selectedModelDetail: DeploymentSourceModelDetail | null
   selectedVersionId: string
   selectedBuildId: string
 }>()
@@ -224,7 +224,7 @@ function inferRuntimePrecision(buildFormat: string, metadata: Record<string, unk
   return 'fp32'
 }
 
-function buildSelection(build: PlatformBaseModelBuild): DeploymentSourceSelection {
+function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSelection {
   const model = props.selectedModelDetail
   if (!model) {
     throw new Error('missing selected model detail')
@@ -245,7 +245,7 @@ function buildSelection(build: PlatformBaseModelBuild): DeploymentSourceSelectio
   }
 }
 
-function versionSelection(version: PlatformBaseModelVersionDetail): DeploymentSourceSelection {
+function versionSelection(version: DeploymentSourceModelVersionDetail): DeploymentSourceSelection {
   const model = props.selectedModelDetail
   if (!model) {
     throw new Error('missing selected model detail')

@@ -281,10 +281,10 @@ import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDi
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
 import { buildDeploymentDeviceOptions } from '../deployment-device-support'
 import {
-  getPlatformBaseModelDetail,
-  listPlatformBaseModels,
-  type PlatformBaseModelDetail,
-  type PlatformBaseModelSummary,
+  getDeploymentSourceModelDetail,
+  listDeploymentSourceModels,
+  type DeploymentSourceModelDetail,
+  type DeploymentSourceModelSummary,
 } from '@/modules/models/services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -333,9 +333,9 @@ const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const deploymentSourcePickerOpen = ref(false)
 const sourceModelsLoading = ref(false)
-const sourceModels = ref<PlatformBaseModelSummary[]>([])
+const sourceModels = ref<DeploymentSourceModelSummary[]>([])
 const selectedSourceModelId = ref('')
-const selectedSourceModelDetail = ref<PlatformBaseModelDetail | null>(null)
+const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
 const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
 
 const modelType = ref('')
@@ -443,7 +443,7 @@ async function loadDeploymentSourceModels(): Promise<void> {
   sourceModelsLoading.value = true
   errorMessage.value = null
   try {
-    sourceModels.value = await listPlatformBaseModels(selectedTaskType.value)
+    sourceModels.value = await listDeploymentSourceModels(selectedProjectId.value, selectedTaskType.value)
     if (sourceModels.value.length === 0) {
       selectedSourceModelId.value = ''
       selectedSourceModelDetail.value = null
@@ -466,7 +466,7 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
   selectedSourceModelId.value = modelId
   errorMessage.value = null
   try {
-    selectedSourceModelDetail.value = await getPlatformBaseModelDetail(modelId)
+    selectedSourceModelDetail.value = await getDeploymentSourceModelDetail(selectedProjectId.value, modelId)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '模型详情加载失败'
   }

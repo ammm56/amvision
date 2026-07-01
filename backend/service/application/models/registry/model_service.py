@@ -640,6 +640,52 @@ class SqlAlchemyModelService:
                 for model in models
             )
 
+    def list_deployment_source_models(
+        self,
+        *,
+        project_id: str,
+        task_type: str | None = None,
+        limit: int = 100,
+    ) -> tuple[PlatformBaseModelSummaryView, ...]:
+        """列出部署页可选择的模型来源。
+
+        参数：
+        - project_id：当前 Project id。
+        - task_type：任务类型筛选；为空时不过滤。
+        - limit：最大返回数量。
+
+        返回：
+        - 当前 Project 已训练模型和平台预训练模型摘要。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            models = unit_of_work.models.list_models(
+                task_type=task_type,
+                limit=None,
+            )
+            visible_models = tuple(
+                model
+                for model in models
+                if (
+                    (model.scope_kind == PROJECT_MODEL_SCOPE and model.project_id == project_id)
+                    or model.scope_kind == PLATFORM_BASE_MODEL_SCOPE
+                )
+            )
+            summaries = tuple(
+                self._build_platform_base_model_summary(
+                    unit_of_work=unit_of_work,
+                    model=model,
+                )
+                for model in visible_models
+            )
+            deployable_summaries = tuple(
+                summary
+                for summary in summaries
+                if summary.version_count > 0 or summary.build_count > 0
+            )
+
+            return tuple(sorted(deployable_summaries, key=self._deployment_source_sort_key)[:limit])
+
     def get_platform_base_model_detail(self, model_id: str) -> PlatformBaseModelDetailView | None:
         """按 id 读取单个平台基础模型详情。
 
@@ -657,6 +703,74 @@ class SqlAlchemyModelService:
 
             versions = unit_of_work.models.list_model_versions(model.model_id)
             builds = unit_of_work.models.list_model_builds(model.model_id)
+            available_versions = tuple(
+                self._build_platform_base_model_version_summary(
+                    unit_of_work=unit_of_work,
+                    model_version=model_version,
+                )
+                for model_version in versions
+            )
+            version_details = tuple(
+                self._build_platform_base_model_version_detail(
+                    unit_of_work=unit_of_work,
+                    model_version=model_version,
+                )
+                for model_version in versions
+            )
+            build_details = tuple(
+                self._build_platform_base_model_build_view(
+                    unit_of_work=unit_of_work,
+                    model_build=model_build,
+                )
+                for model_build in builds
+            )
+            return PlatformBaseModelDetailView(
+                model_id=model.model_id,
+                project_id=model.project_id,
+                scope_kind=model.scope_kind,
+                model_name=model.model_name,
+                model_type=model.model_type,
+                task_type=model.task_type,
+                model_scale=model.model_scale,
+                labels_file_id=model.labels_file_id,
+                metadata=dict(model.metadata),
+                version_count=len(versions),
+                build_count=len(builds),
+                available_versions=available_versions,
+                versions=version_details,
+                builds=build_details,
+            )
+
+    def get_deployment_source_model_detail(
+        self,
+        *,
+        project_id: str,
+        model_id: str,
+    ) -> PlatformBaseModelDetailView | None:
+        """读取部署页可选择的单个模型来源详情。
+
+        参数：
+        - project_id：当前 Project id。
+        - model_id：目标 Model id。
+
+        返回：
+        - 模型来源详情；不属于当前 Project 且不是平台预训练模型时返回 None。
+        """
+
+        with self._open_unit_of_work() as unit_of_work:
+            model = unit_of_work.models.get_model(model_id)
+            if model is None:
+                return None
+            if model.scope_kind == PROJECT_MODEL_SCOPE and model.project_id != project_id:
+                return None
+            if model.scope_kind != PROJECT_MODEL_SCOPE and model.scope_kind != PLATFORM_BASE_MODEL_SCOPE:
+                return None
+
+            versions = unit_of_work.models.list_model_versions(model.model_id)
+            builds = unit_of_work.models.list_model_builds(model.model_id)
+            if not versions and not builds:
+                return None
+
             available_versions = tuple(
                 self._build_platform_base_model_version_summary(
                     unit_of_work=unit_of_work,
@@ -931,6 +1045,17 @@ class SqlAlchemyModelService:
                 return model_file
 
         return None
+
+    def _deployment_source_sort_key(self, model: PlatformBaseModelSummaryView) -> tuple[int, int, int, str, str]:
+        """构建部署来源列表排序键。
+
+        Project 内训练模型优先，其次优先有转换 build 的模型，最后按模型名稳定排序。
+        """
+
+        scope_order = 0 if model.scope_kind == PROJECT_MODEL_SCOPE else 1
+        build_order = 0 if model.build_count > 0 else 1
+        version_order = 0 if model.version_count > 0 else 1
+        return (scope_order, build_order, version_order, model.model_name, model.model_id)
 
     def _register_training_files(
         self,
