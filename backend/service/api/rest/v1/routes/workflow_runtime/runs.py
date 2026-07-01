@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from backend.contracts.workflows import WorkflowRunContract, WorkflowRunEventContract
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.rest.v1.routes.workflow_runtime_support.responses import (
+    build_workflow_app_invoke_result_payload as _build_workflow_app_invoke_result_payload,
     build_workflow_run_contract as _build_workflow_run_contract,
     build_workflow_run_event_contract as _build_workflow_run_event_contract,
 )
@@ -22,7 +23,10 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import 
     build_multipart_runtime_invoke_request as _build_multipart_runtime_invoke_request,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
+from backend.service.application.workflows.runtime.invokes import (
+    WorkflowRuntimeInvokeRequest,
+    WorkflowRuntimeSyncInvokeResult,
+)
 
 
 workflow_runtime_runs_router = APIRouter()
@@ -35,6 +39,32 @@ def _resolve_input_bindings(body: WorkflowRuntimeInvokeRequestBody) -> dict[str,
         return body.resolve_input_bindings()
     except ValueError as exc:
         raise InvalidRequestError(str(exc)) from exc
+
+
+def _build_sync_invoke_response(invoke_result: WorkflowRuntimeSyncInvokeResult, *, response_mode: str) -> object:
+    """按调用场景构建同步 invoke 响应。"""
+
+    normalized_mode = response_mode.strip().lower().replace("_", "-")
+    if normalized_mode in {"app-result", "result"}:
+        return _build_workflow_app_invoke_result_payload(
+            invoke_result.workflow_run,
+            outputs=invoke_result.raw_outputs,
+        )
+    if normalized_mode == "run":
+        return _build_workflow_run_contract(
+            invoke_result.workflow_run,
+            outputs=invoke_result.raw_outputs,
+            template_outputs={},
+            node_records=(),
+        )
+    if normalized_mode == "debug":
+        return _build_workflow_run_contract(
+            invoke_result.workflow_run,
+            outputs=invoke_result.raw_outputs,
+            template_outputs=invoke_result.raw_template_outputs,
+            node_records=invoke_result.raw_node_records,
+        )
+    raise InvalidRequestError("response_mode 只能是 app-result、run 或 debug")
 
 
 @workflow_runtime_runs_router.post(
@@ -93,14 +123,18 @@ async def create_workflow_run_upload(
 
 @workflow_runtime_runs_router.post(
     "/app-runtimes/{workflow_runtime_id}/invoke",
-    response_model=WorkflowRunContract,
+    response_model=None,
 )
 def invoke_workflow_app_runtime(
     workflow_runtime_id: str,
     body: WorkflowRuntimeInvokeRequestBody,
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
-) -> WorkflowRunContract:
+    response_mode: Annotated[
+        str,
+        Query(description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"),
+    ] = "app-result",
+) -> object:
     """通过已启动的 runtime 发起一次同步调用。"""
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
@@ -114,23 +148,22 @@ def invoke_workflow_app_runtime(
         ),
         created_by=principal.principal_id,
     )
-    return _build_workflow_run_contract(
-        invoke_result.workflow_run,
-        outputs=invoke_result.raw_outputs,
-        template_outputs=invoke_result.raw_template_outputs,
-        node_records=invoke_result.raw_node_records,
-    )
+    return _build_sync_invoke_response(invoke_result, response_mode=response_mode)
 
 
 @workflow_runtime_runs_router.post(
     "/app-runtimes/{workflow_runtime_id}/invoke/upload",
-    response_model=WorkflowRunContract,
+    response_model=None,
 )
 async def invoke_workflow_app_runtime_upload(
     workflow_runtime_id: str,
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
-) -> WorkflowRunContract:
+    response_mode: Annotated[
+        str,
+        Query(description="同步调用响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"),
+    ] = "app-result",
+) -> object:
     """通过 multipart 上传方式发起一次同步 workflow 调用。"""
 
     workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
@@ -145,12 +178,7 @@ async def invoke_workflow_app_runtime_upload(
         invoke_request,
         created_by=principal.principal_id,
     )
-    return _build_workflow_run_contract(
-        invoke_result.workflow_run,
-        outputs=invoke_result.raw_outputs,
-        template_outputs=invoke_result.raw_template_outputs,
-        node_records=invoke_result.raw_node_records,
-    )
+    return _build_sync_invoke_response(invoke_result, response_mode=response_mode)
 
 
 @workflow_runtime_runs_router.get(

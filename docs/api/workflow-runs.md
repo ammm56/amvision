@@ -24,7 +24,7 @@
 - WorkflowRun 同时承接 sync invoke 和 async run 两种调用方式。
 - invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
 - WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
-- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke` 和 `.../invoke/upload` 在同步响应里返回当前这次执行的原始 outputs、template_outputs 和 node_records。
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke` 和 `.../invoke/upload` 默认只返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
 - `GET /api/v1/workflows/runs/{workflow_run_id}` 返回的是持久化记录视图；如果输入或输出里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## Sync / Async 边界说明
@@ -100,9 +100,9 @@
 | requested_timeout_seconds | 本次调用的超时秒数 |
 | assigned_process_id | 执行该 run 的 worker 进程 id，可为空 |
 | input_payload | 本次调用的输入 payload；inline base64 图片会改写为 redacted 标记 |
-| outputs | 按 application output binding_id 组织的输出；sync invoke 返回原始值，详情接口与 async run 返回持久化脱敏副本 |
-| template_outputs | 按 template output id 组织的底层输出；sync invoke 返回原始值，详情接口与 async run 返回持久化脱敏副本 |
-| node_records | 节点执行记录列表；sync invoke 返回原始 outputs，详情接口与 async run 返回持久化脱敏副本 |
+| outputs | 按 application output binding_id 组织的公开 App Result；详情接口与 async run 返回持久化脱敏副本 |
+| template_outputs | 按 template output id 组织的底层输出，仅用于平台调试、trace 和内部回查 |
+| node_records | 节点执行记录列表，仅用于平台调试、trace 和内部回查 |
 | error_message | 失败或超时时的摘要信息，可为空 |
 | metadata | 调用附加元数据；当 runtime 绑定 execution policy 时会补充 metadata.execution_policy；失败时会补充 error_details，取消时会补充 cancel_requested_at 和 cancelled_by |
 
@@ -201,13 +201,23 @@
 - Content-Type：application/json
 - 成功状态码：200 OK
 - 仅支持 observed_state=running 的 WorkflowAppRuntime
-- 返回完整 WorkflowRun 规则；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
+- 默认 `response_mode=app-result`，只返回公开 App Result，不返回 WorkflowRun、template_outputs 或 node_records
+- `response_mode=run` 返回 WorkflowRun 运行回执；其中 `outputs` 保留公开 App Result，`template_outputs={}`，`node_records=[]`
+- `response_mode=debug` 返回完整 WorkflowRun 调试视图；包含原始 outputs、template_outputs 和 node_records
 
 ### 请求体字段
 
 - input_bindings：可选，按 application input binding_id 组织的输入 payload
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
 - timeout_seconds：可选，覆盖 runtime 默认 request_timeout_seconds；若省略且 runtime 已绑定 execution policy，则取 policy.default_timeout_seconds；显式值必须大于 0
+
+### 响应模式
+
+| response_mode | 用途 | 返回内容 |
+| --- | --- | --- |
+| app-result | 外部系统和 Postman 正式调用默认值 | 单个 App Result 直接返回；多个 App Result 按 binding_id 返回对象；失败时返回 state、error_message 和 error_details |
+| run | 平台前端运行回执 | WorkflowRunContract；只带公开 outputs，不带底层 template_outputs 和 node_records |
+| debug | 平台排查问题 | WorkflowRunContract；带完整 outputs、template_outputs 和 node_records |
 
 ### 最小请求 JSON
 
@@ -235,58 +245,15 @@
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 返回完整 WorkflowRun 规则；同步响应中的 `outputs`、`template_outputs` 和 `node_records` 直接带当前这次执行的原始结果
+- 响应模式与 JSON `invoke` 一致，默认只返回公开 App Result；需要运行回执或完整 trace 时显式传 `response_mode=run` 或 `response_mode=debug`
 
-### 最小响应 JSON
+### 默认最小响应 JSON
 
 ```json
 {
-  "format_id": "amvision.workflow-run.v1",
-  "workflow_run_id": "workflow-run-1",
-  "workflow_runtime_id": "workflow-runtime-1",
-  "project_id": "project-1",
-  "application_id": "inspection-app",
-  "state": "succeeded",
-  "created_at": "2026-05-08T12:03:00Z",
-  "started_at": "2026-05-08T12:03:00Z",
-  "finished_at": "2026-05-08T12:03:02Z",
-  "created_by": "operator-1",
-  "requested_timeout_seconds": 60,
-  "assigned_process_id": 12345,
-  "input_payload": {
-    "request_image": {
-      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
-    }
-  },
-  "outputs": {
-    "api-return": {
-      "status_code": 200,
-      "body": {
-        "ok": true
-      }
-    }
-  },
-  "template_outputs": {
-    "inspection_response": {
-      "ok": true
-    }
-  },
-  "node_records": [],
-  "error_message": null,
-  "metadata": {
-    "trigger_source": "sync-api",
-    "created_by": "operator-1",
-    "trace_level": "none",
-    "retain_trace_enabled": false,
-    "retain_node_records_enabled": false,
-    "execution_policy": {
-      "execution_policy_id": "runtime-default-policy",
-      "policy_kind": "runtime-default",
-      "trace_level": "none",
-      "retain_node_records_enabled": false,
-      "retain_trace_enabled": false,
-      "snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json"
-    }
+  "status_code": 200,
+  "body": {
+    "ok": true
   }
 }
 ```

@@ -232,6 +232,7 @@ export async function createWorkflowRun(workflowRuntimeId: string, input: Workfl
 export async function invokeWorkflowAppRuntime(workflowRuntimeId: string, input: WorkflowRuntimeInvokeInput = {}): Promise<WorkflowRun> {
   return apiRequest<WorkflowRun>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/invoke`, {
     method: 'POST',
+    query: { response_mode: 'run' },
     body: {
       input_bindings: input.inputBindings ?? {},
       execution_metadata: input.executionMetadata ?? {},

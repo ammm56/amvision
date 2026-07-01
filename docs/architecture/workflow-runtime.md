@@ -443,7 +443,7 @@ sequenceDiagram
     Worker-->>CtrlSvc: persist WorkflowRun result
     alt sync invoke
       CtrlSvc-->>API: completed result
-      API-->>Client: outputs + template_outputs
+      API-->>Client: App Result，或按 response_mode 返回 run/debug 视图
     else async invoke
       CtrlSvc-->>API: queued / finished state
       API-->>Client: workflow_run_id
@@ -805,7 +805,7 @@ preview 相关图片、文件和其他大结果仍通过对象存储引用、输
 - 如果没有可用 instance，则按 activation_mode 决定等待拉起或直接返回不可用
 - 把 run 交给 workflow-runtime-worker
 - 在 request_timeout_seconds 内等待 run 结束
-- 成功时直接返回 outputs 和 template_outputs
+- 成功时默认直接返回公开 App Result；如调用方显式传 `response_mode=run` 或 `response_mode=debug`，分别返回运行回执或完整调试视图。
 - 超时时返回 timed_out，并触发实例侧取消或回收
 
 #### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs

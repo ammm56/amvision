@@ -55,6 +55,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {
@@ -102,6 +103,64 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
     assert "image_base64" not in persisted_response_data["annotated_image"]["image"]
 
 
+def test_workflow_app_runtime_invoke_api_default_response_returns_public_app_result_only(
+    tmp_path: Path,
+) -> None:
+    """验证外部同步调用默认只返回公开 App Result。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-app-result.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Barcode Result Display Public Result Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                    },
+                    "execution_metadata": {
+                        "scenario": "barcode-result-display-public-result",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    result_payload = invoke_response.json()
+    assert "workflow_run_id" not in result_payload
+    assert "outputs" not in result_payload
+    assert "template_outputs" not in result_payload
+    assert "node_records" not in result_payload
+    assert result_payload["status_code"] == 200
+    assert result_payload["body"]["code"] == 0
+    assert result_payload["body"]["message"] == "decoded"
+
+
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process_save_image(
     tmp_path: Path,
 ) -> None:
@@ -128,6 +187,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {
@@ -188,6 +248,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_dual_input_ope
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {
@@ -248,6 +309,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {
@@ -323,6 +385,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {
@@ -389,6 +452,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=headers,
                 json={
                     "input_bindings": {

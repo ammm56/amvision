@@ -1649,6 +1649,7 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "hello runtime policy"}},
@@ -1701,8 +1702,8 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert runtime_payload["template_summary"]["template_id"] == "process-echo-template"
     assert runtime_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert invoke_payload["requested_timeout_seconds"] == 7
-    assert invoke_payload["node_records"]
-    assert {item["node_id"] for item in invoke_payload["node_records"]} >= {"echo"}
+    assert invoke_payload["template_outputs"] == {}
+    assert invoke_payload["node_records"] == []
     assert invoke_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
     assert dataset_storage.read_json(preview_policy_snapshot_object_key)["execution_policy_id"] == "preview-default-policy"
     assert dataset_storage.read_json(runtime_policy_snapshot_object_key)["execution_policy_id"] == "runtime-default-policy"
@@ -2024,6 +2025,7 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "hello runtime api"}},
@@ -2127,6 +2129,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "hello runtime timeout"}},
@@ -2230,6 +2233,7 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "hello runtime failure"}},
@@ -2333,6 +2337,7 @@ def test_workflow_app_runtime_api_can_restart_after_failed_worker_state(
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
                     "input_bindings": {"request_text": {"value": "hello runtime failure"}},

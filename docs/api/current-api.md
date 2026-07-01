@@ -1857,15 +1857,9 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - input_bindings
   - execution_metadata
   - timeout_seconds，可选
-- 当前响应会同时返回：
-  - workflow_run_id
-  - state
-  - assigned_process_id
-  - outputs
-  - template_outputs
-  - node_records
-  - error_message
-  - metadata
+- 默认 `response_mode=app-result`，只返回公开 App Result。
+- `response_mode=run` 返回 WorkflowRun 运行回执，保留公开 outputs，不返回 template_outputs 和 node_records。
+- `response_mode=debug` 返回完整 WorkflowRun 调试视图，包含 outputs、template_outputs 和 node_records。
 
 ### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload
 
@@ -1878,7 +1872,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
 - 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
-- 当前响应与 JSON `invoke` 一样返回完整 WorkflowRun 规则
+- 当前响应与 JSON `invoke` 一样支持 `response_mode=app-result|run|debug`；默认只返回公开 App Result。
 
 ### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
 

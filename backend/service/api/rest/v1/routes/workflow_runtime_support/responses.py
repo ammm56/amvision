@@ -278,6 +278,33 @@ def build_workflow_run_contract(
     )
 
 
+def build_workflow_app_invoke_result_payload(
+    workflow_run: WorkflowRun,
+    *,
+    outputs: dict[str, object],
+) -> object:
+    """构建 Workflow App 对外同步调用结果。
+
+    App invoke 是外部系统调用面，默认只返回公开 App Result；WorkflowRun、
+    template_outputs 和 node_records 属于平台调试/追踪信息，需要显式请求。
+    """
+
+    if workflow_run.state != "succeeded":
+        payload: dict[str, object] = {
+            "workflow_run_id": workflow_run.workflow_run_id,
+            "state": workflow_run.state,
+            "error_message": workflow_run.error_message,
+        }
+        error_details = dict(workflow_run.metadata).get("error_details")
+        if error_details is not None:
+            payload["error_details"] = error_details
+        return payload
+
+    if len(outputs) == 1:
+        return next(iter(outputs.values()))
+    return dict(outputs)
+
+
 def build_workflow_run_event_contract(workflow_run_event: WorkflowRunEvent) -> WorkflowRunEventContract:
     """把 WorkflowRun 事件转换为公开规则。"""
 
