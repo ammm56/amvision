@@ -79,14 +79,21 @@ class BackgroundTaskManager:
                 executor.submit(self._run_worker_loop, event)
                 for _ in range(max_workers)
             ]
-            while not event.is_set():
+            try:
+                while not event.is_set():
+                    for future in futures:
+                        if future.done():
+                            error = future.exception()
+                            if error is not None:
+                                event.set()
+                                raise error
+                    event.wait(0.2)
+            finally:
+                # Ctrl+C 会先打断主线程；必须先通知常驻 worker loop 退出，
+                # 否则 ThreadPoolExecutor 关闭时会一直等待仍在轮询的线程。
+                event.set()
                 for future in futures:
-                    if future.done():
-                        error = future.exception()
-                        if error is not None:
-                            event.set()
-                            raise error
-                event.wait(0.2)
+                    future.cancel()
 
     def _run_next_available_task(self) -> bool:
         """尝试从已注册消费者中执行下一条可用任务。
