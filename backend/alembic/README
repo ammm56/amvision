@@ -34,6 +34,9 @@ alembic downgrade -1
 
 # 标记已有数据库为最新基线（跳过实际执行）
 alembic stamp head
+
+# 迁移数据
+python -m alembic -c backend/alembic.ini upgrade head
 ```
 
 ## 注意事项
