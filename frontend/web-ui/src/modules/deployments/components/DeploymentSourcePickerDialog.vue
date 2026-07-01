@@ -98,7 +98,10 @@
                 <strong>转换完成的 ModelBuild</strong>
                 <span class="deployment-source-picker__section-count">{{ selectedModelDetail.builds.length }}</span>
               </header>
-              <div v-if="selectedModelDetail.builds.length > 0" class="compact-list">
+              <div
+                v-if="selectedModelDetail.builds.length > 0"
+                class="compact-list deployment-source-list deployment-source-list--builds"
+              >
                 <div
                   v-for="build in selectedModelDetail.builds"
                   :key="build.model_build_id"
@@ -111,7 +114,6 @@
                       {{ build.build_format }} · {{ build.runtime_backend }} ·
                       {{ build.runtime_precision.toUpperCase() }}
                     </span>
-                    <small>RuntimeProfile（可选）：{{ build.runtime_profile_id || '未绑定' }}</small>
                   </div>
                   <div class="table-actions">
                     <Button size="sm" variant="secondary" @click.stop="$emit('apply-source', buildSelection(build))">
@@ -131,7 +133,10 @@
                 <strong>可直接部署的 ModelVersion</strong>
                 <span class="deployment-source-picker__section-count">{{ selectedModelDetail.versions.length }}</span>
               </header>
-              <div v-if="selectedModelDetail.versions.length > 0" class="compact-list">
+              <div
+                v-if="selectedModelDetail.versions.length > 0"
+                class="compact-list deployment-source-list"
+              >
                 <div
                   v-for="version in selectedModelDetail.versions"
                   :key="version.model_version_id"
@@ -322,6 +327,15 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   align-content: start;
 }
 
+.deployment-source-picker__detail {
+  overflow: hidden;
+}
+
+.deployment-source-detail {
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .deployment-source-picker__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -365,10 +379,31 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   min-width: 0;
 }
 
+.deployment-source-list {
+  min-width: 0;
+}
+
+.deployment-source-list--builds {
+  max-height: min(360px, 42vh);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.deployment-source-picker .compact-list__item {
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.deployment-source-picker .table-actions {
+  flex: 0 0 auto;
+}
+
 .deployment-source-card__identity strong,
 .deployment-source-card__identity span,
 .deployment-source-detail__identity strong,
 .deployment-source-detail__identity span,
+.deployment-source-build-meta strong,
+.deployment-source-build-meta span,
 .deployment-source-detail__empty strong,
 .deployment-source-detail__empty span {
   overflow-wrap: anywhere;
@@ -377,7 +412,6 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 .deployment-source-card__identity span,
 .deployment-source-detail__identity span,
 .deployment-source-build-meta span,
-.deployment-source-build-meta small,
 .deployment-source-detail__empty span,
 .deployment-source-card__footer {
   color: var(--muted);
