@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.support.resource_cleanup import (
+    release_model_task_resources,
+)
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionExecutionResult,
@@ -388,13 +391,7 @@ class DeploymentRuntimePool:
 
         if session is None:
             return
-        close_method = getattr(session, "close", None)
-        if not callable(close_method):
-            return
-        try:
-            close_method()
-        except Exception:
-            return
+        release_model_task_resources(session)
 
     @staticmethod
     def _read_session_pinned_output_bytes(session: object | None) -> int:

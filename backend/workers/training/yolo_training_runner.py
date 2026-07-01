@@ -58,6 +58,9 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     SqlAlchemyYolo26ObbTrainingTaskService,
     YOLO26_OBB_TRAINING_TASK_KIND,
 )
+from backend.service.application.support.resource_cleanup import (
+    model_task_resource_cleanup,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -155,7 +158,7 @@ class SqlAlchemyYoloTrainingRunner:
         - TrainingBackendRunResult：训练执行结果。
         """
         task_id = request.training_task_id
-        with assigned_training_device(
+        with model_task_resource_cleanup(), assigned_training_device(
             session_factory=self.session_factory,
             task_id=task_id,
         ):

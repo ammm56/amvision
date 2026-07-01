@@ -10,6 +10,9 @@ from backend.service.application.backends import (
 from backend.service.application.models.training.yolo26_training_service import (
     SqlAlchemyYolo26TrainingTaskService,
 )
+from backend.service.application.support.resource_cleanup import (
+    model_task_resource_cleanup,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.device_assignment import assigned_training_device
@@ -37,7 +40,7 @@ class SqlAlchemyYolo26TrainerRunner:
     def run_training(self, request: Yolo26TrainingRunRequest) -> Yolo26TrainingRunResult:
         """执行 YOLO26 训练处理链路并返回结果。"""
 
-        with assigned_training_device(
+        with model_task_resource_cleanup(), assigned_training_device(
             session_factory=self.session_factory,
             task_id=request.training_task_id,
         ):

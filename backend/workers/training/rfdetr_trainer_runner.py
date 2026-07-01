@@ -10,6 +10,9 @@ from backend.service.application.backends import (
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     SqlAlchemyRfdetrTrainingTaskService,
 )
+from backend.service.application.support.resource_cleanup import (
+    model_task_resource_cleanup,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.device_assignment import assigned_training_device
@@ -48,7 +51,7 @@ class SqlAlchemyRfdetrTrainerRunner:
         返回：
         - TrainingBackendRunResult：训练执行结果。
         """
-        with assigned_training_device(
+        with model_task_resource_cleanup(), assigned_training_device(
             session_factory=self.session_factory,
             task_id=request.training_task_id,
         ):

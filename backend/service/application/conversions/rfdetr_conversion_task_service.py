@@ -34,6 +34,9 @@ from backend.service.application.models.postprocess.detection_operation_rules im
 from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration as RfdetrBuildRegistration,
 )
+from backend.service.application.support.resource_cleanup import (
+    model_task_resource_cleanup,
+)
 from backend.service.application.models.catalog.rfdetr import (
     SqlAlchemyRfdetrModelService,
 )
@@ -299,22 +302,23 @@ class SqlAlchemyRfdetrConversionTaskService:
         dataset_storage.write_json(plan_object_key, serialize_rfdetr_conversion_plan(plan))
 
         try:
-            run_result = conversion_runner.run_conversion(
-                ConversionBackendRunRequest(
-                    conversion_task_id=task_id,
-                    source_runtime_target=source_runtime_target,
-                    target_formats=plan.target_formats,
-                    plan_steps=self._build_backend_plan_steps(plan),
-                    output_object_prefix=output_object_prefix,
-                    model_type=self.model_type,
-                    task_type=request.task_type,
-                    metadata={
-                        "project_id": request.project_id,
-                        "runtime_profile_id": request.runtime_profile_id,
-                        **dict(request.extra_options),
-                    },
+            with model_task_resource_cleanup():
+                run_result = conversion_runner.run_conversion(
+                    ConversionBackendRunRequest(
+                        conversion_task_id=task_id,
+                        source_runtime_target=source_runtime_target,
+                        target_formats=plan.target_formats,
+                        plan_steps=self._build_backend_plan_steps(plan),
+                        output_object_prefix=output_object_prefix,
+                        model_type=self.model_type,
+                        task_type=request.task_type,
+                        metadata={
+                            "project_id": request.project_id,
+                            "runtime_profile_id": request.runtime_profile_id,
+                            **dict(request.extra_options),
+                        },
+                    )
                 )
-            )
             build_summaries = self._register_conversion_outputs(
                 project_id=request.project_id,
                 source_model_version_id=request.source_model_version_id or "",
