@@ -9,6 +9,7 @@ import torch
 
 from backend.service.application.models.yolo_core_common.losses.obb_loss import compute_obb_loss
 from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.yolo_core_common.geometry import build_yolo_letterbox_transform
 from backend.service.application.runtime.predictors.yolov8.obb.postprocess import (
     build_yolov8_obb_runtime_instances,
 )
@@ -80,9 +81,11 @@ def test_obb_prediction_array_postprocess():
         prediction_array=prediction,
         labels=labels,
         score_threshold=0.3,
-        resize_ratio=1.0,
-        image_width=256,
-        image_height=256,
+        letterbox_transform=build_yolo_letterbox_transform(
+            source_width=256,
+            source_height=256,
+            input_size=(256, 256),
+        ),
     )
     assert isinstance(instances, tuple)
     for inst in instances:

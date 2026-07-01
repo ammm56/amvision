@@ -12,6 +12,14 @@ from backend.service.application.models.yolo11_core.data import (
 from backend.service.application.models.yolo_core_common.data import (
     YoloClassificationAugmentationOptions,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    YoloClassificationDataLoaderPlan,
+    build_yolo_classification_training_dataloader,
+    load_yolo_classification_dataloader_imports,
+    move_yolo_classification_batch_to_device,
+    replace_yolo_classification_dataloader_plan_seed,
+    resolve_yolo_classification_dataloader_plan,
+)
 from backend.service.application.models.yolo11_core.evaluation import (
     evaluate_yolo11_classification_samples,
 )
@@ -93,6 +101,7 @@ def run_yolo11_classification_training_loop(
     precision: str,
     device_name: str,
     augmentation_options: YoloClassificationAugmentationOptions | None,
+    dataloader_plan: YoloClassificationDataLoaderPlan | None,
     learning_rate: float,
     weight_decay: float,
     min_lr_ratio: float,
@@ -113,22 +122,40 @@ def run_yolo11_classification_training_loop(
     """执行 YOLO11 classification 从 start epoch 到 max epoch 的完整训练循环。"""
 
     checkpoint_bytes = b""
+    resolved_dataloader_plan = (
+        dataloader_plan
+        or resolve_yolo_classification_dataloader_plan(
+            extra_options={},
+            device=device_name,
+        )
+    )
     for epoch in range(start_epoch, max_epochs):
         model.train()
         train_loss_sum = 0.0
         train_correct = 0
         train_total = 0
-        for batch_start in range(0, len(train_annotations), batch_size):
-            batch_annotations = train_annotations[
-                batch_start : batch_start + batch_size
-            ]
-            batch = build_yolo11_classification_training_batch(
-                samples=batch_annotations,
-                input_size=input_size,
+        train_dataloader = build_yolo_classification_training_dataloader(
+            torch_module=imports.torch,
+            samples=train_annotations,
+            batch_size=batch_size,
+            input_size=input_size,
+            augmentation_options=augmentation_options,
+            plan=replace_yolo_classification_dataloader_plan_seed(
+                plan=resolved_dataloader_plan,
+                seed=epoch,
+            ),
+            shuffle=True,
+            build_batch=build_yolo11_classification_training_batch,
+            load_imports=load_yolo_classification_dataloader_imports,
+        )
+        for cpu_batch in train_dataloader:
+            if cpu_batch is None:
+                continue
+            batch = move_yolo_classification_batch_to_device(
+                batch=cpu_batch,
                 device=device_name,
                 precision=precision,
-                imports=imports,
-                augmentation_options=augmentation_options,
+                torch_module=imports.torch,
             )
             if batch is None:
                 continue
@@ -186,6 +213,10 @@ def run_yolo11_classification_training_loop(
                 device=device_name,
                 precision=precision,
                 imports=imports,
+                dataloader_plan=replace_yolo_classification_dataloader_plan_seed(
+                    plan=resolved_dataloader_plan,
+                    seed=100_000 + epoch,
+                ),
             )
             validation_history.append({"epoch": epoch, **val_metrics})
 

@@ -19,6 +19,12 @@ from backend.service.application.models.evaluation.pose_evaluation import (
     PoseEvaluationResult,
     run_pose_evaluation,
 )
+from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    build_yolo_task_evaluation_dataloader,
+    load_yolo_task_dataloader_imports,
+    move_yolo_task_batch_to_device,
+    resolve_yolo_task_evaluation_dataloader_plan,
+)
 from backend.service.application.models.yolo11_core.data import (
     build_yolo11_pose_training_batch,
 )
@@ -82,17 +88,24 @@ def evaluate_yolo11_pose_samples(
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
+    evaluation_loader = build_yolo_task_evaluation_dataloader(
+        torch_module=imports.torch,
+        samples=samples,
+        input_size=input_size,
+        plan=resolve_yolo_task_evaluation_dataloader_plan(device=device),
+        build_batch=build_yolo11_pose_training_batch,
+        load_imports=load_yolo_task_dataloader_imports,
+    )
     with imports.torch.no_grad():
-        for image_index, sample in enumerate(samples[:8]):
-            batch = build_yolo11_pose_training_batch(
-                samples=[sample],
-                input_size=input_size,
-                device=device,
-                precision=precision,
-                imports=imports,
-            )
+        for image_index, batch in enumerate(evaluation_loader):
             if batch is None:
                 continue
+            batch = move_yolo_task_batch_to_device(
+                batch=batch,
+                device=device,
+                precision=precision,
+                torch_module=imports.torch,
+            )
             with _yolo11_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
             prediction_array = _yolo11_tensor_to_np(outputs, imports)

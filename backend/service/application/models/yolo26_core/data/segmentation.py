@@ -13,6 +13,9 @@ from backend.service.application.models.yolo_core_common.data.mosaic import (
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    pin_yolo_task_value,
+)
 from backend.service.application.models.yolo26_core.data.augmentation import (
     Yolo26TaskAugmentationOptions,
     apply_yolo26_random_affine,
@@ -37,6 +40,14 @@ class Yolo26SegmentationTrainingBatch:
 
     images: Any
     targets: list[dict[str, Any]]
+
+    def pin_memory(self) -> "Yolo26SegmentationTrainingBatch":
+        """让 PyTorch DataLoader 能对自定义 batch 执行 pinned memory。"""
+
+        return Yolo26SegmentationTrainingBatch(
+            images=pin_yolo_task_value(self.images),
+            targets=pin_yolo_task_value(self.targets),
+        )
 
 
 def build_yolo26_segmentation_training_batch(

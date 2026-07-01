@@ -40,6 +40,9 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    resolve_yolo_task_dataloader_plan,
+)
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -268,6 +271,10 @@ def run_yolo26_obb_training(
         best_metric_name=best_metric_name,
         epoch_callback=request.epoch_callback,
         savepoint_callback=request.savepoint_callback,
+        dataloader_plan=resolve_yolo_task_dataloader_plan(
+            extra_options=extra,
+            device=device_name,
+        ),
     )
     return Yolo26ObbTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,

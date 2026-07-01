@@ -17,6 +17,13 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    build_yolo_task_training_dataloader,
+    load_yolo_task_dataloader_imports,
+    move_yolo_task_batch_to_device,
+    replace_yolo_task_dataloader_plan_seed,
+    resolve_yolo_task_dataloader_plan,
+)
 from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
@@ -257,6 +264,10 @@ def run_yolov8_pose_training(
     best_metric_name = "val_map50_95"
     ckpt_bytes = b""
     validation_history: list[dict[str, object]] = []
+    dataloader_plan = resolve_yolo_task_dataloader_plan(
+        extra_options=dict(request.extra_options or {}),
+        device=device,
+    )
 
     for epoch in range(start_epoch, max_epochs):
         model.train()
@@ -268,26 +279,29 @@ def run_yolov8_pose_training(
             max_epochs=max_epochs,
         )
 
-        import random
-
-        indices = list(range(len(train_anns)))
-        random.shuffle(indices)
-        shuffled = [train_anns[i] for i in indices]
-
-        for batch_start in range(0, len(shuffled), bs):
-            batch_anns = shuffled[batch_start : batch_start + bs]
-            batch_input_size = resolve_yolov8_task_batch_input_size(
-                base_input_size=input_size,
-                augmentation_options=effective_yolov8_augmentation_options,
-            )
-            batch = build_yolov8_pose_training_batch(
-                samples=batch_anns,
-                input_size=batch_input_size,
+        train_dataloader = build_yolo_task_training_dataloader(
+            torch_module=torch,
+            samples=train_anns,
+            batch_size=bs,
+            input_size=input_size,
+            augmentation_options=effective_yolov8_augmentation_options,
+            plan=replace_yolo_task_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=epoch,
+            ),
+            shuffle=True,
+            build_batch=build_yolov8_pose_training_batch,
+            load_imports=load_yolo_task_dataloader_imports,
+            resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
+        )
+        for cpu_batch in train_dataloader:
+            if cpu_batch is None:
+                continue
+            batch = move_yolo_task_batch_to_device(
+                batch=cpu_batch,
                 device=device,
                 precision=precision,
-                imports=_build_yolo_training_imports(cv2, np, torch),
-                augmentation_options=effective_yolov8_augmentation_options,
-                available_samples=shuffled,
+                torch_module=torch,
             )
             if batch is None:
                 continue

@@ -13,6 +13,13 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    build_yolo_task_training_dataloader,
+    load_yolo_task_dataloader_imports,
+    move_yolo_task_batch_to_device,
+    replace_yolo_task_dataloader_plan_seed,
+    resolve_yolo_task_dataloader_plan,
+)
 from backend.service.application.models.yolo11_core import build_yolo11_model
 from backend.service.application.models.yolo11_core.assigners import (
     assign_yolo11_segmentation_targets,
@@ -335,6 +342,10 @@ def run_yolo11_segmentation_training(
 
     stride_values = model.stride if hasattr(model, "stride") else (8, 16, 32)
     num_classes = len(labels)
+    dataloader_plan = resolve_yolo_task_dataloader_plan(
+        extra_options=extra,
+        device=device,
+    )
     for epoch in range(start_epoch, max_epochs):
         model.train()
         train_metrics, global_iteration = _run_yolo11_segmentation_epoch(
@@ -363,6 +374,10 @@ def run_yolo11_segmentation_training(
             dfl_loss_weight=dfl_loss_weight,
             mask_loss_weight=mask_loss_weight,
             grad_clip=grad_clip,
+            dataloader_plan=replace_yolo_task_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=epoch,
+            ),
         )
         metrics_history.append({"epoch": epoch, **train_metrics})
         progress = Yolo11SegmentationTrainingEpochProgress(
@@ -491,6 +506,7 @@ def _run_yolo11_segmentation_epoch(
     dfl_loss_weight: float,
     mask_loss_weight: float,
     grad_clip: float,
+    dataloader_plan: Any,
 ) -> tuple[dict[str, float], int]:
     """执行 YOLO11 segmentation 单轮训练。"""
 
@@ -505,20 +521,26 @@ def _run_yolo11_segmentation_epoch(
         epoch_index=epoch,
         max_epochs=max_epochs,
     )
-    for batch_start in range(0, len(train_annotations), batch_size):
-        batch_annotations = train_annotations[batch_start : batch_start + batch_size]
-        batch_input_size = resolve_yolo11_task_batch_input_size(
-            base_input_size=base_input_size,
-            augmentation_options=effective_augmentation_options,
-        )
-        batch = build_yolo11_segmentation_training_batch(
-            samples=batch_annotations,
-            input_size=batch_input_size,
+    train_dataloader = build_yolo_task_training_dataloader(
+        torch_module=imports.torch,
+        samples=train_annotations,
+        batch_size=batch_size,
+        input_size=base_input_size,
+        augmentation_options=effective_augmentation_options,
+        plan=dataloader_plan,
+        shuffle=True,
+        build_batch=build_yolo11_segmentation_training_batch,
+        load_imports=load_yolo_task_dataloader_imports,
+        resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
+    )
+    for cpu_batch in train_dataloader:
+        if cpu_batch is None:
+            continue
+        batch = move_yolo_task_batch_to_device(
+            batch=cpu_batch,
             device=device,
             precision=precision,
-            imports=imports,
-            augmentation_options=effective_augmentation_options,
-            available_samples=train_annotations,
+            torch_module=imports.torch,
         )
         if batch is None:
             continue

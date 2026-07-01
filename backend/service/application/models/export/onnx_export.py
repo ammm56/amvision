@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import io
 from pathlib import Path
 from typing import Any, Sequence
@@ -24,28 +25,34 @@ def export_torch_model_to_onnx(
     input_names: Sequence[str],
     output_names: Sequence[str],
 ) -> None:
-    """使用 PyTorch 2.8 dynamo ONNX exporter 导出模型。"""
+    """使用 PyTorch dynamo ONNX exporter 导出模型。"""
 
     ensure_torch_onnx_dynamo_exporter_dependencies()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     progress_stdout = io.StringIO()
     progress_stderr = io.StringIO()
+    export_parameters = inspect.signature(torch_module.onnx.export).parameters
+    export_kwargs = {
+        "model": model,
+        "args": model_args,
+        "f": str(output_path),
+        "export_params": True,
+        "opset_version": opset_version,
+        "input_names": list(input_names),
+        "output_names": list(output_names),
+        "dynamo": True,
+    }
+    for key, value in {
+        "fallback": False,
+        "optimize": True,
+        "verify": False,
+        "report": False,
+        "external_data": False,
+    }.items():
+        if key in export_parameters:
+            export_kwargs[key] = value
     with contextlib.redirect_stdout(progress_stdout), contextlib.redirect_stderr(progress_stderr):
-        torch_module.onnx.export(
-            model,
-            args=model_args,
-            f=str(output_path),
-            export_params=True,
-            opset_version=opset_version,
-            input_names=list(input_names),
-            output_names=list(output_names),
-            dynamo=True,
-            fallback=False,
-            optimize=True,
-            verify=False,
-            report=False,
-            external_data=False,
-        )
+        torch_module.onnx.export(**export_kwargs)
 
 
 def ensure_torch_onnx_dynamo_exporter_dependencies() -> None:

@@ -13,6 +13,9 @@ from backend.service.application.models.yolo_core_common.data.mosaic import (
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    pin_yolo_task_value,
+)
 from backend.service.application.models.yolov8_core.data.augmentation import (
     YoloV8TaskAugmentationOptions,
     apply_yolov8_random_affine,
@@ -41,6 +44,14 @@ class YoloV8ObbTrainingBatch:
 
     images: Any
     targets: tuple[YoloV8ObbPreparedTarget, ...]
+
+    def pin_memory(self) -> "YoloV8ObbTrainingBatch":
+        """让 PyTorch DataLoader 能对自定义 batch 执行 pinned memory。"""
+
+        return YoloV8ObbTrainingBatch(
+            images=pin_yolo_task_value(self.images),
+            targets=pin_yolo_task_value(self.targets),
+        )
 
 
 def build_yolov8_obb_training_batch(

@@ -144,6 +144,7 @@ class PyTorchYoloV8SegmentationRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
         input_tensor = input_tensor.float()
@@ -168,9 +169,6 @@ class PyTorchYoloV8SegmentationRuntimeSession:
             device_name=self.device_name,
             started_at=infer_started_at,
         )
-
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
 
         postprocess_started_at = perf_counter()
         prediction_array, proto_array = normalize_yolov8_segmentation_outputs_for_backend(
@@ -200,11 +198,15 @@ class PyTorchYoloV8SegmentationRuntimeSession:
             instances=instances,
             save_result_image=request.save_result_image,
         )
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
 
         return YoloV8SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
             preview_image_bytes=preview_image_bytes,
+            image_width=image_width,
+            image_height=image_height,
             runtime_session_info=YoloV8SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,

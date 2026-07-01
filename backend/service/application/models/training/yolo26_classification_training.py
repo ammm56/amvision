@@ -15,6 +15,9 @@ from backend.service.application.models.yolo_core_common.weights import (
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    resolve_yolo_classification_dataloader_plan,
+)
 from backend.service.application.models.yolo26_core import build_yolo26_model
 from backend.service.application.models.yolo26_core.data import (
     load_yolo26_classification_training_manifest,
@@ -189,6 +192,10 @@ def run_yolo26_classification_training(
         extra.get("evaluation_interval", request.evaluation_interval)
     )
     augmentation_options = build_yolo_classification_augmentation_options(extra)
+    dataloader_plan = resolve_yolo_classification_dataloader_plan(
+        extra_options=extra,
+        device=device_name,
+    )
 
     if resume_state is not None:
         validate_yolo26_classification_resume_parameters(
@@ -261,6 +268,7 @@ def run_yolo26_classification_training(
             precision=precision,
             device_name=device_name,
             augmentation_options=augmentation_options,
+            dataloader_plan=dataloader_plan,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
             min_lr_ratio=min_lr_ratio,

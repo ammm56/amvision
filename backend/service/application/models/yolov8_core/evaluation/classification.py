@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.training import (
+    YoloClassificationDataLoaderPlan,
+    build_yolo_classification_training_dataloader,
+    load_yolo_classification_dataloader_imports,
+    move_yolo_classification_batch_to_device,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
 )
@@ -22,24 +28,43 @@ def evaluate_yolov8_classification_samples(
     device: str,
     precision: str,
     imports: Any,
+    dataloader_plan: YoloClassificationDataLoaderPlan | None = None,
 ) -> dict[str, float]:
     """对验证样本执行 YOLOv8 classification 训练期评估。"""
 
+    plan = dataloader_plan or YoloClassificationDataLoaderPlan(
+        num_workers=0,
+        pin_memory=str(device).startswith("cuda"),
+        prefetch_factor=4,
+        persistent_workers=False,
+        seed=100_000,
+    )
+    validation_dataloader = build_yolo_classification_training_dataloader(
+        torch_module=imports.torch,
+        samples=samples,
+        batch_size=batch_size,
+        input_size=input_size,
+        augmentation_options=None,
+        plan=plan,
+        shuffle=False,
+        build_batch=build_yolov8_classification_training_batch,
+        load_imports=load_yolo_classification_dataloader_imports,
+    )
+    previous_training_mode = bool(model.training)
     model.eval()
     correct_top1 = 0
     correct_top5 = 0
     total = 0
     with imports.torch.no_grad():
-        for batch_start in range(0, len(samples), batch_size):
-            batch = build_yolov8_classification_training_batch(
-                samples=samples[batch_start:batch_start + batch_size],
-                input_size=input_size,
+        for cpu_batch in validation_dataloader:
+            if cpu_batch is None:
+                continue
+            batch = move_yolo_classification_batch_to_device(
+                batch=cpu_batch,
                 device=device,
                 precision=precision,
-                imports=imports,
+                torch_module=imports.torch,
             )
-            if batch is None:
-                continue
             outputs = model(batch.images)
             _, probabilities = normalize_yolov8_classification_training_outputs(
                 outputs=outputs,
@@ -55,7 +80,7 @@ def evaluate_yolov8_classification_samples(
                 if target in topk_prediction[index]:
                     correct_top5 += 1
             total += int(batch.targets.size(0))
-    model.train()
+    model.train(previous_training_mode)
     return {
         "top1_accuracy": round(correct_top1 / max(1, total), 6) if total > 0 else 0.0,
         "top5_accuracy": round(correct_top5 / max(1, total), 6) if total > 0 else 0.0,

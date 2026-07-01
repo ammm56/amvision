@@ -128,6 +128,7 @@ class OnnxRuntimeYoloV8SegmentationRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             self.imports.np.float32,
@@ -141,9 +142,6 @@ class OnnxRuntimeYoloV8SegmentationRuntimeSession:
             {self.input_name: input_tensor},
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
 
         postprocess_started_at = perf_counter()
         prediction_array, proto_array = normalize_yolov8_segmentation_outputs_for_backend(
@@ -169,11 +167,15 @@ class OnnxRuntimeYoloV8SegmentationRuntimeSession:
             instances=instances,
             save_result_image=request.save_result_image,
         )
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
 
         return YoloV8SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
             preview_image_bytes=preview_image_bytes,
+            image_width=image_width,
+            image_height=image_height,
             runtime_session_info=YoloV8SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,

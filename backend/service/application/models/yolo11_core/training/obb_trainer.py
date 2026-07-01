@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.training import (
+    YoloTaskDataLoaderPlan,
+    build_yolo_task_training_dataloader,
+    load_yolo_task_dataloader_imports,
+    move_yolo_task_batch_to_device,
+    replace_yolo_task_dataloader_plan_seed,
+    resolve_yolo_task_dataloader_plan,
+)
 from backend.service.application.models.yolo11_core.data import (
     build_yolo11_obb_training_batch,
     resolve_yolo11_task_augmentation_for_epoch,
@@ -112,10 +119,15 @@ def run_yolo11_obb_training_loop(
     ]
     | None = None,
     savepoint_callback: Callable[[Yolo11ObbTrainingSavePoint], None] | None = None,
+    dataloader_plan: YoloTaskDataLoaderPlan | None = None,
 ) -> Yolo11ObbTrainingLoopResult:
     """执行 YOLO11 OBB 从 start epoch 到 max epoch 的完整训练循环。"""
 
     checkpoint_bytes = b""
+    resolved_dataloader_plan = dataloader_plan or resolve_yolo_task_dataloader_plan(
+        extra_options={},
+        device=device_name,
+    )
     for epoch in range(start_epoch, max_epochs):
         model.train()
         epoch_metrics, global_iteration = _run_yolo11_obb_epoch(
@@ -136,6 +148,10 @@ def run_yolo11_obb_training_loop(
             augmentation_options=augmentation_options,
             assign_topk2=assign_topk2,
             autocast_context=autocast_context,
+            dataloader_plan=replace_yolo_task_dataloader_plan_seed(
+                plan=resolved_dataloader_plan,
+                seed=epoch,
+            ),
         )
         metrics_history.append({"epoch": epoch, **epoch_metrics})
         epoch_progress = Yolo11ObbTrainingEpochProgress(
@@ -234,6 +250,7 @@ def _run_yolo11_obb_epoch(
     augmentation_options: Any,
     assign_topk2: int | None,
     autocast_context: Callable[[], Any],
+    dataloader_plan: YoloTaskDataLoaderPlan,
 ) -> tuple[dict[str, float], int]:
     """执行 YOLO11 OBB 单轮训练。"""
 
@@ -244,22 +261,26 @@ def _run_yolo11_obb_epoch(
         epoch_index=epoch,
         max_epochs=max_epochs,
     )
-    shuffled = list(train_annotations)
-    random.shuffle(shuffled)
-    for batch_start in range(0, len(shuffled), batch_size):
-        batch_annotations = shuffled[batch_start : batch_start + batch_size]
-        batch_input_size = resolve_yolo11_task_batch_input_size(
-            base_input_size=base_input_size,
-            augmentation_options=effective_augmentation_options,
-        )
-        batch = build_yolo11_obb_training_batch(
-            samples=batch_annotations,
-            input_size=batch_input_size,
+    train_dataloader = build_yolo_task_training_dataloader(
+        torch_module=imports.torch,
+        samples=train_annotations,
+        batch_size=batch_size,
+        input_size=base_input_size,
+        augmentation_options=effective_augmentation_options,
+        plan=dataloader_plan,
+        shuffle=True,
+        build_batch=build_yolo11_obb_training_batch,
+        load_imports=load_yolo_task_dataloader_imports,
+        resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
+    )
+    for cpu_batch in train_dataloader:
+        if cpu_batch is None:
+            continue
+        batch = move_yolo_task_batch_to_device(
+            batch=cpu_batch,
             device=device_name,
             precision=precision,
-            imports=imports,
-            augmentation_options=effective_augmentation_options,
-            available_samples=shuffled,
+            torch_module=imports.torch,
         )
         if batch is None:
             continue

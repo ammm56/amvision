@@ -10,6 +10,9 @@ from typing import Any
 from backend.service.application.models.yolo_core_common.data.mosaic import (
     build_yolo_mosaic4_canvas,
 )
+from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    pin_yolo_task_value,
+)
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
@@ -41,6 +44,14 @@ class Yolo26ObbTrainingBatch:
 
     images: Any
     targets: tuple[Yolo26ObbPreparedTarget, ...]
+
+    def pin_memory(self) -> "Yolo26ObbTrainingBatch":
+        """让 PyTorch DataLoader 能对自定义 batch 执行 pinned memory。"""
+
+        return Yolo26ObbTrainingBatch(
+            images=pin_yolo_task_value(self.images),
+            targets=pin_yolo_task_value(self.targets),
+        )
 
 
 def build_yolo26_obb_training_batch(

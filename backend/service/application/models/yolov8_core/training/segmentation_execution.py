@@ -21,6 +21,13 @@ from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
     resolve_torch_amp_device_type,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    build_yolo_task_training_dataloader,
+    load_yolo_task_dataloader_imports,
+    move_yolo_task_batch_to_device,
+    replace_yolo_task_dataloader_plan_seed,
+    resolve_yolo_task_dataloader_plan,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -334,6 +341,10 @@ def run_yolov8_segmentation_training(
 
     nc = len(labels)
     strides = model.stride if hasattr(model, "stride") else (8, 16, 32)
+    dataloader_plan = resolve_yolo_task_dataloader_plan(
+        extra_options=dict(request.extra_options or {}),
+        device=device,
+    )
 
     for epoch in range(start_epoch, me):
         model.train()
@@ -345,24 +356,33 @@ def run_yolov8_segmentation_training(
             epoch_index=epoch,
             max_epochs=me,
         )
-        for b_start in range(0, len(train_anns), bs):
-            batch_annotations = train_anns[b_start : b_start + bs]
-            batch_input_size = resolve_yolov8_task_batch_input_size(
-                base_input_size=input_size,
-                augmentation_options=effective_yolov8_augmentation_options,
-            )
-            batch = _seg_build_batch(
-                batch_annotations,
-                batch_input_size,
-                device,
-                precision,
-                imports,
-                yolov8_augmentation_options=effective_yolov8_augmentation_options,
-                yolov8_available_samples=train_anns,
+        train_dataloader = build_yolo_task_training_dataloader(
+            torch_module=imports.torch,
+            samples=train_anns,
+            batch_size=bs,
+            input_size=input_size,
+            augmentation_options=effective_yolov8_augmentation_options,
+            plan=replace_yolo_task_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=epoch,
+            ),
+            shuffle=True,
+            build_batch=build_yolov8_segmentation_training_batch,
+            load_imports=load_yolo_task_dataloader_imports,
+            resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
+        )
+        for cpu_batch in train_dataloader:
+            if cpu_batch is None:
+                continue
+            batch = move_yolo_task_batch_to_device(
+                batch=cpu_batch,
+                device=device,
+                precision=precision,
+                torch_module=imports.torch,
             )
             if batch is None:
                 continue
-            images, targets_list = batch
+            images, targets_list = batch.images, batch.targets
             with _seg_autocast(imports, precision, device):
                 outputs = model(images)
                 if isinstance(outputs, dict) and "one2many" in outputs:
@@ -751,32 +771,6 @@ def _extract_segmentation_polygons(
     if isinstance(seg[0], list):
         return seg
     return None
-
-
-def _seg_build_batch(
-    anns: list[_SegTrainingAnnotation],
-    input_size: tuple[int, int],
-    device: str,
-    precision: str,
-    imports: Any,
-    *,
-    yolov8_augmentation_options: Any | None = None,
-    yolov8_available_samples: list[_SegTrainingAnnotation] | None = None,
-) -> tuple[Any, list[dict[str, Any]]] | None:
-    """构造 YOLOv8 segmentation 训练 batch。"""
-
-    batch = build_yolov8_segmentation_training_batch(
-        samples=anns,
-        input_size=input_size,
-        device=device,
-        precision=precision,
-        imports=imports,
-        augmentation_options=yolov8_augmentation_options,
-        available_samples=yolov8_available_samples,
-    )
-    if batch is None:
-        return None
-    return batch.images, batch.targets
 
 
 def _seg_compute_mask_loss(

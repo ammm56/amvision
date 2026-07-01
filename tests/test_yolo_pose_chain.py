@@ -9,6 +9,7 @@ import torch
 
 from backend.service.application.models.yolo_core_common.losses.pose_loss import compute_pose_loss
 from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.yolo_core_common.geometry import build_yolo_letterbox_transform
 from backend.service.application.runtime.predictors.yolov8.pose.postprocess import (
     build_yolov8_pose_runtime_instances,
 )
@@ -102,8 +103,12 @@ def test_pose_prediction_array_postprocess():
     instances, kpt_shape = build_yolov8_pose_runtime_instances(
         np_module=np, prediction_array=prediction, labels=labels,
         score_threshold=0.3, keypoint_confidence_threshold=0.5,
-        resize_ratio=1.0, image_width=256, image_height=256,
-        input_size=(256, 256), default_kpt_shape=(17, 3),
+        letterbox_transform=build_yolo_letterbox_transform(
+            source_width=256,
+            source_height=256,
+            input_size=(256, 256),
+        ),
+        default_kpt_shape=(17, 3),
     )
     assert isinstance(instances, tuple)
     assert kpt_shape == (17, 3)

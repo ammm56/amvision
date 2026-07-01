@@ -23,6 +23,16 @@ class Yolo11ClassificationTrainingBatch:
     images: Any
     targets: Any
 
+    def pin_memory(self) -> "Yolo11ClassificationTrainingBatch":
+        """让 PyTorch DataLoader 能对自定义 batch 执行 pinned memory。"""
+
+        image_pin_memory = getattr(self.images, "pin_memory", None)
+        target_pin_memory = getattr(self.targets, "pin_memory", None)
+        return Yolo11ClassificationTrainingBatch(
+            images=image_pin_memory() if callable(image_pin_memory) else self.images,
+            targets=target_pin_memory() if callable(target_pin_memory) else self.targets,
+        )
+
 
 def build_yolo11_classification_training_batch(
     *,

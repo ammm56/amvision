@@ -25,6 +25,13 @@ from backend.service.application.models.yolo_core_common.weights import (
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    build_yolo_classification_training_dataloader,
+    load_yolo_classification_dataloader_imports,
+    move_yolo_classification_batch_to_device,
+    replace_yolo_classification_dataloader_plan_seed,
+    resolve_yolo_classification_dataloader_plan,
+)
 from backend.service.application.models.yolov8_core import build_yolov8_model
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
@@ -249,6 +256,10 @@ def run_yolov8_classification_training(
         extra.get("evaluation_interval", request.evaluation_interval)
     )
     augmentation_options = build_yolo_classification_augmentation_options(extra)
+    dataloader_plan = resolve_yolo_classification_dataloader_plan(
+        extra_options=extra,
+        device=device_name,
+    )
 
     if resume_state is not None:
         _validate_resume_parameters(
@@ -315,18 +326,28 @@ def run_yolov8_classification_training(
         train_loss_sum = 0.0
         train_correct = 0
         train_total = 0
-        epoch_iterations = 0
-        for batch_start in range(0, len(train_annotations), batch_size):
-            batch_annotations = train_annotations[
-                batch_start : batch_start + batch_size
-            ]
-            batch = build_yolov8_classification_training_batch(
-                samples=batch_annotations,
-                input_size=input_size,
+        train_dataloader = build_yolo_classification_training_dataloader(
+            torch_module=imports.torch,
+            samples=train_annotations,
+            batch_size=batch_size,
+            input_size=input_size,
+            augmentation_options=augmentation_options,
+            plan=replace_yolo_classification_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=epoch,
+            ),
+            shuffle=True,
+            build_batch=build_yolov8_classification_training_batch,
+            load_imports=load_yolo_classification_dataloader_imports,
+        )
+        for cpu_batch in train_dataloader:
+            if cpu_batch is None:
+                continue
+            batch = move_yolo_classification_batch_to_device(
+                batch=cpu_batch,
                 device=device_name,
                 precision=precision,
-                imports=imports,
-                augmentation_options=augmentation_options,
+                torch_module=imports.torch,
             )
             if batch is None:
                 continue
@@ -352,7 +373,6 @@ def run_yolov8_classification_training(
             train_correct += int((predicted == batch_targets).sum().item())
             train_total += int(batch_targets.size(0))
             train_loss_sum += float(loss.item()) * int(batch_targets.size(0))
-            epoch_iterations += 1
             global_iteration += 1
         train_accuracy = train_correct / max(1, train_total)
         train_loss = train_loss_sum / max(1, train_total)
@@ -387,6 +407,10 @@ def run_yolov8_classification_training(
                 device=device_name,
                 precision=precision,
                 imports=imports,
+                dataloader_plan=replace_yolo_classification_dataloader_plan_seed(
+                    plan=dataloader_plan,
+                    seed=100_000 + epoch,
+                ),
             )
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
