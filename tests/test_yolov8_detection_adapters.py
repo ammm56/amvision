@@ -39,6 +39,11 @@ from backend.service.application.models.yolov8_core.training import (
     resolve_yolov8_detection_epoch_control,
     run_yolov8_detection_training_epoch,
 )
+from backend.service.application.models.yolov8_core.training.pytorch_dataloader import (
+    YoloV8DetectionDataLoaderBatch,
+    YoloV8DetectionDataLoaderPlan,
+    build_yolov8_detection_training_dataloader,
+)
 from backend.service.application.models.training.yolov8_training_service import (
     SqlAlchemyYoloV8TrainingTaskService,
     YoloV8TrainingTaskRequest,
@@ -491,6 +496,66 @@ def test_yolov8_detection_data_resolves_export_and_builds_batch(tmp_path: Path) 
     assert targets[0].boxes_xyxy[0] == (18.0, 12.0, 40.0, 36.0)
 
 
+def test_yolov8_detection_dataloader_builds_cpu_batch(tmp_path: Path) -> None:
+    """验证 YOLOv8 detection DataLoader 能构造 CPU batch。"""
+
+    dataset_storage = _create_dataset_storage(tmp_path)
+    _write_completed_dataset_export_files(dataset_storage)
+    manifest_payload = json.loads(
+        dataset_storage.resolve("exports/dataset-export-1/manifest.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    resolved_splits = resolve_yolov8_detection_splits(
+        dataset_storage=dataset_storage,
+        cv2_module=cv2,
+        manifest_payload=manifest_payload,
+    )
+    train_split = resolve_yolov8_detection_train_split(resolved_splits)
+    samples, _, _ = load_yolov8_detection_training_samples(split=train_split)
+
+    dataloader = build_yolov8_detection_training_dataloader(
+        torch_module=torch,
+        samples=samples,
+        batch_size=1,
+        input_size=(64, 64),
+        augment_training=True,
+        augmentation_options=YoloV8DetectionAugmentationOptions(
+            flip_prob=0.0,
+            hsv_prob=0.0,
+            mosaic_prob=0.0,
+            mixup_prob=0.0,
+            enable_mixup=False,
+            affine_prob=0.0,
+            degrees=0.0,
+            translate=0.0,
+            scale=0.0,
+            shear=0.0,
+            perspective=0.0,
+            mosaic_scale=(1.0, 1.0),
+            mixup_scale=(1.0, 1.0),
+            close_mosaic_epochs=0,
+            multi_scale=False,
+            multi_scale_range=(1.0, 1.0),
+            multi_scale_stride=32,
+        ),
+        plan=YoloV8DetectionDataLoaderPlan(
+            num_workers=0,
+            pin_memory=False,
+            prefetch_factor=4,
+            persistent_workers=False,
+            seed=1,
+        ),
+        shuffle=False,
+    )
+
+    batch = next(iter(dataloader))
+    assert tuple(batch.images.shape) == (1, 3, 64, 64)
+    assert batch.input_size == (64, 64)
+    assert len(batch.targets) == 1
+    assert batch.targets[0].boxes_xyxy[0] == (18.0, 12.0, 40.0, 36.0)
+
+
 def test_yolov8_detection_training_epoch_runner_updates_model() -> None:
     """验证 YOLOv8 detection 单轮训练执行器会推进 batch 并更新参数。"""
 
@@ -522,6 +587,56 @@ def test_yolov8_detection_training_epoch_runner_updates_model() -> None:
 
     assert result.global_iteration == 2
     assert set(result.train_metrics) == {"loss", "class_loss", "box_loss", "dfl_loss"}
+    assert len(progress_events) == 2
+    assert progress_events[-1].global_iteration == 2
+    assert torch.equal(model.weight.detach(), initial_weight) is False
+
+
+def test_yolov8_detection_training_epoch_runner_accepts_dataloader_batches() -> None:
+    """验证 YOLOv8 detection epoch runner 能消费 DataLoader batch。"""
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    scaler = _NoopGradScaler()
+    progress_events = []
+    initial_weight = model.weight.detach().clone()
+
+    dataloader_batches = [
+        YoloV8DetectionDataLoaderBatch(
+            images=torch.tensor([[0.0]], dtype=torch.float32),
+            targets=(torch.tensor([[0.0]], dtype=torch.float32),),
+            input_size=(1, 1),
+        ),
+        YoloV8DetectionDataLoaderBatch(
+            images=torch.tensor([[1.0]], dtype=torch.float32),
+            targets=(torch.tensor([[1.0]], dtype=torch.float32),),
+            input_size=(1, 1),
+        ),
+    ]
+    result = run_yolov8_detection_training_epoch(
+        torch_module=torch,
+        model=model,
+        samples=(0.0, 1.0),
+        batch_size=1,
+        input_size=(1, 1),
+        epoch=1,
+        max_epochs=1,
+        global_iteration=0,
+        total_iterations=2,
+        optimizer=optimizer,
+        scaler=scaler,
+        autocast_context=nullcontext,
+        build_batch=_build_linear_training_batch,
+        unwrap_outputs=lambda output: {"prediction": output},
+        compute_loss=_compute_linear_training_loss,
+        grad_clip_norm=10.0,
+        dataloader_batches=dataloader_batches,
+        device="cpu",
+        runtime_precision="fp32",
+        batch_callback=progress_events.append,
+    )
+
+    assert result.global_iteration == 2
     assert len(progress_events) == 2
     assert progress_events[-1].global_iteration == 2
     assert torch.equal(model.weight.detach(), initial_weight) is False

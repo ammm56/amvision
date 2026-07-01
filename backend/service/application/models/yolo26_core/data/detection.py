@@ -86,7 +86,34 @@ def build_yolo26_detection_training_batch(
     available_samples: Sequence[Any] | None = None,
     augmentation_options: Yolo26TaskAugmentationOptions | None = None,
 ) -> tuple[Any, tuple[Yolo26DetectionPreparedTarget, ...]]:
-    """把 YOLO26 detection 样本拼成训练或 validation batch。"""
+    """把 YOLO26 detection CPU batch 搬运到训练设备。"""
+
+    images, prepared_targets = build_yolo26_detection_training_batch_cpu(
+        imports=imports,
+        samples=samples,
+        input_size=input_size,
+        augment_training=augment_training,
+        available_samples=available_samples,
+        augmentation_options=augmentation_options,
+    )
+    images = move_yolo_tensor_to_training_device(
+        images,
+        device=device,
+        runtime_precision=runtime_precision,
+    )
+    return images, prepared_targets
+
+
+def build_yolo26_detection_training_batch_cpu(
+    *,
+    imports: Any,
+    samples: Sequence[Any],
+    input_size: tuple[int, int],
+    augment_training: bool = False,
+    available_samples: Sequence[Any] | None = None,
+    augmentation_options: Yolo26TaskAugmentationOptions | None = None,
+) -> tuple[Any, tuple[Yolo26DetectionPreparedTarget, ...]]:
+    """把 YOLO26 detection 样本拼成 CPU batch，供 DataLoader worker 预取。"""
 
     image_tensors: list[Any] = []
     prepared_targets: list[Yolo26DetectionPreparedTarget] = []
@@ -138,11 +165,7 @@ def build_yolo26_detection_training_batch(
             )
         )
 
-    images = move_yolo_tensor_to_training_device(
-        imports.torch.stack(image_tensors, dim=0),
-        device=device,
-        runtime_precision=runtime_precision,
-    )
+    images = imports.torch.stack(image_tensors, dim=0)
     return images, tuple(prepared_targets)
 
 
@@ -552,5 +575,6 @@ __all__ = [
     "Yolo26DetectionTrainingAnnotation",
     "Yolo26DetectionTrainingSample",
     "build_yolo26_detection_training_batch",
+    "build_yolo26_detection_training_batch_cpu",
     "serialize_yolo26_detection_augmentation_options",
 ]

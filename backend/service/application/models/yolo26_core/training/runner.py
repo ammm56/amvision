@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
+)
+from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
+    Yolo26DetectionDataLoaderBatch,
 )
 
 
@@ -55,6 +61,9 @@ def run_yolo26_detection_training_epoch(
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
     ema: Any | None = None,
+    dataloader_batches: Iterable[Yolo26DetectionDataLoaderBatch] | None = None,
+    device: str | None = None,
+    runtime_precision: str = "fp32",
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
@@ -62,18 +71,22 @@ def run_yolo26_detection_training_epoch(
     """执行 YOLO26 detection 一个 epoch 的 batch 循环。"""
 
     shuffled_samples = list(samples)
-    random.shuffle(shuffled_samples)
     available_samples = tuple(shuffled_samples)
-    max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
+    batch_iterator: Iterable[Any]
+    if dataloader_batches is None:
+        random.shuffle(shuffled_samples)
+        available_samples = tuple(shuffled_samples)
+        batch_iterator = _iter_yolo26_detection_batches(shuffled_samples, batch_size)
+        max_iterations = max(1, (len(shuffled_samples) + batch_size - 1) // batch_size)
+    else:
+        batch_iterator = dataloader_batches
+        max_iterations = max(1, _safe_len(dataloader_batches))
     epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
     model.train()
     optimizer.zero_grad(set_to_none=True)
     last_optimizer_step_iteration = 0
 
-    for iteration, sample_batch in enumerate(
-        _iter_yolo26_detection_batches(shuffled_samples, batch_size),
-        start=1,
-    ):
+    for iteration, sample_batch in enumerate(batch_iterator, start=1):
         global_iteration += 1
         current_accumulate = _resolve_yolo26_current_accumulate(
             optimizer=optimizer,
@@ -82,7 +95,15 @@ def run_yolo26_detection_training_epoch(
             epoch=epoch,
             batch_size=batch_size,
         )
-        images, batch_targets = build_batch(sample_batch, available_samples, epoch)
+        if isinstance(sample_batch, Yolo26DetectionDataLoaderBatch):
+            images = move_yolo_tensor_to_training_device(
+                sample_batch.images,
+                device=device or "cpu",
+                runtime_precision=runtime_precision,
+            )
+            batch_targets = sample_batch.targets
+        else:
+            images, batch_targets = build_batch(sample_batch, available_samples, epoch)
         progress_input_size = _read_yolo26_batch_input_size(
             images=images,
             fallback=input_size,
@@ -160,6 +181,15 @@ def _iter_yolo26_detection_batches(
         samples[start : start + resolved_batch_size]
         for start in range(0, len(samples), resolved_batch_size)
     ]
+
+
+def _safe_len(value: Any) -> int:
+    """读取 DataLoader batch 数量，读取失败时使用 1 兜底。"""
+
+    try:
+        return int(len(value))
+    except TypeError:
+        return 1
 
 
 def _resolve_yolo26_current_accumulate(

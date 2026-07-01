@@ -164,6 +164,11 @@ from backend.service.application.models.yolo11_core.training.plan import (
     Yolo11DetectionTrainingExecutionPlan,
     plan_yolo11_detection_training_execution,
 )
+from backend.service.application.models.yolo11_core.training.pytorch_dataloader import (
+    Yolo11DetectionDataLoaderBatch,
+    Yolo11DetectionDataLoaderPlan,
+    build_yolo11_detection_training_dataloader,
+)
 from backend.service.application.models.yolo11_core.training.runner import (
     Yolo11DetectionTrainingBatchProgress,
     Yolo11DetectionTrainingEpochResult,
@@ -215,6 +220,8 @@ __all__ = [
     "YOLO11_DETECTION_DEFAULT_MIN_LR_RATIO",
     "Yolo11DetectionEpochControlDecision",
     "Yolo11DetectionEpochCheckpointUpdate",
+    "Yolo11DetectionDataLoaderBatch",
+    "Yolo11DetectionDataLoaderPlan",
     "Yolo11ClassificationResumeState",
     "Yolo11ClassificationTrainingControlCommand",
     "Yolo11ClassificationTrainingEpochProgress",
@@ -273,6 +280,7 @@ __all__ = [
     "build_yolo11_obb_checkpoint_bytes",
     "build_yolo11_detection_checkpoint_state",
     "build_yolo11_detection_epoch_checkpoint_update",
+    "build_yolo11_detection_training_dataloader",
     "build_yolo11_detection_training_runtime",
     "build_yolo11_detection_training_savepoint_payload",
     "compute_yolo11_detection_training_loss",

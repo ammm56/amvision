@@ -31,6 +31,10 @@ from backend.service.application.models.yolo26_core.data import (
     resolve_yolo26_task_batch_input_size,
     serialize_yolo26_detection_augmentation_options,
 )
+from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
+    Yolo26DetectionDataLoaderPlan,
+    build_yolo26_detection_training_dataloader,
+)
 from backend.service.application.models.yolo26_core.training import (
     Yolo26DetectionTrainerEpochProgress,
     Yolo26DetectionResumeValidationRequest,
@@ -91,6 +95,9 @@ from backend.service.application.models.yolo26_core.evaluation.detection import 
 from backend.service.application.models.yolo26_core.postprocess.detection import (
     YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
 )
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
 
 
 YOLO26_IMPLEMENTATION_MODE = YOLO26_DETECTION_CORE_IMPLEMENTATION_MODE
@@ -98,6 +105,8 @@ Yolo26DetectionTrainingExecutionRequest = YoloDetectionTrainingExecutionRequest
 Yolo26DetectionTrainingExecutionResult = YoloDetectionTrainingExecutionResult
 Yolo26TrainingBatchProgress = YoloDetectionTrainingBatchProgress
 Yolo26TrainingEpochProgress = YoloDetectionTrainingEpochProgress
+YOLO26_DETECTION_DEFAULT_NUM_WORKERS = 0
+YOLO26_DETECTION_DEFAULT_PREFETCH_FACTOR = 4
 
 
 @dataclass(frozen=True)
@@ -157,6 +166,10 @@ def run_yolo26_detection_training(
     )
     training_options = _resolve_yolo26_detection_training_options(extra_options)
     augmentation_options = build_yolo26_task_augmentation_options(extra_options)
+    dataloader_plan = _resolve_yolo26_detection_dataloader_plan(
+        extra_options=extra_options,
+        device=device,
+    )
     validation_split_name = (
         validation_split.name if validation_split is not None else None
     )
@@ -374,6 +387,7 @@ def run_yolo26_detection_training(
                     "evaluation_confidence_threshold"
                 ],
                 nms_threshold=training_options["evaluation_nms_threshold"],
+                dataloader_plan=dataloader_plan,
             ),
             grad_clip_norm=training_options["grad_clip_norm"],
             category_names=category_names,
@@ -410,6 +424,27 @@ def run_yolo26_detection_training(
             validation_history=validation_history,
             evaluated_epochs=evaluated_epochs,
             previous_best_checkpoint_bytes=best_checkpoint_bytes,
+            training_dataloader_factory=lambda epoch: (
+                build_yolo26_detection_training_dataloader(
+                    torch_module=imports.torch,
+                    samples=train_samples,
+                    batch_size=batch_size,
+                    input_size=input_size,
+                    augment_training=True,
+                    augmentation_options=resolve_yolo26_task_augmentation_for_epoch(
+                        augmentation_options=augmentation_options,
+                        epoch_index=max(0, int(epoch) - 1),
+                        max_epochs=max_epochs,
+                    ),
+                    plan=_replace_yolo26_dataloader_plan_seed(
+                        plan=dataloader_plan,
+                        seed=int(epoch),
+                    ),
+                    shuffle=True,
+                )
+            ),
+            device=device,
+            runtime_precision=runtime_precision,
             batch_callback=(
                 _build_yolo26_batch_progress_adapter(request.batch_callback)
                 if request.batch_callback is not None
@@ -829,9 +864,23 @@ def _evaluate_yolo26_detection_model(
     assign_beta: float,
     confidence_threshold: float,
     nms_threshold: float,
+    dataloader_plan: Yolo26DetectionDataLoaderPlan,
 ) -> dict[str, object]:
     """执行 YOLO26 detection validation loss 与 COCO bbox mAP。"""
 
+    validation_dataloader = build_yolo26_detection_training_dataloader(
+        torch_module=imports.torch,
+        samples=samples,
+        batch_size=batch_size,
+        input_size=input_size,
+        augment_training=False,
+        augmentation_options=None,
+        plan=_replace_yolo26_dataloader_plan_seed(
+            plan=dataloader_plan,
+            seed=100_000,
+        ),
+        shuffle=False,
+    )
     validation_losses = evaluate_yolo26_detection_validation_losses(
         torch_module=imports.torch,
         model=model,
@@ -867,6 +916,9 @@ def _evaluate_yolo26_detection_model(
         assign_topk=assign_topk,
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
+        dataloader_batches=validation_dataloader,
+        device=device,
+        runtime_precision=runtime_precision,
     )
     validation_map = _evaluate_yolo26_validation_map(
         imports=imports,
@@ -881,6 +933,7 @@ def _evaluate_yolo26_detection_model(
         annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
+        dataloader_plan=dataloader_plan,
     )
     return {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
@@ -907,6 +960,7 @@ def _evaluate_yolo26_validation_map(
     annotation_payload: dict[str, object] | None,
     confidence_threshold: float,
     nms_threshold: float,
+    dataloader_plan: Yolo26DetectionDataLoaderPlan,
 ) -> dict[str, float]:
     """执行 YOLO26 detection COCO bbox mAP。"""
 
@@ -921,16 +975,27 @@ def _evaluate_yolo26_validation_map(
     model.eval()
     detections: list[dict[str, object]] = []
     try:
+        validation_dataloader = build_yolo26_detection_training_dataloader(
+            torch_module=imports.torch,
+            samples=samples,
+            batch_size=batch_size,
+            input_size=input_size,
+            augment_training=False,
+            augmentation_options=None,
+            plan=_replace_yolo26_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=200_000,
+            ),
+            shuffle=False,
+        )
         with imports.torch.no_grad():
-            for batch_samples in _iter_yolo26_batches(samples, batch_size):
-                images, batch_targets = build_yolo26_detection_training_batch(
-                    imports=imports,
-                    samples=batch_samples,
-                    input_size=input_size,
+            for batch in validation_dataloader:
+                images = move_yolo_tensor_to_training_device(
+                    batch.images,
                     device=device,
                     runtime_precision=runtime_precision,
-                    augment_training=False,
                 )
+                batch_targets = batch.targets
                 prediction_tensor = model(images)
                 detections.extend(
                     convert_yolo26_predictions_to_coco_detections(
@@ -987,15 +1052,6 @@ def _load_yolo26_coco_ground_truth_silently(
         return ground_truth
 
 
-def _iter_yolo26_batches(samples: tuple[Any, ...], batch_size: int):
-    """按 batch size 迭代 YOLO26 样本。"""
-
-    sample_list = list(samples)
-    resolved_batch_size = max(1, int(batch_size))
-    for start in range(0, len(sample_list), resolved_batch_size):
-        yield sample_list[start : start + resolved_batch_size]
-
-
 def _freeze_yolo26_batch_norm_modules(
     *,
     imports: Any,
@@ -1018,6 +1074,87 @@ def _restore_yolo26_batch_norm_modules(
 
     for module, was_training in batch_norm_states:
         module.train(was_training)
+
+
+def _resolve_yolo26_detection_dataloader_plan(
+    *,
+    extra_options: dict[str, object],
+    device: str,
+) -> Yolo26DetectionDataLoaderPlan:
+    """解析 YOLO26 detection DataLoader 参数。"""
+
+    num_workers = max(
+        0,
+        read_yolo26_int_option(
+            extra_options,
+            "num_workers",
+            default=YOLO26_DETECTION_DEFAULT_NUM_WORKERS,
+        ),
+    )
+    prefetch_factor = max(
+        1,
+        read_yolo26_int_option(
+            extra_options,
+            "prefetch_factor",
+            default=YOLO26_DETECTION_DEFAULT_PREFETCH_FACTOR,
+        ),
+    )
+    return Yolo26DetectionDataLoaderPlan(
+        num_workers=num_workers,
+        pin_memory=_read_yolo26_bool_option(
+            extra_options,
+            "pin_memory",
+            default=str(device).startswith("cuda"),
+        ),
+        prefetch_factor=prefetch_factor,
+        persistent_workers=_read_yolo26_bool_option(
+            extra_options,
+            "persistent_workers",
+            default=num_workers > 0,
+        ),
+        seed=read_yolo26_int_option(extra_options, "seed", default=0),
+    )
+
+
+def _replace_yolo26_dataloader_plan_seed(
+    *,
+    plan: Yolo26DetectionDataLoaderPlan,
+    seed: int,
+) -> Yolo26DetectionDataLoaderPlan:
+    """按 epoch 或验证阶段生成新的 YOLO26 DataLoader seed。"""
+
+    return Yolo26DetectionDataLoaderPlan(
+        num_workers=plan.num_workers,
+        pin_memory=plan.pin_memory,
+        prefetch_factor=plan.prefetch_factor,
+        persistent_workers=plan.persistent_workers,
+        seed=int(plan.seed) + int(seed),
+    )
+
+
+def _read_yolo26_bool_option(
+    extra_options: dict[str, object],
+    key: str,
+    *,
+    default: bool,
+) -> bool:
+    """从 extra_options 读取 YOLO26 布尔配置。"""
+
+    value = extra_options.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return float(value) > 0.0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise InvalidRequestError(
+        "YOLO26 detection 训练布尔参数不合法",
+        details={"option_key": key, "value": value},
+    )
 
 
 def _normalize_yolo26_history_items(value: object) -> list[dict[str, object]]:

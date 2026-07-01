@@ -45,6 +45,10 @@ from backend.service.application.models.yolov8_core.training.execution import (
     plan_yolov8_detection_training_execution,
     prepare_yolov8_detection_training_data_context,
 )
+from backend.service.application.models.yolov8_core.training.pytorch_dataloader import (
+    YoloV8DetectionDataLoaderPlan,
+    build_yolov8_detection_training_dataloader,
+)
 from backend.service.application.models.yolov8_core.training.resume import (
     YoloV8DetectionResumeValidationRequest,
     validate_yolov8_detection_resume_checkpoint,
@@ -62,6 +66,9 @@ from backend.service.application.models.yolov8_core.training.savepoint import (
 )
 from backend.service.application.models.yolov8_core.training.validation import (
     evaluate_yolov8_detection_validation_losses,
+)
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
 )
 from backend.service.application.models.yolo_core_common.modeling.detection_builder import (
     load_yolo_checkpoint,
@@ -112,6 +119,8 @@ YOLOV8_DETECTION_DEFAULT_CLOSE_MOSAIC_EPOCHS = 10
 YOLOV8_DETECTION_DEFAULT_MULTI_SCALE = False
 YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_RANGE = (0.5, 1.5)
 YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_STRIDE = 32
+YOLOV8_DETECTION_DEFAULT_NUM_WORKERS = 0
+YOLOV8_DETECTION_DEFAULT_PREFETCH_FACTOR = 4
 
 
 @dataclass(frozen=True)
@@ -414,6 +423,10 @@ def run_yolov8_detection_training(
         "grad_clip_norm",
         default=YOLOV8_DETECTION_DEFAULT_GRAD_CLIP_NORM,
     )
+    dataloader_plan = _resolve_yolov8_detection_dataloader_plan(
+        extra_options=extra_options,
+        device=device,
+    )
     augmentation_options = _resolve_detection_augmentation_options(extra_options)
     validation_split_name = (
         validation_split.name if validation_split is not None else None
@@ -558,6 +571,24 @@ def run_yolov8_detection_training(
     resume_epoch = resume_state.resume_epoch if resume_state is not None else 0
 
     for epoch in range(resume_epoch + 1, max_epochs + 1):
+        training_dataloader = build_yolov8_detection_training_dataloader(
+            torch_module=imports.torch,
+            samples=train_samples,
+            batch_size=batch_size,
+            input_size=input_size,
+            augment_training=True,
+            augmentation_options=_resolve_detection_augmentation_for_epoch(
+                augmentation_options=augmentation_options,
+                epoch=epoch,
+                max_epochs=max_epochs,
+            ),
+            plan=_replace_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=epoch,
+            ),
+            shuffle=True,
+        )
+
         def on_yolov8_batch_progress(
             progress: YoloV8DetectionTrainingBatchProgress,
         ) -> None:
@@ -608,6 +639,9 @@ def run_yolov8_detection_training(
             ),
             grad_clip_norm=grad_clip_norm,
             ema=ema,
+            dataloader_batches=training_dataloader,
+            device=device,
+            runtime_precision=runtime_precision,
             batch_callback=(
                 on_yolov8_batch_progress if request.batch_callback is not None else None
             ),
@@ -651,6 +685,7 @@ def run_yolov8_detection_training(
                 assign_beta=assign_beta,
                 confidence_threshold=evaluation_confidence_threshold,
                 nms_threshold=evaluation_nms_threshold,
+                dataloader_plan=dataloader_plan,
             )
             validation_history.append(validation_snapshot)
             validation_metrics = {
@@ -1537,6 +1572,7 @@ def _evaluate_detection_model(
     assign_beta: float,
     confidence_threshold: float,
     nms_threshold: float,
+    dataloader_plan: YoloV8DetectionDataLoaderPlan,
 ) -> dict[str, object]:
     """在验证 split 上执行真实 detection loss 与 COCO mAP 评估。"""
 
@@ -1555,6 +1591,7 @@ def _evaluate_detection_model(
         assign_topk=assign_topk,
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
+        dataloader_plan=dataloader_plan,
     )
     validation_map = _evaluate_validation_map(
         imports=imports,
@@ -1569,6 +1606,7 @@ def _evaluate_detection_model(
         annotation_payload=annotation_payload,
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
+        dataloader_plan=dataloader_plan,
     )
     evaluation_summary = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
@@ -1608,6 +1646,7 @@ def _evaluate_detection_validation_losses(
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
+    dataloader_plan: YoloV8DetectionDataLoaderPlan,
 ) -> dict[str, float]:
     """在验证集上统计真实 detection 验证损失。"""
 
@@ -1624,6 +1663,16 @@ def _evaluate_detection_validation_losses(
         raise ServiceConfigurationError(
             "YOLOv8 detection 训练验证只接受 YOLOv8 core 模型"
         )
+    validation_dataloader = build_yolov8_detection_training_dataloader(
+        torch_module=torch,
+        samples=samples,
+        batch_size=batch_size,
+        input_size=input_size,
+        augment_training=False,
+        augmentation_options=None,
+        plan=_replace_dataloader_plan_seed(plan=dataloader_plan, seed=100_000),
+        shuffle=False,
+    )
     return evaluate_yolov8_detection_validation_losses(
         torch_module=torch,
         model=model,
@@ -1655,6 +1704,9 @@ def _evaluate_detection_validation_losses(
         assign_topk=assign_topk,
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
+        dataloader_batches=validation_dataloader,
+        device=device,
+        runtime_precision=runtime_precision,
     )
 
 
@@ -1672,6 +1724,7 @@ def _evaluate_validation_map(
     annotation_payload: dict[str, object] | None,
     confidence_threshold: float,
     nms_threshold: float,
+    dataloader_plan: YoloV8DetectionDataLoaderPlan,
 ) -> dict[str, float]:
     """执行一次真实 COCO mAP 评估。"""
 
@@ -1688,16 +1741,24 @@ def _evaluate_validation_map(
     detections: list[dict[str, object]] = []
     evaluation_postprocess_mode = DETECTION_POSTPROCESS_MODE_NMS
     try:
+        validation_dataloader = build_yolov8_detection_training_dataloader(
+            torch_module=torch,
+            samples=samples,
+            batch_size=batch_size,
+            input_size=input_size,
+            augment_training=False,
+            augmentation_options=None,
+            plan=_replace_dataloader_plan_seed(plan=dataloader_plan, seed=200_000),
+            shuffle=False,
+        )
         with torch.no_grad():
-            for batch_samples in _iter_batches(list(samples), batch_size):
-                images, batch_targets = build_yolov8_detection_training_batch(
-                    imports=imports,
-                    samples=batch_samples,
-                    input_size=input_size,
+            for batch in validation_dataloader:
+                images = move_yolo_tensor_to_training_device(
+                    batch.images,
                     device=device,
                     runtime_precision=runtime_precision,
-                    augment_training=False,
                 )
+                batch_targets = batch.targets
                 prediction_tensor = model(images)
                 detections.extend(
                     _convert_yolov8_predictions_to_coco_detections(
@@ -1980,6 +2041,65 @@ def _read_float_pair_option(
     if left_value > right_value:
         left_value, right_value = right_value, left_value
     return (left_value, right_value)
+
+
+def _resolve_yolov8_detection_dataloader_plan(
+    *,
+    extra_options: dict[str, object],
+    device: str,
+) -> YoloV8DetectionDataLoaderPlan:
+    """解析 YOLOv8 detection DataLoader 参数。"""
+
+    num_workers = max(
+        0,
+        _read_int_option(
+            extra_options,
+            "num_workers",
+            default=YOLOV8_DETECTION_DEFAULT_NUM_WORKERS,
+        ),
+    )
+    prefetch_factor = max(
+        1,
+        _read_int_option(
+            extra_options,
+            "prefetch_factor",
+            default=YOLOV8_DETECTION_DEFAULT_PREFETCH_FACTOR,
+        ),
+    )
+    pin_memory = _read_bool_option(
+        extra_options,
+        "pin_memory",
+        default=str(device).startswith("cuda"),
+    )
+    persistent_workers = _read_bool_option(
+        extra_options,
+        "persistent_workers",
+        default=num_workers > 0,
+    )
+    seed = _read_int_option(extra_options, "seed", default=0)
+    return YoloV8DetectionDataLoaderPlan(
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+        seed=seed,
+    )
+
+
+def _replace_dataloader_plan_seed(
+    *,
+    plan: YoloV8DetectionDataLoaderPlan,
+    seed: int,
+) -> YoloV8DetectionDataLoaderPlan:
+    """按 epoch 生成新的 DataLoader seed。"""
+
+    return YoloV8DetectionDataLoaderPlan(
+        num_workers=plan.num_workers,
+        pin_memory=plan.pin_memory,
+        prefetch_factor=plan.prefetch_factor,
+        persistent_workers=plan.persistent_workers,
+        seed=int(plan.seed) + int(seed),
+    )
 
 
 def _resolve_detection_augmentation_options(

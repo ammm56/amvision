@@ -5,6 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
+    move_yolo_tensor_to_training_device,
+)
+from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
+    Yolo26DetectionDataLoaderBatch,
+)
+
 
 def evaluate_yolo26_detection_validation_losses(
     *,
@@ -24,6 +31,9 @@ def evaluate_yolo26_detection_validation_losses(
     assign_topk: int,
     assign_alpha: float,
     assign_beta: float,
+    dataloader_batches: Iterable[Yolo26DetectionDataLoaderBatch] | None = None,
+    device: str | None = None,
+    runtime_precision: str = "fp32",
 ) -> dict[str, float]:
     """在验证集上统计 YOLO26 detection loss。"""
 
@@ -37,8 +47,23 @@ def evaluate_yolo26_detection_validation_losses(
     batch_count = 0
     try:
         with torch_module.no_grad():
-            for batch_samples in _iter_yolo26_validation_batches(samples, batch_size):
-                images, batch_targets = build_batch(batch_samples)
+            if dataloader_batches is None:
+                batch_iterator: Iterable[Any] = _iter_yolo26_validation_batches(
+                    samples,
+                    batch_size,
+                )
+            else:
+                batch_iterator = dataloader_batches
+            for batch_samples in batch_iterator:
+                if isinstance(batch_samples, Yolo26DetectionDataLoaderBatch):
+                    images = move_yolo_tensor_to_training_device(
+                        batch_samples.images,
+                        device=device or "cpu",
+                        runtime_precision=runtime_precision,
+                    )
+                    batch_targets = batch_samples.targets
+                else:
+                    images, batch_targets = build_batch(batch_samples)
                 with autocast_context():
                     raw_outputs = unwrap_outputs(model(images))
                     loss_components = compute_loss(

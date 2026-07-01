@@ -29,7 +29,34 @@ def build_yolov8_detection_training_batch(
     available_samples: tuple[YoloV8DetectionTrainingSample, ...] | None = None,
     augmentation_options: YoloV8DetectionAugmentationOptions | None = None,
 ) -> tuple[Any, tuple[YoloV8DetectionPreparedTarget, ...]]:
-    """把 YOLOv8 detection 样本拼成训练或 validation batch。"""
+    """把 YOLOv8 detection CPU batch 搬运到训练设备。"""
+
+    images, prepared_targets = build_yolov8_detection_training_batch_cpu(
+        imports=imports,
+        samples=samples,
+        input_size=input_size,
+        augment_training=augment_training,
+        available_samples=available_samples,
+        augmentation_options=augmentation_options,
+    )
+    images = move_yolo_tensor_to_training_device(
+        images,
+        device=device,
+        runtime_precision=runtime_precision,
+    )
+    return images, prepared_targets
+
+
+def build_yolov8_detection_training_batch_cpu(
+    *,
+    imports: Any,
+    samples: list[YoloV8DetectionTrainingSample],
+    input_size: tuple[int, int],
+    augment_training: bool = False,
+    available_samples: tuple[YoloV8DetectionTrainingSample, ...] | None = None,
+    augmentation_options: YoloV8DetectionAugmentationOptions | None = None,
+) -> tuple[Any, tuple[YoloV8DetectionPreparedTarget, ...]]:
+    """把 YOLOv8 detection 样本拼成 CPU batch，供 DataLoader worker 预取。"""
 
     np_module = imports.np
     torch = imports.torch
@@ -98,12 +125,11 @@ def build_yolov8_detection_training_batch(
                 letterbox_transform=letterbox_transform,
             )
         )
-    images = move_yolo_tensor_to_training_device(
-        torch.stack(image_tensors, dim=0),
-        device=device,
-        runtime_precision=runtime_precision,
-    )
+    images = torch.stack(image_tensors, dim=0)
     return images, tuple(prepared_targets)
 
 
-__all__ = ["build_yolov8_detection_training_batch"]
+__all__ = [
+    "build_yolov8_detection_training_batch",
+    "build_yolov8_detection_training_batch_cpu",
+]

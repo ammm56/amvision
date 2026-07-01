@@ -24,6 +24,7 @@ from backend.service.application.models.yolo26_core.data.detection import (
     Yolo26DetectionTrainingAnnotation,
     Yolo26DetectionTrainingSample,
     build_yolo26_detection_training_batch,
+    build_yolo26_detection_training_batch_cpu,
     serialize_yolo26_detection_augmentation_options,
 )
 from backend.service.application.models.yolo26_core.data.detection_samples import (
@@ -61,6 +62,7 @@ __all__ = [
     "Yolo26TaskAugmentationOptions",
     "build_yolo26_classification_training_batch",
     "build_yolo26_detection_training_batch",
+    "build_yolo26_detection_training_batch_cpu",
     "build_yolo26_obb_training_batch",
     "build_yolo26_pose_training_batch",
     "build_yolo26_segmentation_training_batch",

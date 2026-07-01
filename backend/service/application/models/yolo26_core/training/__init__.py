@@ -155,6 +155,11 @@ from backend.service.application.models.yolo26_core.training.pose_trainer import
     Yolo26PoseTrainingTerminatedError,
     run_yolo26_pose_training_loop,
 )
+from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
+    Yolo26DetectionDataLoaderBatch,
+    Yolo26DetectionDataLoaderPlan,
+    build_yolo26_detection_training_dataloader,
+)
 from backend.service.application.models.yolo26_core.training.obb_checkpoint import (
     Yolo26ObbResumeState,
     build_yolo26_obb_checkpoint_bytes,
@@ -222,6 +227,8 @@ __all__ = [
     "Yolo26ClassificationTrainingRuntime",
     "Yolo26ClassificationTrainingSavePoint",
     "Yolo26ClassificationTrainingTerminatedError",
+    "Yolo26DetectionDataLoaderBatch",
+    "Yolo26DetectionDataLoaderPlan",
     "Yolo26DetectionEpochCheckpointUpdate",
     "Yolo26DetectionEpochControlDecision",
     "Yolo26DetectionResumeValidationRequest",
@@ -266,6 +273,7 @@ __all__ = [
     "build_yolo26_classification_training_runtime",
     "build_yolo26_detection_checkpoint_state",
     "build_yolo26_detection_epoch_checkpoint_update",
+    "build_yolo26_detection_training_dataloader",
     "build_yolo26_detection_training_runtime",
     "build_yolo26_detection_training_savepoint_payload",
     "build_yolo26_obb_autocast_context",

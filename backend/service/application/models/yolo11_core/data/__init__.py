@@ -16,6 +16,7 @@ from backend.service.application.models.yolo11_core.data.detection import (
     Yolo11DetectionTrainingAnnotation,
     Yolo11DetectionTrainingSample,
     build_yolo11_detection_training_batch,
+    build_yolo11_detection_training_batch_cpu,
     serialize_yolo11_detection_augmentation_options,
 )
 from backend.service.application.models.yolo11_core.data.detection_samples import (
@@ -59,6 +60,7 @@ __all__ = [
     "Yolo11TaskAugmentationOptions",
     "build_yolo11_classification_training_batch",
     "build_yolo11_detection_training_batch",
+    "build_yolo11_detection_training_batch_cpu",
     "build_yolo11_obb_training_batch",
     "build_yolo11_pose_training_batch",
     "build_yolo11_segmentation_training_batch",

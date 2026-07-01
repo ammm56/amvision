@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +21,9 @@ from backend.service.application.models.yolo26_core.training.epoch import (
 from backend.service.application.models.yolo26_core.training.runner import (
     Yolo26DetectionTrainingBatchProgress,
     run_yolo26_detection_training_epoch,
+)
+from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
+    Yolo26DetectionDataLoaderBatch,
 )
 from backend.service.application.models.yolo26_core.training.savepoint import (
     Yolo26DetectionTrainingSavepointPayload,
@@ -126,6 +129,13 @@ def run_yolo26_detection_training_loop(
     validation_history: list[dict[str, object]],
     evaluated_epochs: list[int],
     previous_best_checkpoint_bytes: bytes,
+    training_dataloader_factory: Callable[
+        [int],
+        Iterable[Yolo26DetectionDataLoaderBatch],
+    ]
+    | None = None,
+    device: str | None = None,
+    runtime_precision: str = "fp32",
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
     epoch_callback: Callable[
@@ -163,6 +173,13 @@ def run_yolo26_detection_training_loop(
             compute_loss=compute_loss,
             grad_clip_norm=grad_clip_norm,
             ema=ema,
+            dataloader_batches=(
+                training_dataloader_factory(epoch)
+                if training_dataloader_factory is not None
+                else None
+            ),
+            device=device,
+            runtime_precision=runtime_precision,
             batch_callback=batch_callback,
         )
         global_iteration = epoch_result.global_iteration
