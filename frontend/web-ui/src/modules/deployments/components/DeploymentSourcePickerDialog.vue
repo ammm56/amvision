@@ -41,10 +41,6 @@
             {{ option.label }}
           </button>
         </div>
-        <Button size="sm" variant="secondary" :disabled="loading" @click.stop="$emit('refresh')">
-          <RefreshCw :size="14" />
-          刷新
-        </Button>
       </div>
 
       <div class="deployment-source-picker__body">
@@ -183,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { X, RefreshCw } from '@lucide/vue'
+import { X } from '@lucide/vue'
 
 import type {
   DeploymentSourceModelBuild,
@@ -215,7 +211,6 @@ const props = defineProps<{
 
 defineEmits<{
   close: []
-  refresh: []
   'change-task-type': [taskType: ModelTaskType]
   'select-model': [modelId: string]
   'apply-source': [selection: DeploymentSourceSelection]
@@ -310,6 +305,10 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   color: var(--muted);
 }
 
+.deployment-source-picker__toolbar {
+  align-items: center;
+}
+
 .deployment-source-picker__close {
   display: inline-flex;
   align-items: center;
@@ -332,8 +331,10 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 .deployment-source-picker__chips {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .deployment-source-picker__chip {

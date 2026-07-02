@@ -187,7 +187,6 @@
       :selected-version-id="modelVersionId"
       :selected-build-id="modelBuildId"
       @close="deploymentSourcePickerOpen = false"
-      @refresh="loadDeploymentSourceModels"
       @change-task-type="setTaskType"
       @select-model="selectDeploymentSourceModel"
       @apply-source="applyDeploymentSource"
@@ -201,10 +200,6 @@
             <h2>{{ t('deploymentOps.runtimeTitle') }}</h2>
             <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>
-          <Button variant="secondary" :disabled="runtimeStatusLoading" @click="refreshSelectedRuntime">
-            <RefreshCw :size="16" />
-            {{ t('common.refresh') }}
-          </Button>
         </div>
         <div class="summary-grid deployment-runtime-summary">
           <div>
@@ -249,10 +244,6 @@
             <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
             <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>
-          <Button variant="secondary" :disabled="eventsLoading" @click="loadDeploymentEvents">
-            <RefreshCw :size="16" />
-            {{ t('common.refresh') }}
-          </Button>
         </div>
         <EmptyState v-if="!eventsLoading && deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
         <ol v-else class="event-timeline event-timeline--compact">
@@ -329,7 +320,6 @@ const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
-const runtimeStatusLoading = ref(false)
 const runningAction = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 const lastCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
@@ -663,7 +653,6 @@ async function refreshSelectedRuntime(): Promise<void> {
   const deployment = selectedDeployment.value
   if (!deployment) return
   const deploymentId = deployment.deployment_instance_id
-  runtimeStatusLoading.value = true
   errorMessage.value = null
   try {
     const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
@@ -688,8 +677,6 @@ async function refreshSelectedRuntime(): Promise<void> {
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
-  } finally {
-    runtimeStatusLoading.value = false
   }
 }
 
