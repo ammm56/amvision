@@ -7,14 +7,14 @@
         <p class="page-description">{{ application?.description || '查看应用合同、HTTP 调用、runtime 和触发入口。' }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/workflows/apps" class="ui-button ui-button--secondary ui-button--md">
+        <Button variant="secondary" @click="openAppList">
           <ArrowLeft :size="16" />
           返回列表
-        </RouterLink>
-        <RouterLink :to="graphEditorPath" class="ui-button ui-button--secondary ui-button--md">
+        </Button>
+        <Button variant="secondary" @click="openGraphEditor">
           <Workflow :size="16" />
           打开图编辑
-        </RouterLink>
+        </Button>
         <Button variant="secondary" :disabled="loading" @click="loadPage">
           <RefreshCw :size="16" />
           刷新
@@ -106,10 +106,16 @@
               <Plus :size="16" />
               创建 runtime
             </Button>
-            <RouterLink v-if="selectedRuntime" :to="triggerSourceCreatePath(selectedRuntime.workflow_runtime_id)" class="ui-button ui-button--secondary ui-button--md">
+            <Button
+              v-if="canWriteWorkflows"
+              variant="secondary"
+              :disabled="!selectedRuntime || loading"
+              :title="selectedRuntime ? '为当前 runtime 添加触发入口' : '先创建或设为当前 runtime'"
+              @click="openSelectedRuntimeTriggerSource"
+            >
               <PlugZap :size="16" />
               添加触发入口
-            </RouterLink>
+            </Button>
           </div>
         </div>
         <EmptyState v-if="runtimes.length === 0" title="还没有 WorkflowAppRuntime" description="创建 runtime 后可启动、查看 health，并作为 TriggerSource 的目标。" />
@@ -140,28 +146,79 @@
                 <td>{{ formatSystemDateTime(runtime.updated_at) }}</td>
                 <td>
                   <div class="table-actions table-actions--wrap">
-                    <Button size="sm" variant="ghost" @click="selectRuntime(runtime.workflow_runtime_id)">
-                      <MousePointer2 :size="14" />
-                      选择
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canSelectRuntime(runtime)"
+                      :title="canSelectRuntime(runtime) ? '把该 runtime 设为当前操作对象' : '此 runtime 已是当前操作对象'"
+                      @click="selectRuntime(runtime.workflow_runtime_id)"
+                    >
+                      <CheckCircle2 v-if="runtime.workflow_runtime_id === selectedRuntimeId" :size="14" />
+                      <MousePointer2 v-else :size="14" />
+                      {{ runtime.workflow_runtime_id === selectedRuntimeId ? '当前' : '设为当前' }}
                     </Button>
-                    <Button v-if="canWriteWorkflows" size="sm" variant="secondary" :disabled="busyRuntimeId === runtime.workflow_runtime_id" @click="controlRuntime(runtime, 'start')">
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canStartRuntime(runtime)"
+                      :title="startRuntimeTitle(runtime)"
+                      @click="controlRuntime(runtime, 'start')"
+                    >
                       <Play :size="14" />
                       启动
                     </Button>
-                    <Button v-if="canWriteWorkflows" size="sm" variant="secondary" :disabled="busyRuntimeId === runtime.workflow_runtime_id" @click="controlRuntime(runtime, 'stop')">
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canStopRuntime(runtime)"
+                      :title="stopRuntimeTitle(runtime)"
+                      @click="controlRuntime(runtime, 'stop')"
+                    >
                       <Square :size="14" />
                       停止
                     </Button>
-                    <Button v-if="canWriteWorkflows" size="sm" variant="secondary" :disabled="busyRuntimeId === runtime.workflow_runtime_id" @click="controlRuntime(runtime, 'restart')">
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canRestartRuntime(runtime)"
+                      :title="restartRuntimeTitle(runtime)"
+                      @click="controlRuntime(runtime, 'restart')"
+                    >
                       <RotateCw :size="14" />
                       重启
                     </Button>
-                    <Button size="sm" variant="secondary" :disabled="busyRuntimeId === runtime.workflow_runtime_id" @click="refreshRuntimeHealth(runtime)">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canRefreshRuntimeHealth(runtime)"
+                      title="刷新该 runtime 的健康状态"
+                      @click="refreshRuntimeHealth(runtime)"
+                    >
                       <Activity :size="14" />
-                      health
+                      健康检查
                     </Button>
-                    <RouterLink :to="triggerSourceCreatePath(runtime.workflow_runtime_id)">添加触发</RouterLink>
-                    <Button v-if="canWriteWorkflows" size="sm" variant="danger" :disabled="busyRuntimeId === runtime.workflow_runtime_id || runtime.observed_state === 'running'" @click="deleteRuntime(runtime)">
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!canAddTriggerSource(runtime)"
+                      :title="addTriggerTitle(runtime)"
+                      @click="openTriggerSourceCreate(runtime.workflow_runtime_id)"
+                    >
+                      <PlugZap :size="14" />
+                      添加触发
+                    </Button>
+                    <Button
+                      v-if="canWriteWorkflows"
+                      size="sm"
+                      variant="danger"
+                      :disabled="!canDeleteRuntime(runtime)"
+                      :title="deleteRuntimeTitle(runtime)"
+                      @click="deleteRuntime(runtime)"
+                    >
                       <Trash2 :size="14" />
                       删除
                     </Button>
@@ -263,10 +320,16 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
             <p class="page-kicker">Integrations</p>
             <h2>触发入口</h2>
           </div>
-          <RouterLink v-if="selectedRuntime" :to="triggerSourceCreatePath(selectedRuntime.workflow_runtime_id)" class="ui-button ui-button--primary ui-button--md">
+          <Button
+            v-if="canWriteWorkflows"
+            variant="primary"
+            :disabled="!selectedRuntime || loading"
+            :title="selectedRuntime ? '为当前 runtime 添加触发入口' : '先创建或设为当前 runtime'"
+            @click="openSelectedRuntimeTriggerSource"
+          >
             <PlugZap :size="16" />
             添加触发入口
-          </RouterLink>
+          </Button>
         </div>
         <EmptyState v-if="relatedTriggerSources.length === 0" title="还没有 TriggerSource" description="从 runtime 上下文添加后，会按外部协议把事件映射到应用输入。" />
         <div v-else class="resource-table">
@@ -301,10 +364,11 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute, RouterLink } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Activity,
   ArrowLeft,
+  CheckCircle2,
   Copy,
   MousePointer2,
   Play,
@@ -346,6 +410,7 @@ type RuntimeControlAction = 'start' | 'stop' | 'restart'
 type RunSubmitMode = 'async' | 'sync'
 
 const route = useRoute()
+const router = useRouter()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 
@@ -567,7 +632,97 @@ function validateImageRefBindingPayload(bindingId: string, payload: unknown): vo
 }
 
 function selectRuntime(runtimeId: string): void {
+  const runtime = runtimes.value.find((item) => item.workflow_runtime_id === runtimeId)
+  if (!runtime || !canSelectRuntime(runtime)) return
   selectedRuntimeId.value = runtimeId
+}
+
+function isRuntimeStarting(runtime: WorkflowAppRuntime): boolean {
+  return runtime.observed_state === 'starting'
+}
+
+function isRuntimeStopping(runtime: WorkflowAppRuntime): boolean {
+  return runtime.observed_state === 'stopping'
+}
+
+function isRuntimeRunning(runtime: WorkflowAppRuntime): boolean {
+  return runtime.observed_state === 'running'
+}
+
+function isRuntimeBusy(): boolean {
+  return loading.value || busyRuntimeId.value !== null
+}
+
+function runtimeTriggerSourceCount(runtime: WorkflowAppRuntime): number {
+  return triggerSources.value.filter((source) => source.workflow_runtime_id === runtime.workflow_runtime_id).length
+}
+
+function canSelectRuntime(runtime: WorkflowAppRuntime): boolean {
+  return !loading.value && runtime.workflow_runtime_id !== selectedRuntimeId.value
+}
+
+function canStartRuntime(runtime: WorkflowAppRuntime): boolean {
+  if (!canWriteWorkflows.value || isRuntimeBusy()) return false
+  return !isRuntimeRunning(runtime) && !isRuntimeStarting(runtime) && !isRuntimeStopping(runtime)
+}
+
+function canStopRuntime(runtime: WorkflowAppRuntime): boolean {
+  if (!canWriteWorkflows.value || isRuntimeBusy()) return false
+  return isRuntimeRunning(runtime) || runtime.observed_state === 'starting'
+}
+
+function canRestartRuntime(runtime: WorkflowAppRuntime): boolean {
+  if (!canWriteWorkflows.value || isRuntimeBusy()) return false
+  return isRuntimeRunning(runtime)
+}
+
+function canRefreshRuntimeHealth(_runtime: WorkflowAppRuntime): boolean {
+  return !isRuntimeBusy()
+}
+
+function canAddTriggerSource(runtime: WorkflowAppRuntime): boolean {
+  return canWriteWorkflows.value && !loading.value && Boolean(runtime.workflow_runtime_id)
+}
+
+function canDeleteRuntime(runtime: WorkflowAppRuntime): boolean {
+  if (!canWriteWorkflows.value || isRuntimeBusy()) return false
+  if (isRuntimeRunning(runtime) || runtime.observed_state === 'starting' || runtime.observed_state === 'stopping') return false
+  return runtimeTriggerSourceCount(runtime) === 0
+}
+
+function startRuntimeTitle(runtime: WorkflowAppRuntime): string {
+  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
+  if (isRuntimeRunning(runtime)) return 'runtime 已在运行'
+  if (isRuntimeStarting(runtime)) return 'runtime 正在启动或已提交启动请求'
+  if (isRuntimeStopping(runtime)) return 'runtime 正在停止，停止完成后再启动'
+  return '启动该 runtime'
+}
+
+function stopRuntimeTitle(runtime: WorkflowAppRuntime): string {
+  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
+  if (runtime.observed_state === 'stopping') return 'runtime 正在停止'
+  if (!canStopRuntime(runtime)) return 'runtime 未运行，无需停止'
+  return '停止该 runtime'
+}
+
+function restartRuntimeTitle(runtime: WorkflowAppRuntime): string {
+  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
+  if (!isRuntimeRunning(runtime)) return '只有 running 状态的 runtime 才能重启'
+  return '重启该 runtime'
+}
+
+function addTriggerTitle(runtime: WorkflowAppRuntime): string {
+  if (!canWriteWorkflows.value) return '当前账号没有创建触发入口权限'
+  if (!runtime.workflow_runtime_id) return '缺少 runtime id'
+  return isRuntimeRunning(runtime) ? '为该 runtime 添加触发入口' : '为该 runtime 添加触发入口，启动后生效'
+}
+
+function deleteRuntimeTitle(runtime: WorkflowAppRuntime): string {
+  const triggerSourceCount = runtimeTriggerSourceCount(runtime)
+  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
+  if (isRuntimeRunning(runtime) || runtime.observed_state === 'starting' || runtime.observed_state === 'stopping') return '先停止 runtime 后再删除'
+  if (triggerSourceCount > 0) return `先删除 ${triggerSourceCount} 个绑定的 TriggerSource 后再删除 runtime`
+  return '删除该 runtime'
 }
 
 function replaceRuntime(updatedRuntime: WorkflowAppRuntime): void {
@@ -582,6 +737,26 @@ function triggerSourceCreatePath(runtimeId?: string): string {
   const query = new URLSearchParams({ application_id: applicationId.value, mode: 'create' })
   if (runtimeId) query.set('runtime_id', runtimeId)
   return `/integrations/trigger-sources?${query.toString()}`
+}
+
+function openAppList(): void {
+  void router.push('/workflows/apps')
+}
+
+function openGraphEditor(): void {
+  void router.push(graphEditorPath.value)
+}
+
+function openTriggerSourceCreate(runtimeId: string): void {
+  const runtime = runtimes.value.find((item) => item.workflow_runtime_id === runtimeId)
+  if (!runtime || !canAddTriggerSource(runtime)) return
+  void router.push(triggerSourceCreatePath(runtimeId))
+}
+
+function openSelectedRuntimeTriggerSource(): void {
+  const runtime = selectedRuntime.value
+  if (!runtime || !canAddTriggerSource(runtime)) return
+  void router.push(triggerSourceCreatePath(runtime.workflow_runtime_id))
 }
 
 async function loadPage(): Promise<void> {
@@ -630,6 +805,9 @@ async function createRuntime(): Promise<void> {
 
 async function controlRuntime(runtime: WorkflowAppRuntime, action: RuntimeControlAction): Promise<void> {
   if (!canWriteWorkflows.value) return
+  if (action === 'start' && !canStartRuntime(runtime)) return
+  if (action === 'stop' && !canStopRuntime(runtime)) return
+  if (action === 'restart' && !canRestartRuntime(runtime)) return
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
   try {
@@ -649,6 +827,7 @@ async function controlRuntime(runtime: WorkflowAppRuntime, action: RuntimeContro
 }
 
 async function refreshRuntimeHealth(runtime: WorkflowAppRuntime): Promise<void> {
+  if (!canRefreshRuntimeHealth(runtime)) return
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
   try {
@@ -663,7 +842,7 @@ async function refreshRuntimeHealth(runtime: WorkflowAppRuntime): Promise<void> 
 }
 
 async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
-  if (!workflowApp.value || !canWriteWorkflows.value || runtime.observed_state === 'running') return
+  if (!workflowApp.value || !canDeleteRuntime(runtime)) return
   const confirmed = window.confirm(`删除 runtime ${runtime.workflow_runtime_id}？`)
   if (!confirmed) return
   busyRuntimeId.value = runtime.workflow_runtime_id
