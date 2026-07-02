@@ -111,6 +111,67 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
+def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Path) -> None:
+    """验证删除已完成导入时只清理导入目录，不删除 DatasetVersion 文件。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                },
+            )
+            assert response.status_code == 202
+            payload = response.json()
+            assert _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            dataset_import, dataset_version = _load_dataset_objects(
+                session_factory=session_factory,
+                dataset_import_id=payload["dataset_import_id"],
+            )
+            assert dataset_import is not None
+            assert dataset_import.package_path is not None
+            assert dataset_import.version_path is not None
+            assert dataset_version is not None
+            assert dataset_import.dataset_version_id is not None
+
+            import_root = dataset_storage.resolve(dataset_import.package_path.rsplit("/", 1)[0])
+            version_root = dataset_storage.resolve(dataset_import.version_path)
+            assert import_root.is_dir()
+            assert version_root.is_dir()
+
+            delete_response = client.delete(
+                f"/api/v1/datasets/imports/{payload['dataset_import_id']}",
+                headers=_build_dataset_write_headers(),
+            )
+
+        assert delete_response.status_code == 204
+        assert not import_root.exists()
+        assert version_root.is_dir()
+
+        deleted_import, preserved_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+            dataset_version_id=dataset_import.dataset_version_id,
+        )
+        assert deleted_import is None
+        assert preserved_version is not None
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
     """验证导入 Pascal VOC zip 会完成 bbox 转换并写入版本目录。"""
 

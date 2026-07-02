@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -23,6 +24,7 @@ from backend.service.application.errors import (
 )
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.domain.datasets.dataset_import import (
+	DatasetImport,
 	DatasetFormatType,
 	DatasetImportRequestedSplitStrategy,
 	DatasetImportTaskType,
@@ -315,11 +317,9 @@ def delete_dataset_import(
 			details={"dataset_import_id": dataset_import_id, "status": dataset_import.status},
 		)
 
-	# 清理关联的文件目录
-	if dataset_import.package_path:
-		dataset_storage.delete_tree(dataset_import.package_path)
-	if dataset_import.staging_path:
-		dataset_storage.delete_tree(dataset_import.staging_path)
+	import_root = _resolve_dataset_import_root(dataset_import)
+	if import_root is not None:
+		dataset_storage.delete_tree(import_root)
 
 	unit_of_work.dataset_imports.delete_dataset_import(dataset_import_id)
 	unit_of_work.commit()
@@ -359,4 +359,21 @@ def _project_visible(*, principal: AuthenticatedPrincipal, project_id: str) -> b
 		return True
 
 	return project_id in principal.project_ids
+
+
+def _resolve_dataset_import_root(dataset_import: DatasetImport) -> str | None:
+	"""解析一次 DatasetImport 对应的本地导入根目录。"""
+
+	if dataset_import.package_path:
+		return str(PurePosixPath(dataset_import.package_path).parent)
+
+	if dataset_import.staging_path:
+		staging_path = PurePosixPath(dataset_import.staging_path)
+		if staging_path.name == "extracted" and staging_path.parent.name == "staging":
+			return str(staging_path.parent.parent)
+		if staging_path.name == "staging":
+			return str(staging_path.parent)
+		return str(staging_path.parent)
+
+	return None
 
