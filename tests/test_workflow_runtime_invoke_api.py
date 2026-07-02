@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +24,7 @@ from backend.service.settings import (
     BackendServiceQueueConfig,
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
+    BackendServiceWorkflowRuntimeConfig,
 )
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
 from tests.test_workflow_barcode_protocol_nodes import _build_mixed_barcode_test_png_bytes
@@ -237,6 +239,160 @@ def test_workflow_app_runtime_run_query_default_response_returns_public_app_resu
     assert run_payload["state"] == "succeeded"
     assert run_payload["template_outputs"] == {}
     assert run_payload["node_records"] == []
+
+
+def test_workflow_app_runtime_async_run_query_returns_raw_public_image_without_persisting_base64(
+    tmp_path: Path,
+) -> None:
+    """验证异步 run 查询可返回公开 App Result 原图，同时持久化记录仍脱敏。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-async-query-raw-image.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Barcode Result Display Async Result Runtime",
+            )
+            create_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                    },
+                    "execution_metadata": {
+                        "scenario": "barcode-result-display-async-result",
+                        "trigger_source": "async-api",
+                    },
+                },
+            )
+            assert create_run_response.status_code == 201
+            workflow_run_id = create_run_response.json()["workflow_run_id"]
+            persisted_run_payload = _wait_for_workflow_run(
+                client=client,
+                headers=headers,
+                workflow_run_id=workflow_run_id,
+            )
+            result_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=headers,
+            )
+            run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=headers,
+                params={"response_mode": "run"},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert result_response.status_code == 200
+    assert run_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert persisted_run_payload["state"] == "succeeded"
+
+    result_payload = result_response.json()
+    assert "workflow_run_id" not in result_payload
+    assert "outputs" not in result_payload
+    assert "template_outputs" not in result_payload
+    assert "node_records" not in result_payload
+    assert result_payload["status_code"] == 200
+    annotated_image = result_payload["body"]["data"]["annotated_image"]["image"]
+    assert annotated_image["transport_kind"] == "inline-base64"
+    assert isinstance(annotated_image["image_base64"], str)
+    assert annotated_image["image_base64"]
+    assert "image_base64_redacted" not in annotated_image
+
+    persisted_image = run_response.json()["outputs"]["http_response"]["body"]["data"]["annotated_image"]["image"]
+    assert persisted_image["image_base64_redacted"] is True
+    assert "image_base64" not in persisted_image
+
+
+def test_workflow_app_runtime_async_run_query_uses_persisted_result_when_raw_cache_disabled(
+    tmp_path: Path,
+) -> None:
+    """验证关闭原始公开输出缓存后，异步 run 查询回退到持久化脱敏结果。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-async-query-raw-cache-disabled.db",
+        enable_local_buffer_broker=False,
+        workflow_runtime=BackendServiceWorkflowRuntimeConfig(
+            raw_result_cache_ttl_seconds=0.0,
+            raw_result_cache_max_items=0,
+        ),
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Barcode Result Display Disabled Raw Cache Runtime",
+            )
+            create_run_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                    },
+                    "execution_metadata": {
+                        "scenario": "barcode-result-display-async-result-cache-disabled",
+                        "trigger_source": "async-api",
+                    },
+                },
+            )
+            assert create_run_response.status_code == 201
+            workflow_run_id = create_run_response.json()["workflow_run_id"]
+            persisted_run_payload = _wait_for_workflow_run(
+                client=client,
+                headers=headers,
+                workflow_run_id=workflow_run_id,
+            )
+            result_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=headers,
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert result_response.status_code == 200
+    assert stop_response.status_code == 200
+    assert persisted_run_payload["state"] == "succeeded"
+
+    result_payload = result_response.json()
+    annotated_image = result_payload["body"]["data"]["annotated_image"]["image"]
+    assert annotated_image["transport_kind"] == "inline-base64"
+    assert annotated_image["image_base64_redacted"] is True
+    assert "image_base64" not in annotated_image
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process_save_image(
@@ -666,6 +822,7 @@ def _create_runtime_api_client(
     *,
     database_name: str,
     enable_local_buffer_broker: bool = True,
+    workflow_runtime: BackendServiceWorkflowRuntimeConfig | None = None,
 ) -> tuple[TestClient, object, object]:
     """创建加载仓库 custom_nodes 的 workflow runtime API 测试客户端。"""
 
@@ -682,6 +839,7 @@ def _create_runtime_api_client(
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=enable_local_buffer_broker),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
+            workflow_runtime=workflow_runtime or BackendServiceWorkflowRuntimeConfig(),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -747,6 +905,31 @@ def _create_and_start_runtime(
     )
     assert start_response.status_code == 200
     return workflow_runtime_id
+
+
+def _wait_for_workflow_run(
+    *,
+    client: TestClient,
+    headers: dict[str, str],
+    workflow_run_id: str,
+    timeout_seconds: float = 10.0,
+) -> dict[str, object]:
+    """等待异步 WorkflowRun 进入终态。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_payload: dict[str, object] | None = None
+    while time.monotonic() < deadline:
+        response = client.get(
+            f"/api/v1/workflows/runs/{workflow_run_id}",
+            headers=headers,
+            params={"response_mode": "run"},
+        )
+        assert response.status_code == 200
+        last_payload = response.json()
+        if last_payload["state"] in {"succeeded", "failed", "cancelled", "timed_out"}:
+            return last_payload
+        time.sleep(0.05)
+    raise AssertionError(f"WorkflowRun 未在 {timeout_seconds} 秒内完成：{last_payload}")
 
 
 def _build_image_base64_payload(image_bytes: bytes) -> dict[str, object]:

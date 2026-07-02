@@ -292,6 +292,26 @@ class BackendServiceAsyncInferenceGatewayConfig(BaseModel):
     service_id: str = "backend-service-main"
 
 
+class BackendServiceWorkflowRuntimeConfig(BaseModel):
+    """描述 workflow runtime 的结果缓存配置。
+
+    字段：
+    - raw_result_cache_ttl_seconds：异步 WorkflowRun 原始公开 outputs 的进程内保留秒数。
+    - raw_result_cache_max_items：异步 WorkflowRun 原始公开 outputs 的最大缓存条数。
+    """
+
+    raw_result_cache_ttl_seconds: float = Field(
+        default=900.0,
+        ge=0.0,
+        description="异步 WorkflowRun 原始公开 outputs 的进程内保留秒数，0 表示禁用",
+    )
+    raw_result_cache_max_items: int = Field(
+        default=64,
+        ge=0,
+        description="异步 WorkflowRun 原始公开 outputs 的最大缓存条数，0 表示禁用",
+    )
+
+
 class BackendServiceCustomNodesConfig(BaseModel):
     """描述 backend-service 使用的 custom_nodes 目录配置。
 
@@ -319,6 +339,7 @@ class BackendServiceSettings(BaseSettings):
     - queue：本地任务队列配置。
     - task_manager：内嵌后台任务管理器配置。
     - async_inference_gateway：异步推理 gateway 配置。
+    - workflow_runtime：workflow runtime 结果缓存配置。
     - custom_nodes：自定义节点目录配置。
     - local_buffer_broker：本机 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
@@ -344,6 +365,9 @@ class BackendServiceSettings(BaseSettings):
     )
     async_inference_gateway: BackendServiceAsyncInferenceGatewayConfig = Field(
         default_factory=BackendServiceAsyncInferenceGatewayConfig
+    )
+    workflow_runtime: BackendServiceWorkflowRuntimeConfig = Field(
+        default_factory=BackendServiceWorkflowRuntimeConfig
     )
     custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
     local_buffer_broker: LocalBufferBrokerSettings = Field(default_factory=LocalBufferBrokerSettings)

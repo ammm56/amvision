@@ -53,6 +53,10 @@
   "async_inference_gateway": {
     "service_id": "backend-service-main"
   },
+  "workflow_runtime": {
+    "raw_result_cache_ttl_seconds": 900.0,
+    "raw_result_cache_max_items": 64
+  },
   "local_buffer_broker": {
     "enabled": true,
     "root_dir": "./data/buffers",

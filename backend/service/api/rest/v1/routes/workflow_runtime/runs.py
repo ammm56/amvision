@@ -77,14 +77,20 @@ def _build_sync_invoke_response(invoke_result: WorkflowRuntimeSyncInvokeResult, 
     raise InvalidRequestError("response_mode 只能是 app-result、run 或 debug")
 
 
-def _build_persisted_workflow_run_response(workflow_run: WorkflowRun, *, response_mode: str) -> object:
+def _build_persisted_workflow_run_response(
+    workflow_run: WorkflowRun,
+    *,
+    response_mode: str,
+    raw_outputs: dict[str, object] | None = None,
+) -> object:
     """按调用场景构建持久化 WorkflowRun 查询响应。"""
 
     normalized_mode = _normalize_response_mode(response_mode)
     if normalized_mode in {"app-result", "result"}:
+        effective_outputs = dict(raw_outputs) if raw_outputs is not None else dict(workflow_run.outputs)
         return _build_workflow_app_invoke_result_payload(
             workflow_run,
-            outputs=dict(workflow_run.outputs),
+            outputs=effective_outputs,
         )
     if normalized_mode == "run":
         return _build_workflow_run_contract(
@@ -226,9 +232,18 @@ def get_workflow_run(
 ) -> object:
     """读取一条 WorkflowRun 或其公开 App Result。"""
 
-    workflow_run = _build_workflow_runtime_service(request).get_workflow_run(workflow_run_id)
+    runtime_service = _build_workflow_runtime_service(request)
+    workflow_run = runtime_service.get_workflow_run(workflow_run_id)
     _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
-    return _build_persisted_workflow_run_response(workflow_run, response_mode=response_mode)
+    normalized_mode = _normalize_response_mode(response_mode)
+    raw_outputs = None
+    if normalized_mode in {"app-result", "result"}:
+        raw_outputs = runtime_service.get_raw_workflow_run_outputs(workflow_run_id)
+    return _build_persisted_workflow_run_response(
+        workflow_run,
+        response_mode=normalized_mode,
+        raw_outputs=raw_outputs,
+    )
 
 
 @workflow_runtime_runs_router.get(

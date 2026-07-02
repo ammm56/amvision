@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from threading import Lock
+from time import monotonic
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -112,12 +113,26 @@ if TYPE_CHECKING:
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
+@dataclass(frozen=True)
+class _RawWorkflowRunResult:
+    """异步 WorkflowRun 的短期原始公开输出缓存。
+
+    数据库只保存脱敏后的 outputs；这里仅用于刚完成的外部 async invoke
+    查询，避免把 inline base64 图片等大 payload 长期写入数据库。
+    """
+
+    outputs: dict[str, object]
+    created_monotonic: float
+
+
 class WorkflowRuntimeService:
     """封装 workflow runtime 当前阶段的资源创建、调用和状态收敛逻辑。"""
 
     _event_lock = Lock()
     _workflow_run_event_locks: dict[str, Lock] = {}
     _workflow_app_runtime_event_locks: dict[str, Lock] = {}
+    _raw_workflow_run_result_lock = Lock()
+    _raw_workflow_run_results: dict[str, _RawWorkflowRunResult] = {}
 
     def __init__(
         self,
@@ -1116,6 +1131,23 @@ class WorkflowRuntimeService:
             )
         return workflow_run
 
+    def get_raw_workflow_run_outputs(self, workflow_run_id: str) -> dict[str, object] | None:
+        """读取异步 WorkflowRun 的短期原始公开输出。
+
+        返回：
+        - dict[str, object] | None：进程内仍保留时返回未脱敏 outputs；过期、
+          服务重启或不存在时返回 None，由 API 回退到持久化脱敏记录。
+        """
+
+        now = monotonic()
+        ttl_seconds = self.settings.workflow_runtime.raw_result_cache_ttl_seconds
+        with self._raw_workflow_run_result_lock:
+            self._prune_raw_workflow_run_results_locked(now, ttl_seconds)
+            cached_result = self._raw_workflow_run_results.get(workflow_run_id)
+            if cached_result is None:
+                return None
+            return dict(cached_result.outputs)
+
     def cancel_workflow_run(self, workflow_run_id: str, *, cancelled_by: str | None) -> WorkflowRun:
         """取消一条异步 WorkflowRun。
 
@@ -1273,6 +1305,7 @@ class WorkflowRuntimeService:
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
             unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
             unit_of_work.commit()
+        self._remember_raw_workflow_run_outputs(workflow_run_id, worker_result.outputs)
         self._append_workflow_run_event(
             updated_run,
             event_type=self._event_type_for_workflow_run_state(updated_run.state),
@@ -1285,6 +1318,46 @@ class WorkflowRuntimeService:
                 message="workflow app runtime 已进入 failed 状态",
                 payload={"reason": updated_run.state},
             )
+
+    def _remember_raw_workflow_run_outputs(self, workflow_run_id: str, outputs: dict[str, object]) -> None:
+        """短期保留异步 run 的原始公开输出，供外部调用立即读取。"""
+
+        if not outputs:
+            return
+        now = monotonic()
+        workflow_runtime_settings = self.settings.workflow_runtime
+        ttl_seconds = workflow_runtime_settings.raw_result_cache_ttl_seconds
+        max_items = workflow_runtime_settings.raw_result_cache_max_items
+        with self._raw_workflow_run_result_lock:
+            if ttl_seconds <= 0 or max_items <= 0:
+                self._raw_workflow_run_results.pop(workflow_run_id, None)
+                return
+            self._prune_raw_workflow_run_results_locked(now, ttl_seconds)
+            self._raw_workflow_run_results[workflow_run_id] = _RawWorkflowRunResult(
+                outputs=dict(outputs),
+                created_monotonic=now,
+            )
+            while len(self._raw_workflow_run_results) > max_items:
+                oldest_run_id = min(
+                    self._raw_workflow_run_results,
+                    key=lambda item: self._raw_workflow_run_results[item].created_monotonic,
+                )
+                self._raw_workflow_run_results.pop(oldest_run_id, None)
+
+    @classmethod
+    def _prune_raw_workflow_run_results_locked(cls, now: float, ttl_seconds: float) -> None:
+        """清理过期的异步 run 原始输出缓存。"""
+
+        if ttl_seconds <= 0:
+            cls._raw_workflow_run_results.clear()
+            return
+        expired_run_ids = [
+            workflow_run_id
+            for workflow_run_id, cached_result in cls._raw_workflow_run_results.items()
+            if now - cached_result.created_monotonic > ttl_seconds
+        ]
+        for workflow_run_id in expired_run_ids:
+            cls._raw_workflow_run_results.pop(workflow_run_id, None)
 
     def _finish_async_workflow_run_failed(
         self,
