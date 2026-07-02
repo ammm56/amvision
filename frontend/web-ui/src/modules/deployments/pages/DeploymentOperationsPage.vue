@@ -8,10 +8,6 @@
       </div>
       <div class="page-actions">
         <label class="segmented-field">
-          <span>task_type</span>
-          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
-        </label>
-        <label class="segmented-field">
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
           <SelectField :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
@@ -83,18 +79,6 @@
         </section>
         <div class="form-grid deployment-create-grid">
           <label class="field">
-            <span>{{ t('deploymentOps.fields.projectId') }}</span>
-            <input :value="selectedProjectId" disabled />
-          </label>
-          <label class="field">
-            <span>{{ t('deploymentOps.fields.runtimeBackend') }}</span>
-            <SelectField :model-value="runtimeBackend" :options="runtimeBackendOptions" @update:model-value="setRuntimeBackend" />
-          </label>
-          <label class="field">
-            <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
-            <SelectField :model-value="runtimePrecision" :options="runtimePrecisionOptions" @update:model-value="setRuntimePrecision" />
-          </label>
-          <label class="field">
             <span>{{ t('deploymentOps.fields.deviceName') }}</span>
             <SelectField :model-value="deviceName" :options="deploymentDeviceOptions" @update:model-value="setDeviceName" />
           </label>
@@ -163,31 +147,26 @@
               </div>
             </div>
             <div class="deployment-instance-card__actions" @click.stop>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canStartDeployment(item)" @click="runStatusAction(item.deployment_instance_id, item.runtime_execution_mode, 'start')">
+              <Button type="button" size="sm" variant="secondary" :disabled="!canStartDeployment(item)" @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'start')">
                 <Play :size="14" />
                 {{ t('deploymentOps.actions.start') }}
               </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="eventsLoading || runningAction !== null" @click="selectDeployment(item.deployment_instance_id)">
-                <ListChecks :size="14" />
-                {{ t('deploymentOps.actions.events') }}
-              </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="runningAction !== null" @click="runStatusAction(item.deployment_instance_id, item.runtime_execution_mode, 'status')">
-                <HeartPulse :size="14" />
-                {{ t('deploymentOps.actions.status') }}
-              </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canWarmupDeployment(item)" @click="runHealthAction(item.deployment_instance_id, item.runtime_execution_mode, 'warmup')">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                :disabled="!canWarmupDeployment(item)"
+                :title="warmupButtonTitle(item)"
+                @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'warmup')"
+              >
                 <Zap :size="14" />
                 {{ t('deploymentOps.actions.warmup') }}
               </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canHealthCheckDeployment(item)" @click="runHealthAction(item.deployment_instance_id, item.runtime_execution_mode, 'health')">
-                <HeartPulse :size="14" />
-                {{ t('deploymentOps.actions.health') }}
-              </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canResetDeployment(item)" @click="runHealthAction(item.deployment_instance_id, item.runtime_execution_mode, 'reset')">
+              <Button type="button" size="sm" variant="secondary" :disabled="!canResetDeployment(item)" @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'reset')">
                 <RotateCcw :size="14" />
                 {{ t('deploymentOps.actions.reset') }}
               </Button>
-              <Button type="button" size="sm" variant="danger" :disabled="!canStopDeployment(item)" @click="runStatusAction(item.deployment_instance_id, item.runtime_execution_mode, 'stop')">
+              <Button type="button" size="sm" variant="danger" :disabled="!canStopDeployment(item)" @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'stop')">
                 <Square :size="14" />
                 {{ t('deploymentOps.actions.stop') }}
               </Button>
@@ -201,6 +180,7 @@
       :open="deploymentSourcePickerOpen"
       :loading="sourceModelsLoading"
       :task-type="selectedTaskType"
+      :task-type-options="taskTypeOptions"
       :models="sourceModels"
       :selected-model-id="selectedSourceModelId"
       :selected-model-detail="selectedSourceModelDetail"
@@ -208,6 +188,7 @@
       :selected-build-id="modelBuildId"
       @close="deploymentSourcePickerOpen = false"
       @refresh="loadDeploymentSourceModels"
+      @change-task-type="setTaskType"
       @select-model="selectDeploymentSourceModel"
       @apply-source="applyDeploymentSource"
     />
@@ -288,7 +269,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { HeartPulse, ListChecks, Play, RefreshCw, RotateCcw, Square, Zap } from '@lucide/vue'
+import { Play, RefreshCw, RotateCcw, Square, Zap } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -329,24 +310,19 @@ const sessionStore = useSessionStore()
 const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
+const TASK_TYPES: readonly ModelTaskType[] = ['detection', 'classification', 'segmentation', 'pose', 'obb']
+
+interface DeploymentListCandidate {
+  item: TaskDeploymentInstance
+  routeTaskType: ModelTaskType
+}
 
 const runtimeModeOptions = [
   { label: 'sync', value: 'sync' },
   { label: 'async', value: 'async' },
 ]
 
-const taskTypeOptions = [
-  { label: 'detection', value: 'detection' },
-  { label: 'classification', value: 'classification' },
-  { label: 'segmentation', value: 'segmentation' },
-  { label: 'pose', value: 'pose' },
-  { label: 'obb', value: 'obb' },
-]
-
-const runtimePrecisionOptions = [
-  { label: 'fp32', value: 'fp32' },
-  { label: 'fp16', value: 'fp16' },
-]
+const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
 
 const deployments = ref<TaskDeploymentInstance[]>([])
 const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
@@ -372,8 +348,6 @@ const modelType = ref('')
 const modelVersionId = ref('')
 const modelBuildId = ref('')
 const runtimeProfileId = ref('')
-const runtimeBackend = ref('')
-const runtimePrecision = ref('fp32')
 const deviceName = ref('')
 const instanceCount = ref(1)
 const displayName = ref('')
@@ -384,16 +358,9 @@ const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => runtimeStatusByDeployment.value[selectedDeploymentId.value] ?? null)
 const selectedRuntimeHealth = computed(() => runtimeHealthByDeployment.value[selectedDeploymentId.value] ?? null)
-const runtimeBackendOptions = computed(() => [
-  { label: t('common.none'), value: '' },
-  { label: 'pytorch', value: 'pytorch' },
-  { label: 'onnxruntime', value: 'onnxruntime' },
-  { label: 'openvino', value: 'openvino' },
-  { label: 'tensorrt', value: 'tensorrt' },
-])
 const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
   sessionStore.bootstrap?.devices ?? null,
-  runtimeBackend.value,
+  selectedDeploymentSource.value?.runtimeBackend ?? '',
 ))
 
 let skipNextRuntimeModeRefresh = false
@@ -416,13 +383,12 @@ watch(runtimeMode, () => {
 })
 
 watch(selectedTaskType, () => {
-  selectedDeploymentId.value = ''
-  deploymentEvents.value = []
-  lastCreatedDeployment.value = null
-  runtimeStatusByDeployment.value = {}
-  runtimeHealthByDeployment.value = {}
-  resetDeploymentSourceSelection()
-  void refreshPage()
+  selectedSourceModelId.value = ''
+  selectedSourceModelDetail.value = null
+  sourceModels.value = []
+  if (deploymentSourcePickerOpen.value) {
+    void loadDeploymentSourceModels()
+  }
 })
 
 watch(deploymentDeviceOptions, (options) => {
@@ -447,14 +413,6 @@ function setTaskType(value: SelectValue): void {
   }
 }
 
-function setRuntimeBackend(value: SelectValue): void {
-  runtimeBackend.value = selectValueToString(value)
-}
-
-function setRuntimePrecision(value: SelectValue): void {
-  runtimePrecision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
-}
-
 function setDeviceName(value: SelectValue): void {
   deviceName.value = selectValueToString(value)
 }
@@ -469,21 +427,6 @@ function setRuntimeModeWithoutRefresh(mode: DeploymentRuntimeMode): void {
   skipNextRuntimeModeRefresh = true
   clearRuntimeSnapshots()
   runtimeMode.value = mode
-}
-
-function resetDeploymentSourceSelection(): void {
-  deploymentSourcePickerOpen.value = false
-  sourceModels.value = []
-  selectedSourceModelId.value = ''
-  selectedSourceModelDetail.value = null
-  selectedDeploymentSource.value = null
-  modelType.value = ''
-  modelVersionId.value = ''
-  modelBuildId.value = ''
-  runtimeProfileId.value = ''
-  runtimeBackend.value = ''
-  runtimePrecision.value = 'fp32'
-  deviceName.value = ''
 }
 
 async function openDeploymentSourcePicker(): Promise<void> {
@@ -531,12 +474,15 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
   modelVersionId.value = selection.modelVersionId
   modelBuildId.value = selection.modelBuildId
   runtimeProfileId.value = selection.runtimeProfileId
-  runtimeBackend.value = selection.runtimeBackend
-  runtimePrecision.value = selection.runtimePrecision === 'fp16' ? 'fp16' : 'fp32'
+  selectedTaskType.value = selection.taskType
+  if (!buildDeploymentDeviceOptions(sessionStore.bootstrap?.devices ?? null, selection.runtimeBackend).some((option) => option.value === deviceName.value)) {
+    deviceName.value = ''
+  }
   if (!displayName.value.trim()) {
     const sourceLabel = selection.modelBuildId || selection.modelVersionId
     displayName.value = `${selection.modelName} ${sourceLabel}`
   }
+  deploymentSourcePickerOpen.value = false
 }
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -549,6 +495,15 @@ function statusTone(status: string | null | undefined): 'neutral' | 'success' | 
 
 function normalizeDeploymentRuntimeMode(value: string | null | undefined): DeploymentRuntimeMode {
   return String(value ?? '').trim().toLowerCase() === 'async' ? 'async' : 'sync'
+}
+
+function normalizeModelTaskType(value: string | null | undefined): ModelTaskType {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return TASK_TYPES.includes(normalized as ModelTaskType) ? normalized as ModelTaskType : 'detection'
+}
+
+function taskTypeForDeployment(item: TaskDeploymentInstance): ModelTaskType {
+  return normalizeModelTaskType(item.task_type)
 }
 
 function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -579,11 +534,25 @@ function canStopDeployment(item: TaskDeploymentInstance): boolean {
 }
 
 function canWarmupDeployment(item: TaskDeploymentInstance): boolean {
-  return canWriteModels.value && !isRuntimeActionBusy(item) && runningAction.value === null
+  return canWriteModels.value && !isRuntimeActionBusy(item) && runningAction.value === null && !isDeploymentWarmupComplete(item)
 }
 
-function canHealthCheckDeployment(item: TaskDeploymentInstance): boolean {
-  return !isRuntimeActionBusy(item) && runningAction.value === null
+function isDeploymentWarmupComplete(item: TaskDeploymentInstance): boolean {
+  const health = runtimeHealthByDeployment.value[item.deployment_instance_id]
+  return health ? isRuntimeHealthWarmupComplete(health, item.instance_count) : false
+}
+
+function isRuntimeHealthWarmupComplete(health: TaskDeploymentRuntimeHealth, fallbackInstanceCount: number): boolean {
+  const expectedInstanceCount = Math.max(0, Number(health.instance_count || fallbackInstanceCount || 0))
+  const warmedInstanceCount = Math.max(0, Number(health.warmed_instance_count || 0))
+  return expectedInstanceCount > 0 && warmedInstanceCount >= expectedInstanceCount
+}
+
+function warmupButtonTitle(item: TaskDeploymentInstance): string {
+  if (isDeploymentWarmupComplete(item)) return '已预热完成'
+  if (!canWriteModels.value) return '当前账号没有部署写权限'
+  if (runningAction.value !== null) return '已有部署操作正在执行'
+  return '预热部署实例'
 }
 
 function canResetDeployment(item: TaskDeploymentInstance): boolean {
@@ -606,13 +575,9 @@ async function refreshPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
   try {
-    deployments.value = await listTaskDeployments(selectedTaskType.value, selectedProjectId.value)
+    deployments.value = await listAllTaskDeployments()
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
-    }
-    const selectedItem = deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value)
-    if (selectedItem) {
-      setRuntimeModeWithoutRefresh(normalizeDeploymentRuntimeMode(selectedItem.runtime_execution_mode))
     }
     await refreshRuntimeAndEvents()
   } catch (error) {
@@ -622,24 +587,64 @@ async function refreshPage(): Promise<void> {
   }
 }
 
+async function listAllTaskDeployments(): Promise<TaskDeploymentInstance[]> {
+  const groups = await Promise.all(
+    TASK_TYPES.map(async (taskType) => {
+      const items = await listTaskDeployments(taskType, selectedProjectId.value)
+      return items.map((item) => ({
+        item: {
+          ...item,
+          task_type: item.task_type || taskType,
+        },
+        routeTaskType: taskType,
+      }))
+    }),
+  )
+
+  const byDeploymentId = new Map<string, DeploymentListCandidate>()
+  for (const candidate of groups.flat()) {
+    const existing = byDeploymentId.get(candidate.item.deployment_instance_id)
+    if (!existing || shouldPreferDeploymentCandidate(candidate, existing)) {
+      byDeploymentId.set(candidate.item.deployment_instance_id, candidate)
+    }
+  }
+
+  return Array.from(byDeploymentId.values())
+    .map((candidate) => candidate.item)
+    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
+}
+
+function shouldPreferDeploymentCandidate(next: DeploymentListCandidate, current: DeploymentListCandidate): boolean {
+  const nextMatchesRoute = normalizeModelTaskType(next.item.task_type) === next.routeTaskType
+  const currentMatchesRoute = normalizeModelTaskType(current.item.task_type) === current.routeTaskType
+  if (nextMatchesRoute !== currentMatchesRoute) return nextMatchesRoute
+
+  const nextHasBuild = Boolean(next.item.model_build_id)
+  const currentHasBuild = Boolean(current.item.model_build_id)
+  if (nextHasBuild !== currentHasBuild) return nextHasBuild
+
+  return Date.parse(next.item.updated_at) > Date.parse(current.item.updated_at)
+}
+
 async function selectDeployment(deploymentId: string): Promise<void> {
   selectedDeploymentId.value = deploymentId
-  const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
-  if (deployment) {
-    setRuntimeModeWithoutRefresh(normalizeDeploymentRuntimeMode(deployment.runtime_execution_mode))
-  }
   await refreshRuntimeAndEvents()
 }
 
 async function loadDeploymentEvents(): Promise<void> {
-  if (!selectedDeploymentId.value) {
+  const deployment = selectedDeployment.value
+  if (!deployment) {
     deploymentEvents.value = []
     return
   }
   eventsLoading.value = true
   errorMessage.value = null
   try {
-    deploymentEvents.value = await listTaskDeploymentEvents(selectedTaskType.value, selectedDeploymentId.value, runtimeMode.value)
+    deploymentEvents.value = await listTaskDeploymentEvents(
+      taskTypeForDeployment(deployment),
+      deployment.deployment_instance_id,
+      runtimeMode.value,
+    )
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.eventsFailed')
   } finally {
@@ -655,18 +660,19 @@ async function refreshRuntimeAndEvents(): Promise<void> {
 }
 
 async function refreshSelectedRuntime(): Promise<void> {
-  if (!selectedDeploymentId.value) return
-  const deploymentId = selectedDeploymentId.value
+  const deployment = selectedDeployment.value
+  if (!deployment) return
+  const deploymentId = deployment.deployment_instance_id
   runtimeStatusLoading.value = true
   errorMessage.value = null
   try {
-    const status = await runTaskDeploymentStatusAction(selectedTaskType.value, deploymentId, runtimeMode.value, 'status')
+    const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
     runtimeStatusByDeployment.value = {
       ...runtimeStatusByDeployment.value,
       [deploymentId]: status,
     }
     try {
-      const health = await runTaskDeploymentHealthAction(selectedTaskType.value, deploymentId, runtimeMode.value, 'health')
+      const health = await runTaskDeploymentHealthAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'health')
       runtimeHealthByDeployment.value = {
         ...runtimeHealthByDeployment.value,
         [deploymentId]: health,
@@ -696,14 +702,14 @@ async function submitDeployment(): Promise<void> {
   errorMessage.value = null
   try {
     lastCreatedDeployment.value = await createTaskDeployment({
-      taskType: selectedTaskType.value,
+      taskType: selectedDeploymentSource.value.taskType,
       projectId: selectedProjectId.value,
       modelType: modelType.value.trim(),
       modelVersionId: modelVersionId.value.trim(),
       modelBuildId: modelBuildId.value.trim(),
       runtimeProfileId: runtimeProfileId.value.trim(),
-      runtimeBackend: runtimeBackend.value.trim(),
-      runtimePrecision: runtimePrecision.value,
+      runtimeBackend: selectedDeploymentSource.value.runtimeBackend.trim(),
+      runtimePrecision: selectedDeploymentSource.value.runtimePrecision === 'fp16' ? 'fp16' : 'fp32',
       deviceName: deviceName.value.trim(),
       instanceCount: instanceCount.value,
       displayName: displayName.value,
@@ -719,12 +725,14 @@ async function submitDeployment(): Promise<void> {
 
 async function runStatusAction(deploymentId: string, modeValue: string, action: DeploymentStatusAction): Promise<void> {
   const mode = normalizeDeploymentRuntimeMode(modeValue)
+  const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
+  const taskType = deployment ? taskTypeForDeployment(deployment) : selectedTaskType.value
   selectedDeploymentId.value = deploymentId
   setRuntimeModeWithoutRefresh(mode)
   runningAction.value = `${deploymentId}:${mode}:${action}`
   errorMessage.value = null
   try {
-    const status = await runTaskDeploymentStatusAction(selectedTaskType.value, deploymentId, mode, action)
+    const status = await runTaskDeploymentStatusAction(taskType, deploymentId, mode, action)
     runtimeStatusByDeployment.value = {
       ...runtimeStatusByDeployment.value,
       [deploymentId]: status,
@@ -743,12 +751,21 @@ async function runStatusAction(deploymentId: string, modeValue: string, action: 
 
 async function runHealthAction(deploymentId: string, modeValue: string, action: DeploymentHealthAction): Promise<void> {
   const mode = normalizeDeploymentRuntimeMode(modeValue)
+  const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
+  const taskType = deployment ? taskTypeForDeployment(deployment) : selectedTaskType.value
   selectedDeploymentId.value = deploymentId
   setRuntimeModeWithoutRefresh(mode)
   runningAction.value = `${deploymentId}:${mode}:${action}`
   errorMessage.value = null
   try {
-    const health = await runTaskDeploymentHealthAction(selectedTaskType.value, deploymentId, mode, action)
+    if (action === 'warmup') {
+      const currentHealth = await loadDeploymentRuntimeHealthBeforeWarmup(taskType, deploymentId, mode)
+      if (currentHealth && isRuntimeHealthWarmupComplete(currentHealth, deployment?.instance_count ?? 0)) {
+        await loadDeploymentEvents()
+        return
+      }
+    }
+    const health = await runTaskDeploymentHealthAction(taskType, deploymentId, mode, action)
     runtimeHealthByDeployment.value = {
       ...runtimeHealthByDeployment.value,
       [deploymentId]: health,
@@ -762,6 +779,27 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
   } finally {
     runningAction.value = null
+  }
+}
+
+async function loadDeploymentRuntimeHealthBeforeWarmup(
+  taskType: ModelTaskType,
+  deploymentId: string,
+  mode: DeploymentRuntimeMode,
+): Promise<TaskDeploymentRuntimeHealth | null> {
+  try {
+    const health = await runTaskDeploymentHealthAction(taskType, deploymentId, mode, 'health')
+    runtimeHealthByDeployment.value = {
+      ...runtimeHealthByDeployment.value,
+      [deploymentId]: health,
+    }
+    runtimeStatusByDeployment.value = {
+      ...runtimeStatusByDeployment.value,
+      [deploymentId]: health,
+    }
+    return health
+  } catch {
+    return null
   }
 }
 </script>
@@ -805,7 +843,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
 }
 
 .deployment-workspace-grid {
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
@@ -895,7 +933,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
 }
 
 .deployment-runtime-grid {
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
@@ -909,9 +947,22 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
 }
 
 .deployment-events-panel .event-timeline li {
-  grid-template-columns: minmax(112px, 140px) minmax(84px, 120px) minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 148px minmax(180px, max-content) minmax(0, 1fr);
+  gap: 14px;
   padding: 8px 0;
+}
+
+.deployment-events-panel .event-timeline time,
+.deployment-events-panel .event-timeline strong,
+.deployment-events-panel .event-timeline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.deployment-events-panel .event-timeline strong {
+  max-width: 260px;
 }
 
 @media (max-width: 900px) {
@@ -938,6 +989,12 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   .deployment-runtime-summary,
   .deployment-events-panel .event-timeline li {
     grid-template-columns: 1fr;
+  }
+
+  .deployment-events-panel .event-timeline time,
+  .deployment-events-panel .event-timeline strong,
+  .deployment-events-panel .event-timeline span {
+    white-space: normal;
   }
 }
 </style>

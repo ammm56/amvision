@@ -84,6 +84,7 @@ class SqlAlchemyClassificationDeploymentService(SqlAlchemyDeploymentInstanceServ
             status=status,
             limit=limit,
         )
+        views = tuple(item for item in views if item.task_type == CLASSIFICATION_TASK_TYPE)
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
             return views

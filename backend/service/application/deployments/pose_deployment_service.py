@@ -67,6 +67,7 @@ class SqlAlchemyPoseDeploymentService(SqlAlchemyDeploymentInstanceService):
             status=status,
             limit=limit,
         )
+        views = tuple(item for item in views if item.task_type == POSE_TASK_TYPE)
         n = _normalize_model_type(model_type)
         if n is None:
             return views

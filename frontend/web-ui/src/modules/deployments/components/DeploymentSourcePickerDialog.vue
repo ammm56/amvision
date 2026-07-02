@@ -13,7 +13,7 @@
           <p class="page-kicker">DEPLOYMENT SOURCE</p>
           <h2>选择部署来源模型</h2>
           <p class="deployment-source-picker__description">
-            按当前 task_type 浏览已登记的 ModelVersion 和转换完成的 ModelBuild，选择后自动填入部署所需信息。
+            按任务类型浏览已登记的 ModelVersion 和转换完成的 ModelBuild，选择后自动填入部署所需信息。
           </p>
         </div>
         <button
@@ -28,8 +28,19 @@
       </header>
 
       <div class="deployment-source-picker__toolbar">
-        <span class="deployment-source-picker__label">当前任务类型</span>
-        <span class="deployment-source-pill">{{ taskType }}</span>
+        <span class="deployment-source-picker__label">任务类型</span>
+        <div class="deployment-source-picker__chips" role="tablist" aria-label="任务类型">
+          <button
+            v-for="option in taskTypeOptions"
+            :key="option.value"
+            type="button"
+            class="deployment-source-picker__chip"
+            :class="{ 'is-active': option.value === taskType }"
+            @click.stop="$emit('change-task-type', option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
         <Button size="sm" variant="secondary" :disabled="loading" @click.stop="$emit('refresh')">
           <RefreshCw :size="14" />
           刷新
@@ -185,10 +196,16 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import type { ModelTaskType } from '../services/deployment.service'
 import type { DeploymentSourceSelection } from './deployment-source.types'
 
+interface TaskTypeOption {
+  label: string
+  value: ModelTaskType
+}
+
 const props = defineProps<{
   open: boolean
   loading: boolean
   taskType: ModelTaskType
+  taskTypeOptions: TaskTypeOption[]
   models: DeploymentSourceModelSummary[]
   selectedModelId: string
   selectedModelDetail: DeploymentSourceModelDetail | null
@@ -199,6 +216,7 @@ const props = defineProps<{
 defineEmits<{
   close: []
   refresh: []
+  'change-task-type': [taskType: ModelTaskType]
   'select-model': [modelId: string]
   'apply-source': [selection: DeploymentSourceSelection]
 }>()
@@ -309,6 +327,33 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.deployment-source-picker__chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deployment-source-picker__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--button-secondary-bg);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.deployment-source-picker__chip.is-active {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: var(--accent);
 }
 
 .deployment-source-picker__body {

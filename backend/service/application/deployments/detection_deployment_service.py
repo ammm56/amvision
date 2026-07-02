@@ -94,6 +94,7 @@ class SqlAlchemyDetectionDeploymentService(SqlAlchemyDeploymentInstanceService):
             status=status,
             limit=limit,
         )
+        views = tuple(item for item in views if item.task_type == DETECTION_TASK_TYPE)
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
             return views

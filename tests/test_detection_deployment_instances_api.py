@@ -75,6 +75,14 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             assert len(list_payload) == 1
             assert list_payload[0]["deployment_instance_id"] == deployment_instance_id
 
+            for task_type in ("classification", "segmentation", "pose", "obb"):
+                cross_task_list_response = client.get(
+                    f"/api/v1/models/{task_type}/deployment-instances?project_id=project-1",
+                    headers=_build_headers(),
+                )
+                assert cross_task_list_response.status_code == 200
+                assert cross_task_list_response.json() == []
+
             detail_response = client.get(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}",
                 headers=_build_headers(),
