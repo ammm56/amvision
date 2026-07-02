@@ -820,7 +820,13 @@ preview 相关图片、文件和其他大结果仍通过对象存储引用、输
 
 #### GET /api/v1/workflows/runs/{workflow_run_id}
 
-用途：查询单条 WorkflowRun 状态、错误摘要、实例归属和结果摘要。
+用途：查询异步调用结果或平台运行回执。
+
+建议行为：
+
+- 默认 `response_mode=app-result`，只返回公开 App Result
+- `response_mode=run` 返回平台运行回执，不返回底层 template_outputs 和 node_records
+- `response_mode=debug` 返回完整调试 trace
 
 #### GET /api/v1/workflows/runs/{workflow_run_id}/events
 

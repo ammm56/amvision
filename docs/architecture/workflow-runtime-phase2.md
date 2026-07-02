@@ -56,7 +56,7 @@
 进入第二阶段：
 
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
-- GET /api/v1/workflows/runs/{workflow_run_id}
+- GET /api/v1/workflows/runs/{workflow_run_id}（默认公开 App Result；平台回执使用 `response_mode=run`）
 - POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 - WorkflowRun 状态机补齐 queued，用于异步 runs 的外部可见排队状态
 - 异步 runs 仍沿用 WorkflowRun 资源，不新建另一类任务资源

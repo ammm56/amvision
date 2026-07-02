@@ -1176,7 +1176,10 @@ def run_workflow_app_runtime_smoke(
             },
         )
         workflow_run_id = read_required_string(invoke_payload, "workflow_run_id")
-        run_payload = client.get(f"/workflows/runs/{workflow_run_id}")
+        run_payload = client.get(
+            f"/workflows/runs/{workflow_run_id}",
+            params={"response_mode": "run"},
+        )
         workflow_state = str(run_payload.get("state") or invoke_payload.get("state"))
         if workflow_state != "succeeded":
             summary = summarize_workflow_payload(run_payload)

@@ -105,7 +105,7 @@ HTTP response / ZeroMQ reply / gRPC response / MQTT publish / PLC write / WebSoc
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload`：multipart 同步调用，适合 HTTP 调试或低频图片上传。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs`：创建异步 WorkflowRun。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload`：multipart 异步 WorkflowRun。
-- `GET /api/v1/workflows/runs/{workflow_run_id}`：查询 WorkflowRun 结果。
+- `GET /api/v1/workflows/runs/{workflow_run_id}`：默认查询公开 App Result；平台内部需要状态和错误回执时使用 `response_mode=run`。
 - `POST /api/v1/workflows/runs/{workflow_run_id}/cancel`：取消 WorkflowRun。
 
 因此，REST 在触发调用层里有两类职责：
@@ -1191,7 +1191,7 @@ docs/api/trigger-source-sdks.md
 验收点：
 
 - 高频连续帧输入时不会无界堆积队列。
-- async 模式可以通过现有 `GET /api/v1/workflows/runs/{workflow_run_id}` 查询最终结果。
+- async 模式可以通过现有 `GET /api/v1/workflows/runs/{workflow_run_id}` 查询最终公开 App Result；平台页面需要运行回执时使用 `response_mode=run`。
 - FrameRef 覆盖不会导致运行中的 workflow 读到错误帧。
 
 ### 第 10 步：前端图编排显示入口和出口

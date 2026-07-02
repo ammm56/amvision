@@ -186,7 +186,8 @@
             <span>接口</span>
             <pre class="json-view">POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/runs
 POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/invoke
-GET /api/v1/workflows/runs/{workflow_run_id}</pre>
+GET /api/v1/workflows/runs/{workflow_run_id}
+GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           </div>
           <label class="field field--wide">
             <span>input_bindings JSON</span>

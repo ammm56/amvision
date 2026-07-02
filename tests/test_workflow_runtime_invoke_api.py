@@ -71,6 +71,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=headers,
+                params={"response_mode": "run"},
             )
             stop_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
@@ -159,6 +160,83 @@ def test_workflow_app_runtime_invoke_api_default_response_returns_public_app_res
     assert result_payload["status_code"] == 200
     assert result_payload["body"]["code"] == 0
     assert result_payload["body"]["message"] == "decoded"
+
+
+def test_workflow_app_runtime_run_query_default_response_returns_public_app_result_only(
+    tmp_path: Path,
+) -> None:
+    """验证持久化 run 查询默认也只返回公开 App Result。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-query-app-result.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Barcode Result Display Run Query Runtime",
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
+                headers=headers,
+                json={
+                    "input_bindings": {
+                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                    },
+                    "execution_metadata": {
+                        "scenario": "barcode-result-display-run-query",
+                        "trigger_source": "sync-api",
+                    },
+                },
+            )
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            result_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=headers,
+            )
+            run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=headers,
+                params={"response_mode": "run"},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 200
+    assert result_response.status_code == 200
+    assert run_response.status_code == 200
+    assert stop_response.status_code == 200
+
+    result_payload = result_response.json()
+    assert "workflow_run_id" not in result_payload
+    assert "outputs" not in result_payload
+    assert "template_outputs" not in result_payload
+    assert "node_records" not in result_payload
+    assert result_payload["status_code"] == 200
+    assert result_payload["body"]["code"] == 0
+    assert result_payload["body"]["message"] == "decoded"
+
+    run_payload = run_response.json()
+    assert run_payload["workflow_run_id"] == workflow_run_id
+    assert run_payload["state"] == "succeeded"
+    assert run_payload["template_outputs"] == {}
+    assert run_payload["node_records"] == []
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process_save_image(

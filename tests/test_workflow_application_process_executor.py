@@ -2036,6 +2036,7 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"response_mode": "run"},
             )
             stop_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
@@ -2141,6 +2142,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"response_mode": "run"},
             )
             get_runtime_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
@@ -2244,6 +2246,7 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"response_mode": "run"},
             )
             health_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/health",
@@ -2995,6 +2998,7 @@ def test_workflow_app_runtime_async_run_api_cancel_ignores_terminal_succeeded_ru
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"response_mode": "run"},
             )
             stop_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
@@ -3647,6 +3651,7 @@ def _wait_for_workflow_run_state(
         last_response = client.get(
             f"/api/v1/workflows/runs/{workflow_run_id}",
             headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            params={"response_mode": "run"},
         )
         if last_response.status_code == 200 and last_response.json().get("state") in expected_states:
             return last_response

@@ -140,7 +140,7 @@
 
 推荐顺序：
 
-1. 先读 `GET /api/v1/workflows/runs/{workflow_run_id}`
+1. 先读 `GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run`
 2. 如果本地保存了上一次成功处理的最大 sequence，再读 `GET /api/v1/workflows/runs/{workflow_run_id}/events?after_sequence=<last_sequence>&limit=<n>`
 3. 建立 `/ws/v1/workflows/runs/events?workflow_run_id=...&after_cursor=<last_sequence>&limit=<n>`
 4. 收到 `workflows.runs.connected` 后，不更新业务游标
@@ -221,7 +221,7 @@
 
 首次连接：
 
-1. 读 `GET /api/v1/workflows/runs/{workflow_run_id}`
+1. 读 `GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run`
 2. 如需补回历史，读 `GET /api/v1/workflows/runs/{workflow_run_id}/events`
 3. 如果已经拿到最后一条业务事件的 `sequence`，转成字符串后作为 `after_cursor`；如果当前还没有历史事件，可省略 `after_cursor`
 4. 建立 WebSocket
@@ -230,7 +230,7 @@
 断线恢复：
 
 1. 记住最后一个业务 `sequence`
-2. 重新读 `GET /api/v1/workflows/runs/{workflow_run_id}`
+2. 重新读 `GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run`
 3. 重新读 `GET /api/v1/workflows/runs/{workflow_run_id}/events?after_sequence=<last_sequence>&limit=<n>`
 4. 重新建连，并带上 `after_cursor=<last_sequence>`
 5. 去重依据使用 `sequence`
@@ -309,7 +309,7 @@
 
 ### 只做正式运行结果页
 
-- HTTP：`GET /api/v1/workflows/runs/{workflow_run_id}`
+- HTTP：`GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run`
 - HTTP：`GET /api/v1/workflows/runs/{workflow_run_id}/events`
 - WebSocket：`/ws/v1/workflows/runs/events`
 

@@ -242,7 +242,9 @@ export async function invokeWorkflowAppRuntime(workflowRuntimeId: string, input:
 }
 
 export async function getWorkflowRun(workflowRunId: string): Promise<WorkflowRun> {
-  return apiRequest<WorkflowRun>(`/workflows/runs/${encodePathPart(workflowRunId)}`)
+  return apiRequest<WorkflowRun>(`/workflows/runs/${encodePathPart(workflowRunId)}`, {
+    query: { response_mode: 'run' },
+  })
 }
 
 export async function getWorkflowRunEvents(workflowRunId: string, afterSequence?: number, limit?: number): Promise<WorkflowRunEvent[]> {

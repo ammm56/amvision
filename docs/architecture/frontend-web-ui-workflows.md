@@ -254,7 +254,7 @@ PreviewRun 用于工作流调试，不等同于正式运行。
 1. 调用 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs`。
 2. 立即展示 workflow_run_id 和 queued/running 状态。
 3. 订阅 `/ws/v1/workflows/runs/events`。
-4. 需要恢复时调用 `GET /api/v1/workflows/runs/{workflow_run_id}` 和 events 历史接口。
+4. 需要恢复平台运行回执时调用 `GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run` 和 events 历史接口；外部结果查询默认使用不带参数的 App Result。
 5. 终态后展示结果，必要时允许 cancel。
 
 multipart 调用只在后端当前支持的绑定类型范围内开放。界面应根据 application input binding 的 payload 类型决定是否展示文件上传控件。

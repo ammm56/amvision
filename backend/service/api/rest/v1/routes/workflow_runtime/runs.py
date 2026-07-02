@@ -27,6 +27,7 @@ from backend.service.application.workflows.runtime.invokes import (
     WorkflowRuntimeInvokeRequest,
     WorkflowRuntimeSyncInvokeResult,
 )
+from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 
 
 workflow_runtime_runs_router = APIRouter()
@@ -41,10 +42,19 @@ def _resolve_input_bindings(body: WorkflowRuntimeInvokeRequestBody) -> dict[str,
         raise InvalidRequestError(str(exc)) from exc
 
 
+def _normalize_response_mode(response_mode: str) -> str:
+    """统一解析 workflow run 响应模式。"""
+
+    normalized_mode = response_mode.strip().lower().replace("_", "-")
+    if normalized_mode in {"app-result", "result", "run", "debug"}:
+        return normalized_mode
+    raise InvalidRequestError("response_mode 只能是 app-result、run 或 debug")
+
+
 def _build_sync_invoke_response(invoke_result: WorkflowRuntimeSyncInvokeResult, *, response_mode: str) -> object:
     """按调用场景构建同步 invoke 响应。"""
 
-    normalized_mode = response_mode.strip().lower().replace("_", "-")
+    normalized_mode = _normalize_response_mode(response_mode)
     if normalized_mode in {"app-result", "result"}:
         return _build_workflow_app_invoke_result_payload(
             invoke_result.workflow_run,
@@ -64,6 +74,26 @@ def _build_sync_invoke_response(invoke_result: WorkflowRuntimeSyncInvokeResult, 
             template_outputs=invoke_result.raw_template_outputs,
             node_records=invoke_result.raw_node_records,
         )
+    raise InvalidRequestError("response_mode 只能是 app-result、run 或 debug")
+
+
+def _build_persisted_workflow_run_response(workflow_run: WorkflowRun, *, response_mode: str) -> object:
+    """按调用场景构建持久化 WorkflowRun 查询响应。"""
+
+    normalized_mode = _normalize_response_mode(response_mode)
+    if normalized_mode in {"app-result", "result"}:
+        return _build_workflow_app_invoke_result_payload(
+            workflow_run,
+            outputs=dict(workflow_run.outputs),
+        )
+    if normalized_mode == "run":
+        return _build_workflow_run_contract(
+            workflow_run,
+            template_outputs={},
+            node_records=(),
+        )
+    if normalized_mode == "debug":
+        return _build_workflow_run_contract(workflow_run)
     raise InvalidRequestError("response_mode 只能是 app-result、run 或 debug")
 
 
@@ -183,18 +213,22 @@ async def invoke_workflow_app_runtime_upload(
 
 @workflow_runtime_runs_router.get(
     "/runs/{workflow_run_id}",
-    response_model=WorkflowRunContract,
+    response_model=None,
 )
 def get_workflow_run(
     workflow_run_id: str,
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:read"))],
-) -> WorkflowRunContract:
-    """读取一条 WorkflowRun。"""
+    response_mode: Annotated[
+        str,
+        Query(description="异步运行结果响应模式：app-result 返回公开 App Result，run 返回运行回执，debug 返回完整调试 trace"),
+    ] = "app-result",
+) -> object:
+    """读取一条 WorkflowRun 或其公开 App Result。"""
 
     workflow_run = _build_workflow_runtime_service(request).get_workflow_run(workflow_run_id)
     _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
-    return _build_workflow_run_contract(workflow_run)
+    return _build_persisted_workflow_run_response(workflow_run, response_mode=response_mode)
 
 
 @workflow_runtime_runs_router.get(

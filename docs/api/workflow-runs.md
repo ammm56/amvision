@@ -25,7 +25,8 @@
 - invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
 - WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke` 和 `.../invoke/upload` 默认只返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
-- `GET /api/v1/workflows/runs/{workflow_run_id}` 返回的是持久化记录视图；如果输入或输出里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
+- `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs` 创建异步 run，只返回运行回执。异步 run 完成后，`GET /api/v1/workflows/runs/{workflow_run_id}` 默认返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
+- `response_mode=run` 和 `response_mode=debug` 如果输入或输出里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
 
 ## Sync / Async 边界说明
 
@@ -267,9 +268,10 @@
 
 ## GET /api/v1/workflows/runs/{workflow_run_id}
 
-- 返回单条 WorkflowRun 的当前持久化结果
-- 适合回查输入、输出、node_records、assigned_process_id、error_message 和 metadata.error_details
-- 如果同步 invoke 响应里包含原始 base64 或 memory image-ref，这里回查时会看到对应的 redacted 摘要
+- 默认 `response_mode=app-result`，返回公开 App Result，不返回 WorkflowRun、template_outputs 或 node_records
+- `response_mode=run` 返回 WorkflowRun 运行回执；其中 `outputs` 保留公开 App Result，`template_outputs={}`，`node_records=[]`
+- `response_mode=debug` 返回完整 WorkflowRun 调试视图；包含原始 outputs、template_outputs 和 node_records
+- 适合异步 run 完成后获取外部调用结果；平台页面如需状态、assigned_process_id、error_message 和 metadata.error_details，应显式使用 `response_mode=run`
 
 ## GET /api/v1/workflows/runs/{workflow_run_id}/events
 

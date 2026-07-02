@@ -291,7 +291,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/enable | workflows:write | 启用一条 WorkflowTriggerSource；当前要求绑定的 runtime 已处于 running。 |
 | POST | /api/v1/workflows/trigger-sources/{trigger_source_id}/disable | workflows:write | 停用一条 WorkflowTriggerSource。 |
 | GET | /api/v1/workflows/trigger-sources/{trigger_source_id}/health | workflows:read | 读取一条 WorkflowTriggerSource 的健康摘要。 |
-| GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 读取一条 WorkflowRun。 |
+| GET | /api/v1/workflows/runs/{workflow_run_id} | workflows:read | 默认读取公开 App Result；`response_mode=run` 读取运行回执；`response_mode=debug` 读取完整调试 trace。 |
 | GET | /api/v1/workflows/runs/{workflow_run_id}/events | workflows:read | 读取一条 WorkflowRun 的事件列表；支持 after_sequence 和 limit。 |
 | POST | /api/v1/workflows/runs/{workflow_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的异步 WorkflowRun。 |
 | POST | /api/v1/tasks | tasks:write | 创建公开任务记录，立即返回任务详情。 |
@@ -2024,7 +2024,9 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 ### GET /api/v1/workflows/runs/{workflow_run_id}
 
 - 需要 workflows:read
-- 返回单条 WorkflowRun 的当前持久化结果，包括输入、输出、错误信息和元数据
+- 默认 `response_mode=app-result`，返回公开 App Result，不返回 WorkflowRun、template_outputs 或 node_records
+- `response_mode=run` 返回 WorkflowRun 运行回执，保留公开 outputs，不返回 template_outputs 和 node_records
+- `response_mode=debug` 返回完整 WorkflowRun 调试视图，包括输入、输出、template_outputs、node_records、错误信息和元数据
 
 ### GET /api/v1/workflows/runs/{workflow_run_id}/events
 
