@@ -33,8 +33,8 @@ from backend.service.domain.models.model_task_types import (
 
 YoloModelType = Literal["yolov8", "yolo11", "yolo26"]
 
-YOLO_PRIMARY_MODEL_SCALES: Final[tuple[str, ...]] = ("nano", "s", "m", "l", "x")
-YOLO_PRIMARY_BUILD_FORMATS: Final[tuple[ModelBuildFormat, ...]] = (
+YOLO_MODEL_SCALES: Final[tuple[str, ...]] = ("nano", "s", "m", "l", "x")
+YOLO_MODEL_BUILD_FORMATS: Final[tuple[ModelBuildFormat, ...]] = (
     PYTORCH_CHECKPOINT_BUILD_FORMAT,
     ONNX_BUILD_FORMAT,
     ONNX_OPTIMIZED_BUILD_FORMAT,
@@ -50,8 +50,8 @@ class YoloModelProfile:
 
     model_type: YoloModelType
     supported_tasks: tuple[ModelTaskType, ...]
-    supported_scales: tuple[str, ...] = YOLO_PRIMARY_MODEL_SCALES
-    supported_build_formats: tuple[ModelBuildFormat, ...] = YOLO_PRIMARY_BUILD_FORMATS
+    supported_scales: tuple[str, ...] = YOLO_MODEL_SCALES
+    supported_build_formats: tuple[ModelBuildFormat, ...] = YOLO_MODEL_BUILD_FORMATS
     default_dataset_formats: dict[ModelTaskType, str] = field(default_factory=dict)
 
     def supports_task_type(self, task_type: str) -> bool:
