@@ -7,11 +7,11 @@
         <p class="page-description">{{ t('workflowEditor.applications.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink v-if="canWriteWorkflows" to="/workflows/graph/new" class="ui-button ui-button--primary ui-button--md">
+        <Button v-if="canWriteWorkflows" variant="primary" @click="openNewGraph">
           <Plus :size="16" />
           {{ t('workflowEditor.actions.newWorkflowGraph') }}
-        </RouterLink>
-        <Button variant="secondary" :disabled="loading" @click="loadPage">
+        </Button>
+        <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -79,9 +79,27 @@
               </td>
               <td>{{ formatSystemDateTime(workflowApp.application.updated_at) }}</td>
               <td>
-                <div class="table-actions table-actions--wrap">
-                  <RouterLink :to="detailPath(workflowApp.application.application_id)">详情</RouterLink>
-                  <RouterLink :to="editorPath(workflowApp.application.application_id)">{{ t('workflowEditor.actions.openGraphEditor') }}</RouterLink>
+                <div class="table-actions table-actions--wrap workflow-app-list__actions">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    title="详情"
+                    aria-label="详情"
+                    @click="openDetail(workflowApp.application.application_id)"
+                  >
+                    <SquarePen :size="14" />
+                    <span>详情</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    :title="t('workflowEditor.actions.openGraphEditor')"
+                    :aria-label="t('workflowEditor.actions.openGraphEditor')"
+                    @click="openGraphEditor(workflowApp.application.application_id)"
+                  >
+                    <Workflow :size="14" />
+                    <span>{{ t('workflowEditor.actions.openGraphEditor') }}</span>
+                  </Button>
                   <Button
                     v-if="canWriteWorkflows"
                     size="sm"
@@ -117,8 +135,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Plus, RefreshCw, Trash2 } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
+import { Plus, RefreshCw, SquarePen, Trash2, Workflow } from '@lucide/vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -137,6 +155,7 @@ import { listWorkflowApps, type WorkflowAppSummary } from '../services/workflow-
 import type { WorkflowAppRuntime, WorkflowNodeCatalogResponse } from '../types'
 
 const { t } = useI18n()
+const router = useRouter()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 
@@ -168,7 +187,23 @@ function detailPath(applicationId: string): string {
   return `/workflows/apps/${encodeURIComponent(applicationId)}`
 }
 
-async function loadPage(offset = applicationPagination.value.offset): Promise<void> {
+function openNewGraph(): void {
+  void router.push('/workflows/graph/new')
+}
+
+function openDetail(applicationId: string): void {
+  void router.push(detailPath(applicationId))
+}
+
+function openGraphEditor(applicationId: string): void {
+  void router.push(editorPath(applicationId))
+}
+
+function refreshPage(): void {
+  void loadPage()
+}
+
+async function loadPage(offset?: number): Promise<void> {
   if (!selectedProjectId.value) {
     workflowApps.value = []
     appRuntimes.value = []
@@ -177,10 +212,11 @@ async function loadPage(offset = applicationPagination.value.offset): Promise<vo
   }
   loading.value = true
   errorMessage.value = null
+  const pageOffset = Number.isFinite(offset) ? Math.max(0, offset as number) : applicationPagination.value.offset
   try {
     const [catalogResponse, workflowAppResponse] = await Promise.all([
       getWorkflowNodeCatalog(),
-      listWorkflowApps(selectedProjectId.value, { offset, limit: applicationPagination.value.limit }),
+      listWorkflowApps(selectedProjectId.value, { offset: pageOffset, limit: applicationPagination.value.limit }),
     ])
     nodeCatalog.value = catalogResponse
     workflowApps.value = workflowAppResponse.items
@@ -258,6 +294,11 @@ watch(
 </script>
 
 <style scoped>
+.workflow-app-list__actions {
+  align-items: center;
+  gap: 6px;
+}
+
 .workflow-app-list__pagination {
   margin-top: 16px;
 }
