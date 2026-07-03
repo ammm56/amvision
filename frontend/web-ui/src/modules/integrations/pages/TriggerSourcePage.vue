@@ -85,6 +85,13 @@
             <span>{{ selectedProtocolTemplate.endpointLabel }}</span>
             <input v-model="endpoint" />
           </label>
+          <label v-if="selectedProtocolTemplate.templateId === 'zeromq-image-trigger'" class="field">
+            <span class="field-label">
+              pool_name
+              <InfoHint text="ZeroMQ 第二帧图片 bytes 写入的 LocalBufferBroker pool；默认使用 image-1080p。" />
+            </span>
+            <SelectField :model-value="localBufferPoolName" :options="localBufferPoolOptions" @update:model-value="setLocalBufferPoolName" />
+          </label>
           <label class="field">
             <span>result_binding</span>
             <SelectField :model-value="resultBinding" :options="resultBindingOptions" @update:model-value="setResultBinding" />
@@ -413,6 +420,11 @@ const mappingModeOptions: SelectOption[] = [
   { label: '不映射', value: 'skip', description: '这个 binding 不参与当前入口' },
 ]
 
+const localBufferPoolOptions: SelectOption[] = [
+  { label: 'image-1080p', value: 'image-1080p', description: '默认 1080p 图片输入 pool' },
+  { label: 'image-640x640', value: 'image-640x640', description: '低分辨率或小图输入 pool' },
+]
+
 const route = useRoute()
 const projectStore = useProjectStore()
 
@@ -429,6 +441,7 @@ const protocolTemplateId = ref<ProtocolTemplateId>('zeromq-image-trigger')
 const triggerSourceId = ref('')
 const displayName = ref('')
 const endpoint = ref('tcp://127.0.0.1:5555')
+const localBufferPoolName = ref('image-1080p')
 const submitMode = ref<'async' | 'sync'>('sync')
 const resultBinding = ref('core_output_http_response')
 const resultMode = ref('sync-reply')
@@ -508,6 +521,11 @@ function setEnableAfterCreate(value: SelectValue): void {
 
 function setResultBinding(value: SelectValue): void {
   resultBinding.value = selectValueToString(value)
+}
+
+function setLocalBufferPoolName(value: SelectValue): void {
+  const nextValue = selectValueToString(value).trim()
+  localBufferPoolName.value = nextValue || 'image-1080p'
 }
 
 function setSubmitMode(value: SelectValue): void {
@@ -665,6 +683,7 @@ function applyProtocolTemplateDefaults(): void {
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${template.displayName} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
+  localBufferPoolName.value = 'image-1080p'
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
@@ -733,6 +752,7 @@ function buildTransportConfig(): WorkflowJsonObject {
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
       buffer_ttl_seconds: selectedProtocolTemplate.value.defaultReplyTimeoutSeconds,
       content_transport: 'local-buffer',
+      pool_name: localBufferPoolName.value.trim() || 'image-1080p',
     }
   }
   return { path: normalizedEndpoint, method: 'POST' }
@@ -867,6 +887,7 @@ async function submitTriggerSource(): Promise<void> {
         protocol_template: protocolTemplateId.value,
         application_id: runtime.application_id,
         default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
+        local_buffer_pool_name: selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' ? localBufferPoolName.value.trim() || 'image-1080p' : null,
         inferred_image_binding: inferredImageBinding.value?.binding_id ?? null,
         inferred_image_bindings: inferredImageBindings.value.map((binding) => binding.binding_id),
         inferred_request_binding: inferredRequestBinding.value?.binding_id ?? null,

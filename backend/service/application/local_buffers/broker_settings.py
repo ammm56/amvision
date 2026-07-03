@@ -10,8 +10,8 @@ _DEFAULT_4K_SLOT_SIZE_BYTES = 64 * _MIB
 _DEFAULT_4K_SLOT_COUNT = 32
 _DEFAULT_1080P_SLOT_SIZE_BYTES = 16 * _MIB
 _DEFAULT_1080P_SLOT_COUNT = 32
-_DEFAULT_SMALL_SLOT_SIZE_BYTES = 4 * _MIB
-_DEFAULT_SMALL_SLOT_COUNT = 32
+_DEFAULT_640X640_SLOT_SIZE_BYTES = 4 * _MIB
+_DEFAULT_640X640_SLOT_COUNT = 32
 
 
 class LocalBufferBrokerPoolSettings(BaseModel):
@@ -70,9 +70,8 @@ class LocalBufferBrokerSettings(BaseModel):
     - request_timeout_seconds：单次控制请求等待响应的最长秒数。
     - shutdown_timeout_seconds：等待 broker 优雅退出的最长秒数。
     - expire_interval_seconds：周期性触发过期 lease 回收的间隔秒数；小于等于 0 表示关闭循环。
-    - default_pool：常用单 pool 配置；正式部署通常只需要改这个对象。
     - default_pool_name：未显式指定 pool_name 时使用的默认 pool。
-    - pools：高级多 pool 配置；需要多个 pool 时使用，并配套 default_pool_name。
+    - pools：启动时创建的 pool 列表，必须包含 default_pool_name。
     """
 
     enabled: bool = True
@@ -81,9 +80,17 @@ class LocalBufferBrokerSettings(BaseModel):
     request_timeout_seconds: float = 5.0
     shutdown_timeout_seconds: float = 5.0
     expire_interval_seconds: float = 5.0
-    default_pool: LocalBufferBrokerPoolSettings | None = None
     default_pool_name: str = "image-1080p"
     pools: tuple[LocalBufferBrokerPoolSettings, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_default_pool(cls, data: object) -> object:
+        """拒绝旧的单 default_pool 配置入口。"""
+
+        if isinstance(data, dict) and "default_pool" in data:
+            raise ValueError("LocalBufferBroker 不再支持 default_pool，请使用 default_pool_name + pools")
+        return data
 
     @model_validator(mode="after")
     def validate_settings(self) -> LocalBufferBrokerSettings:
@@ -92,12 +99,6 @@ class LocalBufferBrokerSettings(BaseModel):
         返回：
         - LocalBufferBrokerSettings：已补齐内置 pool preset 的配置。
         """
-
-        if self.default_pool is not None:
-            if self.pools:
-                raise ValueError("LocalBufferBroker default_pool 和 pools 不能同时配置")
-            self.default_pool_name = self.default_pool.pool_name
-            self.pools = (self.default_pool,)
 
         normalized_default_pool_name = self.default_pool_name.strip()
         if not normalized_default_pool_name:
@@ -117,17 +118,17 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
     """按名称构造内置 LocalBufferBroker pool preset。
 
     参数：
-    - pool_name：内置 pool 名称，可选 image-small、image-1080p 或 image-4k。
+    - pool_name：内置 pool 名称，可选 image-640x640、image-1080p 或 image-4k。
 
     返回：
     - LocalBufferBrokerPoolSettings：对应的 pool 配置。
     """
 
-    if pool_name == "image-small":
+    if pool_name == "image-640x640":
         return LocalBufferBrokerPoolSettings(
-            pool_name="image-small",
-            slot_size_bytes=_DEFAULT_SMALL_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_SMALL_SLOT_COUNT,
+            pool_name="image-640x640",
+            slot_size_bytes=_DEFAULT_640X640_SLOT_SIZE_BYTES,
+            slot_count=_DEFAULT_640X640_SLOT_COUNT,
         )
     if pool_name == "image-1080p":
         return LocalBufferBrokerPoolSettings()
@@ -137,4 +138,4 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
             slot_size_bytes=_DEFAULT_4K_SLOT_SIZE_BYTES,
             slot_count=_DEFAULT_4K_SLOT_COUNT,
         )
-    raise ValueError("LocalBufferBroker default_pool_name 只支持 image-small、image-1080p 或 image-4k")
+    raise ValueError("LocalBufferBroker default_pool_name 只支持 image-640x640、image-1080p 或 image-4k")

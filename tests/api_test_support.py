@@ -10,7 +10,10 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
-from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerSettings,
+)
 from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
     DEFAULT_LOCAL_AUTH_USERNAME,
@@ -104,7 +107,14 @@ def create_api_test_context(
             enabled=enable_local_buffer_broker,
             root_dir=str(tmp_path / "local-buffer-broker"),
             startup_timeout_seconds=10.0,
-            default_pool_name="image-small",
+            default_pool_name="image-test",
+            pools=(
+                LocalBufferBrokerPoolSettings(
+                    pool_name="image-test",
+                    slot_size_bytes=4 * 1024 * 1024,
+                    slot_count=4,
+                ),
+            ),
         ),
         task_manager=BackendServiceTaskManagerConfig(
             enabled=enable_task_manager,

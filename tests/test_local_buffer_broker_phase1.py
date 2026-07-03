@@ -114,7 +114,7 @@ def test_local_buffer_broker_default_pool_is_1080p_ready() -> None:
 @pytest.mark.parametrize(
     ("pool_name", "minimum_slot_size_bytes", "minimum_slot_count"),
     (
-        ("image-small", 4 * 1024 * 1024, 32),
+        ("image-640x640", 4 * 1024 * 1024, 32),
         ("image-1080p", 16 * 1024 * 1024, 32),
         ("image-4k", 64 * 1024 * 1024, 32),
     ),
@@ -144,21 +144,43 @@ def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     assert selected_pool.flush_on_write is False
 
 
-def test_backend_service_config_selects_1080p_local_buffer_pool() -> None:
-    """验证 backend-service.json 默认选择 image-1080p pool。"""
+def test_backend_service_config_uses_multi_pool_with_1080p_default() -> None:
+    """验证 backend-service.json 默认创建多 pool 并选择 image-1080p。"""
 
     payload = json.loads(Path("config/backend-service.json").read_text(encoding="utf-8"))
     settings = BackendServiceSettings.model_validate(payload)
     pool_names = {item.pool_name for item in settings.local_buffer_broker.pools}
 
     assert settings.local_buffer_broker.default_pool_name == "image-1080p"
-    assert pool_names == {"image-1080p"}
-    pool = settings.local_buffer_broker.pools[0]
-    assert pool.file_name == "image-1080p-001.dat"
-    assert pool.slot_size_bytes == 16 * 1024 * 1024
-    assert pool.slot_count == 32
-    assert pool.file_size_bytes == pool.slot_size_bytes * 32
-    assert pool.flush_on_write is False
+    assert pool_names == {"image-1080p", "image-640x640"}
+    pools = {item.pool_name: item for item in settings.local_buffer_broker.pools}
+    default_pool = pools["image-1080p"]
+    low_res_pool = pools["image-640x640"]
+    assert default_pool.file_name == "image-1080p-001.dat"
+    assert default_pool.slot_size_bytes == 16 * 1024 * 1024
+    assert default_pool.slot_count == 32
+    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * 32
+    assert default_pool.flush_on_write is False
+    assert low_res_pool.file_name == "image-640x640-001.dat"
+    assert low_res_pool.slot_size_bytes == 4 * 1024 * 1024
+    assert low_res_pool.slot_count == 32
+    assert low_res_pool.file_size_bytes == low_res_pool.slot_size_bytes * 32
+    assert low_res_pool.flush_on_write is False
+
+
+def test_local_buffer_broker_rejects_legacy_default_pool_config() -> None:
+    """验证旧的 default_pool 简化配置不会被静默忽略。"""
+
+    with pytest.raises(ValueError, match="default_pool"):
+        LocalBufferBrokerSettings.model_validate(
+            {
+                "default_pool": {
+                    "pool_name": "image-1080p",
+                    "slot_size_bytes": 16 * 1024 * 1024,
+                    "slot_count": 32,
+                }
+            }
+        )
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Path) -> None:

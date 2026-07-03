@@ -288,9 +288,11 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
             "bind_endpoint": f"inproc://zeromq-trigger-test-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
             "buffer_ttl_seconds": 5,
+            "pool_name": "image-640x640",
         },
     )
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    local_buffer_writer = _FakeLocalBufferWriter()
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
@@ -320,6 +322,7 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert image_payload["transport_kind"] == "buffer"
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
+    assert local_buffer_writer.write_calls[0]["pool_name"] == "image-640x640"
 
 
 def test_zeromq_trigger_adapter_defaults_content_frame_to_image_ref_binding() -> None:
@@ -1147,6 +1150,7 @@ class _FakeLocalBufferWriter:
         """初始化释放记录。"""
 
         self.released_leases: list[tuple[str, str | None]] = []
+        self.write_calls: list[dict[str, object]] = []
 
     def write_bytes(
         self,
@@ -1165,7 +1169,16 @@ class _FakeLocalBufferWriter:
     ) -> object:
         """返回固定 BufferRef 写入结果。"""
 
-        _ = (content, owner_kind, owner_id, pool_name, ttl_seconds, trace_id)
+        self.write_calls.append(
+            {
+                "content": content,
+                "owner_kind": owner_kind,
+                "owner_id": owner_id,
+                "pool_name": pool_name,
+                "ttl_seconds": ttl_seconds,
+                "trace_id": trace_id,
+            }
+        )
         return SimpleNamespace(
             buffer_ref=BufferRef(
                 buffer_id="buffer-1",

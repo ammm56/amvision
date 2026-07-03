@@ -1942,7 +1942,8 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
     "bind_endpoint": "tcp://127.0.0.1:5556",
     "default_input_binding": "request_image_ref",
     "buffer_ttl_seconds": 30,
-    "content_transport": "local-buffer"
+    "content_transport": "local-buffer",
+    "pool_name": "image-1080p"
   },
   "input_binding_mapping": {
     "request_image_base64": {
