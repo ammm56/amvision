@@ -88,9 +88,15 @@
           <label v-if="selectedProtocolTemplate.templateId === 'zeromq-image-trigger'" class="field">
             <span class="field-label">
               pool_name
-              <InfoHint text="ZeroMQ 第二帧图片 bytes 写入的 LocalBufferBroker pool；默认使用 image-1080p。" />
+              <InfoHint text="ZeroMQ 第二帧图片 bytes 写入的 LocalBufferBroker pool；选项来自后端当前配置。" />
             </span>
-            <SelectField :model-value="localBufferPoolName" :options="localBufferPoolOptions" @update:model-value="setLocalBufferPoolName" />
+            <SelectField
+              :model-value="localBufferPoolName"
+              :options="localBufferPoolOptions"
+              :disabled="localBufferPoolOptions.length === 0"
+              placeholder="后端未配置 pool"
+              @update:model-value="setLocalBufferPoolName"
+            />
           </label>
           <label class="field">
             <span>result_binding</span>
@@ -293,6 +299,7 @@ import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow
 
 import { useProjectStore } from '@/app/stores/project.store'
 import type { PaginationMeta } from '@/shared/api/pagination'
+import { getSystemConfig } from '@/shared/api/system-config'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
@@ -420,11 +427,6 @@ const mappingModeOptions: SelectOption[] = [
   { label: '不映射', value: 'skip', description: '这个 binding 不参与当前入口' },
 ]
 
-const localBufferPoolOptions: SelectOption[] = [
-  { label: 'image-1080p', value: 'image-1080p', description: '默认 1080p 图片输入 pool' },
-  { label: 'image-640x640', value: 'image-640x640', description: '低分辨率或小图输入 pool' },
-]
-
 const route = useRoute()
 const projectStore = useProjectStore()
 
@@ -435,13 +437,14 @@ const statusMessage = ref<string | null>(null)
 const runtimes = ref<WorkflowAppRuntime[]>([])
 const triggerSources = ref<WorkflowTriggerSource[]>([])
 const triggerSourcePagination = ref<PaginationMeta>(createPaginationState())
+const backendServiceConfig = ref<Record<string, unknown>>({})
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const selectedRuntimeId = ref('')
 const protocolTemplateId = ref<ProtocolTemplateId>('zeromq-image-trigger')
 const triggerSourceId = ref('')
 const displayName = ref('')
 const endpoint = ref('tcp://127.0.0.1:5555')
-const localBufferPoolName = ref('image-1080p')
+const localBufferPoolName = ref('')
 const submitMode = ref<'async' | 'sync'>('sync')
 const resultBinding = ref('core_output_http_response')
 const resultMode = ref('sync-reply')
@@ -493,6 +496,29 @@ const resultBindingOptions = computed<SelectOption[]>(() => [
   { label: 'workflow_result', value: 'workflow_result' },
 ])
 const totalTriggerSourceCount = computed(() => triggerSourcePagination.value.totalCount ?? triggerSources.value.length)
+const localBufferBrokerConfig = computed(() => {
+  const value = backendServiceConfig.value.local_buffer_broker
+  return isRecord(value) ? value : {}
+})
+const configuredLocalBufferPoolNames = computed(() => {
+  const pools = localBufferBrokerConfig.value.pools
+  if (!Array.isArray(pools)) return []
+  return pools
+    .map((pool) => {
+      if (!isRecord(pool)) return ''
+      const poolName = pool.pool_name
+      return typeof poolName === 'string' ? poolName.trim() : ''
+    })
+    .filter((poolName): poolName is string => poolName.length > 0)
+})
+const localBufferDefaultPoolName = computed(() => {
+  const defaultPoolName = localBufferBrokerConfig.value.default_pool_name
+  return typeof defaultPoolName === 'string' ? defaultPoolName.trim() : ''
+})
+const localBufferPoolOptions = computed<SelectOption[]>(() => configuredLocalBufferPoolNames.value.map((poolName) => ({
+  label: poolName,
+  value: poolName,
+})))
 
 function readQueryString(name: string): string {
   const value = route.query[name]
@@ -525,7 +551,25 @@ function setResultBinding(value: SelectValue): void {
 
 function setLocalBufferPoolName(value: SelectValue): void {
   const nextValue = selectValueToString(value).trim()
-  localBufferPoolName.value = nextValue || 'image-1080p'
+  localBufferPoolName.value = nextValue
+}
+
+function syncLocalBufferPoolSelection(): void {
+  const configuredPoolNames = configuredLocalBufferPoolNames.value
+  const currentPoolName = localBufferPoolName.value.trim()
+  if (currentPoolName && configuredPoolNames.includes(currentPoolName)) return
+  if (localBufferDefaultPoolName.value && configuredPoolNames.includes(localBufferDefaultPoolName.value)) {
+    localBufferPoolName.value = localBufferDefaultPoolName.value
+    return
+  }
+  localBufferPoolName.value = configuredPoolNames[0] ?? ''
+}
+
+function resolveLocalBufferPoolName(): string {
+  const selectedPoolName = localBufferPoolName.value.trim()
+  if (selectedPoolName) return selectedPoolName
+  if (localBufferDefaultPoolName.value) return localBufferDefaultPoolName.value
+  return configuredLocalBufferPoolNames.value[0] ?? ''
 }
 
 function setSubmitMode(value: SelectValue): void {
@@ -683,7 +727,7 @@ function applyProtocolTemplateDefaults(): void {
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${template.displayName} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
-  localBufferPoolName.value = 'image-1080p'
+  syncLocalBufferPoolSelection()
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
@@ -718,7 +762,8 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
   }
   try {
     const triggerSourceOffset = options.resetTriggerSourcePage ? 0 : options.triggerSourceOffset ?? triggerSourcePagination.value.offset
-    const [runtimeResult, triggerSourceResult] = await Promise.all([
+    const [configResult, runtimeResult, triggerSourceResult] = await Promise.all([
+      getSystemConfig(),
       listWorkflowAppRuntimes({ projectId: selectedProjectId.value, limit: 100 }),
       listWorkflowTriggerSources({
         projectId: selectedProjectId.value,
@@ -726,6 +771,8 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
         limit: triggerSourcePagination.value.limit,
       }),
     ])
+    backendServiceConfig.value = configResult.config
+    syncLocalBufferPoolSelection()
     runtimes.value = runtimeResult.items
     triggerSources.value = triggerSourceResult.items
     triggerSourcePagination.value = triggerSourceResult.pagination
@@ -747,12 +794,14 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
 function buildTransportConfig(): WorkflowJsonObject {
   const normalizedEndpoint = endpoint.value.trim().replace('{trigger_source_id}', triggerSourceId.value.trim())
   if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
+    const selectedPoolName = resolveLocalBufferPoolName()
+    if (!selectedPoolName) throw new Error('LocalBufferBroker pools 未配置，不能创建 ZeroMQ 图片 TriggerSource')
     return {
       bind_endpoint: normalizedEndpoint,
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
       buffer_ttl_seconds: selectedProtocolTemplate.value.defaultReplyTimeoutSeconds,
       content_transport: 'local-buffer',
-      pool_name: localBufferPoolName.value.trim() || 'image-1080p',
+      pool_name: selectedPoolName,
     }
   }
   return { path: normalizedEndpoint, method: 'POST' }
@@ -887,7 +936,7 @@ async function submitTriggerSource(): Promise<void> {
         protocol_template: protocolTemplateId.value,
         application_id: runtime.application_id,
         default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
-        local_buffer_pool_name: selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' ? localBufferPoolName.value.trim() || 'image-1080p' : null,
+        local_buffer_pool_name: selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' ? resolveLocalBufferPoolName() : null,
         inferred_image_binding: inferredImageBinding.value?.binding_id ?? null,
         inferred_image_bindings: inferredImageBindings.value.map((binding) => binding.binding_id),
         inferred_request_binding: inferredRequestBinding.value?.binding_id ?? null,

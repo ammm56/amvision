@@ -85,6 +85,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | DELETE | /api/v1/auth/users/{user_id}/tokens/{token_id} | auth:write | 撤销一个本地用户的长期调用 token。 |
 | GET | /api/v1/system/health | 无 | 返回最小健康状态和 request_id。 |
 | GET | /api/v1/system/bootstrap | 无 | 返回前端首屏初始化使用的主体、provider、visible_projects 和关键能力摘要。 |
+| GET | /api/v1/system/config | system:read | 返回当前 backend-service 已解析的统一配置快照；前端按该接口读取 LocalBufferBroker pool 等运行配置，响应会遮蔽 token、password、secret 等敏感字段。 |
 | GET | /api/v1/system/me | 仅需主体 | 返回当前主体、project_ids 和 scopes。 |
 | GET | /api/v1/system/database | system:read | 返回数据库连通性检查结果。 |
 | GET | /api/v1/system/diagnostics | auth:read | 返回设置页使用的应用、系统、Python、设备和服务诊断摘要。 |

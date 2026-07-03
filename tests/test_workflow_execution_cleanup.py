@@ -45,7 +45,7 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
     register_local_buffer_lease_cleanup(
         execution_metadata,
         lease_id=" lease-1 ",
-        pool_name=" image-small ",
+        pool_name=" image-test ",
     )
 
     registered_items = list_registered_execution_cleanups(execution_metadata)
@@ -64,7 +64,7 @@ def test_register_execution_cleanup_lists_generic_items_and_keeps_deployment_com
             "deployment-1",
             {"task_type": "detection"},
         ),
-        (WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE, "lease-1", {"pool_name": "image-small"}),
+        (WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE, "lease-1", {"pool_name": "image-test"}),
         (WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE, "legacy-deployment-1", {}),
     ]
     assert list_registered_deployment_cleanup_ids(execution_metadata) == (
