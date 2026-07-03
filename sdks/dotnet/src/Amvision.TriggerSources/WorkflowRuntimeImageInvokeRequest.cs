@@ -34,6 +34,16 @@ public sealed class WorkflowRuntimeImageInvokeRequest
     public IDictionary<string, object?> ExecutionMetadata { get; } = new Dictionary<string, object?>();
 
     /// <summary>
+    /// 除图片输入外额外写入 input_bindings 的字段。
+    /// </summary>
+    public IDictionary<string, object?> AdditionalInputBindings { get; } = new Dictionary<string, object?>();
+
+    /// <summary>
+    /// 是否把 input binding 直接写成顶层公开 input 字段。
+    /// </summary>
+    public bool UseDirectInputBindings { get; set; }
+
+    /// <summary>
     /// 转换为通用 invoke 请求对象。
     /// </summary>
     /// <returns>通用 invoke 请求。</returns>
@@ -42,8 +52,14 @@ public sealed class WorkflowRuntimeImageInvokeRequest
         Validate();
         var request = new WorkflowRuntimeInvokeRequest
         {
-            TimeoutSeconds = TimeoutSeconds
+            TimeoutSeconds = TimeoutSeconds,
+            UseDirectInputBindings = UseDirectInputBindings
         };
+        foreach (var pair in AdditionalInputBindings)
+        {
+            request.InputBindings[pair.Key] = pair.Value;
+        }
+
         request.InputBindings[InputBinding.Trim()] = new Dictionary<string, object?>
         {
             ["image_base64"] = Convert.ToBase64String(ImageBytes),

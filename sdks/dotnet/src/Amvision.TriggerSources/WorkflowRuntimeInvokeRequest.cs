@@ -23,6 +23,11 @@ public sealed class WorkflowRuntimeInvokeRequest
     public IDictionary<string, object?> InputBindings { get; } = new Dictionary<string, object?>();
 
     /// <summary>
+    /// 是否把 InputBindings 直接写成顶层公开 input 字段。
+    /// </summary>
+    public bool UseDirectInputBindings { get; set; }
+
+    /// <summary>
     /// execution_metadata 对象。
     /// </summary>
     public IDictionary<string, object?> ExecutionMetadata { get; } = new Dictionary<string, object?>();
@@ -39,11 +44,13 @@ public sealed class WorkflowRuntimeInvokeRequest
     public string ToJson()
     {
         Validate();
-        var payload = new Dictionary<string, object?>
-        {
-            ["input_bindings"] = new Dictionary<string, object?>(InputBindings),
-            ["execution_metadata"] = new Dictionary<string, object?>(ExecutionMetadata)
-        };
+        var payload = UseDirectInputBindings
+            ? new Dictionary<string, object?>(InputBindings)
+            : new Dictionary<string, object?>
+            {
+                ["input_bindings"] = new Dictionary<string, object?>(InputBindings)
+            };
+        payload["execution_metadata"] = new Dictionary<string, object?>(ExecutionMetadata);
         if (TimeoutSeconds is not null)
         {
             payload["timeout_seconds"] = TimeoutSeconds.Value;
@@ -71,15 +78,39 @@ public sealed class WorkflowRuntimeInvokeRequest
         }
 
         var request = new WorkflowRuntimeInvokeRequest();
-        if (!document.RootElement.TryGetProperty("input_bindings", out var inputBindingsElement)
-            || inputBindingsElement.ValueKind != JsonValueKind.Object)
+        if (document.RootElement.TryGetProperty("input_bindings", out var inputBindingsElement))
         {
-            throw new InvalidOperationException("Workflow runtime invoke JSON requires input_bindings object.");
-        }
+            if (inputBindingsElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("input_bindings must be an object.");
+            }
 
-        foreach (var property in inputBindingsElement.EnumerateObject())
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Name is not ("input_bindings" or "execution_metadata" or "timeout_seconds"))
+                {
+                    throw new InvalidOperationException(
+                        "Workflow runtime invoke JSON cannot mix input_bindings and direct input fields.");
+                }
+            }
+
+            foreach (var property in inputBindingsElement.EnumerateObject())
+            {
+                request.InputBindings[property.Name] = property.Value.Clone();
+            }
+        }
+        else
         {
-            request.InputBindings[property.Name] = property.Value.Clone();
+            request.UseDirectInputBindings = true;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Name is "execution_metadata" or "timeout_seconds")
+                {
+                    continue;
+                }
+
+                request.InputBindings[property.Name] = property.Value.Clone();
+            }
         }
 
         if (document.RootElement.TryGetProperty("execution_metadata", out var executionMetadataElement))
@@ -116,11 +147,6 @@ public sealed class WorkflowRuntimeInvokeRequest
     /// </summary>
     internal void Validate()
     {
-        if (InputBindings.Count == 0)
-        {
-            throw new InvalidOperationException("InputBindings cannot be empty.");
-        }
-
         if (TimeoutSeconds is not null && TimeoutSeconds.Value <= 0)
         {
             throw new InvalidOperationException("TimeoutSeconds must be greater than zero.");

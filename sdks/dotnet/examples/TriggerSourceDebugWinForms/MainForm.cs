@@ -562,13 +562,7 @@ internal sealed class MainForm : Form
         var deploymentInstanceId = deploymentInstanceIdTextBox.Text.Trim();
         if (!string.IsNullOrWhiteSpace(deploymentInstanceId))
         {
-            request.Payload["deployment_request"] = new Dictionary<string, object?>
-            {
-                ["value"] = new Dictionary<string, object?>
-                {
-                    ["deployment_instance_id"] = deploymentInstanceId
-                }
-            };
+            request.WithDeploymentInstance(deploymentInstanceId);
         }
 
         return request;

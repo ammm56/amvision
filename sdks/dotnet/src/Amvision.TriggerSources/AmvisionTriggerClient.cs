@@ -103,6 +103,14 @@ public sealed class AmvisionTriggerClient : IDisposable
     public ZeroMqTriggerEnvelope BuildEnvelope(ImageTriggerRequest request)
     {
         ValidateRequest(request);
+        var payload = new Dictionary<string, object?>(request.Payload);
+        var idempotencyKey = NormalizeOptional(request.IdempotencyKey);
+        if (idempotencyKey is not null
+            && !payload.ContainsKey("idempotency_key"))
+        {
+            payload["idempotency_key"] = idempotencyKey;
+        }
+
         return new ZeroMqTriggerEnvelope
         {
             TriggerSourceId = options.TriggerSourceId,
@@ -116,7 +124,7 @@ public sealed class AmvisionTriggerClient : IDisposable
             Layout = NormalizeOptional(request.Layout),
             PixelFormat = NormalizeOptional(request.PixelFormat),
             Metadata = new Dictionary<string, object?>(request.Metadata),
-            Payload = new Dictionary<string, object?>(request.Payload)
+            Payload = payload
         };
     }
 

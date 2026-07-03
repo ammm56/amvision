@@ -34,6 +34,11 @@ public sealed class ImageTriggerRequest
     public DateTimeOffset? OccurredAt { get; set; }
 
     /// <summary>
+    /// 可选幂等键；默认写入 payload.idempotency_key。
+    /// </summary>
+    public string? IdempotencyKey { get; set; }
+
+    /// <summary>
     /// 可选 input binding；为空时使用客户端默认值。
     /// </summary>
     public string? InputBinding { get; set; }
@@ -67,4 +72,42 @@ public sealed class ImageTriggerRequest
     /// 写入 envelope payload 对象的附加业务字段。
     /// </summary>
     public IDictionary<string, object?> Payload { get; } = new Dictionary<string, object?>();
+
+    /// <summary>
+    /// 写入 deployment_request.value.deployment_instance_id。
+    /// </summary>
+    /// <param name="deploymentInstanceId">部署实例 id。</param>
+    /// <returns>当前请求对象。</returns>
+    public ImageTriggerRequest WithDeploymentInstance(string deploymentInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(deploymentInstanceId))
+        {
+            throw new ArgumentException("deploymentInstanceId cannot be empty.", nameof(deploymentInstanceId));
+        }
+
+        Payload["deployment_request"] = new Dictionary<string, object?>
+        {
+            ["value"] = new Dictionary<string, object?>
+            {
+                ["deployment_instance_id"] = deploymentInstanceId.Trim()
+            }
+        };
+        return this;
+    }
+
+    /// <summary>
+    /// 设置幂等键，并默认写入 payload.idempotency_key。
+    /// </summary>
+    /// <param name="idempotencyKey">幂等键。</param>
+    /// <returns>当前请求对象。</returns>
+    public ImageTriggerRequest WithIdempotencyKey(string idempotencyKey)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            throw new ArgumentException("idempotencyKey cannot be empty.", nameof(idempotencyKey));
+        }
+
+        IdempotencyKey = idempotencyKey.Trim();
+        return this;
+    }
 }

@@ -194,8 +194,8 @@ dotnet run --project sdks/dotnet/tests/Amvision.TriggerSources.Tests/Amvision.Tr
 var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
 {
     Endpoint = "tcp://127.0.0.1:5555",
-  TriggerSourceId = "zeromq-trigger-source-06",
-  DefaultInputBinding = "request_image",
+    TriggerSourceId = "zeromq-trigger-source-06",
+    DefaultInputBinding = "request_image",
     Timeout = TimeSpan.FromSeconds(5)
 });
 
@@ -208,17 +208,13 @@ var request = new ImageTriggerRequest
         ["line_id"] = "line-a",
         ["station_id"] = "station-1"
     }
-    };
+};
 
-    request.Payload["deployment_request"] = new Dictionary<string, object?>
-    {
-      ["value"] = new Dictionary<string, object?>
-      {
-        ["deployment_instance_id"] = "deployment-instance-1"
-      }
-    };
+request
+    .WithDeploymentInstance("deployment-instance-1")
+    .WithIdempotencyKey("line-a-20260702-0001");
 
-    var result = client.InvokeImage(request);
+var result = client.InvokeImage(request);
 ```
 
 真实 06/07 backend-service 调试使用 `sdks/dotnet/examples/ZeroMqImageInvoke`：
@@ -228,7 +224,7 @@ dotnet run --project sdks/dotnet/examples/ZeroMqImageInvoke/ZeroMqImageInvoke.cs
 dotnet run --project sdks/dotnet/examples/ZeroMqImageInvoke/ZeroMqImageInvoke.csproj -- tcp://127.0.0.1:5555 zeromq-trigger-source-06 <image_path> image/jpeg <deployment_instance_id>
 ```
 
-其中 06 示例需要把已有 `deployment_instance_id` 传入；如果省略 `media_type`，示例会按文件扩展名自动猜测，并把第四个可选参数当作 `deployment_instance_id`。示例最终会把它放入 envelope payload 的 `deployment_request.value.deployment_instance_id`，供 TriggerSource 的 `input_binding_mapping` 映射到 workflow app。
+其中 06 示例需要把已有 `deployment_instance_id` 传入；如果省略 `media_type`，示例会按文件扩展名自动猜测，并把第四个可选参数当作 `deployment_instance_id`。示例最终会把它放入 envelope payload 的 `deployment_request.value.deployment_instance_id`，供 TriggerSource 的 `input_binding_mapping` 映射到 workflow app。如果 TriggerSource 配置了 `idempotency_key_path=payload.idempotency_key`，可以把第六个参数作为 `idempotency_key`。
 
 如果需要在 Windows 上手动查看 envelope、TriggerResult 和完整 WorkflowRun，当前也提供独立 WinForms 调试项目：
 

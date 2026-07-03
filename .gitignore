@@ -219,6 +219,8 @@ tempCodeRunnerFile.py
 # .NET
 [Bb]in/
 [Oo]bj/
+.vs/
+*.csproj.user
 
 # PyPI configuration file
 .pypirc

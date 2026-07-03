@@ -16,8 +16,15 @@ var tests = new Action[]
     EmptyReplyIsRejected,
     TimeoutExceptionIsPropagated,
     WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest,
+    WorkflowRuntimeInvokeSupportsDirectInputJson,
+    WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests,
+    TriggerSourceCreateListDeleteUsesExpectedHttpRequests,
+    TypedContractsDeserializeWorkflowResponses,
     TriggerSourceHealthUsesExpectedHttpEndpoint,
-    WorkflowApiResponseParsesBackendErrorEnvelope
+    WorkflowApiResponseParsesBackendErrorEnvelope,
+    ZeroMqEnvelopeAddsHelperPayload,
+    SchemaFixtureMatchesGeneratedEnvelope,
+    BackendLocalSmokeTest
 };
 
 foreach (var test in tests)
@@ -227,7 +234,7 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
         }).GetAwaiter().GetResult();
 
     AssertEqual(HttpMethod.Post, handler.LastMethod);
-    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-07/invoke", handler.LastRequestUri?.ToString());
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-07/invoke?response_mode=run", handler.LastRequestUri?.ToString());
     AssertEqual("Bearer amvision-default-user-token", handler.LastHeaders["Authorization"].Single());
     AssertEqual(HttpStatusCode.OK, response.StatusCode);
     AssertEqual(true, response.IsSuccessStatusCode);
@@ -238,6 +245,125 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
     AssertEqual("image/png", root.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("media_type").GetString());
     AssertEqual("opencv-process-save-image-zeromq", root.GetProperty("execution_metadata").GetProperty("scenario").GetString());
     AssertEqual(5, root.GetProperty("timeout_seconds").GetInt32());
+}
+
+// 验证 runtime invoke JSON 支持当前后端的顶层公开 input 字段形态。
+static void WorkflowRuntimeInvokeSupportsDirectInputJson()
+{
+    var request = new WorkflowRuntimeInvokeRequest
+    {
+        UseDirectInputBindings = true,
+        TimeoutSeconds = 9
+    };
+    request.InputBindings["request_image_base64"] = new Dictionary<string, object?>
+    {
+        ["image_base64"] = "AQID",
+        ["media_type"] = "image/png"
+    };
+    request.ExecutionMetadata["source"] = "dotnet-test";
+
+    using var document = JsonDocument.Parse(request.ToJson());
+    var root = document.RootElement;
+    AssertEqual(false, root.TryGetProperty("input_bindings", out _));
+    AssertEqual("AQID", root.GetProperty("request_image_base64").GetProperty("image_base64").GetString());
+    AssertEqual("dotnet-test", root.GetProperty("execution_metadata").GetProperty("source").GetString());
+    AssertEqual(9, root.GetProperty("timeout_seconds").GetInt32());
+
+    var parsed = WorkflowRuntimeInvokeRequest.Parse(request.ToJson());
+    AssertEqual(true, parsed.UseDirectInputBindings);
+    AssertEqual(1, parsed.InputBindings.Count);
+}
+
+// 验证 Workflow runtime/run 当前正式接口路径和 query。
+static void WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, "{\"format_id\":\"amvision.workflow-app-runtime.v1\",\"workflow_runtime_id\":\"runtime-1\",\"project_id\":\"project-1\",\"application_id\":\"app-1\",\"desired_state\":\"running\",\"observed_state\":\"running\",\"created_at\":\"2026-07-02T00:00:00Z\",\"updated_at\":\"2026-07-02T00:00:00Z\"}");
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    _ = client.RestartWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1/restart", handler.LastRequestUri?.ToString());
+
+    _ = client.ListWorkflowAppRuntimesAsync("project-1", offset: 2, limit: 3).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes?project_id=project-1&offset=2&limit=3", handler.LastRequestUri?.ToString());
+
+    _ = client.ListWorkflowAppRuntimeInstancesAsync("runtime-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1/instances", handler.LastRequestUri?.ToString());
+
+    _ = client.GetWorkflowRunAsync("workflow-run-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/runs/workflow-run-1?response_mode=run", handler.LastRequestUri?.ToString());
+
+    _ = client.GetWorkflowRunEventsAsync("workflow-run-1", afterSequence: 5, limit: 10).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/runs/workflow-run-1/events?after_sequence=5&limit=10", handler.LastRequestUri?.ToString());
+
+    _ = client.CancelWorkflowRunAsync("workflow-run-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/runs/workflow-run-1/cancel", handler.LastRequestUri?.ToString());
+}
+
+// 验证 TriggerSource create/list/delete 当前正式接口路径和 body。
+static void TriggerSourceCreateListDeleteUsesExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(HttpStatusCode.Created, "{\"format_id\":\"amvision.workflow-trigger-source.v1\",\"trigger_source_id\":\"trigger-source-1\",\"project_id\":\"project-1\",\"display_name\":\"line trigger\",\"trigger_kind\":\"zeromq-topic\",\"workflow_runtime_id\":\"runtime-1\",\"submit_mode\":\"sync\",\"enabled\":false,\"desired_state\":\"stopped\",\"observed_state\":\"stopped\",\"transport_config\":{\"bind_endpoint\":\"tcp://127.0.0.1:5555\"},\"input_binding_mapping\":{},\"health_summary\":{},\"created_at\":\"2026-07-02T00:00:00Z\",\"updated_at\":\"2026-07-02T00:00:00Z\"}");
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var createRequest = new WorkflowTriggerSourceCreateRequest
+    {
+        TriggerSourceId = "trigger-source-1",
+        ProjectId = "project-1",
+        DisplayName = "line trigger",
+        WorkflowRuntimeId = "runtime-1",
+        SubmitMode = "sync",
+        Enabled = false,
+        IdempotencyKeyPath = "payload.idempotency_key"
+    };
+    createRequest.TransportConfig["bind_endpoint"] = "tcp://127.0.0.1:5555";
+    createRequest.InputBindingMapping["request_image_ref"] = new WorkflowTriggerInputBindingMappingItem
+    {
+        Source = "payload.request_image",
+        PayloadTypeId = "image.ref.v1"
+    };
+
+    _ = client.CreateTriggerSourceAsync(createRequest).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources", handler.LastRequestUri?.ToString());
+    using (var document = JsonDocument.Parse(handler.LastBody))
+    {
+        var root = document.RootElement;
+        AssertEqual("trigger-source-1", root.GetProperty("trigger_source_id").GetString());
+        AssertEqual("payload.idempotency_key", root.GetProperty("idempotency_key_path").GetString());
+        AssertEqual("payload.request_image", root.GetProperty("input_binding_mapping").GetProperty("request_image_ref").GetProperty("source").GetString());
+    }
+
+    _ = client.ListTriggerSourcesAsync("project-1", limit: 7).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources?project_id=project-1&offset=0&limit=7", handler.LastRequestUri?.ToString());
+
+    _ = client.DeleteTriggerSourceAsync("trigger-source-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Delete, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources/trigger-source-1", handler.LastRequestUri?.ToString());
+}
+
+// 验证 typed contract 方法能解析后端稳定字段。
+static void TypedContractsDeserializeWorkflowResponses()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"format_id\":\"amvision.workflow-app-runtime.v1\",\"workflow_runtime_id\":\"runtime-typed\",\"project_id\":\"project-1\",\"application_id\":\"app-1\",\"desired_state\":\"running\",\"observed_state\":\"running\",\"health_summary\":{\"worker_alive\":true},\"metadata\":{},\"created_at\":\"2026-07-02T00:00:00Z\",\"updated_at\":\"2026-07-02T00:00:00Z\"}"
+    );
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var runtime = client.GetWorkflowAppRuntimeHealthContractAsync("runtime-typed").GetAwaiter().GetResult();
+    AssertEqual("runtime-typed", runtime.WorkflowRuntimeId);
+    AssertEqual("running", runtime.ObservedState);
+    AssertEqual(true, runtime.HealthSummary["worker_alive"].GetBoolean());
 }
 
 // 验证 TriggerSource health 控制面会命中预期路径。
@@ -296,6 +422,136 @@ static void WorkflowApiResponseParsesBackendErrorEnvelope()
     AssertEqual("invalid_request", response.ErrorCode);
     AssertEqual("bad request", response.ErrorMessage);
     AssertEqual("request_image_base64", response.ErrorDetails["binding_id"].GetString());
+}
+
+// 验证 ZeroMQ helper 会生成常用 payload 和 idempotency_key。
+static void ZeroMqEnvelopeAddsHelperPayload()
+{
+    var transport = new FakeTransport(
+        "{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-06\",\"event_id\":\"event-1\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-1\",\"response_payload\":{},\"metadata\":{}}"
+    );
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions
+        {
+            TriggerSourceId = "trigger-source-06",
+            DefaultInputBinding = "request_image"
+        },
+        transport
+    );
+
+    _ = client.InvokeImage(new ImageTriggerRequest
+    {
+        ImageBytes = new byte[] { 1 },
+        EventId = "event-1",
+        MediaType = "image/jpeg"
+    }
+    .WithDeploymentInstance("deployment-instance-1")
+    .WithIdempotencyKey("idem-1"));
+
+    using var document = JsonDocument.Parse(Encoding.UTF8.GetString(transport.LastFrames[0]));
+    var payload = document.RootElement.GetProperty("payload");
+    AssertEqual("idem-1", payload.GetProperty("idempotency_key").GetString());
+    AssertEqual(
+        "deployment-instance-1",
+        payload.GetProperty("deployment_request").GetProperty("value").GetProperty("deployment_instance_id").GetString());
+}
+
+// 验证生成的 ZeroMQ envelope 字段仍与 schema fixture 保持一致。
+static void SchemaFixtureMatchesGeneratedEnvelope()
+{
+    var schemaPath = FindWorkspaceFile(Path.Combine("sdks", "contracts", "zeromq-trigger-envelope.v1.schema.json"));
+    using var schemaDocument = JsonDocument.Parse(File.ReadAllText(schemaPath));
+    var allowedProperties = new HashSet<string>(
+        schemaDocument.RootElement.GetProperty("properties").EnumerateObject().Select(item => item.Name),
+        StringComparer.Ordinal);
+
+    var transport = new FakeTransport(
+        "{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-schema\",\"event_id\":\"event-schema\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-schema\",\"response_payload\":{},\"metadata\":{}}"
+    );
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions
+        {
+            TriggerSourceId = "trigger-source-schema",
+            DefaultInputBinding = "request_image"
+        },
+        transport
+    );
+
+    _ = client.InvokeImage(new ImageTriggerRequest
+    {
+        ImageBytes = new byte[] { 1, 2 },
+        EventId = "event-schema",
+        MediaType = "image/png",
+        Shape = new[] { 1, 2, 1 }
+    }.WithIdempotencyKey("idem-schema"));
+
+    using var envelopeDocument = JsonDocument.Parse(Encoding.UTF8.GetString(transport.LastFrames[0]));
+    foreach (var property in envelopeDocument.RootElement.EnumerateObject())
+    {
+        if (!allowedProperties.Contains(property.Name))
+        {
+            throw new InvalidOperationException($"Envelope property {property.Name} is not declared by schema fixture.");
+        }
+    }
+
+    AssertEqual(false, envelopeDocument.RootElement.TryGetProperty("format_id", out _));
+    AssertEqual("idem-schema", envelopeDocument.RootElement.GetProperty("payload").GetProperty("idempotency_key").GetString());
+}
+
+// 可选真实 backend-service smoke；未设置环境变量时跳过。
+static void BackendLocalSmokeTest()
+{
+    var baseUrl = Environment.GetEnvironmentVariable("AMVISION_DOTNET_SDK_SMOKE_BASE_URL");
+    if (string.IsNullOrWhiteSpace(baseUrl))
+    {
+        Console.WriteLine("skipped: BackendLocalSmokeTest requires AMVISION_DOTNET_SDK_SMOKE_BASE_URL");
+        return;
+    }
+
+    var token = Environment.GetEnvironmentVariable("AMVISION_DOTNET_SDK_SMOKE_TOKEN");
+    var projectId = Environment.GetEnvironmentVariable("AMVISION_DOTNET_SDK_SMOKE_PROJECT_ID");
+    using var client = new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
+    {
+        BaseApiUrl = baseUrl,
+        AccessToken = string.IsNullOrWhiteSpace(token) ? "amvision-default-user-token" : token,
+        Timeout = TimeSpan.FromSeconds(5)
+    });
+
+    var response = client.ListTriggerSourcesAsync(
+        string.IsNullOrWhiteSpace(projectId) ? "project-1" : projectId,
+        limit: 1).GetAwaiter().GetResult();
+    response.EnsureSuccessStatusCode();
+}
+
+// 创建带默认 SDK 参数的 Workflow HTTP client。
+static AmvisionWorkflowClient CreateWorkflowClient(HttpClient httpClient)
+{
+    return new AmvisionWorkflowClient(
+        new AmvisionWorkflowClientOptions
+        {
+            BaseApiUrl = "http://127.0.0.1:8000",
+            AccessToken = "amvision-default-user-token"
+        },
+        httpClient
+    );
+}
+
+// 从当前目录向上查找仓库内文件。
+static string FindWorkspaceFile(string relativePath)
+{
+    var directory = new DirectoryInfo(Environment.CurrentDirectory);
+    while (directory is not null)
+    {
+        var candidate = Path.Combine(directory.FullName, relativePath);
+        if (File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        directory = directory.Parent;
+    }
+
+    throw new FileNotFoundException($"Cannot find workspace file: {relativePath}");
 }
 
 // 断言两个值相等。

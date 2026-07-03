@@ -61,6 +61,43 @@ public sealed class AmvisionWorkflowApiResponse
     public IReadOnlyDictionary<string, JsonElement> ErrorDetails { get; }
 
     /// <summary>
+    /// 非 2xx 响应时抛出 <see cref="AmvisionWorkflowApiException" />。
+    /// </summary>
+    public void EnsureSuccessStatusCode()
+    {
+        if (IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        throw new AmvisionWorkflowApiException(
+            StatusCode,
+            ErrorCode,
+            ErrorMessage ?? Content,
+            ErrorDetails);
+    }
+
+    /// <summary>
+    /// 把响应 JSON 反序列化为指定类型。
+    /// </summary>
+    /// <typeparam name="T">目标类型。</typeparam>
+    /// <param name="options">可选 JSON 选项。</param>
+    /// <returns>反序列化后的对象。</returns>
+    public T ReadJson<T>(JsonSerializerOptions? options = null)
+    {
+        EnsureSuccessStatusCode();
+        if (BodyJson is not JsonElement bodyJson)
+        {
+            throw new JsonException("HTTP response body is not JSON.");
+        }
+
+        var value = bodyJson.Deserialize<T>(options);
+        return value is null
+            ? throw new JsonException($"HTTP response body cannot be deserialized as {typeof(T).Name}.")
+            : value;
+    }
+
+    /// <summary>
     /// 按 HTTP 响应状态和文本构造 SDK 响应对象。
     /// </summary>
     /// <param name="statusCode">HTTP 状态码。</param>

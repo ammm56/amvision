@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Amvision.TriggerSources;
 
-if (args.Length < 3 || args.Length > 5)
+if (args.Length < 3 || args.Length > 6)
 {
-    Console.Error.WriteLine("Usage: ZeroMqImageInvoke <endpoint> <trigger_source_id> <image_path> [media_type] [deployment_instance_id]");
+    Console.Error.WriteLine("Usage: ZeroMqImageInvoke <endpoint> <trigger_source_id> <image_path> [media_type] [deployment_instance_id] [idempotency_key]");
     Console.Error.WriteLine("如果只提供一个可选参数且它不是 media type，示例程序会把它当作 deployment_instance_id，并按图片扩展名猜测 media_type。");
     return 2;
 }
@@ -22,7 +22,7 @@ catch (FileNotFoundException exception)
     return 1;
 }
 
-var (mediaType, deploymentInstanceId) = ParseOptionalArguments(args, resolvedImagePath);
+var (mediaType, deploymentInstanceId, idempotencyKey) = ParseOptionalArguments(args, resolvedImagePath);
 
 using var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
 {
@@ -44,13 +44,12 @@ var request = new ImageTriggerRequest
 
 if (!string.IsNullOrWhiteSpace(deploymentInstanceId))
 {
-    request.Payload["deployment_request"] = new Dictionary<string, object?>
-    {
-        ["value"] = new Dictionary<string, object?>
-        {
-            ["deployment_instance_id"] = deploymentInstanceId
-        }
-    };
+    request.WithDeploymentInstance(deploymentInstanceId);
+}
+
+if (!string.IsNullOrWhiteSpace(idempotencyKey))
+{
+    request.WithIdempotencyKey(idempotencyKey);
 }
 
 try
@@ -73,12 +72,12 @@ catch (AmvisionTriggerException exception)
     return 1;
 }
 
-static (string MediaType, string? DeploymentInstanceId) ParseOptionalArguments(string[] args, string imagePath)
+static (string MediaType, string? DeploymentInstanceId, string? IdempotencyKey) ParseOptionalArguments(string[] args, string imagePath)
 {
     var guessedMediaType = GuessMediaType(imagePath);
     if (args.Length <= 3)
     {
-        return (guessedMediaType, null);
+        return (guessedMediaType, null, null);
     }
 
     if (args.Length == 4)
@@ -86,15 +85,16 @@ static (string MediaType, string? DeploymentInstanceId) ParseOptionalArguments(s
         var optionalValue = args[3].Trim();
         if (LooksLikeMediaType(optionalValue))
         {
-            return (optionalValue, null);
+            return (optionalValue, null, null);
         }
 
-        return (guessedMediaType, optionalValue);
+        return (guessedMediaType, optionalValue, null);
     }
 
     var mediaType = string.IsNullOrWhiteSpace(args[3]) ? guessedMediaType : args[3].Trim();
     var deploymentInstanceId = string.IsNullOrWhiteSpace(args[4]) ? null : args[4].Trim();
-    return (mediaType, deploymentInstanceId);
+    var idempotencyKey = args.Length >= 6 && !string.IsNullOrWhiteSpace(args[5]) ? args[5].Trim() : null;
+    return (mediaType, deploymentInstanceId, idempotencyKey);
 }
 
 static string ResolveImagePath(string imagePath)

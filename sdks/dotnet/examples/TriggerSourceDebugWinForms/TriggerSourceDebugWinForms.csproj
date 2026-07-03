@@ -5,10 +5,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>14.0</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Amvision.TriggerSources\Amvision.TriggerSources.csproj" />
+    <ProjectReference Include="..\..\src\Amvision.TriggerSources\Amvision.TriggerSources.csproj" SetTargetFramework="TargetFramework=net10.0" />
   </ItemGroup>
 </Project>
