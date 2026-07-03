@@ -13,11 +13,6 @@
     "content_transport": "local-buffer"
   },
   "input_binding_mapping": {
-    "request_image_base64": {
-      "source": "payload.request_image_base64",
-      "required": false,
-      "payload_type_id": "image-base64.v1"
-    },
     "request_image_ref": {
       "source": "payload.request_image_ref",
       "required": false,

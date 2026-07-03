@@ -84,4 +84,12 @@ var result = client.InvokeImage(request);
 Console.WriteLine($"{result.State}: {result.WorkflowRunId}");
 ```
 
-这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding；同一张图的 `request_image_base64` 入口仍可用于 HTTP/JSON 调试。
+也可以使用 helper 明确表达输入来源，但最终都会转成 ZeroMQ multipart 第二帧 bytes：
+
+```csharp
+var fromFile = ImageTriggerRequest.FromFile("sample.jpg");
+var fromBase64 = ImageTriggerRequest.FromBase64("data:image/png;base64,...");
+var fromCameraBytes = ImageTriggerRequest.FromBytes(cameraFrameJpegBytes, "image/jpeg");
+```
+
+这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding。`request_image_base64` 入口只用于 HTTP/JSON 调试，不作为 ZeroMQ TriggerSource 的默认图片输入。

@@ -29,6 +29,7 @@ class MmapBufferPoolConfig:
     - slot_size_bytes：固定槽位容量。
     - file_name：mmap 文件名。
     - broker_epoch：broker 启动代次；未提供时自动生成。
+    - flush_on_write：写入后是否强制 flush 到 mmap 文件；默认关闭以保持临时图片输入性能。
     """
 
     pool_name: str
@@ -37,6 +38,7 @@ class MmapBufferPoolConfig:
     slot_size_bytes: int
     file_name: str = "pool-001.dat"
     broker_epoch: str | None = None
+    flush_on_write: bool = False
 
 
 @dataclass(frozen=True)
@@ -294,7 +296,8 @@ class MmapBufferPool:
             self._mmap.write(content)
             if len(content) < lease.size:
                 self._mmap.write(b"\x00" * (lease.size - len(content)))
-            self._mmap.flush()
+            if self.config.flush_on_write:
+                self._mmap.flush()
             active_lease = lease.model_copy(update={"state": "active", "size": len(content)})
             self._slots[slot_index].lease = active_lease
             buffer_ref = BufferRef(
@@ -344,7 +347,8 @@ class MmapBufferPool:
         normalized_media_type = _require_stripped_text(media_type, "media_type")
         with self._lock:
             slot_index = self._require_current_slot_index(lease=lease, expected_states={"writing"})
-            self._mmap.flush()
+            if self.config.flush_on_write:
+                self._mmap.flush()
             active_lease = lease.model_copy(update={"state": "active"})
             self._slots[slot_index].lease = active_lease
             buffer_ref = BufferRef(
@@ -550,7 +554,8 @@ class MmapBufferPool:
         normalized_media_type = _require_stripped_text(media_type, "media_type")
         with self._lock:
             frame_state = self._require_writing_frame_for_reservation_locked(reservation)
-            self._mmap.flush()
+            if self.config.flush_on_write:
+                self._mmap.flush()
             frame_state.state = "active"
             frame_state.media_type = normalized_media_type
             frame_state.shape = tuple(shape)
@@ -598,7 +603,8 @@ class MmapBufferPool:
         self._mmap.write(content)
         if len(content) < int(reservation["size"]):
             self._mmap.write(b"\x00" * (int(reservation["size"]) - len(content)))
-        self._mmap.flush()
+        if self.config.flush_on_write:
+            self._mmap.flush()
         return self.commit_frame(
             reservation=reservation,
             media_type=media_type,

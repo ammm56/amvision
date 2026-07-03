@@ -602,15 +602,16 @@ function findImageInputBindings(): FlowApplicationBinding[] {
   const imageBase64Binding = appInputBindings.value.find(isImageBase64Binding) ?? null
   const imageRefBinding = appInputBindings.value.find(isImageRefBinding) ?? null
   if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
-    addUniqueBinding(bindings, imageBase64Binding)
     addUniqueBinding(bindings, imageRefBinding)
-    addUniqueBinding(bindings, metadataBinding)
+    if (metadataBinding && isImageRefBinding(metadataBinding)) addUniqueBinding(bindings, metadataBinding)
   } else {
     addUniqueBinding(bindings, imageBase64Binding)
     addUniqueBinding(bindings, metadataBinding)
     addUniqueBinding(bindings, imageRefBinding)
   }
-  if (bindings.length === 0) addUniqueBinding(bindings, appInputBindings.value.find(isImageInputBinding) ?? null)
+  if (bindings.length === 0 && selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') {
+    addUniqueBinding(bindings, appInputBindings.value.find(isImageInputBinding) ?? null)
+  }
   return bindings
 }
 
@@ -640,11 +641,12 @@ function defaultSourcePath(binding: FlowApplicationBinding): string {
 function buildMappingRows(): void {
   mappingRows.value = appInputBindings.value.map((binding) => {
     const inferred = inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id) || binding.binding_id === inferredRequestBinding.value?.binding_id
+    const zeromqBase64Image = selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' && isImageBase64Binding(binding)
     return {
       bindingId: binding.binding_id,
       payloadTypeId: getBindingPayloadTypeId(binding),
       required: binding.required,
-      mode: inferred || binding.required ? 'source' : 'skip',
+      mode: inferred || (binding.required && !zeromqBase64Image) ? 'source' : 'skip',
       sourcePath: defaultSourcePath(binding),
       staticValue: '',
       inferred,

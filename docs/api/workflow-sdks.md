@@ -120,7 +120,7 @@ SDK 不应承担以下职责：
 ## 图级转换边界
 
 - HTTP 调试入口如果公开的是 `image-base64.v1`，就继续由 HTTP 调用方直接传 base64 图片。
-- ZeroMQ 调试入口如果公开的是 `image-ref.v1`，就继续由 SDK 发送图片 bytes，再由 backend-service adapter 写成 BufferRef / image-ref。
+- ZeroMQ 调试入口默认公开 `image-ref.v1`，由 SDK 把文件、base64 或相机输出 bytes 转成 multipart 第二帧图片 bytes，再由 backend-service adapter 写成 BufferRef / image-ref。
 - 如果同一个 workflow app 需要同时接两类入口，应在图里显式提供多个 binding，或增加 `image-ref -> image-base64` 转换节点后再汇到公共下游节点。
 - 如果触发源只有 PLC 寄存器值、IO 状态或其他数值输入，后续图片应由图里的本地图片加载节点、相机抓帧节点或 custom node 决定，不由 SDK 或 TriggerSource 补出。
 - 如果 workflow app 完全不需要外部 input binding，例如图内直接从磁盘读取图片、从相机节点取帧或使用固定测试资源，TriggerSource 可以保留空 `input_binding_mapping`。调用时只提交事件 envelope 和业务 payload 即可，WorkflowRuntime 会收到空 `input_bindings` 并继续执行图内输入节点。

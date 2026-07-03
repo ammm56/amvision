@@ -669,7 +669,7 @@ class _MmapFileCache:
 
         self._mapped_files: dict[Path, _MappedFile] = {}
 
-    def write(self, *, path: str, offset: int, content: bytes, size: int) -> None:
+    def write(self, *, path: str, offset: int, content: bytes, size: int, flush: bool = False) -> None:
         """直接写入 mmap 文件指定区域。
 
         参数：
@@ -677,6 +677,7 @@ class _MmapFileCache:
         - offset：写入起始偏移。
         - content：写入内容。
         - size：lease 允许写入的区域大小。
+        - flush：是否强制 flush 到 mmap 文件。
         """
 
         mapped_file = self._require_mapped_file(path)
@@ -684,7 +685,8 @@ class _MmapFileCache:
         mapped_file.mmap_view.write(content)
         if len(content) < size:
             mapped_file.mmap_view.write(b"\x00" * (size - len(content)))
-        mapped_file.mmap_view.flush()
+        if flush:
+            mapped_file.mmap_view.flush()
 
     def read(self, *, path: str, offset: int, size: int) -> bytes:
         """直接读取 mmap 文件指定区域。

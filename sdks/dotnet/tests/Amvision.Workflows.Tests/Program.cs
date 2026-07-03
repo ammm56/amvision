@@ -10,6 +10,7 @@ using Amvision.Workflows;
 var tests = new Action[]
 {
     InvokeImageBuildsExpectedEnvelope,
+    ImageTriggerRequestHelpersBuildSecondFrameBytes,
     InvokeImageUsesNetMqReqRepTransport,
     ErrorReplyRaisesTypedException,
     InvalidImageRequestIsRejected,
@@ -34,6 +35,54 @@ foreach (var test in tests)
 }
 
 NetMQConfig.Cleanup(block: false);
+
+// 验证文件、base64 和 stream helper 最终仍走 multipart 第二帧 bytes。
+static void ImageTriggerRequestHelpersBuildSecondFrameBytes()
+{
+    var fromBase64 = ImageTriggerRequest.FromBase64("data:image/png;base64,AQID");
+    AssertEqual("image/png", fromBase64.MediaType);
+    AssertSequence(new byte[] { 1, 2, 3 }, fromBase64.ImageBytes);
+
+    using var stream = new MemoryStream(new byte[] { 4, 5, 6 });
+    var fromStream = ImageTriggerRequest.FromStream(stream, "image/jpeg");
+    AssertEqual("image/jpeg", fromStream.MediaType);
+    AssertSequence(new byte[] { 4, 5, 6 }, fromStream.ImageBytes);
+
+    var tempPath = Path.Combine(Path.GetTempPath(), $"amvision-sdk-{Guid.NewGuid():N}.jpg");
+    try
+    {
+        File.WriteAllBytes(tempPath, new byte[] { 7, 8, 9 });
+        var fromFile = ImageTriggerRequest.FromFile(tempPath);
+        AssertEqual("image/jpeg", fromFile.MediaType);
+        AssertSequence(new byte[] { 7, 8, 9 }, fromFile.ImageBytes);
+    }
+    finally
+    {
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+    }
+
+    var transport = new FakeTransport(
+        "{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-helper\",\"event_id\":\"event-helper\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-helper\",\"response_payload\":{},\"metadata\":{}}"
+    );
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions
+        {
+            TriggerSourceId = "trigger-source-helper"
+        },
+        transport
+    );
+
+    _ = client.InvokeImage(fromBase64);
+
+    AssertEqual(2, transport.LastFrames.Count);
+    AssertSequence(new byte[] { 1, 2, 3 }, transport.LastFrames[1]);
+    using var document = JsonDocument.Parse(Encoding.UTF8.GetString(transport.LastFrames[0]));
+    AssertEqual("request_image_ref", document.RootElement.GetProperty("input_binding").GetString());
+    AssertEqual(false, document.RootElement.GetProperty("payload").TryGetProperty("request_image_base64", out _));
+}
 
 // 验证 SDK 可以构造 backend-service 兼容的 envelope。
 static void InvokeImageBuildsExpectedEnvelope()

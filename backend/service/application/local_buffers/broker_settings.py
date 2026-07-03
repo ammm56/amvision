@@ -22,12 +22,14 @@ class LocalBufferBrokerPoolSettings(BaseModel):
     - file_name：pool 对应的 mmap 文件名。
     - file_size_bytes：单个 pool 文件总容量。
     - slot_size_bytes：单个固定槽位容量。
+    - flush_on_write：写入后是否强制 flush 到 mmap 文件；默认关闭以避免临时图片输入刷盘。
     """
 
     pool_name: str = "image-1080p"
     file_name: str = "image-1080p-001.dat"
     file_size_bytes: int = _DEFAULT_1080P_SLOT_SIZE_BYTES * _DEFAULT_1080P_SLOT_COUNT
     slot_size_bytes: int = _DEFAULT_1080P_SLOT_SIZE_BYTES
+    flush_on_write: bool = False
 
 
 class LocalBufferBrokerSettings(BaseModel):

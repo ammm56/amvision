@@ -45,6 +45,7 @@ class LocalBufferBrokerRegistry:
                     file_size_bytes=pool_settings.file_size_bytes,
                     slot_size_bytes=pool_settings.slot_size_bytes,
                     broker_epoch=self.broker_epoch,
+                    flush_on_write=pool_settings.flush_on_write,
                 )
             )
         if self.settings.default_pool_name not in self._pools:
