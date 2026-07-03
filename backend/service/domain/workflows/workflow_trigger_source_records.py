@@ -51,7 +51,7 @@ class WorkflowTriggerSource:
     display_name: str
     trigger_kind: WorkflowTriggerKind
     workflow_runtime_id: str
-    submit_mode: WorkflowTriggerSubmitMode = "async"
+    submit_mode: WorkflowTriggerSubmitMode = "sync"
     enabled: bool = False
     desired_state: WorkflowTriggerRuntimeState = "stopped"
     observed_state: WorkflowTriggerRuntimeState = "stopped"
@@ -60,8 +60,8 @@ class WorkflowTriggerSource:
     input_binding_mapping: dict[str, object] = field(default_factory=dict)
     result_mapping: dict[str, object] = field(default_factory=dict)
     default_execution_metadata: dict[str, object] = field(default_factory=dict)
-    ack_policy: WorkflowTriggerAckPolicy = "ack-after-run-created"
-    result_mode: WorkflowTriggerResultMode = "accepted-then-query"
+    ack_policy: WorkflowTriggerAckPolicy = "ack-after-run-finished"
+    result_mode: WorkflowTriggerResultMode = "sync-reply"
     reply_timeout_seconds: int | None = None
     debounce_window_ms: int | None = None
     idempotency_key_path: str | None = None

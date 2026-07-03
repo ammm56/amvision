@@ -91,6 +91,43 @@ def test_input_binding_mapper_rejects_missing_required_source() -> None:
     assert error_info.value.details["binding_id"] == "request_image"
 
 
+def test_input_binding_mapper_skips_missing_optional_source() -> None:
+    """验证可选 input binding 来源缺失时不会向 runtime 传入 None。"""
+
+    trigger_source = _build_trigger_source(
+        input_binding_mapping={
+            "request_image_base64": {
+                "source": "payload.request_image_base64",
+                "required": False,
+            },
+            "request_image_ref": {
+                "source": "payload.request_image_ref",
+                "required": False,
+            },
+        },
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(
+            event_id="event-1",
+            payload={
+                "request_image_ref": {
+                    "transport_kind": "buffer",
+                    "buffer_ref": _build_buffer_ref_payload(),
+                }
+            },
+        ),
+    )
+
+    input_bindings = InputBindingMapper().map_input_bindings(
+        trigger_source=trigger_source,
+        trigger_event=trigger_event,
+    )
+
+    assert "request_image_base64" not in input_bindings
+    assert input_bindings["request_image_ref"]["transport_kind"] == "buffer"
+
+
 def test_workflow_result_dispatcher_prefers_configured_output_binding() -> None:
     """验证结果回执优先读取 result_mapping 指定的输出 binding。"""
 
@@ -148,14 +185,14 @@ def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
         submit_mode="sync",
-        input_binding_mapping={"request_image_ref": {"source": "payload.request_image"}},
+        input_binding_mapping={"request_image_ref": {"source": "payload.request_image_ref"}},
     )
     trigger_event = TriggerEventNormalizer().normalize(
         trigger_source,
         RawTriggerEvent(
             event_id="event-1",
             payload={
-                "request_image": {
+                "request_image_ref": {
                     "transport_kind": "buffer",
                     "buffer_ref": _build_buffer_ref_payload(lease_id="lease-input-1"),
                 }
@@ -211,10 +248,10 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
-        input_binding_mapping={"request_image": {"source": "payload.request_image"}},
+        input_binding_mapping={"request_image_ref": {"source": "payload.request_image_ref"}},
         transport_config={
             "bind_endpoint": f"inproc://zeromq-trigger-test-{uuid4().hex}",
-            "default_input_binding": "request_image",
+            "default_input_binding": "request_image_ref",
             "buffer_ttl_seconds": 5,
         },
     )
@@ -244,10 +281,46 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert adapter_health["submitted_count"] == 1
     assert submitter.last_request is not None
     payload = submitter.last_request.trigger_event.payload
-    image_payload = payload["request_image"]
+    image_payload = payload["request_image_ref"]
     assert image_payload["transport_kind"] == "buffer"
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
+
+
+def test_zeromq_trigger_adapter_defaults_content_frame_to_image_ref_binding() -> None:
+    """验证 ZeroMQ adapter 会把新双入口图默认写入 request_image_ref。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        input_binding_mapping={
+            "request_image_base64": {
+                "source": "payload.request_image_base64",
+                "required": False,
+            },
+            "request_image_ref": {
+                "source": "payload.request_image_ref",
+                "required": False,
+            },
+        },
+    )
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
+        workflow_submitter=submitter,
+    )
+
+    result = adapter.handle_multipart_message(
+        trigger_source=trigger_source,
+        frames=[b'{"event_id":"event-1","media_type":"image/png"}', b"image-bytes"],
+        event_handler=supervisor,
+    )
+
+    assert result.state == "accepted"
+    assert submitter.last_request is not None
+    input_bindings = submitter.last_request.trigger_event.payload
+    assert "request_image_base64" not in input_bindings
+    assert input_bindings["request_image_ref"]["transport_kind"] == "buffer"
 
 
 def test_zeromq_trigger_adapter_releases_buffer_when_submit_is_rejected() -> None:

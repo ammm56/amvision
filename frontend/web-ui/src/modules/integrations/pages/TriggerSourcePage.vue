@@ -97,7 +97,7 @@
               <p class="page-kicker">Inference</p>
               <div class="heading-with-hint">
                 <h2>自动推断</h2>
-                <InfoHint text="自动推断会优先使用 metadata 标记。Webhook/JSON 优先 request_image_base64；ZeroMQ multipart 默认把图片 bytes 写成 payload.request_image，再映射到 request_image_ref。高级设置中可手动修正或自定义。" />
+                <InfoHint text="自动推断会优先使用 metadata 标记。常见双入口图会同时启用 request_image_base64 和 request_image_ref；ZeroMQ 图片 bytes 默认写入 LocalBuffer，再通过 payload.request_image_ref 映射到 request_image_ref。" />
               </div>
             </div>
             <StatusBadge tone="info">{{ selectedProtocolTemplate.displayName }}</StatusBadge>
@@ -105,7 +105,7 @@
           <div class="summary-grid">
             <div>
               <span>图片输入</span>
-              <strong>{{ inferredImageBinding?.binding_id ?? '未找到' }}</strong>
+              <strong>{{ inferredImageBindingText }}</strong>
             </div>
             <div>
               <span>请求参数</span>
@@ -188,7 +188,7 @@
               </label>
               <label v-if="row.mode === 'source'" class="field trigger-mapping-row__source">
                 <span>source path</span>
-                <input v-model="row.sourcePath" placeholder="payload.request_image" />
+                <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
               </label>
               <label v-else-if="row.mode === 'static'" class="field trigger-mapping-row__source">
                 <span>固定值</span>
@@ -338,10 +338,13 @@ interface ProtocolTemplateOption {
   submitMode: 'async' | 'sync'
   resultMode: string
   ackPolicy: string
-  imageSourcePath: string
+  imageBase64SourcePath: string
+  imageRefSourcePath: string
+  legacyImageSourcePath: string
   requestSourcePath: string
   defaultInputBinding: string
   defaultReplyTimeoutSeconds: number
+  defaultIdempotencyKeyPath: string
 }
 
 const protocolTemplates: ProtocolTemplateOption[] = [
@@ -354,10 +357,13 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     submitMode: 'sync',
     resultMode: 'sync-reply',
     ackPolicy: 'ack-after-run-finished',
-    imageSourcePath: 'payload.request_image',
+    imageBase64SourcePath: 'payload.request_image_base64',
+    imageRefSourcePath: 'payload.request_image_ref',
+    legacyImageSourcePath: 'payload.request_image_ref',
     requestSourcePath: 'payload.deployment_request',
-    defaultInputBinding: 'request_image',
+    defaultInputBinding: 'request_image_ref',
     defaultReplyTimeoutSeconds: 30,
+    defaultIdempotencyKeyPath: 'payload.idempotency_key',
   },
   {
     templateId: 'webhook-json',
@@ -368,10 +374,13 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     submitMode: 'sync',
     resultMode: 'sync-reply',
     ackPolicy: 'ack-after-run-finished',
-    imageSourcePath: 'payload.request_image_base64',
+    imageBase64SourcePath: 'payload.request_image_base64',
+    imageRefSourcePath: 'payload.request_image_ref',
+    legacyImageSourcePath: 'payload.request_image_base64',
     requestSourcePath: 'payload.deployment_request',
     defaultInputBinding: 'request_image_base64',
     defaultReplyTimeoutSeconds: 30,
+    defaultIdempotencyKeyPath: 'payload.idempotency_key',
   },
 ]
 
@@ -443,7 +452,12 @@ const appInputBindings = computed(() => appBindings.value.filter((binding) => bi
 const appOutputBindings = computed(() => appBindings.value.filter((binding) => binding.direction === 'output'))
 const templateInputById = computed(() => new Map((graph.value?.template_inputs ?? []).map((input) => [input.input_id, input])))
 const templateOutputById = computed(() => new Map((graph.value?.template_outputs ?? []).map((output) => [output.output_id, output])))
-const inferredImageBinding = computed(() => findImageInputBinding())
+const inferredImageBindings = computed(() => findImageInputBindings())
+const inferredImageBinding = computed(() => inferredImageBindings.value[0] ?? null)
+const inferredImageBindingText = computed(() => {
+  const bindingIds = inferredImageBindings.value.map((binding) => binding.binding_id)
+  return bindingIds.length > 0 ? bindingIds.join(' / ') : '未找到'
+})
 const inferredRequestBinding = computed(() => findRequestInputBinding())
 const runtimeOptions = computed<SelectOption[]>(() => [
   { label: '选择 runtime', value: '' },
@@ -455,7 +469,7 @@ const runtimeOptions = computed<SelectOption[]>(() => [
 const protocolTemplateOptions = computed<SelectOption[]>(() => protocolTemplates.map((template) => ({
   label: template.displayName,
   value: template.templateId,
-  description: template.templateId === 'zeromq-image-trigger' ? 'multipart bytes -> payload.request_image' : 'JSON body -> request_image_base64',
+  description: template.templateId === 'zeromq-image-trigger' ? 'multipart bytes -> payload.request_image_ref' : 'JSON body -> payload.request_image_base64',
 })))
 const resultBindingOptions = computed<SelectOption[]>(() => [
   ...appOutputBindings.value.map((binding) => ({
@@ -562,16 +576,41 @@ function findBindingFromMetadata(key: string): FlowApplicationBinding | null {
   return null
 }
 
-function findImageInputBinding(): FlowApplicationBinding | null {
+function isImageBase64Binding(binding: FlowApplicationBinding): boolean {
+  const payloadTypeId = getBindingPayloadTypeId(binding)
+  return binding.binding_id === 'request_image_base64' || payloadTypeId.includes('image-base64')
+}
+
+function isImageRefBinding(binding: FlowApplicationBinding): boolean {
+  const payloadTypeId = getBindingPayloadTypeId(binding)
+  return binding.binding_id === 'request_image_ref' || payloadTypeId.includes('image-ref')
+}
+
+function isImageInputBinding(binding: FlowApplicationBinding): boolean {
+  return isImageBase64Binding(binding) || isImageRefBinding(binding) || binding.binding_id.includes('image')
+}
+
+function addUniqueBinding(bindings: FlowApplicationBinding[], binding: FlowApplicationBinding | null): void {
+  if (!binding || bindings.some((item) => item.binding_id === binding.binding_id)) return
+  bindings.push(binding)
+}
+
+function findImageInputBindings(): FlowApplicationBinding[] {
+  const bindings: FlowApplicationBinding[] = []
   const metadataBinding = findBindingFromMetadata('trigger_source_input_binding')
-  if (metadataBinding && selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') return metadataBinding
-  const imageRefBinding = appInputBindings.value.find((binding) => getBindingPayloadTypeId(binding).includes('image-ref'))
-  const imageBase64Binding = appInputBindings.value.find((binding) => getBindingPayloadTypeId(binding).includes('image-base64'))
-  if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') return imageRefBinding ?? imageBase64Binding ?? null
-  if (imageBase64Binding) return imageBase64Binding
-  if (metadataBinding) return metadataBinding
-  if (imageRefBinding) return imageRefBinding
-  return appInputBindings.value.find((binding) => binding.binding_id.includes('image')) ?? null
+  const imageBase64Binding = appInputBindings.value.find(isImageBase64Binding) ?? null
+  const imageRefBinding = appInputBindings.value.find(isImageRefBinding) ?? null
+  if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
+    addUniqueBinding(bindings, imageBase64Binding)
+    addUniqueBinding(bindings, imageRefBinding)
+    addUniqueBinding(bindings, metadataBinding)
+  } else {
+    addUniqueBinding(bindings, imageBase64Binding)
+    addUniqueBinding(bindings, metadataBinding)
+    addUniqueBinding(bindings, imageRefBinding)
+  }
+  if (bindings.length === 0) addUniqueBinding(bindings, appInputBindings.value.find(isImageInputBinding) ?? null)
+  return bindings
 }
 
 function findRequestInputBinding(): FlowApplicationBinding | null {
@@ -589,7 +628,9 @@ function findDefaultResultBinding(): string {
 }
 
 function defaultSourcePath(binding: FlowApplicationBinding): string {
-  if (inferredImageBinding.value?.binding_id === binding.binding_id) return selectedProtocolTemplate.value.imageSourcePath
+  if (isImageBase64Binding(binding)) return selectedProtocolTemplate.value.imageBase64SourcePath
+  if (isImageRefBinding(binding)) return selectedProtocolTemplate.value.imageRefSourcePath
+  if (inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id)) return selectedProtocolTemplate.value.legacyImageSourcePath
   if (inferredRequestBinding.value?.binding_id === binding.binding_id) return selectedProtocolTemplate.value.requestSourcePath
   if (binding.binding_id === 'deployment_request') return 'payload.deployment_request'
   return `payload.${binding.binding_id}`
@@ -597,7 +638,7 @@ function defaultSourcePath(binding: FlowApplicationBinding): string {
 
 function buildMappingRows(): void {
   mappingRows.value = appInputBindings.value.map((binding) => {
-    const inferred = binding.binding_id === inferredImageBinding.value?.binding_id || binding.binding_id === inferredRequestBinding.value?.binding_id
+    const inferred = inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id) || binding.binding_id === inferredRequestBinding.value?.binding_id
     return {
       bindingId: binding.binding_id,
       payloadTypeId: getBindingPayloadTypeId(binding),
@@ -623,6 +664,7 @@ function applyProtocolTemplateDefaults(): void {
   endpoint.value = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
+  idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
   buildMappingRows()
 }
 
@@ -687,9 +729,19 @@ function buildTransportConfig(): WorkflowJsonObject {
       bind_endpoint: normalizedEndpoint,
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
       buffer_ttl_seconds: selectedProtocolTemplate.value.defaultReplyTimeoutSeconds,
+      content_transport: 'local-buffer',
     }
   }
   return { path: normalizedEndpoint, method: 'POST' }
+}
+
+function buildDefaultExecutionMetadata(): WorkflowJsonObject {
+  if (selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') return {}
+  return {
+    trace_level: 'none',
+    retain_trace_enabled: false,
+    retain_node_records_enabled: false,
+  }
 }
 
 function buildMatchRule(): WorkflowJsonObject {
@@ -801,6 +853,7 @@ async function submitTriggerSource(): Promise<void> {
         result_binding: resultBinding.value,
         result_mode: resultMode.value,
       },
+      defaultExecutionMetadata: buildDefaultExecutionMetadata(),
       ackPolicy: ackPolicy.value,
       resultMode: resultMode.value,
       replyTimeoutSeconds: parseOptionalNumber(replyTimeoutSeconds.value),
@@ -812,6 +865,7 @@ async function submitTriggerSource(): Promise<void> {
         application_id: runtime.application_id,
         default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
         inferred_image_binding: inferredImageBinding.value?.binding_id ?? null,
+        inferred_image_bindings: inferredImageBindings.value.map((binding) => binding.binding_id),
         inferred_request_binding: inferredRequestBinding.value?.binding_id ?? null,
         manual_mapping_available: true,
       },

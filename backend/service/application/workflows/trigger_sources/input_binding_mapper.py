@@ -39,11 +39,14 @@ class InputBindingMapper:
         }
         input_bindings: dict[str, object] = {}
         for binding_id, mapping_rule in trigger_source.input_binding_mapping.items():
-            input_bindings[binding_id] = self._resolve_mapping_rule(
+            mapped_value = self._resolve_mapping_rule(
                 binding_id=binding_id,
                 mapping_rule=mapping_rule,
                 event_context=event_context,
             )
+            if mapped_value is MISSING_PATH_VALUE:
+                continue
+            input_bindings[binding_id] = mapped_value
         return input_bindings
 
     def _resolve_mapping_rule(
@@ -66,7 +69,7 @@ class InputBindingMapper:
                     "input binding 映射缺少 source",
                     details={"binding_id": binding_id},
                 )
-            return None
+            return MISSING_PATH_VALUE
         mapped_value = read_dotted_path(event_context, source_path)
         if mapped_value is MISSING_PATH_VALUE:
             if bool(mapping_rule.get("required", True)):
@@ -74,5 +77,5 @@ class InputBindingMapper:
                     "input binding 映射来源不存在",
                     details={"binding_id": binding_id, "source": source_path},
                 )
-            return None
+            return MISSING_PATH_VALUE
         return mapped_value

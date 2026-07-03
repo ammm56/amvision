@@ -78,15 +78,15 @@ class WorkflowTriggerSourceCreateRequest:
     display_name: str
     trigger_kind: str
     workflow_runtime_id: str
-    submit_mode: str = "async"
+    submit_mode: str = "sync"
     enabled: bool = False
     transport_config: dict[str, object] | None = None
     match_rule: dict[str, object] | None = None
     input_binding_mapping: dict[str, object] | None = None
     result_mapping: dict[str, object] | None = None
     default_execution_metadata: dict[str, object] | None = None
-    ack_policy: str = "ack-after-run-created"
-    result_mode: str = "accepted-then-query"
+    ack_policy: str = "ack-after-run-finished"
+    result_mode: str = "sync-reply"
     reply_timeout_seconds: int | None = None
     debounce_window_ms: int | None = None
     idempotency_key_path: str | None = None

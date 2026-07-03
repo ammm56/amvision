@@ -543,7 +543,11 @@ def _resolve_input_binding(
     input_binding = envelope.input_binding or _read_optional_transport_text(
         trigger_source, "default_input_binding"
     )
-    return _require_stripped_text(input_binding or "request_image", "input_binding")
+    if input_binding:
+        return _require_stripped_text(input_binding, "input_binding")
+    if "request_image_ref" in trigger_source.input_binding_mapping:
+        return "request_image_ref"
+    return "request_image"
 
 
 def _read_required_transport_text(

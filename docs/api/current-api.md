@@ -1915,7 +1915,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - display_name
   - trigger_kind
   - workflow_runtime_id
-  - submit_mode，默认 async
+  - submit_mode，默认 sync
   - enabled，默认 false
   - transport_config
   - match_rule
@@ -1940,12 +1940,19 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   "submit_mode": "sync",
   "transport_config": {
     "bind_endpoint": "tcp://127.0.0.1:5556",
-    "default_input_binding": "request_image",
-    "buffer_ttl_seconds": 30
+    "default_input_binding": "request_image_ref",
+    "buffer_ttl_seconds": 30,
+    "content_transport": "local-buffer"
   },
   "input_binding_mapping": {
-    "request_image": {
-      "source": "payload.request_image",
+    "request_image_base64": {
+      "source": "payload.request_image_base64",
+      "required": false,
+      "payload_type_id": "image-base64.v1"
+    },
+    "request_image_ref": {
+      "source": "payload.request_image_ref",
+      "required": false,
       "payload_type_id": "image-ref.v1"
     }
   },
@@ -1956,7 +1963,8 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   },
   "ack_policy": "ack-after-run-finished",
   "result_mode": "sync-reply",
-  "reply_timeout_seconds": 30
+  "reply_timeout_seconds": 30,
+  "idempotency_key_path": "payload.idempotency_key"
 }
 ```
 

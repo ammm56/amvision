@@ -45,7 +45,6 @@ static void InvokeImageBuildsExpectedEnvelope()
         new AmvisionTriggerClientOptions
         {
             TriggerSourceId = "trigger-source-04",
-            DefaultInputBinding = "request_image",
             Timeout = TimeSpan.FromSeconds(1)
         },
         transport
@@ -75,7 +74,7 @@ static void InvokeImageBuildsExpectedEnvelope()
     AssertEqual("trigger-source-04", root.GetProperty("trigger_source_id").GetString());
     AssertEqual("event-1", root.GetProperty("event_id").GetString());
     AssertEqual("trace-1", root.GetProperty("trace_id").GetString());
-    AssertEqual("request_image", root.GetProperty("input_binding").GetString());
+    AssertEqual("request_image_ref", root.GetProperty("input_binding").GetString());
     AssertEqual("image/jpeg", root.GetProperty("media_type").GetString());
     AssertEqual("line-a", root.GetProperty("metadata").GetProperty("line_id").GetString());
     AssertEqual("job-1", root.GetProperty("payload").GetProperty("job_id").GetString());
@@ -319,15 +318,14 @@ static void TriggerSourceCreateListDeleteUsesExpectedHttpRequests()
         ProjectId = "project-1",
         DisplayName = "line trigger",
         WorkflowRuntimeId = "runtime-1",
-        SubmitMode = "sync",
         Enabled = false,
         IdempotencyKeyPath = "payload.idempotency_key"
     };
     createRequest.TransportConfig["bind_endpoint"] = "tcp://127.0.0.1:5555";
     createRequest.InputBindingMapping["request_image_ref"] = new WorkflowTriggerInputBindingMappingItem
     {
-        Source = "payload.request_image",
-        PayloadTypeId = "image.ref.v1"
+        Source = "payload.request_image_ref",
+        PayloadTypeId = "image-ref.v1"
     };
 
     _ = client.CreateTriggerSourceAsync(createRequest).GetAwaiter().GetResult();
@@ -337,8 +335,11 @@ static void TriggerSourceCreateListDeleteUsesExpectedHttpRequests()
     {
         var root = document.RootElement;
         AssertEqual("trigger-source-1", root.GetProperty("trigger_source_id").GetString());
+        AssertEqual("sync", root.GetProperty("submit_mode").GetString());
+        AssertEqual("ack-after-run-finished", root.GetProperty("ack_policy").GetString());
+        AssertEqual("sync-reply", root.GetProperty("result_mode").GetString());
         AssertEqual("payload.idempotency_key", root.GetProperty("idempotency_key_path").GetString());
-        AssertEqual("payload.request_image", root.GetProperty("input_binding_mapping").GetProperty("request_image_ref").GetProperty("source").GetString());
+        AssertEqual("payload.request_image_ref", root.GetProperty("input_binding_mapping").GetProperty("request_image_ref").GetProperty("source").GetString());
     }
 
     _ = client.ListTriggerSourcesAsync("project-1", limit: 7).GetAwaiter().GetResult();
@@ -433,8 +434,7 @@ static void ZeroMqEnvelopeAddsHelperPayload()
     using var client = new AmvisionTriggerClient(
         new AmvisionTriggerClientOptions
         {
-            TriggerSourceId = "trigger-source-06",
-            DefaultInputBinding = "request_image"
+            TriggerSourceId = "trigger-source-06"
         },
         transport
     );
@@ -471,8 +471,7 @@ static void SchemaFixtureMatchesGeneratedEnvelope()
     using var client = new AmvisionTriggerClient(
         new AmvisionTriggerClientOptions
         {
-            TriggerSourceId = "trigger-source-schema",
-            DefaultInputBinding = "request_image"
+            TriggerSourceId = "trigger-source-schema"
         },
         transport
     );

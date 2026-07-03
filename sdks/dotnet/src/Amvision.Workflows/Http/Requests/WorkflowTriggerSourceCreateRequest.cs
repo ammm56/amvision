@@ -33,7 +33,7 @@ public sealed class WorkflowTriggerResultMapping
     public string ResultBinding { get; set; } = "workflow_result";
 
     [JsonPropertyName("result_mode")]
-    public string ResultMode { get; set; } = "accepted-then-query";
+    public string ResultMode { get; set; } = "sync-reply";
 
     [JsonPropertyName("reply_timeout_seconds")]
     public int? ReplyTimeoutSeconds { get; set; }
@@ -63,7 +63,7 @@ public sealed class WorkflowTriggerSourceCreateRequest
     public string WorkflowRuntimeId { get; set; } = string.Empty;
 
     [JsonPropertyName("submit_mode")]
-    public string SubmitMode { get; set; } = "async";
+    public string SubmitMode { get; set; } = "sync";
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; }
@@ -85,10 +85,10 @@ public sealed class WorkflowTriggerSourceCreateRequest
     public IDictionary<string, object?> DefaultExecutionMetadata { get; } = new Dictionary<string, object?>();
 
     [JsonPropertyName("ack_policy")]
-    public string AckPolicy { get; set; } = "ack-after-run-created";
+    public string AckPolicy { get; set; } = "ack-after-run-finished";
 
     [JsonPropertyName("result_mode")]
-    public string ResultMode { get; set; } = "accepted-then-query";
+    public string ResultMode { get; set; } = "sync-reply";
 
     [JsonPropertyName("reply_timeout_seconds")]
     public int? ReplyTimeoutSeconds { get; set; }

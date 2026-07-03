@@ -60,7 +60,7 @@ using var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
 {
     Endpoint = "tcp://127.0.0.1:5555",
     TriggerSourceId = "zeromq-trigger-source-06",
-    DefaultInputBinding = "request_image",
+    DefaultInputBinding = "request_image_ref",
     Timeout = TimeSpan.FromSeconds(5)
 });
 
@@ -84,4 +84,4 @@ var result = client.InvokeImage(request);
 Console.WriteLine($"{result.State}: {result.WorkflowRunId}");
 ```
 
-这里的 `DefaultInputBinding = "request_image"` 表示 ZeroMQ envelope 第一层事件 payload 中保存图片引用的字段名。06/07 的 TriggerSource 会再通过 `input_binding_mapping.request_image_ref.source = payload.request_image` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding。
+这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding；同一张图的 `request_image_base64` 入口仍可用于 HTTP/JSON 调试。

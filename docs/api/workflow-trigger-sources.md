@@ -203,7 +203,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
 ```json
 {
   "input_bindings": {
-    "request_image": {
+    "request_image_base64": {
       "image_base64": "<base64 image bytes>",
       "media_type": "image/png"
     },
@@ -230,7 +230,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
 ```json
 {
   "input_bindings": {
-    "request_image": {
+    "request_image_ref": {
       "transport_kind": "frame",
       "frame_ref": {
         "format_id": "amvision.frame-ref.v1",
@@ -260,7 +260,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
     "stream_id": "line-a-camera-1",
     "trace_id": "frame-1024"
   }
-}P
+}
 ```
 
 本地 adapter 可以把这份请求交给 runtime invoke 或 run 创建逻辑。sync 模式适规则机短链路、调用方需要即时结果的场景；async 模式适合长期监听、排队、断线后回查和高频事件削峰。
@@ -409,13 +409,12 @@ http-response 输出或 WorkflowRun outputs
 - runtime_summary
 - application_summary
 
-## submit_mode 为什么默认更偏 async
+## submit_mode 默认值与推荐搭配
 
-- trigger source 的 submit_mode 应保持可配置，不能把所有外部触发都强行收口成 async，也不能假设它们都适规则步等待到底。
-- 从默认取向上更建议 async，因为 PLC、MQTT、传感器、IO 变化、schedule 或外部回调触发，通常更接近“事件到达后创建一条正式执行记录”，而不是“当前调用方必须一直阻塞等待结果”。
-- async 更适合承接物理世界和外部系统带来的长时间执行、排队、取消、断线后回查和脱离当前连接继续运行的需求。
-- sync 更适合少量低时延、短链路、调用方明确需要即时结果且能稳定持有连接的触发入口，例如某些受控 gRPC 调用或同机内部快速联动。
-- 即使 trigger source 支持 sync，也应作为显式选择，而不是默认行为；默认偏 async 可以避免把外部触发入口误做成新的长阻塞控制面。
+- trigger source 的 submit_mode 保持可配置；当前 HTTP/ZeroMQ 图片入口默认使用 sync，便于现场调用方实时拿到结果。
+- async 仍适合 PLC、目录轮询、目录监听、MQTT、传感器、IO 变化、schedule 或外部回调等后台事件入口。
+- sync 适合低时延、短链路、调用方明确需要即时结果且能稳定持有连接的触发入口，例如本机 ZeroMQ REQ/REP、受控 gRPC 调用或 HTTP 调试入口。
+- 当前实现里 `directory-poll`、`directory-watch` 与 `plc-register` 已显式限制为 `submit_mode = async`；如果请求体传入或默认落到 `sync`，enable 时会返回明确错误。
 
 ## submit_mode 与 trigger_kind 的推荐搭配
 
@@ -1101,7 +1100,7 @@ docs/examples/workflows/
 - 接收 multipart 消息：第一帧 JSON envelope，第二帧图片 bytes，后续帧暂不启用或作为扩展保留。
 - adapter 读取 envelope 中的 media_type、shape、dtype、layout、pixel_format、trace_id 和 input binding 名称。
 - 图片 bytes 写入 LocalBufferBroker 普通 BufferRef。
-- InputBindingMapper 把 BufferRef payload 映射到 `request_image` 等 FlowApplication input binding。
+- InputBindingMapper 把 BufferRef payload 映射到 `request_image_ref` 等 FlowApplication input binding；HTTP/JSON 调试入口继续使用 `request_image_base64`。
 - WorkflowSubmitter 使用 sync invoke 语义调用已启动 WorkflowAppRuntime。
 - ResultDispatcher 把 workflow 输出转换为 ZeroMQ JSON reply。
 - 对输入格式错误、runtime 未运行、超时和 workflow 失败分别返回稳定错误码。

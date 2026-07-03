@@ -34,7 +34,7 @@ class WorkflowTriggerSourceCreateRequestBody(BaseModel):
     display_name: str = Field(description="展示名称")
     trigger_kind: str = Field(description="触发类型")
     workflow_runtime_id: str = Field(description="绑定的 WorkflowAppRuntime id")
-    submit_mode: str = Field(default="async", description="提交模式")
+    submit_mode: str = Field(default="sync", description="提交模式")
     enabled: bool = Field(default=False, description="创建后是否启用")
     transport_config: dict[str, object] = Field(
         default_factory=dict, description="协议连接配置"
@@ -51,12 +51,11 @@ class WorkflowTriggerSourceCreateRequestBody(BaseModel):
     default_execution_metadata: dict[str, object] = Field(
         default_factory=dict, description="默认执行元数据"
     )
-    ack_policy: str = Field(default="ack-after-run-created", description="接收确认策略")
-    result_mode: str = Field(default="accepted-then-query", description="结果回执模式")
+    ack_policy: str = Field(default="ack-after-run-finished", description="接收确认策略")
+    result_mode: str = Field(default="sync-reply", description="结果回执模式")
     reply_timeout_seconds: int | None = Field(
         default=None, description="同步回执超时秒数"
     )
     debounce_window_ms: int | None = Field(default=None, description="去抖窗口毫秒数")
     idempotency_key_path: str | None = Field(default=None, description="幂等键来源路径")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
-

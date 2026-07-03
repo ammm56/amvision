@@ -291,6 +291,58 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     assert recreate_response.json()["display_name"] == "ZeroMQ Trigger Recreated"
 
 
+def test_workflow_trigger_source_api_defaults_to_sync_reply(
+    tmp_path: Path,
+) -> None:
+    """验证 TriggerSource 创建接口默认使用同步实时回包语义。"""
+
+    context = create_api_test_context(
+        tmp_path,
+        database_name="workflow-trigger-source-defaults.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with context.client:
+            _save_runtime(context.session_factory, observed_state="running")
+            create_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "zeromq-trigger-source-defaults",
+                    "project_id": "project-1",
+                    "display_name": "ZeroMQ Trigger Defaults",
+                    "trigger_kind": "zeromq-topic",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "transport_config": {
+                        "bind_endpoint": f"inproc://workflow-trigger-defaults-{uuid4().hex}",
+                        "default_input_binding": "request_image_ref",
+                    },
+                    "input_binding_mapping": {
+                        "request_image_base64": {
+                            "source": "payload.request_image_base64",
+                            "required": False,
+                        },
+                        "request_image_ref": {
+                            "source": "payload.request_image_ref",
+                            "required": False,
+                        },
+                    },
+                    "result_mapping": {"result_binding": "http_response"},
+                },
+            )
+    finally:
+        context.session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    payload = create_response.json()
+    assert payload["submit_mode"] == "sync"
+    assert payload["ack_policy"] == "ack-after-run-finished"
+    assert payload["result_mode"] == "sync-reply"
+    assert payload["input_binding_mapping"]["request_image_base64"]["required"] is False
+    assert payload["input_binding_mapping"]["request_image_ref"]["required"] is False
+
+
 def test_workflow_trigger_source_api_controls_plc_register_adapter(
     tmp_path: Path,
     monkeypatch,

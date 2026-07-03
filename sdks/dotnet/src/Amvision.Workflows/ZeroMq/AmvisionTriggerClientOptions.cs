@@ -20,7 +20,7 @@ public sealed class AmvisionTriggerClientOptions
     /// <summary>
     /// 图片 bytes 默认绑定到的 FlowApplication input binding。
     /// </summary>
-    public string DefaultInputBinding { get; set; } = "request_image";
+    public string DefaultInputBinding { get; set; } = "request_image_ref";
 
     /// <summary>
     /// 发送和接收超时时间。
