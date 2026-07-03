@@ -403,6 +403,14 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - dataset_export.default_format
   - project_summary_topics
 
+### GET /api/v1/system/config
+
+- 需要 system:read
+- 返回字段：format_id、config、metadata
+- `config` 是当前 backend-service 进程已解析并合并后的统一配置快照，供前端和 SDK 读取运行配置；响应会遮蔽 token、password、secret 等敏感字段。
+- 当前集成页面使用 `config.local_buffer_broker.default_pool_name` 和 `config.local_buffer_broker.pools` 生成 ZeroMQ TriggerSource 的 pool 选择项，不维护独立默认列表。
+- `local_buffer_broker.pools` 中的 `file_name` 和 `file_size_bytes` 是后端配置模型补齐后的派生值；现场配置仍以 `pool_name`、`slot_size_bytes`、`slot_count` 和 `flush_on_write` 为主。
+
 ### GET /api/v1/system/me
 
 - 需要主体请求头

@@ -22,6 +22,7 @@ var tests = new Action[]
     TriggerSourceCreateListDeleteUsesExpectedHttpRequests,
     TypedResponsesDeserializeWorkflowResponses,
     TriggerSourceHealthUsesExpectedHttpEndpoint,
+    SystemConfigUsesExpectedHttpEndpoint,
     WorkflowApiResponseParsesBackendErrorEnvelope,
     ZeroMqEnvelopeAddsHelperPayload,
     SchemaFixtureMatchesGeneratedEnvelope,
@@ -445,6 +446,33 @@ static void TriggerSourceHealthUsesExpectedHttpEndpoint()
     AssertEqual(HttpStatusCode.OK, response.StatusCode);
 }
 
+// 验证 system config API 会命中预期路径，并能读取 LocalBufferBroker pool 配置。
+static void SystemConfigUsesExpectedHttpEndpoint()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"format_id\":\"amvision.backend-service-config.v1\",\"config\":{\"local_buffer_broker\":{\"enabled\":true,\"root_dir\":\"./data/buffers\",\"startup_timeout_seconds\":5.0,\"request_timeout_seconds\":5.0,\"shutdown_timeout_seconds\":5.0,\"expire_interval_seconds\":5.0,\"default_pool_name\":\"image-1080p\",\"pools\":[{\"pool_name\":\"image-1080p\",\"slot_size_bytes\":16777216,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-1080p-001.dat\",\"file_size_bytes\":536870912},{\"pool_name\":\"image-640x640\",\"slot_size_bytes\":4194304,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-640x640-001.dat\",\"file_size_bytes\":134217728}]},\"auth\":{\"static_tokens\":\"***\"}},\"metadata\":{\"source\":\"runtime-resolved\",\"secrets_redacted\":true}}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var rawResponse = client.GetSystemConfigAsync().GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/system/config", handler.LastRequestUri?.ToString());
+    AssertEqual(HttpStatusCode.OK, rawResponse.StatusCode);
+
+    var typedResponse = client.GetSystemConfigResponseAsync().GetAwaiter().GetResult();
+    AssertEqual("amvision.backend-service-config.v1", typedResponse.FormatId);
+    AssertEqual("runtime-resolved", typedResponse.Metadata["source"].GetString());
+    AssertEqual("image-1080p", typedResponse.LocalBufferBroker?.DefaultPoolName);
+    AssertEqual(2, typedResponse.LocalBufferBroker?.Pools.Count ?? 0);
+    AssertEqual("image-640x640", typedResponse.LocalBufferBroker?.Pools[1].PoolName);
+    AssertEqual(134217728L, typedResponse.LocalBufferBroker?.Pools[1].FileSizeBytes ?? 0);
+}
+
 // 验证 backend-service 错误 envelope 会被解析到 SDK HTTP 响应对象中。
 static void WorkflowApiResponseParsesBackendErrorEnvelope()
 {
@@ -564,6 +592,9 @@ static void BackendLocalSmokeTest()
         AccessToken = string.IsNullOrWhiteSpace(token) ? "amvision-default-user-token" : token,
         Timeout = TimeSpan.FromSeconds(5)
     });
+
+    var configResponse = client.GetSystemConfigAsync().GetAwaiter().GetResult();
+    configResponse.EnsureSuccessStatusCode();
 
     var response = client.ListTriggerSourcesAsync(
         string.IsNullOrWhiteSpace(projectId) ? "project-1" : projectId,

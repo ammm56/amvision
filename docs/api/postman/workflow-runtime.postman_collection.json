@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cb7a8a14-cd66-4c4a-b4a8-6382f87bf7f1",
     "name": "amvision workflow runtime api",
-    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。detection 模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。模型生命周期联调请改用根目录 `*-full-chain.postman_collection.json`；正式 workflow 的分拆调试 collection 已统一移动到 docs/api/postman/workflows/ 目录，当前覆盖 01-15 号场景链。",
+    "description": "workflow runtime 当前联调 collection，覆盖 system/bootstrap、system/config、projects/bootstrap、projects 目录与公开文件读取、template/application validate/save/get/list/copy/delete、execution-policies、preview-runs、app-runtimes、sync invoke、async runs、trigger-sources list/detail/health 和 cancel 的最小公开接口。主要列表请求已补 offset/limit 示例，响应体仍保持数组，分页信息通过 x-offset、x-limit、x-total-count、x-has-more 和 x-next-offset 返回。当前 FastAPI 默认使用通用触发入口 /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke，FlowApplication.bindings.config.route 在现阶段仅作为绑定声明，不自动生成专用 HTTP 路由。detection 模型节点当前通过 PublishedInferenceGateway 命中 backend-service 持有的 sync deployment，不走公开 inference-tasks 或 async deployment 通道。模型生命周期联调请改用根目录 `*-full-chain.postman_collection.json`；正式 workflow 的分拆调试 collection 已统一移动到 docs/api/postman/workflows/ 目录，当前覆盖 01-15 号场景链。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -184,6 +184,33 @@
               ]
             },
             "description": "读取前端首屏 bootstrap 聚合结果，确认当前主体、visible_projects 和 dataset export 能力。"
+          },
+          "response": []
+        },
+        {
+          "name": "Get System Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "config"
+              ]
+            },
+            "description": "读取 backend-service 已解析的统一配置快照。ZeroMQ TriggerSource 创建前可从 config.local_buffer_broker.default_pool_name 和 config.local_buffer_broker.pools 获取真实 pool 配置。"
           },
           "response": []
         }

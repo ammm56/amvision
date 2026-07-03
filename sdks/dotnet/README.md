@@ -10,8 +10,8 @@ C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 Wo
 - ZeroMQ 依赖：NetMQ
 - 支持单张图片 REQ/REP 调用
 - 支持 TriggerResult 和 ZeroMQ error reply 解析
-- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health
-- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、trigger-source 的 typed response 方法
+- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health，SystemConfig get
+- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、trigger-source、system config 的 typed response 方法
 - `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；如需只取公开 App Result，可显式传 `WorkflowResponseModes.AppResult`
 
 SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
@@ -39,6 +39,22 @@ dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflo
 06/07 的 ZeroMQ 调试应使用 `docs/examples/workflows/*_zeromq.*.json` 中的双入口 workflow app。原始 04/05 JSON 仍保留给 HTTP base64 invoke 调试。
 
 服务侧准备顺序：保存 06/07 的 template 和 application，创建并启动 WorkflowAppRuntime，按 `docs/api/examples/workflows/06-detection-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json` 或 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json` 创建 TriggerSource，调用 enable，并确认 health 中 `adapter_running=true`。如果 06 的 template 已升级到返回 `detections + annotated_image + health`，需要重新执行 Save Template、Save Application，并重新创建或重建对应的 WorkflowAppRuntime；旧 runtime 继续运行时，返回结果仍会停留在旧图接口模型。
+
+创建 ZeroMQ TriggerSource 前可通过 HTTP client 读取当前后端实际配置，选择与 `config/backend-service.json` 一致的 LocalBufferBroker pool：
+
+```csharp
+using var workflowClient = new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
+{
+    BaseApiUrl = "http://127.0.0.1:8000",
+    AccessToken = "amvision-default-user-token"
+});
+
+var systemConfig = await workflowClient.GetSystemConfigResponseAsync();
+var broker = systemConfig.LocalBufferBroker;
+var poolName = broker?.DefaultPoolName ?? "image-1080p";
+```
+
+创建 TriggerSource 时把 `poolName` 写入 `WorkflowTriggerSourceCreateRequest.TransportConfig["pool_name"]`。SDK 不维护独立默认 pool 列表，现场如果新增 4K 或相机专用 pool，应以 `/api/v1/system/config` 返回为准。
 
 上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目管理 API 或前端准备动作，不属于 SDK 对外提供的能力范围。
 
