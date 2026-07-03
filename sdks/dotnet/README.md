@@ -8,11 +8,11 @@ C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 Wo
 - 源码结构：`Http/` 放 Workflow 管理 API client、请求和响应模型，`ZeroMq/` 放 TriggerSource REQ/REP 调用，`Internal/` 放 SDK 内部 JSON/HTTP helper
 - 目标框架：`net461;net472;netstandard2.1;net10.0`
 - ZeroMQ 依赖：NetMQ
-- 支持单张图片 REQ/REP 调用
+- 支持 ZeroMQ 图片 REQ/REP 调用和纯事件 REQ/REP 调用
 - 支持 TriggerResult 和 ZeroMQ error reply 解析
-- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health，SystemConfig get
-- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、trigger-source、system config 的 typed response 方法
-- `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；如需只取公开 App Result，可显式传 `WorkflowResponseModes.AppResult`
+- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/upload/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health，SystemConfig get
+- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、app-result、trigger-source、system config 的 typed response 方法
+- `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；现场同步调用只取公开结果时使用 `InvokeWorkflowAppRuntimeAppResultResponseAsync`、`InvokeWorkflowAppRuntimeAppResultAsync<T>`、`GetWorkflowRunAppResultResponseAsync` 或 `GetWorkflowRunAppResultAsync<T>`
 
 SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
 
@@ -109,3 +109,74 @@ var fromCameraBytes = ImageTriggerRequest.FromBytes(cameraFrameJpegBytes, "image
 ```
 
 这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding。`request_image_base64` 入口只用于 HTTP/JSON 调试，不作为 ZeroMQ TriggerSource 的默认图片输入。
+
+## HTTP app-result
+
+同步调用如果只需要 workflow app 公开结果，使用 app-result 方法，SDK 会自动带上 `response_mode=app-result`：
+
+```csharp
+using var workflowClient = new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
+{
+    BaseApiUrl = "http://127.0.0.1:8000",
+    AccessToken = "amvision-default-user-token"
+});
+
+var invokeRequest = new WorkflowRuntimeInvokeRequest();
+invokeRequest.InputBindings["request_image_base64"] = new Dictionary<string, object?>
+{
+    ["image_base64"] = "...",
+    ["media_type"] = "image/jpeg"
+};
+
+var appResult = await workflowClient.InvokeWorkflowAppRuntimeAppResultResponseAsync(
+    "workflow-runtime-xxx",
+    invokeRequest);
+
+Console.WriteLine(appResult.BodyJson.ToString());
+```
+
+如果业务侧已有固定 DTO，可直接使用 `InvokeWorkflowAppRuntimeAppResultAsync<T>` 或 `GetWorkflowRunAppResultAsync<T>`。
+
+## HTTP multipart upload
+
+后端当前 multipart runtime 接口用于 `dataset-package.v1` 这类文件输入绑定，不作为现场大图高速推理主路径。大图本机高速输入仍优先使用 ZeroMQ 第二帧写入 LocalBufferBroker。
+
+```csharp
+var uploadRequest = new WorkflowRuntimeMultipartInvokeRequest
+{
+    TimeoutSeconds = 30
+};
+uploadRequest.InputBindings["job_id"] = "job-1";
+uploadRequest.ExecutionMetadata["source"] = "dotnet-sdk";
+uploadRequest.Files.Add(WorkflowRuntimeMultipartFile.FromFile(
+    "dataset_package",
+    "dataset.zip",
+    "application/zip"));
+
+var run = await workflowClient.CreateWorkflowRunUploadResponseAsync(
+    "workflow-runtime-xxx",
+    uploadRequest);
+```
+
+同步上传入口使用 `InvokeWorkflowAppRuntimeUploadAsync`、`InvokeWorkflowAppRuntimeUploadResponseAsync` 或 `InvokeWorkflowAppRuntimeUploadAppResultResponseAsync`。
+
+## ZeroMQ 纯事件触发
+
+ZeroMQ TriggerSource 的第二帧图片 bytes 是高性能图片输入，不是所有 TriggerSource 的硬性要求。PLC、传感器、空参数 HTTP 桥接等场景可以只发 envelope，让 workflow app 按图内节点读取磁盘、相机或执行无输入动作。
+
+```csharp
+using var triggerClient = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+{
+    Endpoint = "tcp://127.0.0.1:5555",
+    TriggerSourceId = "zeromq-trigger-source-event",
+    Timeout = TimeSpan.FromSeconds(5)
+});
+
+var eventResult = triggerClient.InvokeEvent(
+    TriggerEventRequest.Empty()
+        .WithPayload("plc_value", 1)
+        .WithMetadata("line_id", "line-a")
+        .WithIdempotencyKey("line-a-plc-0001"));
+
+Console.WriteLine($"{eventResult.State}: {eventResult.WorkflowRunId}");
+```

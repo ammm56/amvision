@@ -39,6 +39,38 @@ public sealed partial class AmvisionWorkflowClient
     }
 
     /// <summary>
+    /// 通过 multipart/form-data 创建一条异步 WorkflowRun。
+    /// </summary>
+    public Task<AmvisionWorkflowApiResponse> CreateWorkflowRunUploadAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return SendAsync(
+            HttpMethod.Post,
+            $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/runs/upload",
+            request.ToMultipartContent(),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 创建一条异步 WorkflowRun，并返回 typed response。
+    /// </summary>
+    public async Task<WorkflowRunResponse> CreateWorkflowRunUploadResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return ReadJson<WorkflowRunResponse>(
+            await CreateWorkflowRunUploadAsync(workflowRuntimeId, request, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
     /// 通过通用 JSON 请求调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
     /// </summary>
     public Task<AmvisionWorkflowApiResponse> InvokeWorkflowAppRuntimeAsync(
@@ -79,6 +111,30 @@ public sealed partial class AmvisionWorkflowClient
     {
         return ReadJson<WorkflowRunResponse>(
             await InvokeWorkflowAppRuntimeAsync(workflowRuntimeId, request, responseMode, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过通用 JSON 请求调用 WorkflowAppRuntime，并返回公开 app-result。
+    /// </summary>
+    public async Task<WorkflowAppResultResponse> InvokeWorkflowAppRuntimeAppResultResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.FromApiResponse(
+            await InvokeWorkflowAppRuntimeAsync(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过通用 JSON 请求调用 WorkflowAppRuntime，并把公开 app-result 反序列化为业务类型。
+    /// </summary>
+    public async Task<T> InvokeWorkflowAppRuntimeAppResultAsync<T>(
+        string workflowRuntimeId,
+        WorkflowRuntimeInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.ReadFromApiResponse<T>(
+            await InvokeWorkflowAppRuntimeAsync(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>
@@ -126,6 +182,98 @@ public sealed partial class AmvisionWorkflowClient
     }
 
     /// <summary>
+    /// 通过 image-base64.v1 调用 WorkflowAppRuntime，并返回公开 app-result。
+    /// </summary>
+    public async Task<WorkflowAppResultResponse> InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeImageInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.FromApiResponse(
+            await InvokeWorkflowAppRuntimeWithImageBase64Async(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过 image-base64.v1 调用 WorkflowAppRuntime，并把公开 app-result 反序列化为业务类型。
+    /// </summary>
+    public async Task<T> InvokeWorkflowAppRuntimeWithImageBase64AppResultAsync<T>(
+        string workflowRuntimeId,
+        WorkflowRuntimeImageInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.ReadFromApiResponse<T>(
+            await InvokeWorkflowAppRuntimeWithImageBase64Async(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
+    /// </summary>
+    public Task<AmvisionWorkflowApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return InvokeWorkflowAppRuntimeUploadAsync(workflowRuntimeId, request, WorkflowResponseModes.Run, cancellationToken);
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime。
+    /// </summary>
+    public Task<AmvisionWorkflowApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        string responseMode,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        var path = WithQuery(
+            $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/invoke/upload",
+            ("response_mode", WorkflowResponseModes.Normalize(responseMode)));
+        return SendAsync(HttpMethod.Post, path, request.ToMultipartContent(), cancellationToken);
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，并返回 WorkflowRun typed response。
+    /// </summary>
+    public async Task<WorkflowRunResponse> InvokeWorkflowAppRuntimeUploadResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        string responseMode = WorkflowResponseModes.Run,
+        CancellationToken cancellationToken = default)
+    {
+        return ReadJson<WorkflowRunResponse>(
+            await InvokeWorkflowAppRuntimeUploadAsync(workflowRuntimeId, request, responseMode, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，并返回公开 app-result。
+    /// </summary>
+    public async Task<WorkflowAppResultResponse> InvokeWorkflowAppRuntimeUploadAppResultResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.FromApiResponse(
+            await InvokeWorkflowAppRuntimeUploadAsync(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，并把公开 app-result 反序列化为业务类型。
+    /// </summary>
+    public async Task<T> InvokeWorkflowAppRuntimeUploadAppResultAsync<T>(
+        string workflowRuntimeId,
+        WorkflowRuntimeMultipartInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.ReadFromApiResponse<T>(
+            await InvokeWorkflowAppRuntimeUploadAsync(workflowRuntimeId, request, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
     /// 读取一条 WorkflowRun，默认返回 WorkflowRun 运行回执。
     /// </summary>
     public Task<AmvisionWorkflowApiResponse> GetWorkflowRunAsync(
@@ -159,6 +307,28 @@ public sealed partial class AmvisionWorkflowClient
     {
         return ReadJson<WorkflowRunResponse>(
             await GetWorkflowRunAsync(workflowRunId, responseMode, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 读取一条 WorkflowRun 的公开 app-result。
+    /// </summary>
+    public async Task<WorkflowAppResultResponse> GetWorkflowRunAppResultResponseAsync(
+        string workflowRunId,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.FromApiResponse(
+            await GetWorkflowRunAsync(workflowRunId, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// 读取一条 WorkflowRun 的公开 app-result，并反序列化为业务类型。
+    /// </summary>
+    public async Task<T> GetWorkflowRunAppResultAsync<T>(
+        string workflowRunId,
+        CancellationToken cancellationToken = default)
+    {
+        return WorkflowAppResultResponse.ReadFromApiResponse<T>(
+            await GetWorkflowRunAsync(workflowRunId, WorkflowResponseModes.AppResult, cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>

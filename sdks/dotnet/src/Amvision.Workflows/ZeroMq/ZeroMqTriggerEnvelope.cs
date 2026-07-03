@@ -48,7 +48,7 @@ public sealed class ZeroMqTriggerEnvelope
     /// raw image shape，例如 [height, width, channels]。
     /// </summary>
     [JsonPropertyName("shape")]
-    public IReadOnlyList<int> Shape { get; set; } = new List<int>();
+    public IReadOnlyList<int>? Shape { get; set; }
 
     /// <summary>
     /// raw dtype，例如 uint8。

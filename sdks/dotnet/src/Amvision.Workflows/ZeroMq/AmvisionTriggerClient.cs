@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace Amvision.Workflows;
 
 /// <summary>
-/// 用于向 Amvision ZeroMQ TriggerSource 发送图片的客户端。
+/// 用于向 Amvision ZeroMQ TriggerSource 发送事件或图片的客户端。
 /// </summary>
 public sealed class AmvisionTriggerClient : IDisposable
 {
@@ -96,6 +96,37 @@ public sealed class AmvisionTriggerClient : IDisposable
     }
 
     /// <summary>
+    /// 同步发送一条纯事件并解析 TriggerResult。
+    /// </summary>
+    /// <param name="request">纯事件触发请求。</param>
+    /// <returns>backend-service 返回的 TriggerResult。</returns>
+    public TriggerResult InvokeEvent(TriggerEventRequest request)
+    {
+        if (disposed)
+        {
+            throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
+        }
+
+        ValidateRequest(request);
+        var envelope = BuildEnvelope(request);
+        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+        var replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
+        return ParseReply(replyFrames);
+    }
+
+    /// <summary>
+    /// 在线程池中异步执行纯事件触发。
+    /// </summary>
+    /// <param name="request">纯事件触发请求。</param>
+    /// <param name="cancellationToken">调用前的取消令牌。</param>
+    /// <returns>异步 TriggerResult 任务。</returns>
+    public Task<TriggerResult> InvokeEventAsync(TriggerEventRequest request, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.Run(() => InvokeEvent(request), cancellationToken);
+    }
+
+    /// <summary>
     /// 根据图片请求和客户端默认值构造 ZeroMQ envelope。
     /// </summary>
     /// <param name="request">单张图片触发请求。</param>
@@ -103,13 +134,6 @@ public sealed class AmvisionTriggerClient : IDisposable
     public ZeroMqTriggerEnvelope BuildEnvelope(ImageTriggerRequest request)
     {
         ValidateRequest(request);
-        var payload = new Dictionary<string, object?>(request.Payload);
-        var idempotencyKey = NormalizeOptional(request.IdempotencyKey);
-        if (idempotencyKey is not null
-            && !payload.ContainsKey("idempotency_key"))
-        {
-            payload["idempotency_key"] = idempotencyKey;
-        }
 
         return new ZeroMqTriggerEnvelope
         {
@@ -124,7 +148,26 @@ public sealed class AmvisionTriggerClient : IDisposable
             Layout = NormalizeOptional(request.Layout),
             PixelFormat = NormalizeOptional(request.PixelFormat),
             Metadata = new Dictionary<string, object?>(request.Metadata),
-            Payload = payload
+            Payload = BuildPayload(request.Payload, request.IdempotencyKey)
+        };
+    }
+
+    /// <summary>
+    /// 根据纯事件请求和客户端默认值构造 ZeroMQ envelope。
+    /// </summary>
+    /// <param name="request">纯事件触发请求。</param>
+    /// <returns>可序列化为 multipart 第一帧的 envelope。</returns>
+    public ZeroMqTriggerEnvelope BuildEnvelope(TriggerEventRequest request)
+    {
+        ValidateRequest(request);
+        return new ZeroMqTriggerEnvelope
+        {
+            TriggerSourceId = options.TriggerSourceId,
+            EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
+            TraceId = NormalizeOptional(request.TraceId) ?? $"trace-{Guid.NewGuid():N}",
+            OccurredAt = FormatUtc(request.OccurredAt ?? DateTimeOffset.UtcNow),
+            Metadata = new Dictionary<string, object?>(request.Metadata),
+            Payload = BuildPayload(request.Payload, request.IdempotencyKey)
         };
     }
 
@@ -215,6 +258,39 @@ public sealed class AmvisionTriggerClient : IDisposable
                 throw new ArgumentException("Shape dimensions must be positive.", nameof(request));
             }
         }
+    }
+
+    /// <summary>
+    /// 校验纯事件触发请求的基础字段。
+    /// </summary>
+    /// <param name="request">待校验的请求。</param>
+    private static void ValidateRequest(TriggerEventRequest request)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+    }
+
+    /// <summary>
+    /// 构造 envelope payload，并按约定补充幂等键。
+    /// </summary>
+    /// <param name="sourcePayload">业务 payload。</param>
+    /// <param name="idempotencyKey">可选幂等键。</param>
+    /// <returns>最终 payload。</returns>
+    private static Dictionary<string, object?> BuildPayload(
+        IDictionary<string, object?> sourcePayload,
+        string? idempotencyKey)
+    {
+        var payload = new Dictionary<string, object?>(sourcePayload);
+        var normalizedIdempotencyKey = NormalizeOptional(idempotencyKey);
+        if (normalizedIdempotencyKey is not null
+            && !payload.ContainsKey("idempotency_key"))
+        {
+            payload["idempotency_key"] = normalizedIdempotencyKey;
+        }
+
+        return payload;
     }
 
     /// <summary>

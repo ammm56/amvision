@@ -10,6 +10,7 @@ using Amvision.Workflows;
 var tests = new Action[]
 {
     InvokeImageBuildsExpectedEnvelope,
+    InvokeEventBuildsEnvelopeOnlyFrame,
     ImageTriggerRequestHelpersBuildSecondFrameBytes,
     InvokeImageUsesNetMqReqRepTransport,
     ErrorReplyRaisesTypedException,
@@ -17,7 +18,9 @@ var tests = new Action[]
     EmptyReplyIsRejected,
     TimeoutExceptionIsPropagated,
     WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest,
+    WorkflowRuntimeMultipartUploadBuildsExpectedHttpRequests,
     WorkflowRuntimeInvokeSupportsDirectInputJson,
+    WorkflowAppResultTypedResponsesDeserialize,
     WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests,
     TriggerSourceCreateListDeleteUsesExpectedHttpRequests,
     TypedResponsesDeserializeWorkflowResponses,
@@ -129,6 +132,44 @@ static void InvokeImageBuildsExpectedEnvelope()
     AssertEqual("line-a", root.GetProperty("metadata").GetProperty("line_id").GetString());
     AssertEqual("job-1", root.GetProperty("payload").GetProperty("job_id").GetString());
     AssertEqual(2, root.GetProperty("shape")[0].GetInt32());
+}
+
+// 验证 ZeroMQ 纯事件触发只发送第一帧 envelope。
+static void InvokeEventBuildsEnvelopeOnlyFrame()
+{
+    var transport = new FakeTransport(
+        "{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-event\",\"event_id\":\"event-only\",\"state\":\"succeeded\",\"workflow_run_id\":\"workflow-run-event\",\"response_payload\":{\"ok\":true},\"metadata\":{}}"
+    );
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions
+        {
+            TriggerSourceId = "trigger-source-event",
+            Timeout = TimeSpan.FromSeconds(1)
+        },
+        transport
+    );
+
+    var result = client.InvokeEvent(new TriggerEventRequest
+    {
+        EventId = "event-only",
+        TraceId = "trace-only",
+        Payload = { ["plc_value"] = 1 },
+        Metadata = { ["line_id"] = "line-a" }
+    }.WithIdempotencyKey("idem-event"));
+
+    AssertEqual("succeeded", result.State);
+    AssertEqual(1, transport.LastFrames.Count);
+    using var document = JsonDocument.Parse(Encoding.UTF8.GetString(transport.LastFrames[0]));
+    var root = document.RootElement;
+    AssertEqual("trigger-source-event", root.GetProperty("trigger_source_id").GetString());
+    AssertEqual("event-only", root.GetProperty("event_id").GetString());
+    AssertEqual("trace-only", root.GetProperty("trace_id").GetString());
+    AssertEqual(1, root.GetProperty("payload").GetProperty("plc_value").GetInt32());
+    AssertEqual("idem-event", root.GetProperty("payload").GetProperty("idempotency_key").GetString());
+    AssertEqual("line-a", root.GetProperty("metadata").GetProperty("line_id").GetString());
+    AssertEqual(false, root.TryGetProperty("input_binding", out _));
+    AssertEqual(false, root.TryGetProperty("media_type", out _));
+    AssertEqual(false, root.TryGetProperty("shape", out _));
 }
 
 // 验证 NetMQ REQ/REP transport 可以完成真实 socket 往返。
@@ -296,6 +337,49 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
     AssertEqual(5, root.GetProperty("timeout_seconds").GetInt32());
 }
 
+// 验证 WorkflowAppRuntime multipart run/upload 和 invoke/upload 会构造正确请求。
+static void WorkflowRuntimeMultipartUploadBuildsExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"workflow_run_id\":\"workflow-run-upload\",\"state\":\"queued\"}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var request = new WorkflowRuntimeMultipartInvokeRequest
+    {
+        TimeoutSeconds = 12
+    };
+    request.InputBindings["job_id"] = "job-1";
+    request.ExecutionMetadata["source"] = "dotnet-multipart-test";
+    request.Files.Add(WorkflowRuntimeMultipartFile.FromBytes(
+        "dataset_package",
+        new byte[] { 1, 2, 3 },
+        "dataset.zip",
+        "application/zip"));
+
+    _ = client.CreateWorkflowRunUploadAsync("runtime-upload", request).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-upload/runs/upload", handler.LastRequestUri?.ToString());
+    AssertEqual("Bearer amvision-default-user-token", handler.LastHeaders["Authorization"].Single());
+    AssertEqual(true, handler.LastContentHeaders["Content-Type"].Single().StartsWith("multipart/form-data", StringComparison.Ordinal));
+    AssertContains("input_bindings_json", handler.LastBody);
+    AssertContains("execution_metadata_json", handler.LastBody);
+    AssertContains("timeout_seconds", handler.LastBody);
+    AssertContains("dataset_package", handler.LastBody);
+    AssertContains("dataset.zip", handler.LastBody);
+    AssertContains("application/zip", handler.LastBody);
+    AssertContains("dotnet-multipart-test", handler.LastBody);
+
+    _ = client.InvokeWorkflowAppRuntimeUploadAsync("runtime-upload", request, WorkflowResponseModes.AppResult).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-upload/invoke/upload?response_mode=app-result", handler.LastRequestUri?.ToString());
+}
+
 // 验证 runtime invoke JSON 支持当前后端的顶层公开 input 字段形态。
 static void WorkflowRuntimeInvokeSupportsDirectInputJson()
 {
@@ -323,12 +407,60 @@ static void WorkflowRuntimeInvokeSupportsDirectInputJson()
     AssertEqual(1, parsed.InputBindings.Count);
 }
 
+// 验证 app-result 有独立 typed 读取路径，不再误按 WorkflowRunResponse 解析。
+static void WorkflowAppResultTypedResponsesDeserialize()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"status_code\":200,\"body\":{\"accepted\":true}}"
+    );
+    using var httpClient = new HttpClient(handler)
+    {
+        BaseAddress = new Uri("http://127.0.0.1:8000/")
+    };
+    using var client = CreateWorkflowClient(httpClient);
+    var request = new WorkflowRuntimeInvokeRequest();
+    request.InputBindings["request_id"] = "req-1";
+
+    var appResult = client.InvokeWorkflowAppRuntimeAppResultResponseAsync("runtime-result", request).GetAwaiter().GetResult();
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-result/invoke?response_mode=app-result", handler.LastRequestUri?.ToString());
+    AssertEqual(200, appResult.BodyJson.GetProperty("status_code").GetInt32());
+
+    var typed = client.GetWorkflowRunAppResultAsync<Dictionary<string, JsonElement>>("workflow-run-result").GetAwaiter().GetResult();
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/runs/workflow-run-result?response_mode=app-result", handler.LastRequestUri?.ToString());
+    AssertEqual(true, typed["body"].GetProperty("accepted").GetBoolean());
+
+    var imageResult = client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
+        "runtime-result",
+        new WorkflowRuntimeImageInvokeRequest { ImageBytes = new byte[] { 1 } }).GetAwaiter().GetResult();
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-result/invoke?response_mode=app-result", handler.LastRequestUri?.ToString());
+    AssertEqual(200, imageResult.BodyJson.GetProperty("status_code").GetInt32());
+}
+
 // 验证 Workflow runtime/run 当前正式接口路径和 query。
 static void WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests()
 {
     var handler = new FakeHttpMessageHandler(HttpStatusCode.OK, "{\"format_id\":\"amvision.workflow-app-runtime.v1\",\"workflow_runtime_id\":\"runtime-1\",\"project_id\":\"project-1\",\"application_id\":\"app-1\",\"desired_state\":\"running\",\"observed_state\":\"running\",\"created_at\":\"2026-07-02T00:00:00Z\",\"updated_at\":\"2026-07-02T00:00:00Z\"}");
     using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
     using var client = CreateWorkflowClient(httpClient);
+
+    _ = client.CreateWorkflowAppRuntimeAsync(new WorkflowAppRuntimeCreateRequest
+    {
+        ProjectId = "project-1",
+        ApplicationId = "app-1",
+        DisplayName = "runtime 1"
+    }).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes", handler.LastRequestUri?.ToString());
+    AssertContains("\"application_id\":\"app-1\"", handler.LastBody);
+
+    _ = client.StartWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1/start", handler.LastRequestUri?.ToString());
+
+    _ = client.StopWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1/stop", handler.LastRequestUri?.ToString());
 
     _ = client.RestartWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
     AssertEqual(HttpMethod.Post, handler.LastMethod);
@@ -353,6 +485,10 @@ static void WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests()
     _ = client.CancelWorkflowRunAsync("workflow-run-1").GetAwaiter().GetResult();
     AssertEqual(HttpMethod.Post, handler.LastMethod);
     AssertEqual("http://127.0.0.1:8000/api/v1/workflows/runs/workflow-run-1/cancel", handler.LastRequestUri?.ToString());
+
+    _ = client.DeleteWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Delete, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1", handler.LastRequestUri?.ToString());
 }
 
 // 验证 TriggerSource create/list/delete 当前正式接口路径和 body。
@@ -395,6 +531,14 @@ static void TriggerSourceCreateListDeleteUsesExpectedHttpRequests()
     _ = client.ListTriggerSourcesAsync("project-1", limit: 7).GetAwaiter().GetResult();
     AssertEqual(HttpMethod.Get, handler.LastMethod);
     AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources?project_id=project-1&offset=0&limit=7", handler.LastRequestUri?.ToString());
+
+    _ = client.EnableTriggerSourceAsync("trigger-source-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources/trigger-source-1/enable", handler.LastRequestUri?.ToString());
+
+    _ = client.DisableTriggerSourceAsync("trigger-source-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/trigger-sources/trigger-source-1/disable", handler.LastRequestUri?.ToString());
 
     _ = client.DeleteTriggerSourceAsync("trigger-source-1").GetAwaiter().GetResult();
     AssertEqual(HttpMethod.Delete, handler.LastMethod);
@@ -651,6 +795,15 @@ static void AssertSequence(byte[] expected, byte[] actual)
     }
 }
 
+// 断言文本包含指定片段。
+static void AssertContains(string expectedFragment, string actual)
+{
+    if (!actual.Contains(expectedFragment, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException($"Expected text to contain {expectedFragment}.");
+    }
+}
+
 // 断言指定调用会抛出目标异常类型。
 static TException AssertThrows<TException>(Action action)
     where TException : Exception
@@ -736,6 +889,8 @@ internal sealed class FakeHttpMessageHandler : HttpMessageHandler
 
     public Dictionary<string, string[]> LastHeaders { get; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
+    public Dictionary<string, string[]> LastContentHeaders { get; } = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
     // 记录最近一次 HTTP 请求并返回预设 JSON 响应。
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -746,6 +901,15 @@ internal sealed class FakeHttpMessageHandler : HttpMessageHandler
         foreach (var header in request.Headers)
         {
             LastHeaders[header.Key] = header.Value.ToArray();
+        }
+
+        LastContentHeaders.Clear();
+        if (request.Content is not null)
+        {
+            foreach (var header in request.Content.Headers)
+            {
+                LastContentHeaders[header.Key] = header.Value.ToArray();
+            }
         }
 
         LastBody = request.Content is null

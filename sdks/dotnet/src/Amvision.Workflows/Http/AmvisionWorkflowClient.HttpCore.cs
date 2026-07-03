@@ -20,6 +20,22 @@ public sealed partial class AmvisionWorkflowClient
         string? content,
         CancellationToken cancellationToken)
     {
+        return await SendAsync(
+            method,
+            relativePath,
+            content is null ? null : new StringContent(content, Encoding.UTF8, "application/json"),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 发送一条带自定义 HTTP content 的管理 API 请求。
+    /// </summary>
+    private async Task<AmvisionWorkflowApiResponse> SendAsync(
+        HttpMethod method,
+        string relativePath,
+        HttpContent? httpContent,
+        CancellationToken cancellationToken)
+    {
         if (disposed)
         {
             throw new ObjectDisposedException(nameof(AmvisionWorkflowClient));
@@ -27,9 +43,9 @@ public sealed partial class AmvisionWorkflowClient
 
         using var request = new HttpRequestMessage(method, relativePath);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken.Trim());
-        if (content is not null)
+        if (httpContent is not null)
         {
-            request.Content = new StringContent(content, Encoding.UTF8, "application/json");
+            request.Content = httpContent;
         }
 
         using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
