@@ -131,8 +131,9 @@
 ```json
 {
   "input_bindings": {
-    "request_image": {
-      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    "request_image_base64": {
+      "image_base64": "<base64 image bytes>",
+      "media_type": "image/png"
     }
   },
   "execution_metadata": {
@@ -151,7 +152,7 @@
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
 - 返回完整 WorkflowRun 规则
 
 ### 最小响应 JSON
@@ -171,8 +172,9 @@
   "requested_timeout_seconds": 60,
   "assigned_process_id": null,
   "input_payload": {
-    "request_image": {
-      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    "request_image_base64": {
+      "image_base64_redacted": true,
+      "media_type": "image/png"
     }
   },
   "outputs": {},
@@ -225,8 +227,9 @@
 ```json
 {
   "input_bindings": {
-    "request_image": {
-      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    "request_image_base64": {
+      "image_base64": "<base64 image bytes>",
+      "media_type": "image/png"
     }
   },
   "execution_metadata": {
@@ -245,7 +248,7 @@
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
 - 响应模式与 JSON `invoke` 一致，默认只返回公开 App Result；需要运行回执或完整 trace 时显式传 `response_mode=run` 或 `response_mode=debug`
 
 ### 默认最小响应 JSON

@@ -235,7 +235,7 @@ def _build_graph_template() -> WorkflowGraphTemplate:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input_image",
@@ -274,7 +274,7 @@ def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
             FlowApplicationBinding(
                 binding_id="api-entry",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="api-request",
                 config={"route": "/api/v1/inspect", "method": "POST"},
             ),

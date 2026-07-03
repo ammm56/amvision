@@ -68,7 +68,7 @@ def test_trigger_event_normalizer_and_input_binding_mapper_resolve_payload_paths
 
     assert trigger_event.idempotency_key == "request-1"
     assert input_bindings == {
-        "request_image": "base64-image",
+        "request_image_base64": "base64-image",
         "static_mode": "inspect",
     }
 
@@ -88,7 +88,7 @@ def test_input_binding_mapper_rejects_missing_required_source() -> None:
             trigger_event=trigger_event,
         )
 
-    assert error_info.value.details["binding_id"] == "request_image"
+    assert error_info.value.details["binding_id"] == "request_image_base64"
 
 
 def test_input_binding_mapper_skips_missing_optional_source() -> None:
@@ -168,8 +168,12 @@ def test_workflow_submitter_sync_reply_prefers_unsanitized_outputs() -> None:
         ),
     )
 
-    trigger_result = WorkflowSubmitter(runtime_service=_FakeSyncRuntimeService()).submit_event(
-        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+    trigger_result = WorkflowSubmitter(
+        runtime_service=_FakeSyncRuntimeService()
+    ).submit_event(
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source, trigger_event=trigger_event
+        )
     )
 
     result_body = trigger_result.response_payload["result"]["body"]
@@ -179,13 +183,42 @@ def test_workflow_submitter_sync_reply_prefers_unsanitized_outputs() -> None:
     assert "image_base64_redacted" not in result_body["data"]["annotated_image"]
 
 
+def test_workflow_submitter_allows_trigger_source_without_external_inputs() -> None:
+    """验证无外部输入的 TriggerSource 可以触发图内读图或相机取图 workflow。"""
+
+    trigger_source = _build_trigger_source(
+        submit_mode="sync",
+        input_binding_mapping={},
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(
+            event_id="event-1",
+            payload={"job_id": "job-1"},
+        ),
+    )
+    runtime_service = _CapturingSyncRuntimeService()
+
+    trigger_result = WorkflowSubmitter(runtime_service=runtime_service).submit_event(
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source, trigger_event=trigger_event
+        )
+    )
+
+    assert trigger_result.state == "succeeded"
+    assert runtime_service.last_request is not None
+    assert runtime_service.last_request.input_bindings == {}
+
+
 def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     """验证 ZeroMQ TriggerSource 默认关闭磁盘 trace。"""
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
         submit_mode="sync",
-        input_binding_mapping={"request_image_ref": {"source": "payload.request_image_ref"}},
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
     )
     trigger_event = TriggerEventNormalizer().normalize(
         trigger_source,
@@ -248,7 +281,9 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
-        input_binding_mapping={"request_image_ref": {"source": "payload.request_image_ref"}},
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
         transport_config={
             "bind_endpoint": f"inproc://zeromq-trigger-test-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
@@ -328,8 +363,10 @@ def test_zeromq_trigger_adapter_releases_buffer_when_submit_is_rejected() -> Non
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
-        input_binding_mapping={"request_image": {"source": "payload.request_image"}},
-        transport_config={"default_input_binding": "request_image"},
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
+        transport_config={"default_input_binding": "request_image_ref"},
     )
     local_buffer_writer = _FakeLocalBufferWriter()
     adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
@@ -355,10 +392,12 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     endpoint = f"inproc://zeromq-trigger-live-{uuid4().hex}"
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
-        input_binding_mapping={"request_image": {"source": "payload.request_image"}},
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
         transport_config={
             "bind_endpoint": endpoint,
-            "default_input_binding": "request_image",
+            "default_input_binding": "request_image_ref",
         },
     )
     adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
@@ -394,6 +433,31 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert reply_payload["event_id"] == "event-live"
     assert adapter_health["received_count"] == 1
     assert adapter_health["submitted_count"] == 1
+
+
+def test_zeromq_trigger_adapter_allows_envelope_only_event_without_input_frame() -> None:
+    """验证 ZeroMQ 也可以只发事件 envelope，用于图内自行取图的 workflow。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        input_binding_mapping={},
+    )
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
+        workflow_submitter=submitter,
+    )
+
+    result = adapter.handle_multipart_message(
+        trigger_source=trigger_source,
+        frames=[b'{"event_id":"event-no-image","payload":{"job_id":"job-1"}}'],
+        event_handler=supervisor,
+    )
+
+    assert result.state == "accepted"
+    assert submitter.last_request is not None
+    assert submitter.last_request.trigger_event.payload == {"job_id": "job-1"}
 
 
 def test_plc_register_trigger_adapter_polls_and_submits_event(
@@ -831,11 +895,14 @@ def _build_trigger_source(
         submit_mode=submit_mode,
         transport_config=dict(transport_config or {}),
         match_rule=dict(match_rule or {}),
-        input_binding_mapping=input_binding_mapping
-        or {
-            "request_image": {"source": "payload.request.image"},
-            "static_mode": {"value": "inspect"},
-        },
+        input_binding_mapping=(
+            input_binding_mapping
+            if input_binding_mapping is not None
+            else {
+                "request_image_base64": {"source": "payload.request.image"},
+                "static_mode": {"value": "inspect"},
+            }
+        ),
         result_mapping={"result_binding": "http_response"},
         idempotency_key_path="payload.request.id",
         created_at="2026-05-13T00:00:00Z",
@@ -915,7 +982,7 @@ class _FakeSyncRuntimeService:
         """
 
         _ = workflow_runtime_id, created_by
-        assert request.input_bindings["request_image"] == "base64-image"
+        assert request.input_bindings["request_image_base64"] == "base64-image"
         return WorkflowRuntimeSyncInvokeResult(
             workflow_run=WorkflowRun(
                 workflow_run_id="workflow-run-sync-1",

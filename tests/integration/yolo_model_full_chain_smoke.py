@@ -1161,7 +1161,7 @@ def run_workflow_app_runtime_smoke(
             f"/workflows/app-runtimes/{workflow_runtime_id}/invoke",
             json={
                 "input_bindings": {
-                    "request_image": build_image_base64_payload(sample_image_path),
+                    "request_image_base64": build_image_base64_payload(sample_image_path),
                     "deployment_request": {
                         "value": {"deployment_instance_id": deployment_id}
                     },

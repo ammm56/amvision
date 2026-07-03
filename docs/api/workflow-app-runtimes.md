@@ -315,7 +315,7 @@
 - `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
 - `image-ref.v1` 在本机受控 adapter 或 TriggerSource 场景下也可以携带 `buffer_ref` 或 `frame_ref`，用于复用 LocalBufferBroker 的 direct mmap 数据面；这类引用只在同机短期有效，不作为长期公开文件引用。
 - `value.v1` 常见 JSON 形状是 `{"value": {...}}`。
-- `dataset-package.v1` 可以通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 或 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image` 上传。
+- `dataset-package.v1` 可以通过 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload` 或 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload` 上传，文件字段名必须等于 binding_id。当前 multipart 上传入口只支持这类 zip 包输入，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传。
 - invoke 默认返回公开 App Result：单个输出直接返回该输出值，多个输出按 application output binding_id 返回对象。需要平台运行回执时传 `response_mode=run`，需要完整 template_outputs 和 node_records 调试信息时传 `response_mode=debug`。
 
 ## 相关文档

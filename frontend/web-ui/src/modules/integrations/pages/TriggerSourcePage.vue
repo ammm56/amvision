@@ -29,7 +29,7 @@
           <p class="page-kicker">Create</p>
           <h2>添加触发入口</h2>
         </div>
-        <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime || appInputBindings.length === 0">
+        <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime">
           <Save :size="16" />
           创建 TriggerSource
         </Button>
@@ -340,7 +340,7 @@ interface ProtocolTemplateOption {
   ackPolicy: string
   imageBase64SourcePath: string
   imageRefSourcePath: string
-  legacyImageSourcePath: string
+  fallbackImageSourcePath: string
   requestSourcePath: string
   defaultInputBinding: string
   defaultReplyTimeoutSeconds: number
@@ -359,7 +359,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     ackPolicy: 'ack-after-run-finished',
     imageBase64SourcePath: 'payload.request_image_base64',
     imageRefSourcePath: 'payload.request_image_ref',
-    legacyImageSourcePath: 'payload.request_image_ref',
+    fallbackImageSourcePath: 'payload.request_image_ref',
     requestSourcePath: 'payload.deployment_request',
     defaultInputBinding: 'request_image_ref',
     defaultReplyTimeoutSeconds: 30,
@@ -376,7 +376,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     ackPolicy: 'ack-after-run-finished',
     imageBase64SourcePath: 'payload.request_image_base64',
     imageRefSourcePath: 'payload.request_image_ref',
-    legacyImageSourcePath: 'payload.request_image_base64',
+    fallbackImageSourcePath: 'payload.request_image_base64',
     requestSourcePath: 'payload.deployment_request',
     defaultInputBinding: 'request_image_base64',
     defaultReplyTimeoutSeconds: 30,
@@ -455,6 +455,7 @@ const templateOutputById = computed(() => new Map((graph.value?.template_outputs
 const inferredImageBindings = computed(() => findImageInputBindings())
 const inferredImageBinding = computed(() => inferredImageBindings.value[0] ?? null)
 const inferredImageBindingText = computed(() => {
+  if (appInputBindings.value.length === 0) return '无需外部输入'
   const bindingIds = inferredImageBindings.value.map((binding) => binding.binding_id)
   return bindingIds.length > 0 ? bindingIds.join(' / ') : '未找到'
 })
@@ -630,7 +631,7 @@ function findDefaultResultBinding(): string {
 function defaultSourcePath(binding: FlowApplicationBinding): string {
   if (isImageBase64Binding(binding)) return selectedProtocolTemplate.value.imageBase64SourcePath
   if (isImageRefBinding(binding)) return selectedProtocolTemplate.value.imageRefSourcePath
-  if (inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id)) return selectedProtocolTemplate.value.legacyImageSourcePath
+  if (inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id)) return selectedProtocolTemplate.value.fallbackImageSourcePath
   if (inferredRequestBinding.value?.binding_id === binding.binding_id) return selectedProtocolTemplate.value.requestSourcePath
   if (binding.binding_id === 'deployment_request') return 'payload.deployment_request'
   return `payload.${binding.binding_id}`

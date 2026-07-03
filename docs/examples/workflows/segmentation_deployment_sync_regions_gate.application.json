@@ -13,9 +13,9 @@
   "description": "最小 FlowApplication 示例，使用 base64 图片驱动已有 segmentation deployment，并直接输出 regions 规则判定结果。",
   "bindings": [
     {
-      "binding_id": "request_image",
+      "binding_id": "request_image_base64",
       "direction": "input",
-      "template_port_id": "request_image",
+      "template_port_id": "request_image_base64",
       "binding_kind": "workflow-execute-input",
       "config": {
         "payload_type_id": "image-base64.v1",

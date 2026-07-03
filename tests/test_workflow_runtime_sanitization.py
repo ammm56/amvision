@@ -61,7 +61,7 @@ def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_san
             project_id="project-1",
             application=_build_image_decode_preview_application(),
             template=_build_image_decode_preview_template(),
-            input_bindings={"request_image": {"image_base64": image_base64}},
+            input_bindings={"request_image_base64": {"image_base64": image_base64}},
         ),
         created_by="workflow-user",
     )
@@ -95,7 +95,7 @@ def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: P
             project_id="project-1",
             application=_build_image_decode_save_preview_application(),
             template=_build_image_decode_save_preview_template(),
-            input_bindings={"request_image": {"image_base64": image_base64}},
+            input_bindings={"request_image_base64": {"image_base64": image_base64}},
         ),
         created_by="workflow-user",
     )
@@ -191,7 +191,7 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
         runtime.workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
             input_bindings={
-                "request_image": {
+                "request_image_base64": {
                     "image_base64": "ZmFrZS1yZXF1ZXN0",
                     "media_type": "image/png",
                 }
@@ -202,8 +202,8 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
     )
 
     assert workflow_run.state == "succeeded"
-    assert workflow_run.input_payload["request_image"]["image_base64_redacted"] is True
-    assert "image_base64" not in workflow_run.input_payload["request_image"]
+    assert workflow_run.input_payload["request_image_base64"]["image_base64_redacted"] is True
+    assert "image_base64" not in workflow_run.input_payload["request_image_base64"]
     assert workflow_run.outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
     assert workflow_run.template_outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
     assert workflow_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"] is True
@@ -343,7 +343,7 @@ def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file
         runtime.workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
             input_bindings={
-                "request_image": {
+                "request_image_base64": {
                     "transport_kind": "buffer",
                     "buffer_ref": _build_buffer_ref_payload(lease_id="lease-input-1"),
                 }
@@ -446,7 +446,7 @@ def _build_image_decode_preview_template() -> WorkflowGraphTemplate:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-base64.v1",
                 target_node_id="decode",
@@ -511,7 +511,7 @@ def _build_image_decode_save_preview_template() -> WorkflowGraphTemplate:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-base64.v1",
                 target_node_id="decode",
@@ -544,9 +544,9 @@ def _build_image_decode_preview_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="api-request",
                 config={"route": "/execute/image-preview", "method": "POST"},
             ),
@@ -575,9 +575,9 @@ def _build_image_decode_save_preview_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="api-request",
                 config={"route": "/execute/image-preview", "method": "POST"},
             ),

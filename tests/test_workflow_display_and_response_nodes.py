@@ -299,7 +299,7 @@ def test_preview_run_image_body_returns_raw_inline_base64_but_persists_redacted(
             application=_build_image_body_application(),
             template=_build_image_body_template(),
             input_bindings={
-                "request_image": {
+                "request_image_base64": {
                     "transport_kind": "storage",
                     "object_key": "inputs/source.png",
                     "media_type": "image/png",
@@ -402,7 +402,7 @@ def test_preview_run_response_envelope_can_compose_detections_and_preview_image_
             application=_build_payload_composition_application(),
             template=_build_payload_composition_template(),
             input_bindings={
-                "request_image": {
+                "request_image_base64": {
                     "transport_kind": "storage",
                     "object_key": "inputs/source.png",
                     "media_type": "image/png",
@@ -1010,7 +1010,7 @@ def _build_payload_composition_template() -> WorkflowGraphTemplate:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="preview_image",
@@ -1050,9 +1050,9 @@ def _build_payload_composition_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="api-request",
                 config={"route": "/execute/payload-composition", "method": "POST"},
             ),
@@ -1226,7 +1226,7 @@ def _build_image_body_template() -> WorkflowGraphTemplate:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="image_body",
@@ -1259,9 +1259,9 @@ def _build_image_body_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="api-request",
                 config={"route": "/execute/image-body", "method": "POST"},
             ),

@@ -43,7 +43,7 @@ def test_opencv_geometry_planar_transform_bridge_warp_and_roi_execute(tmp_path: 
             },
         ),
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/bridge-source.png",
                 "width": 40,
                 "height": 30,
@@ -137,7 +137,7 @@ def test_opencv_geometry_planar_transform_bridge_rejects_source_dimension_mismat
                 parameters={"direction": "source-a-to-source-b"},
             ),
             input_values={
-                "request_image": {
+                "request_image_base64": {
                     "object_key": "inputs/bridge-source.png",
                     "width": 41,
                     "height": 30,
@@ -209,7 +209,7 @@ def _build_planar_bridge_template(
         template_inputs.insert(
             0,
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="bridge",

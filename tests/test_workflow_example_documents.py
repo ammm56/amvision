@@ -78,7 +78,7 @@ def test_detection_deployment_lifecycle_example_documents_are_valid() -> None:
     )
     assert application.bindings[0].config["payload_type_id"] == "image-base64.v1"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "start_body",
         "warmup_body",
         "detections",
@@ -137,7 +137,7 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
     )
     assert application.metadata["example_kind"] == "deployment-sync-infer-health"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "deployment_request",
         "start_body",
         "warmup_body",
@@ -153,7 +153,7 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
             "segmentation_deployment_sync_regions_gate",
             "core.model.segmentation",
             [
-                "request_image",
+                "request_image_base64",
                 "deployment_request",
                 "model_segments",
                 "model_regions",
@@ -166,7 +166,7 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
             "classification_deployment_sync_class_gate",
             "core.model.classification",
             [
-                "request_image",
+                "request_image_base64",
                 "deployment_request",
                 "model_categories",
                 "inspection_result",
@@ -178,7 +178,7 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
             "pose_deployment_sync_presence_gate",
             "core.model.pose",
             [
-                "request_image",
+                "request_image_base64",
                 "deployment_request",
                 "model_poses",
                 "inspection_result",
@@ -190,7 +190,7 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
             "obb_deployment_sync_angle_gate",
             "core.model.obb",
             [
-                "request_image",
+                "request_image_base64",
                 "deployment_request",
                 "model_obbs",
                 "inspection_result",
@@ -229,7 +229,7 @@ def test_task_native_direct_model_example_documents_are_valid(
     validate_flow_application_bindings(template=template, application=application)
 
     assert [port.input_id for port in template.template_inputs] == [
-        "request_image",
+        "request_image_base64",
         "deployment_request",
     ]
     assert template.nodes[0].node_id == "decode_request_image"
@@ -295,7 +295,7 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
     assert application.runtime_mode == "python-json-workflow"
     assert application.bindings[0].metadata["payload_type_id"] == "image-base64.v1"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "http_response",
     ]
 
@@ -3661,7 +3661,7 @@ def test_opencv_process_save_image_example_documents_are_valid() -> None:
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "http_response",
     ]
 
@@ -3712,7 +3712,7 @@ def test_detection_deployment_infer_opencv_health_example_documents_are_valid() 
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "deployment_request",
         "http_response",
     ]
@@ -3862,7 +3862,7 @@ def test_detection_deployment_qr_crop_remap_example_documents_are_valid() -> Non
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [
-        "request_image",
+        "request_image_base64",
         "deployment_request",
         "http_response",
     ]
@@ -3982,7 +3982,7 @@ def test_detection_end_to_end_qr_crop_remap_example_documents_are_valid() -> Non
         "conversion_request_payload",
         "deployment_request_payload",
         "inference_request_payload",
-        "request_image",
+        "request_image_base64",
         "response_body",
     ]
 

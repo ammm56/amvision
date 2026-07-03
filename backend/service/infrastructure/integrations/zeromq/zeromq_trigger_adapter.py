@@ -293,19 +293,20 @@ class ZeroMqTriggerAdapter:
             increment_safe_counter(state.received_count)
         try:
             envelope = _parse_envelope(frames)
-            content = _read_content_frame(frames)
             _validate_envelope_target(trigger_source, envelope)
-            input_binding = _resolve_input_binding(trigger_source, envelope)
-            buffer_ref_payload = self._write_content_to_buffer(
-                trigger_source=trigger_source,
-                envelope=envelope,
-                content=content,
-            )
             payload = dict(envelope.payload)
-            payload[input_binding] = {
-                "transport_kind": "buffer",
-                "buffer_ref": buffer_ref_payload,
-            }
+            content = _read_content_frame(frames)
+            if content is not None:
+                input_binding = _resolve_input_binding(trigger_source, envelope)
+                buffer_ref_payload = self._write_content_to_buffer(
+                    trigger_source=trigger_source,
+                    envelope=envelope,
+                    content=content,
+                )
+                payload[input_binding] = {
+                    "transport_kind": "buffer",
+                    "buffer_ref": buffer_ref_payload,
+                }
             metadata = dict(envelope.metadata)
             metadata.setdefault("transport", "zeromq")
             metadata.setdefault("zeromq_frame_count", len(frames))
@@ -493,8 +494,8 @@ class ZeroMqTriggerAdapter:
 def _parse_envelope(frames: list[bytes]) -> ZeroMqFrameEnvelope:
     """解析 ZeroMQ multipart 第一帧 JSON envelope。"""
 
-    if len(frames) < 2:
-        raise InvalidRequestError("ZeroMQ 触发消息至少需要 envelope 和 content 两帧")
+    if len(frames) < 1:
+        raise InvalidRequestError("ZeroMQ 触发消息至少需要 envelope 帧")
     try:
         payload = json.loads(frames[0].decode("utf-8"))
     except Exception as error:
@@ -509,9 +510,11 @@ def _parse_envelope(frames: list[bytes]) -> ZeroMqFrameEnvelope:
         ) from error
 
 
-def _read_content_frame(frames: list[bytes]) -> bytes:
-    """读取 ZeroMQ multipart 第二帧二进制内容。"""
+def _read_content_frame(frames: list[bytes]) -> bytes | None:
+    """读取可选的 ZeroMQ multipart 第二帧二进制内容。"""
 
+    if len(frames) < 2:
+        return None
     content = frames[1]
     if not isinstance(content, bytes) or not content:
         raise InvalidRequestError("ZeroMQ content 帧必须是非空 bytes")
@@ -545,9 +548,7 @@ def _resolve_input_binding(
     )
     if input_binding:
         return _require_stripped_text(input_binding, "input_binding")
-    if "request_image_ref" in trigger_source.input_binding_mapping:
-        return "request_image_ref"
-    return "request_image"
+    return "request_image_ref"
 
 
 def _read_required_transport_text(

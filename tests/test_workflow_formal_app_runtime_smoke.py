@@ -109,7 +109,7 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": "smoke-sync-infer-health"},
@@ -163,7 +163,7 @@ def test_task_native_direct_model_app_runtime_smoke_executes_and_returns_ok_resu
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": f"smoke-{example_name}"},
@@ -192,7 +192,7 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
-            input_bindings={"request_image": _build_image_base64_payload(build_valid_test_png_bytes())},
+            input_bindings={"request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())},
             execution_metadata={"scenario": "smoke-opencv-save-image"},
         )
     )
@@ -270,7 +270,7 @@ def test_detection_deployment_infer_opencv_health_app_runtime_smoke_returns_heal
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": "smoke-infer-opencv-health"},
@@ -408,7 +408,7 @@ def test_detection_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_re
             application_id=application.application_id,
             input_bindings={
                 "deployment_request": _build_deployment_request_payload(),
-                "request_image": _build_image_base64_payload(
+                "request_image_base64": _build_image_base64_payload(
                     _build_barcode_test_png_bytes(
                         payload_text="qr-app-smoke",
                         barcode_format_name="QRCode",
@@ -617,7 +617,7 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                     }
                 },
                 "inference_request_payload": {"value": {"score_threshold": 0.3}},
-                "request_image": _build_image_base64_payload(
+                "request_image_base64": _build_image_base64_payload(
                     _build_barcode_test_png_bytes(
                         payload_text="qr-end-to-end-smoke",
                         barcode_format_name="QRCode",
@@ -1039,7 +1039,7 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
             }
         },
         "inference_request_payload": {"value": {"score_threshold": 0.3}},
-        "request_image": _build_image_base64_payload(
+        "request_image_base64": _build_image_base64_payload(
             _build_barcode_test_png_bytes(
                 payload_text="qr-end-to-end-smoke",
                 barcode_format_name="QRCode",

@@ -157,7 +157,7 @@
   "workflow_run_id": "run-1",
   "requested_timeout_seconds": 60,
   "input_bindings": {
-    "request_image": {
+    "request_image_base64": {
       "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
     }
   },

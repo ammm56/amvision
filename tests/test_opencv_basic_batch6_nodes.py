@@ -207,7 +207,7 @@ def test_opencv_basic_batch6_draw_contours_lines_and_measurements_execute(tmp_pa
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -242,7 +242,7 @@ def test_opencv_basic_batch6_draw_contours_lines_and_measurements_execute(tmp_pa
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/line-pair-render.png",
                 "width": 128,
                 "height": 128,
@@ -388,7 +388,7 @@ def test_opencv_basic_batch6_draw_circles_and_measurements_execute(tmp_path: Pat
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -416,7 +416,7 @@ def test_opencv_basic_batch6_draw_circles_and_measurements_execute(tmp_path: Pat
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/circle-render.png",
                 "width": 128,
                 "height": 128,

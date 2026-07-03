@@ -549,7 +549,10 @@ function buildSampleInputBindings(): WorkflowJsonObject {
   const sampleInputBindings: WorkflowJsonObject = {}
   for (const binding of inputBindings.value) {
     const payloadTypeId = getBindingPayloadTypeId(binding)
-    const shouldInclude = binding.required || binding.binding_id.includes('request_image') || binding.binding_id.includes('deployment_request')
+    const shouldInclude = binding.required
+      || binding.binding_id === 'request_image_base64'
+      || binding.binding_id === 'request_image_ref'
+      || binding.binding_id.includes('deployment_request')
     if (shouldInclude) sampleInputBindings[binding.binding_id] = sampleValueForPayloadType(payloadTypeId, binding.binding_id)
   }
   return sampleInputBindings

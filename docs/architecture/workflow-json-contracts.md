@@ -335,7 +335,7 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
     {
       "binding_id": "api-entry",
       "direction": "input",
-      "template_port_id": "request_image",
+      "template_port_id": "request_image_base64",
       "binding_kind": "api-request",
       "config": {"route": "/api/v1/inspect", "method": "POST"},
       "metadata": {}
@@ -374,7 +374,7 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 ```json
 {
   "input_bindings": {
-    "request_image": {
+    "request_image_base64": {
       "object_key": "projects/project-1/inputs/source.jpg"
     }
   }

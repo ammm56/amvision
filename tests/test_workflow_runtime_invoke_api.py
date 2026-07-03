@@ -61,7 +61,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-api",
@@ -136,7 +136,7 @@ def test_workflow_app_runtime_invoke_api_default_response_returns_public_app_res
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-public-result",
@@ -195,7 +195,7 @@ def test_workflow_app_runtime_run_query_default_response_returns_public_app_resu
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-run-query",
@@ -271,7 +271,7 @@ def test_workflow_app_runtime_async_run_query_returns_raw_public_image_without_p
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-async-result",
@@ -358,7 +358,7 @@ def test_workflow_app_runtime_async_run_query_uses_persisted_result_when_raw_cac
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(_build_mixed_barcode_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-async-result-cache-disabled",
@@ -425,7 +425,7 @@ def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_opencv_process
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(build_valid_test_png_bytes())
+                        "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())
                     },
                     "execution_metadata": {
                         "scenario": "opencv-process-save-image-api",
@@ -547,7 +547,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_base64_keeps_runtime_runn
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": {
+                        "request_image_base64": {
                             "image_base64": "not-base64@@@",
                             "media_type": "image/png",
                         }
@@ -690,7 +690,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
                 headers=headers,
                 json={
                     "input_bindings": {
-                        "request_image": _build_image_base64_payload(b"not-a-valid-image-content")
+                        "request_image_base64": _build_image_base64_payload(b"not-a-valid-image-content")
                     },
                     "execution_metadata": {
                         "scenario": "barcode-result-display-invalid-image-content",
@@ -766,7 +766,7 @@ def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_r
 def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_package_binding(
     tmp_path: Path,
 ) -> None:
-    """验证 multipart invoke/upload 当前不会把图片文件直接映射为 request_image 输入。"""
+    """验证 multipart invoke/upload 当前不会把图片文件直接映射为 request_image_base64 输入。"""
 
     client, session_factory, _ = _create_runtime_api_client(
         tmp_path,
@@ -791,7 +791,7 @@ def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_p
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload",
                 headers=headers,
                 files={
-                    "request_image": (
+                    "request_image_base64": (
                         "input.png",
                         build_valid_test_png_bytes(),
                         "image/png",
@@ -812,7 +812,7 @@ def test_workflow_app_runtime_invoke_upload_rejects_image_file_for_non_dataset_p
     assert error_payload["code"] == "invalid_request"
     assert error_payload["message"] == "当前 multipart 上传入口仅支持 dataset-package.v1 输入绑定"
     assert error_payload["details"] == {
-        "binding_id": "request_image",
+        "binding_id": "request_image_base64",
         "payload_type_id": "image-base64.v1",
     }
 

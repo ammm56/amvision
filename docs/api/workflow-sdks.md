@@ -52,7 +52,7 @@ SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workfl
 
 - `endpoint`：ZeroMQ endpoint，例如 `tcp://127.0.0.1:5555` 或受控的 `ipc://...`。
 - `trigger_source_id`：目标 TriggerSource id。
-- `input_binding`：ZeroMQ envelope 中保存图片引用的事件 payload 字段名；当前 SDK 示例默认使用 `request_image`，再由 TriggerSource 的 `input_binding_mapping` 映射到 workflow app 的 `request_image_ref`。
+- `input_binding`：ZeroMQ envelope 中保存图片引用的事件 payload 字段名；当前 SDK 示例默认使用 `request_image_ref`，由 TriggerSource 的 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 直接映射到 workflow app 的 `request_image_ref`。
 - `timeout`：发送和接收超时。
 - `metadata`：line_id、station_id、camera_id、job_id 等业务字段。
 
@@ -75,7 +75,7 @@ SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workfl
   "event_id": "event-0001",
   "trace_id": "trace-0001",
   "occurred_at": "2026-05-13T00:00:00Z",
-  "input_binding": "request_image",
+  "input_binding": "request_image_ref",
   "media_type": "image/jpeg",
   "shape": [1080, 1920, 3],
   "dtype": "uint8",
@@ -123,6 +123,7 @@ SDK 不应承担以下职责：
 - ZeroMQ 调试入口如果公开的是 `image-ref.v1`，就继续由 SDK 发送图片 bytes，再由 backend-service adapter 写成 BufferRef / image-ref。
 - 如果同一个 workflow app 需要同时接两类入口，应在图里显式提供多个 binding，或增加 `image-ref -> image-base64` 转换节点后再汇到公共下游节点。
 - 如果触发源只有 PLC 寄存器值、IO 状态或其他数值输入，后续图片应由图里的本地图片加载节点、相机抓帧节点或 custom node 决定，不由 SDK 或 TriggerSource 补出。
+- 如果 workflow app 完全不需要外部 input binding，例如图内直接从磁盘读取图片、从相机节点取帧或使用固定测试资源，TriggerSource 可以保留空 `input_binding_mapping`。调用时只提交事件 envelope 和业务 payload 即可，WorkflowRuntime 会收到空 `input_bindings` 并继续执行图内输入节点。
 
 ## 目录结构
 
@@ -201,7 +202,7 @@ var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
 {
     Endpoint = "tcp://127.0.0.1:5555",
     TriggerSourceId = "zeromq-trigger-source-06",
-    DefaultInputBinding = "request_image",
+    DefaultInputBinding = "request_image_ref",
     Timeout = TimeSpan.FromSeconds(5)
 });
 

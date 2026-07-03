@@ -1871,7 +1871,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
 - 当前响应与 JSON `invoke` 一样支持 `response_mode=app-result|run|debug`；默认只返回公开 App Result。
 
 ### POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs
@@ -1900,7 +1900,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   - execution_metadata_json，可选
   - timeout_seconds，可选
 - 其他文件字段名必须等于 application 的 input binding_id
-- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image` 上传
+- 当前 multipart 文件上传只支持 `dataset-package.v1` 输入绑定，不支持把图片文件直接作为 `request_image_base64` 或 `request_image_ref` 上传
 - 当前响应与 JSON `runs` 一样返回完整 WorkflowRun 规则
 
 ### POST /api/v1/workflows/trigger-sources

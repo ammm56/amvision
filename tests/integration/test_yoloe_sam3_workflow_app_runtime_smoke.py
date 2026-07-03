@@ -109,7 +109,7 @@ def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path
                     headers=headers,
                     json={
                         "input_bindings": {
-                            "request_image": {
+                            "request_image_base64": {
                                 "object_key": image_object_key,
                                 "media_type": "image/png",
                             },
@@ -210,7 +210,7 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
                     headers=headers,
                     json={
                         "input_bindings": {
-                            "request_image": {
+                            "request_image_base64": {
                                 "object_key": image_object_key,
                                 "media_type": "image/png",
                             },
@@ -313,7 +313,7 @@ def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_pa
                     headers=headers,
                     json={
                         "input_bindings": {
-                            "request_image": {
+                            "request_image_base64": {
                                 "object_key": image_object_key,
                                 "media_type": "image/png",
                             },
@@ -423,7 +423,7 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
                     headers=headers,
                     json={
                         "input_bindings": {
-                            "request_image": {
+                            "request_image_base64": {
                                 "object_key": image_object_key,
                                 "media_type": "image/png",
                             },
@@ -723,7 +723,7 @@ def _build_yoloe_prompt_free_template() -> WorkflowGraphTemplate:
         edges=(),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="yoloe_prompt_free",
@@ -770,9 +770,9 @@ def _build_yoloe_prompt_free_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="workflow-execute-input",
                 config={"payload_type_id": "image-ref.v1"},
             ),
@@ -826,7 +826,7 @@ def _build_yoloe_text_prompt_template() -> WorkflowGraphTemplate:
         edges=(),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="yoloe_text",
@@ -880,9 +880,9 @@ def _build_yoloe_text_prompt_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="workflow-execute-input",
                 config={"payload_type_id": "image-ref.v1"},
             ),
@@ -943,7 +943,7 @@ def _build_yoloe_visual_prompt_template() -> WorkflowGraphTemplate:
         edges=(),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="yoloe_visual",
@@ -1004,9 +1004,9 @@ def _build_yoloe_visual_prompt_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="workflow-execute-input",
                 config={"payload_type_id": "image-ref.v1"},
             ),
@@ -1070,7 +1070,7 @@ def _build_sam3_semantic_template() -> WorkflowGraphTemplate:
         edges=(),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="sam3_semantic",
@@ -1117,9 +1117,9 @@ def _build_sam3_semantic_application() -> FlowApplication:
         ),
         bindings=(
             FlowApplicationBinding(
-                binding_id="request_image",
+                binding_id="request_image_base64",
                 direction="input",
-                template_port_id="request_image",
+                template_port_id="request_image_base64",
                 binding_kind="workflow-execute-input",
                 config={"payload_type_id": "image-ref.v1"},
             ),

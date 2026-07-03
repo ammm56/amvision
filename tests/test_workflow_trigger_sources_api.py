@@ -41,7 +41,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     "workflow_runtime_id": "workflow-runtime-1",
                     "submit_mode": "async",
                     "input_binding_mapping": {
-                        "request_image": {"source": "payload.image"},
+                        "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
                         "result_binding": "http_response",
@@ -60,7 +60,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     "workflow_runtime_id": "workflow-runtime-1",
                     "submit_mode": "async",
                     "input_binding_mapping": {
-                        "request_image": {"source": "payload.image"},
+                        "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
                         "result_binding": "http_response",
@@ -116,7 +116,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     "workflow_runtime_id": "workflow-runtime-1",
                     "submit_mode": "async",
                     "input_binding_mapping": {
-                        "request_image": {"source": "payload.image"},
+                        "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
                         "result_binding": "http_response",
@@ -214,7 +214,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                     "submit_mode": "async",
                     "transport_config": {"bind_endpoint": bind_endpoint},
                     "input_binding_mapping": {
-                        "request_image": {"source": "payload.buffer_ref"},
+                        "request_image_ref": {"source": "payload.buffer_ref"},
                     },
                     "result_mapping": {
                         "result_binding": "zeromq_reply",
@@ -250,7 +250,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                     "submit_mode": "async",
                     "transport_config": {"bind_endpoint": bind_endpoint},
                     "input_binding_mapping": {
-                        "request_image": {"source": "payload.buffer_ref"},
+                        "request_image_ref": {"source": "payload.buffer_ref"},
                     },
                     "result_mapping": {
                         "result_binding": "zeromq_reply",

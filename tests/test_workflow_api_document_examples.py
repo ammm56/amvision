@@ -242,7 +242,7 @@ def test_workflow_api_real_path_example_requests_are_valid() -> None:
     assert runtime_execution_policy_request["policy_kind"] == "runtime-default"
     assert runtime_execution_policy_request["metadata"]["target_surface"] == "app-runtime"
     assert "execution_policy_id" not in preview_run_request
-    assert preview_run_request["input_bindings"]["request_image"]["object_key"] == (
+    assert preview_run_request["input_bindings"]["request_image_ref"]["object_key"] == (
         "projects/project-1/inputs/source.jpg"
     )
     assert preview_run_request["execution_metadata"]["scenario"] == "deployment-control-detection-lifecycle-real-path"
@@ -666,7 +666,7 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
 
     input_binding_ids = {binding.binding_id for binding in application.bindings if binding.direction == "input"}
     if uses_existing_deployment_instance:
-        assert input_binding_ids == {"request_image", "deployment_request"}
+        assert input_binding_ids == {"request_image_base64", "deployment_request"}
         assert set(invoke_request["input_bindings"]) == input_binding_ids
         assert set(run_create_request["input_bindings"]) == input_binding_ids
         assert invoke_request["input_bindings"]["deployment_request"]["value"]["deployment_instance_id"] == (
@@ -679,10 +679,10 @@ def test_workflow_api_image_app_runtime_examples_are_valid(
             "deployment_instance_id": "{{deploymentInstanceId}}"
         }
     else:
-        assert input_binding_ids == {"request_image"}
-        assert set(invoke_request["input_bindings"]) == {"request_image"}
-        assert set(run_create_request["input_bindings"]) == {"request_image"}
-    assert invoke_request["input_bindings"]["request_image"]["media_type"] == "image/png"
+        assert input_binding_ids == {"request_image_base64"}
+        assert set(invoke_request["input_bindings"]) == {"request_image_base64"}
+        assert set(run_create_request["input_bindings"]) == {"request_image_base64"}
+    assert invoke_request["input_bindings"]["request_image_base64"]["media_type"] == "image/png"
     assert invoke_request["execution_metadata"]["scenario"] == expected_example_kind
     assert run_create_request["execution_metadata"]["scenario"] == expected_example_kind
     assert run_create_request["execution_metadata"]["trigger_source"] == "async-api"
@@ -793,14 +793,14 @@ def test_trigger_source_api_invoke_examples_target_http_base64_binding(
             "detection_deployment_infer_opencv_health_zeromq_image_ref",
             "zeromq-trigger-source-06",
             "deployment-infer-opencv-health-zeromq",
-            {"request_image_ref", "deployment_request"},
+            {"request_image_base64", "request_image_ref", "deployment_request"},
             id="06-trigger-source-request",
         ),
         pytest.param(
             "opencv_process_save_image_zeromq_image_ref",
             "zeromq-trigger-source-07",
             "opencv-process-save-image-zeromq",
-            {"request_image_ref"},
+            {"request_image_base64", "request_image_ref"},
             id="07-trigger-source-request",
         ),
     ],
@@ -823,7 +823,7 @@ def test_trigger_source_create_examples_keep_protocol_native_input_boundary(
     assert create_request["default_execution_metadata"]["retain_node_records_enabled"] is False
     assert set(create_request["input_binding_mapping"]) == expected_binding_ids
     assert all(
-        binding_payload["payload_type_id"] in {"image-ref.v1", "value.v1"}
+        binding_payload["payload_type_id"] in {"image-base64.v1", "image-ref.v1", "value.v1"}
         for binding_payload in create_request["input_binding_mapping"].values()
     )
 
@@ -1275,7 +1275,7 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
         "conversion_request_payload",
         "deployment_request_payload",
         "inference_request_payload",
-        "request_image",
+        "request_image_base64",
     }
 
     input_bindings_json = invoke_request["input_bindings_json"]
@@ -1306,7 +1306,7 @@ def test_workflow_api_end_to_end_qr_crop_remap_app_runtime_examples_are_valid() 
     assert input_bindings_json["deployment_request_payload"]["value"]["instance_count"] == 3
     assert input_bindings_json["deployment_request_payload"]["value"]["keep_warm_enabled"] is True
     assert input_bindings_json["inference_request_payload"]["value"]["score_threshold"] == 0.3
-    assert input_bindings_json["request_image"]["media_type"] == "image/png"
+    assert input_bindings_json["request_image_base64"]["media_type"] == "image/png"
     assert invoke_request["files"]["request_package"]["file_name"] == "detection-coco-min.zip"
     assert invoke_request["files"]["request_package"]["content_type"] == "application/zip"
     assert invoke_request["execution_metadata"]["scenario"] == "detection-end-to-end-qr-crop-remap"
@@ -1975,7 +1975,7 @@ def test_workflow_app_runtimes_document_clarifies_invoke_input_shapes() -> None:
     assert '"image_base64": "<base64>"' in document_text
     assert '"value": {...}' in document_text
     assert "当前 multipart 上传入口只支持这类 zip 包输入" in document_text
-    assert "WorkflowRunContract" in document_text
+    assert "response_mode=run" in document_text
 
 
 

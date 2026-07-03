@@ -32,7 +32,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 这 4 组样例面向“已有已发布 deployment，直接把非 detection 任务接进 workflow app runtime”的正式使用面。它们都统一采用：
 
-- `request_image`：`image-base64.v1`
+- `request_image_base64`：`image-base64.v1`
 - `deployment_request`：`value.v1`
 - `core.model.<task>` 直连模型节点
 - `payload-to-value -> value-field-extract -> rule/process-decision`

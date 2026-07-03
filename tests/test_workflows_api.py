@@ -671,7 +671,7 @@ def _build_template_payload() -> dict[str, object]:
         ],
         "template_inputs": [
             {
-                "input_id": "request_image",
+                "input_id": "request_image_base64",
                 "display_name": "Request Image",
                 "payload_type_id": "image-ref.v1",
                 "target_node_id": "input_image",
@@ -713,7 +713,7 @@ def _build_application_payload() -> dict[str, object]:
             {
                 "binding_id": "api-entry",
                 "direction": "input",
-                "template_port_id": "request_image",
+                "template_port_id": "request_image_base64",
                 "binding_kind": "api-request",
                 "config": {"route": "/api/v1/inspect", "method": "POST"},
                 "metadata": {},

@@ -40,7 +40,7 @@ def test_barcode_result_display_example_preview_run_returns_annotated_image_and_
             application=application,
             template=template,
             input_bindings={
-                "request_image": {
+                "request_image_base64": {
                     "image_base64": base64.b64encode(
                         _build_mixed_barcode_test_png_bytes()
                     ).decode("ascii"),

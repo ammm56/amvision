@@ -110,7 +110,7 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -180,7 +180,7 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/shape-b11.png",
                 "width": 160,
                 "height": 120,
@@ -257,7 +257,7 @@ def test_opencv_basic_batch11_fill_holes_and_distance_transform_execute(tmp_path
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -299,7 +299,7 @@ def test_opencv_basic_batch11_fill_holes_and_distance_transform_execute(tmp_path
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/hole-b11.png",
                 "width": 96,
                 "height": 96,

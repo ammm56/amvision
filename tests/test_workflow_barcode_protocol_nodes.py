@@ -162,7 +162,7 @@ def test_repository_barcode_protocol_nodes_decode_expected_symbol(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="decode",
@@ -183,7 +183,7 @@ def test_repository_barcode_protocol_nodes_decode_expected_symbol(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": f"inputs/{barcode_format_name}.png",
                 "media_type": "image/png",
             }
@@ -241,7 +241,7 @@ def test_repository_barcode_all_readable_node_returns_multiple_items_with_positi
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="decode",
@@ -262,7 +262,7 @@ def test_repository_barcode_all_readable_node_returns_multiple_items_with_positi
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/mixed-readable.png",
                 "media_type": "image/png",
             }
@@ -652,7 +652,7 @@ def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="draw",
@@ -685,7 +685,7 @@ def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path:
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/mixed-readable.png",
                 "media_type": "image/png",
             },
@@ -752,7 +752,7 @@ def test_repository_barcode_draw_results_node_uses_defaults_when_parameters_are_
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="draw",
@@ -785,7 +785,7 @@ def test_repository_barcode_draw_results_node_uses_defaults_when_parameters_are_
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/mixed-readable.png",
                 "media_type": "image/png",
             },

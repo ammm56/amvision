@@ -55,6 +55,8 @@
 
 常见图链路可以保持为：`request_image_base64` 和 `request_image_ref` 两条入口先在图里汇合，再进入 detection deployment 节点、OpenCV 后处理节点和 HTTP Response 输出节点。HTTP Response 输出节点的结果会出现在 `outputs["http_response"] = {"status_code": 200, "body": ...}`，由同步调用或触发源回执层决定是否直接返回给调用方。
 
+如果 workflow app 的图片来源在图内完成，例如本地磁盘读图节点、相机抓帧节点或 custom node 负责生成图片，则 application 可以没有外部 input binding，TriggerSource 也可以保存空 `input_binding_mapping`。这类调用只提交事件 envelope、业务 payload 和执行元数据，WorkflowRuntime 会收到空 `input_bindings` 并继续执行图内输入节点。
+
 ## 触发调用层总体框架
 
 触发调用层位于外部协议和 WorkflowAppRuntime 之间。它不是新的 workflow 执行器，也不是某个协议的专用实现，而是一组可替换的 adapter、mapper 和 result dispatcher。
@@ -1097,7 +1099,7 @@ docs/examples/workflows/
 
 - 在 requirements 中加入 `pyzmq`，并同步开发环境说明。
 - 新增 ZeroMQ adapter，第一阶段支持受控本机 `REQ/REP` 监听骨架。
-- 接收 multipart 消息：第一帧 JSON envelope，第二帧图片 bytes，后续帧暂不启用或作为扩展保留。
+- 接收 multipart 消息：第一帧 JSON envelope；第二帧图片 bytes 为可选。带第二帧时写入 LocalBufferBroker 并映射到 `request_image_ref`，只有 envelope 时作为纯事件触发，适合图内自行读图或取帧。
 - adapter 读取 envelope 中的 media_type、shape、dtype、layout、pixel_format、trace_id 和 input binding 名称。
 - 图片 bytes 写入 LocalBufferBroker 普通 BufferRef。
 - InputBindingMapper 把 BufferRef payload 映射到 `request_image_ref` 等 FlowApplication input binding；HTTP/JSON 调试入口继续使用 `request_image_base64`。

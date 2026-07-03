@@ -56,6 +56,6 @@ TriggerSource 示例目录在完整本地调试链路之外额外描述协议入
 
 `11-*` 当前也沿用同一条边界：`directory-poll` 的 `input_binding_mapping` 仍然只负责把标准化后的 `payload / event` 原始对象映射到 workflow app 输入，不会自动补 `value.v1` 包装。因此目录轮询示例同样把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，并把固定 `deployment_instance_id` 通过 `input_binding_mapping.deployment_request.value` 静态注入到 workflow app。
 
-第二到第五类 workflow 当前没有像第一类训练链路那样的 template 内动态默认请求拼装。`02-*`、`03-*`、`04-*` 的示例请求体只显式展示真实输入 `deployment_instance_id`，`05-*` 只显式展示 `request_image`；检测阈值、OpenCV 处理参数、health 摘要字段等固定值保留在 `save-template.request.json` 的节点参数中。
+第二到第五类 workflow 当前没有像第一类训练链路那样的 template 内动态默认请求拼装。`02-*`、`03-*`、`04-*` 的示例请求体只显式展示真实输入 `deployment_instance_id`，`05-*` 只显式展示 `request_image_base64`；检测阈值、OpenCV 处理参数、health 摘要字段等固定值保留在 `save-template.request.json` 的节点参数中。
 
 对于 `02-*`、`03-*`、`04-*` 这类依赖已有 `deployment_instance_id` 的 workflow，`preview-run.request.json` 主要用于校验 template/application 绑定和输入形状。preview run 仍保持独立 snapshot 子进程，不直接复用 backend-service 父进程中的 deployment supervisor 状态；当前主干已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher，推理节点会通过 BufferRef / FrameRef 调用 backend-service 持有的长期运行 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。

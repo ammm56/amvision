@@ -1,6 +1,6 @@
 {
   "input_bindings": {
-    "request_image": {
+    "request_image_ref": {
       "object_key": "projects/project-1/inputs/source.jpg"
     }
   },

@@ -81,7 +81,7 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -123,7 +123,7 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/hough-lines.png",
                 "width": 96,
                 "height": 96,
@@ -200,7 +200,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -235,7 +235,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/hough-circles.png",
                 "width": 96,
                 "height": 96,
@@ -323,7 +323,7 @@ def test_opencv_basic_batch3_fit_line_execute(tmp_path: Path) -> None:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -358,7 +358,7 @@ def test_opencv_basic_batch3_fit_line_execute(tmp_path: Path) -> None:
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/fit-line.png",
                 "width": 96,
                 "height": 96,
@@ -447,7 +447,7 @@ def test_opencv_basic_batch3_min_enclosing_circle_execute(tmp_path: Path) -> Non
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -482,7 +482,7 @@ def test_opencv_basic_batch3_min_enclosing_circle_execute(tmp_path: Path) -> Non
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/min-enclosing-circle.png",
                 "width": 96,
                 "height": 96,

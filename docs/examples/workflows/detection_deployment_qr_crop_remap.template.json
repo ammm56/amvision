@@ -299,7 +299,7 @@
   ],
   "template_inputs": [
     {
-      "input_id": "request_image",
+      "input_id": "request_image_base64",
       "display_name": "Request Image",
       "payload_type_id": "image-base64.v1",
       "target_node_id": "decode_request_image",
@@ -355,4 +355,3 @@
     "deployment_instance_id_binding": "deployment_request"
   }
 }
-

@@ -87,7 +87,7 @@ class ResultMappingContract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     result_binding: str = "workflow_result"
-    result_mode: WorkflowTriggerResultMode = "accepted-then-query"
+    result_mode: WorkflowTriggerResultMode = "sync-reply"
     reply_timeout_seconds: int | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
@@ -145,7 +145,7 @@ class WorkflowTriggerSourceContract(BaseModel):
     display_name: str
     trigger_kind: WorkflowTriggerKind
     workflow_runtime_id: str
-    submit_mode: WorkflowTriggerSubmitMode = "async"
+    submit_mode: WorkflowTriggerSubmitMode = "sync"
     enabled: bool = False
     desired_state: WorkflowTriggerRuntimeState = "stopped"
     observed_state: WorkflowTriggerRuntimeState = "stopped"
@@ -156,8 +156,8 @@ class WorkflowTriggerSourceContract(BaseModel):
     )
     result_mapping: ResultMappingContract = Field(default_factory=ResultMappingContract)
     default_execution_metadata: dict[str, object] = Field(default_factory=dict)
-    ack_policy: WorkflowTriggerAckPolicy = "ack-after-run-created"
-    result_mode: WorkflowTriggerResultMode = "accepted-then-query"
+    ack_policy: WorkflowTriggerAckPolicy = "ack-after-run-finished"
+    result_mode: WorkflowTriggerResultMode = "sync-reply"
     reply_timeout_seconds: int | None = None
     debounce_window_ms: int | None = None
     idempotency_key_path: str | None = None

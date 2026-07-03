@@ -125,8 +125,9 @@
     "application_id": "inspection-demo-app"
   },
   "input_bindings": {
-    "request_image": {
-      "object_key": "projects/project-1/files/demo/input/sample-1.jpg"
+    "request_image_base64": {
+      "image_base64": "<base64 image bytes>",
+      "media_type": "image/png"
     }
   },
   "execution_metadata": {

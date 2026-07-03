@@ -69,7 +69,7 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -104,7 +104,7 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/undistort-b13.png",
                 "width": 64,
                 "height": 48,
@@ -189,7 +189,7 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -224,7 +224,7 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/remap-b13.png",
                 "width": 20,
                 "height": 16,

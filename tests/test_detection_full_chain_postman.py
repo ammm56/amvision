@@ -147,7 +147,7 @@ def test_detection_full_chain_collection_covers_expected_stages() -> None:
     preview_run_request = _find_request(collection_payload, "Create Preview Run")
     preview_run_body = json.loads(preview_run_request["body"]["raw"])
     assert preview_run_body["project_id"] == "{{projectId}}"
-    assert preview_run_body["input_bindings"]["request_image"]["image_base64"] == "{{inputImageBase64}}"
+    assert preview_run_body["input_bindings"]["request_image_base64"]["image_base64"] == "{{inputImageBase64}}"
 
 
 def test_detection_full_chain_readmes_point_to_current_collection() -> None:

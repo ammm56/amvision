@@ -12,9 +12,9 @@
     },
     "bindings": [
       {
-        "binding_id": "request_image",
+        "binding_id": "request_image_base64",
         "direction": "input",
-        "template_port_id": "request_image",
+        "template_port_id": "request_image_base64",
         "binding_kind": "api-request",
         "config": {
           "route": "/api/v1/workflow-apps/detection/deployment/qr-crop-remap",

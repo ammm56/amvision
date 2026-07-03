@@ -14,9 +14,9 @@
     "description": "面向 Postman 手工调试的最小 FlowApplication 示例，控制并使用一个已有 deployment 资源，使用真实 workflow object key 路径。",
     "bindings": [
       {
-        "binding_id": "request_image",
+        "binding_id": "request_image_ref",
         "direction": "input",
-        "template_port_id": "request_image",
+        "template_port_id": "request_image_ref",
         "binding_kind": "workflow-execute-input",
         "config": {
           "payload_type_id": "image-ref.v1",

@@ -92,7 +92,7 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -134,7 +134,7 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/preprocess.png",
                 "width": 80,
                 "height": 40,
@@ -286,7 +286,7 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -356,7 +356,7 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/contours.png",
                 "width": 96,
                 "height": 96,

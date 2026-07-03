@@ -198,7 +198,7 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -219,7 +219,7 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.png",
                 "width": 2,
                 "height": 2,
@@ -723,7 +723,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -744,7 +744,7 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -854,7 +854,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
         edges=(),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="detect",
@@ -882,7 +882,7 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source-dynamic.jpg",
                 "width": 64,
                 "height": 64,
@@ -1015,7 +1015,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -1036,7 +1036,7 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -1077,7 +1077,7 @@ def test_core_image_base64_decode_node_outputs_memory_image_ref(tmp_path: Path) 
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-base64.v1",
                 target_node_id="decode",
@@ -1098,7 +1098,7 @@ def test_core_image_base64_decode_node_outputs_memory_image_ref(tmp_path: Path) 
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "image_base64": base64.b64encode(source_bytes).decode("ascii"),
             }
         },
@@ -1221,7 +1221,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -1242,7 +1242,7 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=registered_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -1373,7 +1373,7 @@ def test_task_native_direct_model_nodes_use_explicit_task_type(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -1394,7 +1394,7 @@ def test_task_native_direct_model_nodes_use_explicit_task_type(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -1553,7 +1553,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -1574,7 +1574,7 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2083,7 +2083,7 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -2104,7 +2104,7 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2183,7 +2183,7 @@ def test_repository_opencv_filter_nodes_accept_memory_image_payload(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="blur",
@@ -2204,7 +2204,7 @@ def test_repository_opencv_filter_nodes_accept_memory_image_payload(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -2280,7 +2280,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -2308,7 +2308,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2376,7 +2376,7 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="draw",
@@ -2404,7 +2404,7 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -2489,7 +2489,7 @@ def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_ar
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -2517,7 +2517,7 @@ def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_ar
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2614,7 +2614,7 @@ def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -2635,7 +2635,7 @@ def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2714,7 +2714,7 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="morphology",
@@ -2735,7 +2735,7 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -2795,7 +2795,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -2823,7 +2823,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
@@ -2904,7 +2904,7 @@ def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="crop",
@@ -2932,7 +2932,7 @@ def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -3014,7 +3014,7 @@ def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_nu
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="crop",
@@ -3042,7 +3042,7 @@ def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_nu
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/jpeg",
                 width=64,
@@ -3125,7 +3125,7 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -3146,7 +3146,7 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/contours.png",
                 "width": 96,
                 "height": 96,
@@ -3252,7 +3252,7 @@ def test_repository_opencv_payload_to_value_node_supports_response_composition(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -3273,7 +3273,7 @@ def test_repository_opencv_payload_to_value_node_supports_response_composition(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/contours.png",
                 "width": 96,
                 "height": 96,
@@ -3343,7 +3343,7 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="contour",
@@ -3364,7 +3364,7 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": build_memory_image_payload(
+            "request_image_base64": build_memory_image_payload(
                 image_handle=source_image.image_handle,
                 media_type="image/png",
                 width=96,
@@ -3446,7 +3446,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
         ),
         template_inputs=(
             WorkflowGraphInput(
-                input_id="request_image",
+                input_id="request_image_base64",
                 display_name="Request Image",
                 payload_type_id="image-ref.v1",
                 target_node_id="input",
@@ -3474,7 +3474,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     execution_result = executor.execute(
         template=template,
         input_values={
-            "request_image": {
+            "request_image_base64": {
                 "object_key": "inputs/source.jpg",
                 "width": 64,
                 "height": 64,
