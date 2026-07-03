@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>14.0</LangVersion>
     <AssemblyName>Amvision.Workflows.Net461Console</AssemblyName>
-    <RootNamespace>Amvision.Workflows.Examples.Net461Console</RootNamespace>
+    <RootNamespace>Amvision.Workflows.Net461Console</RootNamespace>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
   </PropertyGroup>
@@ -25,6 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="config.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Config\config_*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
