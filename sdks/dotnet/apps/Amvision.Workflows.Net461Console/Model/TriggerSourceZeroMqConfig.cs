@@ -14,14 +14,7 @@ internal sealed class TriggerSourceZeroMqConfig
     [JsonPropertyName("bind_endpoint")]
     public string BindEndpoint { get; set; } = "tcp://127.0.0.1:5555";
 
-    /// <summary>
-    /// 后端 LocalBufferBroker 使用的图片 buffer pool 名称。
-    /// </summary>
-    [JsonPropertyName("pool_name")]
-    public string PoolName { get; set; } = "image-1080p";
-
-    /// <summary>
-    /// ZeroMQ 图片第二帧写入 workflow 的默认 input binding。
+    /// ZeroMQ 图片第二帧写入 workflow 的默认 input binding；必须和前端已创建 TriggerSource 的 mapping 对齐。
     /// </summary>
     [JsonPropertyName("default_input_binding")]
     public string DefaultInputBinding { get; set; } = "request_image_ref";
@@ -33,13 +26,12 @@ internal sealed class TriggerSourceZeroMqConfig
     public int TimeoutSeconds { get; set; } = 5;
 
     /// <summary>
-    /// 校验 ZeroMQ 配置是否可用于创建 TriggerSource 和 SDK client。
+    /// 校验 ZeroMQ 配置是否可用于 SDK client 调用。
     /// </summary>
     /// <param name="path">配置字段路径。</param>
     public void Validate(string path)
     {
         ConfigValidation.RequireText(BindEndpoint, $"{path}.bind_endpoint");
-        ConfigValidation.RequireText(PoolName, $"{path}.pool_name");
         ConfigValidation.RequireText(DefaultInputBinding, $"{path}.default_input_binding");
         if (TimeoutSeconds <= 0)
         {

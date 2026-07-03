@@ -34,7 +34,7 @@ internal sealed partial class ZeroMqTriggerOperations
     }
 
     /// <summary>
-    /// 根据 TriggerSource 配置创建 ZeroMQ SDK client。
+    /// 根据 TriggerSource 配置构造 ZeroMQ SDK client。
     /// </summary>
     /// <param name="configuredTriggerSource">已展开的 TriggerSource 配置。</param>
     /// <returns>ZeroMQ TriggerSource client。</returns>
@@ -64,7 +64,7 @@ internal sealed partial class ZeroMqTriggerOperations
     }
 
     /// <summary>
-    /// 为 ZeroMQ 图片请求补齐 input binding、pool_name、runtime name 和 request_id。
+    /// 为 ZeroMQ 图片请求补齐 input binding、runtime name 和 request_id。
     /// </summary>
     /// <param name="request">图片触发请求。</param>
     /// <param name="configuredTriggerSource">TriggerSource 配置。</param>
@@ -73,12 +73,11 @@ internal sealed partial class ZeroMqTriggerOperations
         request.InputBinding = configuredTriggerSource.TriggerSource.ZeroMq.DefaultInputBinding;
         request.Metadata["trigger_source_name"] = configuredTriggerSource.TriggerSource.Name;
         request.Metadata["runtime_name"] = configuredTriggerSource.Runtime.Name;
-        request.Metadata["pool_name"] = configuredTriggerSource.TriggerSource.ZeroMq.PoolName;
         request.Payload["request_id"] = request.EventId ?? $"request-{Guid.NewGuid():N}";
     }
 
     /// <summary>
-    /// 为 ZeroMQ 纯事件请求补齐 pool_name、runtime name 和 request_id。
+    /// 为 ZeroMQ 纯事件请求补齐 runtime name 和 request_id。
     /// </summary>
     /// <param name="request">纯事件触发请求。</param>
     /// <param name="configuredTriggerSource">TriggerSource 配置。</param>
@@ -86,7 +85,6 @@ internal sealed partial class ZeroMqTriggerOperations
     {
         request.Metadata["trigger_source_name"] = configuredTriggerSource.TriggerSource.Name;
         request.Metadata["runtime_name"] = configuredTriggerSource.Runtime.Name;
-        request.Metadata["pool_name"] = configuredTriggerSource.TriggerSource.ZeroMq.PoolName;
         if (!request.Payload.ContainsKey("request_id"))
         {
             request.Payload["request_id"] = request.EventId ?? $"request-{Guid.NewGuid():N}";

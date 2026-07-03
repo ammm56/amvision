@@ -65,7 +65,7 @@ var poolName = broker?.DefaultPoolName ?? "image-1080p";
 - 如果因为重新创建 WorkflowAppRuntime 导致 `workflow_runtime_id` 已变化，先调用 disable，再调用 `DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}` 删除旧 TriggerSource，然后重新 create；也可以直接换一个新的 `trigger_source_id`。
 - `启用 TriggerSource 前必须先启动绑定的 WorkflowAppRuntime`：先调用 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start`，再调用 `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health` 确认 runtime 已进入 running，最后再调用 `POST /api/v1/workflows/trigger-sources/{trigger_source_id}/enable`。
 
-`apps/Amvision.Workflows.Net461Console` 提供 .NET Framework 4.6.1 console 官方参考实现，按方法封装 WorkflowAppRuntime create/list/get/start/stop/restart/health/instances、sync invoke、async run、run/event 查询，以及 TriggerSource/ZeroMQ 调用。真实联调也可以继续使用 SDK 测试工程的 smoke 测试，或按下面的最小调用代码嵌入现场上位机、MES、采集程序和调试工具。
+`apps/Amvision.Workflows.Net461Console` 提供 .NET Framework 4.6.1 console 官方参考实现，面向前端已经创建好的 WorkflowAppRuntime 和 TriggerSource，按方法封装 list/get/start/stop/restart/health/instances、sync invoke、async run、run/event 查询，以及 TriggerSource/ZeroMQ 调用。真实联调也可以继续使用 SDK 测试工程的 smoke 测试，或按下面的最小调用代码嵌入现场上位机、MES、采集程序和调试工具。
 
 ## 最小调用
 

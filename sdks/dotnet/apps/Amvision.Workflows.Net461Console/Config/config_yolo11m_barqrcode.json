@@ -7,14 +7,7 @@
   },
   "runtime": {
     "name": "yolo11m_barqrcode_runtime",
-    "workflow_runtime_id": "workflow-runtime-d2fd14115c5e4f7891f42695794ad887",
-    "application_id": "workflow-app-20260701103107",
-    "execution_policy_id": "",
-    "display_name": "新建应用yolo11m_barqrcode runtime",
-    "request_timeout_seconds": 30,
-    "heartbeat_interval_seconds": 5,
-    "heartbeat_timeout_seconds": 15,
-    "restart_runtime": false
+    "workflow_runtime_id": "workflow-runtime-d2fd14115c5e4f7891f42695794ad887"
   },
   "invoke": {
     "image_path": "",
@@ -27,53 +20,14 @@
     "async_scenario": "async-run",
     "use_direct_input_bindings": false
   },
-  "cleanup": {
-    "stop_at_end": false,
-    "delete_created_runtime": false
-  },
   "trigger_sources": [
     {
       "name": "yolo11m_barqrcode_zeromq",
       "trigger_source_id": "zeromq-workflow-runtime-d2fd14115c5e4f7891f42695794ad887",
-      "display_name": "ZeroMQ 图片触发 新建应用yolo11m_barqrcode runtime",
-      "trigger_kind": "zeromq-topic",
-      "workflow_runtime_name": "yolo11m_barqrcode_runtime",
-      "submit_mode": "sync",
-      "enabled": false,
-      "ack_policy": "ack-after-run-finished",
-      "result_mode": "sync-reply",
-      "result_binding": "core_output_response_envelope_body",
-      "reply_timeout_seconds": 30,
-      "debounce_window_ms": null,
-      "idempotency_key_path": "payload.request_id",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",
-        "pool_name": "image-1080p",
         "default_input_binding": "request_image_ref",
         "timeout_seconds": 5
-      },
-      "input_binding_mapping": {
-        "request_image_ref": {
-          "source": "payload.request_image_ref",
-          "required": false,
-          "payload_type_id": "image-ref.v1"
-        },
-        "request_image_base64": {
-          "source": "payload.request_image_base64",
-          "required": false,
-          "payload_type_id": "image-base64.v1"
-        }
-      },
-      "result_mapping": {
-        "result_binding": "core_output_response_envelope_body",
-        "result_mode": "sync-reply",
-        "reply_timeout_seconds": 30
-      },
-      "default_execution_metadata": {
-        "source": "zeromq"
-      },
-      "metadata": {
-        "pool_name": "image-1080p"
       }
     }
   ]

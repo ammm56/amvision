@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using Amvision.Workflows.Net461Console.Model;
 
@@ -19,11 +18,6 @@ internal sealed partial class WorkflowRuntimeOperations
     /// runtime 和 TriggerSource 配置索引。
     /// </summary>
     private readonly WorkflowConfigurationCatalog catalog;
-
-    /// <summary>
-    /// 本进程创建的 runtime key 集合，用于清理阶段防呆。
-    /// </summary>
-    private readonly ISet<string> createdRuntimeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 初始化 runtime 操作对象。
@@ -47,20 +41,15 @@ internal sealed partial class WorkflowRuntimeOperations
     }
 
     /// <summary>
-    /// 获取后端 runtime id；为空说明还没有创建或配置该 runtime。
+    /// 获取后端 runtime id；为空说明前端配置未同步到 config_*.json。
     /// </summary>
     /// <param name="configuredRuntime">runtime 配置。</param>
     /// <returns>workflow_runtime_id。</returns>
     private static string RequireRuntimeId(ConfiguredRuntime configuredRuntime)
     {
-        var workflowRuntimeId = ConfigValidation.NormalizeOptional(configuredRuntime.Runtime.WorkflowRuntimeId);
-        if (workflowRuntimeId is null)
-        {
-            throw new InvalidOperationException(
-                $"Runtime {configuredRuntime.Runtime.Name} does not have workflow_runtime_id. Create or resolve the runtime first.");
-        }
-
-        return workflowRuntimeId;
+        return ConfigValidation.RequireText(
+            configuredRuntime.Runtime.WorkflowRuntimeId,
+            $"{configuredRuntime.Runtime.Name}.workflow_runtime_id");
     }
 
     /// <summary>

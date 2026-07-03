@@ -27,12 +27,6 @@ internal sealed class WorkflowAppConfigFile
     public InvokeConfig Invoke { get; set; } = new InvokeConfig();
 
     /// <summary>
-    /// runtime 操作完成后的清理策略。
-    /// </summary>
-    [JsonPropertyName("cleanup")]
-    public CleanupConfig Cleanup { get; set; } = new CleanupConfig();
-
-    /// <summary>
     /// 与当前 runtime 关联的 TriggerSource 列表。
     /// </summary>
     [JsonPropertyName("trigger_sources")]
@@ -49,7 +43,7 @@ internal sealed class WorkflowAppConfigFile
         Invoke.Validate($"{sourceFile}.invoke");
         for (var index = 0; index < TriggerSources.Count; index++)
         {
-            TriggerSources[index].Validate($"{sourceFile}.trigger_sources[{index}]", Runtime.Name);
+            TriggerSources[index].Validate($"{sourceFile}.trigger_sources[{index}]");
         }
     }
 }

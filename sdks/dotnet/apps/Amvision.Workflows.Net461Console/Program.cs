@@ -68,8 +68,8 @@ internal static class Program
         var command = args[0].Trim().ToLowerInvariant();
         switch (command)
         {
-            case "runtime-run":
-                await runtimeOperations.RunRuntimeControlFlowAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
+            case "runtime-use":
+                await runtimeOperations.RunRuntimeUsageFlowAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
             case "runtime-list":
                 await runtimeOperations.ListProjectRuntimesAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
@@ -92,17 +92,14 @@ internal static class Program
             case "runtime-invoke":
                 await runtimeOperations.InvokeRuntimeAppResultAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
-            case "runtime-create-run":
-                await runtimeOperations.CreateWorkflowRunAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
+            case "runtime-submit-run":
+                await runtimeOperations.SubmitWorkflowRunAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
             case "runtime-events":
                 await runtimeOperations.GetRuntimeEventsAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
             case "triggersource-list":
                 await triggerSourceOperations.ListTriggerSourcesAsync(ResolveRuntimeName(catalog, args), cancellationToken).ConfigureAwait(false);
-                break;
-            case "triggersource-create":
-                await triggerSourceOperations.CreateTriggerSourceAsync(ResolveTriggerSourceName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
             case "triggersource-get":
                 await triggerSourceOperations.GetTriggerSourceAsync(ResolveTriggerSourceName(catalog, args), cancellationToken).ConfigureAwait(false);
@@ -115,9 +112,6 @@ internal static class Program
                 break;
             case "triggersource-health":
                 await triggerSourceOperations.GetTriggerSourceHealthAsync(ResolveTriggerSourceName(catalog, args), cancellationToken).ConfigureAwait(false);
-                break;
-            case "triggersource-delete":
-                await triggerSourceOperations.DeleteTriggerSourceAsync(ResolveTriggerSourceName(catalog, args), cancellationToken).ConfigureAwait(false);
                 break;
             case "zeromq-event":
                 await zeroMqOperations.InvokeEventAsync(ResolveTriggerSourceName(catalog, args), cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -137,10 +131,10 @@ internal static class Program
     {
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  runtime-run [runtime_key]");
-        Console.Error.WriteLine("  runtime-list|runtime-start|runtime-stop|runtime-restart|runtime-health|runtime-instances|runtime-invoke|runtime-create-run|runtime-events [runtime_key]");
+        Console.Error.WriteLine("  runtime-use [runtime_key]");
+        Console.Error.WriteLine("  runtime-list|runtime-start|runtime-stop|runtime-restart|runtime-health|runtime-instances|runtime-invoke|runtime-submit-run|runtime-events [runtime_key]");
         Console.Error.WriteLine("  triggersource-list [runtime_key]");
-        Console.Error.WriteLine("  triggersource-create|triggersource-get|triggersource-enable|triggersource-disable|triggersource-health|triggersource-delete [trigger_source_key]");
+        Console.Error.WriteLine("  triggersource-get|triggersource-enable|triggersource-disable|triggersource-health [trigger_source_key]");
         Console.Error.WriteLine("  zeromq-event [trigger_source_key]");
         Console.Error.WriteLine("  zeromq-image [trigger_source_key] [image_path]");
         Console.Error.WriteLine();

@@ -6,7 +6,7 @@ namespace Amvision.Workflows.Net461Console.Model;
 internal sealed class ConfiguredTriggerSource
 {
     /// <summary>
-    /// 创建一个可按 TriggerSource key 查询和调用的配置对象。
+    /// 构造一个可按 TriggerSource key 查询和调用的配置对象。
     /// </summary>
     /// <param name="backend">HTTP API 连接配置。</param>
     /// <param name="runtime">TriggerSource 关联的 WorkflowAppRuntime 配置。</param>
@@ -31,7 +31,7 @@ internal sealed class ConfiguredTriggerSource
     public WorkflowRuntimeConfig Runtime { get; }
 
     /// <summary>
-    /// TriggerSource 创建、管理和协议调用配置。
+    /// TriggerSource 控制和协议调用配置。
     /// </summary>
     public TriggerSourceConfig TriggerSource { get; }
 

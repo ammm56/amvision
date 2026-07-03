@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Amvision.Workflows.Net461Console.Model;
 
 /// <summary>
-/// WorkflowAppRuntime invoke 和 WorkflowRun 创建时使用的请求配置。
+/// WorkflowAppRuntime invoke 和 WorkflowRun 提交时使用的请求配置。
 /// </summary>
 internal sealed class InvokeConfig
 {
