@@ -1,0 +1,31 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:8000",
+    "access_token": "amvision-default-user-token",
+    "project_id": "project-1",
+    "http_timeout_seconds": 60
+  },
+  "workflow_runtime": {
+    "workflow_runtime_id": "",
+    "application_id": "",
+    "execution_policy_id": "",
+    "display_name": "dotnet-net461-example-runtime",
+    "request_timeout_seconds": 30,
+    "heartbeat_interval_seconds": 5,
+    "heartbeat_timeout_seconds": 15,
+    "restart_runtime": false
+  },
+  "invoke": {
+    "image_path": "",
+    "timeout_seconds": 30,
+    "event_limit": 20,
+    "event_preview_count": 5,
+    "source": "dotnet-net461-console-example",
+    "sync_scenario": "sync-invoke",
+    "async_scenario": "async-run"
+  },
+  "cleanup": {
+    "stop_at_end": false,
+    "delete_created_runtime": false
+  }
+}
