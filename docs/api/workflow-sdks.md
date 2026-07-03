@@ -144,7 +144,6 @@ sdks/
 │  │  │  ├─ Http/
 │  │  │  └─ Json/
 │  │  └─ ZeroMq/
-│  ├─ examples/ZeroMqImageInvoke/
 │  └─ tests/Amvision.Workflows.Tests/
 ├─ python/
 │  ├─ amvision_trigger_client/
@@ -170,7 +169,7 @@ sdks/
 
 ### C# / .NET
 
-C# / .NET SDK 是第一优先级，面向设备上位机默认接入方式。首版已实现 sync REQ/REP 单张图片调用、TriggerResult 解析、ZeroMQ error reply 解析和控制台示例。
+C# / .NET SDK 是第一优先级，面向设备上位机默认接入方式。首版已实现 sync REQ/REP 单张图片调用、TriggerResult 解析和 ZeroMQ error reply 解析。
 
 包名：`Amvision.Workflows`。
 
@@ -224,20 +223,7 @@ request
 var result = client.InvokeImage(request);
 ```
 
-真实 06/07 backend-service 调试使用 `sdks/dotnet/examples/ZeroMqImageInvoke`：
-
-```powershell
-dotnet run --project sdks/dotnet/examples/ZeroMqImageInvoke/ZeroMqImageInvoke.csproj -- tcp://127.0.0.1:5556 zeromq-trigger-source-07 <image_path> image/png
-dotnet run --project sdks/dotnet/examples/ZeroMqImageInvoke/ZeroMqImageInvoke.csproj -- tcp://127.0.0.1:5555 zeromq-trigger-source-06 <image_path> image/jpeg <deployment_instance_id>
-```
-
-其中 06 示例需要把已有 `deployment_instance_id` 传入；如果省略 `media_type`，示例会按文件扩展名自动猜测，并把第四个可选参数当作 `deployment_instance_id`。示例最终会把它放入 envelope payload 的 `deployment_request.value.deployment_instance_id`，供 TriggerSource 的 `input_binding_mapping` 映射到 workflow app。如果 TriggerSource 配置了 `idempotency_key_path=payload.idempotency_key`，可以把第六个参数作为 `idempotency_key`。
-
-如果需要在 Windows 上手动查看 envelope、TriggerResult 和完整 WorkflowRun，当前也提供独立 WinForms 调试项目：
-
-```powershell
-dotnet run --project sdks/dotnet/examples/TriggerSourceDebugWinForms/TriggerSourceDebugWinForms.csproj
-```
+真实 06/07 backend-service 调试当前通过 `sdks/dotnet/tests/Amvision.Workflows.Tests` 的 smoke 测试或调用方程序完成。SDK 不再随仓库保留独立 WinForms 或 console 示例项目；后续如果需要重新提供可视化调试器，应按当前 `Amvision.Workflows` API 重新建立。
 
 ### Python
 
