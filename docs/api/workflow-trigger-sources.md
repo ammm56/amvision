@@ -267,7 +267,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
 
 本地 adapter 可以把这份请求交给 runtime invoke 或 run 创建逻辑。sync 模式适规则机短链路、调用方需要即时结果的场景；async 模式适合长期监听、排队、断线后回查和高频事件削峰。
 
-LocalBufferBroker 默认池由 `config/backend-service.json` 的 `local_buffer_broker.default_pool_name` 决定，可选 `image-small`、`image-1080p` 和 `image-4k`。默认值为 `image-1080p`，单槽按 16MB 设计，默认 32 个槽位，用于覆盖常见 1080p raw BGR/RGBA 图片输入和短时间并发占用。4K 原始图输入场景应把该配置切换为 `image-4k`；小图或中间结果可显式使用 `image-small`。
+LocalBufferBroker 默认池由 `config/backend-service.json` 的 `local_buffer_broker.default_pool` 显式配置。仓库默认配置为 `pool_name=image-1080p`、单槽 16MB、32 个槽位、`flush_on_write=false`，用于常见 1080p raw BGR/RGBA 图片输入和短时间并发占用。现场应按工业相机分辨率、图像编码方式、单帧最大 bytes 和并发占用量调整 `pool_name`、`slot_size_bytes`、`slot_count` 和 `flush_on_write`，不依赖运行时自动猜测图片大小；mmap 文件名按 `pool_name` 自动生成，总大小按 `slot_size_bytes * slot_count` 自动计算。4K 或 20MB 级原始图输入场景应在配置文件中显式配置更大的 default_pool。
 
 FrameRef 的有效期很短，适合“立即执行一条 runtime 调用”。如果执行可能排队或后续节点需要稳定读取同一帧，触发层应把 FrameRef 固定为普通 BufferRef，或把关键图片保存到 ObjectStore 后再提交 run。该转换属于受控本地 adapter 或后续 TriggerSource 的职责，不属于 workflow 图中节点的职责。
 
@@ -1101,8 +1101,8 @@ docs/examples/workflows/
 - 新增 ZeroMQ adapter，第一阶段支持受控本机 `REQ/REP` 监听骨架。
 - 接收 multipart 消息：第一帧 JSON envelope；第二帧图片 bytes 为可选。带第二帧时写入 LocalBufferBroker 并映射到 `request_image_ref`，只有 envelope 时作为纯事件触发，适合图内自行读图或取帧。
 - adapter 读取 envelope 中的 media_type、shape、dtype、layout、pixel_format、trace_id 和 input binding 名称。
-- 图片 bytes 写入 LocalBufferBroker 普通 BufferRef；LocalBufferBroker 默认不对临时图片输入执行每帧 mmap flush，避免高频大图刷盘。
-- 如果现场图片可能达到 20MB 或更大，应把 LocalBufferBroker 的默认 pool 配为 `image-4k`，或显式配置更大的自定义 slot，避免默认 1080p pool 容量不足。
+- 图片 bytes 写入 LocalBufferBroker 普通 BufferRef；`flush_on_write` 由 `config/backend-service.json` 的 `local_buffer_broker.default_pool.flush_on_write` 控制，默认配置为 `false`，避免高频大图刷盘。
+- 如果现场图片可能达到 20MB 或更大，应在 `config/backend-service.json` 中显式配置更大的 LocalBufferBroker pool，避免默认 1080p pool 容量不足。
 - InputBindingMapper 把 BufferRef payload 映射到 `request_image_ref` 等 FlowApplication input binding；HTTP/JSON 调试入口继续使用 `request_image_base64`。
 - WorkflowSubmitter 使用 sync invoke 语义调用已启动 WorkflowAppRuntime。
 - ResultDispatcher 把 workflow 输出转换为 ZeroMQ JSON reply。

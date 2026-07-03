@@ -105,7 +105,9 @@ def test_local_buffer_broker_default_pool_is_1080p_ready() -> None:
     assert settings.default_pool_name == "image-1080p"
     assert default_pool.slot_size_bytes >= 16 * 1024 * 1024
     assert default_pool.slot_size_bytes > raw_1080p_rgba_bytes
-    assert default_pool.file_size_bytes // default_pool.slot_size_bytes >= 32
+    assert default_pool.slot_count >= 32
+    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * default_pool.slot_count
+    assert default_pool.flush_on_write is False
     assert set(pools) == {"image-1080p"}
 
 
@@ -137,7 +139,9 @@ def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     assert settings.default_pool_name == pool_name
     assert set(pools) == {pool_name}
     assert selected_pool.slot_size_bytes >= minimum_slot_size_bytes
-    assert selected_pool.file_size_bytes // selected_pool.slot_size_bytes >= minimum_slot_count
+    assert selected_pool.slot_count >= minimum_slot_count
+    assert selected_pool.file_size_bytes == selected_pool.slot_size_bytes * selected_pool.slot_count
+    assert selected_pool.flush_on_write is False
 
 
 def test_backend_service_config_selects_1080p_local_buffer_pool() -> None:
@@ -149,6 +153,12 @@ def test_backend_service_config_selects_1080p_local_buffer_pool() -> None:
 
     assert settings.local_buffer_broker.default_pool_name == "image-1080p"
     assert pool_names == {"image-1080p"}
+    pool = settings.local_buffer_broker.pools[0]
+    assert pool.file_name == "image-1080p-001.dat"
+    assert pool.slot_size_bytes == 16 * 1024 * 1024
+    assert pool.slot_count == 32
+    assert pool.file_size_bytes == pool.slot_size_bytes * 32
+    assert pool.flush_on_write is False
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Path) -> None:
@@ -224,7 +234,7 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
 
         assert channel["frame_capacity"] == 2
         assert first_frame.sequence_id == 0
-        assert first_frame.path.endswith("image-1080p-001.dat")
+        assert first_frame.path.endswith("image-small-001.dat")
         assert client.read_frame_ref(second_frame) == b"frame-2"
         assert client.read_frame_ref(third_frame) == b"frame-3"
         with pytest.raises(InvalidRequestError):
@@ -704,8 +714,8 @@ def _build_broker_settings(
         pools=(
             LocalBufferBrokerPoolSettings(
                 pool_name="image-small",
-                file_size_bytes=slot_count * 64,
                 slot_size_bytes=64,
+                slot_count=slot_count,
             ),
         ),
     )
