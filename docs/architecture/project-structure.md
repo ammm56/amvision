@@ -55,7 +55,7 @@ repo/
 │  ├─ alembic/
 │  │  └─ versions/
 │  ├─ bootstrap/
-│  ├─ contracts/
+│  ├─ schemas/
 │  │  ├─ buffers/
 │  │  ├─ datasets/
 │  │  │  └─ exports/
@@ -89,7 +89,7 @@ repo/
 │  │  │  │  ├─ tasks/
 │  │  │  │  ├─ predictors/
 │  │  │  │  ├─ targets/
-│  │  │  │  ├─ contracts/
+│  │  │  │  ├─ schemas/
 │  │  │  │  ├─ serialization/
 │  │  │  │  └─ support/
 │  │  │  ├─ tasks/
@@ -140,7 +140,7 @@ repo/
 │        ├─ composables/
 │        └─ contracts/
 ├─ sdks/
-│  ├─ contracts/
+│  ├─ schemas/
 │  ├─ dotnet/
 │  ├─ python/
 │  ├─ go/
@@ -414,7 +414,7 @@ SAM3 的模型支撑不放在 `backend/nodes` 平台 shared support 中；它属
 
 ### sdks 层级
 
-- sdks/contracts 放外部调用协议的稳定 schema、示例 payload 和错误码说明
+- sdks/schemas 放外部调用协议的稳定 schema、示例 payload 和错误码说明
 - sdks/dotnet 放 C# / .NET SDK，优先兼容 .NET Framework 上位机和 .NET Core / .NET 应用
 - sdks/python 放 Python SDK、CLI 和调试脚本能力
 - sdks/go 放 Go SDK，服务边缘代理和本地桥接服务

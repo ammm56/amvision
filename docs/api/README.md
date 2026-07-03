@@ -18,7 +18,7 @@
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的执行默认项
 - [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)：workflow runtime 当前公开文档和后续扩展草案的导航页
 - [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 资源和 ZeroMQ adapter 的接口边界，覆盖外部触发入口、启停、health 和后续协议扩展
-- [docs/api/trigger-source-sdks.md](trigger-source-sdks.md)：TriggerSource 外部调用方 SDK 规划，覆盖 C# / .NET、Python、Go 和 C SDK 的目录、调用流程和版本规则
+- [docs/api/workflow-sdks.md](workflow-sdks.md)：Workflow 外部调用方 SDK 规划，覆盖 C# / .NET、Python、Go 和 C SDK 的目录、调用流程和版本规则
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界
 - [docs/api/datasets-imports.md](datasets-imports.md)：DatasetImport 导入、详情查询、列表查询、task_id 关联和错误语义
 - [docs/api/datasets-exports.md](datasets-exports.md)：DatasetExport 创建、详情查询、package/download/manifest 和 training 输入边界

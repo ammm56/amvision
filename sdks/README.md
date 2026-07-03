@@ -7,15 +7,15 @@
 - SDK 通过公开 REST API、WebSocket 或 ZeroMQ TriggerSource 协议访问 backend-service。
 - SDK 不直接访问数据库、LocalBufferBroker、workflow worker、deployment worker 或对象存储。
 - SDK 不直接导入 `backend/`、`frontend/`、`custom_nodes/` 的运行时代码。
-- 跨语言共享内容放在 `sdks/contracts/`，以 JSON schema、示例 payload 和错误码说明为准。
+- 跨语言共享内容放在 `sdks/schemas/`，以 JSON schema、示例 payload 和错误码说明为准。
 
 ## 建议结构
 
-当前已实现 `contracts/` 和 C# / .NET SDK。Python、Go 和 C SDK 仍处于规划状态，暂不提供代码。
+当前已实现 `schemas/` 和 C# / .NET SDK。Python、Go 和 C SDK 仍处于规划状态，暂不提供代码。
 
 ```text
 sdks/
-├─ contracts/
+├─ schemas/
 ├─ dotnet/
 ├─ python/
 ├─ go/
@@ -30,4 +30,4 @@ sdks/
 3. Go SDK：服务于边缘代理和本地桥接服务。
 4. C SDK：服务于 C/C++ 上位机、厂商接口和需要稳定 C ABI 的系统。
 
-详细规划见 [docs/api/trigger-source-sdks.md](../docs/api/trigger-source-sdks.md)。
+详细规划见 [docs/api/workflow-sdks.md](../docs/api/workflow-sdks.md)。

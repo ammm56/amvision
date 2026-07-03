@@ -10,11 +10,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TriggerSourceDebugWinForms"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{ECF4E390-50D3-58FE-ACDC-9A9EFA44BC6B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.TriggerSources", "src\Amvision.TriggerSources\Amvision.TriggerSources.csproj", "{D5613758-2261-267C-AC01-C3C1C75B8BAC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows", "src\Amvision.Workflows\Amvision.Workflows.csproj", "{D5613758-2261-267C-AC01-C3C1C75B8BAC}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A9AE20D8-44CC-D737-B0DB-E8F7BEB3084C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.TriggerSources.Tests", "tests\Amvision.TriggerSources.Tests\Amvision.TriggerSources.Tests.csproj", "{4395B9CC-78FB-B704-1D3B-2C638305B5DE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.Tests", "tests\Amvision.Workflows.Tests\Amvision.Workflows.Tests.csproj", "{4395B9CC-78FB-B704-1D3B-2C638305B5DE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -1,16 +1,17 @@
-# Amvision.TriggerSources
+# Amvision.Workflows
 
-C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具通过 ZeroMQ TriggerSource 调用 backend-service。
+C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 WorkflowAppRuntime、发起 WorkflowRun，并通过 ZeroMQ TriggerSource 调用 backend-service。
 
 ## 当前实现
 
-- SDK 项目：`src/Amvision.TriggerSources`
+- SDK 项目：`src/Amvision.Workflows`
+- 源码结构：`Http/` 放 Workflow 管理 API client、请求和响应模型，`ZeroMq/` 放 TriggerSource REQ/REP 调用，`Internal/` 放 SDK 内部 JSON/HTTP helper
 - 目标框架：`net461;net472;netstandard2.1;net10.0`
 - ZeroMQ 依赖：NetMQ
 - 支持单张图片 REQ/REP 调用
 - 支持 TriggerResult 和 ZeroMQ error reply 解析
-- 支持 Workflow 控制面 HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health
-- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、trigger-source 的 typed contract 方法
+- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health
+- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、trigger-source 的 typed response 方法
 - `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；如需只取公开 App Result，可显式传 `WorkflowResponseModes.AppResult`
 
 SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
@@ -20,8 +21,8 @@ SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 Trigg
 ## 构建
 
 ```powershell
-dotnet build sdks/dotnet/src/Amvision.TriggerSources/Amvision.TriggerSources.csproj
-dotnet run --project sdks/dotnet/tests/Amvision.TriggerSources.Tests/Amvision.TriggerSources.Tests.csproj
+dotnet build sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.csproj
+dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
 ```
 
 `sdks/dotnet/tests` 默认只运行 SDK 协议、HTTP URL/body/query、schema fixture 和 transport 逻辑测试。真实 backend-service smoke 测试通过环境变量启用：
@@ -30,7 +31,7 @@ dotnet run --project sdks/dotnet/tests/Amvision.TriggerSources.Tests/Amvision.Tr
 $env:AMVISION_DOTNET_SDK_SMOKE_BASE_URL = "http://127.0.0.1:8000"
 $env:AMVISION_DOTNET_SDK_SMOKE_TOKEN = "amvision-default-user-token"
 $env:AMVISION_DOTNET_SDK_SMOKE_PROJECT_ID = "project-1"
-dotnet run --project sdks/dotnet/tests/Amvision.TriggerSources.Tests/Amvision.TriggerSources.Tests.csproj
+dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
 ```
 
 ## WinForms 调试器
@@ -54,11 +55,11 @@ dotnet run --project sdks/dotnet/examples/TriggerSourceDebugWinForms/TriggerSour
 
 06/07 的 ZeroMQ 调试应使用 `docs/examples/workflows/*_zeromq.*.json` 中的双入口 workflow app。原始 04/05 JSON 仍保留给 HTTP base64 invoke 调试。
 
-服务侧准备顺序：保存 06/07 的 template 和 application，创建并启动 WorkflowAppRuntime，按 `docs/api/examples/workflows/06-detection-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json` 或 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json` 创建 TriggerSource，调用 enable，并确认 health 中 `adapter_running=true`。如果 06 的 template 已升级到返回 `detections + annotated_image + health`，需要重新执行 Save Template、Save Application，并重新创建或重建对应的 WorkflowAppRuntime；旧 runtime 继续运行时，返回结果仍会停留在旧图合同。
+服务侧准备顺序：保存 06/07 的 template 和 application，创建并启动 WorkflowAppRuntime，按 `docs/api/examples/workflows/06-detection-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json` 或 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json` 创建 TriggerSource，调用 enable，并确认 health 中 `adapter_running=true`。如果 06 的 template 已升级到返回 `detections + annotated_image + health`，需要重新执行 Save Template、Save Application，并重新创建或重建对应的 WorkflowAppRuntime；旧 runtime 继续运行时，返回结果仍会停留在旧图接口模型。
 
-上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目控制面或前端准备动作，不属于 SDK 对外提供的能力范围。
+上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目管理 API 或前端准备动作，不属于 SDK 对外提供的能力范围。
 
-常见控制面错误：
+常见管理 API 错误：
 
 - `trigger_source_id 已存在`：`POST /api/v1/workflows/trigger-sources` 是创建接口，不会覆盖已有资源。应先调用 `GET /api/v1/workflows/trigger-sources/{trigger_source_id}` 或 `.../health` 检查现有 TriggerSource 是否可直接复用。
 - 如果现有 TriggerSource 已经绑定到正确的 `workflow_runtime_id`，直接对这个 runtime 执行 start，再调用 enable 即可，不需要重复 create TriggerSource。
@@ -104,7 +105,7 @@ event_id=<event_id>
 ## 最小调用
 
 ```csharp
-using Amvision.TriggerSources;
+using Amvision.Workflows;
 
 using var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
 {

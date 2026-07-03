@@ -13,7 +13,7 @@
 - 04/05 保持为 HTTP base64 workflow app 调试示例；06/07 单独保存同 app HTTP base64 + ZeroMQ image-ref 调试示例，避免把两类入口混在同一目录中。
 - TriggerSource 只提交协议原生输入，不负责把 `image-ref.v1` 主动转换成 `image-base64.v1`，也不负责补出本地图片、相机帧或其他节点级输入。
 - 当前已接入 ZeroMQ、第一阶段 PLC、`directory-poll` 和 `directory-watch`；后续 MQTT、gRPC、IO 变化、传感器读取、schedule 和 Webhook 触发，可以继续扩展为 WorkflowTriggerSource。
-- 面向设备上位机、MES、采集程序和调试脚本的外部调用方 SDK 规划见 [docs/api/trigger-source-sdks.md](trigger-source-sdks.md)。
+- 面向设备上位机、MES、采集程序和调试脚本的外部调用方 SDK 规划见 [docs/api/workflow-sdks.md](workflow-sdks.md)。
 - 传感器读数、阈值越界、状态翻转和采样结果本身就是物理世界进入 workflow 的直接触发入口，不应只被视为运行中节点的附属输入。
 - 外部触发入口与节点图本身分层：触发源负责监听、过滤、去重和创建 WorkflowRun；runtime 负责执行。
 - 当前草案不把“首节点轮询外部世界”作为默认触发模型。
@@ -187,12 +187,12 @@ SDK 的标准职责是：
 
 - 封装 ZeroMQ envelope、图片 bytes 发送和 TriggerResult 解析。
 - 封装 event_id、trace_id、metadata、timeout、连接重建和统一错误码。
-- 提供可选 REST control client，用于 health 检查、enable/disable 和 run 查询。
+- 提供可选 REST API client，用于 health 检查、enable/disable 和 run 查询。
 - 提供 06/07 同 app HTTP base64 + ZeroMQ image-ref 的真实图片调用示例，并说明图内节点负责转换。
 
 SDK 不直接写 LocalBufferBroker，不直接调用 workflow worker，不访问数据库，也不把客户现场硬件驱动写进通用包。
 
-仓库根目录建议使用 `sdks/` 保存外部 SDK，与 `backend/`、`frontend/` 和 `custom_nodes/` 分离。第一优先级是 C# / .NET SDK，兼容 .NET Framework 上位机软件和 .NET Core / .NET 应用；随后补 Python、Go 和 C。详细目录、调用流程和版本规则见 [docs/api/trigger-source-sdks.md](trigger-source-sdks.md)。
+仓库根目录建议使用 `sdks/` 保存外部 SDK，与 `backend/`、`frontend/` 和 `custom_nodes/` 分离。第一优先级是 C# / .NET SDK，兼容 .NET Framework 上位机软件和 .NET Core / .NET 应用；随后补 Python、Go 和 C。详细目录、调用流程和版本规则见 [docs/api/workflow-sdks.md](workflow-sdks.md)。
 
 ## 图片输入的两条入口路径
 
@@ -1149,23 +1149,23 @@ docs/api/examples/workflows/06-zeromq-trigger-source.md
 开发内容：
 
 - 在仓库根目录增加 `sdks/`，与 backend-service 内部实现分离。
-- 在 `sdks/contracts/` 固定 ZeroMQ envelope、TriggerResult 和错误 reply 的 schema 与示例。
+- 在 `sdks/schemas/` 固定 ZeroMQ envelope、TriggerResult 和错误 reply 的 schema 与示例。
 - 优先实现 C# / .NET SDK，覆盖 .NET Framework 和 .NET Core / .NET 应用。
 - 增加 Python SDK 和 CLI，服务本地联调、自动化测试和轻量桥接。
 - 后续按需要补 Go SDK 和 C SDK。
 - SDK 提供统一的 `InvokeImage` / `SubmitImage` 类接口，封装 event_id、trace_id、metadata、timeout 和错误码。
-- SDK 提供可选 REST control client，用于检查 trigger source health、enable/disable 和 run 查询。
+- SDK 提供可选 REST API client，用于检查 trigger source health、enable/disable 和 run 查询。
 
 主要文件：
 
 ```text
 sdks/README.md
-sdks/contracts/
+sdks/schemas/
 sdks/dotnet/
 sdks/python/
 sdks/go/
 sdks/c/
-docs/api/trigger-source-sdks.md
+docs/api/workflow-sdks.md
 ```
 
 验收点：

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amvision.local/contracts/zeromq-trigger-envelope.v1.schema.json",
+  "title": "Amvision ZeroMQ Trigger Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "trigger_source_id": { "type": "string", "minLength": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "occurred_at": { "type": "string", "minLength": 1 },
+    "input_binding": { "type": "string", "minLength": 1 },
+    "media_type": { "type": "string", "minLength": 1 },
+    "shape": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "dtype": { "type": "string", "minLength": 1 },
+    "layout": { "type": "string", "minLength": 1 },
+    "pixel_format": { "type": "string", "minLength": 1 },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

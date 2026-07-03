@@ -327,7 +327,7 @@ src/shared/
 ├─ ui/
 ├─ api/
 ├─ ws/
-├─ contracts/
+├─ schemas/
 ├─ composables/
 ├─ utils/
 ├─ styles/
