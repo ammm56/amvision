@@ -10,14 +10,17 @@ from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
 from backend.service.api.bootstrap import BackendServiceBootstrap
+from backend.service.api.rest.v1.routes.system.config import build_system_config_payload
 from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.settings import (
     BackendServiceAppSettings,
+    BackendServiceAuthConfig,
     BackendServiceDatabaseConfig,
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
+    BackendServiceStaticAccessTokenConfig,
     BackendServiceTaskManagerConfig,
     get_backend_service_settings,
 )
@@ -108,6 +111,68 @@ def test_database_route_checks_scope_and_uses_unit_of_work(tmp_path: Path) -> No
     assert allowed_response.status_code == 200
     assert allowed_response.json()["database"] == "reachable"
     assert allowed_response.json()["scalar"] == 1
+
+
+def test_system_config_route_returns_resolved_backend_config(tmp_path: Path) -> None:
+    """验证系统配置接口返回当前进程已解析配置。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    try:
+        with client:
+            denied_token = issue_test_user_token(
+                session_factory,
+                username="config-denied",
+                scopes=("datasets:read",),
+            )
+            denied_response = client.get(
+                "/api/v1/system/config",
+                headers=build_bearer_headers(denied_token),
+            )
+            allowed_response = client.get(
+                "/api/v1/system/config",
+                headers=build_test_headers(scopes="system:read"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert denied_response.status_code == 403
+    assert denied_response.json()["error"]["code"] == "permission_denied"
+    assert allowed_response.status_code == 200
+    payload = allowed_response.json()
+    assert payload["format_id"] == "amvision.backend-service-config.v1"
+    assert payload["metadata"]["source"] == "runtime-resolved"
+    local_buffer_config = payload["config"]["local_buffer_broker"]
+    assert local_buffer_config["default_pool_name"] == "image-test"
+    assert "default_pool" not in local_buffer_config
+    assert [pool["pool_name"] for pool in local_buffer_config["pools"]] == ["image-test"]
+
+
+def test_system_config_payload_redacts_sensitive_config_values() -> None:
+    """验证系统配置快照不会暴露明文 token 和数据库密码。"""
+
+    settings = BackendServiceSettings(
+        auth=BackendServiceAuthConfig(
+            mode="static-bearer",
+            static_tokens=[
+                BackendServiceStaticAccessTokenConfig(
+                    token="secret-static-token",
+                    principal_id="service-account-1",
+                    scopes=["system:read"],
+                )
+            ],
+        ),
+        database=BackendServiceDatabaseConfig(
+            url="postgresql://amvision:secret-db-password@127.0.0.1/amvision",
+        ),
+        local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
+    )
+
+    payload = build_system_config_payload(settings)
+
+    assert payload["auth"]["static_tokens"][0]["token"] == "***"
+    assert payload["database"]["url"] == "postgresql://amvision:***@127.0.0.1/amvision"
+    assert "secret-static-token" not in json.dumps(payload)
+    assert "secret-db-password" not in json.dumps(payload)
 
 
 def test_diagnostics_route_requires_auth_read_and_returns_system_summary(tmp_path: Path) -> None:

@@ -161,8 +161,9 @@
 - `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-1080p`
 - `local_buffer_broker.pools` 应按现场相机分辨率、图像编码方式和并发量显式配置；`slot_size_bytes` 必须大于单帧最大 bytes，`slot_count` 是可同时占用的槽位数量
 - 仓库默认创建 `image-1080p` 和 `image-640x640` 两个 pool；mmap 文件名按 `pool_name` 自动生成，总容量按 `slot_size_bytes * slot_count` 自动计算
-- `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`
+- `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`，仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略
 - ZeroMQ TriggerSource 可以通过 `transport_config.pool_name` 选择目标 pool；不配置时使用 `local_buffer_broker.default_pool_name`
+- 前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项；页面不维护独立默认 pool 列表
 - 如果使用 `config/backend-service.local.json` 覆盖 `local_buffer_broker`，建议把 `enabled/root_dir/default_pool_name/pools` 作为完整配置块一起写入，避免现场配置只覆盖部分字段后难以判断实际 pool 大小
 - pool 的 `flush_on_write` 默认建议为 `false`，用于 ZeroMQ 和本机 workflow 临时图片输入；只有确实需要把 mmap 写入强制刷到文件系统时才改为 `true`
 - `deployment_process_supervisor` 提供 deployment 子进程的默认 warmup、keep-warm 和 TensorRT 输出 host buffer 行为；DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`

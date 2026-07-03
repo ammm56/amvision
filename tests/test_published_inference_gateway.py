@@ -192,7 +192,7 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
     assert len(cleanup_items) == 1
     assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
     assert cleanup_items[0].resource_id == "lease-memory"
-    assert cleanup_items[0].metadata == {"pool_name": "image-small"}
+    assert cleanup_items[0].metadata == {"pool_name": "image-test"}
 
 
 def test_run_detection_inference_task_preserves_input_image_payload() -> None:
@@ -304,7 +304,7 @@ class _FakeLocalBufferWriter:
         self.last_content = content
         self.last_owner_id = owner_id
         return SimpleNamespace(
-            lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-small"),
+            lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-test"),
             buffer_ref=_build_buffer_ref(lease_id="lease-memory", media_type=media_type),
         )
 
@@ -338,9 +338,9 @@ def _build_buffer_ref(*, lease_id: str = "lease-1", media_type: str = "image/jpe
     """构造测试使用的 BufferRef。"""
 
     return BufferRef(
-        buffer_id="image-small:0",
+        buffer_id="image-test:0",
         lease_id=lease_id,
-        path="runtime/buffers/image-small/pool-001.dat",
+        path="runtime/buffers/image-test/pool-001.dat",
         offset=0,
         size=16,
         media_type=media_type,

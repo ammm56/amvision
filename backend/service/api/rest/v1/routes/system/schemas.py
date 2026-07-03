@@ -113,3 +113,14 @@ class SystemDiagnosticsResponse(BaseModel):
     python_runtime: dict[str, object] = Field(default_factory=dict, description="Python 解释器、环境和关键依赖摘要")
     devices: dict[str, object] = Field(default_factory=dict, description="设备与推理运行时摘要")
     services: dict[str, object] = Field(default_factory=dict, description="服务组件运行摘要")
+
+
+class SystemConfigResponse(BaseModel):
+    """描述前端读取的 backend-service 统一配置快照。"""
+
+    format_id: str = Field(
+        default="amvision.backend-service-config.v1",
+        description="配置快照格式 id",
+    )
+    config: dict[str, object] = Field(default_factory=dict, description="当前进程已解析并合并后的配置")
+    metadata: dict[str, object] = Field(default_factory=dict, description="配置快照附加信息")

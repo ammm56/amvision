@@ -27,11 +27,11 @@ def test_buffer_ref_frame_ref_and_lease_contracts_are_json_stable() -> None:
     created_at = datetime(2026, 5, 12, tzinfo=timezone.utc)
     lease = BufferLease(
         lease_id="lease-1",
-        buffer_id="image-small:0",
+        buffer_id="image-test:0",
         owner_kind="preview-run",
         owner_id="preview-1",
-        pool_name="image-small",
-        file_path="runtime/buffers/image-small/pool-001.dat",
+        pool_name="image-test",
+        file_path="runtime/buffers/image-test/pool-001.dat",
         offset=0,
         size=6,
         created_at=created_at,
@@ -57,7 +57,7 @@ def test_buffer_ref_frame_ref_and_lease_contracts_are_json_stable() -> None:
         stream_id="line-a-camera-1",
         sequence_id=1,
         buffer_id="ring-line-a-camera-1",
-        path="runtime/buffers/image-small/pool-001.dat",
+        path="runtime/buffers/image-test/pool-001.dat",
         offset=64,
         size=6,
         shape=(2, 3, 1),
@@ -293,7 +293,7 @@ def _build_pool(tmp_path: Path) -> MmapBufferPool:
 
     return MmapBufferPool(
         MmapBufferPoolConfig(
-            pool_name="image-small",
+            pool_name="image-test",
             root_dir=tmp_path / "buffers",
             file_size_bytes=128,
             slot_size_bytes=64,
