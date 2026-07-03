@@ -49,9 +49,9 @@ dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.
 
 ```powershell
 dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-health yolo11m_barqrcode_runtime
-dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-use yolo11m_barqrcode_runtime
+dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-check-flow yolo11m_barqrcode_runtime
 dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-invoke yolo11m_barqrcode_runtime
-dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-submit-run yolo11m_barqrcode_runtime
+dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- runtime-run yolo11m_barqrcode_runtime
 dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- triggersource-health yolo11m_barqrcode_zeromq
 dotnet run --project sdks/dotnet/apps/Amvision.Workflows.Net461Console/Amvision.Workflows.Net461Console.csproj -- zeromq-image yolo11m_barqrcode_zeromq C:\data\sample.jpg
 ```

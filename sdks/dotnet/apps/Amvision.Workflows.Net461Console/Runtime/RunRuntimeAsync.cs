@@ -4,17 +4,17 @@ using System.Threading.Tasks;
 namespace Amvision.Workflows.Net461Console.Runtime;
 
 /// <summary>
-/// 异步 WorkflowRun 提交操作。
+/// WorkflowAppRuntime 异步 run 调用。
 /// </summary>
 internal sealed partial class WorkflowRuntimeOperations
 {
     /// <summary>
-    /// 使用 runtime key 提交一次异步 WorkflowRun 调用。
+    /// 使用 runtime key 发起一次异步 run，后端会创建一条 WorkflowRun 运行记录。
     /// </summary>
     /// <param name="runtimeName">runtime key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>WorkflowRun 响应。</returns>
-    public async Task<WorkflowRunResponse> SubmitWorkflowRunAsync(
+    public async Task<WorkflowRunResponse> RunRuntimeAsync(
         string runtimeName,
         CancellationToken cancellationToken = default)
     {
@@ -24,7 +24,7 @@ internal sealed partial class WorkflowRuntimeOperations
             BuildWorkflowRunRequest(configuredRuntime, configuredRuntime.Invoke.AsyncScenario),
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Submitted WorkflowRun: {run.WorkflowRunId} | {run.State}");
+        Console.WriteLine($"Runtime run created WorkflowRun: {run.WorkflowRunId} | {run.State}");
         return run;
     }
 }
