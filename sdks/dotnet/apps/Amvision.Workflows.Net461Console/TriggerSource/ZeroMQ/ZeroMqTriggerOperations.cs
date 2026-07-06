@@ -8,12 +8,28 @@ namespace Amvision.Workflows.Net461Console.TriggerSource.ZeroMQ;
 /// <summary>
 /// ZeroMQ TriggerSource 协议调用操作集合。
 /// </summary>
-internal sealed partial class ZeroMqTriggerOperations
+internal sealed partial class ZeroMqTriggerOperations : IDisposable
 {
+    /// <summary>
+    /// ZeroMQ client 缓存锁，避免并发创建同一个 TriggerSource client。
+    /// </summary>
+    private readonly object clientSyncRoot = new();
+
     /// <summary>
     /// runtime 和 TriggerSource 配置索引。
     /// </summary>
     private readonly WorkflowConfigurationCatalog catalog;
+
+    /// <summary>
+    /// 按 TriggerSource key 复用的 ZeroMQ SDK client。
+    /// </summary>
+    private readonly Dictionary<string, AmvisionTriggerClient> clients =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 标记当前操作对象是否已经释放。
+    /// </summary>
+    private bool disposed;
 
     /// <summary>
     /// 初始化 ZeroMQ 触发操作对象。
@@ -22,6 +38,28 @@ internal sealed partial class ZeroMqTriggerOperations
     public ZeroMqTriggerOperations(WorkflowConfigurationCatalog catalog)
     {
         this.catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+    }
+
+    /// <summary>
+    /// 释放所有复用的 ZeroMQ client 和底层 socket。
+    /// </summary>
+    public void Dispose()
+    {
+        lock (clientSyncRoot)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            foreach (var client in clients.Values)
+            {
+                client.Dispose();
+            }
+
+            clients.Clear();
+            disposed = true;
+        }
     }
 
     /// <summary>
@@ -39,15 +77,30 @@ internal sealed partial class ZeroMqTriggerOperations
     /// </summary>
     /// <param name="configuredTriggerSource">已展开的 TriggerSource 配置。</param>
     /// <returns>ZeroMQ TriggerSource client。</returns>
-    private static AmvisionTriggerClient CreateClient(ConfiguredTriggerSource configuredTriggerSource)
+    private AmvisionTriggerClient GetClient(ConfiguredTriggerSource configuredTriggerSource)
     {
-        return new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+        lock (clientSyncRoot)
         {
-            Endpoint = configuredTriggerSource.TriggerSource.ZeroMq.BindEndpoint,
-            TriggerSourceId = configuredTriggerSource.TriggerSource.TriggerSourceId,
-            DefaultInputBinding = configuredTriggerSource.TriggerSource.ZeroMq.DefaultInputBinding,
-            Timeout = TimeSpan.FromSeconds(configuredTriggerSource.TriggerSource.ZeroMq.TimeoutSeconds)
-        });
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(ZeroMqTriggerOperations));
+            }
+
+            var key = configuredTriggerSource.TriggerSource.Name;
+            if (!clients.TryGetValue(key, out var client))
+            {
+                client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+                {
+                    Endpoint = configuredTriggerSource.TriggerSource.ZeroMq.BindEndpoint,
+                    TriggerSourceId = configuredTriggerSource.TriggerSource.TriggerSourceId,
+                    DefaultInputBinding = configuredTriggerSource.TriggerSource.ZeroMq.DefaultInputBinding,
+                    Timeout = TimeSpan.FromSeconds(configuredTriggerSource.TriggerSource.ZeroMq.TimeoutSeconds)
+                });
+                clients[key] = client;
+            }
+
+            return client;
+        }
     }
 
     /// <summary>

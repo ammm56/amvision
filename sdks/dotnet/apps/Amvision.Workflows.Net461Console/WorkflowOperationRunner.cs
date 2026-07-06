@@ -81,10 +81,11 @@ public sealed class WorkflowOperationRunner : IDisposable
     public IEnumerable<string> TriggerSourceNames => catalog.TriggerSources.Keys;
 
     /// <summary>
-    /// 释放内部 HTTP client。
+    /// 释放内部 HTTP client 和 ZeroMQ client。
     /// </summary>
     public void Dispose()
     {
+        zeroMqOperations.Dispose();
         workflowClient.Dispose();
     }
 

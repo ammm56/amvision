@@ -31,6 +31,10 @@ public sealed class AmvisionTriggerClient : IDisposable
         WriteIndented = false
     };
 
+    /// <summary>
+    /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
+    /// </summary>
+    private readonly object syncRoot = new();
     private readonly AmvisionTriggerClientOptions options;
     private readonly IZeroMqRequestTransport transport;
     private readonly bool ownsTransport;
@@ -68,18 +72,19 @@ public sealed class AmvisionTriggerClient : IDisposable
     /// <returns>backend-service 返回的 TriggerResult。</returns>
     public TriggerResult InvokeImage(ImageTriggerRequest request)
     {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
-        }
-
         ValidateRequest(request);
         var envelope = BuildEnvelope(request);
         var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
-        var replyFrames = transport.Send(
-            new[] { envelopeBytes, request.ImageBytes },
-            options.Timeout
-        );
+        IReadOnlyList<byte[]> replyFrames;
+        lock (syncRoot)
+        {
+            ThrowIfDisposed();
+            replyFrames = transport.Send(
+                new[] { envelopeBytes, request.ImageBytes },
+                options.Timeout
+            );
+        }
+
         return ParseReply(replyFrames);
     }
 
@@ -102,15 +107,16 @@ public sealed class AmvisionTriggerClient : IDisposable
     /// <returns>backend-service 返回的 TriggerResult。</returns>
     public TriggerResult InvokeEvent(TriggerEventRequest request)
     {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
-        }
-
         ValidateRequest(request);
         var envelope = BuildEnvelope(request);
         var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
-        var replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
+        IReadOnlyList<byte[]> replyFrames;
+        lock (syncRoot)
+        {
+            ThrowIfDisposed();
+            replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
+        }
+
         return ParseReply(replyFrames);
     }
 
@@ -222,17 +228,31 @@ public sealed class AmvisionTriggerClient : IDisposable
     /// </summary>
     public void Dispose()
     {
+        lock (syncRoot)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            if (ownsTransport)
+            {
+                transport.Dispose();
+            }
+
+            disposed = true;
+        }
+    }
+
+    /// <summary>
+    /// 检查客户端是否已经释放。
+    /// </summary>
+    private void ThrowIfDisposed()
+    {
         if (disposed)
         {
-            return;
+            throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
         }
-
-        if (ownsTransport)
-        {
-            transport.Dispose();
-        }
-
-        disposed = true;
     }
 
     /// <summary>

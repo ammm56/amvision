@@ -10,7 +10,24 @@ namespace Amvision.Workflows;
 /// </summary>
 public sealed class NetMqRequestTransport : IZeroMqRequestTransport
 {
-    private readonly RequestSocket socket;
+    /// <summary>
+    /// 保护 RequestSocket 的发送、接收、重建和释放；REQ socket 不能并发使用。
+    /// </summary>
+    private readonly object syncRoot = new();
+
+    /// <summary>
+    /// ZeroMQ endpoint，用于 socket 异常或 timeout 后重新连接。
+    /// </summary>
+    private readonly string endpoint;
+
+    /// <summary>
+    /// 当前复用的 RequestSocket。
+    /// </summary>
+    private RequestSocket socket;
+
+    /// <summary>
+    /// 标记 transport 是否已经释放。
+    /// </summary>
     private bool disposed;
 
     /// <summary>
@@ -24,9 +41,8 @@ public sealed class NetMqRequestTransport : IZeroMqRequestTransport
             throw new ArgumentException("Endpoint cannot be empty.", nameof(endpoint));
         }
 
-        socket = new RequestSocket();
-        socket.Options.Linger = TimeSpan.Zero;
-        socket.Connect(endpoint);
+        this.endpoint = endpoint.Trim();
+        socket = CreateSocket(this.endpoint);
     }
 
     /// <summary>
@@ -37,37 +53,57 @@ public sealed class NetMqRequestTransport : IZeroMqRequestTransport
     /// <returns>ZeroMQ REP 返回的 multipart frames。</returns>
     public IReadOnlyList<byte[]> Send(IReadOnlyList<byte[]> frames, TimeSpan timeout)
     {
-        if (disposed)
+        lock (syncRoot)
         {
-            throw new ObjectDisposedException(nameof(NetMqRequestTransport));
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(NetMqRequestTransport));
+            }
+
+            if (frames is null)
+            {
+                throw new ArgumentNullException(nameof(frames));
+            }
+
+            if (frames.Count == 0)
+            {
+                throw new ArgumentException("At least one frame is required.", nameof(frames));
+            }
+
+            try
+            {
+                var outgoing = new NetMQMessage();
+                foreach (var frame in frames)
+                {
+                    outgoing.Append(frame);
+                }
+
+                socket.SendMultipartMessage(outgoing);
+
+                var incoming = new NetMQMessage();
+                if (!socket.TryReceiveMultipartMessage(timeout, ref incoming))
+                {
+                    throw new AmvisionTriggerTimeoutException("Timed out waiting for ZeroMQ TriggerSource reply.");
+                }
+
+                var response = new List<byte[]>(incoming.FrameCount);
+                foreach (var frame in incoming)
+                {
+                    response.Add(frame.ToByteArray());
+                }
+
+                return response;
+            }
+            catch
+            {
+                if (!disposed)
+                {
+                    ResetSocket();
+                }
+
+                throw;
+            }
         }
-
-        if (frames.Count == 0)
-        {
-            throw new ArgumentException("At least one frame is required.", nameof(frames));
-        }
-
-        var outgoing = new NetMQMessage();
-        foreach (var frame in frames)
-        {
-            outgoing.Append(frame);
-        }
-
-        socket.SendMultipartMessage(outgoing);
-
-        var incoming = new NetMQMessage();
-        if (!socket.TryReceiveMultipartMessage(timeout, ref incoming))
-        {
-            throw new AmvisionTriggerTimeoutException("Timed out waiting for ZeroMQ TriggerSource reply.");
-        }
-
-        var response = new List<byte[]>(incoming.FrameCount);
-        foreach (var frame in incoming)
-        {
-            response.Add(frame.ToByteArray());
-        }
-
-        return response;
     }
 
     /// <summary>
@@ -75,12 +111,37 @@ public sealed class NetMqRequestTransport : IZeroMqRequestTransport
     /// </summary>
     public void Dispose()
     {
-        if (disposed)
+        lock (syncRoot)
         {
-            return;
-        }
+            if (disposed)
+            {
+                return;
+            }
 
+            socket.Dispose();
+            disposed = true;
+        }
+    }
+
+    /// <summary>
+    /// 创建并连接一个新的 RequestSocket。
+    /// </summary>
+    /// <param name="endpoint">ZeroMQ endpoint。</param>
+    /// <returns>已连接的 RequestSocket。</returns>
+    private static RequestSocket CreateSocket(string endpoint)
+    {
+        var requestSocket = new RequestSocket();
+        requestSocket.Options.Linger = TimeSpan.Zero;
+        requestSocket.Connect(endpoint);
+        return requestSocket;
+    }
+
+    /// <summary>
+    /// 释放当前 socket 并重新连接，用于恢复 REQ socket 超时或异常后的状态机。
+    /// </summary>
+    private void ResetSocket()
+    {
         socket.Dispose();
-        disposed = true;
+        socket = CreateSocket(endpoint);
     }
 }

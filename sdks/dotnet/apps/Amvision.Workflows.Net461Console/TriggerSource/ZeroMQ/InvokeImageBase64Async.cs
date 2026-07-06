@@ -27,7 +27,7 @@ internal sealed partial class ZeroMqTriggerOperations
         var request = ImageTriggerRequest.FromBase64(imageBase64, mediaType);
         EnsureImageByteCount(request.ImageBytes.LongLength, configuredTriggerSource, nameof(imageBase64));
         ApplyImageDefaults(request, configuredTriggerSource);
-        using var client = CreateClient(configuredTriggerSource);
+        var client = GetClient(configuredTriggerSource);
         var result = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
         return result;
     }

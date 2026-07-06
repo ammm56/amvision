@@ -13,6 +13,8 @@ var tests = new Action[]
     InvokeEventBuildsEnvelopeOnlyFrame,
     ImageTriggerRequestHelpersBuildSecondFrameBytes,
     InvokeImageUsesNetMqReqRepTransport,
+    NetMqTransportRecoversAfterTimeout,
+    AmvisionTriggerClientSerializesTransportCalls,
     ErrorReplyRaisesTypedException,
     InvalidImageRequestIsRejected,
     EmptyReplyIsRejected,
@@ -231,6 +233,78 @@ static void InvokeImageUsesNetMqReqRepTransport()
     AssertEqual("workflow-run-netmq", result.WorkflowRunId);
     AssertEqual(2, receivedFrames.Count);
     AssertSequence(new byte[] { 9, 8, 7 }, receivedFrames[1]);
+}
+
+// 验证 NetMQ transport 在 timeout 后会重建 REQ socket，下一次请求仍可成功。
+static void NetMqTransportRecoversAfterTimeout()
+{
+    var endpoint = $"tcp://127.0.0.1:{GetFreeTcpPort()}";
+    using var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+    {
+        Endpoint = endpoint,
+        TriggerSourceId = "trigger-source-recover",
+        Timeout = TimeSpan.FromSeconds(1)
+    });
+
+    AssertThrows<AmvisionTriggerTimeoutException>(() => client.InvokeEvent(TriggerEventRequest.Empty()));
+
+    var ready = new ManualResetEventSlim(false);
+    Exception? serverException = null;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            using var socket = new ResponseSocket();
+            socket.Options.Linger = TimeSpan.Zero;
+            socket.Bind(endpoint);
+            ready.Set();
+
+            var request = new NetMQMessage();
+            if (!socket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(5), ref request))
+            {
+                throw new TimeoutException("Timed out waiting for recovered SDK request.");
+            }
+
+            socket.SendFrame("{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-recover\",\"event_id\":\"event-recover\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-recover\",\"response_payload\":{},\"metadata\":{}}");
+        }
+        catch (Exception exception)
+        {
+            serverException = exception;
+            ready.Set();
+        }
+    });
+    thread.IsBackground = true;
+    thread.Start();
+    ready.Wait(TimeSpan.FromSeconds(5));
+
+    var result = client.InvokeEvent(new TriggerEventRequest { EventId = "event-recover" });
+    thread.Join(TimeSpan.FromSeconds(5));
+    if (serverException is not null)
+    {
+        throw serverException;
+    }
+
+    AssertEqual("accepted", result.State);
+    AssertEqual("workflow-run-recover", result.WorkflowRunId);
+}
+
+// 验证同一个 AmvisionTriggerClient 的并发调用会串行进入 transport，避免 REQ socket 并发冲突。
+static void AmvisionTriggerClientSerializesTransportCalls()
+{
+    var transport = new ConcurrentGuardTransport();
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions { TriggerSourceId = "trigger-source-serial" },
+        transport
+    );
+
+    var firstTask = client.InvokeEventAsync(new TriggerEventRequest { EventId = "event-serial-1" });
+    var secondTask = client.InvokeEventAsync(new TriggerEventRequest { EventId = "event-serial-2" });
+    Task.WaitAll(firstTask, secondTask);
+
+    AssertEqual("accepted", firstTask.Result.State);
+    AssertEqual("accepted", secondTask.Result.State);
+    AssertEqual(2, transport.SendCount);
+    AssertEqual(1, transport.MaxConcurrentSendCount);
 }
 
 // 验证 ZeroMQ error reply 会转换为 SDK 异常。
@@ -864,6 +938,66 @@ internal sealed class TimeoutTransport : IZeroMqRequestTransport
     }
 
     // 释放 timeout transport。
+    public void Dispose()
+    {
+    }
+}
+
+internal sealed class ConcurrentGuardTransport : IZeroMqRequestTransport
+{
+    private int activeSendCount;
+    private int sendCount;
+    private int maxConcurrentSendCount;
+
+    public int SendCount => sendCount;
+
+    public int MaxConcurrentSendCount => maxConcurrentSendCount;
+
+    // 检测 Send 是否被并发进入，并返回正常 TriggerResult。
+    public IReadOnlyList<byte[]> Send(IReadOnlyList<byte[]> frames, TimeSpan timeout)
+    {
+        _ = (frames, timeout);
+        var currentActiveCount = Interlocked.Increment(ref activeSendCount);
+        try
+        {
+            if (currentActiveCount > 1)
+            {
+                throw new InvalidOperationException("Transport Send was called concurrently.");
+            }
+
+            UpdateMaxConcurrentSendCount(currentActiveCount);
+            Thread.Sleep(50);
+            Interlocked.Increment(ref sendCount);
+            return new[]
+            {
+                Encoding.UTF8.GetBytes("{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-serial\",\"event_id\":\"event-serial\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-serial\",\"response_payload\":{},\"metadata\":{}}")
+            };
+        }
+        finally
+        {
+            Interlocked.Decrement(ref activeSendCount);
+        }
+    }
+
+    // 记录测试期间观察到的最大并发 Send 数。
+    private void UpdateMaxConcurrentSendCount(int currentActiveCount)
+    {
+        while (true)
+        {
+            var snapshot = maxConcurrentSendCount;
+            if (currentActiveCount <= snapshot)
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref maxConcurrentSendCount, currentActiveCount, snapshot) == snapshot)
+            {
+                return;
+            }
+        }
+    }
+
+    // 释放 fake transport。
     public void Dispose()
     {
     }

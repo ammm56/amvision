@@ -58,3 +58,5 @@ var runtimeHealth = await runner.GetRuntimeHealthAsync(RuntimeName, cancellation
 
 `WorkflowOperationRunner` 是接入 WinForms/WPF 的主要入口。第三方程序可以直接调用 `WorkflowOperationRunner.CreateDefault()` 读取 `Config/config_*.json`，然后按业务按钮或菜单调用对应方法。每个方法都显式接收 runtime key 或 TriggerSource key，并在调用前从 `WorkflowConfigurationCatalog` 获取配置做防呆校验；不存在对应 key 时会直接抛出明确错误。
 查询和调用方法会返回 SDK typed response、typed list 或组合检查结果，不在封装方法内部写控制台输出。调用方可以直接绑定到界面、继续参与业务判断，是否打印或记录日志由调用方决定。
+
+现场高频推理调用时，应在程序启动后长期持有一个 `WorkflowOperationRunner`，在窗口关闭或进程退出时统一 `Dispose()`。ZeroMQ client 会按 TriggerSource key 复用底层 socket，并在 timeout 或 socket 异常后自动重建；相机内存帧优先调用 `InvokeZeroMqImageBytesAsync`，文件和 base64 入口更适合调试或低频调用。
