@@ -22,7 +22,7 @@ internal static class Program
     /// <summary>
     /// WorkflowAppRuntime 或 ZeroMQ 图片文件路径；调用 ImageFromFile 方法时填写。
     /// </summary>
-    private const string ImagePath = "";
+    private const string ImagePath = "Resources\\Img\\qrcode50.jpg";
 
     /// <summary>
     /// 现场相机或其他上游程序传入的 base64 图片；调用 ImageBase64 方法时填写。
@@ -65,17 +65,17 @@ internal static class Program
         //var restartedRuntime = await runner.RestartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         var runtimeInstances = await runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
 
-        var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        //var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        //var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        var syncBase64Result = await runner.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        
+        //var syncBytesResult = await runner.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var syncFileResult = await runner.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var asyncBase64Run = await runner.RunRuntimeWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var asyncBytesRun = await runner.RunRuntimeWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var asyncFileRun = await runner.RunRuntimeWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
-        // var syncBase64Result = await runner.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        // var syncBytesResult = await runner.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        // var syncFileResult = await runner.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-        // var asyncBase64Run = await runner.RunRuntimeWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        // var asyncBytesRun = await runner.RunRuntimeWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        // var asyncFileRun = await runner.RunRuntimeWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        var checkResult = await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        //var checkResult = await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         var runtimeEvents = await runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         var triggerSources = await runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         var triggerSource = await runner.GetTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
@@ -88,7 +88,7 @@ internal static class Program
 
         var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(
             TriggerSourceName,
-            "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAg",
+            ImageBase64,
             mediaType: "image/jpeg",
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }

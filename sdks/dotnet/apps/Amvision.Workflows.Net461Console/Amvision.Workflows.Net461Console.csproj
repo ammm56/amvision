@@ -27,4 +27,10 @@
   <ItemGroup>
     <None Update="Config\config_*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Resources\Img\qrcode50.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
