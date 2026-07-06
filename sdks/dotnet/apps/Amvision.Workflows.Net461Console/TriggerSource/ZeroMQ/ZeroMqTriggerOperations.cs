@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Amvision.Workflows.Net461Console.Model;
@@ -61,6 +62,68 @@ internal sealed partial class ZeroMqTriggerOperations
         return Path.IsPathRooted(normalizedPath)
             ? normalizedPath
             : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configuredTriggerSource.SourceFile) ?? ".", normalizedPath));
+    }
+
+    /// <summary>
+    /// 校验图片 bytes 大小，避免误传超大文件导致内存压力。
+    /// </summary>
+    /// <param name="imageByteCount">图片 bytes 数量。</param>
+    /// <param name="configuredTriggerSource">TriggerSource 配置。</param>
+    /// <param name="sourceName">输入来源名称。</param>
+    private static void EnsureImageByteCount(
+        long imageByteCount,
+        ConfiguredTriggerSource configuredTriggerSource,
+        string sourceName)
+    {
+        if (imageByteCount <= 0)
+        {
+            throw new InvalidOperationException($"{sourceName} image bytes cannot be empty.");
+        }
+
+        var maxImageBytes = configuredTriggerSource.TriggerSource.ZeroMq.MaxImageBytes;
+        if (imageByteCount > maxImageBytes)
+        {
+            throw new InvalidOperationException(
+                $"{sourceName} image bytes {imageByteCount} exceeds zero_mq.max_image_bytes {maxImageBytes}.");
+        }
+    }
+
+    /// <summary>
+    /// 估算 base64 解码后的 bytes 大小，用于在真正解码前做输入大小防呆。
+    /// </summary>
+    /// <param name="imageBase64">图片 base64 或 data URL。</param>
+    /// <returns>估算后的解码 bytes 数量。</returns>
+    private static long EstimateBase64DecodedByteCount(string imageBase64)
+    {
+        var normalizedBase64 = ConfigValidation.RequireText(imageBase64, nameof(imageBase64));
+        var commaIndex = normalizedBase64.IndexOf(',');
+        if (normalizedBase64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && commaIndex > 0)
+        {
+            normalizedBase64 = normalizedBase64.Substring(commaIndex + 1);
+        }
+
+        long base64CharCount = 0;
+        var paddingCount = 0;
+        foreach (var character in normalizedBase64)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                continue;
+            }
+
+            base64CharCount++;
+            if (character == '=')
+            {
+                paddingCount++;
+            }
+        }
+
+        if (base64CharCount == 0)
+        {
+            return 0;
+        }
+
+        return ((base64CharCount + 3) / 4 * 3) - Math.Min(paddingCount, 2);
     }
 
     /// <summary>

@@ -25,12 +25,6 @@ internal sealed partial class WorkflowRuntimeOperations
             limit: 20,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine("WorkflowAppRuntime list:");
-        foreach (var runtime in runtimes)
-        {
-            Console.WriteLine($"  {runtime.WorkflowRuntimeId} | {runtime.DisplayName} | {runtime.DesiredState}/{runtime.ObservedState}");
-        }
-
         return runtimes;
     }
 }

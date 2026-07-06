@@ -23,7 +23,6 @@ internal sealed partial class WorkflowRuntimeOperations
             RequireRuntimeId(configuredRuntime),
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Started runtime: {configuredRuntime.Runtime.Name} | {runtime.WorkflowRuntimeId} | {runtime.DesiredState}/{runtime.ObservedState}");
         return runtime;
     }
 }

@@ -49,7 +49,6 @@ internal static class Program
     private static async Task MainAsync(CancellationToken cancellationToken)
     {
         using var runner = WorkflowOperationRunner.CreateDefault();
-        PrintLoadedConfigs(runner);
 
         var runtimeHealth = await runner.GetRuntimeHealthAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // runtimeHealth 可直接绑定到 WinForms/WPF 页面，或继续参与现场业务判断。
@@ -62,7 +61,7 @@ internal static class Program
         // var runtimeInstances = await runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
-        // await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var checkResult = await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // var runtimeEvents = await runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // var triggerSources = await runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // var triggerSource = await runner.GetTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
@@ -72,24 +71,5 @@ internal static class Program
         // var eventResult = await runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         // var configuredImageResult = await runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         // var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ZeroMqImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// 打印已加载的 runtime key 和 TriggerSource key，便于现场确认调用目标。
-    /// </summary>
-    /// <param name="runner">封装后的 Workflow 调用入口。</param>
-    private static void PrintLoadedConfigs(WorkflowOperationRunner runner)
-    {
-        Console.WriteLine("Loaded runtime config keys:");
-        foreach (var key in runner.RuntimeNames)
-        {
-            Console.WriteLine($"  runtime: {key}");
-        }
-
-        Console.WriteLine("Loaded TriggerSource config keys:");
-        foreach (var key in runner.TriggerSourceNames)
-        {
-            Console.WriteLine($"  trigger_source: {key}");
-        }
     }
 }

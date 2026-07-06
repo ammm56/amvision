@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -23,11 +24,16 @@ internal sealed partial class ZeroMqTriggerOperations
         CancellationToken cancellationToken = default)
     {
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
+        if (imageBytes is null)
+        {
+            throw new ArgumentNullException(nameof(imageBytes));
+        }
+
+        EnsureImageByteCount(imageBytes.LongLength, configuredTriggerSource, nameof(imageBytes));
         var request = ImageTriggerRequest.FromBytes(imageBytes, mediaType);
         ApplyImageDefaults(request, configuredTriggerSource);
         using var client = CreateClient(configuredTriggerSource);
         var result = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
-        Console.WriteLine($"ZeroMQ image bytes invoked: {triggerSourceName} | {result.State}");
         return result;
     }
 }

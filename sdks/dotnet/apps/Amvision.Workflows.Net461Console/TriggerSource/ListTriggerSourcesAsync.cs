@@ -25,12 +25,6 @@ internal sealed partial class WorkflowTriggerSourceOperations
             limit: 100,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"TriggerSource list: {response.Count}");
-        foreach (var item in response)
-        {
-            Console.WriteLine($"  {item.TriggerSourceId} | {item.TriggerKind} | {item.DesiredState}/{item.ObservedState}");
-        }
-
         return response;
     }
 }

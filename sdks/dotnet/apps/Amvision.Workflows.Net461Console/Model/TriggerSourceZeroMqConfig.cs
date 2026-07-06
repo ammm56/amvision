@@ -14,10 +14,17 @@ internal sealed class TriggerSourceZeroMqConfig
     [JsonPropertyName("bind_endpoint")]
     public string BindEndpoint { get; set; } = "tcp://127.0.0.1:5555";
 
+    /// <summary>
     /// ZeroMQ 图片第二帧写入 workflow 的默认 input binding；必须和前端已创建 TriggerSource 的 mapping 对齐。
     /// </summary>
     [JsonPropertyName("default_input_binding")]
     public string DefaultInputBinding { get; set; } = "request_image_ref";
+
+    /// <summary>
+    /// 单次 ZeroMQ 图片触发允许的最大图片 bytes，默认 64MB，防止误传超大文件造成内存压力。
+    /// </summary>
+    [JsonPropertyName("max_image_bytes")]
+    public int MaxImageBytes { get; set; } = 64 * 1024 * 1024;
 
     /// <summary>
     /// ZeroMQ 请求等待 reply 的超时时间，单位为秒。
@@ -36,6 +43,11 @@ internal sealed class TriggerSourceZeroMqConfig
         if (TimeoutSeconds <= 0)
         {
             throw new InvalidOperationException($"{path}.timeout_seconds must be greater than zero.");
+        }
+
+        if (MaxImageBytes <= 0)
+        {
+            throw new InvalidOperationException($"{path}.max_image_bytes must be greater than zero.");
         }
     }
 }

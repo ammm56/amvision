@@ -23,11 +23,12 @@ internal sealed partial class ZeroMqTriggerOperations
         CancellationToken cancellationToken = default)
     {
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
+        EnsureImageByteCount(EstimateBase64DecodedByteCount(imageBase64), configuredTriggerSource, nameof(imageBase64));
         var request = ImageTriggerRequest.FromBase64(imageBase64, mediaType);
+        EnsureImageByteCount(request.ImageBytes.LongLength, configuredTriggerSource, nameof(imageBase64));
         ApplyImageDefaults(request, configuredTriggerSource);
         using var client = CreateClient(configuredTriggerSource);
         var result = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
-        Console.WriteLine($"ZeroMQ base64 image invoked: {triggerSourceName} | {result.State}");
         return result;
     }
 }

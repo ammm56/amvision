@@ -23,7 +23,6 @@ internal sealed partial class WorkflowRuntimeOperations
             WorkflowResponseModes.Run,
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Loaded WorkflowRun: {run.WorkflowRunId} | {run.State}");
         return run;
     }
 }

@@ -30,8 +30,6 @@ internal sealed partial class WorkflowRuntimeOperations
                 BuildJsonInvokeRequest(configuredRuntime, configuredRuntime.Invoke.SyncScenario),
                 cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine("Sync invoke app-result:");
-        Console.WriteLine(appResult.BodyJson.ToString());
         return appResult;
     }
 }

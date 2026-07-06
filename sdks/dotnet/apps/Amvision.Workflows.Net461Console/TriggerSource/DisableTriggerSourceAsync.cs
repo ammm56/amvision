@@ -23,7 +23,6 @@ internal sealed partial class WorkflowTriggerSourceOperations
             configuredTriggerSource.TriggerSource.TriggerSourceId,
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Disabled TriggerSource: {configuredTriggerSource.TriggerSource.Name} | {response.DesiredState}/{response.ObservedState}");
         return response;
     }
 }

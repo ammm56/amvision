@@ -24,7 +24,6 @@ internal sealed partial class WorkflowRuntimeOperations
             BuildWorkflowRunRequest(configuredRuntime, configuredRuntime.Invoke.AsyncScenario),
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Runtime run created WorkflowRun: {run.WorkflowRunId} | {run.State}");
         return run;
     }
 }

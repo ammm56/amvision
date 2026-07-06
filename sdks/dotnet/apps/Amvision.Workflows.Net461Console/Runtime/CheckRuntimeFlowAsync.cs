@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using Amvision.Workflows.Net461Console.Model;
 
 namespace Amvision.Workflows.Net461Console.Runtime;
 
@@ -13,15 +14,29 @@ internal sealed partial class WorkflowRuntimeOperations
     /// </summary>
     /// <param name="runtimeName">runtime key。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    public async Task CheckRuntimeFlowAsync(string runtimeName, CancellationToken cancellationToken = default)
+    /// <returns>调用链检查结果。</returns>
+    public async Task<RuntimeFlowCheckResult> CheckRuntimeFlowAsync(
+        string runtimeName,
+        CancellationToken cancellationToken = default)
     {
-        await GetRuntimeHealthAsync(runtimeName, cancellationToken).ConfigureAwait(false);
-        await ListRuntimeInstancesAsync(runtimeName, cancellationToken).ConfigureAwait(false);
-        await InvokeRuntimeAppResultAsync(runtimeName, cancellationToken).ConfigureAwait(false);
+        var runtimeHealth = await GetRuntimeHealthAsync(runtimeName, cancellationToken).ConfigureAwait(false);
+        var runtimeInstances = await ListRuntimeInstancesAsync(runtimeName, cancellationToken).ConfigureAwait(false);
+        var appResult = await InvokeRuntimeAppResultAsync(runtimeName, cancellationToken).ConfigureAwait(false);
 
         var run = await RunRuntimeAsync(runtimeName, cancellationToken).ConfigureAwait(false);
-        await GetWorkflowRunAsync(run.WorkflowRunId, cancellationToken).ConfigureAwait(false);
-        await GetWorkflowRunEventsAsync(runtimeName, run.WorkflowRunId, cancellationToken).ConfigureAwait(false);
-        await GetRuntimeEventsAsync(runtimeName, cancellationToken).ConfigureAwait(false);
+        var loadedRun = await GetWorkflowRunAsync(run.WorkflowRunId, cancellationToken).ConfigureAwait(false);
+        var runEvents = await GetWorkflowRunEventsAsync(runtimeName, run.WorkflowRunId, cancellationToken).ConfigureAwait(false);
+        var runtimeEvents = await GetRuntimeEventsAsync(runtimeName, cancellationToken).ConfigureAwait(false);
+
+        return new RuntimeFlowCheckResult
+        {
+            RuntimeHealth = runtimeHealth,
+            RuntimeInstances = runtimeInstances,
+            AppResult = appResult,
+            CreatedRun = run,
+            LoadedRun = loadedRun,
+            RunEvents = runEvents,
+            RuntimeEvents = runtimeEvents
+        };
     }
 }

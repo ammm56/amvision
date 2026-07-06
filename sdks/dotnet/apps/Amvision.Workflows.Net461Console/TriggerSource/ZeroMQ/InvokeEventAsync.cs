@@ -26,7 +26,6 @@ internal sealed partial class ZeroMqTriggerOperations
         ApplyEventDefaults(request, configuredTriggerSource);
         using var client = CreateClient(configuredTriggerSource);
         var result = await client.InvokeEventAsync(request, cancellationToken).ConfigureAwait(false);
-        Console.WriteLine($"ZeroMQ event invoked: {triggerSourceName} | {result.State}");
         return result;
     }
 }

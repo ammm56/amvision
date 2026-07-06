@@ -86,6 +86,7 @@ internal static class WorkflowConfigLoader
     {
         "bind_endpoint",
         "default_input_binding",
+        "max_image_bytes",
         "timeout_seconds"
     };
 

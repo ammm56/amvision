@@ -219,7 +219,8 @@ public sealed class WorkflowOperationRunner : IDisposable
     /// </summary>
     /// <param name="runtimeName">runtime 配置 key。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    public Task CheckRuntimeFlowAsync(
+    /// <returns>调用链检查结果。</returns>
+    public Task<RuntimeFlowCheckResult> CheckRuntimeFlowAsync(
         string runtimeName,
         CancellationToken cancellationToken = default)
     {

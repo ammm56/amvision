@@ -24,12 +24,6 @@ internal sealed partial class WorkflowRuntimeOperations
             RequireRuntimeId(configuredRuntime),
             cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($"Runtime instances: {instances.Count}");
-        foreach (var instance in instances)
-        {
-            Console.WriteLine($"  {instance.InstanceId} | {instance.State} | pid={instance.ProcessId}");
-        }
-
         return instances;
     }
 }
