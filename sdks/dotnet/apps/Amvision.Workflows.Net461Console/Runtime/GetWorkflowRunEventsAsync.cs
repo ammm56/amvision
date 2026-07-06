@@ -1,6 +1,7 @@
-using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Amvision.Workflows;
 using Amvision.Workflows.Net461Console.Model;
 
 namespace Amvision.Workflows.Net461Console.Runtime;
@@ -11,26 +12,21 @@ namespace Amvision.Workflows.Net461Console.Runtime;
 internal sealed partial class WorkflowRuntimeOperations
 {
     /// <summary>
-    /// 读取指定 WorkflowRun 的事件，并使用 runtime 配置控制输出条数。
+    /// 读取指定 WorkflowRun 的事件，并使用 runtime 配置控制返回条数。
     /// </summary>
     /// <param name="runtimeName">runtime key。</param>
     /// <param name="workflowRunId">WorkflowRun id。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    public async Task GetWorkflowRunEventsAsync(
+    /// <returns>WorkflowRun 事件列表。</returns>
+    public async Task<IReadOnlyList<WorkflowRunEventResponse>> GetWorkflowRunEventsAsync(
         string runtimeName,
         string workflowRunId,
         CancellationToken cancellationToken = default)
     {
         var configuredRuntime = GetConfiguredRuntime(runtimeName);
-        var events = await client.GetWorkflowRunEventResponsesAsync(
+        return await client.GetWorkflowRunEventResponsesAsync(
             ConfigValidation.RequireText(workflowRunId, nameof(workflowRunId)),
             limit: configuredRuntime.Invoke.EventLimit,
             cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        Console.WriteLine($"WorkflowRun events: {events.Count}");
-        foreach (var item in events.Take(configuredRuntime.Invoke.EventPreviewCount))
-        {
-            Console.WriteLine($"  #{item.Sequence} {item.EventType}");
-        }
     }
 }

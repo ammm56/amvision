@@ -232,7 +232,8 @@ public sealed class WorkflowOperationRunner : IDisposable
     /// </summary>
     /// <param name="runtimeName">runtime 配置 key。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    public Task GetRuntimeEventsAsync(
+    /// <returns>runtime 事件列表。</returns>
+    public Task<IReadOnlyList<WorkflowAppRuntimeEventResponse>> GetRuntimeEventsAsync(
         string runtimeName,
         CancellationToken cancellationToken = default)
     {
@@ -259,7 +260,8 @@ public sealed class WorkflowOperationRunner : IDisposable
     /// <param name="runtimeName">runtime 配置 key，用于读取事件输出条数配置。</param>
     /// <param name="workflowRunId">WorkflowRun id。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    public Task GetWorkflowRunEventsAsync(
+    /// <returns>WorkflowRun 事件列表。</returns>
+    public Task<IReadOnlyList<WorkflowRunEventResponse>> GetWorkflowRunEventsAsync(
         string runtimeName,
         string workflowRunId,
         CancellationToken cancellationToken = default)

@@ -50,38 +50,28 @@ internal static class Program
     {
         using var runner = WorkflowOperationRunner.CreateDefault();
         PrintLoadedConfigs(runner);
-        await RunSelectedMethodAsync(runner, cancellationToken).ConfigureAwait(false);
-    }
 
-    /// <summary>
-    /// 手动选择要执行的方法；现场调试或接入 WinForms/WPF 时，只需要改这里的调用行。
-    /// </summary>
-    /// <param name="runner">封装后的 Workflow 调用入口。</param>
-    /// <param name="cancellationToken">取消信号。</param>
-    private static Task RunSelectedMethodAsync(
-        WorkflowOperationRunner runner,
-        CancellationToken cancellationToken)
-    {
-        return runner.GetRuntimeHealthAsync(RuntimeName, cancellationToken);
+        var runtimeHealth = await runner.GetRuntimeHealthAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // runtimeHealth 可直接绑定到 WinForms/WPF 页面，或继续参与现场业务判断。
 
-        // return runner.GetRuntimeAsync(RuntimeName, cancellationToken);
-        // return runner.ListProjectRuntimesAsync(RuntimeName, cancellationToken);
-        // return runner.StartRuntimeAsync(RuntimeName, cancellationToken);
-        // return runner.StopRuntimeAsync(RuntimeName, cancellationToken);
-        // return runner.RestartRuntimeAsync(RuntimeName, cancellationToken);
-        // return runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken);
-        // return runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken);
-        // return runner.RunRuntimeAsync(RuntimeName, cancellationToken);
-        // return runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken);
-        // return runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken);
-        // return runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken);
-        // return runner.GetTriggerSourceAsync(TriggerSourceName, cancellationToken);
-        // return runner.EnableTriggerSourceAsync(TriggerSourceName, cancellationToken);
-        // return runner.DisableTriggerSourceAsync(TriggerSourceName, cancellationToken);
-        // return runner.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken);
-        // return runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken);
-        // return runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken);
-        // return runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ZeroMqImagePath, cancellationToken: cancellationToken);
+        // var runtime = await runner.GetRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var runtimes = await runner.ListProjectRuntimesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var startedRuntime = await runner.StartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var stoppedRuntime = await runner.StopRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var restartedRuntime = await runner.RestartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var runtimeInstances = await runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var runtimeEvents = await runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var triggerSources = await runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var triggerSource = await runner.GetTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        // var enabledTriggerSource = await runner.EnableTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        // var disabledTriggerSource = await runner.DisableTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        // var triggerHealth = await runner.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        // var eventResult = await runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var configuredImageResult = await runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        // var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ZeroMqImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
