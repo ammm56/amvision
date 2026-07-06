@@ -21,10 +21,6 @@ internal sealed partial class WorkflowRuntimeOperations
         var imagePath = ConfigValidation.NormalizeOptional(configuredRuntime.Invoke.ImagePath)
             ?? throw new InvalidOperationException($"Runtime {configuredRuntime.Runtime.Name} invoke.image_path is required.");
         var resolvedImagePath = ResolveConfiguredPath(configuredRuntime, imagePath);
-        if (!File.Exists(resolvedImagePath))
-        {
-            throw new FileNotFoundException("Input image file does not exist.", resolvedImagePath);
-        }
 
         return BuildImageInvokeRequestFromFile(configuredRuntime, resolvedImagePath, InferImageMediaType(resolvedImagePath), scenario);
     }
@@ -90,11 +86,6 @@ internal sealed partial class WorkflowRuntimeOperations
         string scenario)
     {
         var resolvedImagePath = ResolveConfiguredPath(configuredRuntime, imagePath);
-        if (!File.Exists(resolvedImagePath))
-        {
-            throw new FileNotFoundException("Input image file does not exist.", resolvedImagePath);
-        }
-
         return ApplyImageInvokeDefaults(
             WorkflowRuntimeImageInvokeRequest.FromFile(
                 resolvedImagePath,

@@ -26,11 +26,6 @@ internal sealed partial class ZeroMqTriggerOperations
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var resolvedImagePath = ResolveConfiguredPath(configuredTriggerSource, imagePath);
         var fileInfo = new FileInfo(resolvedImagePath);
-        if (!fileInfo.Exists)
-        {
-            throw new FileNotFoundException("ZeroMQ image file does not exist.", resolvedImagePath);
-        }
-
         EnsureImageByteCount(fileInfo.Length, configuredTriggerSource, nameof(imagePath));
         var request = ImageTriggerRequest.FromFile(resolvedImagePath, mediaType);
         ApplyImageDefaults(request, configuredTriggerSource);

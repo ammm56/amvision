@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Amvision.Workflows.Net461Console.Model;
+using Amvision.Workflows.Net461Console.Tools;
 
 namespace Amvision.Workflows.Net461Console.TriggerSource.ZeroMQ;
 
@@ -111,10 +112,10 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// <returns>绝对路径。</returns>
     private static string ResolveConfiguredPath(ConfiguredTriggerSource configuredTriggerSource, string configuredPath)
     {
-        var normalizedPath = ConfigValidation.RequireText(configuredPath, nameof(configuredPath));
-        return Path.IsPathRooted(normalizedPath)
-            ? normalizedPath
-            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configuredTriggerSource.SourceFile) ?? ".", normalizedPath));
+        return ConfiguredPathResolver.ResolveExistingFile(
+            configuredPath,
+            configuredTriggerSource.SourceFile,
+            "ZeroMQ image file does not exist.");
     }
 
     /// <summary>

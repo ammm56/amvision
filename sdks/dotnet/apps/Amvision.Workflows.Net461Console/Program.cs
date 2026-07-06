@@ -1,3 +1,4 @@
+using Amvision.Workflows.Net461Console.Tools;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,7 +28,7 @@ internal static class Program
     /// <summary>
     /// 现场相机或其他上游程序传入的 base64 图片；调用 ImageBase64 方法时填写。
     /// </summary>
-    private const string ImageBase64 = "";
+    private static string ImageBase64 = "data:image/jpeg;base64,";
 
     /// <summary>
     /// 同步入口，桥接 async 主流程并统一输出错误。
@@ -37,6 +38,7 @@ internal static class Program
     {
         try
         {
+            ImageBase64 = ImageConversionTools.ImageFileToDataUrl(ImagePath);
             MainAsync(CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Amvision.Workflows.Net461Console.Model;
+using Amvision.Workflows.Net461Console.Tools;
 
 namespace Amvision.Workflows.Net461Console.Runtime;
 
@@ -70,10 +71,10 @@ internal sealed partial class WorkflowRuntimeOperations
     /// <returns>绝对路径。</returns>
     private static string ResolveConfiguredPath(ConfiguredRuntime configuredRuntime, string configuredPath)
     {
-        var normalizedPath = configuredPath.Trim();
-        return Path.IsPathRooted(normalizedPath)
-            ? normalizedPath
-            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configuredRuntime.SourceFile) ?? ".", normalizedPath));
+        return ConfiguredPathResolver.ResolveExistingFile(
+            configuredPath,
+            configuredRuntime.SourceFile,
+            "Input image file does not exist.");
     }
 
     /// <summary>
