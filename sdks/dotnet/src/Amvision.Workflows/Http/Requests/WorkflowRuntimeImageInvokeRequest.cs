@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Amvision.Workflows;
 
@@ -42,6 +43,116 @@ public sealed class WorkflowRuntimeImageInvokeRequest
     /// 是否把 input binding 直接写成顶层公开 input 字段。
     /// </summary>
     public bool UseDirectInputBindings { get; set; }
+
+    /// <summary>
+    /// 从已有图片 bytes 创建 HTTP image-base64 runtime 调用请求。
+    /// </summary>
+    /// <param name="imageBytes">图片编码 bytes，通常来自工业相机 SDK、内存缓存或已读取的文件。</param>
+    /// <param name="mediaType">MIME media type，例如 image/jpeg。</param>
+    /// <param name="inputBinding">WorkflowApp input binding 名称。</param>
+    /// <returns>image-base64 runtime 调用请求。</returns>
+    public static WorkflowRuntimeImageInvokeRequest FromBytes(
+        byte[] imageBytes,
+        string mediaType = "image/octet-stream",
+        string inputBinding = "request_image_base64")
+    {
+        if (imageBytes is null || imageBytes.Length == 0)
+        {
+            throw new ArgumentException("imageBytes cannot be empty.", nameof(imageBytes));
+        }
+
+        return new WorkflowRuntimeImageInvokeRequest
+        {
+            ImageBytes = imageBytes,
+            MediaType = NormalizeMediaType(mediaType),
+            InputBinding = NormalizeInputBinding(inputBinding)
+        };
+    }
+
+    /// <summary>
+    /// 从本机图片文件创建 HTTP image-base64 runtime 调用请求。
+    /// </summary>
+    /// <param name="filePath">图片文件路径。</param>
+    /// <param name="mediaType">可选 MIME media type；为空时按扩展名推断。</param>
+    /// <param name="inputBinding">WorkflowApp input binding 名称。</param>
+    /// <returns>image-base64 runtime 调用请求。</returns>
+    public static WorkflowRuntimeImageInvokeRequest FromFile(
+        string filePath,
+        string? mediaType = null,
+        string inputBinding = "request_image_base64")
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new ArgumentException("filePath cannot be empty.", nameof(filePath));
+        }
+
+        var normalizedPath = filePath.Trim();
+        return FromBytes(
+            File.ReadAllBytes(normalizedPath),
+            mediaType ?? InferMediaType(normalizedPath),
+            inputBinding);
+    }
+
+    /// <summary>
+    /// 从 base64 或 data URL 创建 HTTP image-base64 runtime 调用请求。
+    /// </summary>
+    /// <param name="imageBase64">纯 base64 字符串，或 data:image/...;base64,...。</param>
+    /// <param name="mediaType">可选 MIME media type；data URL 会优先使用自身声明。</param>
+    /// <param name="inputBinding">WorkflowApp input binding 名称。</param>
+    /// <returns>image-base64 runtime 调用请求。</returns>
+    public static WorkflowRuntimeImageInvokeRequest FromBase64(
+        string imageBase64,
+        string? mediaType = null,
+        string inputBinding = "request_image_base64")
+    {
+        if (string.IsNullOrWhiteSpace(imageBase64))
+        {
+            throw new ArgumentException("imageBase64 cannot be empty.", nameof(imageBase64));
+        }
+
+        var normalizedBase64 = imageBase64.Trim();
+        var resolvedMediaType = mediaType;
+        var commaIndex = normalizedBase64.IndexOf(',');
+        if (normalizedBase64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && commaIndex > 0)
+        {
+            var header = normalizedBase64.Substring(5, commaIndex - 5);
+            var separatorIndex = header.IndexOf(';');
+            var headerMediaType = separatorIndex >= 0 ? header.Substring(0, separatorIndex) : header;
+            if (!string.IsNullOrWhiteSpace(headerMediaType))
+            {
+                resolvedMediaType = headerMediaType.Trim();
+            }
+
+            normalizedBase64 = normalizedBase64.Substring(commaIndex + 1);
+        }
+
+        return FromBytes(
+            Convert.FromBase64String(normalizedBase64),
+            resolvedMediaType ?? "image/octet-stream",
+            inputBinding);
+    }
+
+    /// <summary>
+    /// 从 stream 读取图片 bytes 创建 HTTP image-base64 runtime 调用请求。
+    /// </summary>
+    /// <param name="stream">包含图片编码数据的 stream。</param>
+    /// <param name="mediaType">MIME media type，例如 image/jpeg。</param>
+    /// <param name="inputBinding">WorkflowApp input binding 名称。</param>
+    /// <returns>image-base64 runtime 调用请求。</returns>
+    public static WorkflowRuntimeImageInvokeRequest FromStream(
+        Stream stream,
+        string mediaType = "image/octet-stream",
+        string inputBinding = "request_image_base64")
+    {
+        if (stream is null)
+        {
+            throw new ArgumentNullException(nameof(stream));
+        }
+
+        using var memoryStream = new MemoryStream();
+        stream.CopyTo(memoryStream);
+        return FromBytes(memoryStream.ToArray(), mediaType, inputBinding);
+    }
 
     /// <summary>
     /// 转换为通用 invoke 请求对象。
@@ -97,5 +208,34 @@ public sealed class WorkflowRuntimeImageInvokeRequest
         {
             throw new InvalidOperationException("TimeoutSeconds must be greater than zero.");
         }
+    }
+
+    private static string NormalizeInputBinding(string inputBinding)
+    {
+        if (string.IsNullOrWhiteSpace(inputBinding))
+        {
+            throw new ArgumentException("inputBinding cannot be empty.", nameof(inputBinding));
+        }
+
+        return inputBinding.Trim();
+    }
+
+    private static string NormalizeMediaType(string mediaType)
+    {
+        return string.IsNullOrWhiteSpace(mediaType) ? "image/octet-stream" : mediaType.Trim();
+    }
+
+    private static string InferMediaType(string filePath)
+    {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".bmp" => "image/bmp",
+            ".webp" => "image/webp",
+            ".tif" or ".tiff" => "image/tiff",
+            _ => "image/octet-stream"
+        };
     }
 }

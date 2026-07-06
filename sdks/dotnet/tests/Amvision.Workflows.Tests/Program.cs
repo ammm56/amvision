@@ -20,6 +20,7 @@ var tests = new Action[]
     EmptyReplyIsRejected,
     TimeoutExceptionIsPropagated,
     WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest,
+    WorkflowRuntimeImageInvokeHelpersBuildImageBase64Payload,
     WorkflowRuntimeMultipartUploadBuildsExpectedHttpRequests,
     WorkflowRuntimeInvokeSupportsDirectInputJson,
     WorkflowAppResultTypedResponsesDeserialize,
@@ -409,6 +410,65 @@ static void WorkflowRuntimeImageInvokeBuildsExpectedHttpRequest()
     AssertEqual("image/png", root.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("media_type").GetString());
     AssertEqual("opencv-process-save-image-zeromq", root.GetProperty("execution_metadata").GetProperty("scenario").GetString());
     AssertEqual(5, root.GetProperty("timeout_seconds").GetInt32());
+
+    _ = client.CreateWorkflowRunWithImageBase64Async(
+        "runtime-07",
+        WorkflowRuntimeImageInvokeRequest.FromBytes(new byte[] { 4, 5, 6 }, "image/jpeg")).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-07/runs", handler.LastRequestUri?.ToString());
+    using var runDocument = JsonDocument.Parse(handler.LastBody);
+    AssertEqual("BAUG", runDocument.RootElement.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("image_base64").GetString());
+    AssertEqual("image/jpeg", runDocument.RootElement.GetProperty("input_bindings").GetProperty("request_image_base64").GetProperty("media_type").GetString());
+}
+
+// 验证 WorkflowAppRuntime 图片 helper 支持 base64、bytes 和 file 三种现场输入来源。
+static void WorkflowRuntimeImageInvokeHelpersBuildImageBase64Payload()
+{
+    var fromBase64 = WorkflowRuntimeImageInvokeRequest.FromBase64(
+        "data:image/png;base64,AQID",
+        inputBinding: "request_image_base64");
+    fromBase64.TimeoutSeconds = 11;
+    fromBase64.ExecutionMetadata["source"] = "camera-base64";
+
+    using (var document = JsonDocument.Parse(fromBase64.ToWorkflowRuntimeInvokeRequest().ToJson()))
+    {
+        var payload = document.RootElement.GetProperty("input_bindings").GetProperty("request_image_base64");
+        AssertEqual("AQID", payload.GetProperty("image_base64").GetString());
+        AssertEqual("image/png", payload.GetProperty("media_type").GetString());
+        AssertEqual("camera-base64", document.RootElement.GetProperty("execution_metadata").GetProperty("source").GetString());
+        AssertEqual(11, document.RootElement.GetProperty("timeout_seconds").GetInt32());
+    }
+
+    var fromBytes = WorkflowRuntimeImageInvokeRequest.FromBytes(
+        new byte[] { 4, 5, 6 },
+        "image/jpeg",
+        "request_image_base64");
+    using (var document = JsonDocument.Parse(fromBytes.ToWorkflowRuntimeInvokeRequest().ToJson()))
+    {
+        var payload = document.RootElement.GetProperty("input_bindings").GetProperty("request_image_base64");
+        AssertEqual("BAUG", payload.GetProperty("image_base64").GetString());
+        AssertEqual("image/jpeg", payload.GetProperty("media_type").GetString());
+    }
+
+    var tempPath = Path.Combine(Path.GetTempPath(), $"amvision-runtime-sdk-{Guid.NewGuid():N}.jpg");
+    try
+    {
+        File.WriteAllBytes(tempPath, new byte[] { 7, 8, 9 });
+        var fromFile = WorkflowRuntimeImageInvokeRequest.FromFile(
+            tempPath,
+            inputBinding: "request_image_base64");
+        using var document = JsonDocument.Parse(fromFile.ToWorkflowRuntimeInvokeRequest().ToJson());
+        var payload = document.RootElement.GetProperty("input_bindings").GetProperty("request_image_base64");
+        AssertEqual("BwgJ", payload.GetProperty("image_base64").GetString());
+        AssertEqual("image/jpeg", payload.GetProperty("media_type").GetString());
+    }
+    finally
+    {
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+    }
 }
 
 // 验证 WorkflowAppRuntime multipart run/upload 和 invoke/upload 会构造正确请求。

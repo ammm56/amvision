@@ -20,9 +20,14 @@ internal static class Program
     private const string TriggerSourceName = "yolo11m_barqrcode_zeromq";
 
     /// <summary>
-    /// ZeroMQ 图片文件路径；调用 InvokeZeroMqImageFromFileAsync 时填写。
+    /// WorkflowAppRuntime 或 ZeroMQ 图片文件路径；调用 ImageFromFile 方法时填写。
     /// </summary>
-    private const string ZeroMqImagePath = "";
+    private const string ImagePath = "";
+
+    /// <summary>
+    /// 现场相机或其他上游程序传入的 base64 图片；调用 ImageBase64 方法时填写。
+    /// </summary>
+    private const string ImageBase64 = "";
 
     /// <summary>
     /// 同步入口，桥接 async 主流程并统一输出错误。
@@ -63,6 +68,12 @@ internal static class Program
         var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
 
         var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        // var syncBase64Result = await runner.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var syncBytesResult = await runner.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var syncFileResult = await runner.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var asyncBase64Run = await runner.RunRuntimeWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var asyncBytesRun = await runner.RunRuntimeWithImageBytesAsync(RuntimeName, new byte[] { }, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        // var asyncFileRun = await runner.RunRuntimeWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var checkResult = await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         var runtimeEvents = await runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
@@ -73,7 +84,7 @@ internal static class Program
         var triggerHealth = await runner.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         //var eventResult = await runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         //var configuredImageResult = await runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
-        var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ZeroMqImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(
             TriggerSourceName,

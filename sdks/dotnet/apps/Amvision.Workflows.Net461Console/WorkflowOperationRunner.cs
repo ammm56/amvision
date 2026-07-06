@@ -216,6 +216,138 @@ public sealed class WorkflowOperationRunner : IDisposable
     }
 
     /// <summary>
+    /// 使用 base64 图片同步调用 WorkflowAppRuntime，并直接读取 app-result。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imageBase64">图片 base64 或 data URL。</param>
+    /// <param name="mediaType">可选 media type；data URL 会优先使用自身声明。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>app-result 响应。</returns>
+    public Task<WorkflowAppResultResponse> InvokeRuntimeAppResultWithImageBase64Async(
+        string runtimeName,
+        string imageBase64,
+        string? mediaType = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.InvokeRuntimeAppResultWithImageBase64Async(
+            runtimeName,
+            imageBase64,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用图片 bytes 同步调用 WorkflowAppRuntime，并直接读取 app-result。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imageBytes">图片编码 bytes，通常来自工业相机 SDK 或内存缓存。</param>
+    /// <param name="mediaType">media type。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>app-result 响应。</returns>
+    public Task<WorkflowAppResultResponse> InvokeRuntimeAppResultWithImageBytesAsync(
+        string runtimeName,
+        byte[] imageBytes,
+        string mediaType = "image/octet-stream",
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.InvokeRuntimeAppResultWithImageBytesAsync(
+            runtimeName,
+            imageBytes,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用图片文件路径同步调用 WorkflowAppRuntime，并直接读取 app-result。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imagePath">图片文件路径。</param>
+    /// <param name="mediaType">可选 media type；为空时按扩展名推断。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>app-result 响应。</returns>
+    public Task<WorkflowAppResultResponse> InvokeRuntimeAppResultWithImageFromFileAsync(
+        string runtimeName,
+        string imagePath,
+        string? mediaType = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.InvokeRuntimeAppResultWithImageFromFileAsync(
+            runtimeName,
+            imagePath,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用 base64 图片异步调用 WorkflowAppRuntime，后端会创建一条 WorkflowRun。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imageBase64">图片 base64 或 data URL。</param>
+    /// <param name="mediaType">可选 media type；data URL 会优先使用自身声明。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>WorkflowRun 响应。</returns>
+    public Task<WorkflowRunResponse> RunRuntimeWithImageBase64Async(
+        string runtimeName,
+        string imageBase64,
+        string? mediaType = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.RunRuntimeWithImageBase64Async(
+            runtimeName,
+            imageBase64,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用图片 bytes 异步调用 WorkflowAppRuntime，后端会创建一条 WorkflowRun。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imageBytes">图片编码 bytes，通常来自工业相机 SDK 或内存缓存。</param>
+    /// <param name="mediaType">media type。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>WorkflowRun 响应。</returns>
+    public Task<WorkflowRunResponse> RunRuntimeWithImageBytesAsync(
+        string runtimeName,
+        byte[] imageBytes,
+        string mediaType = "image/octet-stream",
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.RunRuntimeWithImageBytesAsync(
+            runtimeName,
+            imageBytes,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用图片文件路径异步调用 WorkflowAppRuntime，后端会创建一条 WorkflowRun。
+    /// </summary>
+    /// <param name="runtimeName">runtime 配置 key。</param>
+    /// <param name="imagePath">图片文件路径。</param>
+    /// <param name="mediaType">可选 media type；为空时按扩展名推断。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>WorkflowRun 响应。</returns>
+    public Task<WorkflowRunResponse> RunRuntimeWithImageFromFileAsync(
+        string runtimeName,
+        string imagePath,
+        string? mediaType = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireRuntime(runtimeName);
+        return runtimeOperations.RunRuntimeWithImageFromFileAsync(
+            runtimeName,
+            imagePath,
+            mediaType,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// 执行 runtime 调用链检查，包含 health、instances、同步 invoke、异步 run 和事件查询。
     /// </summary>
     /// <param name="runtimeName">runtime 配置 key。</param>

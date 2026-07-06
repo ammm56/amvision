@@ -39,6 +39,37 @@ public sealed partial class AmvisionWorkflowClient
     }
 
     /// <summary>
+    /// 通过 image-base64.v1 创建一条异步 WorkflowRun。
+    /// </summary>
+    public Task<AmvisionWorkflowApiResponse> CreateWorkflowRunWithImageBase64Async(
+        string workflowRuntimeId,
+        WorkflowRuntimeImageInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        return CreateWorkflowRunAsync(
+            workflowRuntimeId,
+            request.ToWorkflowRuntimeInvokeRequest(),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 通过 image-base64.v1 创建一条异步 WorkflowRun，并返回 typed response。
+    /// </summary>
+    public async Task<WorkflowRunResponse> CreateWorkflowRunWithImageBase64ResponseAsync(
+        string workflowRuntimeId,
+        WorkflowRuntimeImageInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return ReadJson<WorkflowRunResponse>(
+            await CreateWorkflowRunWithImageBase64Async(workflowRuntimeId, request, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
     /// 通过 multipart/form-data 创建一条异步 WorkflowRun。
     /// </summary>
     public Task<AmvisionWorkflowApiResponse> CreateWorkflowRunUploadAsync(
