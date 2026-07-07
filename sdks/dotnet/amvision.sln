@@ -4,7 +4,7 @@ VisualStudioVersion = 18.6.11828.311 oobstable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{892D20ED-E6E4-9067-D176-A43BEF3C1636}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.Net461Console", "apps\Amvision.Workflows.Net461Console\Amvision.Workflows.Net461Console.csproj", "{BCA3D869-4C74-41C5-98D7-A3B3E8996C44}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.Console", "apps\Amvision.Workflows.Console\Amvision.Workflows.Console.csproj", "{BCA3D869-4C74-41C5-98D7-A3B3E8996C44}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{ECF4E390-50D3-58FE-ACDC-9A9EFA44BC6B}"
 EndProject
