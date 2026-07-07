@@ -349,11 +349,39 @@ a:hover {
 }
 
 .app-bottom-panel {
+  justify-content: space-between;
   gap: 12px;
   padding: 0 18px;
   color: var(--muted);
   border-top: 1px solid var(--line);
   border-bottom: 0;
+}
+
+.app-bottom-panel__left,
+.app-bottom-panel__right {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.app-bottom-panel__left {
+  gap: 12px;
+  overflow: hidden;
+}
+
+.app-bottom-panel__left span {
+  white-space: nowrap;
+}
+
+.app-bottom-panel__left span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-bottom-panel__right {
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .project-switcher {

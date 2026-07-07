@@ -2,13 +2,8 @@
   <header class="app-topbar">
     <ProjectSwitcher />
     <div class="app-topbar__right">
-      <ConnectionStatus />
       <LocaleSwitcher />
       <ThemeToggle />
-      <span class="credential-pill">
-        <ShieldCheck :size="15" />
-        {{ sessionStore.credentialKind || t('common.none') }}
-      </span>
       <span class="user-label">{{ sessionStore.displayName || t('auth.notSignedIn') }}</span>
       <Button variant="ghost" size="sm" @click="logout">
         <LogOut :size="16" />
@@ -20,10 +15,9 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { LogOut, ShieldCheck } from '@lucide/vue'
+import { LogOut } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
-import ConnectionStatus from './ConnectionStatus.vue'
 import LocaleSwitcher from './LocaleSwitcher.vue'
 import ProjectSwitcher from './ProjectSwitcher.vue'
 import ThemeToggle from './ThemeToggle.vue'
