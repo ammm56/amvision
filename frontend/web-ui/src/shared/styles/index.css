@@ -12,11 +12,11 @@
   --line-strong: #aab7c0;
   --text: #1e2329;
   --muted: #65727d;
-  --sidebar: #252a2f;
-  --sidebar-active: #33444a;
-  --sidebar-text: #edf4f6;
-  --sidebar-link: #dce7eb;
-  --sidebar-muted: #b7c5cc;
+  --sidebar: #ffffff;
+  --sidebar-active: #e8f6f8;
+  --sidebar-text: #1e2329;
+  --sidebar-link: #43515b;
+  --sidebar-muted: #65727d;
   --accent: #168a9e;
   --accent-strong: #0f6f82;
   --success: #26845b;
@@ -221,6 +221,7 @@ a:hover {
   top: 0;
   background: var(--sidebar);
   color: var(--sidebar-text);
+  border-right: 1px solid var(--line);
   padding: 18px 12px;
   height: 100vh;
   height: 100dvh;
@@ -268,6 +269,7 @@ a:hover {
 .app-sidebar__link:hover,
 .app-sidebar__link.is-active {
   background: var(--sidebar-active);
+  color: var(--sidebar-text);
   text-decoration: none;
 }
 
