@@ -401,6 +401,19 @@ public sealed partial class WorkflowOperationRunner : IDisposable
     }
 
     /// <summary>
+    /// 取消一条异步 WorkflowRun。
+    /// </summary>
+    /// <param name="workflowRunId">WorkflowRun id。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>WorkflowRun 响应。</returns>
+    public Task<WorkflowRunResponse> CancelWorkflowRunAsync(
+        string workflowRunId,
+        CancellationToken cancellationToken = default)
+    {
+        return runtimeOperations.CancelWorkflowRunAsync(workflowRunId, cancellationToken);
+    }
+
+    /// <summary>
     /// 读取 WorkflowRun 事件。
     /// </summary>
     /// <param name="runtimeName">runtime 配置 key，用于读取事件输出条数配置。</param>
