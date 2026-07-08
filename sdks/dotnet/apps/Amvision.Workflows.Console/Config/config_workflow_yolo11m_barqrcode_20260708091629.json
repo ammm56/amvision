@@ -6,7 +6,7 @@
     "http_timeout_seconds": 60
   },
   "runtime": {
-    "name": "yolo11m_barqrcode_runtime",
+    "name": "yolo11m_barqrcode",
     "workflow_runtime_id": "workflow-runtime-cd61f3638b664d2fae6834d6f51e3dd8"
   },
   "invoke": {
@@ -22,28 +22,14 @@
   },
   "trigger_sources": [
     {
-      "name": "yolo11m_barqrcode_zeromq",
+      "name": "zeromq_yolo11m_barqrcode",
       "trigger_source_id": "zeromq-workflow-runtime-cd61f3638b664d2fae6834d6f51e3dd8",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",
         "default_input_binding": "request_image_ref",
-        "timeout_seconds": 5
+        "timeout_seconds": 30
       }
     }
   ],
-  "model_deployments": [
-    {
-      "name": "barcode_detector",
-      "task_type": "detection",
-      "deployment_instance_id": "deployment-instance-8a186ddbab564e86a1649c16965ffa0f",
-      "runtime_mode": "sync",
-      "input_transport_mode": "memory",
-      "default_image_path": "Resources\\Img\\qrcode50.jpg",
-      "score_threshold": 0.3,
-      "save_result_image": false,
-      "return_preview_image_base64": false,
-      "default_file_name": "qrcode50.jpg",
-      "default_media_type": "image/jpeg"
-    }
-  ]
+  "model_deployments": []
 }
