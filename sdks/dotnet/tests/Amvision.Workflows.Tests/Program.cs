@@ -25,6 +25,9 @@ var tests = new Action[]
     WorkflowRuntimeInvokeSupportsDirectInputJson,
     WorkflowAppResultTypedResponsesDeserialize,
     WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests,
+    ModelDeploymentRuntimeEndpointsUseExpectedHttpRequests,
+    ModelDeploymentInferenceJsonAndUploadUseExpectedHttpRequests,
+    ModelInferenceTaskEndpointsUseExpectedHttpRequests,
     TriggerSourceCreateListDeleteUsesExpectedHttpRequests,
     TypedResponsesDeserializeWorkflowResponses,
     TriggerSourceHealthUsesExpectedHttpEndpoint,
@@ -623,6 +626,173 @@ static void WorkflowRuntimeRunAndLifecycleEndpointsUseExpectedHttpRequests()
     _ = client.DeleteWorkflowAppRuntimeAsync("runtime-1").GetAwaiter().GetResult();
     AssertEqual(HttpMethod.Delete, handler.LastMethod);
     AssertEqual("http://127.0.0.1:8000/api/v1/workflows/app-runtimes/runtime-1", handler.LastRequestUri?.ToString());
+}
+
+// 验证模型部署 runtime 控制只封装实际使用路径，不包含创建/删除管理接口。
+static void ModelDeploymentRuntimeEndpointsUseExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"deployment_instance_id\":\"deployment-instance-1\",\"runtime_mode\":\"sync\",\"desired_state\":\"running\",\"process_state\":\"running\",\"process_id\":123,\"instance_count\":2,\"healthy_instance_count\":2,\"warmed_instance_count\":2}"
+    );
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    _ = client.StartModelDeploymentRuntimeAsync(ModelTaskTypes.Detection, "deployment-instance-1", ModelDeploymentRuntimeModes.Sync).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/deployment-instances/deployment-instance-1/sync/start", handler.LastRequestUri?.ToString());
+
+    _ = client.WarmupModelDeploymentRuntimeAsync(ModelTaskTypes.Classification, "deployment-instance-1", ModelDeploymentRuntimeModes.Async).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/classification/deployment-instances/deployment-instance-1/async/warmup", handler.LastRequestUri?.ToString());
+
+    _ = client.ResetModelDeploymentRuntimeAsync(ModelTaskTypes.Segmentation, "deployment-instance-1", ModelDeploymentRuntimeModes.Sync).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/segmentation/deployment-instances/deployment-instance-1/sync/reset", handler.LastRequestUri?.ToString());
+
+    _ = client.StopModelDeploymentRuntimeAsync(ModelTaskTypes.Pose, "deployment-instance-1", ModelDeploymentRuntimeModes.Async).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/pose/deployment-instances/deployment-instance-1/async/stop", handler.LastRequestUri?.ToString());
+
+    _ = client.GetModelDeploymentRuntimeStatusAsync(ModelTaskTypes.Obb, "deployment-instance-1", ModelDeploymentRuntimeModes.Sync).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/obb/deployment-instances/deployment-instance-1/sync/status", handler.LastRequestUri?.ToString());
+
+    var health = client.GetModelDeploymentRuntimeHealthResponseAsync(ModelTaskTypes.Detection, "deployment-instance-1", ModelDeploymentRuntimeModes.Sync).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/deployment-instances/deployment-instance-1/sync/health", handler.LastRequestUri?.ToString());
+    AssertEqual("deployment-instance-1", health.DeploymentInstanceId);
+    AssertEqual(2, health.HealthyInstanceCount);
+
+    AssertThrows<ArgumentException>(() => client.GetModelDeploymentRuntimeStatusAsync("bad-task", "deployment-instance-1", "sync").GetAwaiter().GetResult());
+    AssertThrows<ArgumentException>(() => client.GetModelDeploymentRuntimeStatusAsync("detection", "deployment-instance-1", "bad-mode").GetAwaiter().GetResult());
+}
+
+// 验证模型部署同步推理 JSON、base64 和 multipart 上传请求。
+static void ModelDeploymentInferenceJsonAndUploadUseExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"request_id\":\"req-1\",\"deployment_instance_id\":\"deployment-instance-1\",\"instance_id\":\"instance-1\",\"image_width\":640,\"image_height\":480,\"item_count\":1,\"latency_ms\":12.5,\"labels\":[\"ok\"],\"detections\":[{\"bbox_xyxy\":[1,2,3,4],\"score\":0.9,\"class_id\":1,\"class_name\":\"barcode\"}],\"classification_results\":[{\"label\":\"ok\",\"score\":0.99}]}"
+    );
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var jsonRequest = ModelDeploymentInferenceRequest.FromBase64("data:image/png;base64,AQID");
+    jsonRequest.ScoreThreshold = 0.25;
+    jsonRequest.SaveResultImage = true;
+    jsonRequest.ReturnPreviewImageBase64 = true;
+    jsonRequest.ExtraOptions["nms"] = "fast";
+
+    var jsonResponse = client.InferModelDeploymentResponseAsync(ModelTaskTypes.Detection, "deployment-instance-1", jsonRequest).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/deployment-instances/deployment-instance-1/infer", handler.LastRequestUri?.ToString());
+    using (var document = JsonDocument.Parse(handler.LastBody))
+    {
+        var root = document.RootElement;
+        AssertEqual("AQID", root.GetProperty("image_base64").GetString());
+        AssertEqual("base64", root.GetProperty("input_transport_mode").GetString());
+        AssertEqual(0.25, root.GetProperty("score_threshold").GetDouble());
+        AssertEqual(true, root.GetProperty("save_result_image").GetBoolean());
+        AssertEqual("fast", root.GetProperty("extra_options").GetProperty("nms").GetString());
+    }
+
+    AssertEqual("deployment-instance-1", jsonResponse.DeploymentInstanceId);
+    AssertEqual(1, jsonResponse.Detections.Count);
+    AssertEqual(true, jsonResponse.ExtensionData.ContainsKey("classification_results"));
+
+    _ = client.InferModelDeploymentWithImageBase64Async(ModelTaskTypes.Detection, "deployment-instance-1", "AQID").GetAwaiter().GetResult();
+    using (var document = JsonDocument.Parse(handler.LastBody))
+    {
+        AssertEqual("AQID", document.RootElement.GetProperty("image_base64").GetString());
+    }
+
+    var uploadRequest = ModelDeploymentInferenceUploadRequest.FromBytes(
+        new byte[] { 1, 2, 3 },
+        "camera.jpg",
+        "image/jpeg");
+    uploadRequest.ScoreThreshold = 0.5;
+    uploadRequest.ReturnPreviewImageBase64 = false;
+    _ = client.InferModelDeploymentUploadAsync(ModelTaskTypes.Detection, "deployment-instance-1", uploadRequest).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/deployment-instances/deployment-instance-1/infer", handler.LastRequestUri?.ToString());
+    AssertEqual(true, handler.LastContentHeaders["Content-Type"].Single().StartsWith("multipart/form-data", StringComparison.Ordinal));
+    AssertContains("input_image", handler.LastBody);
+    AssertContains("camera.jpg", handler.LastBody);
+    AssertContains("image/jpeg", handler.LastBody);
+    AssertContains("score_threshold", handler.LastBody);
+    AssertContains("0.5", handler.LastBody);
+
+    var bytesResponse = client.InferModelDeploymentWithImageBytesResponseAsync(
+        ModelTaskTypes.Detection,
+        "deployment-instance-1",
+        new byte[] { 9, 8, 7 },
+        "camera-2.jpg",
+        "image/jpeg").GetAwaiter().GetResult();
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/deployment-instances/deployment-instance-1/infer", handler.LastRequestUri?.ToString());
+    AssertContains("camera-2.jpg", handler.LastBody);
+    AssertEqual(1, bytesResponse.ItemCount);
+
+    AssertThrows<InvalidOperationException>(() => client.InferModelDeploymentAsync(
+        ModelTaskTypes.Detection,
+        "deployment-instance-1",
+        new ModelDeploymentInferenceRequest()).GetAwaiter().GetResult());
+}
+
+// 验证模型异步推理任务 JSON、multipart、详情和结果接口。
+static void ModelInferenceTaskEndpointsUseExpectedHttpRequests()
+{
+    var handler = new FakeHttpMessageHandler(
+        HttpStatusCode.OK,
+        "{\"inference_task_id\":\"inference-task-1\",\"status\":\"queued\",\"deployment_instance_id\":\"deployment-instance-1\",\"input_source_kind\":\"base64\",\"payload\":{\"ok\":true}}"
+    );
+    using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8000/") };
+    using var client = CreateWorkflowClient(httpClient);
+
+    var jsonRequest = ModelDeploymentInferenceRequest.FromUri("project/files/image.jpg");
+    jsonRequest.ProjectId = "project-1";
+    jsonRequest.DeploymentInstanceId = "deployment-instance-1";
+    jsonRequest.DisplayName = "async inference";
+    jsonRequest.TopK = 3;
+    _ = client.CreateModelInferenceTaskAsync(ModelTaskTypes.Classification, jsonRequest).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/classification/inference-tasks", handler.LastRequestUri?.ToString());
+    using (var document = JsonDocument.Parse(handler.LastBody))
+    {
+        var root = document.RootElement;
+        AssertEqual("project-1", root.GetProperty("project_id").GetString());
+        AssertEqual("deployment-instance-1", root.GetProperty("deployment_instance_id").GetString());
+        AssertEqual("project/files/image.jpg", root.GetProperty("input_uri").GetString());
+        AssertEqual(3, root.GetProperty("top_k").GetInt32());
+    }
+
+    var uploadRequest = ModelDeploymentInferenceUploadRequest.FromBytes(new byte[] { 4, 5, 6 }, "image.png", "image/png");
+    uploadRequest.ProjectId = "project-1";
+    uploadRequest.DeploymentInstanceId = "deployment-instance-1";
+    uploadRequest.MaskThreshold = 0.45;
+    _ = client.CreateModelInferenceTaskUploadAsync(ModelTaskTypes.Segmentation, uploadRequest).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Post, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/segmentation/inference-tasks", handler.LastRequestUri?.ToString());
+    AssertContains("project_id", handler.LastBody);
+    AssertContains("deployment_instance_id", handler.LastBody);
+    AssertContains("mask_threshold", handler.LastBody);
+    AssertContains("image.png", handler.LastBody);
+
+    _ = client.CreateModelInferenceTaskWithImageBase64Async(ModelTaskTypes.Detection, "project-1", "deployment-instance-1", "AQID").GetAwaiter().GetResult();
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/inference-tasks", handler.LastRequestUri?.ToString());
+
+    var base64Task = client.CreateModelInferenceTaskWithImageBase64ResponseAsync(ModelTaskTypes.Detection, "project-1", "deployment-instance-1", "AQID").GetAwaiter().GetResult();
+    AssertEqual("inference-task-1", base64Task.InferenceTaskId);
+
+    _ = client.GetModelInferenceTaskAsync(ModelTaskTypes.Detection, "inference-task-1", includeEvents: true).GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/inference-tasks/inference-task-1?include_events=true", handler.LastRequestUri?.ToString());
+
+    var result = client.GetModelInferenceTaskResultResponseAsync(ModelTaskTypes.Detection, "inference-task-1").GetAwaiter().GetResult();
+    AssertEqual(HttpMethod.Get, handler.LastMethod);
+    AssertEqual("http://127.0.0.1:8000/api/v1/models/detection/inference-tasks/inference-task-1/result", handler.LastRequestUri?.ToString());
+    AssertEqual("inference-task-1", result.InferenceTaskId);
+    AssertEqual(true, result.Payload["ok"].GetBoolean());
 }
 
 // 验证 TriggerSource create/list/delete 当前正式接口路径和 body。

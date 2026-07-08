@@ -1,18 +1,17 @@
-# 模型部署调用 SDK 规划
+# 模型部署调用 SDK 与 Console 规划
 
 ## 文档目的
 
-本文档固定模型 DeploymentInstance 的外部调用 SDK 边界、配置方式和后续 .NET 实现清单，避免后续实现时把前端部署管理能力、workflow app 调用能力和模型直接推理调用混在一起。
+本文档固定模型 DeploymentInstance 的外部调用 SDK 边界、配置方式和后续 Console 实现清单，避免后续实现时把前端部署管理能力、workflow app 调用能力和模型直接推理调用混在一起。
 
 模型 DeploymentInstance 的创建、选择模型、选择 ModelBuild、选择 Runtime backend、选择 precision、选择 device、设置 instance_count 和删除等管理动作由前端界面完成。SDK 只面向现场程序实际使用：控制已经存在的 deployment runtime，并向已经存在的 DeploymentInstance 提交同步或异步推理请求。
 
 ## 当前结论
 
-- .NET SDK 当前已经实现 WorkflowAppRuntime、WorkflowRun、TriggerSource、ZeroMQ 触发和 SystemConfig 调用。
-- .NET SDK 当前没有实现模型 DeploymentInstance 的 runtime 控制和模型直接推理调用。
+- .NET SDK 当前已经实现 WorkflowAppRuntime、WorkflowRun、TriggerSource、ZeroMQ 触发、SystemConfig、模型 DeploymentInstance runtime 控制和模型直接推理调用。
 - SDK 不需要实现 DeploymentInstance 的 `list/create/get/delete` 管理接口。
-- SDK 需要实现已有 DeploymentInstance 的 `sync/async` runtime 启动、预热、重置、停止、状态、health 和推理调用。
-- 参考实现应沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
+- SDK 已实现已有 DeploymentInstance 的 `sync/async` runtime 启动、预热、重置、停止、状态、health 和推理调用。
+- Console 参考实现下一步应沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
 
 ## 调用方关系
 
@@ -48,7 +47,7 @@ SDK 不直接访问数据库、对象存储、deployment worker 内部对象、L
 
 这样做的原因是现场程序通常只需要长期使用已经部署好的模型，不应该在运行时重新配置平台资源，避免误改生产部署。
 
-## 需要实现的 REST 调用
+## 已实现的 REST 调用
 
 ### runtime 控制
 
@@ -101,11 +100,11 @@ GET  /api/v1/models/{task_type}/inference-tasks/{task_id}/result
 
 异步推理任务适合低频离线调试、耗时较长或希望由任务系统记录结果的场景。创建任务时需要 `project_id` 和 `deployment_instance_id`，这两个值从配置文件读取。
 
-## .NET SDK 底层 API 规划
+## .NET SDK 底层 API 状态
 
-SDK 底层仍保持通用 typed API，供需要直接使用 SDK 的开发者调用。
+SDK 底层已经保持通用 typed API，供需要直接使用 SDK 的开发者调用。
 
-建议新增文件：
+当前实现文件：
 
 ```text
 sdks/dotnet/src/Amvision.Workflows/
@@ -117,16 +116,12 @@ sdks/dotnet/src/Amvision.Workflows/
     ModelDeploymentRuntimeModes.cs
     ModelDeploymentInferenceRequest.cs
     ModelDeploymentInferenceUploadRequest.cs
-    ModelInferenceTaskCreateRequest.cs
   Http/Responses/
-    ModelDeploymentProcessStatusResponse.cs
-    ModelDeploymentRuntimeHealthResponse.cs
-    ModelDeploymentInferenceResponse.cs
-    ModelInferenceTaskResponse.cs
-    ModelInferenceTaskResultResponse.cs
+    ModelDeploymentRuntimeResponse.cs
+    ModelInferenceResponse.cs
 ```
 
-建议方法：
+已实现方法：
 
 ```csharp
 StartModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode)
@@ -136,20 +131,20 @@ StopModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode)
 GetModelDeploymentRuntimeStatusAsync(taskType, deploymentInstanceId, runtimeMode)
 GetModelDeploymentRuntimeHealthAsync(taskType, deploymentInstanceId, runtimeMode)
 
-InferModelDeploymentWithImageBytesAsync(taskType, deploymentInstanceId, request)
-InferModelDeploymentWithImageBase64Async(taskType, deploymentInstanceId, request)
-InferModelDeploymentWithImageFileAsync(taskType, deploymentInstanceId, request)
+InferModelDeploymentWithImageBytesAsync(taskType, deploymentInstanceId, imageBytes, fileName, mediaType)
+InferModelDeploymentWithImageBase64Async(taskType, deploymentInstanceId, imageBase64)
+InferModelDeploymentWithImageFileAsync(taskType, deploymentInstanceId, filePath, mediaType)
 InferModelDeploymentAsync(taskType, deploymentInstanceId, request)
 
-CreateModelInferenceTaskWithImageBytesAsync(taskType, request)
-CreateModelInferenceTaskWithImageBase64Async(taskType, request)
-CreateModelInferenceTaskWithImageFileAsync(taskType, request)
+CreateModelInferenceTaskWithImageBytesAsync(taskType, projectId, deploymentInstanceId, imageBytes, fileName, mediaType)
+CreateModelInferenceTaskWithImageBase64Async(taskType, projectId, deploymentInstanceId, imageBase64)
+CreateModelInferenceTaskWithImageFileAsync(taskType, projectId, deploymentInstanceId, filePath, mediaType)
 CreateModelInferenceTaskAsync(taskType, request)
 GetModelInferenceTaskAsync(taskType, taskId)
 GetModelInferenceTaskResultAsync(taskType, taskId)
 ```
 
-底层方法需要保留 raw `AmvisionWorkflowApiResponse` API，同时提供 typed response 方法，保持与现有 WorkflowAppRuntime / TriggerSource client 风格一致。
+底层方法已保留 raw `AmvisionWorkflowApiResponse` API，同时提供 typed response 方法，保持与现有 WorkflowAppRuntime / TriggerSource client 风格一致。
 
 ## Console 参考实现配置方式
 

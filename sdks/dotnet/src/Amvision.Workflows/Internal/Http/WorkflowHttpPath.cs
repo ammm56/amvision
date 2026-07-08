@@ -22,7 +22,9 @@ internal static class WorkflowHttpPath
                 continue;
             }
 
-            var text = Convert.ToString(value, CultureInfo.InvariantCulture);
+            var text = value is bool boolValue
+                ? boolValue.ToString().ToLowerInvariant()
+                : Convert.ToString(value, CultureInfo.InvariantCulture);
             if (string.IsNullOrWhiteSpace(text))
             {
                 continue;
