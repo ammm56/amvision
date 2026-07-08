@@ -16,6 +16,10 @@ C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 Wo
 
 SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
 
+模型 DeploymentInstance 的 runtime 控制和模型直接推理调用当前尚未在 .NET SDK 中实现。后续实现必须按 [docs/api/model-deployment-sdks.md](../../docs/api/model-deployment-sdks.md) 执行：不实现 DeploymentInstance 的 list/create/get/delete 管理操作，只实现已有 deployment 的 `sync/async` start、warmup、reset、stop、status、health、同步推理和异步 inference task 调用。
+
+后续 `apps/Amvision.Workflows.Console` 的模型部署调用也必须沿用 `Config/config_*.json + key + 方法` 的模式。每个 `config_*.json` 可以包含多个 `model_deployments`，启动时统一合并为 `ModelDeployments` catalog；重复 key 不允许静默覆盖，应在配置加载阶段排除并报错。
+
 `net461` 和 `net472` 用于 .NET Framework 上位机程序，`netstandard2.1` 用于 .NET Core 3.0+，`net10.0` 用于现代运行时。仓库根目录 `global.json` 固定 .NET SDK 基线为 10.0，语言版本固定为 C# 14。`net461` 目标使用 NetMQ 4.0.1.10 和 System.Text.Json 6.0.10，其余目标使用当前较新的 NetMQ/System.Text.Json 组合。
 
 ## 构建
