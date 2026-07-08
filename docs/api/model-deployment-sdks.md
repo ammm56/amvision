@@ -12,6 +12,7 @@
 - SDK 不需要实现 DeploymentInstance 的 `list/create/get/delete` 管理接口。
 - SDK 已实现已有 DeploymentInstance 的 `sync/async` runtime 启动、预热、重置、停止、状态、health 和推理调用。
 - Console 参考实现已经沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
+- 现场使用的 `config_*.json` 可由项目工作台右上角“生成 SDK 配置包”统一导出，部署页和推理页不单独增加配置包入口。生成接口见 [docs/api/sdk-config-packages.md](sdk-config-packages.md)。
 
 ## 调用方关系
 
@@ -167,12 +168,12 @@ GetModelInferenceTaskResultAsync(taskType, taskId)
     "http_timeout_seconds": 60
   },
   "runtime": {
-    "name": "yolo11m_barqrcode_runtime",
+    "name": "yolo11m_barqrcode",
     "workflow_runtime_id": "workflow-runtime-xxx"
   },
   "trigger_sources": [
     {
-      "name": "yolo11m_barqrcode_zeromq",
+      "name": "zeromq_yolo11m_barqrcode",
       "trigger_source_id": "zeromq-workflow-runtime-xxx",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",

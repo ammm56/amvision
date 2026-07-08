@@ -39,6 +39,7 @@
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/api/workflow-sdks.md](api/workflow-sdks.md) 汇总 Workflow 外部调用方 SDK 的目录、流程和语言实现边界
 - [docs/api/model-deployment-sdks.md](api/model-deployment-sdks.md) 汇总模型 DeploymentInstance 现场调用 SDK 的边界、config key 调用方式和后续 .NET 实现清单
+- [docs/api/sdk-config-packages.md](api/sdk-config-packages.md) 汇总项目工作台生成 SDK 配置包的入口、后端生成 zip 规则和 `Config/config_*.json` 导出边界
 - [docs/examples/workflows/README.md](examples/workflows/README.md) 说明 workflow template/application 源 JSON 与 LocalBufferBroker 输入形状的关系
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/operations/README.md](operations/README.md) 汇总现场运维、排障和受控上线手册

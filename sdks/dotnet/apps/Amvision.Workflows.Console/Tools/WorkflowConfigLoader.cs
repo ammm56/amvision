@@ -150,25 +150,33 @@ internal static class WorkflowConfigLoader
         foreach (var file in files)
         {
             var config = LoadFile(file);
-            var runtime = new ConfiguredRuntime(config.Backend, config.Runtime, config.Invoke, file);
-            if (runtimes.ContainsKey(config.Runtime.Name))
+            if (config.Runtime is not null)
             {
-                throw new InvalidOperationException($"Duplicate runtime config key: {config.Runtime.Name}");
-            }
-
-            runtimes[config.Runtime.Name] = runtime;
-            foreach (var triggerSource in config.TriggerSources)
-            {
-                if (triggerSources.ContainsKey(triggerSource.Name))
+                var invoke = config.Invoke ?? new InvokeConfig();
+                var runtime = new ConfiguredRuntime(config.Backend, config.Runtime, invoke, file);
+                if (runtimes.ContainsKey(config.Runtime.Name))
                 {
-                    throw new InvalidOperationException($"Duplicate TriggerSource config key: {triggerSource.Name}");
+                    throw new InvalidOperationException($"Duplicate runtime config key: {config.Runtime.Name}");
                 }
 
-                triggerSources[triggerSource.Name] = new ConfiguredTriggerSource(
-                    config.Backend,
-                    config.Runtime,
-                    triggerSource,
-                    file);
+                runtimes[config.Runtime.Name] = runtime;
+                foreach (var triggerSource in config.TriggerSources)
+                {
+                    if (triggerSources.ContainsKey(triggerSource.Name))
+                    {
+                        throw new InvalidOperationException($"Duplicate TriggerSource config key: {triggerSource.Name}");
+                    }
+
+                    triggerSources[triggerSource.Name] = new ConfiguredTriggerSource(
+                        config.Backend,
+                        config.Runtime,
+                        triggerSource,
+                        file);
+                }
+            }
+            else if (config.TriggerSources.Count > 0)
+            {
+                throw new InvalidOperationException($"{Path.GetFileName(file)}.runtime is required when trigger_sources is not empty.");
             }
 
             foreach (var modelDeployment in config.ModelDeployments)

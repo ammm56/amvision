@@ -15,13 +15,13 @@ internal static class Program
     /// workflow app runtime 工作流应用调用使用
     /// 默认 runtime 配置 key；现场使用时按 Config/config_*.json 修改。
     /// </summary>
-    private const string RuntimeName = "yolo11m_barqrcode_runtime";
+    private const string RuntimeName = "yolo11m_barqrcode";
 
     /// <summary>
     /// 触发调用 workflow app runtime 工作流应用调用使用
     /// 默认 TriggerSource 配置 key；现场使用时按 Config/config_*.json 修改。
     /// </summary>
-    private const string TriggerSourceName = "yolo11m_barqrcode_zeromq";
+    private const string TriggerSourceName = "zeromq_yolo11m_barqrcode";
 
     /// <summary>
     /// 直接调用部署的模型推理使用

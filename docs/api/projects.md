@@ -13,6 +13,8 @@
 - GET /api/v1/projects
 - GET /api/v1/projects/{project_id}
 - GET /api/v1/projects/{project_id}/summary
+- POST /api/v1/projects/{project_id}/sdk-config-packages/preview
+- POST /api/v1/projects/{project_id}/sdk-config-packages/download
 - GET /api/v1/projects/{project_id}/files
 - GET /api/v1/projects/{project_id}/files/metadata
 - GET /api/v1/projects/{project_id}/files/content
@@ -36,6 +38,7 @@
 - GET /api/v1/system/bootstrap：无；未登录也可调用
 - POST /api/v1/projects/bootstrap：当前主体需要至少具备 `datasets:write` 或 `workflows:write`
 - GET /api/v1/projects、GET /api/v1/projects/{project_id}、GET /api/v1/projects/{project_id}/summary：需要 `workflows:read` 和 `models:read`
+- POST /api/v1/projects/{project_id}/sdk-config-packages/preview、POST /api/v1/projects/{project_id}/sdk-config-packages/download：需要 `workflows:read` 和 `models:read`
 - GET /api/v1/projects/{project_id}/files、GET /api/v1/projects/{project_id}/files/metadata、GET /api/v1/projects/{project_id}/files/content：需要 `workflows:read` 和 `models:read`
 
 当 Bearer token 自带 `project_ids` 可见性裁剪时，Project 相关接口还会额外校验 `project_id` 是否在可访问范围内。
@@ -188,6 +191,40 @@
 - `workflows.app_runtime_observed_state_counts`
 - `deployments.deployment_instance_total`
 - `deployments.deployment_status_counts`
+
+## POST /api/v1/projects/{project_id}/sdk-config-packages/preview
+
+- 返回当前 Project 可导出的 SDK `Config/config_*.json` 配置包摘要，不返回 zip 内容。
+- 当前接口由项目工作台右上角“生成 SDK 配置包”按钮调用。
+- 配置包生成规则见 [docs/api/sdk-config-packages.md](sdk-config-packages.md)。
+
+### 请求体字段
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| include_access_token | boolean | 否 | true | 是否把当前 Bearer token 写入配置文件。 |
+| model_runtime_modes | string[] | 否 | ["sync"] | 为模型 deployment 生成哪些 runtime_mode 调用 key，支持 `sync` 和 `async`。 |
+| include_disabled_trigger_sources | boolean | 否 | true | 是否导出已创建但未启用的 TriggerSource。 |
+
+### 成功响应字段
+
+- `project_id`
+- `generated_at`
+- `package_name`
+- `base_api_url`
+- `contains_access_token`
+- `workflow_runtime_count`
+- `trigger_source_count`
+- `model_deployment_count`
+- `files`
+- `warnings`
+
+## POST /api/v1/projects/{project_id}/sdk-config-packages/download
+
+- 返回当前 Project 的 SDK 配置包 zip。
+- `Content-Type` 为 `application/zip`。
+- `Content-Disposition` 文件名格式为 `amvision_sdk_configs_{project_id}_{timestamp}.zip`。
+- 当当前 Project 没有可导出的 workflow runtime、TriggerSource 或模型 deployment 时返回明确错误，不生成空 zip。
 
 ## GET /api/v1/projects/{project_id}/files
 

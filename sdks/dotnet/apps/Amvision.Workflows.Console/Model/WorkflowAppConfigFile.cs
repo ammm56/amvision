@@ -18,13 +18,13 @@ internal sealed class WorkflowAppConfigFile
     /// 当前配置文件描述的 WorkflowAppRuntime。
     /// </summary>
     [JsonPropertyName("runtime")]
-    public WorkflowRuntimeConfig Runtime { get; set; } = new WorkflowRuntimeConfig();
+    public WorkflowRuntimeConfig? Runtime { get; set; }
 
     /// <summary>
     /// runtime invoke 和 WorkflowRun 调用参数。
     /// </summary>
     [JsonPropertyName("invoke")]
-    public InvokeConfig Invoke { get; set; } = new InvokeConfig();
+    public InvokeConfig? Invoke { get; set; }
 
     /// <summary>
     /// 与当前 runtime 关联的 TriggerSource 列表。
@@ -45,8 +45,25 @@ internal sealed class WorkflowAppConfigFile
     public void Validate(string sourceFile)
     {
         Backend.Validate($"{sourceFile}.backend");
-        Runtime.Validate($"{sourceFile}.runtime");
-        Invoke.Validate($"{sourceFile}.invoke");
+        if (Runtime is not null)
+        {
+            Runtime.Validate($"{sourceFile}.runtime");
+            (Invoke ?? new InvokeConfig()).Validate($"{sourceFile}.invoke");
+        }
+        else if (TriggerSources.Count > 0)
+        {
+            throw new InvalidOperationException($"{sourceFile}.runtime is required when trigger_sources is not empty.");
+        }
+        else if (Invoke is not null)
+        {
+            throw new InvalidOperationException($"{sourceFile}.invoke requires runtime.");
+        }
+
+        if (Runtime is null && ModelDeployments.Count == 0)
+        {
+            throw new InvalidOperationException($"{sourceFile} must contain runtime or model_deployments.");
+        }
+
         for (var index = 0; index < TriggerSources.Count; index++)
         {
             TriggerSources[index].Validate($"{sourceFile}.trigger_sources[{index}]");

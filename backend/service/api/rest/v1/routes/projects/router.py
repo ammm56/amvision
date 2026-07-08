@@ -31,6 +31,9 @@ from backend.service.api.rest.v1.routes.projects.schemas import (
     ProjectObjectMetadataResponse,
     ProjectSummaryResponse,
 )
+from backend.service.api.rest.v1.routes.projects.sdk_config_packages import (
+    sdk_config_packages_router,
+)
 from backend.service.api.rest.v1.routes.projects.services import (
     build_project_bootstrap_service,
     build_project_summary_service,
@@ -42,6 +45,7 @@ from backend.service.api.rest.v1.routes.projects.services import (
 
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
+projects_router.include_router(sdk_config_packages_router)
 
 
 @projects_router.get("", response_model=list[ProjectCatalogItemResponse])
@@ -259,4 +263,3 @@ def read_project_object_content(
         media_type=media_type,
         filename=filename,
     )
-

@@ -93,6 +93,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/projects/bootstrap | datasets:write 或 workflows:write | 初始化一个 Project 目录、最小 manifest 和工作区骨架。 |
 | GET | /api/v1/projects/{project_id} | workflows:read + models:read | 读取一个 Project 的目录信息和当前 summary。 |
 | GET | /api/v1/projects/{project_id}/summary | workflows:read + models:read | 读取一个 Project 当前工作台可用的聚合摘要。 |
+| POST | /api/v1/projects/{project_id}/sdk-config-packages/preview | workflows:read + models:read | 预览当前 Project 可导出的 SDK `Config/config_*.json` 配置包摘要。 |
+| POST | /api/v1/projects/{project_id}/sdk-config-packages/download | workflows:read + models:read | 下载当前 Project 的 SDK 配置包 zip。 |
 | GET | /api/v1/projects/{project_id}/files | workflows:read + models:read | 列出一个 Project 公开文件命名空间中的文件，并直接返回 file_id、content_url 和 download_url；支持可选前缀过滤与分页。 |
 | GET | /api/v1/projects/{project_id}/files/metadata | workflows:read + models:read | 读取一个 Project 公开文件命名空间中的对象元数据、content_url 和 download_url；当前只开放 inputs、results 和 datasets 下的 versions、exports。 |
 | GET | /api/v1/projects/{project_id}/files/content | workflows:read + models:read | 直接输出一个 Project 公开文件命名空间中的对象文件内容，适用于图片预览和结果文件下载。 |
@@ -494,6 +496,34 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - deployments.deployment_instance_total
   - deployments.deployment_status_counts
 - 该接口是项目级工作台和 `/ws/v1/projects/events` 的正式快照面
+
+### POST /api/v1/projects/{project_id}/sdk-config-packages/preview
+
+- 需要 workflows:read 和 models:read
+- 返回当前 Project 可导出的 SDK 配置包摘要，不返回 zip 内容
+- 请求体字段：
+  - include_access_token：是否把当前 Bearer token 写入配置文件，默认 true
+  - model_runtime_modes：模型 deployment 生成的 runtime_mode key 列表，默认 ["sync"]
+  - include_disabled_trigger_sources：是否导出已创建但未启用的 TriggerSource，默认 true
+- 返回字段包括：
+  - project_id
+  - generated_at
+  - package_name
+  - base_api_url
+  - contains_access_token
+  - workflow_runtime_count
+  - trigger_source_count
+  - model_deployment_count
+  - files
+  - warnings
+
+### POST /api/v1/projects/{project_id}/sdk-config-packages/download
+
+- 需要 workflows:read 和 models:read
+- 返回当前 Project 的 SDK 配置包 zip
+- Content-Type：application/zip
+- Content-Disposition 文件名格式：`amvision_sdk_configs_{project_id}_{timestamp}.zip`
+- 当前 Project 没有可导出配置时返回错误，不生成空 zip
 
 ### GET /api/v1/projects/{project_id}/files
 

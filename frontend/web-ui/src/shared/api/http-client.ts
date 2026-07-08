@@ -146,14 +146,31 @@ export async function apiRequestWithHeaders<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<{ payload: T; headers: Headers }> {
-  const response = await fetch(buildUrl(path, options.query), {
-    method: options.method ?? 'GET',
-    headers: {
-      ...buildBearerAuthHeader(options.skipAuth ? null : hooks.getAccessToken()),
-      ...(options.headers as Record<string, string> | undefined),
-    },
+  const { body, query, skipAuth, responseType = 'json', ...requestInit } = options
+  const headers = new Headers(requestInit.headers)
+  if (!skipAuth) {
+    for (const [key, value] of Object.entries(buildBearerAuthHeader(hooks.getAccessToken()))) {
+      headers.set(key, value)
+    }
+  }
+
+  let requestBody: BodyInit | undefined
+  if (body !== null && body !== undefined) {
+    if (isPlainJsonBody(body)) {
+      headers.set('Content-Type', 'application/json')
+      requestBody = JSON.stringify(body)
+    } else {
+      requestBody = body as BodyInit
+    }
+  }
+
+  const response = await fetch(buildUrl(path, query), {
+    ...requestInit,
+    method: requestInit.method ?? 'GET',
+    headers,
+    body: requestBody,
   })
-  const payload = await handleResponse<T>(response, options.responseType ?? 'json')
+  const payload = await handleResponse<T>(response, responseType)
   return { payload, headers: response.headers }
 }
 
