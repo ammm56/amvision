@@ -30,5 +30,20 @@
         "timeout_seconds": 5
       }
     }
+  ],
+  "model_deployments": [
+    {
+      "name": "barcode_detector",
+      "task_type": "detection",
+      "deployment_instance_id": "deployment-instance-8a186ddbab564e86a1649c16965ffa0f",
+      "runtime_mode": "sync",
+      "input_transport_mode": "memory",
+      "default_image_path": "Resources\\Img\\qrcode50.jpg",
+      "score_threshold": 0.3,
+      "save_result_image": false,
+      "return_preview_image_base64": false,
+      "default_file_name": "qrcode50.jpg",
+      "default_media_type": "image/jpeg"
+    }
   ]
 }

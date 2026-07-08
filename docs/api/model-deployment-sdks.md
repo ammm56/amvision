@@ -1,8 +1,8 @@
-# 模型部署调用 SDK 与 Console 规划
+# 模型部署调用 SDK 与 Console 实现说明
 
 ## 文档目的
 
-本文档固定模型 DeploymentInstance 的外部调用 SDK 边界、配置方式和后续 Console 实现清单，避免后续实现时把前端部署管理能力、workflow app 调用能力和模型直接推理调用混在一起。
+本文档固定模型 DeploymentInstance 的外部调用 SDK 边界、配置方式和 Console 实现清单，避免后续维护时把前端部署管理能力、workflow app 调用能力和模型直接推理调用混在一起。
 
 模型 DeploymentInstance 的创建、选择模型、选择 ModelBuild、选择 Runtime backend、选择 precision、选择 device、设置 instance_count 和删除等管理动作由前端界面完成。SDK 只面向现场程序实际使用：控制已经存在的 deployment runtime，并向已经存在的 DeploymentInstance 提交同步或异步推理请求。
 
@@ -11,7 +11,7 @@
 - .NET SDK 当前已经实现 WorkflowAppRuntime、WorkflowRun、TriggerSource、ZeroMQ 触发、SystemConfig、模型 DeploymentInstance runtime 控制和模型直接推理调用。
 - SDK 不需要实现 DeploymentInstance 的 `list/create/get/delete` 管理接口。
 - SDK 已实现已有 DeploymentInstance 的 `sync/async` runtime 启动、预热、重置、停止、状态、health 和推理调用。
-- Console 参考实现下一步应沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
+- Console 参考实现已经沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
 
 ## 调用方关系
 
@@ -190,7 +190,9 @@ GetModelInferenceTaskResultAsync(taskType, taskId)
       "score_threshold": 0.3,
       "save_result_image": false,
       "return_preview_image_base64": false,
-      "default_image_path": "Resources/Img/qrcode50.jpg"
+      "default_image_path": "Resources/Img/qrcode50.jpg",
+      "default_file_name": "qrcode50.jpg",
+      "default_media_type": "image/jpeg"
     }
   ]
 }
@@ -226,42 +228,47 @@ key 规则：
 
 - `runtime.name` 在 `Runtimes` 中必须唯一。
 - `trigger_sources[].name` 在 `TriggerSources` 中必须唯一。
-- `model_deployments[].name` 在 `ModelDeployments` 中必须唯一。
+- `model_deployments[].name` 允许跨配置文件重复，重复项会按规则合并。
 - key 比较建议使用 `StringComparer.OrdinalIgnoreCase`，避免大小写差异造成现场误用。
 - 重复 key 不允许静默覆盖，也不随机保留某个配置。
-- 加载时发现重复 key，应把重复项从有效 catalog 中排除，并抛出配置错误，列出 key、配置类型和来源文件。
+- 重复的 `model_deployments[].name` 如果字段完全一致，加载时会合并去重，只保留一份。
+- 重复的 `model_deployments[].name` 如果字段不一致，加载时会抛出配置错误，列出 key 和冲突来源文件。
 
 示例错误：
 
 ```text
-Config key duplicated: model_deployments.barcode_detector
-files:
-- Config/config_line_a.json
-- Config/config_line_b.json
+Model deployment config key has conflicting values: barcode_detector. Existing file: Config/config_line_a.json; current file: Config/config_line_b.json
 ```
 
 这种处理方式可以避免现场启动后调用到错误模型。配置错误应在程序启动阶段发现并修正，不应运行到推理调用阶段才暴露。
 
-## Console 参考实现方法规划
+## Console 参考实现方法
 
-建议新增目录：
+当前目录：
 
 ```text
 sdks/dotnet/apps/Amvision.Workflows.Console/
   ModelDeployment/
     ModelDeploymentOperations.cs
+    BuildModelDeploymentInferenceRequest.cs
     StartModelDeploymentRuntimeAsync.cs
     StopModelDeploymentRuntimeAsync.cs
     ResetModelDeploymentRuntimeAsync.cs
     WarmupModelDeploymentRuntimeAsync.cs
     GetModelDeploymentRuntimeStatusAsync.cs
     GetModelDeploymentRuntimeHealthAsync.cs
+    InvokeConfiguredModelDeploymentAsync.cs
     InvokeModelDeploymentWithImageBytesAsync.cs
     InvokeModelDeploymentWithImageBase64Async.cs
     InvokeModelDeploymentWithImageFromFileAsync.cs
-    RunModelInferenceTaskWithImageBytesAsync.cs
-    RunModelInferenceTaskWithImageBase64Async.cs
-    RunModelInferenceTaskWithImageFromFileAsync.cs
+    InvokeModelDeploymentWithInputUriAsync.cs
+    InvokeModelDeploymentWithInputFileIdAsync.cs
+    RunConfiguredModelDeploymentAsync.cs
+    RunModelDeploymentWithImageBytesAsync.cs
+    RunModelDeploymentWithImageBase64Async.cs
+    RunModelDeploymentWithImageFromFileAsync.cs
+    RunModelDeploymentWithInputUriAsync.cs
+    RunModelDeploymentWithInputFileIdAsync.cs
     GetModelInferenceTaskAsync.cs
     GetModelInferenceTaskResultAsync.cs
 ```
@@ -277,14 +284,14 @@ var syncResult = await runner.InvokeModelDeploymentWithImageBytesAsync(
     mediaType: "image/jpeg",
     cancellationToken: cancellationToken);
 
-var task = await runner.RunModelInferenceTaskWithImageFromFileAsync(
+var task = await runner.RunModelDeploymentWithImageFromFileAsync(
     "barcode_detector",
     "Resources/Img/qrcode50.jpg",
     cancellationToken: cancellationToken);
 
 var taskResult = await runner.GetModelInferenceTaskResultAsync(
     "barcode_detector",
-    task.TaskId,
+    task.InferenceTaskId,
     cancellationToken);
 ```
 
@@ -318,7 +325,8 @@ SDK 底层和 Console 参考实现都需要做参数校验：
 - get inference task 和 get result URL 测试。
 - Console config `model_deployments` 读取测试。
 - 多个 `config_*.json` 合并 catalog 测试。
-- `runtime`、`trigger_source`、`model_deployment` 重复 key 配置错误测试。
+- `runtime`、`trigger_source` 重复 key 配置错误测试。
+- `model_deployment` 相同配置去重和冲突配置错误测试。
 
 ## 与 workflow app SDK 的边界
 

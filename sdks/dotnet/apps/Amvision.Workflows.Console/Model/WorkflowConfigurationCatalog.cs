@@ -15,20 +15,26 @@ internal sealed class WorkflowConfigurationCatalog
     /// </summary>
     /// <param name="runtimes">runtime key 到配置的映射。</param>
     /// <param name="triggerSources">TriggerSource key 到配置的映射。</param>
+    /// <param name="modelDeployments">模型 deployment key 到配置的映射。</param>
     public WorkflowConfigurationCatalog(
         IDictionary<string, ConfiguredRuntime> runtimes,
-        IDictionary<string, ConfiguredTriggerSource> triggerSources)
+        IDictionary<string, ConfiguredTriggerSource> triggerSources,
+        IDictionary<string, ConfiguredModelDeployment> modelDeployments)
     {
-        if (runtimes.Count == 0)
+        if (runtimes.Count == 0 && modelDeployments.Count == 0)
         {
-            throw new InvalidOperationException("At least one runtime config is required.");
+            throw new InvalidOperationException("At least one runtime config or model deployment config is required.");
         }
 
         Runtimes = new ReadOnlyDictionary<string, ConfiguredRuntime>(
             new Dictionary<string, ConfiguredRuntime>(runtimes, StringComparer.OrdinalIgnoreCase));
         TriggerSources = new ReadOnlyDictionary<string, ConfiguredTriggerSource>(
             new Dictionary<string, ConfiguredTriggerSource>(triggerSources, StringComparer.OrdinalIgnoreCase));
-        DefaultBackend = Runtimes.Values.First().Backend;
+        ModelDeployments = new ReadOnlyDictionary<string, ConfiguredModelDeployment>(
+            new Dictionary<string, ConfiguredModelDeployment>(modelDeployments, StringComparer.OrdinalIgnoreCase));
+        DefaultBackend = Runtimes.Count > 0
+            ? Runtimes.Values.First().Backend
+            : ModelDeployments.Values.First().Backend;
     }
 
     /// <summary>
@@ -40,6 +46,11 @@ internal sealed class WorkflowConfigurationCatalog
     /// 按 TriggerSource name 索引的 TriggerSource 配置。
     /// </summary>
     public IReadOnlyDictionary<string, ConfiguredTriggerSource> TriggerSources { get; }
+
+    /// <summary>
+    /// 按模型 deployment name 索引的 DeploymentInstance 调用配置。
+    /// </summary>
+    public IReadOnlyDictionary<string, ConfiguredModelDeployment> ModelDeployments { get; }
 
     /// <summary>
     /// 默认 backend 配置，用于初始化共享的 HTTP client。
@@ -76,5 +87,21 @@ internal sealed class WorkflowConfigurationCatalog
         }
 
         return triggerSource;
+    }
+
+    /// <summary>
+    /// 通过模型 deployment key 获取配置；key 不存在时抛出明确错误。
+    /// </summary>
+    /// <param name="modelDeploymentName">模型 deployment 字典 key。</param>
+    /// <returns>对应的模型 deployment 配置。</returns>
+    public ConfiguredModelDeployment GetModelDeployment(string modelDeploymentName)
+    {
+        var key = ConfigValidation.RequireText(modelDeploymentName, nameof(modelDeploymentName));
+        if (!ModelDeployments.TryGetValue(key, out var modelDeployment))
+        {
+            throw new KeyNotFoundException($"Model deployment config key does not exist: {key}");
+        }
+
+        return modelDeployment;
     }
 }

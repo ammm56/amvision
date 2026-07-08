@@ -8,7 +8,7 @@ using Amvision.Workflows.Console.Model;
 namespace Amvision.Workflows.Console.Tools;
 
 /// <summary>
-/// 从 Config/config_*.json 读取全部现场配置，并构建 runtime / TriggerSource 配置索引。
+/// 从 Config/config_*.json 读取全部现场配置，并构建 runtime / TriggerSource / model deployment 配置索引。
 /// </summary>
 internal static class WorkflowConfigLoader
 {
@@ -30,7 +30,8 @@ internal static class WorkflowConfigLoader
         "backend",
         "runtime",
         "invoke",
-        "trigger_sources"
+        "trigger_sources",
+        "model_deployments"
     };
 
     /// <summary>
@@ -91,16 +92,39 @@ internal static class WorkflowConfigLoader
     };
 
     /// <summary>
+    /// model_deployments[] 节点允许的字段；创建部署相关字段不允许出现在 console 配置里。
+    /// </summary>
+    private static readonly ISet<string> ModelDeploymentPropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "name",
+        "task_type",
+        "deployment_instance_id",
+        "runtime_mode",
+        "input_transport_mode",
+        "default_image_path",
+        "default_input_uri",
+        "default_input_file_id",
+        "score_threshold",
+        "top_k",
+        "mask_threshold",
+        "keypoint_confidence_threshold",
+        "save_result_image",
+        "return_preview_image_base64",
+        "default_file_name",
+        "default_media_type"
+    };
+
+    /// <summary>
     /// 从默认 Config 目录加载全部 config_*.json。
     /// </summary>
-    /// <returns>按 runtime key 和 TriggerSource key 索引好的配置 catalog。</returns>
+    /// <returns>按 runtime key、TriggerSource key 和 model deployment key 索引好的配置 catalog。</returns>
     public static WorkflowConfigurationCatalog LoadDefault()
     {
         return LoadDirectory(FindConfigDirectory());
     }
 
     /// <summary>
-    /// 从指定目录加载所有 config_*.json，并校验 key 唯一性和 runtime 关联。
+    /// 从指定目录加载所有 config_*.json，并校验 key 唯一性、model deployment 去重和 runtime 关联。
     /// </summary>
     /// <param name="configDirectory">Config 目录路径。</param>
     /// <returns>按 key 查询的配置 catalog。</returns>
@@ -122,6 +146,7 @@ internal static class WorkflowConfigLoader
 
         var runtimes = new Dictionary<string, ConfiguredRuntime>(StringComparer.OrdinalIgnoreCase);
         var triggerSources = new Dictionary<string, ConfiguredTriggerSource>(StringComparer.OrdinalIgnoreCase);
+        var modelDeployments = new Dictionary<string, ConfiguredModelDeployment>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
             var config = LoadFile(file);
@@ -145,9 +170,68 @@ internal static class WorkflowConfigLoader
                     triggerSource,
                     file);
             }
+
+            foreach (var modelDeployment in config.ModelDeployments)
+            {
+                if (modelDeployments.TryGetValue(modelDeployment.Name, out var existingModelDeployment))
+                {
+                    if (ModelDeploymentsEquivalent(existingModelDeployment.ModelDeployment, modelDeployment))
+                    {
+                        continue;
+                    }
+
+                    throw new InvalidOperationException(
+                        $"Model deployment config key has conflicting values: {modelDeployment.Name}. Existing file: {existingModelDeployment.SourceFile}; current file: {file}");
+                }
+
+                modelDeployments[modelDeployment.Name] = new ConfiguredModelDeployment(
+                    config.Backend,
+                    modelDeployment,
+                    file);
+            }
         }
 
-        return new WorkflowConfigurationCatalog(runtimes, triggerSources);
+        return new WorkflowConfigurationCatalog(runtimes, triggerSources, modelDeployments);
+    }
+
+    /// <summary>
+    /// 判断两个 model_deployments[] 配置是否指向同一个调用目标；完全一致时允许跨文件去重。
+    /// </summary>
+    /// <param name="left">已加入 catalog 的配置。</param>
+    /// <param name="right">当前配置文件中的配置。</param>
+    /// <returns>字段一致时返回 true。</returns>
+    private static bool ModelDeploymentsEquivalent(ModelDeploymentConfig left, ModelDeploymentConfig right)
+    {
+        return TextEquals(left.Name, right.Name)
+            && TextEquals(left.TaskType, right.TaskType)
+            && TextEquals(left.DeploymentInstanceId, right.DeploymentInstanceId)
+            && TextEquals(left.RuntimeMode, right.RuntimeMode)
+            && TextEquals(left.InputTransportMode, right.InputTransportMode)
+            && TextEquals(left.DefaultImagePath, right.DefaultImagePath)
+            && TextEquals(left.DefaultInputUri, right.DefaultInputUri)
+            && TextEquals(left.DefaultInputFileId, right.DefaultInputFileId)
+            && left.ScoreThreshold == right.ScoreThreshold
+            && left.TopK == right.TopK
+            && left.MaskThreshold == right.MaskThreshold
+            && left.KeypointConfidenceThreshold == right.KeypointConfidenceThreshold
+            && left.SaveResultImage == right.SaveResultImage
+            && left.ReturnPreviewImageBase64 == right.ReturnPreviewImageBase64
+            && TextEquals(left.DefaultFileName, right.DefaultFileName)
+            && TextEquals(left.DefaultMediaType, right.DefaultMediaType);
+    }
+
+    /// <summary>
+    /// 比较配置文本字段；空白和 null 都按未配置处理。
+    /// </summary>
+    /// <param name="left">左侧文本。</param>
+    /// <param name="right">右侧文本。</param>
+    /// <returns>文本一致时返回 true。</returns>
+    private static bool TextEquals(string? left, string? right)
+    {
+        return string.Equals(
+            ConfigValidation.NormalizeOptional(left),
+            ConfigValidation.NormalizeOptional(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -198,6 +282,9 @@ internal static class WorkflowConfigLoader
                     break;
                 case "trigger_sources":
                     ValidateTriggerSourceArray(property.Value, path);
+                    break;
+                case "model_deployments":
+                    ValidateModelDeploymentArray(property.Value, path);
                     break;
             }
         }
@@ -257,6 +344,26 @@ internal static class WorkflowConfigLoader
                 throw new InvalidOperationException($"{itemPath}.zero_mq is required.");
             }
 
+            index++;
+        }
+    }
+
+    /// <summary>
+    /// 校验模型 DeploymentInstance 调用配置数组。
+    /// </summary>
+    /// <param name="element">model_deployments JSON 节点。</param>
+    /// <param name="path">错误提示中的字段路径。</param>
+    private static void ValidateModelDeploymentArray(JsonElement element, string path)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException($"{path} must be a JSON array.");
+        }
+
+        var index = 0;
+        foreach (var item in element.EnumerateArray())
+        {
+            ValidateObjectProperties(item, ModelDeploymentPropertyNames, $"{path}[{index}]");
             index++;
         }
     }

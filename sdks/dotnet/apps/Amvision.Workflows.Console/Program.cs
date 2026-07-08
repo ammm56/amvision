@@ -21,6 +21,11 @@ internal static class Program
     private const string TriggerSourceName = "yolo11m_barqrcode_zeromq";
 
     /// <summary>
+    /// 默认模型 deployment 配置 key；现场使用时按 Config/config_*.json 修改。
+    /// </summary>
+    private const string ModelDeploymentName = "barcode_detector";
+
+    /// <summary>
     /// WorkflowAppRuntime 或 ZeroMQ 图片文件路径；调用 ImageFromFile 方法时填写。
     /// </summary>
     private const string ImagePath = "Resources\\Img\\qrcode50.jpg";
@@ -93,5 +98,11 @@ internal static class Program
             ImageBase64,
             mediaType: "image/jpeg",
             cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        //var modelRuntimeStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var modelRuntimeHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var warmedModelRuntime = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        var modelSyncResult = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelAsyncTask = await runner.RunModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

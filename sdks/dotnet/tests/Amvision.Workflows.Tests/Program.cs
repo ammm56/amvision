@@ -691,7 +691,7 @@ static void ModelDeploymentInferenceJsonAndUploadUseExpectedHttpRequests()
     {
         var root = document.RootElement;
         AssertEqual("AQID", root.GetProperty("image_base64").GetString());
-        AssertEqual("base64", root.GetProperty("input_transport_mode").GetString());
+        AssertEqual("memory", root.GetProperty("input_transport_mode").GetString());
         AssertEqual(0.25, root.GetProperty("score_threshold").GetDouble());
         AssertEqual(true, root.GetProperty("save_result_image").GetBoolean());
         AssertEqual("fast", root.GetProperty("extra_options").GetProperty("nms").GetString());
@@ -720,6 +720,8 @@ static void ModelDeploymentInferenceJsonAndUploadUseExpectedHttpRequests()
     AssertContains("input_image", handler.LastBody);
     AssertContains("camera.jpg", handler.LastBody);
     AssertContains("image/jpeg", handler.LastBody);
+    AssertContains("input_transport_mode", handler.LastBody);
+    AssertContains("memory", handler.LastBody);
     AssertContains("score_threshold", handler.LastBody);
     AssertContains("0.5", handler.LastBody);
 

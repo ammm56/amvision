@@ -46,7 +46,7 @@ public sealed class ModelDeploymentInferenceRequest
     public string? ImageBase64 { get; set; }
 
     /// <summary>
-    /// 输入传输模式，例如 storage 或 base64。
+    /// 输入传输模式，例如 storage 或 memory。
     /// </summary>
     [JsonPropertyName("input_transport_mode")]
     public string InputTransportMode { get; set; } = "storage";
@@ -144,7 +144,7 @@ public sealed class ModelDeploymentInferenceRequest
         return new ModelDeploymentInferenceRequest
         {
             ImageBase64 = NormalizeBase64(imageBase64),
-            InputTransportMode = "base64"
+            InputTransportMode = "memory"
         };
     }
 

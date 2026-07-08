@@ -48,7 +48,7 @@ public sealed class ModelDeploymentInferenceUploadRequest
     /// <summary>
     /// 输入传输模式。
     /// </summary>
-    public string InputTransportMode { get; set; } = "upload";
+    public string InputTransportMode { get; set; } = "memory";
 
     /// <summary>
     /// detection/segmentation/pose/obb 常用 score threshold。

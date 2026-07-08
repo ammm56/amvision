@@ -33,6 +33,12 @@ internal sealed class WorkflowAppConfigFile
     public List<TriggerSourceConfig> TriggerSources { get; set; } = new List<TriggerSourceConfig>();
 
     /// <summary>
+    /// 当前配置文件中声明的模型 DeploymentInstance 调用列表。
+    /// </summary>
+    [JsonPropertyName("model_deployments")]
+    public List<ModelDeploymentConfig> ModelDeployments { get; set; } = new List<ModelDeploymentConfig>();
+
+    /// <summary>
     /// 校验整个配置文件，并让子配置能拿到清晰的字段路径。
     /// </summary>
     /// <param name="sourceFile">配置文件名。</param>
@@ -44,6 +50,11 @@ internal sealed class WorkflowAppConfigFile
         for (var index = 0; index < TriggerSources.Count; index++)
         {
             TriggerSources[index].Validate($"{sourceFile}.trigger_sources[{index}]");
+        }
+
+        for (var index = 0; index < ModelDeployments.Count; index++)
+        {
+            ModelDeployments[index].Validate($"{sourceFile}.model_deployments[{index}]");
         }
     }
 }

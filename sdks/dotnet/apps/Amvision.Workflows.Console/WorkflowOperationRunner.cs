@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows;
 using Amvision.Workflows.Console.Model;
+using Amvision.Workflows.Console.ModelDeployment;
 using Amvision.Workflows.Console.Runtime;
 using Amvision.Workflows.Console.TriggerSource;
 using Amvision.Workflows.Console.TriggerSource.ZeroMQ;
@@ -14,7 +15,7 @@ namespace Amvision.Workflows.Console;
 /// <summary>
 /// 面向现场程序的 Workflow 调用入口，把底层 SDK 和配置读取再次封装为可直接调用的方法。
 /// </summary>
-public sealed class WorkflowOperationRunner : IDisposable
+public sealed partial class WorkflowOperationRunner : IDisposable
 {
     /// <summary>
     /// 启动时载入的配置索引，所有方法调用前都会用它校验 key 是否存在。
@@ -42,6 +43,11 @@ public sealed class WorkflowOperationRunner : IDisposable
     private readonly ZeroMqTriggerOperations zeroMqOperations;
 
     /// <summary>
+    /// 模型 DeploymentInstance runtime 控制和推理调用封装。
+    /// </summary>
+    private readonly ModelDeploymentOperations modelDeploymentOperations;
+
+    /// <summary>
     /// 构造一个可复用的 Workflow 调用入口。
     /// </summary>
     /// <param name="catalog">已经校验过的配置索引。</param>
@@ -57,6 +63,7 @@ public sealed class WorkflowOperationRunner : IDisposable
         runtimeOperations = new WorkflowRuntimeOperations(workflowClient, catalog);
         triggerSourceOperations = new WorkflowTriggerSourceOperations(workflowClient, catalog);
         zeroMqOperations = new ZeroMqTriggerOperations(catalog);
+        modelDeploymentOperations = new ModelDeploymentOperations(workflowClient, catalog);
     }
 
     /// <summary>
@@ -79,6 +86,11 @@ public sealed class WorkflowOperationRunner : IDisposable
     /// 获取配置中的 TriggerSource key 列表，便于图形界面绑定下拉框。
     /// </summary>
     public IEnumerable<string> TriggerSourceNames => catalog.TriggerSources.Keys;
+
+    /// <summary>
+    /// 获取配置中的模型 deployment key 列表，便于图形界面绑定下拉框。
+    /// </summary>
+    public IEnumerable<string> ModelDeploymentNames => catalog.ModelDeployments.Keys;
 
     /// <summary>
     /// 释放内部 HTTP client 和 ZeroMQ client。
@@ -576,5 +588,15 @@ public sealed class WorkflowOperationRunner : IDisposable
     private ConfiguredTriggerSource RequireTriggerSource(string triggerSourceName)
     {
         return catalog.GetTriggerSource(triggerSourceName);
+    }
+
+    /// <summary>
+    /// 获取模型 deployment 配置并校验 key 是否存在。
+    /// </summary>
+    /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
+    /// <returns>模型 deployment 配置。</returns>
+    private ConfiguredModelDeployment RequireModelDeployment(string modelDeploymentName)
+    {
+        return catalog.GetModelDeployment(modelDeploymentName);
     }
 }
