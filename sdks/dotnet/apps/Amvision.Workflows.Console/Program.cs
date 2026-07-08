@@ -27,7 +27,7 @@ internal static class Program
     /// 直接调用部署的模型推理使用
     /// 默认模型 deployment 配置 key；现场使用时按 Config/config_*.json 修改。
     /// </summary>
-    private const string ModelDeploymentName = "barcode_detector";
+    private const string ModelDeploymentName = "yolo11_m_20260630190724_sync_2";
 
     /// <summary>
     /// 一般不会使用
@@ -56,16 +56,6 @@ internal static class Program
     private const string ModelDeploymentInputFileId = "project-file-xxx";
 
     /// <summary>
-    /// 现场相机或其他上游程序传入的 base64 图片；调用 ImageBase64 方法时填写。
-    /// </summary>
-    private static string ImageBase64 = "data:image/jpeg;base64,";
-
-    /// <summary>
-    /// 现场相机或其他上游程序传入的图片 bytes；调用 ImageBytes 方法时填写。
-    /// </summary>
-    private static byte[] ImageBytes = Array.Empty<byte>();
-
-    /// <summary>
     /// 同步入口，桥接 async 主流程并统一输出错误。
     /// </summary>
     /// <returns>进程退出码。</returns>
@@ -73,11 +63,6 @@ internal static class Program
     {
         try
         {
-            ImageBase64 = ImageConversionTools.ImageFileToDataUrl(ImagePath);
-            ImageBytes = File.ReadAllBytes(ConfiguredPathResolver.ResolveExistingFile(
-                ImagePath,
-                sourceFile: null,
-                message: "Input image file does not exist."));
             MainAsync(CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         }
@@ -103,12 +88,40 @@ internal static class Program
         // 后端统一配置：用于读取 backend-service 当前公开配置快照。
         //var systemConfig = await runner.GetSystemConfigAsync(cancellationToken).ConfigureAwait(false);
 
+        // 每次只保留一个实际调用，避免后续示例调用失败时误判为当前调用失败。
+
+        // 模型 DeploymentInstance：runtime 启动、停止、重置、预热、状态和 health。
+        var startedModelRuntime = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var stoppedModelRuntime = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var resetModelRuntime = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        var warmedModelRuntime = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        var modelRuntimeStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        var modelRuntimeHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+
+        // 模型 DeploymentInstance：同步推理。
+        //var modelConfiguredSyncResult = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var modelBase64SyncResult = await runner.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
+        var modelBytesSyncResult = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), fileName: "camera.jpg", mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelFileSyncResult = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelUriSyncResult = await runner.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
+        //var modelFileIdSyncResult = await runner.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
+
+        // 模型 DeploymentInstance：异步 inference task。
+        //var modelConfiguredTask = await runner.RunConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        //var modelBase64Task = await runner.RunModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
+        //var modelBytesTask = await runner.RunModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), fileName: "camera.jpg", mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelFileTask = await runner.RunModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelUriTask = await runner.RunModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
+        //var modelFileIdTask = await runner.RunModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
+        //var modelTaskDetail = await runner.GetModelInferenceTaskAsync(ModelDeploymentName, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var modelTaskResult = await runner.GetModelInferenceTaskResultAsync(ModelDeploymentName, ModelInferenceTaskId, cancellationToken).ConfigureAwait(false);
+
         // WorkflowAppRuntime：读取和控制。
         var runtimeHealth = await runner.GetRuntimeHealthAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         // runtimeHealth 可直接绑定到 WinForms/WPF 页面，或继续参与现场业务判断。
         //var runtime = await runner.GetRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var runtimes = await runner.ListProjectRuntimesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
-        //var startedRuntime = await runner.StartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+        var startedRuntime = await runner.StartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var stoppedRuntime = await runner.StopRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var restartedRuntime = await runner.RestartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var runtimeInstances = await runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
@@ -118,13 +131,13 @@ internal static class Program
         // WorkflowAppRuntime：同步 invoke
         //var appResult = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var workflowRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
-        var syncBase64Result = await runner.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        var syncBytesResult = await runner.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, ImageBytes, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var syncBase64Result = await runner.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, LoadImageBase64(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var syncBytesResult = await runner.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, LoadImageBytes(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
         //var syncFileResult = await runner.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // WorkflowAppRuntime：异步 run
-        //var asyncBase64Run = await runner.RunRuntimeWithImageBase64Async(RuntimeName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var asyncBytesRun = await runner.RunRuntimeWithImageBytesAsync(RuntimeName, ImageBytes, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var asyncBase64Run = await runner.RunRuntimeWithImageBase64Async(RuntimeName, LoadImageBase64(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var asyncBytesRun = await runner.RunRuntimeWithImageBytesAsync(RuntimeName, LoadImageBytes(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
         //var asyncFileRun = await runner.RunRuntimeWithImageFromFileAsync(RuntimeName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
         //var existingWorkflowRun = await runner.GetWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
         //var canceledWorkflowRun = await runner.CancelWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
@@ -133,7 +146,7 @@ internal static class Program
         // TriggerSource：读取、启用、停用和 health。
         //var triggerSources = await runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
         //var triggerSource = await runner.GetTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
-        //var enabledTriggerSource = await runner.EnableTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+        var enabledTriggerSource = await runner.EnableTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         //var disabledTriggerSource = await runner.DisableTriggerSourceAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         var triggerHealth = await runner.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
 
@@ -141,33 +154,30 @@ internal static class Program
         //var eventResult = await runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         //var configuredImageResult = await runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         //var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var bytesImageResult = await runner.InvokeZeroMqImageBytesAsync(TriggerSourceName, ImageBytes, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(TriggerSourceName, ImageBase64, mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var bytesImageResult = await runner.InvokeZeroMqImageBytesAsync(TriggerSourceName, LoadImageBytes(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        //var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(TriggerSourceName, LoadImageBase64(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        // 模型 DeploymentInstance：runtime 启动、停止、重置、预热、状态和 health。
-        //var startedModelRuntime = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        //var stoppedModelRuntime = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        //var resetModelRuntime = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        //var warmedModelRuntime = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        var modelRuntimeStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        var modelRuntimeHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+        System.Console.ReadKey();
+    }
 
-        // 模型 DeploymentInstance：同步推理。
-        //var modelConfiguredSyncResult = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        var modelBase64SyncResult = await runner.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, ImageBase64, cancellationToken).ConfigureAwait(false);
-        var modelBytesSyncResult = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, ImageBytes, fileName: "camera.jpg", mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var modelFileSyncResult = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var modelUriSyncResult = await runner.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
-        //var modelFileIdSyncResult = await runner.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
+    /// <summary>
+    /// 从 ImagePath 读取图片并转换为 data URL；只在 base64 调用示例中按需执行。
+    /// </summary>
+    /// <returns>图片 data URL。</returns>
+    private static string LoadImageBase64()
+    {
+        return ImageConversionTools.ImageFileToDataUrl(ImagePath);
+    }
 
-        // 模型 DeploymentInstance：异步 inference task。
-        //var modelConfiguredTask = await runner.RunConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-        //var modelBase64Task = await runner.RunModelDeploymentWithImageBase64Async(ModelDeploymentName, ImageBase64, cancellationToken).ConfigureAwait(false);
-        //var modelBytesTask = await runner.RunModelDeploymentWithImageBytesAsync(ModelDeploymentName, ImageBytes, fileName: "camera.jpg", mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var modelFileTask = await runner.RunModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var modelUriTask = await runner.RunModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
-        //var modelFileIdTask = await runner.RunModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
-        //var modelTaskDetail = await runner.GetModelInferenceTaskAsync(ModelDeploymentName, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken).ConfigureAwait(false);
-        //var modelTaskResult = await runner.GetModelInferenceTaskResultAsync(ModelDeploymentName, ModelInferenceTaskId, cancellationToken).ConfigureAwait(false);
+    /// <summary>
+    /// 从 ImagePath 读取图片 bytes；只在 bytes 调用示例中按需执行。
+    /// </summary>
+    /// <returns>图片 bytes。</returns>
+    private static byte[] LoadImageBytes()
+    {
+        return File.ReadAllBytes(ConfiguredPathResolver.ResolveExistingFile(
+            ImagePath,
+            sourceFile: null,
+            message: "Input image file does not exist."));
     }
 }

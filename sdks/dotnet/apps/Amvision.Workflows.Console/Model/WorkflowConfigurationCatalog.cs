@@ -67,7 +67,7 @@ internal sealed class WorkflowConfigurationCatalog
         var key = ConfigValidation.RequireText(runtimeName, nameof(runtimeName));
         if (!Runtimes.TryGetValue(key, out var runtime))
         {
-            throw new KeyNotFoundException($"Runtime config key does not exist: {key}");
+            throw new KeyNotFoundException($"Runtime config key does not exist: {key}. Available keys: {FormatKnownKeys(Runtimes.Keys)}");
         }
 
         return runtime;
@@ -83,7 +83,7 @@ internal sealed class WorkflowConfigurationCatalog
         var key = ConfigValidation.RequireText(triggerSourceName, nameof(triggerSourceName));
         if (!TriggerSources.TryGetValue(key, out var triggerSource))
         {
-            throw new KeyNotFoundException($"TriggerSource config key does not exist: {key}");
+            throw new KeyNotFoundException($"TriggerSource config key does not exist: {key}. Available keys: {FormatKnownKeys(TriggerSources.Keys)}");
         }
 
         return triggerSource;
@@ -99,9 +99,20 @@ internal sealed class WorkflowConfigurationCatalog
         var key = ConfigValidation.RequireText(modelDeploymentName, nameof(modelDeploymentName));
         if (!ModelDeployments.TryGetValue(key, out var modelDeployment))
         {
-            throw new KeyNotFoundException($"Model deployment config key does not exist: {key}");
+            throw new KeyNotFoundException($"Model deployment config key does not exist: {key}. Available keys: {FormatKnownKeys(ModelDeployments.Keys)}");
         }
 
         return modelDeployment;
+    }
+
+    /// <summary>
+    /// 把已加载的配置 key 拼成错误提示，方便现场直接按提示修改 Program 中的常量。
+    /// </summary>
+    /// <param name="keys">已加载的配置 key 集合。</param>
+    /// <returns>用于异常信息的 key 列表。</returns>
+    private static string FormatKnownKeys(IEnumerable<string> keys)
+    {
+        var knownKeys = keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray();
+        return knownKeys.Length == 0 ? "<none>" : string.Join(", ", knownKeys);
     }
 }
