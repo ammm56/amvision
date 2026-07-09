@@ -1982,7 +1982,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
     "default_input_binding": "request_image_ref",
     "buffer_ttl_seconds": 30,
     "content_transport": "local-buffer",
-    "pool_name": "image-1080p"
+    "pool_name": "image-4k"
   },
   "input_binding_mapping": {
     "request_image_base64": {

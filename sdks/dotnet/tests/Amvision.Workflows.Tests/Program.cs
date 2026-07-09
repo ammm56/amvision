@@ -901,7 +901,7 @@ static void SystemConfigUsesExpectedHttpEndpoint()
 {
     var handler = new FakeHttpMessageHandler(
         HttpStatusCode.OK,
-        "{\"format_id\":\"amvision.backend-service-config.v1\",\"config\":{\"local_buffer_broker\":{\"enabled\":true,\"root_dir\":\"./data/buffers\",\"startup_timeout_seconds\":5.0,\"request_timeout_seconds\":5.0,\"shutdown_timeout_seconds\":5.0,\"expire_interval_seconds\":5.0,\"default_pool_name\":\"image-1080p\",\"pools\":[{\"pool_name\":\"image-1080p\",\"slot_size_bytes\":16777216,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-1080p-001.dat\",\"file_size_bytes\":536870912},{\"pool_name\":\"image-640x640\",\"slot_size_bytes\":4194304,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-640x640-001.dat\",\"file_size_bytes\":134217728}]},\"auth\":{\"static_tokens\":\"***\"}},\"metadata\":{\"source\":\"runtime-resolved\",\"secrets_redacted\":true}}"
+        "{\"format_id\":\"amvision.backend-service-config.v1\",\"config\":{\"local_buffer_broker\":{\"enabled\":true,\"root_dir\":\"./data/buffers\",\"startup_timeout_seconds\":60.0,\"request_timeout_seconds\":5.0,\"shutdown_timeout_seconds\":5.0,\"expire_interval_seconds\":5.0,\"default_pool_name\":\"image-4k\",\"pools\":[{\"pool_name\":\"image-4k\",\"slot_size_bytes\":134217728,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-4k-001.dat\",\"file_size_bytes\":4294967296},{\"pool_name\":\"image-1080p\",\"slot_size_bytes\":16777216,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-1080p-001.dat\",\"file_size_bytes\":536870912},{\"pool_name\":\"image-640x640\",\"slot_size_bytes\":4194304,\"slot_count\":32,\"flush_on_write\":false,\"file_name\":\"image-640x640-001.dat\",\"file_size_bytes\":134217728}]},\"auth\":{\"static_tokens\":\"***\"}},\"metadata\":{\"source\":\"runtime-resolved\",\"secrets_redacted\":true}}"
     );
     using var httpClient = new HttpClient(handler)
     {
@@ -917,10 +917,12 @@ static void SystemConfigUsesExpectedHttpEndpoint()
     var typedResponse = client.GetSystemConfigResponseAsync().GetAwaiter().GetResult();
     AssertEqual("amvision.backend-service-config.v1", typedResponse.FormatId);
     AssertEqual("runtime-resolved", typedResponse.Metadata["source"].GetString());
-    AssertEqual("image-1080p", typedResponse.LocalBufferBroker?.DefaultPoolName);
-    AssertEqual(2, typedResponse.LocalBufferBroker?.Pools.Count ?? 0);
-    AssertEqual("image-640x640", typedResponse.LocalBufferBroker?.Pools[1].PoolName);
-    AssertEqual(134217728L, typedResponse.LocalBufferBroker?.Pools[1].FileSizeBytes ?? 0);
+    AssertEqual("image-4k", typedResponse.LocalBufferBroker?.DefaultPoolName);
+    AssertEqual(3, typedResponse.LocalBufferBroker?.Pools.Count ?? 0);
+    AssertEqual("image-4k", typedResponse.LocalBufferBroker?.Pools[0].PoolName);
+    AssertEqual(4294967296L, typedResponse.LocalBufferBroker?.Pools[0].FileSizeBytes ?? 0);
+    AssertEqual("image-640x640", typedResponse.LocalBufferBroker?.Pools[2].PoolName);
+    AssertEqual(134217728L, typedResponse.LocalBufferBroker?.Pools[2].FileSizeBytes ?? 0);
 }
 
 // 验证 backend-service 错误 envelope 会被解析到 SDK HTTP 响应对象中。

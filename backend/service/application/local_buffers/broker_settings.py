@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 _MIB = 1024 * 1024
-_DEFAULT_4K_SLOT_SIZE_BYTES = 64 * _MIB
+_DEFAULT_8K_SLOT_SIZE_BYTES = 256 * _MIB
+_DEFAULT_8K_SLOT_COUNT = 32
+_DEFAULT_4K_SLOT_SIZE_BYTES = 128 * _MIB
 _DEFAULT_4K_SLOT_COUNT = 32
 _DEFAULT_1080P_SLOT_SIZE_BYTES = 16 * _MIB
 _DEFAULT_1080P_SLOT_COUNT = 32
@@ -26,9 +28,9 @@ class LocalBufferBrokerPoolSettings(BaseModel):
     - file_size_bytes：单个 pool 文件总容量；为空时按 slot_size_bytes * slot_count 自动计算。
     """
 
-    pool_name: str = "image-1080p"
-    slot_size_bytes: int = _DEFAULT_1080P_SLOT_SIZE_BYTES
-    slot_count: int = _DEFAULT_1080P_SLOT_COUNT
+    pool_name: str = "image-4k"
+    slot_size_bytes: int = _DEFAULT_4K_SLOT_SIZE_BYTES
+    slot_count: int = _DEFAULT_4K_SLOT_COUNT
     flush_on_write: bool = False
     file_name: str = ""
     file_size_bytes: int = 0
@@ -76,11 +78,11 @@ class LocalBufferBrokerSettings(BaseModel):
 
     enabled: bool = True
     root_dir: str = "./data/buffers"
-    startup_timeout_seconds: float = 5.0
+    startup_timeout_seconds: float = 60.0
     request_timeout_seconds: float = 5.0
     shutdown_timeout_seconds: float = 5.0
     expire_interval_seconds: float = 5.0
-    default_pool_name: str = "image-1080p"
+    default_pool_name: str = "image-4k"
     pools: tuple[LocalBufferBrokerPoolSettings, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="before")
@@ -118,7 +120,7 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
     """按名称构造内置 LocalBufferBroker pool preset。
 
     参数：
-    - pool_name：内置 pool 名称，可选 image-640x640、image-1080p 或 image-4k。
+    - pool_name：内置 pool 名称，可选 image-640x640、image-1080p、image-4k 或 image-8k。
 
     返回：
     - LocalBufferBrokerPoolSettings：对应的 pool 配置。
@@ -131,11 +133,17 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
             slot_count=_DEFAULT_640X640_SLOT_COUNT,
         )
     if pool_name == "image-1080p":
-        return LocalBufferBrokerPoolSettings()
-    if pool_name == "image-4k":
         return LocalBufferBrokerPoolSettings(
-            pool_name="image-4k",
-            slot_size_bytes=_DEFAULT_4K_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_4K_SLOT_COUNT,
+            pool_name="image-1080p",
+            slot_size_bytes=_DEFAULT_1080P_SLOT_SIZE_BYTES,
+            slot_count=_DEFAULT_1080P_SLOT_COUNT,
         )
-    raise ValueError("LocalBufferBroker default_pool_name 只支持 image-640x640、image-1080p 或 image-4k")
+    if pool_name == "image-4k":
+        return LocalBufferBrokerPoolSettings()
+    if pool_name == "image-8k":
+        return LocalBufferBrokerPoolSettings(
+            pool_name="image-8k",
+            slot_size_bytes=_DEFAULT_8K_SLOT_SIZE_BYTES,
+            slot_count=_DEFAULT_8K_SLOT_COUNT,
+        )
+    raise ValueError("LocalBufferBroker default_pool_name 只支持 image-640x640、image-1080p、image-4k 或 image-8k")

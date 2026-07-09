@@ -94,21 +94,21 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_
     assert supervisor.is_running is False
 
 
-def test_local_buffer_broker_default_pool_is_1080p_ready() -> None:
-    """验证默认 buffer pool 面向 1080p 高频输入而不是 small pool。"""
+def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
+    """验证默认 buffer pool 面向 20MP 工业相机输入而不是 small pool。"""
 
     settings = LocalBufferBrokerSettings()
     pools = {item.pool_name: item for item in settings.pools}
     default_pool = pools[settings.default_pool_name]
-    raw_1080p_rgba_bytes = 1920 * 1080 * 4
+    raw_20mp_rgba_bytes = 5000 * 4000 * 4
 
-    assert settings.default_pool_name == "image-1080p"
-    assert default_pool.slot_size_bytes >= 16 * 1024 * 1024
-    assert default_pool.slot_size_bytes > raw_1080p_rgba_bytes
+    assert settings.default_pool_name == "image-4k"
+    assert default_pool.slot_size_bytes >= 128 * 1024 * 1024
+    assert default_pool.slot_size_bytes > raw_20mp_rgba_bytes
     assert default_pool.slot_count >= 32
     assert default_pool.file_size_bytes == default_pool.slot_size_bytes * default_pool.slot_count
     assert default_pool.flush_on_write is False
-    assert set(pools) == {"image-1080p"}
+    assert set(pools) == {"image-4k"}
 
 
 @pytest.mark.parametrize(
@@ -116,7 +116,8 @@ def test_local_buffer_broker_default_pool_is_1080p_ready() -> None:
     (
         ("image-640x640", 4 * 1024 * 1024, 32),
         ("image-1080p", 16 * 1024 * 1024, 32),
-        ("image-4k", 64 * 1024 * 1024, 32),
+        ("image-4k", 128 * 1024 * 1024, 32),
+        ("image-8k", 256 * 1024 * 1024, 32),
     ),
 )
 def test_local_buffer_broker_builtin_pool_presets_are_selectable(
@@ -144,23 +145,30 @@ def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     assert selected_pool.flush_on_write is False
 
 
-def test_backend_service_config_uses_multi_pool_with_1080p_default() -> None:
-    """验证 backend-service.json 默认创建多 pool 并选择 image-1080p。"""
+def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
+    """验证 backend-service.json 默认创建多 pool 并选择 image-4k。"""
 
     payload = json.loads(Path("config/backend-service.json").read_text(encoding="utf-8"))
     settings = BackendServiceSettings.model_validate(payload)
     pool_names = {item.pool_name for item in settings.local_buffer_broker.pools}
 
-    assert settings.local_buffer_broker.default_pool_name == "image-1080p"
-    assert pool_names == {"image-1080p", "image-640x640"}
+    assert settings.local_buffer_broker.default_pool_name == "image-4k"
+    assert settings.local_buffer_broker.startup_timeout_seconds >= 60.0
+    assert pool_names == {"image-4k", "image-1080p", "image-640x640"}
     pools = {item.pool_name: item for item in settings.local_buffer_broker.pools}
-    default_pool = pools["image-1080p"]
+    default_pool = pools["image-4k"]
+    mid_res_pool = pools["image-1080p"]
     low_res_pool = pools["image-640x640"]
-    assert default_pool.file_name == "image-1080p-001.dat"
-    assert default_pool.slot_size_bytes == 16 * 1024 * 1024
+    assert default_pool.file_name == "image-4k-001.dat"
+    assert default_pool.slot_size_bytes == 128 * 1024 * 1024
     assert default_pool.slot_count == 32
     assert default_pool.file_size_bytes == default_pool.slot_size_bytes * 32
     assert default_pool.flush_on_write is False
+    assert mid_res_pool.file_name == "image-1080p-001.dat"
+    assert mid_res_pool.slot_size_bytes == 16 * 1024 * 1024
+    assert mid_res_pool.slot_count == 32
+    assert mid_res_pool.file_size_bytes == mid_res_pool.slot_size_bytes * 32
+    assert mid_res_pool.flush_on_write is False
     assert low_res_pool.file_name == "image-640x640-001.dat"
     assert low_res_pool.slot_size_bytes == 4 * 1024 * 1024
     assert low_res_pool.slot_count == 32

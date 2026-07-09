@@ -60,12 +60,18 @@
   "local_buffer_broker": {
     "enabled": true,
     "root_dir": "./data/buffers",
-    "startup_timeout_seconds": 5.0,
+    "startup_timeout_seconds": 60.0,
     "request_timeout_seconds": 5.0,
     "shutdown_timeout_seconds": 5.0,
     "expire_interval_seconds": 5.0,
-    "default_pool_name": "image-1080p",
+    "default_pool_name": "image-4k",
     "pools": [
+      {
+        "pool_name": "image-4k",
+        "slot_size_bytes": 134217728,
+        "slot_count": 32,
+        "flush_on_write": false
+      },
       {
         "pool_name": "image-1080p",
         "slot_size_bytes": 16777216,

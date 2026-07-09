@@ -238,8 +238,8 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
         "format_id": "amvision.frame-ref.v1",
         "stream_id": "line-a-camera-1",
         "sequence_id": 1024,
-        "buffer_id": "image-1080p:frame:line-a-camera-1:0",
-        "path": "data/buffers/image-1080p/image-1080p-001.dat",
+        "buffer_id": "image-4k:frame:line-a-camera-1:0",
+        "path": "data/buffers/image-4k/image-4k-001.dat",
         "offset": 0,
         "size": 6220800,
         "shape": [1080, 1920, 3],
@@ -267,7 +267,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
 
 本地 adapter 可以把这份请求交给 runtime invoke 或 run 创建逻辑。sync 模式适规则机短链路、调用方需要即时结果的场景；async 模式适合长期监听、排队、断线后回查和高频事件削峰。
 
-LocalBufferBroker 由 `config/backend-service.json` 的 `local_buffer_broker.default_pool_name` 和 `local_buffer_broker.pools` 显式配置，不再使用 `default_pool` 简化配置；仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略。仓库默认创建 `image-1080p` 和 `image-640x640` 两个 pool，默认 pool 为 `image-1080p`。`image-1080p` 单槽 16MB、32 个槽位，用于常见 1080p raw BGR/RGBA 图片输入和短时间并发占用；`image-640x640` 单槽 4MB、32 个槽位，用于 640x640 低分辨率图片和小图输入。现场应按工业相机分辨率、图像编码方式、单帧最大 bytes 和并发占用量调整 `pool_name`、`slot_size_bytes`、`slot_count` 和 `flush_on_write`，不依赖运行时自动猜测图片大小；mmap 文件名按 `pool_name` 自动生成，总大小按 `slot_size_bytes * slot_count` 自动计算。4K 或 20MB 级原始图输入场景应在配置文件中显式增加更大的 pool，并在 ZeroMQ TriggerSource 的 `transport_config.pool_name` 中选择。前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项，不维护独立默认 pool 列表。
+LocalBufferBroker 由 `config/backend-service.json` 的 `local_buffer_broker.default_pool_name` 和 `local_buffer_broker.pools` 显式配置，不再使用 `default_pool` 简化配置；仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略。仓库默认创建 `image-4k`、`image-1080p` 和 `image-640x640` 三个 pool，默认 pool 为 `image-4k`。`image-4k` 单槽 128MB、32 个槽位，用于覆盖 5000x4000 级 20MP 工业相机 raw RGB/RGBA 图片输入和短时间并发占用；`image-1080p` 单槽 16MB、32 个槽位，用于 1080p 图片和中间结果；`image-640x640` 单槽 4MB、32 个槽位，用于 640x640 低分辨率图片和小图输入。`image-8k` 单槽 256MB、32 个槽位，仅作为现场可选大图 pool，不在仓库默认配置中创建，避免未使用时初始化 8GB 级 mmap 文件。现场应按工业相机分辨率、图像编码方式、单帧最大 bytes 和并发占用量调整 `pool_name`、`slot_size_bytes`、`slot_count` 和 `flush_on_write`，不依赖运行时自动猜测图片大小；mmap 文件名按 `pool_name` 自动生成，总大小按 `slot_size_bytes * slot_count` 自动计算。前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项，不维护独立默认 pool 列表。
 
 FrameRef 的有效期很短，适合“立即执行一条 runtime 调用”。如果执行可能排队或后续节点需要稳定读取同一帧，触发层应把 FrameRef 固定为普通 BufferRef，或把关键图片保存到 ObjectStore 后再提交 run。该转换属于受控本地 adapter 或后续 TriggerSource 的职责，不属于 workflow 图中节点的职责。
 
@@ -1105,7 +1105,7 @@ docs/examples/workflows/
 - adapter 读取 envelope 中的 media_type、shape、dtype、layout、pixel_format、trace_id 和 input binding 名称。
 - 图片 bytes 写入 LocalBufferBroker 普通 BufferRef；写入目标由 ZeroMQ TriggerSource 的 `transport_config.pool_name` 指定，未指定时使用 `local_buffer_broker.default_pool_name`。
 - `flush_on_write` 由被选中 pool 的 `flush_on_write` 控制，仓库默认配置为 `false`，避免高频大图刷盘。
-- 如果现场图片可能达到 20MB 或更大，应在 `config/backend-service.json` 中显式配置更大的 LocalBufferBroker pool，并在对应 TriggerSource 中指定 `pool_name`，避免默认 1080p pool 容量不足。
+- 如果现场图片超过默认 `image-4k` 容量，应在 `config/backend-service.json` 中显式配置更大的 LocalBufferBroker pool，并在对应 TriggerSource 中指定 `pool_name`。
 - InputBindingMapper 把 BufferRef payload 映射到 `request_image_ref` 等 FlowApplication input binding；HTTP/JSON 调试入口继续使用 `request_image_base64`。
 - WorkflowSubmitter 使用 sync invoke 语义调用已启动 WorkflowAppRuntime。
 - ResultDispatcher 把 workflow 输出转换为 ZeroMQ JSON reply。

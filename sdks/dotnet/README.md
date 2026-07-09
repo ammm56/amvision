@@ -59,10 +59,10 @@ using var workflowClient = new AmvisionWorkflowClient(new AmvisionWorkflowClient
 
 var systemConfig = await workflowClient.GetSystemConfigResponseAsync();
 var broker = systemConfig.LocalBufferBroker;
-var poolName = broker?.DefaultPoolName ?? "image-1080p";
+var poolName = broker?.DefaultPoolName ?? "image-4k";
 ```
 
-创建 TriggerSource 时把 `poolName` 写入 `WorkflowTriggerSourceCreateRequest.TransportConfig["pool_name"]`。SDK 不维护独立默认 pool 列表，现场如果新增 4K 或相机专用 pool，应以 `/api/v1/system/config` 返回为准。
+创建 TriggerSource 时把 `poolName` 写入 `WorkflowTriggerSourceCreateRequest.TransportConfig["pool_name"]`。SDK 不维护独立默认 pool 列表，现场如果新增 8K 或相机专用 pool，应以 `/api/v1/system/config` 返回为准。
 
 上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目管理 API 或前端准备动作，不属于 SDK 对外提供的能力范围。
 
