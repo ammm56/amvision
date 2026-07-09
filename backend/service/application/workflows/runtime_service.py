@@ -1061,6 +1061,7 @@ class WorkflowRuntimeService:
         raw_outputs: dict[str, object] = {}
         raw_template_outputs: dict[str, object] = {}
         raw_node_records: tuple[dict[str, object], ...] = ()
+        node_timings: tuple[dict[str, object], ...] = ()
         try:
             worker_invoke_started_at = monotonic()
             worker_result = self.worker_manager.invoke_runtime(
@@ -1077,6 +1078,7 @@ class WorkflowRuntimeService:
             raw_outputs = dict(worker_result.outputs)
             raw_template_outputs = dict(worker_result.template_outputs)
             raw_node_records = tuple(dict(item) for item in worker_result.node_records)
+            node_timings = _build_compact_node_timings(raw_node_records)
             workflow_run = apply_workflow_run_result(
                 workflow_run,
                 worker_result,
@@ -1109,7 +1111,11 @@ class WorkflowRuntimeService:
         sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(sync_timing_started_at)
         workflow_run = replace(
             workflow_run,
-            metadata=_merge_workflow_run_timing_metadata(workflow_run.metadata, sync_timings),
+            metadata=_merge_workflow_run_diagnostic_metadata(
+                workflow_run.metadata,
+                sync_timings,
+                node_timings=node_timings,
+            ),
         )
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
@@ -1784,6 +1790,50 @@ def _merge_workflow_run_timing_metadata(
             timings[str(key)] = value
     payload["timings"] = timings
     return payload
+
+
+def _merge_workflow_run_diagnostic_metadata(
+    metadata: dict[str, object],
+    timing_payload: dict[str, object],
+    *,
+    node_timings: tuple[dict[str, object], ...] = (),
+) -> dict[str, object]:
+    """合并 WorkflowRun 的计时和轻量节点耗时诊断。"""
+
+    payload = _merge_workflow_run_timing_metadata(metadata, timing_payload)
+    if node_timings:
+        payload["node_timings"] = [dict(item) for item in node_timings]
+    return payload
+
+
+def _build_compact_node_timings(
+    node_records: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    """从 node_records 提取轻量节点耗时摘要。
+
+    该结构只包含节点定位字段和耗时，不携带 inputs/outputs，适合长期保留在
+    WorkflowRun metadata 中用于现场性能定位。
+    """
+
+    timings: list[dict[str, object]] = []
+    for item in node_records:
+        node_id = item.get("node_id")
+        node_type_id = item.get("node_type_id")
+        runtime_kind = item.get("runtime_kind")
+        if not isinstance(node_id, str) or not node_id:
+            continue
+        timing: dict[str, object] = {"node_id": node_id}
+        if isinstance(node_type_id, str) and node_type_id:
+            timing["node_type_id"] = node_type_id
+        if isinstance(runtime_kind, str) and runtime_kind:
+            timing["runtime_kind"] = runtime_kind
+        duration_ms = item.get("duration_ms")
+        if isinstance(duration_ms, bool):
+            duration_ms = None
+        if isinstance(duration_ms, int | float):
+            timing["duration_ms"] = float(duration_ms)
+        timings.append(timing)
+    return tuple(timings)
 
 
 def _read_optional_bool_flag(value: object) -> bool | None:

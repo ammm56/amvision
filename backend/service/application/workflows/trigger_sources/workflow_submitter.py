@@ -126,7 +126,13 @@ class WorkflowSubmitter:
         timings["trigger_submit_total_ms"] = _elapsed_ms(submit_started_at)
         timings.update(_read_workflow_run_timings(workflow_run.metadata))
         return result.model_copy(
-            update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
+            update={
+                "metadata": _merge_trigger_result_diagnostics(
+                    result.metadata,
+                    timings,
+                    node_timings=_read_workflow_run_node_timings(workflow_run.metadata),
+                )
+            }
         )
 
 
@@ -187,6 +193,20 @@ def _merge_trigger_result_timings(
     return payload
 
 
+def _merge_trigger_result_diagnostics(
+    metadata: dict[str, object],
+    timing_payload: dict[str, object],
+    *,
+    node_timings: tuple[dict[str, object], ...] = (),
+) -> dict[str, object]:
+    """把 TriggerSource 提交计时和节点耗时摘要合并进结果 metadata。"""
+
+    payload = _merge_trigger_result_timings(metadata, timing_payload)
+    if node_timings:
+        payload["node_timings"] = [dict(item) for item in node_timings]
+    return payload
+
+
 def _read_workflow_run_timings(metadata: dict[str, object]) -> dict[str, object]:
     """读取 WorkflowRun metadata 中可向协议结果返回的计时字段。"""
 
@@ -194,6 +214,35 @@ def _read_workflow_run_timings(metadata: dict[str, object]) -> dict[str, object]
     if not isinstance(raw_timings, dict):
         return {}
     return {f"workflow_{key}" if not str(key).startswith("workflow_") else str(key): value for key, value in raw_timings.items()}
+
+
+def _read_workflow_run_node_timings(metadata: dict[str, object]) -> tuple[dict[str, object], ...]:
+    """读取 WorkflowRun metadata 中可向协议结果返回的节点耗时摘要。"""
+
+    raw_items = metadata.get("node_timings")
+    if not isinstance(raw_items, list):
+        return ()
+    node_timings: list[dict[str, object]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        node_id = item.get("node_id")
+        if not isinstance(node_id, str) or not node_id:
+            continue
+        timing: dict[str, object] = {"node_id": node_id}
+        node_type_id = item.get("node_type_id")
+        runtime_kind = item.get("runtime_kind")
+        duration_ms = item.get("duration_ms")
+        if isinstance(node_type_id, str) and node_type_id:
+            timing["node_type_id"] = node_type_id
+        if isinstance(runtime_kind, str) and runtime_kind:
+            timing["runtime_kind"] = runtime_kind
+        if isinstance(duration_ms, bool):
+            duration_ms = None
+        if isinstance(duration_ms, int | float):
+            timing["duration_ms"] = float(duration_ms)
+        node_timings.append(timing)
+    return tuple(node_timings)
 
 
 def _elapsed_ms(started_at: float) -> float:

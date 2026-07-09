@@ -147,13 +147,58 @@ def try_deserialize_run_result_worker_state(message: object) -> WorkflowRuntimeW
         return None
 
 
-def serialize_node_records(node_records: tuple[dict[str, object], ...] | tuple[Any, ...]) -> tuple[dict[str, object], ...]:
-    """把节点执行记录统一转换为 JSON 可序列化字典。"""
+def serialize_node_records(
+    node_records: tuple[dict[str, object], ...] | tuple[Any, ...],
+    *,
+    retain_payloads: bool = True,
+) -> tuple[dict[str, object], ...]:
+    """把节点执行记录统一转换为 JSON 可序列化字典。
+
+    参数：
+    - node_records：节点执行记录。
+    - retain_payloads：是否保留 inputs/outputs 载荷；高速调用关闭后只返回节点耗时摘要，
+      避免图片、base64 和中间结果在 worker/父进程之间重复序列化。
+    """
 
     serialized: list[dict[str, object]] = []
     for item in node_records:
-        serialized.append(serialize_node_execution_record_for_response(item))
+        if retain_payloads:
+            serialized.append(serialize_node_execution_record_for_response(item))
+            continue
+        serialized.append(_serialize_compact_node_record(item))
     return tuple(serialized)
+
+
+def _serialize_compact_node_record(item: object) -> dict[str, object]:
+    """把节点执行记录压缩为只含定位信息和耗时的轻量结构。"""
+
+    if isinstance(item, dict):
+        return {
+            "node_id": read_optional_str(item, "node_id") or "",
+            "node_type_id": read_optional_str(item, "node_type_id") or "",
+            "runtime_kind": read_optional_str(item, "runtime_kind") or "",
+            "duration_ms": _read_optional_float(item.get("duration_ms")),
+            "inputs": {},
+            "outputs": {},
+        }
+    return {
+        "node_id": str(getattr(item, "node_id", "") or ""),
+        "node_type_id": str(getattr(item, "node_type_id", "") or ""),
+        "runtime_kind": str(getattr(item, "runtime_kind", "") or ""),
+        "duration_ms": _read_optional_float(getattr(item, "duration_ms", None)),
+        "inputs": {},
+        "outputs": {},
+    }
+
+
+def _read_optional_float(value: object) -> float | None:
+    """读取可选 float 字段，过滤 bool 这类 int 子类值。"""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def read_message_type(payload: object) -> str:

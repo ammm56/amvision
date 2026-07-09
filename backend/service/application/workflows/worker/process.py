@@ -231,7 +231,13 @@ def run_workflow_runtime_worker_process(
                         "state": "succeeded",
                         "outputs": dict(execution_result.outputs),
                         "template_outputs": dict(execution_result.template_outputs),
-                        "node_records": [dict(item) for item in serialize_node_records(execution_result.node_records)],
+                        "node_records": [
+                            dict(item)
+                            for item in serialize_node_records(
+                                execution_result.node_records,
+                                retain_payloads=_should_return_full_node_records(execution_metadata),
+                            )
+                        ],
                         "timings": {"worker_execute_ms": worker_execute_ms},
                         "error_message": None,
                         "worker_state": {
@@ -374,3 +380,22 @@ def _elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
     return round((monotonic() - started_at) * 1000.0, 3)
+
+
+def _should_return_full_node_records(execution_metadata: dict[str, object]) -> bool:
+    """判断 worker 响应是否需要携带完整 node_records。
+
+    高速 Trigger 和普通 app-result 调用默认不需要调试级 inputs/outputs。这里只按
+    retain_node_records_enabled 显式开关决定是否跨进程返回完整载荷，避免图片中间结果被重复序列化。
+    """
+
+    raw_value = execution_metadata.get("retain_node_records_enabled")
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        normalized_value = raw_value.strip().lower()
+        if normalized_value in {"true", "1", "yes", "on"}:
+            return True
+        if normalized_value in {"false", "0", "no", "off"}:
+            return False
+    return False
