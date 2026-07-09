@@ -7,7 +7,7 @@
   },
   "runtime": {
     "name": "yolo11m_barqrcode",
-    "workflow_runtime_id": "workflow-runtime-cd61f3638b664d2fae6834d6f51e3dd8"
+    "workflow_runtime_id": "workflow-runtime-170ab4e750da42e39997f40223fa88b1"
   },
   "invoke": {
     "image_path": "",
@@ -23,11 +23,10 @@
   "trigger_sources": [
     {
       "name": "zeromq_yolo11m_barqrcode",
-      "trigger_source_id": "zeromq-workflow-runtime-cd61f3638b664d2fae6834d6f51e3dd8",
+      "trigger_source_id": "zeromq-workflow-runtime-170ab4e750da42e39997f40223fa88b1",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",
         "default_input_binding": "request_image_ref",
-        "max_image_bytes": 268435456,
         "timeout_seconds": 30
       }
     }
