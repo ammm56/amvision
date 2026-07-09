@@ -99,6 +99,7 @@ export interface WorkflowGraphNode {
   node_id: string
   node_type_id: string
   parameters: WorkflowJsonObject
+  enabled: boolean
   ui_state: WorkflowJsonObject
   metadata: WorkflowJsonObject
 }

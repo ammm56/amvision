@@ -66,6 +66,42 @@ def build_output_image_payload(
         height=height,
     )
 
+def build_output_image_matrix_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    source_payload: dict[str, object],
+    image_matrix: Any,
+    object_key: str | None,
+    variant_name: str,
+    output_extension: str = ".png",
+    media_type: str = "image/png",
+) -> dict[str, object]:
+    """按输出模式返回绘制后的图片，memory/raw 模式不做 PNG 编码。"""
+
+    normalized_object_key = normalize_optional_object_key(object_key)
+    if normalized_object_key is None:
+        return register_image_matrix(request, image_matrix=image_matrix)
+    cv2_module, _, _ = require_barcode_runtime_imports()
+    success, encoded_image = cv2_module.imencode(".png", image_matrix)
+    if success is not True:
+        from backend.service.application.errors import ServiceConfigurationError
+
+        raise ServiceConfigurationError(
+            "Barcode 结果绘制后无法编码输出图片",
+            details={"node_id": request.node_id},
+        )
+    return build_output_image_payload(
+        request,
+        source_payload=source_payload,
+        content=EncodedImageBytes(encoded_image.tobytes(), image_matrix),
+        object_key=normalized_object_key,
+        variant_name=variant_name,
+        output_extension=output_extension,
+        width=int(image_matrix.shape[1]),
+        height=int(image_matrix.shape[0]),
+        media_type=media_type,
+    )
+
 def load_image_matrix(
     request: WorkflowNodeExecutionRequest,
     *,

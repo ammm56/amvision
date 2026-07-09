@@ -8,6 +8,7 @@
     :class="{
       'is-selected': selectedNodeId === node.node.node_id,
       'is-runtime-failed': lastPreviewFailureNodeId === node.node.node_id,
+      'is-disabled': node.node.enabled === false,
     }"
     :style="{
       left: `${node.x}px`,
@@ -20,6 +21,7 @@
     @contextmenu.prevent.stop="emit('openNodeContextMenu', $event, node)"
   >
     <span class="workflow-graph-node__title">{{ readTitle(node) }}</span>
+    <span v-if="node.node.enabled === false" class="workflow-graph-node__disabled-badge">已禁用</span>
     <span class="workflow-graph-node__type">{{ node.definition?.category || node.node.node_type_id }}</span>
     <div class="workflow-graph-node__ports">
       <div v-for="row in readPortRows(node)" :key="row.key" class="workflow-graph-node__port-row">

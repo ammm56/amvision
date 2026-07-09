@@ -18,6 +18,7 @@ export interface WorkflowDocumentBuilderNodeView {
     node_id: string
     node_type_id: string
     parameters: WorkflowJsonObject
+    enabled: boolean
     metadata: WorkflowJsonObject
     ui_state: WorkflowJsonObject
   }
@@ -47,6 +48,7 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
       nodes: options.graphNodes.value.map((node) => ({
         node_id: node.node.node_id,
         node_type_id: node.node.node_type_id,
+        enabled: node.node.enabled !== false,
         x: node.x,
         y: node.y,
         width: node.width,

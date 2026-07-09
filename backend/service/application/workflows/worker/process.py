@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from multiprocessing.queues import Queue
 from threading import Event, Lock, Thread
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 import multiprocessing
 
@@ -202,6 +203,7 @@ def run_workflow_runtime_worker_process(
             with state_lock:
                 current_run_id = workflow_run_id
             try:
+                worker_execute_started_at = monotonic()
                 execution_result = snapshot_execution_service.execute(
                     WorkflowSnapshotExecutionRequest(
                         project_id=read_project_id_from_snapshot(
@@ -215,6 +217,7 @@ def run_workflow_runtime_worker_process(
                         execution_metadata=execution_metadata,
                     )
                 )
+                worker_execute_ms = _elapsed_ms(worker_execute_started_at)
                 with state_lock:
                     current_observed_state = "running"
                     current_last_error = None
@@ -229,6 +232,7 @@ def run_workflow_runtime_worker_process(
                         "outputs": dict(execution_result.outputs),
                         "template_outputs": dict(execution_result.template_outputs),
                         "node_records": [dict(item) for item in serialize_node_records(execution_result.node_records)],
+                        "timings": {"worker_execute_ms": worker_execute_ms},
                         "error_message": None,
                         "worker_state": {
                             "observed_state": current_observed_state,
@@ -364,3 +368,9 @@ def close_local_buffer_broker_channel(channel: LocalBufferBrokerEventChannel | N
     if channel is None:
         return
     LocalBufferBrokerClient(channel).close()
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 monotonic 起点转换为毫秒耗时。"""
+
+    return round((monotonic() - started_at) * 1000.0, 3)

@@ -39,14 +39,17 @@ def apply_workflow_run_result(
     metadata = dict(workflow_run.metadata)
     if worker_result.error_details:
         metadata["error_details"] = dict(worker_result.error_details)
+    if worker_result.timings:
+        metadata["timings"] = _merge_timing_metadata(metadata.get("timings"), worker_result.timings)
+    retain_outputs_enabled = _read_optional_bool_flag(metadata.get("retain_outputs_enabled")) is not False
     return replace(
         workflow_run,
         state=worker_result.state,
         started_at=workflow_run.started_at or _now_isoformat(),
         finished_at=_now_isoformat(),
         assigned_process_id=worker_result.worker_state.process_id,
-        outputs=sanitize_runtime_mapping(worker_result.outputs),
-        template_outputs=sanitize_runtime_mapping(worker_result.template_outputs),
+        outputs=sanitize_runtime_mapping(worker_result.outputs) if retain_outputs_enabled else {},
+        template_outputs=sanitize_runtime_mapping(worker_result.template_outputs) if retain_outputs_enabled else {},
         node_records=_serialize_node_records(
             tuple(worker_result.node_records),
             retain_node_records_enabled=should_retain_workflow_run_node_records(
@@ -233,6 +236,33 @@ def _serialize_node_records(
     for item in node_records:
         serialized.append(serialize_node_execution_record(item))
     return tuple(serialized)
+
+
+def _merge_timing_metadata(existing_value: object, timing_payload: dict[str, object]) -> dict[str, object]:
+    """合并 WorkflowRun 已有计时信息和本次 worker 返回计时。"""
+
+    merged = dict(existing_value) if isinstance(existing_value, dict) else {}
+    for key, value in timing_payload.items():
+        if isinstance(value, bool):
+            merged[str(key)] = value
+            continue
+        if isinstance(value, int | float | str) or value is None:
+            merged[str(key)] = value
+    return merged
+
+
+def _read_optional_bool_flag(value: object) -> bool | None:
+    """读取可由 JSON 或文本传入的布尔开关。"""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized_value = value.strip().lower()
+        if normalized_value in {"true", "1", "yes", "on"}:
+            return True
+        if normalized_value in {"false", "0", "no", "off"}:
+            return False
+    return None
 
 
 def _iter_input_buffer_refs(value: object) -> Iterator[BufferRef]:

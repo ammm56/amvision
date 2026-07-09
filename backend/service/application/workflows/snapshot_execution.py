@@ -780,6 +780,7 @@ def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotEx
             node_id=_require_payload_str(item, "node_id"),
             node_type_id=_require_payload_str(item, "node_type_id"),
             runtime_kind=_require_payload_str(item, "runtime_kind"),
+            duration_ms=_read_optional_float(item.get("duration_ms")),
             inputs=_require_payload_dict(item, "inputs"),
             outputs=_require_payload_dict(item, "outputs"),
         )
@@ -950,6 +951,16 @@ def _require_payload_dict(payload: object, field_name: str) -> dict[str, object]
             details={"field_name": field_name},
         )
     return {str(key): item for key, item in value.items()}
+
+
+def _read_optional_float(value: object) -> float | None:
+    """从字典负载中读取可选数值字段。"""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def _resolve_backend_service_settings(settings: BackendServiceSettings) -> BackendServiceSettings:

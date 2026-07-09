@@ -302,6 +302,7 @@ class WorkflowGraphNode(BaseModel):
     - node_id：模板内节点实例 id。
     - node_type_id：引用的 NodeDefinition id。
     - parameters：当前节点实例的参数状态。
+    - enabled：是否参与正式执行；禁用节点保留在图里但不会被执行。
     - ui_state：节点编辑器状态，例如位置、折叠状态和颜色标记。
     - metadata：附加元数据。
     """
@@ -311,6 +312,7 @@ class WorkflowGraphNode(BaseModel):
     node_id: str
     node_type_id: str
     parameters: dict[str, object] = Field(default_factory=dict)
+    enabled: bool = True
     ui_state: dict[str, object] = Field(default_factory=dict)
     metadata: dict[str, object] = Field(default_factory=dict)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from threading import Event, RLock, Thread
+from time import monotonic
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -279,6 +280,7 @@ class ZeroMqTriggerAdapter:
         trigger_source: WorkflowTriggerSource,
         frames: list[bytes],
         event_handler: WorkflowTriggerEventHandler,
+        receive_ms: float | None = None,
     ) -> TriggerResultContract:
         """处理一条 ZeroMQ multipart 消息。
 
@@ -293,20 +295,28 @@ class ZeroMqTriggerAdapter:
 
         state = self._states.get(trigger_source.trigger_source_id)
         buffer_ref_payload: dict[str, object] | None = None
+        adapter_started_at = monotonic()
+        timings: dict[str, object] = {}
+        if receive_ms is not None:
+            timings["zeromq_receive_ms"] = receive_ms
         if state is not None:
             increment_safe_counter(state.received_count)
         try:
+            parse_started_at = monotonic()
             envelope = _parse_envelope(frames)
             _validate_envelope_target(trigger_source, envelope)
+            timings["zeromq_parse_envelope_ms"] = _elapsed_ms(parse_started_at)
             payload = dict(envelope.payload)
             content = _read_content_frame(frames)
             if content is not None:
                 input_binding = _resolve_input_binding(trigger_source, envelope)
+                write_started_at = monotonic()
                 buffer_ref_payload = self._write_content_to_buffer(
                     trigger_source=trigger_source,
                     envelope=envelope,
                     content=content,
                 )
+                timings["zeromq_write_buffer_ms"] = _elapsed_ms(write_started_at)
                 payload[input_binding] = {
                     "transport_kind": "buffer",
                     "buffer_ref": buffer_ref_payload,
@@ -321,8 +331,14 @@ class ZeroMqTriggerAdapter:
                 occurred_at=envelope.occurred_at,
                 metadata=metadata,
             )
+            submit_started_at = monotonic()
             result = event_handler.handle_trigger_event(
                 trigger_source=trigger_source, raw_event=raw_event
+            )
+            timings["zeromq_submit_event_ms"] = _elapsed_ms(submit_started_at)
+            timings["zeromq_adapter_total_ms"] = _elapsed_ms(adapter_started_at)
+            result = result.model_copy(
+                update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
             )
             if result.state == "failed" and result.workflow_run_id is None:
                 self._release_buffer_ref_payload(buffer_ref_payload)
@@ -390,12 +406,15 @@ class ZeroMqTriggerAdapter:
                 events = dict(poller.poll(self.poll_timeout_ms))
                 if socket not in events:
                     continue
+                receive_started_at = monotonic()
                 frames = socket.recv_multipart()
+                receive_ms = _elapsed_ms(receive_started_at)
                 try:
                     result = self.handle_multipart_message(
                         trigger_source=trigger_source,
                         frames=list(frames),
                         event_handler=event_handler,
+                        receive_ms=receive_ms,
                     )
                     socket.send_multipart(self.build_reply_frames(result))
                 except Exception as error:
@@ -531,6 +550,30 @@ def _read_content_frame(frames: list[bytes]) -> bytes | None:
     if not isinstance(content, bytes) or not content:
         raise InvalidRequestError("ZeroMQ content 帧必须是非空 bytes")
     return content
+
+
+def _merge_trigger_result_timings(
+    metadata: dict[str, object],
+    timing_payload: dict[str, object],
+) -> dict[str, object]:
+    """把 ZeroMQ adapter 计时合并进 TriggerResult metadata。"""
+
+    payload = dict(metadata)
+    timings = dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    for key, value in timing_payload.items():
+        if isinstance(value, bool):
+            timings[str(key)] = value
+            continue
+        if isinstance(value, int | float | str) or value is None:
+            timings[str(key)] = value
+    payload["timings"] = timings
+    return payload
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 monotonic 起点转换为毫秒耗时。"""
+
+    return round((monotonic() - started_at) * 1000.0, 3)
 
 
 def _validate_envelope_target(

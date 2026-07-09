@@ -20,25 +20,29 @@
       <span>端口</span>
       <strong>{{ node.inputs.length }} in / {{ node.outputs.length }} out</strong>
     </div>
+    <label class="workflow-graph-inspector-toggle-row">
+      <span>
+        <strong>启用节点</strong>
+        <small>关闭后保存到图中，运行时跳过该节点。</small>
+      </span>
+      <input
+        type="checkbox"
+        :checked="node.node.enabled !== false"
+        @change="emit('updateEnabled', node, $event)"
+      />
+    </label>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { NodeDefinition, NodePortDefinition, WorkflowGraphNode } from '../types'
-
-interface WorkflowNodeDetailNode {
-  node: WorkflowGraphNode
-  definition: NodeDefinition | null
-  title: string
-  x: number
-  y: number
-  width: number
-  inputs: NodePortDefinition[]
-  outputs: NodePortDefinition[]
-}
+import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 
 defineProps<{
-  node: WorkflowNodeDetailNode
-  readTitle: (node: WorkflowNodeDetailNode) => string
+  node: WorkflowGraphNodeView
+  readTitle: (node: WorkflowGraphNodeView) => string
+}>()
+
+const emit = defineEmits<{
+  updateEnabled: [node: WorkflowGraphNodeView, event: Event]
 }>()
 </script>

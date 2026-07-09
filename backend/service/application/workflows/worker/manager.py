@@ -417,6 +417,7 @@ class WorkflowRuntimeWorkerManager:
     ) -> WorkflowRuntimeWorkerRunResult:
         """通过已运行的 worker 发起一次同步调用。"""
 
+        invoke_started_at = monotonic()
         with self._lock:
             handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
         if handle is None or not handle.process.is_alive():
@@ -426,6 +427,7 @@ class WorkflowRuntimeWorkerManager:
             )
 
         lock_acquired = False
+        lock_wait_started_at = monotonic()
         while not lock_acquired:
             if cancel_event is not None and cancel_event.is_set():
                 raise OperationCancelledError(
@@ -445,6 +447,7 @@ class WorkflowRuntimeWorkerManager:
                     details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
                 )
             lock_acquired = handle.request_lock.acquire(timeout=0.1)
+        request_lock_wait_ms = _elapsed_ms(lock_wait_started_at)
 
         try:
             if cancel_event is not None and cancel_event.is_set():
@@ -468,6 +471,7 @@ class WorkflowRuntimeWorkerManager:
                         details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
                     )
                 handle.pending_responses[message_id] = pending
+                queue_put_started_at = monotonic()
                 handle.request_queue.put(
                     {
                         "message_type": "invoke-run",
@@ -479,10 +483,12 @@ class WorkflowRuntimeWorkerManager:
                         "execution_metadata": dict(execution_metadata),
                     }
                 )
+                request_queue_put_ms = _elapsed_ms(queue_put_started_at)
             if on_dispatched is not None:
                 on_dispatched()
 
             deadline = monotonic() + float(timeout_seconds)
+            reply_wait_started_at = monotonic()
             while True:
                 if cancel_event is not None and cancel_event.is_set():
                     self._terminate_failed_handle(
@@ -512,6 +518,7 @@ class WorkflowRuntimeWorkerManager:
                     )
                 if pending.event.wait(timeout=max(0.1, min(0.2, remaining_seconds))):
                     message = pending.response or {}
+                    worker_reply_wait_ms = _elapsed_ms(reply_wait_started_at)
                     break
                 if not handle.process.is_alive():
                     self._terminate_failed_handle(
@@ -534,7 +541,18 @@ class WorkflowRuntimeWorkerManager:
             with handle.state_lock:
                 handle.pending_responses.pop(message_id if 'message_id' in locals() else "", None)
 
-        return deserialize_run_result(message)
+        worker_result = deserialize_run_result(message)
+        timings = dict(worker_result.timings)
+        timings.update(
+            {
+                "worker_request_lock_wait_ms": request_lock_wait_ms,
+                "worker_request_queue_put_ms": request_queue_put_ms if "request_queue_put_ms" in locals() else None,
+                "worker_reply_wait_ms": worker_reply_wait_ms if "worker_reply_wait_ms" in locals() else None,
+                "worker_manager_invoke_total_ms": _elapsed_ms(invoke_started_at),
+                "worker_runtime_mode": "single-instance-sync",
+            }
+        )
+        return replace(worker_result, timings=timings)
 
     def _run_async_workflow(self, async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
         """在后台线程里执行一条异步 WorkflowRun。"""
@@ -915,3 +933,9 @@ class WorkflowRuntimeWorkerManager:
         from backend.service.application.deployments import PublishedInferenceGatewayDispatcher
 
         return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 monotonic 起点转换为毫秒耗时。"""
+
+    return round((monotonic() - started_at) * 1000.0, 3)

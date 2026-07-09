@@ -35,6 +35,7 @@ class WorkflowRuntimeWorkerRunResult:
     node_records: tuple[dict[str, object], ...] = ()
     error_message: str | None = None
     error_details: dict[str, object] = field(default_factory=dict)
+    timings: dict[str, object] = field(default_factory=dict)
     worker_state: WorkflowRuntimeWorkerState = field(
         default_factory=lambda: WorkflowRuntimeWorkerState(observed_state="failed")
     )
@@ -132,6 +133,7 @@ def deserialize_run_result(message: object) -> WorkflowRuntimeWorkerRunResult:
         node_records=tuple(dict(item) for item in (message.get("node_records") or []) if isinstance(item, dict)),
         error_message=read_optional_str(message, "error_message"),
         error_details=require_payload_dict(message, "error_details"),
+        timings=require_payload_dict(message, "timings"),
         worker_state=worker_state,
     )
 

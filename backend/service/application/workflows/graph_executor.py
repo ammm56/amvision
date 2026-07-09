@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Callable
 
 from backend.contracts.workflows.workflow_graph import (
@@ -90,9 +91,11 @@ class WorkflowGraphExecutor:
         execution_metadata_payload = execution_metadata if execution_metadata is not None else {}
 
         for node_id in topological_order:
+            node = node_instances[node_id]
+            if not _is_workflow_node_enabled(node):
+                continue
             if node_id in managed_loop_body_node_ids:
                 continue
-            node = node_instances[node_id]
             node_definition = self.registry.get_node_definition(node.node_type_id)
             resolved_inputs = resolve_node_inputs(
                 node_id=node_id,
@@ -113,6 +116,7 @@ class WorkflowGraphExecutor:
                 execution_index=execution_index,
                 inputs=resolved_inputs,
             )
+            node_started_at = perf_counter()
             if node_definition.node_type_id == "core.logic.for-each":
                 try:
                     raw_outputs = self._execute_for_each_node(
@@ -133,6 +137,7 @@ class WorkflowGraphExecutor:
                         event_callback=event_callback,
                     )
                 except ServiceError as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
                     emit_node_event(
                         event_callback=event_callback,
                         event_type="node.failed",
@@ -143,6 +148,7 @@ class WorkflowGraphExecutor:
                         execution_index=execution_index,
                         inputs=resolved_inputs,
                         error_details=dict(exc.details),
+                        extra_payload={"duration_ms": duration_ms},
                     )
                     raise
             else:
@@ -158,6 +164,7 @@ class WorkflowGraphExecutor:
                 try:
                     raw_outputs = dict(handler(execution_request))
                 except ServiceError as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
                     augment_service_error_with_node_context(
                         exc=exc,
                         node=node,
@@ -174,9 +181,11 @@ class WorkflowGraphExecutor:
                         execution_index=execution_index,
                         inputs=resolved_inputs,
                         error_details=dict(exc.details),
+                        extra_payload={"duration_ms": duration_ms},
                     )
                     raise
                 except Exception as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
                     failed_node_details = build_failed_node_details(
                         node=node,
                         node_definition=node_definition,
@@ -193,11 +202,13 @@ class WorkflowGraphExecutor:
                         execution_index=execution_index,
                         inputs=resolved_inputs,
                         error_details=failed_node_details,
+                        extra_payload={"duration_ms": duration_ms},
                     )
                     raise ServiceConfigurationError(
                         "workflow 节点执行失败",
                         details=failed_node_details,
                     ) from exc
+            duration_ms = _elapsed_ms(node_started_at)
             declared_output_names = {port.name for port in node_definition.output_ports}
             for output_name, output_value in raw_outputs.items():
                 if output_name not in declared_output_names:
@@ -215,6 +226,7 @@ class WorkflowGraphExecutor:
                     node_id=node_id,
                     node_type_id=node_definition.node_type_id,
                     runtime_kind=node_definition.runtime_kind,
+                    duration_ms=duration_ms,
                     inputs=sanitize_runtime_mapping(resolved_inputs),
                     outputs=dict(raw_outputs),
                 )
@@ -229,6 +241,7 @@ class WorkflowGraphExecutor:
                 execution_index=execution_index,
                 inputs=resolved_inputs,
                 outputs=raw_outputs,
+                extra_payload={"duration_ms": duration_ms},
             )
 
         resolved_template_outputs: dict[str, object] = {}
@@ -268,7 +281,14 @@ class WorkflowGraphExecutor:
         for node in template.nodes:
             if node.node_type_id != "core.logic.for-each":
                 continue
-            body_node_ids = read_for_each_body_node_ids(node=node, node_instances=node_instances)
+            if not _is_workflow_node_enabled(node):
+                continue
+            raw_body_node_ids = read_for_each_body_node_ids(node=node, node_instances=node_instances)
+            body_node_ids = tuple(
+                body_node_id
+                for body_node_id in raw_body_node_ids
+                if _is_workflow_node_enabled(node_instances[body_node_id])
+            )
             overlapping_node_ids = sorted(body_node_id for body_node_id in body_node_ids if body_node_id in managed_body_node_ids)
             if overlapping_node_ids:
                 raise InvalidRequestError(
@@ -523,6 +543,8 @@ class WorkflowGraphExecutor:
         local_output_values: dict[tuple[str, str], object] = {}
         for body_node_id in plan.body_node_ids:
             body_node = node_instances[body_node_id]
+            if not _is_workflow_node_enabled(body_node):
+                continue
             body_node_definition = self.registry.get_node_definition(body_node.node_type_id)
             iteration_node_id = f"{for_each_node.node_id}[{iteration_index + 1}].{body_node_id}"
             visible_output_values = dict(node_output_values)
@@ -559,9 +581,11 @@ class WorkflowGraphExecutor:
                     "for_each_iteration_index": iteration_index,
                 },
             )
+            node_started_at = perf_counter()
             try:
                 raw_outputs = dict(handler(execution_request))
             except ServiceError as exc:
+                duration_ms = _elapsed_ms(node_started_at)
                 augment_service_error_with_node_context(
                     exc=exc,
                     node=body_node,
@@ -583,10 +607,12 @@ class WorkflowGraphExecutor:
                     extra_payload={
                         "for_each_node_id": for_each_node.node_id,
                         "for_each_iteration_index": iteration_index,
+                        "duration_ms": duration_ms,
                     },
                 )
                 raise
             except Exception as exc:
+                duration_ms = _elapsed_ms(node_started_at)
                 failed_node_details = {
                     **build_failed_node_details(
                         node=body_node,
@@ -610,6 +636,7 @@ class WorkflowGraphExecutor:
                     extra_payload={
                         "for_each_node_id": for_each_node.node_id,
                         "for_each_iteration_index": iteration_index,
+                        "duration_ms": duration_ms,
                     },
                 )
                 raise ServiceConfigurationError(
@@ -628,11 +655,13 @@ class WorkflowGraphExecutor:
                         },
                     )
                 local_output_values[(body_node_id, output_name)] = output_value
+            duration_ms = _elapsed_ms(node_started_at)
             node_records.append(
                 WorkflowNodeExecutionRecord(
                     node_id=iteration_node_id,
                     node_type_id=body_node_definition.node_type_id,
                     runtime_kind=body_node_definition.runtime_kind,
+                    duration_ms=duration_ms,
                     inputs=sanitize_runtime_mapping(resolved_inputs),
                     outputs=dict(raw_outputs),
                 )
@@ -650,6 +679,7 @@ class WorkflowGraphExecutor:
                 extra_payload={
                     "for_each_node_id": for_each_node.node_id,
                     "for_each_iteration_index": iteration_index,
+                    "duration_ms": duration_ms,
                 },
             )
             control_action = read_for_each_loop_control_action(
@@ -662,3 +692,15 @@ class WorkflowGraphExecutor:
                     control_action=control_action,
                 )
         return WorkflowForEachIterationResult(output_values=local_output_values)
+
+
+def _is_workflow_node_enabled(node: WorkflowGraphNode) -> bool:
+    """判断节点是否参与本次图执行。"""
+
+    return node.enabled is not False
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 perf_counter 起点转换为毫秒耗时。"""
+
+    return round((perf_counter() - started_at) * 1000.0, 3)

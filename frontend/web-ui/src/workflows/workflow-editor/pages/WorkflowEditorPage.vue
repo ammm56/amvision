@@ -143,6 +143,7 @@
         @normalize-new-app-graph-version="normalizeNewWorkflowGraphVersion"
         @add-request-image-ref="addRequestImageRefInput"
         @add-request-image-base64="addRequestImageBase64Input"
+        @update-node-enabled="updateNodeEnabled"
         @delete-selected-edge="deleteSelectedEdge"
         @update-binding-id="updateBindingIdFromEvent"
         @update-binding-display-name="updateBindingDisplayNameFromEvent"
@@ -401,6 +402,7 @@ const {
       node_id: nodeId,
       node_type_id: definition.node_type_id,
       parameters: buildInitialNodeParameters(definition),
+      enabled: true,
       ui_state: { x, y, width: buildDefaultGraphNodeWidth(definition) },
       metadata: {},
     }
@@ -816,6 +818,12 @@ const {
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const saveDisabled = computed(() => saving.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => previewing.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+
+function updateNodeEnabled(node: GraphNodeView, event: Event): void {
+  const target = event.target
+  node.node.enabled = target instanceof HTMLInputElement ? target.checked : node.node.enabled !== false
+}
+
 const {
   graphLinks,
   draftLinkPath,

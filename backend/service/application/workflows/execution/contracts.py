@@ -36,6 +36,7 @@ class WorkflowNodeExecutionRecord:
     - node_id：当前节点实例 id。
     - node_type_id：当前节点类型 id。
     - runtime_kind：节点运行方式。
+    - duration_ms：当前节点执行耗时，单位毫秒。
     - inputs：当前节点输入的脱敏快照。
     - outputs：当前节点输出的原始快照；持久化时再统一脱敏。
     """
@@ -43,6 +44,7 @@ class WorkflowNodeExecutionRecord:
     node_id: str
     node_type_id: str
     runtime_kind: str
+    duration_ms: float | None = None
     inputs: dict[str, object] = field(default_factory=dict)
     outputs: dict[str, object] = field(default_factory=dict)
 

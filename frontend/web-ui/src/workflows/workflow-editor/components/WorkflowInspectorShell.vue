@@ -44,6 +44,7 @@
       v-if="inspectorDetail.kind === 'node'"
       :node="inspectorDetail.node"
       :read-title="readGraphNodeTitle"
+      @update-enabled="(node, event) => emit('updateNodeEnabled', node, event)"
     />
     <WorkflowEdgeDetailPanel
       v-else-if="inspectorDetail.kind === 'edge'"
@@ -200,6 +201,7 @@ const emit = defineEmits<{
   normalizeNewAppGraphVersion: [event: Event]
   addRequestImageRef: []
   addRequestImageBase64: []
+  updateNodeEnabled: [node: WorkflowGraphNodeView, event: Event]
   deleteSelectedEdge: []
   updateBindingId: [binding: FlowApplicationBinding, event: Event]
   updateBindingDisplayName: [binding: FlowApplicationBinding, event: Event]

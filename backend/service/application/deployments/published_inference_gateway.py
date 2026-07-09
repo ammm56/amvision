@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from queue import Empty
 from threading import Event, Lock, Thread
+from time import perf_counter
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -141,6 +142,8 @@ class TaskTypeDeploymentPublishedInferenceGateway:
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
         """执行一次已发布推理。"""
 
+        gateway_started_at = perf_counter()
+        timings: dict[str, object] = {}
         normalized_task_type = _normalize_task_type(request.task_type)
         normalized_runtime_mode = request.runtime_mode.strip().lower()
         if normalized_runtime_mode != self.runtime_mode:
@@ -150,7 +153,9 @@ class TaskTypeDeploymentPublishedInferenceGateway:
             )
         deployment_service = self._require_deployment_service(normalized_task_type)
         deployment_process_supervisor = self._require_deployment_process_supervisor(normalized_task_type)
+        resolve_started_at = perf_counter()
         process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
+        timings["published_inference_gateway_resolve_config_ms"] = _elapsed_ms(resolve_started_at)
         resolved_runtime_target = getattr(process_config, "runtime_target", None)
         resolved_task_type = getattr(resolved_runtime_target, "task_type", None)
         if isinstance(resolved_task_type, str) and resolved_task_type.strip():
@@ -164,29 +169,35 @@ class TaskTypeDeploymentPublishedInferenceGateway:
                         "deployment_task_type": normalized_resolved_task_type,
                     },
                 )
+        ensure_started_at = perf_counter()
         deployment_process_supervisor.ensure_deployment(process_config)
         self._ensure_running_process(
             deployment_process_supervisor=deployment_process_supervisor,
             process_config=process_config,
             auto_start_process=request.auto_start_process,
         )
+        timings["published_inference_gateway_ensure_process_ms"] = _elapsed_ms(ensure_started_at)
         normalized_image_payload = require_image_payload(request.image_payload)
         prediction_request = _build_prediction_request(
             task_type=normalized_task_type,
             request=request,
             normalized_image_payload=normalized_image_payload,
         )
+        infer_started_at = perf_counter()
         execution = deployment_process_supervisor.run_inference(
             config=process_config,
             request=prediction_request,
         )
+        timings["published_inference_gateway_run_inference_ms"] = _elapsed_ms(infer_started_at)
         execution_result = execution.execution_result
-        return _build_published_inference_result(
+        result = _build_published_inference_result(
             task_type=normalized_task_type,
             deployment_instance_id=execution.deployment_instance_id,
             instance_id=execution.instance_id,
             execution_result=execution_result,
         )
+        timings["published_inference_gateway_total_ms"] = _elapsed_ms(gateway_started_at)
+        return _merge_inference_result_timings(result, timings)
 
     def _require_deployment_service(self, task_type: str) -> object:
         """按 task_type 读取 deployment service。"""
@@ -273,8 +284,17 @@ class PublishedInferenceGatewayClient:
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
         """执行一次 gateway 推理请求。"""
 
+        request_started_at = perf_counter()
         payload = self._send_request(action="infer", payload=_serialize_request(request))
-        return _deserialize_result(payload)
+        result = _deserialize_result(payload)
+        return _merge_inference_result_timings(
+            result,
+            {
+                "published_inference_gateway_client_roundtrip_ms": _elapsed_ms(
+                    request_started_at
+                ),
+            },
+        )
 
     def get_status(self) -> dict[str, object]:
         """读取 gateway dispatcher 状态。"""
@@ -665,6 +685,29 @@ def _deserialize_result(payload: dict[str, object]) -> PublishedInferenceResult:
         runtime_session_info=dict(payload.get("runtime_session_info") if isinstance(payload.get("runtime_session_info"), dict) else {}),
         metadata=dict(payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
     )
+
+
+def _merge_inference_result_timings(
+    result: PublishedInferenceResult,
+    timings: dict[str, object],
+) -> PublishedInferenceResult:
+    """把 gateway 阶段耗时合并到推理结果 metadata.timings。"""
+
+    metadata = dict(result.metadata)
+    existing_timings = metadata.get("timings")
+    merged_timings = dict(existing_timings) if isinstance(existing_timings, dict) else {}
+    for key, value in timings.items():
+        if value is None:
+            continue
+        merged_timings[key] = value
+    metadata["timings"] = merged_timings
+    return replace(result, metadata=metadata)
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 perf_counter 起点转换成毫秒耗时。"""
+
+    return round((perf_counter() - started_at) * 1000.0, 3)
 
 
 def _deserialize_control_response(response: object, *, action: str, request_id: str) -> dict[str, object]:

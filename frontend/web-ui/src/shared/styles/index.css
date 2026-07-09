@@ -2116,6 +2116,11 @@ a:hover {
   box-shadow: 0 0 0 2px rgb(82 184 200 / 0.24), 0 10px 20px rgb(0 0 0 / 0.24);
 }
 
+.workflow-graph-node.is-disabled {
+  opacity: 0.58;
+  border-style: dashed;
+}
+
 .workflow-graph-node__title {
   display: block;
   min-height: 30px;
@@ -2124,6 +2129,20 @@ a:hover {
   background: var(--graph-node-header, #393f43);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.workflow-graph-node__disabled-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--graph-muted, #aebbc2) 18%, transparent);
+  color: var(--graph-muted, #aebbc2);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 .workflow-graph-node__type {
@@ -2755,6 +2774,48 @@ a:hover {
   max-width: 190px;
   overflow-wrap: anywhere;
   text-align: right;
+}
+
+.workflow-graph-inspector-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid #384147;
+  border-radius: 8px;
+  background: #22282c;
+}
+
+.workflow-graph-inspector-toggle-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workflow-graph-inspector-toggle-row strong {
+  font-size: 13px;
+}
+
+.workflow-graph-inspector-toggle-row small {
+  color: #aebbc2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.workflow-graph-inspector-toggle-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.workflow-graph-workbench .workflow-graph-inspector-toggle-row {
+  border-color: var(--graph-line);
+  background: var(--graph-panel-strong);
+}
+
+.workflow-graph-workbench .workflow-graph-inspector-toggle-row small {
+  color: var(--graph-muted);
 }
 
 .workflow-graph-preview-card {

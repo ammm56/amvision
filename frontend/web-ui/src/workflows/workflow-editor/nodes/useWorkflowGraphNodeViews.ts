@@ -139,7 +139,10 @@ export function useWorkflowGraphNodeViews(options: WorkflowGraphNodeViewsOptions
     fallbackByNodeId: Map<string, WorkflowGraphNodePosition>,
   ): WorkflowGraphNodeView {
     const definition = nodeDefinitionsById.value.get(node.node_type_id) ?? null
-    const normalizedNode = definition ? applyMissingNodeParameterDefaults(node, definition) : node
+    const normalizedNode = {
+      ...(definition ? applyMissingNodeParameterDefaults(node, definition) : node),
+      enabled: node.enabled !== false,
+    }
     const position = readNodePosition(normalizedNode, index, fallbackByNodeId)
     const defaultWidth = definition ? buildDefaultGraphNodeWidth(definition) : 256
     return {

@@ -1024,6 +1024,8 @@ class WorkflowRuntimeService:
             execution_metadata,
             execution_policy=execution_policy,
         )
+        sync_timing_started_at = monotonic()
+        sync_timings: dict[str, object] = {}
         workflow_run = WorkflowRun(
             workflow_run_id=f"workflow-run-{uuid4().hex}",
             workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
@@ -1038,22 +1040,29 @@ class WorkflowRuntimeService:
                 execution_policy=execution_policy,
                 field_name="timeout_seconds",
             ),
-            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {}),
+            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {})
+            if _should_retain_runtime_payload(execution_metadata, "retain_input_payload_enabled")
+            else {},
             metadata=execution_metadata,
         )
+        db_create_started_at = monotonic()
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
             unit_of_work.commit()
+        sync_timings["workflow_run_db_create_ms"] = _elapsed_ms(db_create_started_at)
+        event_append_started_at = monotonic()
         self._append_workflow_run_event(
             workflow_run,
             event_type="run.dispatching",
             message="workflow run 已提交到 runtime",
         )
+        sync_timings["workflow_run_dispatch_event_ms"] = _elapsed_ms(event_append_started_at)
 
         raw_outputs: dict[str, object] = {}
         raw_template_outputs: dict[str, object] = {}
         raw_node_records: tuple[dict[str, object], ...] = ()
         try:
+            worker_invoke_started_at = monotonic()
             worker_result = self.worker_manager.invoke_runtime(
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
@@ -1064,6 +1073,7 @@ class WorkflowRuntimeService:
                 ),
                 timeout_seconds=workflow_run.requested_timeout_seconds,
             )
+            sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(worker_invoke_started_at)
             raw_outputs = dict(worker_result.outputs)
             raw_template_outputs = dict(worker_result.template_outputs)
             raw_node_records = tuple(dict(item) for item in worker_result.node_records)
@@ -1096,6 +1106,11 @@ class WorkflowRuntimeService:
                 },
             )
 
+        sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(sync_timing_started_at)
+        workflow_run = replace(
+            workflow_run,
+            metadata=_merge_workflow_run_timing_metadata(workflow_run.metadata, sync_timings),
+        )
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
             unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
@@ -1738,3 +1753,48 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 monotonic 起点转换为毫秒耗时。"""
+
+    return round((monotonic() - started_at) * 1000.0, 3)
+
+
+def _should_retain_runtime_payload(metadata: dict[str, object], key: str) -> bool:
+    """读取 runtime 调用里的持久化 payload 开关，默认保留。"""
+
+    return _read_optional_bool_flag(metadata.get(key)) is not False
+
+
+def _merge_workflow_run_timing_metadata(
+    metadata: dict[str, object],
+    timing_payload: dict[str, object],
+) -> dict[str, object]:
+    """把本次调用计时合并进 WorkflowRun metadata。"""
+
+    payload = dict(metadata)
+    existing_timings = payload.get("timings")
+    timings = dict(existing_timings) if isinstance(existing_timings, dict) else {}
+    for key, value in timing_payload.items():
+        if isinstance(value, bool):
+            timings[str(key)] = value
+            continue
+        if isinstance(value, int | float | str) or value is None:
+            timings[str(key)] = value
+    payload["timings"] = timings
+    return payload
+
+
+def _read_optional_bool_flag(value: object) -> bool | None:
+    """读取可由 JSON 或文本传入的布尔开关。"""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized_value = value.strip().lower()
+        if normalized_value in {"true", "1", "yes", "on"}:
+            return True
+        if normalized_value in {"false", "0", "no", "off"}:
+            return False
+    return None

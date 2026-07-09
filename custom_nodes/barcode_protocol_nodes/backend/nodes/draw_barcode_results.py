@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.barcode_protocol_nodes.backend.runtime.images import (
-    build_output_image_payload,
-    EncodedImageBytes,
+    build_output_image_matrix_payload,
     load_image_matrix,
 )
 from custom_nodes.barcode_protocol_nodes.backend.runtime.imports import require_barcode_runtime_imports
@@ -60,24 +59,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 cv2_module=cv2_module,
             )
 
-    success, encoded_image = cv2_module.imencode(".png", image_matrix)
-    if success is not True:
-        from backend.service.application.errors import ServiceConfigurationError
-
-        raise ServiceConfigurationError(
-            "Barcode 结果绘制后无法编码输出图片",
-            details={"node_id": request.node_id},
-        )
-    output_payload = build_output_image_payload(
+    output_payload = build_output_image_matrix_payload(
         request,
         source_payload=image_payload,
-        content=EncodedImageBytes(encoded_image.tobytes(), image_matrix),
         object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
         variant_name="draw-barcode-results",
-        output_extension=".png",
-        width=int(image_matrix.shape[1]),
-        height=int(image_matrix.shape[0]),
-        media_type="image/png",
+        image_matrix=image_matrix,
     )
     return {"image": output_payload}
 

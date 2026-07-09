@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import monotonic
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
 from backend.service.application.errors import ServiceError
@@ -68,10 +69,15 @@ class WorkflowSubmitter:
         - TriggerResultContract：协议中立结果回执。
         """
 
+        submit_started_at = monotonic()
+        mapping_started_at = monotonic()
         input_bindings = self.input_binding_mapper.map_input_bindings(
             trigger_source=request.trigger_source,
             trigger_event=request.trigger_event,
         )
+        timings: dict[str, object] = {
+            "trigger_map_input_bindings_ms": _elapsed_ms(mapping_started_at),
+        }
         execution_request = WorkflowRuntimeInvokeRequest(
             input_bindings=input_bindings,
             execution_metadata=_build_execution_metadata(request),
@@ -80,19 +86,23 @@ class WorkflowSubmitter:
         response_outputs: dict[str, object] | None = None
         try:
             if request.trigger_source.submit_mode == "sync":
+                runtime_submit_started_at = monotonic()
                 invoke_result = self.runtime_service.invoke_workflow_app_runtime_with_response(
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
                     created_by=request.created_by,
                 )
+                timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
                 workflow_run = invoke_result.workflow_run
                 response_outputs = dict(invoke_result.raw_outputs)
             else:
+                runtime_submit_started_at = monotonic()
                 workflow_run = self.runtime_service.create_workflow_run(
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
                     created_by=request.created_by,
                 )
+                timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
         except ServiceError as error:
             return TriggerResultContract(
                 trigger_source_id=request.trigger_source.trigger_source_id,
@@ -102,13 +112,21 @@ class WorkflowSubmitter:
                 metadata={
                     "error_code": error.code,
                     "error_details": dict(error.details),
+                    "timings": {**timings, "trigger_submit_total_ms": _elapsed_ms(submit_started_at)},
                 },
             )
-        return self.result_dispatcher.build_result(
+        result_dispatch_started_at = monotonic()
+        result = self.result_dispatcher.build_result(
             trigger_source=request.trigger_source,
             trigger_event=request.trigger_event,
             workflow_run=workflow_run,
             response_outputs=response_outputs,
+        )
+        timings["trigger_result_dispatch_ms"] = _elapsed_ms(result_dispatch_started_at)
+        timings["trigger_submit_total_ms"] = _elapsed_ms(submit_started_at)
+        timings.update(_read_workflow_run_timings(workflow_run.metadata))
+        return result.model_copy(
+            update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
         )
 
 
@@ -122,6 +140,8 @@ def _build_execution_metadata(
         metadata.setdefault("trace_level", "none")
         metadata.setdefault("retain_trace_enabled", False)
         metadata.setdefault("retain_node_records_enabled", False)
+        metadata.setdefault("retain_input_payload_enabled", False)
+        metadata.setdefault("retain_outputs_enabled", False)
     metadata.update(
         {
             "trigger_source_id": request.trigger_source.trigger_source_id,
@@ -147,3 +167,36 @@ def _is_high_speed_trigger_source(trigger_source: WorkflowTriggerSource) -> bool
     """
 
     return trigger_source.trigger_kind.startswith("zeromq")
+
+
+def _merge_trigger_result_timings(
+    metadata: dict[str, object],
+    timing_payload: dict[str, object],
+) -> dict[str, object]:
+    """把 TriggerSource 提交计时合并进结果 metadata。"""
+
+    payload = dict(metadata)
+    timings = dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    for key, value in timing_payload.items():
+        if isinstance(value, bool):
+            timings[str(key)] = value
+            continue
+        if isinstance(value, int | float | str) or value is None:
+            timings[str(key)] = value
+    payload["timings"] = timings
+    return payload
+
+
+def _read_workflow_run_timings(metadata: dict[str, object]) -> dict[str, object]:
+    """读取 WorkflowRun metadata 中可向协议结果返回的计时字段。"""
+
+    raw_timings = metadata.get("timings")
+    if not isinstance(raw_timings, dict):
+        return {}
+    return {f"workflow_{key}" if not str(key).startswith("workflow_") else str(key): value for key, value in raw_timings.items()}
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """把 monotonic 起点转换为毫秒耗时。"""
+
+    return round((monotonic() - started_at) * 1000.0, 3)

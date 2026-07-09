@@ -3,6 +3,7 @@ import type { WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, Workflow
 export interface WorkflowCanvasNodeSnapshot {
   node_id: string
   node_type_id: string
+  enabled: boolean
   x: number
   y: number
   width: number
@@ -26,6 +27,7 @@ function snapshotNodeToGraphNode(snapshot: WorkflowCanvasNodeSnapshot): Workflow
   return {
     node_id: snapshot.node_id,
     node_type_id: snapshot.node_type_id,
+    enabled: snapshot.enabled !== false,
     parameters: { ...snapshot.parameters },
     ui_state: {
       ...snapshot.ui_state,
@@ -42,6 +44,7 @@ export function workflowTemplateToCanvasSnapshot(template: WorkflowGraphTemplate
     nodes: template.nodes.map((node, index) => ({
       node_id: node.node_id,
       node_type_id: node.node_type_id,
+      enabled: node.enabled !== false,
       x: readNumber(node.ui_state.x ?? node.ui_state.pos_x ?? node.ui_state.position_x, 360 + (index % 3) * 280),
       y: readNumber(node.ui_state.y ?? node.ui_state.pos_y ?? node.ui_state.position_y, 120 + Math.floor(index / 3) * 180),
       width: readNumber(node.ui_state.width, 230),

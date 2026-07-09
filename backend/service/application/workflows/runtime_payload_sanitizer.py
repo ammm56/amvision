@@ -96,6 +96,7 @@ def serialize_node_execution_record(item: object) -> dict[str, object]:
             "node_id": _read_text(item.get("node_id")),
             "node_type_id": _read_text(item.get("node_type_id")),
             "runtime_kind": _read_text(item.get("runtime_kind")),
+            "duration_ms": _read_optional_float(item.get("duration_ms")),
             "inputs": sanitize_runtime_mapping(item.get("inputs")),
             "outputs": sanitize_runtime_mapping(item.get("outputs")),
         }
@@ -103,6 +104,7 @@ def serialize_node_execution_record(item: object) -> dict[str, object]:
         "node_id": _read_text(getattr(item, "node_id", "")),
         "node_type_id": _read_text(getattr(item, "node_type_id", "")),
         "runtime_kind": _read_text(getattr(item, "runtime_kind", "")),
+        "duration_ms": _read_optional_float(getattr(item, "duration_ms", None)),
         "inputs": sanitize_runtime_mapping(getattr(item, "inputs", {}) or {}),
         "outputs": sanitize_runtime_mapping(getattr(item, "outputs", {}) or {}),
     }
@@ -123,6 +125,7 @@ def serialize_node_execution_record_for_response(item: object) -> dict[str, obje
             "node_id": _read_text(item.get("node_id")),
             "node_type_id": _read_text(item.get("node_type_id")),
             "runtime_kind": _read_text(item.get("runtime_kind")),
+            "duration_ms": _read_optional_float(item.get("duration_ms")),
             "inputs": sanitize_runtime_mapping(item.get("inputs")),
             "outputs": _copy_runtime_mapping(item.get("outputs")),
         }
@@ -130,6 +133,7 @@ def serialize_node_execution_record_for_response(item: object) -> dict[str, obje
         "node_id": _read_text(getattr(item, "node_id", "")),
         "node_type_id": _read_text(getattr(item, "node_type_id", "")),
         "runtime_kind": _read_text(getattr(item, "runtime_kind", "")),
+        "duration_ms": _read_optional_float(getattr(item, "duration_ms", None)),
         "inputs": sanitize_runtime_mapping(getattr(item, "inputs", {}) or {}),
         "outputs": _copy_runtime_mapping(getattr(item, "outputs", {}) or {}),
     }
@@ -224,3 +228,13 @@ def _read_text(value: object) -> str:
     """把节点记录中的文本字段规范化为字符串。"""
 
     return value.strip() if isinstance(value, str) else ""
+
+
+def _read_optional_float(value: object) -> float | None:
+    """把节点记录中的可选数值字段规范化为 float。"""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None

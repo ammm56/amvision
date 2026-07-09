@@ -24,7 +24,12 @@ def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict
         request,
         task_type=DETECTION_TASK_TYPE,
     )
-    return {"detections": {"items": list(inference_result.detections)}}
+    return {
+        "detections": {
+            "items": list(inference_result.detections),
+            "metadata": dict(inference_result.metadata),
+        }
+    }
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
