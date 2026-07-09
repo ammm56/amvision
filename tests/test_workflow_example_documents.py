@@ -3736,7 +3736,6 @@ def test_detection_deployment_infer_opencv_health_example_documents_are_valid() 
                 "http_response",
             ],
             [
-                "encode_request_image_ref",
                 "resolve_request_image",
                 "decode_request_image",
                 "deployment_request_input",
@@ -3747,7 +3746,6 @@ def test_detection_deployment_infer_opencv_health_example_documents_are_valid() 
             "opencv-process-save-image-zeromq",
             ["request_image_base64", "request_image_ref", "http_response"],
             [
-                "encode_request_image_ref",
                 "resolve_request_image",
                 "decode_request_image",
             ],
@@ -3784,17 +3782,20 @@ def test_zeromq_image_ref_example_documents_are_valid(
     )
     validate_flow_application_bindings(template=template, application=application)
 
-    assert [node.node_type_id for node in template.nodes[:3]] == [
-        "core.io.image-base64-encode",
-        "core.logic.image-base64-coalesce",
+    assert [node.node_type_id for node in template.nodes[:2]] == [
+        "core.logic.image-ref-coalesce",
         "core.io.image-base64-decode",
     ]
     assert template.template_inputs[0].input_id == "request_image_base64"
     assert template.template_inputs[0].payload_type_id == "image-base64.v1"
     assert template.template_inputs[0].required is False
+    assert template.template_inputs[0].target_node_id == "decode_request_image"
+    assert template.template_inputs[0].target_port == "payload"
     assert template.template_inputs[1].input_id == "request_image_ref"
     assert template.template_inputs[1].payload_type_id == "image-ref.v1"
     assert template.template_inputs[1].required is False
+    assert template.template_inputs[1].target_node_id == "resolve_request_image"
+    assert template.template_inputs[1].target_port == "primary"
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["trigger_source_input"] == "zeromq"
     assert template.metadata["node_groups"]["input"] == expected_input_nodes

@@ -89,7 +89,9 @@ class YoloeVisualPromptRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
         prompt_image_bytes: bytes,
+        prompt_image_payload: object,
         prompts: tuple[Any, ...],
         confidence_threshold: float,
         iou_threshold: float,
@@ -102,6 +104,7 @@ class YoloeVisualPromptRuntimeSession:
         runtime_input = prepare_image_tensor(
             imports=self.imports,
             image_bytes=image_bytes,
+            image_payload=image_payload,
             input_size=self.input_size,
             device_name=self.device_name,
             precision=self.precision,
@@ -109,6 +112,7 @@ class YoloeVisualPromptRuntimeSession:
         prompt_runtime_input = prepare_image_tensor(
             imports=self.imports,
             image_bytes=prompt_image_bytes,
+            image_payload=prompt_image_payload,
             input_size=self.input_size,
             device_name=self.device_name,
             precision=self.precision,

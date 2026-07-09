@@ -55,7 +55,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     prediction = runtime_session.predict(
         image_bytes=image_bytes,
+        image_payload=image_payload,
         prompt_image_bytes=prompt_image_bytes,
+        prompt_image_payload=prompt_image_payload,
         prompts=prompt_items,
         confidence_threshold=confidence_threshold,
         iou_threshold=iou_threshold,

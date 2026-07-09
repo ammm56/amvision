@@ -7,13 +7,34 @@ from typing import Any
 
 from backend.nodes.runtime_support import (
     build_runtime_image_object_key,
-    load_image_bytes,
+    load_image_matrix as load_runtime_image_matrix,
+    register_image_matrix,
     register_image_bytes,
     write_image_bytes,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes._opencv_shared.backend.runtime.validators import normalize_optional_object_key
+
+
+class EncodedImageBytes(bytes):
+    """携带原始 OpenCV matrix 的编码图片 bytes。
+
+    说明：
+    - 对旧代码表现为普通 bytes。
+    - 对 build_output_image_payload，未指定 object_key 时可跳过编码 bytes，
+      直接把 image_matrix 注册为 raw BGR24 memory image-ref。
+    """
+
+    image_matrix: Any
+
+    def __new__(cls, value: bytes, image_matrix: Any):
+        """创建 bytes 兼容对象。"""
+
+        current = super().__new__(cls, value)
+        current.image_matrix = image_matrix
+        return current
+
 
 def load_image_matrix(
     request: object,
@@ -33,25 +54,14 @@ def load_image_matrix(
     """
 
     cv2_module, np_module = require_opencv_imports()
-    image_payload, image_bytes = load_image_bytes(request, input_name=input_name)
-    image_buffer = np_module.frombuffer(image_bytes, dtype=np_module.uint8)
-    image_matrix = cv2_module.imdecode(
-        image_buffer,
-        cv2_module.IMREAD_COLOR if imdecode_flags is None else imdecode_flags,
+    image_payload, image_matrix = load_runtime_image_matrix(
+        request,
+        input_name=input_name,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        imdecode_flags=imdecode_flags,
+        copy_raw=True,
     )
-    if image_matrix is None:
-        error_details = {
-            "node_id": getattr(request, "node_id", ""),
-            "transport_kind": image_payload.get("transport_kind"),
-            "media_type": image_payload.get("media_type"),
-        }
-        source_object_key = image_payload.get("object_key")
-        if isinstance(source_object_key, str) and source_object_key:
-            error_details["object_key"] = source_object_key
-        raise InvalidRequestError(
-            "OpenCV 无法读取输入图片",
-            details=error_details,
-        )
     resolved_source_object_key = image_payload.get("object_key")
     return (
         image_payload,
@@ -93,7 +103,7 @@ def build_output_image_payload(
         return write_image_bytes(
             request,
             source_payload=source_payload,
-            content=content,
+            content=bytes(content),
             object_key=normalized_object_key,
             variant_name=variant_name,
             output_extension=output_extension,
@@ -101,9 +111,12 @@ def build_output_image_payload(
             height=height,
             media_type=media_type,
         )
+    image_matrix = getattr(content, "image_matrix", None)
+    if image_matrix is not None:
+        return register_image_matrix(request, image_matrix=image_matrix)
     return register_image_bytes(
         request,
-        content=content,
+        content=bytes(content),
         media_type=media_type,
         width=width,
         height=height,
@@ -124,7 +137,7 @@ def encode_png_image_bytes(
             error_message,
             details={"node_id": getattr(request, "node_id", "")},
         )
-    return encoded_image.tobytes()
+    return EncodedImageBytes(encoded_image.tobytes(), image_matrix)
 
 def require_dataset_path(request: object, object_key: str):
     """把 object key 解析为本地绝对路径。

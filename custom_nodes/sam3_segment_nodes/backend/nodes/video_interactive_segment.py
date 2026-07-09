@@ -66,7 +66,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     memory_similarity_peaks: list[dict[str, float]] = []
     memory_attention_peaks: list[dict[str, float]] = []
     for frame_item in frame_items:
-        frame_context = runtime_session.prepare_frame_context(image_bytes=frame_item.image_bytes)
+        frame_context = runtime_session.prepare_frame_context(
+            image_bytes=frame_item.image_bytes,
+            image_payload=frame_item.image_payload,
+        )
         active_prompt_items, propagated_prompt_ids, frame_similarity_peaks, frame_attention_peaks = build_frame_prompt_items(
             base_prompt_items=prompt_items,
             tracked_region_state=tracked_region_state,

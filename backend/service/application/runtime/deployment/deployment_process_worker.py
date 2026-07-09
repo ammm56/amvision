@@ -422,7 +422,7 @@ def _build_prediction_request(
     image_payload = getattr(prediction_request, "input_image_payload", None)
     if not isinstance(image_payload, dict) or not image_payload:
         return prediction_request
-    resolved_uri, resolved_bytes = _resolve_input_image_payload(
+    resolved_uri, resolved_bytes, resolved_image_payload = _resolve_input_image_payload(
         image_payload=image_payload,
         local_buffer_reader=local_buffer_reader,
         local_buffer_health=local_buffer_health,
@@ -431,7 +431,7 @@ def _build_prediction_request(
         request=prediction_request,
         input_uri=resolved_uri,
         input_image_bytes=resolved_bytes,
-        input_image_payload=None,
+        input_image_payload=resolved_image_payload,
     )
 
 
@@ -440,13 +440,13 @@ def _resolve_input_image_payload(
     image_payload: dict[str, object],
     local_buffer_reader: LocalBufferBrokerClient | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
-) -> tuple[str | None, bytes | None]:
+) -> tuple[str | None, bytes | None, dict[str, object] | None]:
     """把 image-ref payload 解析为 deployment runtime pool 可读的输入。"""
 
     normalized_payload = require_image_payload(image_payload)
     transport_kind = str(normalized_payload.get("transport_kind") or "")
     if transport_kind == IMAGE_TRANSPORT_STORAGE:
-        return str(normalized_payload.get("object_key") or ""), None
+        return str(normalized_payload.get("object_key") or ""), None, None
     if transport_kind == IMAGE_TRANSPORT_BUFFER:
         if local_buffer_reader is None:
             raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
@@ -454,7 +454,7 @@ def _resolve_input_image_payload(
         try:
             content = local_buffer_reader.read_buffer_ref(buffer_ref)
             _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_BUFFER)
-            return None, content
+            return None, content, normalized_payload
         except Exception as exc:
             _record_local_buffer_error(local_buffer_health, exc)
             raise
@@ -465,7 +465,7 @@ def _resolve_input_image_payload(
         try:
             content = local_buffer_reader.read_frame_ref(frame_ref)
             _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_FRAME)
-            return None, content
+            return None, content, normalized_payload
         except Exception as exc:
             _record_local_buffer_error(local_buffer_health, exc)
             raise

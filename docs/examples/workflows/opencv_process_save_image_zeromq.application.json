@@ -2,7 +2,7 @@
   "format_id": "amvision.flow-application.v1",
   "application_id": "opencv-process-save-image-zeromq-app",
   "display_name": "OpenCV Process Save Image ZeroMQ App",
-  "description": "同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；图内显式把 image-ref 转成 image-base64 后复用已有 OpenCV 处理链路。",
+  "description": "同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；ZeroMQ image-ref 直接进入 image-ref 合流节点，HTTP/base64 只作为调试 fallback。",
   "template_ref": {
     "template_id": "opencv-process-save-image-zeromq-template",
     "template_version": "1.0.0",

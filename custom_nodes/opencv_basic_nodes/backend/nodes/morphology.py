@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
+    encode_png_image_bytes,
     load_image_matrix,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
@@ -51,16 +51,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             kernel,
             iterations=iterations,
         )
-    success, encoded_image = cv2_module.imencode(".png", output_image)
-    if success is not True:
-        raise ServiceConfigurationError(
-            "OpenCV morphology 后无法编码输出图片",
-            details={"node_id": request.node_id},
-        )
+    encoded_image = encode_png_image_bytes(
+        request,
+        image_matrix=output_image,
+        error_message="OpenCV morphology 后无法编码输出图片",
+    )
     output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
-        content=encoded_image.tobytes(),
+        content=encoded_image,
         object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
         variant_name=f"morphology-{operation_name}",
         output_extension=".png",

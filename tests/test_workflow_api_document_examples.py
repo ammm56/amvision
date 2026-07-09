@@ -1422,7 +1422,7 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
     assert "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
-    assert "不替 workflow 图做 `image-ref -> image-base64`" in readme_text
+    assert "不替 workflow 图做跨 payload type 转换" in readme_text
 
 
 def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:

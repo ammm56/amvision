@@ -48,9 +48,9 @@
 
 最新运行链路已经在服务内部使用 LocalBufferBroker。HTTP base64 图片进入 workflow 后会先变成 execution memory image-ref；图里的 detection deployment 节点会在存在 broker writer 时写入 LocalBufferBroker，并通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。OpenCV 与 Barcode/QR 自定义节点通过公共 image helper 读取图片，因此同一张图可以同时接收 HTTP base64 输入和 TriggerSource 传入的 buffer/frame image-ref。
 
-TriggerSource 示例目录在完整本地调试链路之外额外描述协议入口和运行时准备，不把图内转换塞进触发层。当前 `06-*`、`07-*` 已显式发布 `request_image_base64` 和 `request_image_ref` 两个 input binding，并在图里加入 `image-ref -> image-base64` 转换节点后再汇入后续链路。
+TriggerSource 示例目录在完整本地调试链路之外额外描述协议入口和运行时准备，不把图内转换塞进触发层。当前 `06-*`、`07-*` 已显式发布 `request_image_base64` 和 `request_image_ref` 两个 input binding，并在图里使用 `Image Ref Coalesce` 让 ZeroMQ `request_image_ref` 直连后续链路，HTTP/base64 调试入口只作为 fallback。
 
-当前 `06-*`、`07-*` 的 `image-ref -> image-base64 -> image-ref` 只用于验证双入口兼容和现有节点行为，不代表最终高性能默认图。面向现场高帧率 ZeroMQ TriggerSource 的默认图应优先使用 `request_image_ref -> Image Ref Coalesce -> Detection/OpenCV/Barcode`，只在用户明确选择 HTTP/base64 调试、预览、保存或外部回传时才执行 PNG、JPEG 或 base64 编码。BGR24 raw image-ref 数据面规则见 [docs/architecture/high-performance-image-data-plane.md](../../../architecture/high-performance-image-data-plane.md)。
+当前 `06-*`、`07-*` 的默认路径已经是 `request_image_ref -> Image Ref Coalesce -> Detection/OpenCV/Barcode`。只有用户明确选择 HTTP/base64 调试、预览、保存或外部回传时，才执行 PNG、JPEG 或 base64 编码。BGR24 raw image-ref 数据面规则见 [docs/architecture/high-performance-image-data-plane.md](../../../architecture/high-performance-image-data-plane.md)。
 
 `08-*` 当前则显式保留另一条边界：`plc-register` 的 `input_binding_mapping` 目前只读取标准化后的 `payload / event` 原始对象，不会自动包装成 `value.v1`。因此该示例把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，再在图内使用 `payload-to-value` 桥接为后续规则节点需要的 `value.v1`。
 

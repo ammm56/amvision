@@ -63,7 +63,7 @@
 - `11-*` 的具体导入变量、改值位置和推荐联调顺序见 [docs/api/postman/workflows/11-industrial-local-directory-poll-detection-position-gate/README.md](11-industrial-local-directory-poll-detection-position-gate/README.md)。
 - `12-*` 到 `15-*` collection 回到标准 HTTP workflow app 调试面，不再引入 TriggerSource 或额外协议入口；目标是先把 segmentation / classification / pose / obb 这 4 类 non-detection direct model 的真实使用链和当前 API 调试入口收实。
 - FrameRef/BufferRef 的固定请求体需要由本地 adapter 在运行时生成，因此 `06-*`、`07-*` collection 仍不直接发送图片 bytes；图片数据面继续使用 C# SDK 或其他后续 SDK。
-- TriggerSource 只负责提交协议原生输入，不替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
+- TriggerSource 只负责提交协议原生输入，不替 workflow 图做跨 payload type 转换、本地磁盘读图或相机取帧。需要这些能力时，应通过图中的显式节点或 custom node 实现。
 - 当前 `plc-register` 和 `directory-watch` 的 `input_binding_mapping` 还不会自动把 `payload / event` 原始对象包装成 `value.v1`；因此 `08-*`、`09-*` collection 对应的 workflow app 都显式使用 `response-body.v1 -> payload-to-value` 做图内桥接。
 - 当前 `directory-poll` 也沿用同一条边界；因此 `11-*` collection 对应的 workflow app 也显式使用 `response-body.v1 -> payload-to-value` 做图内桥接，而不是把包装逻辑隐式塞进 TriggerSource。
 - `workflow-execute-output` 类型的输出会直接出现在 `outputs[binding_id]`；`http-response` 类型的输出会出现在 `outputs[binding_id] = {"status_code": 200, "body": {...}}`。

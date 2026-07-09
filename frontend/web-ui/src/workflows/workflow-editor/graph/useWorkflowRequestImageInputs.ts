@@ -51,8 +51,8 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     addRequestImageInputNode({
       bindingId: 'request_image_ref',
       displayName: 'request_image_ref',
-      nodeTypeId: 'core.io.image-base64-encode',
-      portName: 'image',
+      nodeTypeId: 'core.logic.image-ref-coalesce',
+      portName: 'primary',
     })
   }
 
@@ -60,8 +60,8 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     addRequestImageInputNode({
       bindingId: 'request_image_base64',
       displayName: 'request_image_base64',
-      nodeTypeId: 'core.logic.image-base64-coalesce',
-      portName: 'primary',
+      nodeTypeId: 'core.io.image-base64-decode',
+      portName: 'payload',
     })
   }
 
@@ -105,7 +105,6 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
       options.updateApplicationBindingRequired(binding, false)
     }
     connectRequestImageFallbackIfReady()
-    ensureRequestImageDecodeNodeIfReady()
     layoutRequestImageNodes()
     options.selectApplicationBoundary('entry')
     options.setStatusMessage(`已添加 ${input.bindingId}`)
@@ -113,10 +112,9 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
   }
 
   function layoutRequestImageNodes(): void {
-    const encodeNode = findNodeByType('core.io.image-base64-encode')
-    const coalesceNode = findNodeByType('core.logic.image-base64-coalesce')
+    const coalesceNode = findNodeByType('core.logic.image-ref-coalesce')
     const decodeNode = findNodeByType('core.io.image-base64-decode')
-    const requestNodes = [encodeNode, coalesceNode, decodeNode].filter((node): node is NodeView => Boolean(node))
+    const requestNodes = [coalesceNode, decodeNode].filter((node): node is NodeView => Boolean(node))
     if (requestNodes.length === 0) return
     const entryPosition = options.boundaryPositions.value.entry
     const baseX = entryPosition
@@ -125,45 +123,27 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     const baseY = entryPosition
       ? entryPosition.y
       : Math.min(...requestNodes.map((node) => node.y))
-    if (encodeNode) moveGraphNodeTo(encodeNode, baseX, baseY)
-    if (coalesceNode) moveGraphNodeTo(coalesceNode, baseX, baseY + (encodeNode ? 180 : 0))
-    if (decodeNode && coalesceNode) moveGraphNodeTo(decodeNode, coalesceNode.x + 330, coalesceNode.y)
+    if (coalesceNode) moveGraphNodeTo(coalesceNode, baseX, baseY)
+    if (decodeNode) {
+      const decodeY = coalesceNode ? coalesceNode.y + 180 : baseY
+      moveGraphNodeTo(decodeNode, baseX, decodeY)
+    }
   }
 
   function connectRequestImageFallbackIfReady(): void {
-    const encodeNode = findNodeByType('core.io.image-base64-encode')
-    const coalesceNode = findNodeByType('core.logic.image-base64-coalesce')
-    if (!encodeNode || !coalesceNode) return
-    const hasEncodeOutput = encodeNode.outputs.some((port) => port.name === 'payload')
+    const decodeNode = findNodeByType('core.io.image-base64-decode')
+    const coalesceNode = findNodeByType('core.logic.image-ref-coalesce')
+    if (!decodeNode || !coalesceNode) return
+    const hasDecodeOutput = decodeNode.outputs.some((port) => port.name === 'image')
     const hasCoalesceFallback = coalesceNode.inputs.some((port) => port.name === 'fallback')
-    if (!hasEncodeOutput || !hasCoalesceFallback) return
+    if (!hasDecodeOutput || !hasCoalesceFallback) return
     const hasFallbackInput = options.graphEdges.value.some(
       (edge) => edge.target_node_id === coalesceNode.node.node_id && edge.target_port === 'fallback',
     )
     if (hasFallbackInput) return
     options.connectOutputToInput(
-      { nodeId: encodeNode.node.node_id, portName: 'payload', direction: 'output' },
+      { nodeId: decodeNode.node.node_id, portName: 'image', direction: 'output' },
       { nodeId: coalesceNode.node.node_id, portName: 'fallback', direction: 'input' },
-    )
-  }
-
-  function ensureRequestImageDecodeNodeIfReady(): void {
-    const coalesceNode = findNodeByType('core.logic.image-base64-coalesce')
-    if (!coalesceNode || !coalesceNode.outputs.some((port) => port.name === 'payload')) return
-    const existingDecodeEdge = options.graphEdges.value.some((edge) => {
-      const targetNode = options.graphNodes.value.find((node) => node.node.node_id === edge.target_node_id)
-      return edge.source_node_id === coalesceNode.node.node_id
-        && edge.source_port === 'payload'
-        && targetNode?.node.node_type_id === 'core.io.image-base64-decode'
-        && edge.target_port === 'payload'
-    })
-    if (existingDecodeEdge) return
-    const decodeDefinition = options.nodeDefinitionsById.value.get('core.io.image-base64-decode')
-    if (!decodeDefinition) return
-    const decodeNode = options.addGraphNode(decodeDefinition, coalesceNode.x + 280, coalesceNode.y)
-    options.connectOutputToInput(
-      { nodeId: coalesceNode.node.node_id, portName: 'payload', direction: 'output' },
-      { nodeId: decodeNode.node.node_id, portName: 'payload', direction: 'input' },
     )
   }
 

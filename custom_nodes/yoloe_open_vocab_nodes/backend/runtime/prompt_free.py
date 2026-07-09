@@ -83,6 +83,7 @@ class YoloePromptFreeRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
         confidence_threshold: float,
         iou_threshold: float,
         max_detections: int,
@@ -92,6 +93,7 @@ class YoloePromptFreeRuntimeSession:
         runtime_input = prepare_image_tensor(
             imports=self.imports,
             image_bytes=image_bytes,
+            image_payload=image_payload,
             input_size=self.input_size,
             device_name=self.device_name,
             precision=self.precision,

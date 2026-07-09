@@ -21,10 +21,10 @@ internal sealed class TriggerSourceZeroMqConfig
     public string DefaultInputBinding { get; set; } = "request_image_ref";
 
     /// <summary>
-    /// 单次 ZeroMQ 图片触发允许的最大图片 bytes，默认 64MB，防止误传超大文件造成内存压力。
+    /// 单次 ZeroMQ 图片触发允许的最大图片 bytes，默认 256MB，覆盖 20MP/4K 级工业相机 raw BGR24 输入。
     /// </summary>
     [JsonPropertyName("max_image_bytes")]
-    public int MaxImageBytes { get; set; } = 64 * 1024 * 1024;
+    public int MaxImageBytes { get; set; } = 256 * 1024 * 1024;
 
     /// <summary>
     /// ZeroMQ 请求等待 reply 的超时时间，单位为秒。

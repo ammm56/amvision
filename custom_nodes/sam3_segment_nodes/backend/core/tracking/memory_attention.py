@@ -169,7 +169,7 @@ def update_attention_track_state_from_region(
         raise ValueError(f"SAM3 视频 attention 状态更新期望 low_res_feature_map 形状为 (1,C,H,W)，实际得到 {tuple(feature_map.shape)}")
     low_res_height = int(feature_map.shape[2])
     low_res_width = int(feature_map.shape[3])
-    region_mask = decode_mask_png(region.mask_png_bytes)
+    region_mask = _resolve_region_mask_array(region)
     low_res_mask = resize_binary_mask(region_mask, width=low_res_width, height=low_res_height)
     if int(low_res_mask.sum()) <= 0:
         return
@@ -230,6 +230,15 @@ def _extract_object_tokens(
         ).round().long()
         selected_tokens = selected_tokens.index_select(0, sample_indices)
     return F.normalize(selected_tokens, dim=1)
+
+
+def _resolve_region_mask_array(region: Sam3RegionItem) -> np.ndarray:
+    """读取 region 中保留的 mask array，必要时退回 PNG bytes 解码。"""
+
+    mask_array = getattr(region, "mask_array", None)
+    if isinstance(mask_array, np.ndarray):
+        return (mask_array > 0).astype(np.uint8)
+    return decode_mask_png(region.mask_png_bytes)
 
 
 def _build_prototype_similarity_map(

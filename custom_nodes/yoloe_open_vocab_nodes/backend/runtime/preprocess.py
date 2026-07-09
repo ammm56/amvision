@@ -24,13 +24,14 @@ def prepare_image_tensor(
     *,
     imports: Any,
     image_bytes: bytes,
+    image_payload: object,
     input_size: tuple[int, int],
     device_name: str,
     precision: str,
 ) -> RuntimeImageTensor:
     """把图片字节转换为 YOLOE runtime 输入 tensor。"""
 
-    image = decode_runtime_image(imports.cv2, imports.np, image_bytes)
+    image = decode_runtime_image(imports.cv2, imports.np, image_bytes, image_payload)
     input_array, resize_ratio = preprocess_image(
         cv2_module=imports.cv2,
         np_module=imports.np,

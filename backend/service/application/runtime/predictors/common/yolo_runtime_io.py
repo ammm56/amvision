@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images.image_matrix import decode_image_bytes_to_matrix
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
     letterbox_yolo_image,
@@ -46,14 +47,13 @@ def load_yolo_runtime_prediction_image(
             )
         return image
 
-    buffer = np_module.frombuffer(request.input_image_bytes or b"", dtype=np_module.uint8)
-    image = cv2_module.imdecode(buffer, cv2_module.IMREAD_COLOR)
-    if image is None:
-        raise InvalidRequestError(
-            "input_image_bytes 不是可读取的图片内容",
-            details={"field": "input_image_bytes"},
-        )
-    return image
+    return decode_image_bytes_to_matrix(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_bytes=request.input_image_bytes or b"",
+        image_payload=getattr(request, "input_image_payload", None),
+        error_message="input_image_bytes 不是可读取的图片内容",
+    )
 
 
 def preprocess_yolo_runtime_letterbox_image(

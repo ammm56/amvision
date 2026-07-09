@@ -278,6 +278,46 @@ public sealed class AmvisionTriggerClient : IDisposable
                 throw new ArgumentException("Shape dimensions must be positive.", nameof(request));
             }
         }
+
+        if (string.Equals(request.MediaType?.Trim(), ImageTriggerRequest.RawImageMediaType, StringComparison.OrdinalIgnoreCase))
+        {
+            ValidateRawBgr24Request(request);
+        }
+    }
+
+    /// <summary>
+    /// 校验 raw BGR24 图片触发请求。
+    /// </summary>
+    /// <param name="request">待校验的图片请求。</param>
+    private static void ValidateRawBgr24Request(ImageTriggerRequest request)
+    {
+        if (request.Shape.Count != 3 || request.Shape[2] != 3)
+        {
+            throw new ArgumentException("Raw BGR24 image requires Shape=[height,width,3].", nameof(request));
+        }
+
+        if (!string.Equals(NormalizeOptional(request.DType), "uint8", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Raw BGR24 image requires DType=uint8.", nameof(request));
+        }
+
+        if (!string.Equals(NormalizeOptional(request.Layout), "HWC", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Raw BGR24 image requires Layout=HWC.", nameof(request));
+        }
+
+        var pixelFormat = NormalizeOptional(request.PixelFormat)?.Replace("-", string.Empty).Replace("_", string.Empty);
+        if (!string.Equals(pixelFormat, "bgr24", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(pixelFormat, "bgr", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Raw BGR24 image requires PixelFormat=bgr24.", nameof(request));
+        }
+
+        var expectedLength = checked(request.Shape[0] * request.Shape[1] * request.Shape[2]);
+        if (request.ImageBytes.Length != expectedLength)
+        {
+            throw new ArgumentException($"Raw BGR24 ImageBytes length must be width * height * 3. Expected {expectedLength}, actual {request.ImageBytes.Length}.", nameof(request));
+        }
     }
 
     /// <summary>

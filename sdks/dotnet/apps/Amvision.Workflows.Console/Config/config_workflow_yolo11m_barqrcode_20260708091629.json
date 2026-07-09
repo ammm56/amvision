@@ -27,6 +27,7 @@
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",
         "default_input_binding": "request_image_ref",
+        "max_image_bytes": 268435456,
         "timeout_seconds": 30
       }
     }

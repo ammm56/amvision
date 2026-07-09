@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import io
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
 from backend.nodes.runtime_support import load_image_bytes, load_image_bytes_from_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import SUPPORTED_POINT_LABELS
 from custom_nodes.sam3_segment_nodes.backend.payloads.types import (
@@ -207,7 +208,7 @@ def read_interactive_prompt_items(
                 source_image_payload=source_image_payload,
                 source_image_bytes=source_image_bytes,
             )
-            _normalized_mask_payload, mask_image_bytes = load_image_bytes_from_payload(
+            normalized_mask_payload, mask_image_bytes = load_image_bytes_from_payload(
                 request,
                 image_payload=item.get("mask_image"),
             )
@@ -218,6 +219,7 @@ def read_interactive_prompt_items(
                     display_name=display_name,
                     prompt_mask=_decode_prompt_mask_image(
                         mask_image_bytes,
+                        image_payload=normalized_mask_payload,
                         source_width=source_width,
                         source_height=source_height,
                     ),
@@ -327,8 +329,15 @@ def _resolve_source_image_size(
                 return normalized_width, normalized_height
     if not isinstance(source_image_bytes, bytes) or not source_image_bytes:
         raise InvalidRequestError("SAM3 polygon prompt 要求能够解析源图尺寸")
-    with Image.open(io.BytesIO(source_image_bytes)) as image:
-        source_width, source_height = image.size
+    source_image_matrix = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=source_image_bytes,
+        image_payload=source_image_payload,
+        imdecode_flags=cv2.IMREAD_COLOR,
+        error_message="SAM3 polygon prompt 无法解析源图尺寸",
+    )
+    source_height, source_width = int(source_image_matrix.shape[0]), int(source_image_matrix.shape[1])
     if source_width <= 0 or source_height <= 0:
         raise InvalidRequestError("SAM3 polygon prompt 解析出的源图尺寸无效")
     return source_width, source_height
@@ -385,6 +394,7 @@ def _rasterize_polygon_prompt_mask(
 def _decode_prompt_mask_image(
     image_bytes: bytes,
     *,
+    image_payload: object,
     source_width: int,
     source_height: int,
 ) -> np.ndarray:
@@ -392,11 +402,21 @@ def _decode_prompt_mask_image(
 
     if not isinstance(image_bytes, bytes) or not image_bytes:
         raise InvalidRequestError("SAM3 mask prompt 要求 mask_image 必须包含非空图片字节")
-    with Image.open(io.BytesIO(image_bytes)) as image:
-        grayscale_image = image.convert("L")
-        if grayscale_image.size != (source_width, source_height):
-            grayscale_image = grayscale_image.resize((source_width, source_height), resample=Image.Resampling.NEAREST)
-        mask_array = np.asarray(grayscale_image, dtype=np.uint8)
+    mask_array = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=image_bytes,
+        image_payload=image_payload,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+        error_message="SAM3 mask prompt 收到的 mask_image 不是有效图片",
+        copy_raw=True,
+    )
+    if int(mask_array.shape[1]) != source_width or int(mask_array.shape[0]) != source_height:
+        mask_array = cv2.resize(
+            mask_array,
+            (int(source_width), int(source_height)),
+            interpolation=cv2.INTER_NEAREST,
+        )
     binary_mask = (mask_array > 0).astype(np.uint8)
     if int(binary_mask.sum()) <= 0:
         raise InvalidRequestError("SAM3 mask prompt 解码后的 mask 不能为空")

@@ -2,7 +2,7 @@
   "format_id": "amvision.flow-application.v1",
   "application_id": "detection-deployment-infer-opencv-health-zeromq-app",
   "display_name": "Detection Deployment Infer OpenCV Health ZeroMQ App",
-  "description": "同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；图内显式汇合双入口后返回检测框列表、绘制图片和 deployment health 摘要。",
+  "description": "同一个 workflow app 同时接收 HTTP image-base64 和 TriggerSource image-ref；ZeroMQ image-ref 直通模型和 OpenCV 节点，HTTP/base64 只作为调试 fallback。",
   "template_ref": {
     "template_id": "detection-deployment-infer-opencv-health-zeromq-template",
     "template_version": "1.1.0",

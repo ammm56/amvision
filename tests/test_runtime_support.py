@@ -15,7 +15,9 @@ from backend.nodes.runtime_support import (
     build_storage_image_payload,
     copy_image_payload,
     load_image_bytes,
+    load_image_matrix,
     register_image_bytes,
+    register_image_matrix,
     require_image_payload,
     resolve_image_reference,
 )
@@ -75,6 +77,47 @@ def test_execution_image_registry_registers_reads_and_releases_bytes() -> None:
 
     with pytest.raises(InvalidRequestError, match="图片句柄"):
         registry.read_bytes(entry.image_handle)
+
+
+def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_response(tmp_path: Path) -> None:
+    """验证 raw BGR24 图片在节点内存中流转，对外响应时才编码为 JSON 安全图片。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry()
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload={"object_key": "inputs/source.png"},
+    )
+    image_matrix = np.zeros((2, 3, 3), dtype=np.uint8)
+    image_matrix[:, :, 0] = 11
+    image_matrix[:, :, 1] = 22
+    image_matrix[:, :, 2] = 33
+
+    memory_payload = register_image_matrix(request, image_matrix=image_matrix)
+    request.input_values["image"] = memory_payload
+    loaded_payload, loaded_matrix = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+    )
+    response_image = build_response_image_payload(request, image_payload=memory_payload)
+
+    assert memory_payload["transport_kind"] == IMAGE_TRANSPORT_MEMORY
+    assert memory_payload["media_type"] == "image/raw"
+    assert memory_payload["shape"] == [2, 3, 3]
+    assert memory_payload["dtype"] == "uint8"
+    assert memory_payload["layout"] == "HWC"
+    assert memory_payload["pixel_format"] == "bgr24"
+    assert loaded_payload["media_type"] == "image/raw"
+    assert np.array_equal(loaded_matrix, image_matrix)
+    assert response_image["transport_kind"] == "inline-base64"
+    assert response_image["media_type"] == "image/png"
+    assert response_image["width"] == 3
+    assert response_image["height"] == 2
+    assert "shape" not in response_image
 
 
 def test_load_image_bytes_supports_storage_and_memory_modes(tmp_path: Path) -> None:

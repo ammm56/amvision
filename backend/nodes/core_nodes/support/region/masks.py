@@ -10,6 +10,7 @@ import numpy as np
 from backend.nodes.core_nodes.support.region.images import resolve_region_source_image_size
 from backend.nodes.runtime_support import load_image_bytes_from_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -105,16 +106,19 @@ def build_region_binary_mask(
 
     mask_payload = region_item.get("mask_image")
     if isinstance(mask_payload, dict):
-        _normalized_payload, image_bytes = load_image_bytes_from_payload(
+        normalized_payload, image_bytes = load_image_bytes_from_payload(
             request,
             image_payload=mask_payload,
         )
-        image_matrix = cv2.imdecode(
-            np.frombuffer(image_bytes, dtype=np.uint8),
-            cv2.IMREAD_GRAYSCALE,
+        image_matrix = decode_image_bytes_to_matrix(
+            cv2_module=cv2,
+            np_module=np,
+            image_bytes=image_bytes,
+            image_payload=normalized_payload,
+            imdecode_flags=cv2.IMREAD_GRAYSCALE,
+            error_message="region 的 mask_image 无法解码为灰度图",
+            copy_raw=True,
         )
-        if image_matrix is None:
-            raise InvalidRequestError("region 的 mask_image 无法解码为灰度图")
         if image_matrix.shape[1] != image_width or image_matrix.shape[0] != image_height:
             image_matrix = cv2.resize(
                 image_matrix,
@@ -171,4 +175,3 @@ def _normalize_polygon_xy(raw_value: object) -> list[list[float]]:
             raise InvalidRequestError("region 的 polygon_xy 中的点坐标必须是数值")
         normalized_points.append([float(x_value), float(y_value)])
     return normalized_points
-

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows;
@@ -581,6 +582,72 @@ public sealed partial class WorkflowOperationRunner : IDisposable
     {
         RequireTriggerSource(triggerSourceName);
         return zeroMqOperations.InvokeImageBase64Async(triggerSourceName, imageBase64, mediaType, cancellationToken);
+    }
+
+    /// <summary>
+    /// 用连续 HWC BGR24 像素 bytes 执行 ZeroMQ 图片触发；这是现场高频工业相机输入的首选路径。
+    /// </summary>
+    /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
+    /// <param name="bgr24Bytes">连续 B/G/R 像素 bytes。</param>
+    /// <param name="width">图片宽度。</param>
+    /// <param name="height">图片高度。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>TriggerSource 调用结果。</returns>
+    public Task<TriggerResult> InvokeZeroMqBgr24Async(
+        string triggerSourceName,
+        byte[] bgr24Bytes,
+        int width,
+        int height,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTriggerSource(triggerSourceName);
+        return zeroMqOperations.InvokeBgr24Async(triggerSourceName, bgr24Bytes, width, height, cancellationToken);
+    }
+
+    /// <summary>
+    /// 把 Windows 原生 Bitmap 转换为 BGR24 后执行 ZeroMQ 图片触发。
+    /// </summary>
+    /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
+    /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>TriggerSource 调用结果。</returns>
+    public Task<TriggerResult> InvokeZeroMqBgr24FromBitmapAsync(
+        string triggerSourceName,
+        Bitmap bitmap,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTriggerSource(triggerSourceName);
+        return zeroMqOperations.InvokeBgr24FromBitmapAsync(triggerSourceName, bitmap, cancellationToken);
+    }
+
+    /// <summary>
+    /// 从磁盘图片文件转换为 BGR24 后执行 ZeroMQ 图片触发；主要用于调试，不作为高频现场路径。
+    /// </summary>
+    /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
+    /// <param name="imagePath">图片路径。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>TriggerSource 调用结果。</returns>
+    public Task<TriggerResult> InvokeZeroMqBgr24FromFileAsync(
+        string triggerSourceName,
+        string imagePath,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTriggerSource(triggerSourceName);
+        return zeroMqOperations.InvokeBgr24FromFileAsync(triggerSourceName, imagePath, cancellationToken);
+    }
+
+    /// <summary>
+    /// 从配置中的图片路径转换为 BGR24 后执行 ZeroMQ 图片触发；主要用于联调验证。
+    /// </summary>
+    /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
+    /// <param name="cancellationToken">取消信号。</param>
+    /// <returns>TriggerSource 调用结果。</returns>
+    public Task<TriggerResult> InvokeZeroMqConfiguredBgr24ImageAsync(
+        string triggerSourceName,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTriggerSource(triggerSourceName);
+        return zeroMqOperations.InvokeConfiguredBgr24ImageAsync(triggerSourceName, cancellationToken);
     }
 
     /// <summary>

@@ -17,6 +17,7 @@ from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
     IMAGE_TRANSPORT_MEMORY,
     load_image_bytes,
+    require_image_payload,
     resolve_image_reference,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -113,6 +114,10 @@ def _try_write_memory_image_to_local_buffer(
         owner_kind="workflow-runtime",
         owner_id=_build_buffer_owner_id(request),
         media_type=str(normalized_payload["media_type"]),
+        shape=tuple(int(item) for item in require_image_payload(normalized_payload).get("shape", ())),
+        dtype=_read_optional_payload_text(normalized_payload, "dtype"),
+        layout=_read_optional_payload_text(normalized_payload, "layout"),
+        pixel_format=_read_optional_payload_text(normalized_payload, "pixel_format"),
         trace_id=_read_optional_trace_id(request),
     )
     _register_local_buffer_lease_cleanup(request=request, write_result=write_result)
@@ -155,6 +160,16 @@ def _build_buffer_owner_id(request: WorkflowNodeExecutionRequest) -> str:
     if isinstance(workflow_run_id, str) and workflow_run_id.strip():
         return f"{workflow_run_id.strip()}:{request.node_id}"
     return request.node_id
+
+
+def _read_optional_payload_text(payload: dict[str, object], key: str) -> str | None:
+    """从图片 payload 中读取可选字符串字段。"""
+
+    value = payload.get(key)
+    if not isinstance(value, str):
+        return None
+    normalized_value = value.strip()
+    return normalized_value or None
 
 
 def _read_optional_trace_id(request: WorkflowNodeExecutionRequest) -> str | None:

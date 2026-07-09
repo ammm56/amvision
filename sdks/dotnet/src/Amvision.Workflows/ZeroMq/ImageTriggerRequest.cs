@@ -10,6 +10,11 @@ namespace Amvision.Workflows;
 public sealed class ImageTriggerRequest
 {
     /// <summary>
+    /// raw BGR24 图片的 media type。
+    /// </summary>
+    public const string RawImageMediaType = "image/raw";
+
+    /// <summary>
     /// 作为 multipart 第二帧发送的图片 bytes。
     /// </summary>
     public byte[] ImageBytes { get; set; } = Array.Empty<byte>();
@@ -91,6 +96,47 @@ public sealed class ImageTriggerRequest
         {
             ImageBytes = imageBytes,
             MediaType = NormalizeMediaType(mediaType)
+        };
+    }
+
+    /// <summary>
+    /// 从 BGR24 原始像素 bytes 创建 ZeroMQ 图片触发请求。
+    /// </summary>
+    /// <param name="bgr24Bytes">B/G/R 每通道 8bit 的连续像素 bytes。</param>
+    /// <param name="width">图片宽度。</param>
+    /// <param name="height">图片高度。</param>
+    /// <returns>图片触发请求。</returns>
+    public static ImageTriggerRequest FromBgr24(byte[] bgr24Bytes, int width, int height)
+    {
+        if (bgr24Bytes is null || bgr24Bytes.Length == 0)
+        {
+            throw new ArgumentException("bgr24Bytes cannot be empty.", nameof(bgr24Bytes));
+        }
+
+        if (width <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), width, "width must be positive.");
+        }
+
+        if (height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(height), height, "height must be positive.");
+        }
+
+        var expectedLength = checked(width * height * 3);
+        if (bgr24Bytes.Length != expectedLength)
+        {
+            throw new ArgumentException($"BGR24 bytes length must be width * height * 3. Expected {expectedLength}, actual {bgr24Bytes.Length}.", nameof(bgr24Bytes));
+        }
+
+        return new ImageTriggerRequest
+        {
+            ImageBytes = bgr24Bytes,
+            MediaType = RawImageMediaType,
+            Shape = new[] { height, width, 3 },
+            DType = "uint8",
+            Layout = "HWC",
+            PixelFormat = "bgr24"
         };
     }
 

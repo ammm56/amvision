@@ -12,6 +12,7 @@ var tests = new Action[]
     InvokeImageBuildsExpectedEnvelope,
     InvokeEventBuildsEnvelopeOnlyFrame,
     ImageTriggerRequestHelpersBuildSecondFrameBytes,
+    ImageTriggerRequestBgr24BuildsRawEnvelope,
     InvokeImageUsesNetMqReqRepTransport,
     NetMqTransportRecoversAfterTimeout,
     AmvisionTriggerClientSerializesTransportCalls,
@@ -45,6 +46,55 @@ foreach (var test in tests)
 }
 
 NetMQConfig.Cleanup(block: false);
+
+// 验证 raw BGR24 helper 会构造高性能图片触发需要的 envelope 元数据。
+static void ImageTriggerRequestBgr24BuildsRawEnvelope()
+{
+    var bgr24Bytes = new byte[]
+    {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+        10, 11, 12
+    };
+    var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width: 2, height: 2);
+
+    AssertEqual(ImageTriggerRequest.RawImageMediaType, request.MediaType);
+    AssertSequence(bgr24Bytes, request.ImageBytes);
+    AssertEqual(2, request.Shape[0]);
+    AssertEqual(2, request.Shape[1]);
+    AssertEqual(3, request.Shape[2]);
+    AssertEqual("uint8", request.DType);
+    AssertEqual("HWC", request.Layout);
+    AssertEqual("bgr24", request.PixelFormat);
+    AssertThrows<ArgumentException>(() => ImageTriggerRequest.FromBgr24(new byte[] { 1, 2, 3 }, width: 2, height: 2));
+
+    var transport = new FakeTransport(
+        "{\"format_id\":\"amvision.workflow-trigger-result.v1\",\"trigger_source_id\":\"trigger-source-bgr\",\"event_id\":\"event-bgr\",\"state\":\"accepted\",\"workflow_run_id\":\"workflow-run-bgr\",\"response_payload\":{},\"metadata\":{}}"
+    );
+    using var client = new AmvisionTriggerClient(
+        new AmvisionTriggerClientOptions
+        {
+            TriggerSourceId = "trigger-source-bgr",
+            Timeout = TimeSpan.FromSeconds(1)
+        },
+        transport
+    );
+
+    _ = client.InvokeImage(request);
+
+    AssertEqual(2, transport.LastFrames.Count);
+    AssertSequence(bgr24Bytes, transport.LastFrames[1]);
+    using var document = JsonDocument.Parse(Encoding.UTF8.GetString(transport.LastFrames[0]));
+    var root = document.RootElement;
+    AssertEqual("image/raw", root.GetProperty("media_type").GetString());
+    AssertEqual(2, root.GetProperty("shape")[0].GetInt32());
+    AssertEqual(2, root.GetProperty("shape")[1].GetInt32());
+    AssertEqual(3, root.GetProperty("shape")[2].GetInt32());
+    AssertEqual("uint8", root.GetProperty("dtype").GetString());
+    AssertEqual("HWC", root.GetProperty("layout").GetString());
+    AssertEqual("bgr24", root.GetProperty("pixel_format").GetString());
+}
 
 // 验证文件、base64 和 stream helper 最终仍走 multipart 第二帧 bytes。
 static void ImageTriggerRequestHelpersBuildSecondFrameBytes()

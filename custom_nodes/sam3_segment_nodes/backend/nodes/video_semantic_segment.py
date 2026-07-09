@@ -43,6 +43,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     for frame_item in frame_items:
         prediction = runtime_session.predict(
             image_bytes=frame_item.image_bytes,
+            image_payload=frame_item.image_payload,
             prompt_items=prompt_groups,
         )
         frame_predictions.append(

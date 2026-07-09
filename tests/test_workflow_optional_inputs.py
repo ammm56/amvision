@@ -144,12 +144,8 @@ def _build_dual_input_image_template() -> WorkflowGraphTemplate:
         display_name="Dual Input Image Template",
         nodes=(
             WorkflowGraphNode(
-                node_id="encode_request_image_ref",
-                node_type_id="core.io.image-base64-encode",
-            ),
-            WorkflowGraphNode(
                 node_id="resolve_request_image",
-                node_type_id="core.logic.image-base64-coalesce",
+                node_type_id="core.logic.image-ref-coalesce",
             ),
             WorkflowGraphNode(
                 node_id="decode_request_image",
@@ -158,18 +154,11 @@ def _build_dual_input_image_template() -> WorkflowGraphTemplate:
         ),
         edges=(
             WorkflowGraphEdge(
-                edge_id="edge-encode-request-image-ref",
-                source_node_id="encode_request_image_ref",
-                source_port="payload",
+                edge_id="edge-decode-request-image-fallback",
+                source_node_id="decode_request_image",
+                source_port="image",
                 target_node_id="resolve_request_image",
                 target_port="fallback",
-            ),
-            WorkflowGraphEdge(
-                edge_id="edge-resolve-request-image",
-                source_node_id="resolve_request_image",
-                source_port="payload",
-                target_node_id="decode_request_image",
-                target_port="payload",
             ),
         ),
         template_inputs=(
@@ -177,16 +166,16 @@ def _build_dual_input_image_template() -> WorkflowGraphTemplate:
                 input_id="request_image_base64",
                 display_name="Request Image Base64",
                 payload_type_id="image-base64.v1",
-                target_node_id="resolve_request_image",
-                target_port="primary",
+                target_node_id="decode_request_image",
+                target_port="payload",
                 required=False,
             ),
             WorkflowGraphInput(
                 input_id="request_image_ref",
                 display_name="Request Image Ref",
                 payload_type_id="image-ref.v1",
-                target_node_id="encode_request_image_ref",
-                target_port="image",
+                target_node_id="resolve_request_image",
+                target_port="primary",
                 required=False,
             ),
         ),
@@ -195,7 +184,7 @@ def _build_dual_input_image_template() -> WorkflowGraphTemplate:
                 output_id="image",
                 display_name="Image",
                 payload_type_id="image-ref.v1",
-                source_node_id="decode_request_image",
+                source_node_id="resolve_request_image",
                 source_port="image",
             ),
         ),

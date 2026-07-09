@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
+    encode_png_image_bytes,
     load_image_matrix,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
@@ -30,16 +30,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_sigma_x = request.parameters.get("sigma_x")
     sigma_x = 0.0 if raw_sigma_x in {None, ""} else require_non_negative_float(raw_sigma_x, field_name="sigma_x")
     blurred_image = cv2_module.GaussianBlur(image_matrix, (kernel_size, kernel_size), sigma_x)
-    success, encoded_image = cv2_module.imencode(".png", blurred_image)
-    if success is not True:
-        raise ServiceConfigurationError(
-            "OpenCV 高斯模糊后无法编码输出图片",
-            details={"node_id": request.node_id},
-        )
+    encoded_image = encode_png_image_bytes(
+        request,
+        image_matrix=blurred_image,
+        error_message="OpenCV 高斯模糊后无法编码输出图片",
+    )
     output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
-        content=encoded_image.tobytes(),
+        content=encoded_image,
         object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
         variant_name="gaussian-blur",
         output_extension=".png",

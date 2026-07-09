@@ -436,6 +436,7 @@ def _build_common_prediction_kwargs(
         if request.input_image_bytes is None:
             raise InvalidRequestError("memory image-ref 调用发布推理时缺少 input_image_bytes")
         common_kwargs["input_image_bytes"] = request.input_image_bytes
+        common_kwargs["input_image_payload"] = dict(normalized_image_payload)
         return common_kwargs
     if transport_kind == IMAGE_TRANSPORT_STORAGE:
         common_kwargs["input_uri"] = str(normalized_image_payload.get("object_key") or "")

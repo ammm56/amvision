@@ -6,6 +6,7 @@ import io
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -160,8 +161,8 @@ def build_frame_prompt_items(
                 prompt_id=prompt_item.prompt_id,
                 prompt_kind="mask",
                 display_name=prompt_item.display_name,
-                prompt_mask=_decode_region_mask(
-                    previous_region.mask_png_bytes,
+                prompt_mask=_resolve_region_mask(
+                    previous_region,
                     frame_width=frame_width,
                     frame_height=frame_height,
                 ),
@@ -289,9 +290,25 @@ def build_tracking_config_summary(tracking_options: Sam3VideoTrackingOptions) ->
     return summary
 
 
-def _decode_region_mask(mask_png_bytes: bytes, *, frame_width: int, frame_height: int) -> np.ndarray:
-    """把上一帧 region 的 PNG mask 解码为当前帧 prompt mask。"""
+def _resolve_region_mask(region: object, *, frame_width: int, frame_height: int) -> np.ndarray:
+    """把上一帧 region mask 转换为当前帧 prompt mask。
 
+    新的高性能路径直接复用 region 内部保留的 mask_array；只有旧对象或外部构造
+    的 region 缺少 mask_array 时才退回 PNG bytes 解码。
+    """
+
+    mask_array = getattr(region, "mask_array", None)
+    if isinstance(mask_array, np.ndarray):
+        resolved_mask = (mask_array > 0).astype(np.uint8)
+        if int(resolved_mask.shape[1]) != frame_width or int(resolved_mask.shape[0]) != frame_height:
+            resolved_mask = cv2.resize(
+                resolved_mask,
+                (int(frame_width), int(frame_height)),
+                interpolation=cv2.INTER_NEAREST,
+            )
+        return (resolved_mask > 0).astype(np.uint8)
+
+    mask_png_bytes = getattr(region, "mask_png_bytes", b"")
     decoded_image = Image.open(io.BytesIO(mask_png_bytes)).convert("L")
     if decoded_image.size != (frame_width, frame_height):
         decoded_image = decoded_image.resize((frame_width, frame_height), Image.Resampling.NEAREST)

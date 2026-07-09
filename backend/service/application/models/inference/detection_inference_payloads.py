@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.project_public_files import resolve_public_project_file_reference
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
@@ -561,9 +562,16 @@ def _validate_image_bytes(*, image_bytes: bytes, field_name: str) -> None:
         import numpy as np  # noqa: PLC0415
     except Exception:
         return
-    buffer = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(buffer, cv2.IMREAD_UNCHANGED)
-    if image is None:
+    try:
+        decode_image_bytes_to_matrix(
+            cv2_module=cv2,
+            np_module=np,
+            image_bytes=image_bytes,
+            image_payload={"media_type": "image/encoded"},
+            imdecode_flags=cv2.IMREAD_UNCHANGED,
+            error_message=f"{field_name} 不是可读取的图片内容",
+        )
+    except InvalidRequestError:
         raise InvalidRequestError(
             f"{field_name} 不是可读取的图片内容",
             details={"field": field_name},

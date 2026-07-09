@@ -154,7 +154,14 @@ internal static class Program
         //var eventResult = await runner.InvokeZeroMqEventAsync(TriggerSourceName, cancellationToken: cancellationToken).ConfigureAwait(false);
         //var configuredImageResult = await runner.InvokeZeroMqConfiguredImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
         //var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ImagePath, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var bytesImageResult = await runner.InvokeZeroMqImageBytesAsync(TriggerSourceName, LoadImageBytes(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var bgr24Frame = LoadBgr24ImageFrame();
+        var bgr24ImageResult = await runner.InvokeZeroMqBgr24Async(
+            TriggerSourceName,
+            bgr24Frame.Bytes,
+            bgr24Frame.Width,
+            bgr24Frame.Height,
+            cancellationToken).ConfigureAwait(false);
+        //var bytesImageResult = await runner.InvokeZeroMqImageBytesAsync(TriggerSourceName, LoadImageBytes(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
         //var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(TriggerSourceName, LoadImageBase64(), mediaType: "image/jpeg", cancellationToken: cancellationToken).ConfigureAwait(false);
 
         System.Console.ReadKey();
@@ -179,5 +186,14 @@ internal static class Program
             ImagePath,
             sourceFile: null,
             message: "Input image file does not exist."));
+    }
+
+    /// <summary>
+    /// 从 ImagePath 读取图片并转换为 BGR24；实际现场应直接使用工业相机 SDK 返回的 BGR24 bytes。
+    /// </summary>
+    /// <returns>BGR24 图片帧。</returns>
+    private static Bgr24ImageFrame LoadBgr24ImageFrame()
+    {
+        return ImageConversionTools.ImageFileToBgr24(ImagePath);
     }
 }

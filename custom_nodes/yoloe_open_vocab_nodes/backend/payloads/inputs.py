@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import io
-
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
 from backend.nodes.runtime_support import load_image_bytes, load_image_bytes_from_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
     YoloePromptGroup,
@@ -17,11 +17,21 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
 )
 
 
-def decode_image_bytes(image_bytes: bytes) -> Image.Image:
+def decode_image_bytes(image_bytes: bytes, *, image_payload: object = None) -> Image.Image:
     """把图片字节解码为 RGB PIL Image。"""
 
     try:
-        return Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        bgr_image = decode_image_bytes_to_matrix(
+            cv2_module=cv2,
+            np_module=np,
+            image_bytes=image_bytes,
+            image_payload=image_payload,
+            imdecode_flags=cv2.IMREAD_COLOR,
+            error_message="YOLOE 节点收到的图片不是有效图像",
+            copy_raw=True,
+        )
+        rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb_image, mode="RGB")
     except Exception as exc:  # pragma: no cover - 输入图片损坏时由集成调用触发
         raise InvalidRequestError("YOLOE 节点收到的图片不是有效图像") from exc
 
@@ -227,7 +237,7 @@ def _resolve_visual_prompt_image_size(
     if width > 0 and height > 0:
         return width, height
     if isinstance(prompt_image_bytes, bytes) and prompt_image_bytes:
-        prompt_image = decode_image_bytes(prompt_image_bytes)
+        prompt_image = decode_image_bytes(prompt_image_bytes, image_payload=prompt_image_payload)
         return int(prompt_image.width), int(prompt_image.height)
     raise InvalidRequestError("YOLOE visual-prompt 无法解析 prompt_image 尺寸")
 
@@ -347,12 +357,23 @@ def _load_visual_prompt_mask(
 ) -> np.ndarray:
     """读取 mask prompt 并规整到参考图尺寸。"""
 
-    _normalized_payload, mask_image_bytes = load_image_bytes_from_payload(request, image_payload=mask_image_payload)
-    mask_image = Image.open(io.BytesIO(mask_image_bytes)).convert("L")
+    normalized_payload, mask_image_bytes = load_image_bytes_from_payload(request, image_payload=mask_image_payload)
+    mask_array = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=mask_image_bytes,
+        image_payload=normalized_payload,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+        error_message="YOLOE visual-prompt 收到的 mask_image 不是有效图片",
+        copy_raw=True,
+    )
     prompt_image_width, prompt_image_height = prompt_image_size
-    if mask_image.width != int(prompt_image_width) or mask_image.height != int(prompt_image_height):
-        mask_image = mask_image.resize((int(prompt_image_width), int(prompt_image_height)), resample=Image.NEAREST)
-    mask_array = np.asarray(mask_image, dtype=np.uint8)
+    if int(mask_array.shape[1]) != int(prompt_image_width) or int(mask_array.shape[0]) != int(prompt_image_height):
+        mask_array = cv2.resize(
+            mask_array,
+            (int(prompt_image_width), int(prompt_image_height)),
+            interpolation=cv2.INTER_NEAREST,
+        )
     return (mask_array > 0).astype(np.uint8)
 
 

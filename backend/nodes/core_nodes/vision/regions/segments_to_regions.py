@@ -32,6 +32,7 @@ from backend.nodes.runtime_support import (
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -362,15 +363,19 @@ def _extract_mask_geometry(
 ) -> tuple[list[float], list[list[float]], int, int]:
     """从 mask_image 提取 bbox、polygon 和 area。"""
 
-    _normalized_payload, image_bytes = load_image_bytes_from_payload(
+    normalized_payload, image_bytes = load_image_bytes_from_payload(
         request,
         image_payload=mask_payload,
     )
-    image_matrix = cv2.imdecode(
-        np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE
+    image_matrix = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=image_bytes,
+        image_payload=normalized_payload,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+        error_message="segments-to-regions 节点无法解码 segment.mask_image",
+        copy_raw=True,
     )
-    if image_matrix is None:
-        raise InvalidRequestError("segments-to-regions 节点无法解码 segment.mask_image")
     binary_mask = (image_matrix > 0).astype(np.uint8)
     area = int(np.count_nonzero(binary_mask))
     if area <= 0:

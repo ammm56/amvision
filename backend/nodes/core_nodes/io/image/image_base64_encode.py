@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -11,7 +9,7 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.runtime_support import load_image_bytes_from_payload
+from backend.nodes.runtime_support import build_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -49,16 +47,18 @@ def _image_base64_encode_handler(request: WorkflowNodeExecutionRequest) -> dict[
     if image_payload is None:
         return {"payload": None}
 
-    normalized_payload, image_bytes = load_image_bytes_from_payload(
+    response_image = build_response_image_payload(
         request,
         image_payload=image_payload,
+        response_transport_mode="inline-base64",
+        variant_name="image-base64-encode",
     )
     output_payload: dict[str, object] = {
-        "image_base64": base64.b64encode(image_bytes).decode("ascii"),
-        "media_type": str(normalized_payload["media_type"]),
+        "image_base64": str(response_image["image_base64"]),
+        "media_type": str(response_image["media_type"]),
     }
-    normalized_width = _normalize_optional_dimension(normalized_payload.get("width"))
-    normalized_height = _normalize_optional_dimension(normalized_payload.get("height"))
+    normalized_width = _normalize_optional_dimension(response_image.get("width"))
+    normalized_height = _normalize_optional_dimension(response_image.get("height"))
     if normalized_width is not None:
         output_payload["width"] = normalized_width
     if normalized_height is not None:

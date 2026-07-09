@@ -45,7 +45,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         device=device,
         precision=precision,
     )
-    prediction = runtime_session.predict(image_bytes=image_bytes, prompt_items=prompt_items)
+    prediction = runtime_session.predict(image_bytes=image_bytes, image_payload=image_payload, prompt_items=prompt_items)
     return {
         "regions": build_regions_payload(
             request,

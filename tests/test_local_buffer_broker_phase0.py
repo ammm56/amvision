@@ -227,7 +227,13 @@ def test_resolve_image_reference_and_load_image_bytes_support_buffer_ref(tmp_pat
         assert normalized_payload["media_type"] == "image/raw"
         assert normalized_payload["width"] == 3
         assert normalized_payload["height"] == 3
+        assert normalized_payload["shape"] == [3, 3, 1]
+        assert normalized_payload["dtype"] == "uint8"
+        assert normalized_payload["layout"] == "HWC"
+        assert normalized_payload["pixel_format"] == "gray8"
         assert resolved_image.buffer_ref == write_result.buffer_ref
+        assert resolved_image.shape == (3, 3, 1)
+        assert resolved_image.pixel_format == "gray8"
         assert loaded_payload["buffer_ref"]["lease_id"] == write_result.lease.lease_id
         assert loaded_bytes == b"raw-image"
         assert inference_request.image_payload["transport_kind"] == IMAGE_TRANSPORT_BUFFER
@@ -261,7 +267,13 @@ def test_resolve_image_reference_and_load_image_bytes_support_frame_ref(tmp_path
         assert normalized_payload["media_type"] == "image/raw"
         assert normalized_payload["width"] == 11
         assert normalized_payload["height"] == 1
+        assert normalized_payload["shape"] == [1, 11, 1]
+        assert normalized_payload["dtype"] == "uint8"
+        assert normalized_payload["layout"] == "HWC"
+        assert normalized_payload["pixel_format"] == "gray8"
         assert resolved_image.frame_ref == frame_ref
+        assert resolved_image.shape == (1, 11, 1)
+        assert resolved_image.pixel_format == "gray8"
         assert loaded_payload["frame_ref"]["sequence_id"] == 0
         assert loaded_bytes == b"frame-image"
 

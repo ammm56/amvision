@@ -27,7 +27,10 @@ def _image_base64_decode_handler(request: WorkflowNodeExecutionRequest) -> dict[
     - dict[str, object]：包含解码后 memory image-ref 的节点输出。
     """
 
-    payload = _require_image_base64_payload(request.input_values.get("payload"))
+    raw_payload = request.input_values.get("payload")
+    if raw_payload is None:
+        return {"image": None}
+    payload = _require_image_base64_payload(raw_payload)
     try:
         content = base64.b64decode(payload["image_base64"], validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -139,6 +142,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="payload",
                 display_name="Payload",
                 payload_type_id="image-base64.v1",
+                required=False,
             ),
         ),
         output_ports=(

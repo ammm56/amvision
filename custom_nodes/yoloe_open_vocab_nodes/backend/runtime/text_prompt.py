@@ -95,6 +95,7 @@ class YoloeTextPromptRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
         prompts: tuple[Any, ...],
         confidence_threshold: float,
         iou_threshold: float,
@@ -107,6 +108,7 @@ class YoloeTextPromptRuntimeSession:
         runtime_input = prepare_image_tensor(
             imports=self.imports,
             image_bytes=image_bytes,
+            image_payload=image_payload,
             input_size=self.input_size,
             device_name=self.device_name,
             precision=self.precision,

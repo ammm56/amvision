@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Amvision.Workflows.Console.Tools;
 
@@ -248,6 +249,117 @@ public static class ImageConversionTools
     }
 
     /// <summary>
+    /// 从磁盘读取 jpeg / png / bmp 图片，并转换为连续 HWC BGR24 像素数据。
+    /// </summary>
+    /// <param name="imagePath">图片文件路径。</param>
+    /// <returns>BGR24 图片帧。</returns>
+    public static Bgr24ImageFrame ImageFileToBgr24(string imagePath)
+    {
+        using var bitmap = LoadBitmapFromFile(imagePath);
+        return BitmapToBgr24(bitmap);
+    }
+
+    /// <summary>
+    /// 将 Windows 原生 Bitmap 转换为连续 HWC BGR24 像素数据。
+    /// </summary>
+    /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
+    /// <returns>BGR24 图片帧。</returns>
+    public static Bgr24ImageFrame BitmapToBgr24(Bitmap bitmap)
+    {
+        var bytes = BitmapToBgr24Bytes(bitmap, out var width, out var height);
+        return new Bgr24ImageFrame(bytes, width, height);
+    }
+
+    /// <summary>
+    /// 将 Windows 原生 Bitmap 转换为连续 HWC BGR24 像素 bytes。
+    /// </summary>
+    /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
+    /// <param name="width">输出图片宽度。</param>
+    /// <param name="height">输出图片高度。</param>
+    /// <returns>连续 B/G/R 像素 bytes。</returns>
+    public static byte[] BitmapToBgr24Bytes(Bitmap bitmap, out int width, out int height)
+    {
+        if (bitmap is null)
+        {
+            throw new ArgumentNullException(nameof(bitmap));
+        }
+
+        width = bitmap.Width;
+        height = bitmap.Height;
+        using var bgrBitmap = CreateBgr24CompatibleBitmap(bitmap);
+        var rectangle = new Rectangle(0, 0, width, height);
+        var bitmapData = bgrBitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+        try
+        {
+            var rowBytes = checked(width * 3);
+            var output = new byte[checked(rowBytes * height)];
+            var rowBuffer = new byte[rowBytes];
+            for (var row = 0; row < height; row++)
+            {
+                var rowPointer = IntPtr.Add(bitmapData.Scan0, row * bitmapData.Stride);
+                Marshal.Copy(rowPointer, rowBuffer, 0, rowBytes);
+                Buffer.BlockCopy(rowBuffer, 0, output, row * rowBytes, rowBytes);
+            }
+
+            return output;
+        }
+        finally
+        {
+            bgrBitmap.UnlockBits(bitmapData);
+        }
+    }
+
+    /// <summary>
+    /// 将连续 HWC BGR24 像素 bytes 转换为 Windows 原生 Bitmap。
+    /// </summary>
+    /// <param name="bgr24Bytes">连续 B/G/R 像素 bytes。</param>
+    /// <param name="width">图片宽度。</param>
+    /// <param name="height">图片高度。</param>
+    /// <returns>可由调用方释放的 Bitmap。</returns>
+    public static Bitmap Bgr24ToBitmap(byte[] bgr24Bytes, int width, int height)
+    {
+        ValidateBgr24Bytes(bgr24Bytes, width, height, nameof(bgr24Bytes));
+        var bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+        var rectangle = new Rectangle(0, 0, width, height);
+        var bitmapData = bitmap.LockBits(rectangle, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+        try
+        {
+            var rowBytes = checked(width * 3);
+            for (var row = 0; row < height; row++)
+            {
+                var rowPointer = IntPtr.Add(bitmapData.Scan0, row * bitmapData.Stride);
+                Marshal.Copy(bgr24Bytes, row * rowBytes, rowPointer, rowBytes);
+            }
+        }
+        finally
+        {
+            bitmap.UnlockBits(bitmapData);
+        }
+
+        return bitmap;
+    }
+
+    /// <summary>
+    /// 将连续 HWC BGR24 像素 bytes 编码为 jpeg / png / bmp 图片 bytes。
+    /// </summary>
+    /// <param name="bgr24Bytes">连续 B/G/R 像素 bytes。</param>
+    /// <param name="width">图片宽度。</param>
+    /// <param name="height">图片高度。</param>
+    /// <param name="targetFormat">目标图片格式。</param>
+    /// <param name="jpegQuality">JPEG 质量，范围 1 到 100。</param>
+    /// <returns>编码后的图片 bytes。</returns>
+    public static byte[] Bgr24ToImageBytes(
+        byte[] bgr24Bytes,
+        int width,
+        int height,
+        ImageFileFormat targetFormat,
+        long jpegQuality = DefaultJpegQuality)
+    {
+        using var bitmap = Bgr24ToBitmap(bgr24Bytes, width, height);
+        return BitmapToBytes(bitmap, targetFormat, jpegQuality);
+    }
+
+    /// <summary>
     /// 将 Windows 原生 Bitmap 保存为目标格式图片文件。
     /// </summary>
     /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
@@ -396,6 +508,42 @@ public static class ImageConversionTools
     }
 
     /// <summary>
+    /// 校验 BGR24 bytes 是否与宽高匹配。
+    /// </summary>
+    /// <param name="bgr24Bytes">连续 B/G/R 像素 bytes。</param>
+    /// <param name="width">图片宽度。</param>
+    /// <param name="height">图片高度。</param>
+    /// <param name="parameterName">参数名。</param>
+    public static void ValidateBgr24Bytes(byte[] bgr24Bytes, int width, int height, string parameterName)
+    {
+        if (bgr24Bytes is null || bgr24Bytes.Length == 0)
+        {
+            throw new ArgumentException($"{parameterName} cannot be empty.", parameterName);
+        }
+
+        if (width <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), width, "width must be positive.");
+        }
+
+        if (height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(height), height, "height must be positive.");
+        }
+
+        var expectedLength = checked((long)width * height * 3L);
+        if (expectedLength > int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), width, "BGR24 frame is too large for a single byte array.");
+        }
+
+        if (bgr24Bytes.LongLength != expectedLength)
+        {
+            throw new ArgumentException($"BGR24 bytes length must be width * height * 3. Expected {expectedLength}, actual {bgr24Bytes.LongLength}.", parameterName);
+        }
+    }
+
+    /// <summary>
     /// 按文件扩展名推断 jpeg / png / bmp 格式。
     /// </summary>
     /// <param name="path">图片路径。</param>
@@ -486,6 +634,19 @@ public static class ImageConversionTools
         graphics.Clear(Color.White);
         graphics.DrawImage(bitmap, 0, 0, bitmap.Width, bitmap.Height);
         return jpegBitmap;
+    }
+
+    /// <summary>
+    /// 创建可直接按 BGR24 内存布局读取的 24bpp RGB Bitmap。
+    /// </summary>
+    /// <param name="bitmap">源 Bitmap。</param>
+    /// <returns>Format24bppRgb Bitmap，Windows 内存顺序为 B/G/R。</returns>
+    private static Bitmap CreateBgr24CompatibleBitmap(Bitmap bitmap)
+    {
+        var bgrBitmap = new Bitmap(bitmap.Width, bitmap.Height, PixelFormat.Format24bppRgb);
+        using var graphics = Graphics.FromImage(bgrBitmap);
+        graphics.DrawImage(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+        return bgrBitmap;
     }
 
     /// <summary>

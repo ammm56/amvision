@@ -39,6 +39,23 @@
             },
             "media_type": {
               "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
+              "type": "string"
             }
           },
           "required": [
@@ -179,6 +196,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -350,6 +384,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -539,6 +590,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -733,6 +801,23 @@
             },
             "media_type": {
               "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
+              "type": "string"
             }
           },
           "required": [
@@ -899,6 +984,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -1097,6 +1199,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -1302,6 +1421,23 @@
             },
             "media_type": {
               "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
+              "type": "string"
             }
           },
           "required": [
@@ -1382,6 +1518,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },
@@ -1552,6 +1705,23 @@
             },
             "media_type": {
               "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
+              "type": "string"
             }
           },
           "required": [
@@ -1632,6 +1802,23 @@
               "type": "integer"
             },
             "media_type": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 2,
+              "maxItems": 4
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "pixel_format": {
               "type": "string"
             }
           },

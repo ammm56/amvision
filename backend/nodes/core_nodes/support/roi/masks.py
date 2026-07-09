@@ -14,6 +14,7 @@ from backend.nodes.core_nodes.support.roi.geometry import (
 )
 from backend.nodes.runtime_support import load_image_bytes_from_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -108,16 +109,19 @@ def build_region_mask(
 
     mask_payload = region_item.get("mask_image")
     if isinstance(mask_payload, dict):
-        _normalized_payload, image_bytes = load_image_bytes_from_payload(
+        normalized_payload, image_bytes = load_image_bytes_from_payload(
             request,
             image_payload=mask_payload,
         )
-        image_matrix = cv2.imdecode(
-            np.frombuffer(image_bytes, dtype=np.uint8),
-            cv2.IMREAD_GRAYSCALE,
+        image_matrix = decode_image_bytes_to_matrix(
+            cv2_module=cv2,
+            np_module=np,
+            image_bytes=image_bytes,
+            image_payload=normalized_payload,
+            imdecode_flags=cv2.IMREAD_GRAYSCALE,
+            error_message="region 的 mask_image 无法解码为灰度图",
+            copy_raw=True,
         )
-        if image_matrix is None:
-            raise InvalidRequestError("region 的 mask_image 无法解码为灰度图")
         if image_matrix.shape[1] != image_width or image_matrix.shape[0] != image_height:
             image_matrix = cv2.resize(
                 image_matrix,
@@ -173,4 +177,3 @@ def build_polygon_mask(
     mask_matrix = np.zeros((image_height, image_width), dtype=np.uint8)
     cv2.fillPoly(mask_matrix, polygon_array, 1)
     return mask_matrix
-

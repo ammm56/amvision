@@ -19,6 +19,7 @@ from backend.nodes.core_nodes.support.video_track import require_regions_payload
 from backend.nodes.runtime_support import load_image_bytes_from_payload, register_image_bytes
 from backend.nodes.video_runtime_support import require_frame_window_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -54,8 +55,8 @@ def _video_overlay_render_handler(request: WorkflowNodeExecutionRequest) -> dict
     for frame_item in frame_window_payload["items"]:
         frame_index = int(frame_item["frame_index"])
         overlay_items = overlay_items_by_frame.get(frame_index, [])
-        _, image_bytes = load_image_bytes_from_payload(request, image_payload=frame_item["image"])
-        frame_matrix = _decode_image_matrix(image_bytes)
+        image_payload, image_bytes = load_image_bytes_from_payload(request, image_payload=frame_item["image"])
+        frame_matrix = _decode_image_matrix(image_bytes, image_payload=image_payload)
         _draw_overlay_items(
             request=request,
             frame_matrix=frame_matrix,
@@ -226,10 +227,16 @@ def _load_mask_binary(
     cached_mask = cache.get(cache_key)
     if cached_mask is not None:
         return cached_mask
-    _, mask_bytes = load_image_bytes_from_payload(request, image_payload=mask_payload)
-    decoded_mask = cv2.imdecode(np.frombuffer(mask_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-    if decoded_mask is None:
-        raise InvalidRequestError("video-overlay-render 无法解码 mask_image")
+    normalized_payload, mask_bytes = load_image_bytes_from_payload(request, image_payload=mask_payload)
+    decoded_mask = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=mask_bytes,
+        image_payload=normalized_payload,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+        error_message="video-overlay-render 无法解码 mask_image",
+        copy_raw=True,
+    )
     if int(decoded_mask.shape[1]) != frame_width or int(decoded_mask.shape[0]) != frame_height:
         decoded_mask = cv2.resize(decoded_mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST)
     binary_mask = (decoded_mask >= 127).astype(np.uint8)
@@ -287,15 +294,20 @@ def _pick_overlay_color(item: dict[str, object]) -> tuple[int, int, int]:
     return int(bgr_pixel[0]), int(bgr_pixel[1]), int(bgr_pixel[2])
 
 
-def _decode_image_matrix(image_bytes: bytes) -> np.ndarray:
+def _decode_image_matrix(image_bytes: bytes, *, image_payload: object) -> np.ndarray:
     """把图片字节解码为 OpenCV 矩阵。"""
 
     if not image_bytes:
         raise InvalidRequestError("video-overlay-render 输入帧图片字节不能为空")
-    decoded_image = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if decoded_image is None:
-        raise InvalidRequestError("video-overlay-render 无法解码输入帧图片字节")
-    return decoded_image
+    return decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=image_bytes,
+        image_payload=image_payload,
+        imdecode_flags=cv2.IMREAD_COLOR,
+        error_message="video-overlay-render 无法解码输入帧图片字节",
+        copy_raw=True,
+    )
 
 
 def _encode_frame_matrix(frame_matrix: np.ndarray, *, output_format: str) -> tuple[bytes, str]:

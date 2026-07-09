@@ -292,11 +292,13 @@ class Sam3InteractiveRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
     ) -> Sam3InteractiveFrameContext:
         """预处理图片并提取可复用的单帧 interactive 特征。"""
 
         prepared_image = preprocess_sam3_image(
             image_bytes,
+            image_payload=image_payload,
             precision="fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
         )
         prepared_image = PreparedSam3Image(
@@ -381,11 +383,12 @@ class Sam3InteractiveRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
         prompt_items: tuple[object, ...],
     ) -> Sam3InteractivePrediction:
-        """兼容旧接口：内部自动预处理并完成 interactive 推理。"""
+        """内部自动预处理并完成 interactive 推理。"""
 
-        frame_context = self.prepare_frame_context(image_bytes=image_bytes)
+        frame_context = self.prepare_frame_context(image_bytes=image_bytes, image_payload=image_payload)
         return self.predict_from_frame_context(
             frame_context=frame_context,
             prompt_items=prompt_items,

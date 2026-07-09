@@ -476,12 +476,14 @@ class Sam3SemanticRuntimeSession:
         self,
         *,
         image_bytes: bytes,
+        image_payload: object,
         prompt_items: tuple[object, ...],
     ) -> Sam3SemanticPrediction:
         """执行单图 semantic 推理。"""
 
         prepared_image = preprocess_sam3_image(
             image_bytes,
+            image_payload=image_payload,
             precision="fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
         )
         prepared_image = PreparedSam3Image(

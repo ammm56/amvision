@@ -11,6 +11,73 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes import get_core_node_specs
 
 
+def _build_image_ref_json_schema(*, extra_properties: dict[str, object] | None = None) -> dict[str, object]:
+    """构造统一的 image-ref.v1 JSON schema。
+
+    参数：
+    - extra_properties：调用方需要额外挂到 schema 上的字段。
+
+    返回：
+    - dict[str, object]：支持 memory、storage、buffer、frame 和 raw image metadata 的 schema。
+    """
+
+    properties: dict[str, object] = {
+        "transport_kind": {
+            "type": "string",
+            "enum": ["memory", "storage", "buffer", "frame"],
+        },
+        "object_key": {"type": "string"},
+        "image_handle": {"type": "string"},
+        "buffer_ref": {"type": "object"},
+        "frame_ref": {"type": "object"},
+        "width": {"type": "integer"},
+        "height": {"type": "integer"},
+        "media_type": {"type": "string"},
+        "shape": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "minItems": 2,
+            "maxItems": 4,
+        },
+        "dtype": {"type": "string"},
+        "layout": {"type": "string"},
+        "pixel_format": {"type": "string"},
+    }
+    if extra_properties:
+        properties.update(extra_properties)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": ["transport_kind", "media_type"],
+        "oneOf": [
+            {
+                "properties": {
+                    "transport_kind": {"const": "storage"},
+                },
+                "required": ["object_key"],
+            },
+            {
+                "properties": {
+                    "transport_kind": {"const": "memory"},
+                },
+                "required": ["image_handle"],
+            },
+            {
+                "properties": {
+                    "transport_kind": {"const": "buffer"},
+                },
+                "required": ["buffer_ref"],
+            },
+            {
+                "properties": {
+                    "transport_kind": {"const": "frame"},
+                },
+                "required": ["frame_ref"],
+            },
+        ],
+    }
+
+
 @lru_cache(maxsize=1)
 def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]:
     """返回 backend 内建的最小 payload 规则 目录。
@@ -48,49 +115,7 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             payload_type_id="image-ref.v1",
             display_name="Image Reference",
             transport_kind="hybrid",
-            json_schema={
-                "type": "object",
-                "properties": {
-                    "transport_kind": {
-                        "type": "string",
-                        "enum": ["memory", "storage", "buffer", "frame"],
-                    },
-                    "object_key": {"type": "string"},
-                    "image_handle": {"type": "string"},
-                    "buffer_ref": {"type": "object"},
-                    "frame_ref": {"type": "object"},
-                    "width": {"type": "integer"},
-                    "height": {"type": "integer"},
-                    "media_type": {"type": "string"},
-                },
-                "required": ["transport_kind", "media_type"],
-                "oneOf": [
-                    {
-                        "properties": {
-                            "transport_kind": {"const": "storage"},
-                        },
-                        "required": ["object_key"],
-                    },
-                    {
-                        "properties": {
-                            "transport_kind": {"const": "memory"},
-                        },
-                        "required": ["image_handle"],
-                    },
-                    {
-                        "properties": {
-                            "transport_kind": {"const": "buffer"},
-                        },
-                        "required": ["buffer_ref"],
-                    },
-                    {
-                        "properties": {
-                            "transport_kind": {"const": "frame"},
-                        },
-                        "required": ["frame_ref"],
-                    },
-                ],
-            },
+            json_schema=_build_image_ref_json_schema(),
             artifact_kinds=("image",),
         ),
         WorkflowPayloadContract(
@@ -142,95 +167,16 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                     "items": {
                         "type": "array",
                         "items": {
-                            "type": "object",
-                            "properties": {
-                                "transport_kind": {
-                                    "type": "string",
-                                    "enum": ["memory", "storage", "buffer", "frame"],
-                                },
-                                "object_key": {"type": "string"},
-                                "image_handle": {"type": "string"},
-                                "buffer_ref": {"type": "object"},
-                                "frame_ref": {"type": "object"},
-                                "width": {"type": "integer"},
-                                "height": {"type": "integer"},
-                                "media_type": {"type": "string"},
-                                "bbox_xyxy": {"type": "array"},
-                                "crop_index": {"type": "integer"},
-                            },
-                            "required": ["transport_kind", "media_type"],
-                            "oneOf": [
-                                {
-                                    "properties": {
-                                        "transport_kind": {"const": "storage"},
-                                    },
-                                    "required": ["object_key"],
-                                },
-                                {
-                                    "properties": {
-                                        "transport_kind": {"const": "memory"},
-                                    },
-                                    "required": ["image_handle"],
-                                },
-                                {
-                                    "properties": {
-                                        "transport_kind": {"const": "buffer"},
-                                    },
-                                    "required": ["buffer_ref"],
-                                },
-                                {
-                                    "properties": {
-                                        "transport_kind": {"const": "frame"},
-                                    },
-                                    "required": ["frame_ref"],
-                                },
-                            ],
+                            **_build_image_ref_json_schema(
+                                extra_properties={
+                                    "bbox_xyxy": {"type": "array"},
+                                    "crop_index": {"type": "integer"},
+                                }
+                            ),
                         },
                     },
                     "count": {"type": "integer"},
-                    "source_image": {
-                        "type": "object",
-                        "properties": {
-                            "transport_kind": {
-                                "type": "string",
-                                "enum": ["memory", "storage", "buffer", "frame"],
-                            },
-                            "object_key": {"type": "string"},
-                            "image_handle": {"type": "string"},
-                            "buffer_ref": {"type": "object"},
-                            "frame_ref": {"type": "object"},
-                            "width": {"type": "integer"},
-                            "height": {"type": "integer"},
-                            "media_type": {"type": "string"},
-                        },
-                        "required": ["transport_kind", "media_type"],
-                        "oneOf": [
-                            {
-                                "properties": {
-                                    "transport_kind": {"const": "storage"},
-                                },
-                                "required": ["object_key"],
-                            },
-                            {
-                                "properties": {
-                                    "transport_kind": {"const": "memory"},
-                                },
-                                "required": ["image_handle"],
-                            },
-                            {
-                                "properties": {
-                                    "transport_kind": {"const": "buffer"},
-                                },
-                                "required": ["buffer_ref"],
-                            },
-                            {
-                                "properties": {
-                                    "transport_kind": {"const": "frame"},
-                                },
-                                "required": ["frame_ref"],
-                            },
-                        ],
-                    },
+                    "source_image": _build_image_ref_json_schema(),
                     "source_object_key": {"type": "string"},
                 },
                 "required": ["items"],

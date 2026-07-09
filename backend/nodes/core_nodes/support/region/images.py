@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import io
-
-from PIL import Image
+import cv2
+import numpy as np
 
 from backend.nodes.runtime_support import load_image_bytes_from_payload, require_image_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -52,11 +52,17 @@ def resolve_region_source_image_size(
         and height_value > 0
     ):
         return resolved_payload, width_value, height_value
-    _normalized_payload, image_bytes = load_image_bytes_from_payload(
+    normalized_payload, image_bytes = load_image_bytes_from_payload(
         request,
         image_payload=resolved_payload,
     )
-    with Image.open(io.BytesIO(image_bytes)) as image_obj:
-        width_value, height_value = image_obj.size
+    image_matrix = decode_image_bytes_to_matrix(
+        cv2_module=cv2,
+        np_module=np,
+        image_bytes=image_bytes,
+        image_payload=normalized_payload,
+        imdecode_flags=cv2.IMREAD_COLOR,
+        error_message="当前节点无法解析 regions.v1 source_image 尺寸",
+    )
+    height_value, width_value = int(image_matrix.shape[0]), int(image_matrix.shape[1])
     return resolved_payload, int(width_value), int(height_value)
-

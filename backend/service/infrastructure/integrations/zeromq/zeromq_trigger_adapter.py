@@ -17,6 +17,10 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
+from backend.service.application.images.image_matrix import (
+    IMAGE_MEDIA_TYPE_RAW,
+    validate_raw_bgr24_bytes,
+)
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
@@ -431,6 +435,14 @@ class ZeroMqTriggerAdapter:
             or _read_optional_transport_text(trigger_source, "media_type")
             or "image/octet-stream"
         )
+        if media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW:
+            validate_raw_bgr24_bytes(
+                image_bytes=content,
+                shape=tuple(envelope.shape),
+                dtype=envelope.dtype,
+                layout=envelope.layout,
+                pixel_format=envelope.pixel_format,
+            )
         owner_id = f"{trigger_source.trigger_source_id}:{envelope.event_id or 'event'}"
         write_result = self.local_buffer_writer.write_bytes(
             content=content,

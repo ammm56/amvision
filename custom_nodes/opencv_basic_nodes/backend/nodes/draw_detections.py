@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
+    encode_png_image_bytes,
     load_image_matrix,
 )
 from custom_nodes._opencv_shared.backend.runtime.payloads import (
@@ -58,16 +58,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 cv2_module.LINE_AA,
             )
 
-    success, encoded_image = cv2_module.imencode(".png", image_matrix)
-    if success is not True:
-        raise ServiceConfigurationError(
-            "OpenCV 绘制 detection 后无法编码输出图片",
-            details={"node_id": request.node_id},
-        )
+    encoded_image = encode_png_image_bytes(
+        request,
+        image_matrix=image_matrix,
+        error_message="OpenCV 绘制 detection 后无法编码输出图片",
+    )
     output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
-        content=encoded_image.tobytes(),
+        content=encoded_image,
         object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
         variant_name="draw-detections",
         output_extension=".png",

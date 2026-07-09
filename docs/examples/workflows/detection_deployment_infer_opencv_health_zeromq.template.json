@@ -3,16 +3,11 @@
   "template_id": "detection-deployment-infer-opencv-health-zeromq-template",
   "template_version": "1.1.0",
   "display_name": "Detection Deployment Infer OpenCV Health ZeroMQ Template",
-  "description": "同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；图内显式汇合双入口后，图末端返回检测框列表、绘制后的 inline-base64 图片和 deployment health 摘要。",
+  "description": "同时接收 HTTP image-base64 和 TriggerSource image-ref 图片；ZeroMQ image-ref 直接进入 image-ref 合流节点，base64 仅作为调试 fallback，后续节点保持 image-ref 高性能流转。",
   "nodes": [
     {
-      "node_id": "encode_request_image_ref",
-      "node_type_id": "core.io.image-base64-encode",
-      "parameters": {}
-    },
-    {
       "node_id": "resolve_request_image",
-      "node_type_id": "core.logic.image-base64-coalesce",
+      "node_type_id": "core.logic.image-ref-coalesce",
       "parameters": {}
     },
     {
@@ -161,29 +156,22 @@
   ],
   "edges": [
     {
-      "edge_id": "edge-encode-request-image-ref",
-      "source_node_id": "encode_request_image_ref",
-      "source_port": "payload",
+      "edge_id": "edge-decode-request-image-fallback",
+      "source_node_id": "decode_request_image",
+      "source_port": "image",
       "target_node_id": "resolve_request_image",
       "target_port": "fallback"
     },
     {
-      "edge_id": "edge-resolve-request-image",
-      "source_node_id": "resolve_request_image",
-      "source_port": "payload",
-      "target_node_id": "decode_request_image",
-      "target_port": "payload"
-    },
-    {
       "edge_id": "edge-input-detect",
-      "source_node_id": "decode_request_image",
+      "source_node_id": "resolve_request_image",
       "source_port": "image",
       "target_node_id": "detect",
       "target_port": "image"
     },
     {
       "edge_id": "edge-input-draw",
-      "source_node_id": "decode_request_image",
+      "source_node_id": "resolve_request_image",
       "source_port": "image",
       "target_node_id": "draw_detections",
       "target_port": "image"
@@ -341,16 +329,16 @@
       "input_id": "request_image_base64",
       "display_name": "Request Image Base64",
       "payload_type_id": "image-base64.v1",
-      "target_node_id": "resolve_request_image",
-      "target_port": "primary",
+      "target_node_id": "decode_request_image",
+      "target_port": "payload",
       "required": false
     },
     {
       "input_id": "request_image_ref",
       "display_name": "Request Image Ref",
       "payload_type_id": "image-ref.v1",
-      "target_node_id": "encode_request_image_ref",
-      "target_port": "image",
+      "target_node_id": "resolve_request_image",
+      "target_port": "primary",
       "required": false
     },
     {
@@ -376,7 +364,6 @@
     "deployment_runtime_owner": "backend-service",
     "node_groups": {
       "input": [
-        "encode_request_image_ref",
         "resolve_request_image",
         "decode_request_image",
         "deployment_request_input"

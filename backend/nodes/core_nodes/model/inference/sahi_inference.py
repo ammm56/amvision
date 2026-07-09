@@ -25,7 +25,8 @@ from backend.nodes.core_nodes.support.service import (
     require_str_parameter,
     require_workflow_service_node_runtime,
 )
-from backend.nodes.runtime_support import load_image_bytes
+from backend.nodes.runtime_support import load_image_matrix
+from backend.service.application.images import build_raw_bgr24_payload_fields, prepare_matrix_for_raw_bgr24
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
@@ -91,8 +92,13 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
         slice_height=slice_height,
     )
 
-    normalized_image_payload, source_image_bytes = load_image_bytes(request)
-    source_image = _decode_source_image(source_image_bytes)
+    cv2_module, np_module = _require_image_runtime()
+    normalized_image_payload, source_image = load_image_matrix(
+        request,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        copy_raw=True,
+    )
     image_height = int(source_image.shape[0])
     image_width = int(source_image.shape[1])
     slice_windows = _build_slice_windows(
@@ -105,14 +111,15 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
     )
     gateway = runtime_context.build_published_inference_gateway()
     extra_options = get_optional_dict_parameter(request, "extra_options")
-    preferred_media_type = str(normalized_image_payload.get("media_type") or "image/jpeg")
     trace_id = _read_optional_trace_id(request)
 
     def run_slice(window: _SliceWindow) -> list[dict[str, object]]:
         crop_image = source_image[window.y1 : window.y2, window.x1 : window.x2]
-        crop_media_type, crop_image_bytes = _encode_slice_image(
+        crop_image_payload, crop_image_bytes = _build_raw_slice_image_input(
             crop_image=crop_image,
-            preferred_media_type=preferred_media_type,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            window=window,
         )
         slice_extra_options = dict(extra_options)
         slice_extra_options.setdefault("sahi_slice_index", window.index)
@@ -125,9 +132,7 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
                 image_payload={
                     "transport_kind": "memory",
                     "image_handle": _build_slice_image_handle(window),
-                    "media_type": crop_media_type,
-                    "width": window.width,
-                    "height": window.height,
+                    **crop_image_payload,
                 },
                 input_image_bytes=crop_image_bytes,
                 auto_start_process=True if auto_start_process is None else auto_start_process,
@@ -256,20 +261,15 @@ def _resolve_overlap_size(
     return overlap_width, overlap_height
 
 
-def _decode_source_image(source_image_bytes: bytes):
-    """把输入图片字节解码成 OpenCV BGR 图像。"""
+def _require_image_runtime():
+    """加载 SAHI 节点需要的 OpenCV 和 NumPy 运行时。"""
 
     try:
         import cv2  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415
     except Exception as exc:  # pragma: no cover - 运行环境缺依赖时由导入冒烟兜底
         raise InvalidRequestError("SAHI 节点缺少 OpenCV 或 NumPy 运行时依赖") from exc
-
-    image_buffer = np.frombuffer(source_image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(image_buffer, cv2.IMREAD_COLOR)
-    if image is None:
-        raise InvalidRequestError("输入图片不是可读取的有效图像内容")
-    return image
+    return cv2, np
 
 
 def _build_slice_windows(
@@ -333,28 +333,17 @@ def _build_axis_starts(*, total_size: int, window_size: int, overlap_size: int) 
     return tuple(starts)
 
 
-def _encode_slice_image(*, crop_image, preferred_media_type: str) -> tuple[str, bytes]:
-    """把切片图像编码为可发送给 deployment gateway 的图片字节。"""
+def _build_raw_slice_image_input(*, crop_image, cv2_module, np_module, window: _SliceWindow) -> tuple[dict[str, object], bytes]:
+    """把切片图像转换为 raw BGR24 输入，避免切片推理前反复 PNG/JPEG 编码。"""
 
-    import cv2  # noqa: PLC0415
-
-    normalized_media_type = preferred_media_type.strip().lower()
-    if normalized_media_type == "image/png":
-        suffix = ".png"
-        media_type = "image/png"
-    elif normalized_media_type == "image/webp":
-        suffix = ".webp"
-        media_type = "image/webp"
-    elif normalized_media_type == "image/bmp":
-        suffix = ".bmp"
-        media_type = "image/bmp"
-    else:
-        suffix = ".jpg"
-        media_type = "image/jpeg"
-    success, encoded = cv2.imencode(suffix, crop_image)
-    if success is not True:
-        raise InvalidRequestError("切片图片编码失败")
-    return media_type, bytes(encoded.tobytes())
+    normalized_crop = prepare_matrix_for_raw_bgr24(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_matrix=crop_image,
+        copy_matrix=True,
+    )
+    payload = build_raw_bgr24_payload_fields(width=window.width, height=window.height)
+    return payload, bytes(normalized_crop.tobytes())
 
 
 def _build_slice_image_handle(window: _SliceWindow) -> str:

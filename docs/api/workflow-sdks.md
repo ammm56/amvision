@@ -34,7 +34,7 @@ Amvision SDK
 
 SDK 不直接访问数据库、LocalBufferBroker、workflow worker、deployment worker 或对象存储。LocalBufferBroker 仍由 backend-service 内部 adapter 写入和管理，外部调用方只发送图片 bytes、metadata 和必要的业务字段。
 
-SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。是否需要把 ZeroMQ image-ref 汇入 HTTP base64 链路，应该由 workflow 图中的显式节点决定。
+SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workflow 图做跨 payload type 转换、本地磁盘读图或相机取帧。HTTP/base64 调试入口和 ZeroMQ image-ref 高速入口应该在 workflow 图边界显式发布，并由图内节点决定如何汇合。
 
 ZeroMQ 高帧率图片输入默认使用 BGR24 raw image-ref。SDK、后端 adapter、LocalBufferBroker、workflow 节点和模型 runtime 的完整规则见 [docs/architecture/high-performance-image-data-plane.md](../architecture/high-performance-image-data-plane.md)。
 
@@ -97,7 +97,7 @@ ZeroMQ 高帧率图片输入默认使用 BGR24 raw image-ref。SDK、后端 adap
 }
 ```
 
-当前 SDK envelope 不发送 `format_id`，因为 backend-service 的 `ZeroMqFrameEnvelope` 当前禁止额外字段。稳定 SDK v1 前建议按兼容方式补充两项能力：
+当前 SDK envelope 不发送 `format_id`，因为 backend-service 的 `ZeroMqFrameEnvelope` 当前禁止额外字段。公开 SDK v1 前需要把 envelope 字段一次性固定清楚：
 
 - backend-service 先允许 envelope 可选 `format_id`，再由 SDK 发送 `amvision.zeromq-trigger-envelope.v1`。
 - shared schema 已固定到 `sdks/schemas/`，后续各语言 SDK 使用同一份字段说明和测试样例。
@@ -127,7 +127,7 @@ SDK 不应承担以下职责：
 
 - HTTP 调试入口如果公开的是 `image-base64.v1`，就继续由 HTTP 调用方直接传 base64 图片。
 - ZeroMQ 调试入口默认公开 `image-ref.v1`，由 SDK 把文件、base64 或相机输出 bytes 转成 multipart 第二帧图片 bytes，再由 backend-service adapter 写成 BufferRef / image-ref。
-- 如果同一个 workflow app 需要同时接两类入口，应在图里显式提供多个 binding，或增加 `image-ref -> image-base64` 转换节点后再汇到公共下游节点。
+- 如果同一个 workflow app 需要同时接两类入口，应在图里显式提供多个 binding。默认推荐 `request_image_ref -> Image Ref Coalesce -> 下游节点`，HTTP base64 入口只通过 `Image Base64 Decode` 接入 fallback；高频链路不把 image-ref 转回 base64。
 - 如果触发源只有 PLC 寄存器值、IO 状态或其他数值输入，后续图片应由图里的本地图片加载节点、相机抓帧节点或 custom node 决定，不由 SDK 或 TriggerSource 补出。
 - 如果 workflow app 完全不需要外部 input binding，例如图内直接从磁盘读取图片、从相机节点取帧或使用固定测试资源，TriggerSource 可以保留空 `input_binding_mapping`。调用时只提交事件 envelope 和业务 payload 即可，WorkflowRuntime 会收到空 `input_bindings` 并继续执行图内输入节点。
 
@@ -212,16 +212,9 @@ var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
     Timeout = TimeSpan.FromSeconds(5)
 });
 
-var request = new ImageTriggerRequest
-{
-    ImageBytes = imageBytes,
-    MediaType = "image/jpeg",
-    Metadata =
-    {
-        ["line_id"] = "line-a",
-        ["station_id"] = "station-1"
-    }
-};
+var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width, height);
+request.Metadata["line_id"] = "line-a";
+request.Metadata["station_id"] = "station-1";
 
 request
     .WithDeploymentInstance("deployment-instance-1")
@@ -230,7 +223,7 @@ request
 var result = client.InvokeImage(request);
 ```
 
-真实 06/07 backend-service 调试当前通过 `sdks/dotnet/tests/Amvision.Workflows.Tests` 的 smoke 测试或调用方程序完成。SDK 不再随仓库保留独立 WinForms 或 console 示例项目；后续如果需要重新提供可视化调试器，应按当前 `Amvision.Workflows` API 重新建立。
+真实 06/07 backend-service 调试当前通过 `sdks/dotnet/tests/Amvision.Workflows.Tests` 的 smoke 测试或 `sdks/dotnet/apps/Amvision.Workflows.Console` 完成。Console app 只封装运行时使用和 TriggerSource 调用，不重复前端的创建配置流程；现场高频图片触发默认调用 BGR24 raw 方法。
 
 ### Python
 

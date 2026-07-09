@@ -9,17 +9,22 @@ import numpy as np
 from PIL import Image
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.runtime.support.detection import batched_nms_indices
 
 
-def decode_runtime_image(cv2_module: Any, np_module: Any, image_bytes: bytes) -> Any:
+def decode_runtime_image(cv2_module: Any, np_module: Any, image_bytes: bytes, image_payload: object) -> Any:
     """把节点输入图片字节解码成 OpenCV BGR 图像。"""
 
-    image_buffer = np_module.frombuffer(image_bytes, dtype=np_module.uint8)
-    image = cv2_module.imdecode(image_buffer, cv2_module.IMREAD_COLOR)
-    if image is None:
-        raise InvalidRequestError("YOLOE prompt-free 节点收到的图片不是有效图像")
-    return image
+    return decode_image_bytes_to_matrix(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_bytes=image_bytes,
+        image_payload=image_payload,
+        imdecode_flags=cv2_module.IMREAD_COLOR,
+        error_message="YOLOE prompt-free 节点收到的图片不是有效图像",
+        copy_raw=True,
+    )
 
 
 def postprocess_prompt_free_outputs(

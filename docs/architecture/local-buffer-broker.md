@@ -111,27 +111,27 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 - preview run、WorkflowAppRuntime worker 和 deployment worker 的 broker client 注入。
 - detection deployment 节点通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。
 - backend-service health、workflow runtime health 和 deployment health 中的 broker 摘要、输入计数和最近错误。
-- OpenCV 与 Barcode/QR 自定义节点通过公共 `load_image_bytes` 读取图片，已经具备 memory、storage、buffer 和 frame 输入兼容能力。
+- OpenCV 与 Barcode/QR 自定义节点通过公共 raw-aware 图片 helper 读取图片，已经具备 memory、storage、buffer 和 frame 输入兼容能力；raw BGR24 会转换为 NumPy/OpenCV matrix view 或必要 copy，不再按 PNG/JPEG 路径解码。
 
 仍不应视为完成的生产闭环包括：
 
-- raw BGR24 BufferRef 的端到端高性能矩阵读取尚未完成。当前 `load_image_bytes` 能拿到 bytes，但模型 runtime 和 OpenCV 节点仍需要统一接入 raw-aware image matrix helper，避免 BGR24 输入继续走 `cv2.imdecode` 或 base64 转换。详细规则见 [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)。
 - C# / .NET 外部调用方 SDK 首版已实现，并已支持 `net461;net472;netstandard2.1;net10.0`；Python、Go 和 C SDK 尚未实现。
-- ZeroMQ TriggerSource 已具备普通 BufferRef 写入和 runtime submit 骨架，06/07 已补充同 app HTTP base64 + ZeroMQ image-ref 双输入 workflow app 请求体、TriggerSource 请求体和 C# SDK 调试命令，真实 backend-service 联调仍需完成。
+- ZeroMQ TriggerSource 已具备 raw BGR24 BufferRef 写入和 runtime submit 骨架，06/07 已补充同 app HTTP base64 + ZeroMQ image-ref 双输入 workflow app 请求体、TriggerSource 请求体和 C# SDK BGR24 调用命令，真实 backend-service 长时间压测仍需完成。
 - FrameRef 在创建 WorkflowRun 前固定为 BufferRef 的步骤尚未实现。
 - ring channel 仍只有最小覆盖语义，latest、strict、drop-oldest、drop-newest 和 block-with-timeout 策略尚未落地。
 - lease heartbeat、registry 恢复、目录扫描清理、配额和背压策略仍在后续阶段。
 - 推理预览图写回 BufferRef、调试保存和更完整的指标面板仍未完成。
 
-因此，现阶段可以使用的路径是“HTTP/base64 或 storage 输入 -> workflow runtime -> 内部 LocalBufferBroker BufferRef/FrameRef -> PublishedInferenceGateway -> deployment worker”。ZeroMQ TriggerSource 已经具备把外部图片 bytes 写入普通 BufferRef 并提交 runtime 的骨架；C# / .NET SDK 已能封装单张图片 REQ/REP 调用；06/07 双输入 workflow app 与调试文档已补齐。`image-ref -> image-base64`、本地磁盘读图和相机抓帧仍属于图内节点边界，不属于 TriggerSource。连续帧 FrameRef、其他语言 SDK 和真实 backend-service 端到端联调仍属于下一步。
+因此，现阶段可以使用的高性能路径是“.NET SDK BGR24 -> ZeroMQ multipart -> LocalBufferBroker BufferRef -> workflow runtime request_image_ref -> raw-aware Detection/OpenCV/Barcode 节点 -> 小 JSON result_binding”。本地磁盘读图和相机抓帧仍属于图内节点或上位机边界，不属于 TriggerSource。连续帧 FrameRef、其他语言 SDK、真实 backend-service 长时间压测和更完整指标面板仍属于下一步。
 
 ## 示例与节点同步规则
 
 - `docs/examples/workflows` 保存 template/application 源 JSON，继续保留公开输入形状，不写入机器相关的 FrameRef/BufferRef 常量。
-- `docs/api/examples/workflows` 保存 HTTP 控制面请求体，继续使用 `image-base64.v1`、storage `image-ref.v1` 和 multipart 示例；后续本地 adapter 公开后再新增 `06-*` 高速输入示例。
+- `docs/api/examples/workflows` 保存 HTTP 控制面请求体，继续使用 `image-base64.v1`、storage `image-ref.v1` 和 multipart 示例；`06-*`、`07-*` 已提供同 app HTTP base64 + ZeroMQ raw image-ref 的高速输入示例。
+- 06/07 双输入 workflow app 与调试文档已补齐，图内使用 `Image Ref Coalesce` 汇合 `request_image_ref` 和 HTTP/base64 fallback。
 - `docs/api/postman/workflows` 保留可直接导入和复现的 HTTP/Postman 调试路径；Postman collection 不固定 mmap path、offset、broker_epoch 或 generation。
 - `backend/nodes/core_nodes` 中的推理节点应通过 PublishedInferenceGateway 访问已发布 deployment；提交、启动、停止、health 这类控制节点仍保留 deployment service / supervisor 控制语义。
-- `custom_nodes` 不直接处理 mmap 文件。自定义节点应继续通过 `load_image_bytes`、`require_image_payload`、`write_image_bytes` 和 `register_image_bytes` 读写图片，catalog 中的 image-ref schema 需要同步声明 buffer/frame 支持。
+- `custom_nodes` 不直接处理 mmap 文件。自定义节点应继续通过 raw-aware image helper、`require_image_payload`、`write_image_bytes`、`register_image_bytes` 和 `register_image_matrix` 读写图片，catalog 中的 image-ref schema 需要同步声明 buffer/frame/raw metadata 支持。
 
 ## mmap 实现方式
 
@@ -405,9 +405,9 @@ backend/broker/
 ### 第 0 阶段：规则和接口模型
 
 - 定义 BufferRef、FrameRef 和 BufferLease 的 Pydantic 模型。
-- 在 image reference 解析层保留旧输入兼容。
+- 在 image reference 解析层统一公开输入校验和 raw metadata 解析。
 - 明确 mmap 文件目录、TTL、容量和清理规则。
-- 文档和测试先覆盖 schema、序列化和旧输入兼容。
+- 文档和测试覆盖 schema、序列化、BufferRef/FrameRef 和 raw BGR24 metadata。
 
 ### 第 1 阶段：mmap 普通文件池与本地 gateway
 

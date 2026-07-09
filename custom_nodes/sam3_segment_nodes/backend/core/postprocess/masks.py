@@ -32,6 +32,7 @@ class Sam3RegionItem:
     polygon_xy: tuple[tuple[float, float], ...]
     area: int
     prompt_id: str
+    mask_array: np.ndarray
     mask_png_bytes: bytes
     mask_width: int
     mask_height: int
@@ -129,6 +130,7 @@ def postprocess_sam3_interactive_masks(
                 polygon_xy=polygon_xy,
                 area=filtered_area,
                 prompt_id=prompt_id,
+                mask_array=filtered_mask,
                 mask_png_bytes=mask_png_bytes,
                 mask_width=source_width,
                 mask_height=source_height,

@@ -6,9 +6,20 @@ import base64
 from dataclasses import dataclass
 import mimetypes
 from pathlib import PurePosixPath
+from typing import Any
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferRef, FrameRef
+from backend.service.application.images.image_matrix import (
+    IMAGE_MEDIA_TYPE_RAW,
+    apply_raw_ref_metadata,
+    build_raw_bgr24_payload_fields,
+    decode_image_bytes_to_matrix,
+    encode_matrix_to_image_bytes,
+    is_raw_bgr24_payload,
+    normalize_image_payload_metadata,
+    prepare_matrix_for_raw_bgr24,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -29,20 +40,30 @@ class ExecutionImageEntry:
 
     字段：
     - image_handle：当前执行范围内的图片句柄。
-    - content：图片的编码后字节。
+    - content：图片 bytes；编码图片保存编码后 bytes，raw 图片可为空并直接保存 matrix。
+    - matrix：OpenCV / NumPy 图片矩阵；raw BGR24 内部流转优先使用该字段。
     - media_type：图片媒体类型。
     - width：图片宽度。
     - height：图片高度。
     - byte_length：图片字节长度。
+    - shape：raw 图片 shape。
+    - dtype：raw 数据类型。
+    - layout：raw 数据布局。
+    - pixel_format：raw 像素格式。
     - created_by_node_id：创建该图片的节点 id。
     """
 
     image_handle: str
-    content: bytes
+    content: bytes | None
     media_type: str
+    matrix: Any | None = None
     width: int | None = None
     height: int | None = None
     byte_length: int = 0
+    shape: tuple[int, ...] = ()
+    dtype: str | None = None
+    layout: str | None = None
+    pixel_format: str | None = None
     created_by_node_id: str | None = None
 
 
@@ -60,6 +81,10 @@ class ResolvedImageInput:
     - image_handle：memory 模式下的执行期图片句柄。
     - buffer_ref：buffer 模式下的 LocalBufferBroker 引用。
     - frame_ref：frame 模式下的 LocalBufferBroker 帧引用。
+    - shape：raw 图片 shape。
+    - dtype：raw 数据类型。
+    - layout：raw 数据布局。
+    - pixel_format：raw 像素格式。
     """
 
     payload: dict[str, object]
@@ -71,6 +96,10 @@ class ResolvedImageInput:
     image_handle: str | None = None
     buffer_ref: BufferRef | None = None
     frame_ref: FrameRef | None = None
+    shape: tuple[int, ...] = ()
+    dtype: str | None = None
+    layout: str | None = None
+    pixel_format: str | None = None
 
 
 class ExecutionImageRegistry:
@@ -88,6 +117,10 @@ class ExecutionImageRegistry:
         media_type: str,
         width: int | None = None,
         height: int | None = None,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
         created_by_node_id: str | None = None,
     ) -> ExecutionImageEntry:
         """注册一张内存图片并返回稳定条目。
@@ -97,6 +130,10 @@ class ExecutionImageRegistry:
         - media_type：图片媒体类型。
         - width：图片宽度。
         - height：图片高度。
+        - shape：raw 图片 shape。
+        - dtype：raw 数据类型。
+        - layout：raw 数据布局。
+        - pixel_format：raw 像素格式。
         - created_by_node_id：创建节点 id。
 
         返回：
@@ -116,6 +153,38 @@ class ExecutionImageRegistry:
             width=_normalize_optional_dimension(width),
             height=_normalize_optional_dimension(height),
             byte_length=len(content),
+            shape=tuple(int(item) for item in shape),
+            dtype=_normalize_optional_text(dtype),
+            layout=_normalize_optional_text(layout),
+            pixel_format=_normalize_optional_text(pixel_format),
+            created_by_node_id=_normalize_optional_text(created_by_node_id),
+        )
+        self._entries[image_handle] = entry
+        return entry
+
+    def register_image_matrix(
+        self,
+        *,
+        matrix: Any,
+        width: int,
+        height: int,
+        created_by_node_id: str | None = None,
+    ) -> ExecutionImageEntry:
+        """注册一张 raw BGR24 内存图片并返回稳定条目。"""
+
+        image_handle = f"img-{uuid4().hex}"
+        entry = ExecutionImageEntry(
+            image_handle=image_handle,
+            content=None,
+            matrix=matrix,
+            media_type=IMAGE_MEDIA_TYPE_RAW,
+            width=_normalize_optional_dimension(width),
+            height=_normalize_optional_dimension(height),
+            byte_length=int(width) * int(height) * 3,
+            shape=(int(height), int(width), 3),
+            dtype="uint8",
+            layout="HWC",
+            pixel_format="bgr24",
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
         self._entries[image_handle] = entry
@@ -152,7 +221,21 @@ class ExecutionImageRegistry:
         - bytes：图片编码后字节。
         """
 
-        return self.get_entry(image_handle).content
+        entry = self.get_entry(image_handle)
+        if entry.content is not None:
+            return entry.content
+        matrix = entry.matrix
+        if matrix is None or not hasattr(matrix, "tobytes"):
+            raise InvalidRequestError(
+                "execution image registry 中的图片没有可读取的 bytes",
+                details={"image_handle": entry.image_handle},
+            )
+        return matrix.tobytes()
+
+    def read_matrix(self, image_handle: str) -> Any | None:
+        """按句柄读取已注册图片矩阵；非 raw 图片返回 None。"""
+
+        return self.get_entry(image_handle).matrix
 
     def release(self, image_handle: str) -> None:
         """释放一张已注册的内存图片。
@@ -275,6 +358,13 @@ def require_image_payload(payload: object) -> dict[str, object]:
             ref_media_type=buffer_ref.media_type,
             transport_kind=IMAGE_TRANSPORT_BUFFER,
         )
+        apply_raw_ref_metadata(
+            normalized_payload,
+            shape=buffer_ref.shape,
+            dtype=buffer_ref.dtype,
+            layout=buffer_ref.layout,
+            pixel_format=buffer_ref.pixel_format,
+        )
         _apply_dimensions_from_ref_shape(
             normalized_payload,
             shape=buffer_ref.shape,
@@ -290,6 +380,13 @@ def require_image_payload(payload: object) -> dict[str, object]:
             normalized_payload,
             ref_media_type=frame_ref.media_type,
             transport_kind=IMAGE_TRANSPORT_FRAME,
+        )
+        apply_raw_ref_metadata(
+            normalized_payload,
+            shape=frame_ref.shape,
+            dtype=frame_ref.dtype,
+            layout=frame_ref.layout,
+            pixel_format=frame_ref.pixel_format,
         )
         _apply_dimensions_from_ref_shape(
             normalized_payload,
@@ -311,6 +408,23 @@ def require_image_payload(payload: object) -> dict[str, object]:
         normalized_payload.pop("height", None)
     else:
         normalized_payload["height"] = normalized_height
+    metadata = normalize_image_payload_metadata(normalized_payload)
+    if metadata.shape:
+        normalized_payload["shape"] = [int(item) for item in metadata.shape]
+    else:
+        normalized_payload.pop("shape", None)
+    if metadata.dtype is None:
+        normalized_payload.pop("dtype", None)
+    else:
+        normalized_payload["dtype"] = metadata.dtype
+    if metadata.layout is None:
+        normalized_payload.pop("layout", None)
+    else:
+        normalized_payload["layout"] = metadata.layout
+    if metadata.pixel_format is None:
+        normalized_payload.pop("pixel_format", None)
+    else:
+        normalized_payload["pixel_format"] = metadata.pixel_format
     return normalized_payload
 
 
@@ -398,6 +512,7 @@ def resolve_image_reference(
     """
 
     payload = require_image_payload(request.input_values.get(input_name))
+    metadata = normalize_image_payload_metadata(payload)
     return ResolvedImageInput(
         payload=payload,
         transport_kind=str(payload["transport_kind"]),
@@ -412,6 +527,10 @@ def resolve_image_reference(
         frame_ref=FrameRef.model_validate(payload["frame_ref"])
         if payload.get("frame_ref") is not None
         else None,
+        shape=metadata.shape,
+        dtype=metadata.dtype,
+        layout=metadata.layout,
+        pixel_format=metadata.pixel_format,
     )
 
 
@@ -484,6 +603,7 @@ def load_image_bytes_from_payload(
     """
 
     normalized_payload = require_image_payload(image_payload)
+    metadata = normalize_image_payload_metadata(normalized_payload)
     resolved_image = ResolvedImageInput(
         payload=normalized_payload,
         transport_kind=str(normalized_payload["transport_kind"]),
@@ -498,6 +618,10 @@ def load_image_bytes_from_payload(
         frame_ref=FrameRef.model_validate(normalized_payload["frame_ref"])
         if normalized_payload.get("frame_ref") is not None
         else None,
+        shape=metadata.shape,
+        dtype=metadata.dtype,
+        layout=metadata.layout,
+        pixel_format=metadata.pixel_format,
     )
     if resolved_image.transport_kind == IMAGE_TRANSPORT_STORAGE:
         dataset_storage = require_dataset_storage(request)
@@ -593,6 +717,10 @@ def build_memory_image_payload(
     media_type: str,
     width: int | None = None,
     height: int | None = None,
+    shape: tuple[int, ...] = (),
+    dtype: str | None = None,
+    layout: str | None = None,
+    pixel_format: str | None = None,
 ) -> dict[str, object]:
     """构建 memory 模式 image-ref payload。
 
@@ -601,6 +729,10 @@ def build_memory_image_payload(
     - media_type：图片媒体类型。
     - width：图片宽度。
     - height：图片高度。
+    - shape：raw 图片 shape。
+    - dtype：raw 数据类型。
+    - layout：raw 数据布局。
+    - pixel_format：raw 像素格式。
 
     返回：
     - dict[str, object]：memory 模式图片引用。
@@ -623,6 +755,13 @@ def build_memory_image_payload(
         payload["width"] = normalized_width
     if normalized_height is not None:
         payload["height"] = normalized_height
+    apply_raw_ref_metadata(
+        payload,
+        shape=tuple(int(item) for item in shape),
+        dtype=dtype,
+        layout=layout,
+        pixel_format=pixel_format,
+    )
     return payload
 
 
@@ -707,6 +846,10 @@ def register_image_bytes(
     media_type: str,
     width: int | None = None,
     height: int | None = None,
+    shape: tuple[int, ...] = (),
+    dtype: str | None = None,
+    layout: str | None = None,
+    pixel_format: str | None = None,
     created_by_node_id: str | None = None,
 ) -> dict[str, object]:
     """把图片字节注册到 execution image registry，并返回 memory payload。
@@ -717,6 +860,10 @@ def register_image_bytes(
     - media_type：图片媒体类型。
     - width：图片宽度。
     - height：图片高度。
+    - shape：raw 图片 shape。
+    - dtype：raw 数据类型。
+    - layout：raw 数据布局。
+    - pixel_format：raw 像素格式。
     - created_by_node_id：创建节点 id。
 
     返回：
@@ -729,6 +876,10 @@ def register_image_bytes(
         media_type=media_type,
         width=width,
         height=height,
+        shape=shape,
+        dtype=dtype,
+        layout=layout,
+        pixel_format=pixel_format,
         created_by_node_id=created_by_node_id or request.node_id,
     )
     return build_memory_image_payload(
@@ -736,6 +887,119 @@ def register_image_bytes(
         media_type=image_entry.media_type,
         width=image_entry.width,
         height=image_entry.height,
+        shape=image_entry.shape,
+        dtype=image_entry.dtype,
+        layout=image_entry.layout,
+        pixel_format=image_entry.pixel_format,
+    )
+
+
+def register_image_matrix(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_matrix: Any,
+    created_by_node_id: str | None = None,
+) -> dict[str, object]:
+    """把 OpenCV matrix 以 raw BGR24 注册到 execution image registry。
+
+    参数：
+    - request：当前节点执行请求。
+    - image_matrix：OpenCV 图片矩阵。
+    - created_by_node_id：创建节点 id。
+
+    返回：
+    - dict[str, object]：memory 模式 raw BGR24 图片引用。
+    """
+
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    normalized_matrix = prepare_matrix_for_raw_bgr24(
+        cv2_module=cv2,
+        np_module=np,
+        image_matrix=image_matrix,
+    )
+    image_registry = require_execution_image_registry(request)
+    height, width = normalized_matrix.shape[:2]
+    image_entry = image_registry.register_image_matrix(
+        matrix=normalized_matrix,
+        width=int(width),
+        height=int(height),
+        created_by_node_id=created_by_node_id or request.node_id,
+    )
+    raw_fields = build_raw_bgr24_payload_fields(width=int(width), height=int(height))
+    return build_memory_image_payload(
+        image_handle=image_entry.image_handle,
+        media_type=str(raw_fields["media_type"]),
+        width=int(raw_fields["width"]),
+        height=int(raw_fields["height"]),
+        shape=tuple(int(item) for item in raw_fields["shape"]),
+        dtype=str(raw_fields["dtype"]),
+        layout=str(raw_fields["layout"]),
+        pixel_format=str(raw_fields["pixel_format"]),
+    )
+
+
+def load_image_matrix(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    input_name: str = "image",
+    cv2_module: Any,
+    np_module: Any,
+    imdecode_flags: int | None = None,
+    copy_raw: bool = False,
+) -> tuple[dict[str, object], Any]:
+    """读取 image-ref 并返回 OpenCV matrix。"""
+
+    return load_image_matrix_from_payload(
+        request,
+        image_payload=request.input_values.get(input_name),
+        cv2_module=cv2_module,
+        np_module=np_module,
+        imdecode_flags=imdecode_flags,
+        copy_raw=copy_raw,
+    )
+
+
+def load_image_matrix_from_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: object,
+    cv2_module: Any,
+    np_module: Any,
+    imdecode_flags: int | None = None,
+    copy_raw: bool = False,
+) -> tuple[dict[str, object], Any]:
+    """读取任意 image-ref payload 并转换为 OpenCV matrix。"""
+
+    normalized_payload = require_image_payload(image_payload)
+    if normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_MEMORY:
+        image_handle = _normalize_optional_text(normalized_payload.get("image_handle"))
+        if image_handle is not None and is_raw_bgr24_payload(normalized_payload):
+            image_registry = require_execution_image_registry(request)
+            matrix = image_registry.read_matrix(image_handle)
+            if matrix is not None:
+                matrix = prepare_matrix_for_raw_bgr24(
+                    cv2_module=cv2_module,
+                    np_module=np_module,
+                    image_matrix=matrix,
+                    copy_matrix=copy_raw,
+                )
+                if imdecode_flags == getattr(cv2_module, "IMREAD_GRAYSCALE", 0):
+                    matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGR2GRAY)
+                return normalized_payload, matrix
+    normalized_payload, image_bytes = load_image_bytes_from_payload(
+        request,
+        image_payload=normalized_payload,
+    )
+    return normalized_payload, decode_image_bytes_to_matrix(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_bytes=image_bytes,
+        image_payload=normalized_payload,
+        imdecode_flags=imdecode_flags,
+        error_message="图片节点无法读取输入图片",
+        copy_raw=copy_raw,
     )
 
 
@@ -763,9 +1027,11 @@ def build_response_image_payload(
     """
 
     normalized_mode = _normalize_response_transport_mode(response_transport_mode)
-    normalized_image_payload, image_bytes = load_image_bytes_from_payload(
+    original_image_payload = require_image_payload(image_payload)
+    source_was_raw = _is_raw_image_payload(original_image_payload)
+    normalized_image_payload, image_bytes = _load_json_safe_image_bytes(
         request,
-        image_payload=image_payload,
+        image_payload=original_image_payload,
     )
     response_image: dict[str, object] = {
         "transport_kind": normalized_mode,
@@ -782,7 +1048,11 @@ def build_response_image_payload(
         response_image["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
         return response_image
 
-    if normalized_image_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE and object_key is None:
+    if (
+        normalized_image_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE
+        and object_key is None
+        and not source_was_raw
+    ):
         stored_payload = build_storage_image_payload(
             object_key=str(normalized_image_payload["object_key"]),
             source_payload=normalized_image_payload,
@@ -790,7 +1060,7 @@ def build_response_image_payload(
     else:
         stored_payload = copy_image_payload(
             request,
-            source_payload=normalized_image_payload,
+            source_payload=original_image_payload,
             object_key=object_key,
             overwrite=overwrite,
             variant_name=variant_name,
@@ -834,7 +1104,15 @@ def copy_image_payload(
             "图片保存目标已存在，且当前节点未允许覆盖",
             details={"node_id": request.node_id, "object_key": target_object_key},
         )
-    if normalized_source_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE and source_object_key is not None:
+    if _is_raw_image_payload(normalized_source_payload):
+        json_safe_payload, image_bytes = _load_json_safe_image_bytes(
+            request,
+            image_payload=normalized_source_payload,
+            target_object_key=target_object_key,
+        )
+        dataset_storage.write_bytes(target_object_key, image_bytes)
+        normalized_source_payload = json_safe_payload
+    elif normalized_source_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE and source_object_key is not None:
         if target_object_key != source_object_key:
             dataset_storage.copy_relative_file(source_object_key, target_object_key)
     else:
@@ -946,6 +1224,69 @@ def infer_media_type_from_image_bytes(content: bytes) -> str:
     return "image/png"
 
 
+def _load_json_safe_image_bytes(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: object,
+    target_object_key: str | None = None,
+) -> tuple[dict[str, object], bytes]:
+    """读取图片并保证返回 bytes 是 JSON / 文件安全的编码图片。
+
+    raw BGR24 只在这里按需编码，内部节点流转不做 PNG/JPEG 编码。
+    """
+
+    normalized_image_payload = require_image_payload(image_payload)
+    if not _is_raw_image_payload(normalized_image_payload):
+        _, image_bytes = load_image_bytes_from_payload(
+            request,
+            image_payload=normalized_image_payload,
+        )
+        return normalized_image_payload, image_bytes
+
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    _, image_matrix = load_image_matrix_from_payload(
+        request,
+        image_payload=normalized_image_payload,
+        cv2_module=cv2,
+        np_module=np,
+    )
+    output_extension = _resolve_encoded_output_extension(target_object_key)
+    encoded_bytes = encode_matrix_to_image_bytes(
+        cv2_module=cv2,
+        image_matrix=image_matrix,
+        extension=output_extension,
+        error_message="raw 图片无法编码为对外响应图片",
+    )
+    safe_payload = dict(normalized_image_payload)
+    safe_payload["media_type"] = infer_media_type(f"image{output_extension}")
+    safe_payload["width"] = int(image_matrix.shape[1])
+    safe_payload["height"] = int(image_matrix.shape[0])
+    safe_payload.pop("shape", None)
+    safe_payload.pop("dtype", None)
+    safe_payload.pop("layout", None)
+    safe_payload.pop("pixel_format", None)
+    return safe_payload, encoded_bytes
+
+
+def _resolve_encoded_output_extension(target_object_key: str | None) -> str:
+    """为 raw 图片对外输出选择编码扩展名。"""
+
+    if isinstance(target_object_key, str) and target_object_key.strip():
+        suffix = PurePosixPath(target_object_key.strip()).suffix.lower()
+        if suffix in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
+            return suffix
+    return ".png"
+
+
+def _is_raw_image_payload(payload: dict[str, object]) -> bool:
+    """判断 image-ref payload 是否为 raw 图片。"""
+
+    media_type = payload.get("media_type")
+    return isinstance(media_type, str) and media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW
+
+
 def infer_file_extension_from_media_type(media_type: str) -> str:
     """根据媒体类型推断文件扩展名。
 
@@ -997,9 +1338,14 @@ def _build_default_target_object_key(
 
     workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
     normalized_variant_name = variant_name.strip().replace(" ", "-") or "output"
-    target_extension = output_extension or infer_file_extension_from_media_type(
-        str(normalized_source_payload.get("media_type") or "image/png")
-    )
+    if output_extension is not None:
+        target_extension = output_extension
+    elif _is_raw_image_payload(normalized_source_payload):
+        target_extension = ".png"
+    else:
+        target_extension = infer_file_extension_from_media_type(
+            str(normalized_source_payload.get("media_type") or "image/png")
+        )
     return f"workflows/runtime/{workflow_run_id}/{request.node_id}/{normalized_variant_name}{target_extension}"
 
 

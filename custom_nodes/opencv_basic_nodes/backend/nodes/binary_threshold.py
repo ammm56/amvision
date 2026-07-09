@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
+    encode_png_image_bytes,
     load_image_matrix,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
@@ -32,16 +32,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_max_value = request.parameters.get("max_value")
     max_value = 255 if raw_max_value in {None, ""} else require_non_negative_float(raw_max_value, field_name="max_value")
     _, threshold_image = cv2_module.threshold(image_matrix, threshold, max_value, cv2_module.THRESH_BINARY)
-    success, encoded_image = cv2_module.imencode(".png", threshold_image)
-    if success is not True:
-        raise ServiceConfigurationError(
-            "OpenCV 二值化后无法编码输出图片",
-            details={"node_id": request.node_id},
-        )
+    encoded_image = encode_png_image_bytes(
+        request,
+        image_matrix=threshold_image,
+        error_message="OpenCV 二值化后无法编码输出图片",
+    )
     output_payload = build_output_image_payload(
         request,
         source_payload=image_payload,
-        content=encoded_image.tobytes(),
+        content=encoded_image,
         object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
         variant_name="binary-threshold",
         output_extension=".png",

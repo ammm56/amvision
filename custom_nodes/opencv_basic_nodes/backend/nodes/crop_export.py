@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
     build_crop_object_key,
     clip_bbox,
+    encode_png_image_bytes,
     load_image_matrix,
     normalize_optional_output_dir,
 )
@@ -57,12 +57,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         crop_image = image_matrix[crop_y1:crop_y2, crop_x1:crop_x2]
         if crop_image.size == 0:
             continue
-        success, encoded_image = cv2_module.imencode(".png", crop_image)
-        if success is not True:
-            raise ServiceConfigurationError(
-                "OpenCV crop export 后无法编码输出图片",
-                details={"node_id": request.node_id, "detection_index": detection_index},
-            )
+        encoded_image = encode_png_image_bytes(
+            request,
+            image_matrix=crop_image,
+            error_message="OpenCV crop export 后无法编码输出图片",
+        )
         crop_object_key = (
             build_crop_object_key(
                 request,
@@ -76,7 +75,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         crop_payload = build_output_image_payload(
             request,
             source_payload=image_payload,
-            content=encoded_image.tobytes(),
+            content=encoded_image,
             object_key=crop_object_key,
             variant_name=f"crop-{detection_index:03d}",
             output_extension=".png",
