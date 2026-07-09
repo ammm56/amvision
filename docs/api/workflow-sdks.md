@@ -36,6 +36,8 @@ SDK 不直接访问数据库、LocalBufferBroker、workflow worker、deployment 
 
 SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workflow 图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。是否需要把 ZeroMQ image-ref 汇入 HTTP base64 链路，应该由 workflow 图中的显式节点决定。
 
+ZeroMQ 高帧率图片输入默认使用 BGR24 raw image-ref。SDK、后端 adapter、LocalBufferBroker、workflow 节点和模型 runtime 的完整规则见 [docs/architecture/high-performance-image-data-plane.md](../architecture/high-performance-image-data-plane.md)。
+
 ## 标准使用流程
 
 ### 服务侧准备
@@ -79,11 +81,11 @@ SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workfl
   "trace_id": "trace-0001",
   "occurred_at": "2026-05-13T00:00:00Z",
   "input_binding": "request_image_ref",
-  "media_type": "image/jpeg",
+  "media_type": "image/raw",
   "shape": [1080, 1920, 3],
   "dtype": "uint8",
   "layout": "HWC",
-  "pixel_format": "BGR",
+  "pixel_format": "bgr24",
   "metadata": {
     "line_id": "line-a",
     "station_id": "station-1",

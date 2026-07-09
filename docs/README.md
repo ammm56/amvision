@@ -32,6 +32,7 @@
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
 - [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
+- [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md) 汇总上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow 节点和模型 runtime 之间的 BGR24 高性能图片数据面规则
 - [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md) 汇总浏览器前端 Web UI 的工程骨架、目录分层、LiteGraph 接入位置和组件层边界
 - [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md) 汇总浏览器前端 Web UI 的本地启动、默认用户、自动进入、登录页和退出规则
 - [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md) 汇总浏览器前端 Web UI 真实编码前的准备检查、剩余缺口和开工顺序
@@ -104,9 +105,10 @@
 33. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
 34. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
 35. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
-36. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-37. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-38. 根据任务继续进入 API、部署、节点扩展或决策文档
+36. [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md)
+37. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+38. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+39. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 

@@ -15,6 +15,7 @@ C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 Wo
 - `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；现场同步调用只取公开结果时使用 `InvokeWorkflowAppRuntimeAppResultResponseAsync`、`InvokeWorkflowAppRuntimeAppResultAsync<T>`、`GetWorkflowRunAppResultResponseAsync` 或 `GetWorkflowRunAppResultAsync<T>`
 - 支持已有模型 DeploymentInstance 的 `sync/async` runtime start、warmup、reset、stop、status、health，以及同步推理和异步 inference task 调用
 - 模型推理支持 JSON `input_file_id/input_uri/image_base64`、multipart 图片 bytes/file 上传，并提供 raw API 和 typed response 方法
+- ZeroMQ envelope 已支持 shape、dtype、layout、pixel_format 等图片元数据；现场高帧率路径下一步按 [docs/architecture/high-performance-image-data-plane.md](../../docs/architecture/high-performance-image-data-plane.md) 收口到 BGR24 raw image-ref
 
 SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
 
@@ -115,6 +116,8 @@ var fromFile = ImageTriggerRequest.FromFile("sample.jpg");
 var fromBase64 = ImageTriggerRequest.FromBase64("data:image/png;base64,...");
 var fromCameraBytes = ImageTriggerRequest.FromBytes(cameraFrameJpegBytes, "image/jpeg");
 ```
+
+上面这些 helper 适合低频调试、文件输入或旧系统桥接。工业相机高帧率调用的目标方式是相机取图后在上位机侧得到连续 BGR24 bytes，再通过 ZeroMQ 第二帧发送，并把 envelope metadata 写成 `media_type=image/raw`、`pixel_format=bgr24`、`dtype=uint8`、`layout=HWC`、`shape=[height,width,3]`。该路径的完整 SDK、后端、节点和默认 workflow 图要求见 [docs/architecture/high-performance-image-data-plane.md](../../docs/architecture/high-performance-image-data-plane.md)。
 
 这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding。`request_image_base64` 入口只用于 HTTP/JSON 调试，不作为 ZeroMQ TriggerSource 的默认图片输入。
 

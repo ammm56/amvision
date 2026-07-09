@@ -115,6 +115,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 仍不应视为完成的生产闭环包括：
 
+- raw BGR24 BufferRef 的端到端高性能矩阵读取尚未完成。当前 `load_image_bytes` 能拿到 bytes，但模型 runtime 和 OpenCV 节点仍需要统一接入 raw-aware image matrix helper，避免 BGR24 输入继续走 `cv2.imdecode` 或 base64 转换。详细规则见 [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)。
 - C# / .NET 外部调用方 SDK 首版已实现，并已支持 `net461;net472;netstandard2.1;net10.0`；Python、Go 和 C SDK 尚未实现。
 - ZeroMQ TriggerSource 已具备普通 BufferRef 写入和 runtime submit 骨架，06/07 已补充同 app HTTP base64 + ZeroMQ image-ref 双输入 workflow app 请求体、TriggerSource 请求体和 C# SDK 调试命令，真实 backend-service 联调仍需完成。
 - FrameRef 在创建 WorkflowRun 前固定为 BufferRef 的步骤尚未实现。
@@ -229,7 +230,7 @@ BufferRef 是传给 workflow 节点和 deployment worker 的数据引用。
   "shape": [1080, 1920, 3],
   "dtype": "uint8",
   "layout": "HWC",
-  "pixel_format": "BGR",
+  "pixel_format": "bgr24",
   "media_type": "image/raw",
   "readonly": true,
   "broker_epoch": "epoch-1",
@@ -275,7 +276,7 @@ FrameRef 是 ring buffer 中某一帧的引用。
   "shape": [1080, 1920, 3],
   "dtype": "uint8",
   "layout": "HWC",
-  "pixel_format": "BGR",
+  "pixel_format": "bgr24",
   "media_type": "image/raw",
   "broker_epoch": "epoch-1",
   "generation": 1

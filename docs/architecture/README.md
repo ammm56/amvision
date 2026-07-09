@@ -33,6 +33,7 @@
 - [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)：workflow 图编排前端所需的后端接口现状、本轮已补齐项和下一批执行清单
 - [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息规则
 - [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)：workflow runtime 第二阶段边界，收口 restart、instances、异步 runs 和 execution policies 的进入范围
+- [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)：固定上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow 节点和模型 runtime 之间的 BGR24 高性能图片数据面规则
 - [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
 - [docs/architecture/backend-service.md](backend-service.md)：后端服务职责、任务状态、执行调度、QueueBackend 和状态回写边界
 - [docs/architecture/task-system.md](task-system.md)：统一任务实体、资源调度模型、任务 schema 和 worker pool 划分
@@ -104,7 +105,8 @@
 36. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
 37. [docs/architecture/data-and-files.md](data-and-files.md)
 38. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-39. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-40. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-41. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-42. 按任务继续进入集成规则或日志专题文档
+39. [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)
+40. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
+41. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
+42. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+43. 按任务继续进入集成规则或日志专题文档

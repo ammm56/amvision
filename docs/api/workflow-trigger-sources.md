@@ -14,6 +14,7 @@
 - TriggerSource 只提交协议原生输入，不负责把 `image-ref.v1` 主动转换成 `image-base64.v1`，也不负责补出本地图片、相机帧或其他节点级输入。
 - 当前已接入 ZeroMQ、第一阶段 PLC、`directory-poll` 和 `directory-watch`；后续 MQTT、gRPC、IO 变化、传感器读取、schedule 和 Webhook 触发，可以继续扩展为 WorkflowTriggerSource。
 - 面向设备上位机、MES、采集程序和调试脚本的外部调用方 SDK 规划见 [docs/api/workflow-sdks.md](workflow-sdks.md)。
+- ZeroMQ 高帧率图片输入的 BGR24 raw image-ref 规则、默认 workflow 拓扑、节点支持范围和结果返回限制见 [docs/architecture/high-performance-image-data-plane.md](../architecture/high-performance-image-data-plane.md)。
 - 传感器读数、阈值越界、状态翻转和采样结果本身就是物理世界进入 workflow 的直接触发入口，不应只被视为运行中节点的附属输入。
 - 外部触发入口与节点图本身分层：触发源负责监听、过滤、去重和创建 WorkflowRun；runtime 负责执行。
 - 当前草案不把“首节点轮询外部世界”作为默认触发模型。
@@ -179,6 +180,8 @@ frame n: 可选附加二进制数据
 
 adapter 收到二进制帧后先写入 LocalBufferBroker，随后把 BufferRef 或 FrameRef 映射到 application input_bindings。这个映射停留在协议入口层，不继续替图做 `image-ref -> image-base64`、本地磁盘读图或相机取帧。同步返回时，ResultDispatcher 读取 workflow 输出绑定，转换成 JSON reply 或 multipart reply；需要返回图片时，优先返回 ObjectStore 引用或受控 BufferRef 摘要，不把本机 mmap path 当成长期外部结果。
 
+现场高帧率图片输入默认使用 raw BGR24，即 `media_type=image/raw`、`pixel_format=bgr24`、`dtype=uint8`、`layout=HWC`、`shape=[height,width,3]`。JPEG、PNG、Bitmap 和 base64 仍可用于低频调试和普通外部调用，但不作为 ZeroMQ 高速图片触发的默认路径。
+
 ZeroMQ 第一阶段不直接实现 PLC、MQTT、gRPC 等协议，但需要先落下同一套 TriggerSource 规则、adapter 接口、输入映射、结果映射、health 和审计字段，避免后续每个协议各写一套调用链。
 
 ## 调用方 SDK 边界
@@ -245,7 +248,7 @@ HTTP JSON invoke 是当前已公开、最容易调试的入口。调用方把图
         "shape": [1080, 1920, 3],
         "dtype": "uint8",
         "layout": "HWC",
-        "pixel_format": "BGR",
+        "pixel_format": "bgr24",
         "media_type": "image/raw",
         "broker_epoch": "epoch-1",
         "generation": 15

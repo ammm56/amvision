@@ -50,6 +50,8 @@
 
 TriggerSource 示例目录在完整本地调试链路之外额外描述协议入口和运行时准备，不把图内转换塞进触发层。当前 `06-*`、`07-*` 已显式发布 `request_image_base64` 和 `request_image_ref` 两个 input binding，并在图里加入 `image-ref -> image-base64` 转换节点后再汇入后续链路。
 
+当前 `06-*`、`07-*` 的 `image-ref -> image-base64 -> image-ref` 只用于验证双入口兼容和现有节点行为，不代表最终高性能默认图。面向现场高帧率 ZeroMQ TriggerSource 的默认图应优先使用 `request_image_ref -> Image Ref Coalesce -> Detection/OpenCV/Barcode`，只在用户明确选择 HTTP/base64 调试、预览、保存或外部回传时才执行 PNG、JPEG 或 base64 编码。BGR24 raw image-ref 数据面规则见 [docs/architecture/high-performance-image-data-plane.md](../../../architecture/high-performance-image-data-plane.md)。
+
 `08-*` 当前则显式保留另一条边界：`plc-register` 的 `input_binding_mapping` 目前只读取标准化后的 `payload / event` 原始对象，不会自动包装成 `value.v1`。因此该示例把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，再在图内使用 `payload-to-value` 桥接为后续规则节点需要的 `value.v1`。
 
 `09-*` 当前沿用同一条边界：`directory-watch` 的 `input_binding_mapping` 仍然只负责把标准化后的 `payload / event` 原始对象映射到 workflow app 输入，不会自动补 `value.v1` 包装。因此目录监听示例继续把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，并把固定 `deployment_instance_id` 通过 `input_binding_mapping.deployment_request.value` 静态注入到 workflow app。
