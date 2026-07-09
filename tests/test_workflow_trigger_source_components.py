@@ -211,7 +211,7 @@ def test_workflow_submitter_allows_trigger_source_without_external_inputs() -> N
 
 
 def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
-    """验证 ZeroMQ TriggerSource 默认关闭磁盘 trace。"""
+    """验证 ZeroMQ TriggerSource 默认关闭 trace、诊断返回并使用最小记录模式。"""
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
@@ -243,6 +243,69 @@ def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     assert execution_metadata["trace_level"] == "none"
     assert execution_metadata["retain_trace_enabled"] is False
     assert execution_metadata["retain_node_records_enabled"] is False
+    assert execution_metadata["workflow_run_record_mode"] == "minimal"
+    assert execution_metadata["return_timing_metadata_enabled"] is False
+    assert execution_metadata["return_node_timings_enabled"] is False
+
+
+def test_workflow_submitter_omits_diagnostics_by_default() -> None:
+    """验证 TriggerResult 默认不返回 timings 和 node_timings。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(event_id="event-1", payload={}),
+    )
+
+    trigger_result = WorkflowSubmitter(
+        runtime_service=_DiagnosticSyncRuntimeService()
+    ).submit_event(
+        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+    )
+
+    assert trigger_result.state == "succeeded"
+    assert "timings" not in trigger_result.metadata
+    assert "node_timings" not in trigger_result.metadata
+
+
+def test_workflow_submitter_returns_diagnostics_when_enabled() -> None:
+    """验证显式开启诊断后 TriggerResult 返回耗时摘要。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+        default_execution_metadata={
+            "return_timing_metadata_enabled": True,
+            "return_node_timings_enabled": True,
+        },
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(event_id="event-1", payload={}),
+    )
+
+    trigger_result = WorkflowSubmitter(
+        runtime_service=_DiagnosticSyncRuntimeService()
+    ).submit_event(
+        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+    )
+
+    assert trigger_result.state == "succeeded"
+    assert trigger_result.metadata["timings"]["trigger_submit_total_ms"] >= 0
+    assert trigger_result.metadata["timings"]["workflow_worker_execute_ms"] == 12.5
+    assert trigger_result.metadata["node_timings"] == [
+        {
+            "node_id": "detect",
+            "node_type_id": "core.model.detection",
+            "runtime_kind": "worker-task",
+            "duration_ms": 10.0,
+        }
+    ]
 
 
 def test_trigger_source_supervisor_submits_normalized_event() -> None:
@@ -886,6 +949,7 @@ def _build_trigger_source(
     input_binding_mapping: dict[str, object] | None = None,
     transport_config: dict[str, object] | None = None,
     match_rule: dict[str, object] | None = None,
+    default_execution_metadata: dict[str, object] | None = None,
 ) -> WorkflowTriggerSource:
     """构建测试使用的 WorkflowTriggerSource。"""
 
@@ -907,6 +971,7 @@ def _build_trigger_source(
             }
         ),
         result_mapping={"result_binding": "http_response"},
+        default_execution_metadata=dict(default_execution_metadata or {}),
         idempotency_key_path="payload.request.id",
         created_at="2026-05-13T00:00:00Z",
         updated_at="2026-05-13T00:00:00Z",
@@ -1075,6 +1140,43 @@ class _CapturingSyncRuntimeService(_FakeSyncRuntimeService):
                 application_id="app-1",
                 state="succeeded",
                 outputs={"http_response": {"status_code": 200}},
+            ),
+            raw_outputs={"http_response": {"status_code": 200}},
+        )
+
+
+class _DiagnosticSyncRuntimeService:
+    """返回含诊断 metadata 的同步 WorkflowRuntimeService 替身。"""
+
+    def invoke_workflow_app_runtime_with_response(
+        self,
+        workflow_runtime_id: str,
+        request,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRuntimeSyncInvokeResult:
+        """返回带 timings 和 node_timings 的 WorkflowRun。"""
+
+        _ = workflow_runtime_id, created_by
+        metadata = dict(request.execution_metadata)
+        metadata["timings"] = {"worker_execute_ms": 12.5}
+        metadata["node_timings"] = [
+            {
+                "node_id": "detect",
+                "node_type_id": "core.model.detection",
+                "runtime_kind": "worker-task",
+                "duration_ms": 10.0,
+            }
+        ]
+        return WorkflowRuntimeSyncInvokeResult(
+            workflow_run=WorkflowRun(
+                workflow_run_id="workflow-run-sync-1",
+                workflow_runtime_id="workflow-runtime-1",
+                project_id="project-1",
+                application_id="app-1",
+                state="succeeded",
+                outputs={"http_response": {"status_code": 200}},
+                metadata=metadata,
             ),
             raw_outputs={"http_response": {"status_code": 200}},
         )

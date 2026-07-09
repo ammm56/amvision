@@ -14,6 +14,19 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 WORKFLOW_RUN_DEFAULT_TRACE_LEVEL = "none"
 WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED = False
 WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED = False
+WORKFLOW_RUN_RECORD_MODE_FULL = "full"
+WORKFLOW_RUN_RECORD_MODE_MINIMAL = "minimal"
+WORKFLOW_RUN_RECORD_MODE_NONE = "none"
+WORKFLOW_RUN_RECORD_MODES = frozenset(
+    {
+        WORKFLOW_RUN_RECORD_MODE_FULL,
+        WORKFLOW_RUN_RECORD_MODE_MINIMAL,
+        WORKFLOW_RUN_RECORD_MODE_NONE,
+    }
+)
+WORKFLOW_RUN_DEFAULT_RECORD_MODE = WORKFLOW_RUN_RECORD_MODE_FULL
+WORKFLOW_RUN_DEFAULT_RETURN_TIMING_METADATA_ENABLED = False
+WORKFLOW_RUN_DEFAULT_RETURN_NODE_TIMINGS_ENABLED = False
 
 
 @dataclass(frozen=True)
@@ -160,9 +173,10 @@ def apply_workflow_run_persistence_defaults(
     *,
     execution_policy: WorkflowExecutionPolicy | None,
 ) -> dict[str, object]:
-    """补齐正式 WorkflowRun 的轻量持久化默认值。"""
+    """补齐正式 WorkflowRun 的持久化和诊断默认值。"""
 
     payload = dict(metadata)
+    policy_metadata = dict(execution_policy.metadata) if execution_policy is not None else {}
     if "trace_level" not in payload:
         payload["trace_level"] = (
             execution_policy.trace_level
@@ -181,7 +195,65 @@ def apply_workflow_run_persistence_defaults(
             if execution_policy is not None
             else WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED
         )
+    if "workflow_run_record_mode" not in payload:
+        payload["workflow_run_record_mode"] = (
+            _normalize_optional_str(_read_optional_text(policy_metadata.get("workflow_run_record_mode")))
+            or WORKFLOW_RUN_DEFAULT_RECORD_MODE
+        )
+    if "return_timing_metadata_enabled" not in payload:
+        payload["return_timing_metadata_enabled"] = (
+            _read_optional_bool_flag(policy_metadata.get("return_timing_metadata_enabled"))
+            or WORKFLOW_RUN_DEFAULT_RETURN_TIMING_METADATA_ENABLED
+        )
+    if "return_node_timings_enabled" not in payload:
+        payload["return_node_timings_enabled"] = (
+            _read_optional_bool_flag(policy_metadata.get("return_node_timings_enabled"))
+            or WORKFLOW_RUN_DEFAULT_RETURN_NODE_TIMINGS_ENABLED
+        )
     return payload
+
+
+def resolve_workflow_run_record_mode(metadata: dict[str, object]) -> str:
+    """读取 WorkflowRun 数据库记录模式。"""
+
+    raw_value = metadata.get("workflow_run_record_mode")
+    normalized_value = _normalize_optional_str(_read_optional_text(raw_value))
+    if normalized_value is None:
+        return WORKFLOW_RUN_DEFAULT_RECORD_MODE
+    normalized_value = normalized_value.lower()
+    if normalized_value not in WORKFLOW_RUN_RECORD_MODES:
+        raise InvalidRequestError(
+            "workflow_run_record_mode 取值无效",
+            details={
+                "workflow_run_record_mode": normalized_value,
+                "supported_values": sorted(WORKFLOW_RUN_RECORD_MODES),
+            },
+        )
+    return normalized_value
+
+
+def should_persist_workflow_run(metadata: dict[str, object]) -> bool:
+    """判断本次 WorkflowRun 是否需要写入数据库。"""
+
+    return resolve_workflow_run_record_mode(metadata) != WORKFLOW_RUN_RECORD_MODE_NONE
+
+
+def should_persist_workflow_run_dispatch_record(metadata: dict[str, object]) -> bool:
+    """判断同步调用是否需要先写入 dispatching 记录。"""
+
+    return resolve_workflow_run_record_mode(metadata) == WORKFLOW_RUN_RECORD_MODE_FULL
+
+
+def should_return_workflow_timing_metadata(metadata: dict[str, object]) -> bool:
+    """判断返回结果是否需要包含 timings 诊断字段。"""
+
+    return _read_optional_bool_flag(metadata.get("return_timing_metadata_enabled")) is True
+
+
+def should_return_workflow_node_timings(metadata: dict[str, object]) -> bool:
+    """判断返回结果是否需要包含 node_timings 诊断字段。"""
+
+    return _read_optional_bool_flag(metadata.get("return_node_timings_enabled")) is True
 
 
 def should_retain_workflow_run_node_records(
@@ -246,6 +318,12 @@ def _read_optional_bool_flag(value: object) -> bool | None:
         if normalized_value in {"false", "0", "no", "off"}:
             return False
     return None
+
+
+def _read_optional_text(value: object) -> str | None:
+    """读取可选文本字段。"""
+
+    return value if isinstance(value, str) else None
 
 
 def _normalize_optional_str(value: str | None) -> str | None:

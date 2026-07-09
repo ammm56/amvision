@@ -59,6 +59,9 @@ from backend.service.application.workflows.runtime_app_events import (
     read_workflow_app_runtime_events,
 )
 from backend.service.application.workflows.runtime.policies import (
+    WORKFLOW_RUN_RECORD_MODE_FULL,
+    WORKFLOW_RUN_RECORD_MODE_MINIMAL,
+    WORKFLOW_RUN_RECORD_MODE_NONE,
     WORKFLOW_RUN_DEFAULT_RETAIN_NODE_RECORDS_ENABLED,
     WORKFLOW_RUN_DEFAULT_RETAIN_TRACE_ENABLED,
     WORKFLOW_RUN_DEFAULT_TRACE_LEVEL,
@@ -67,7 +70,12 @@ from backend.service.application.workflows.runtime.policies import (
     apply_workflow_run_persistence_defaults,
     normalize_execution_policy_create_request,
     resolve_effective_timeout_seconds,
+    resolve_workflow_run_record_mode,
     serialize_execution_policy_snapshot,
+    should_persist_workflow_run,
+    should_persist_workflow_run_dispatch_record,
+    should_return_workflow_node_timings,
+    should_return_workflow_timing_metadata,
 )
 from backend.service.application.workflows.runtime.app_runtimes import (
     WorkflowAppRuntimeCreateRequest,
@@ -890,7 +898,8 @@ class WorkflowRuntimeService:
 
         execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
         normalized_request = normalize_runtime_invoke_request(request)
-        metadata = dict(normalized_request.execution_metadata or {})
+        metadata = _build_runtime_default_execution_metadata(workflow_app_runtime)
+        metadata.update(dict(normalized_request.execution_metadata or {}))
         metadata.setdefault("trigger_source", "async-invoke")
         metadata = apply_execution_policy_metadata(
             metadata,
@@ -901,6 +910,8 @@ class WorkflowRuntimeService:
             metadata,
             execution_policy=execution_policy,
         )
+        if resolve_workflow_run_record_mode(metadata) == WORKFLOW_RUN_RECORD_MODE_NONE:
+            raise InvalidRequestError("异步 WorkflowRun 不能使用 none 记录模式")
         now = _now_isoformat()
         workflow_run = WorkflowRun(
             workflow_run_id=f"workflow-run-{uuid4().hex}",
@@ -1015,8 +1026,10 @@ class WorkflowRuntimeService:
         execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
         normalized_request = normalize_runtime_invoke_request(request)
         now = _now_isoformat()
+        execution_metadata = _build_runtime_default_execution_metadata(workflow_app_runtime)
+        execution_metadata.update(dict(normalized_request.execution_metadata or {}))
         execution_metadata = apply_execution_policy_metadata(
-            dict(normalized_request.execution_metadata or {}),
+            execution_metadata,
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
         )
@@ -1024,6 +1037,7 @@ class WorkflowRuntimeService:
             execution_metadata,
             execution_policy=execution_policy,
         )
+        record_mode = resolve_workflow_run_record_mode(execution_metadata)
         sync_timing_started_at = monotonic()
         sync_timings: dict[str, object] = {}
         workflow_run = WorkflowRun(
@@ -1045,18 +1059,22 @@ class WorkflowRuntimeService:
             else {},
             metadata=execution_metadata,
         )
-        db_create_started_at = monotonic()
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-            unit_of_work.commit()
-        sync_timings["workflow_run_db_create_ms"] = _elapsed_ms(db_create_started_at)
-        event_append_started_at = monotonic()
-        self._append_workflow_run_event(
-            workflow_run,
-            event_type="run.dispatching",
-            message="workflow run 已提交到 runtime",
-        )
-        sync_timings["workflow_run_dispatch_event_ms"] = _elapsed_ms(event_append_started_at)
+        if should_persist_workflow_run_dispatch_record(execution_metadata):
+            db_create_started_at = monotonic()
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                unit_of_work.commit()
+            sync_timings["workflow_run_db_create_ms"] = _elapsed_ms(db_create_started_at)
+            event_append_started_at = monotonic()
+            self._append_workflow_run_event(
+                workflow_run,
+                event_type="run.dispatching",
+                message="workflow run 已提交到 runtime",
+            )
+            sync_timings["workflow_run_dispatch_event_ms"] = _elapsed_ms(event_append_started_at)
+        else:
+            sync_timings["workflow_run_db_create_ms"] = 0.0
+            sync_timings["workflow_run_dispatch_event_ms"] = 0.0
 
         raw_outputs: dict[str, object] = {}
         raw_template_outputs: dict[str, object] = {}
@@ -1075,10 +1093,27 @@ class WorkflowRuntimeService:
                 timeout_seconds=workflow_run.requested_timeout_seconds,
             )
             sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(worker_invoke_started_at)
-            raw_outputs = dict(worker_result.outputs)
-            raw_template_outputs = dict(worker_result.template_outputs)
+            sanitized_outputs = _strip_output_diagnostic_timings(
+                worker_result.outputs,
+                return_timings_enabled=should_return_workflow_timing_metadata(execution_metadata),
+            )
+            sanitized_template_outputs = _strip_output_diagnostic_timings(
+                worker_result.template_outputs,
+                return_timings_enabled=should_return_workflow_timing_metadata(execution_metadata),
+            )
+            raw_outputs = dict(sanitized_outputs) if isinstance(sanitized_outputs, dict) else {}
+            raw_template_outputs = (
+                dict(sanitized_template_outputs)
+                if isinstance(sanitized_template_outputs, dict)
+                else {}
+            )
             raw_node_records = tuple(dict(item) for item in worker_result.node_records)
             node_timings = _build_compact_node_timings(raw_node_records)
+            worker_result = replace(
+                worker_result,
+                outputs=raw_outputs,
+                template_outputs=raw_template_outputs,
+            )
             workflow_run = apply_workflow_run_result(
                 workflow_run,
                 worker_result,
@@ -1117,15 +1152,24 @@ class WorkflowRuntimeService:
                 node_timings=node_timings,
             ),
         )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
-            unit_of_work.commit()
-        self._append_workflow_run_event(
-            workflow_run,
-            event_type=self._event_type_for_workflow_run_state(workflow_run.state),
-            message=self._message_for_workflow_run_state(workflow_run.state),
-        )
+        if record_mode == WORKFLOW_RUN_RECORD_MODE_MINIMAL:
+            workflow_run = _build_minimal_workflow_run_record(workflow_run)
+        if should_persist_workflow_run(execution_metadata):
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL or workflow_app_runtime.observed_state == "failed":
+                    unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
+                unit_of_work.commit()
+            if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL:
+                self._append_workflow_run_event(
+                    workflow_run,
+                    event_type=self._event_type_for_workflow_run_state(workflow_run.state),
+                    message=self._message_for_workflow_run_state(workflow_run.state),
+                )
+        elif workflow_app_runtime.observed_state == "failed":
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
+                unit_of_work.commit()
         if workflow_app_runtime.observed_state == "failed":
             self._append_workflow_app_runtime_event(
                 workflow_app_runtime,
@@ -1761,6 +1805,71 @@ def _normalize_optional_str(value: str | None) -> str | None:
     return normalized_value or None
 
 
+def _build_runtime_default_execution_metadata(
+    workflow_app_runtime: WorkflowAppRuntime,
+) -> dict[str, object]:
+    """读取 WorkflowAppRuntime 上配置的默认执行元数据。"""
+
+    raw_metadata = workflow_app_runtime.metadata.get("default_execution_metadata")
+    if isinstance(raw_metadata, dict):
+        return dict(raw_metadata)
+    return {}
+
+
+def _build_minimal_workflow_run_record(workflow_run: WorkflowRun) -> WorkflowRun:
+    """构造高速触发模式使用的最小 WorkflowRun 记录。"""
+
+    return replace(
+        workflow_run,
+        input_payload={},
+        outputs={},
+        template_outputs={},
+        node_records=(),
+        metadata=dict(workflow_run.metadata),
+    )
+
+
+def _strip_output_diagnostic_timings(
+    value: object,
+    *,
+    return_timings_enabled: bool,
+) -> object:
+    """按诊断开关移除业务输出里嵌套的 metadata.timings。"""
+
+    if return_timings_enabled:
+        if isinstance(value, dict):
+            return dict(value)
+        return value
+    if isinstance(value, dict):
+        cleaned: dict[str, object] = {}
+        for key, child_value in value.items():
+            if key == "metadata" and isinstance(child_value, dict):
+                child_metadata = dict(child_value)
+                child_metadata.pop("timings", None)
+                child_metadata.pop("node_timings", None)
+                cleaned[key] = _strip_output_diagnostic_timings(
+                    child_metadata,
+                    return_timings_enabled=return_timings_enabled,
+                )
+                continue
+            cleaned[str(key)] = _strip_output_diagnostic_timings(
+                child_value,
+                return_timings_enabled=return_timings_enabled,
+            )
+        return cleaned
+    if isinstance(value, list):
+        return [
+            _strip_output_diagnostic_timings(item, return_timings_enabled=return_timings_enabled)
+            for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            _strip_output_diagnostic_timings(item, return_timings_enabled=return_timings_enabled)
+            for item in value
+        )
+    return value
+
+
 def _elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
@@ -1800,8 +1909,10 @@ def _merge_workflow_run_diagnostic_metadata(
 ) -> dict[str, object]:
     """合并 WorkflowRun 的计时和轻量节点耗时诊断。"""
 
-    payload = _merge_workflow_run_timing_metadata(metadata, timing_payload)
-    if node_timings:
+    payload = dict(metadata)
+    if should_return_workflow_timing_metadata(payload):
+        payload = _merge_workflow_run_timing_metadata(payload, timing_payload)
+    if node_timings and should_return_workflow_node_timings(payload):
         payload["node_timings"] = [dict(item) for item in node_timings]
     return payload
 

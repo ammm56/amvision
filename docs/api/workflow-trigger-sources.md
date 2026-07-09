@@ -345,10 +345,10 @@ http-response 输出或 WorkflowRun outputs
 
 这条链路里 workflow 图仍然只表达业务处理顺序：输入图片、调用推理、后处理、组装响应。TriggerSource 只负责把外部事件变成输入绑定和执行元数据，LocalBufferBroker 只负责本机内部大图数据面，PublishedInferenceGateway 只负责复用已启动 deployment 推理服务。
 
-- WorkflowAppRuntime 是生产态正式调用入口，默认会把执行元数据补为 `trace_level=none`、`retain_trace_enabled=false` 和 `retain_node_records_enabled=false`。因此正式调用不会默认创建 `workflows/runtime/workflow-run-*/events.json`，也不会默认把节点级输入输出记录写入数据库。
-- ZeroMQ TriggerSource 属于高速图片提交入口，会沿用上述轻量持久化默认值。HTTP、ZeroMQ 和后续协议入口都应通过同一套 WorkflowAppRuntime / WorkflowRun 策略收敛，不为某个协议单独保留磁盘 trace。
+- WorkflowAppRuntime 是生产态正式调用入口，默认会把执行元数据补为 `trace_level=none`、`retain_trace_enabled=false`、`retain_node_records_enabled=false`、`return_timing_metadata_enabled=false` 和 `return_node_timings_enabled=false`。因此正式调用默认不返回 `metadata.timings` 和 `metadata.node_timings`，也不会默认写磁盘 trace 或把节点级输入输出记录写入数据库。
+- ZeroMQ TriggerSource 属于高速图片提交入口，默认使用 `workflow_run_record_mode=minimal`：同步触发只在完成后写一条最小 WorkflowRun 状态记录，不保留 input_payload、outputs、template_outputs 和 node_records。HTTP、ZeroMQ 和后续协议入口都应通过同一套 WorkflowAppRuntime / WorkflowRun 策略收敛，不为某个协议单独保留磁盘 trace。
 - ZeroMQ adapter 写入 LocalBufferBroker 的输入 `BufferRef` 会在 WorkflowRun 执行期登记为 cleanup，运行结束后释放对应 lease；如果提交在创建 WorkflowRun 前失败，adapter 会直接释放刚写入的输入 buffer。
-- 如需临时排查单次调用，可在 HTTP invoke/runs 请求或 TriggerSource 的 `default_execution_metadata` 里显式设置 `retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`，再通过 WorkflowRun 事件接口查看历史事件。
+- 如需临时排查单次调用，可在 HTTP invoke/runs 请求或 TriggerSource 的 `default_execution_metadata` 里显式设置 `return_timing_metadata_enabled=true` 和 `return_node_timings_enabled=true`。如果还需要通过 WorkflowRun 事件接口查看历史事件，可进一步设置 `workflow_run_record_mode=full`、`retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`。
 
 ## 推荐触发类型
 

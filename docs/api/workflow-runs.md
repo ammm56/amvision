@@ -310,8 +310,13 @@
 - after_cursor 当前直接使用 WorkflowRun 事件的 sequence
 - 连接成功后先返回 workflows.runs.connected，再按 sequence 持续推送增量事件
 - 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
-- WorkflowAppRuntime 正式调用默认使用轻量持久化策略：`trace_level=none`、`retain_trace_enabled=false`、`retain_node_records_enabled=false`。默认不会创建 `workflows/runtime/{workflow_run_id}/events.json`，事件查询返回空列表，node_records 也不会写入数据库。
-- 如需临时排查单次调用，可在 invoke/runs 请求或 TriggerSource `default_execution_metadata` 中显式设置 `retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`。
+- WorkflowAppRuntime 正式调用默认不返回 diagnostics：`return_timing_metadata_enabled=false`、`return_node_timings_enabled=false`。调用结果默认不包含 `metadata.timings`、`metadata.node_timings`，PublishedInferenceGateway 写入业务输出的 `metadata.timings` 也会被清理。
+- WorkflowRun 数据库记录通过 `workflow_run_record_mode` 控制：
+  - `full`：保留完整 WorkflowRun 记录、dispatch/final 事件、按 retention 开关保留输入输出和 node_records。
+  - `minimal`：同步调用只在完成后写一条最小 WorkflowRun 状态记录，不保留 input_payload、outputs、template_outputs 和 node_records，适合高帧率 Trigger。
+  - `none`：同步调用不写 WorkflowRun 数据库记录，只返回当前调用结果；异步 run 不能使用该模式。
+- WorkflowAppRuntime 正式调用默认仍使用 `full` 记录模式；ZeroMQ TriggerSource 默认使用 `minimal`。默认执行元数据仍会补齐 `trace_level=none`、`retain_trace_enabled=false`、`retain_node_records_enabled=false`。
+- 如需临时排查单次调用，可在 invoke/runs 请求或 TriggerSource `default_execution_metadata` 中显式设置 `return_timing_metadata_enabled=true`、`return_node_timings_enabled=true`；如果还需要历史事件和节点输入输出，再设置 `retain_trace_enabled=true`、`retain_node_records_enabled=true` 和非 `none` 的 `trace_level`。
 
 ## POST /api/v1/workflows/runs/{workflow_run_id}/cancel
 

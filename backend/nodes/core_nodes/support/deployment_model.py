@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from backend.nodes.core_nodes.support.service import (
@@ -21,6 +22,9 @@ from backend.nodes.runtime_support import (
     resolve_image_reference,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.runtime.policies import (
+    should_return_workflow_timing_metadata,
+)
 
 if TYPE_CHECKING:
     from backend.service.application.deployments import PublishedInferenceResult
@@ -74,7 +78,42 @@ def run_direct_model_inference(
             trace_id=_read_optional_trace_id(request),
         )
     )
+    if not should_return_workflow_timing_metadata(request.execution_metadata):
+        inference_result = _strip_inference_result_diagnostics(inference_result)
     return inference_result, source_image
+
+
+def _strip_inference_result_diagnostics(
+    inference_result: PublishedInferenceResult,
+) -> PublishedInferenceResult:
+    """移除 workflow 生产调用默认不返回的推理诊断字段。"""
+
+    metadata = dict(inference_result.metadata)
+    metadata.pop("timings", None)
+    runtime_session_info = _strip_runtime_session_diagnostics(
+        inference_result.runtime_session_info
+    )
+    return replace(
+        inference_result,
+        metadata=metadata,
+        runtime_session_info=runtime_session_info,
+    )
+
+
+def _strip_runtime_session_diagnostics(
+    runtime_session_info: dict[str, object],
+) -> dict[str, object]:
+    """移除 runtime_session_info.metadata 里的耗时诊断字段。"""
+
+    payload = dict(runtime_session_info)
+    metadata_value = payload.get("metadata")
+    if isinstance(metadata_value, dict):
+        metadata = dict(metadata_value)
+        for key in tuple(metadata):
+            if str(key).endswith("_ms"):
+                metadata.pop(key, None)
+        payload["metadata"] = metadata
+    return payload
 
 
 def _build_gateway_image_payload(

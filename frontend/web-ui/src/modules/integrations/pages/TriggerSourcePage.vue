@@ -187,6 +187,20 @@
               </span>
               <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
             </label>
+            <label class="field">
+              <span class="field-label">
+                WorkflowRun 记录
+                <InfoHint text="full 保留完整运行记录；minimal 只写最小状态记录；none 不写 WorkflowRun 数据库记录，仅适合同步高速触发。" />
+              </span>
+              <SelectField :model-value="workflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setWorkflowRunRecordMode" />
+            </label>
+            <label class="field">
+              <span class="field-label">
+                返回诊断数据
+                <InfoHint text="关闭时不在调用结果中返回 timings 和 node_timings；生产高帧率触发建议关闭，排查问题时再开启。" />
+              </span>
+              <SelectField :model-value="returnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setReturnDiagnostics" />
+            </label>
           </div>
 
           <div class="trigger-mapping-list">
@@ -325,6 +339,7 @@ import {
 
 type MappingMode = 'source' | 'static' | 'skip'
 type ProtocolTemplateId = 'zeromq-image-trigger' | 'webhook-json'
+type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
 type SelectValue = string | number | boolean | null
 
 interface SelectOption {
@@ -421,6 +436,17 @@ const ackPolicyOptions: SelectOption[] = [
   { label: 'ack-after-received', value: 'ack-after-received', description: '收到事件后确认' },
 ]
 
+const workflowRunRecordModeOptions: SelectOption[] = [
+  { label: 'minimal', value: 'minimal', description: '只写最小状态记录，适合高速触发' },
+  { label: 'full', value: 'full', description: '保留完整 WorkflowRun 记录' },
+  { label: 'none', value: 'none', description: '同步调用不写 WorkflowRun 数据库记录' },
+]
+
+const returnDiagnosticsOptions: SelectOption[] = [
+  { label: '否', value: 'false', description: '生产默认，不返回 timings 和 node_timings' },
+  { label: '是', value: 'true', description: '排查问题时返回耗时诊断' },
+]
+
 const mappingModeOptions: SelectOption[] = [
   { label: '事件字段', value: 'source', description: '从外部事件 payload/metadata 中读取' },
   { label: '固定值', value: 'static', description: '每次触发都传同一个值' },
@@ -452,6 +478,8 @@ const ackPolicy = ref('ack-after-run-finished')
 const replyTimeoutSeconds = ref('30')
 const debounceWindowMs = ref('')
 const idempotencyKeyPath = ref('')
+const workflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
+const returnDiagnostics = ref('false')
 const enableAfterCreate = ref('false')
 const mappingRows = ref<MappingRow[]>([])
 const busyTriggerSourceId = ref<string | null>(null)
@@ -574,6 +602,9 @@ function resolveLocalBufferPoolName(): string {
 
 function setSubmitMode(value: SelectValue): void {
   submitMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
+  if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
+    workflowRunRecordMode.value = 'minimal'
+  }
 }
 
 function setResultMode(value: SelectValue): void {
@@ -582,6 +613,18 @@ function setResultMode(value: SelectValue): void {
 
 function setAckPolicy(value: SelectValue): void {
   ackPolicy.value = selectValueToString(value) || 'ack-after-run-finished'
+}
+
+function setWorkflowRunRecordMode(value: SelectValue): void {
+  const nextValue = selectValueToString(value)
+  workflowRunRecordMode.value = nextValue === 'full' || nextValue === 'none' ? nextValue : 'minimal'
+  if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
+    workflowRunRecordMode.value = 'minimal'
+  }
+}
+
+function setReturnDiagnostics(value: SelectValue): void {
+  returnDiagnostics.value = selectValueToString(value) === 'true' ? 'true' : 'false'
 }
 
 function setMappingMode(row: MappingRow, value: SelectValue): void {
@@ -731,6 +774,8 @@ function applyProtocolTemplateDefaults(): void {
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
+  workflowRunRecordMode.value = template.templateId === 'zeromq-image-trigger' ? 'minimal' : 'full'
+  returnDiagnostics.value = 'false'
   buildMappingRows()
 }
 
@@ -808,11 +853,19 @@ function buildTransportConfig(): WorkflowJsonObject {
 }
 
 function buildDefaultExecutionMetadata(): WorkflowJsonObject {
-  if (selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') return {}
+  const metadata: WorkflowJsonObject = {
+    workflow_run_record_mode: workflowRunRecordMode.value,
+    return_timing_metadata_enabled: returnDiagnostics.value === 'true',
+    return_node_timings_enabled: returnDiagnostics.value === 'true',
+  }
+  if (selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') return metadata
   return {
+    ...metadata,
     trace_level: 'none',
     retain_trace_enabled: false,
     retain_node_records_enabled: false,
+    retain_input_payload_enabled: false,
+    retain_outputs_enabled: false,
   }
 }
 
@@ -910,6 +963,9 @@ async function submitTriggerSource(): Promise<void> {
   try {
     const normalizedTriggerSourceId = triggerSourceId.value.trim()
     if (!normalizedTriggerSourceId) throw new Error('trigger_source_id 不能为空')
+    if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
+      throw new Error('async TriggerSource 不能使用 none 记录模式')
+    }
     const triggerSource = await createWorkflowTriggerSource({
       projectId: selectedProjectId.value,
       triggerSourceId: normalizedTriggerSourceId,

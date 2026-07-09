@@ -14,6 +14,7 @@ from backend.service.application.workflows.execution_cleanup import register_loc
 from backend.service.application.workflows.runtime.policies import (
     should_retain_workflow_run_node_records,
     should_retain_workflow_run_trace,
+    should_return_workflow_timing_metadata,
 )
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
@@ -39,7 +40,7 @@ def apply_workflow_run_result(
     metadata = dict(workflow_run.metadata)
     if worker_result.error_details:
         metadata["error_details"] = dict(worker_result.error_details)
-    if worker_result.timings:
+    if worker_result.timings and should_return_workflow_timing_metadata(metadata):
         metadata["timings"] = _merge_timing_metadata(metadata.get("timings"), worker_result.timings)
     retain_outputs_enabled = _read_optional_bool_flag(metadata.get("retain_outputs_enabled")) is not False
     return replace(

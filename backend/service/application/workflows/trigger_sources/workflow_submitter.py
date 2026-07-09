@@ -8,6 +8,11 @@ from time import monotonic
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
 from backend.service.application.errors import ServiceError
 from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
+from backend.service.application.workflows.runtime.policies import (
+    WORKFLOW_RUN_RECORD_MODE_MINIMAL,
+    should_return_workflow_node_timings,
+    should_return_workflow_timing_metadata,
+)
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
 from backend.service.application.workflows.trigger_sources.input_binding_mapper import (
     InputBindingMapper,
@@ -104,16 +109,21 @@ class WorkflowSubmitter:
                 )
                 timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
         except ServiceError as error:
+            metadata: dict[str, object] = {
+                "error_code": error.code,
+                "error_details": dict(error.details),
+            }
+            if should_return_workflow_timing_metadata(execution_request.execution_metadata):
+                metadata["timings"] = {
+                    **timings,
+                    "trigger_submit_total_ms": _elapsed_ms(submit_started_at),
+                }
             return TriggerResultContract(
                 trigger_source_id=request.trigger_source.trigger_source_id,
                 event_id=request.trigger_event.event_id,
                 state="failed",
                 error_message=error.message,
-                metadata={
-                    "error_code": error.code,
-                    "error_details": dict(error.details),
-                    "timings": {**timings, "trigger_submit_total_ms": _elapsed_ms(submit_started_at)},
-                },
+                metadata=metadata,
             )
         result_dispatch_started_at = monotonic()
         result = self.result_dispatcher.build_result(
@@ -124,13 +134,18 @@ class WorkflowSubmitter:
         )
         timings["trigger_result_dispatch_ms"] = _elapsed_ms(result_dispatch_started_at)
         timings["trigger_submit_total_ms"] = _elapsed_ms(submit_started_at)
-        timings.update(_read_workflow_run_timings(workflow_run.metadata))
+        if should_return_workflow_timing_metadata(workflow_run.metadata):
+            timings.update(_read_workflow_run_timings(workflow_run.metadata))
         return result.model_copy(
             update={
                 "metadata": _merge_trigger_result_diagnostics(
                     result.metadata,
-                    timings,
-                    node_timings=_read_workflow_run_node_timings(workflow_run.metadata),
+                    timings if should_return_workflow_timing_metadata(workflow_run.metadata) else {},
+                    node_timings=(
+                        _read_workflow_run_node_timings(workflow_run.metadata)
+                        if should_return_workflow_node_timings(workflow_run.metadata)
+                        else ()
+                    ),
                 )
             }
         )
@@ -148,6 +163,9 @@ def _build_execution_metadata(
         metadata.setdefault("retain_node_records_enabled", False)
         metadata.setdefault("retain_input_payload_enabled", False)
         metadata.setdefault("retain_outputs_enabled", False)
+        metadata.setdefault("workflow_run_record_mode", WORKFLOW_RUN_RECORD_MODE_MINIMAL)
+        metadata.setdefault("return_timing_metadata_enabled", False)
+        metadata.setdefault("return_node_timings_enabled", False)
     metadata.update(
         {
             "trigger_source_id": request.trigger_source.trigger_source_id,
@@ -201,7 +219,11 @@ def _merge_trigger_result_diagnostics(
 ) -> dict[str, object]:
     """把 TriggerSource 提交计时和节点耗时摘要合并进结果 metadata。"""
 
-    payload = _merge_trigger_result_timings(metadata, timing_payload)
+    payload = (
+        _merge_trigger_result_timings(metadata, timing_payload)
+        if timing_payload
+        else dict(metadata)
+    )
     if node_timings:
         payload["node_timings"] = [dict(item) for item in node_timings]
     return payload

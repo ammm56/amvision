@@ -190,6 +190,23 @@ TriggerSource 高频 reply 默认返回小 JSON：
 
 如果用户确实需要返回图片，应通过 workflow 图和 TriggerSource `result_binding` 明确选择，并在前端和文档中标明这不是高帧率默认方式。
 
+## 运行记录和诊断开关
+
+高帧率 Trigger 不应每帧都走完整 WorkflowRun 持久化和完整 diagnostics 返回。当前执行元数据使用以下字段控制：
+
+- `workflow_run_record_mode=full`：完整记录，保留 dispatch/final 事件，并按 retention 开关保留 input、outputs 和 node_records。
+- `workflow_run_record_mode=minimal`：高速触发默认值；同步调用完成后只写一条最小 WorkflowRun 状态记录，不保留 input_payload、outputs、template_outputs 和 node_records。
+- `workflow_run_record_mode=none`：同步调用不写 WorkflowRun 数据库记录，仅返回当前调用结果；不适用于 async run。
+- `return_timing_metadata_enabled=false`：生产默认值；关闭外层 `metadata.timings`，同时清理模型节点业务输出里的 `metadata.timings`。
+- `return_node_timings_enabled=false`：生产默认值；关闭 `metadata.node_timings`。
+
+前端设置位置：
+
+- Workflow App 详情页的 Runtime 栏：设置新建 WorkflowAppRuntime 的默认记录模式和诊断返回策略。
+- 集成页 TriggerSource 的高级设置：按触发入口覆盖记录模式和诊断返回策略；ZeroMQ 图片触发默认 `minimal + 不返回诊断数据`。
+
+调试性能时再临时打开 `return_timing_metadata_enabled` 和 `return_node_timings_enabled`。需要历史事件、节点输入输出或完整追踪时，再把 `workflow_run_record_mode` 调整为 `full`，并打开 `retain_trace_enabled`、`retain_node_records_enabled` 和非 `none` 的 `trace_level`。
+
 ## 并发边界
 
 当前 ZeroMQ SDK 和后端 adapter 的基本形态是 REQ/REP：

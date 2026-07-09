@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from backend.contracts.buffers import BufferRef
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
@@ -20,6 +22,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.service.application.errors import ResourceNotFoundError
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
@@ -276,6 +279,127 @@ def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> No
     assert persisted_run.node_records == ()
     assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
     assert not service.dataset_storage.resolve(f"workflows/runtime/{workflow_run.workflow_run_id}").exists()
+
+
+def test_invoke_workflow_run_minimal_record_persists_only_status(tmp_path: Path) -> None:
+    """验证 minimal 记录模式只保存 WorkflowRun 最小状态。"""
+
+    worker_result = WorkflowRuntimeWorkerRunResult(
+        state="succeeded",
+        outputs={
+            "http_response": {
+                "status_code": 200,
+                "body": {
+                    "data": "ok",
+                    "metadata": {"timings": {"model_ms": 12.3}},
+                },
+            }
+        },
+        template_outputs={"http_response": {"status_code": 200}},
+        node_records=(
+            {
+                "node_id": "echo",
+                "node_type_id": "custom.test.echo",
+                "runtime_kind": "python-callable",
+                "inputs": {"text": "hello"},
+                "outputs": {"text": "hello"},
+            },
+        ),
+        worker_state=WorkflowRuntimeWorkerState(
+            observed_state="running",
+            process_id=321,
+            health_summary={"worker_state": "running"},
+        ),
+    )
+    service, workflow_service, _ = _build_runtime_service(
+        tmp_path,
+        worker_manager=_FakeWorkerManager(worker_result=worker_result),
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_image_decode_preview_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_image_decode_preview_application(),
+    )
+    runtime = service.create_workflow_app_runtime(
+        WorkflowAppRuntimeCreateRequest(
+            project_id="project-1",
+            application_id="image-decode-preview-app",
+            request_timeout_seconds=30,
+        ),
+        created_by="workflow-user",
+    )
+    running_runtime = replace(runtime, observed_state="running")
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+
+    workflow_run = service.invoke_workflow_app_runtime(
+        runtime.workflow_runtime_id,
+        WorkflowRuntimeInvokeRequest(
+            input_bindings={"request_text": {"value": "hello"}},
+            execution_metadata={"workflow_run_record_mode": "minimal"},
+        ),
+        created_by="workflow-user",
+    )
+
+    persisted_run = service.get_workflow_run(workflow_run.workflow_run_id)
+    assert persisted_run.state == "succeeded"
+    assert persisted_run.input_payload == {}
+    assert persisted_run.outputs == {}
+    assert persisted_run.template_outputs == {}
+    assert persisted_run.node_records == ()
+    assert "timings" not in persisted_run.metadata
+    assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
+
+
+def test_invoke_workflow_run_none_record_mode_skips_database_record(tmp_path: Path) -> None:
+    """验证 none 记录模式的同步调用不写 WorkflowRun 数据库记录。"""
+
+    worker_result = WorkflowRuntimeWorkerRunResult(
+        state="succeeded",
+        outputs={"http_response": {"status_code": 200}},
+        worker_state=WorkflowRuntimeWorkerState(
+            observed_state="running",
+            process_id=321,
+            health_summary={"worker_state": "running"},
+        ),
+    )
+    service, workflow_service, _ = _build_runtime_service(
+        tmp_path,
+        worker_manager=_FakeWorkerManager(worker_result=worker_result),
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_image_decode_preview_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_image_decode_preview_application(),
+    )
+    runtime = service.create_workflow_app_runtime(
+        WorkflowAppRuntimeCreateRequest(
+            project_id="project-1",
+            application_id="image-decode-preview-app",
+            request_timeout_seconds=30,
+        ),
+        created_by="workflow-user",
+    )
+    running_runtime = replace(runtime, observed_state="running")
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+
+    workflow_run = service.invoke_workflow_app_runtime(
+        runtime.workflow_runtime_id,
+        WorkflowRuntimeInvokeRequest(
+            input_bindings={"request_text": {"value": "hello"}},
+            execution_metadata={"workflow_run_record_mode": "none"},
+        ),
+        created_by="workflow-user",
+    )
+
+    assert workflow_run.state == "succeeded"
+    with pytest.raises(ResourceNotFoundError):
+        service.get_workflow_run(workflow_run.workflow_run_id)
 
 
 def test_runtime_payload_sanitizer_bounds_large_database_values() -> None:

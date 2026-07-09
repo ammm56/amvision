@@ -30,6 +30,9 @@ from backend.service.application.runtime.support.safe_counter import (
 from backend.service.application.workflows.trigger_sources.protocol_adapter import (
     WorkflowTriggerEventHandler,
 )
+from backend.service.application.workflows.runtime.policies import (
+    should_return_workflow_timing_metadata,
+)
 from backend.service.application.workflows.trigger_sources.trigger_event_normalizer import (
     RawTriggerEvent,
 )
@@ -337,9 +340,10 @@ class ZeroMqTriggerAdapter:
             )
             timings["zeromq_submit_event_ms"] = _elapsed_ms(submit_started_at)
             timings["zeromq_adapter_total_ms"] = _elapsed_ms(adapter_started_at)
-            result = result.model_copy(
-                update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
-            )
+            if should_return_workflow_timing_metadata(trigger_source.default_execution_metadata):
+                result = result.model_copy(
+                    update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
+                )
             if result.state == "failed" and result.workflow_run_id is None:
                 self._release_buffer_ref_payload(buffer_ref_payload)
             if state is not None:

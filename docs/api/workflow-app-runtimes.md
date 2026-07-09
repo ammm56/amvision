@@ -106,7 +106,7 @@
 - request_timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 60
 - heartbeat_interval_seconds：可选；worker 主动 heartbeat 周期秒数，默认 5
 - heartbeat_timeout_seconds：可选；控制面判定 heartbeat 超时秒数，默认 15，且必须大于 heartbeat_interval_seconds
-- metadata：可选，附加元数据
+- metadata：可选，附加元数据；可通过 `metadata.default_execution_metadata` 设置该 runtime 的默认调用策略，例如 `workflow_run_record_mode`、`return_timing_metadata_enabled` 和 `return_node_timings_enabled`
 
 ### 最小请求 JSON
 
@@ -119,10 +119,25 @@
   "heartbeat_interval_seconds": 5,
   "heartbeat_timeout_seconds": 15,
   "metadata": {
-    "line_id": "line-1"
+    "line_id": "line-1",
+    "default_execution_metadata": {
+      "workflow_run_record_mode": "full",
+      "return_timing_metadata_enabled": false,
+      "return_node_timings_enabled": false,
+      "trace_level": "none",
+      "retain_trace_enabled": false,
+      "retain_node_records_enabled": false
+    }
   }
 }
 ```
+
+### default_execution_metadata 约定
+
+- `workflow_run_record_mode=full`：完整记录，适合人工调试、低频 HTTP 调用和需要历史追踪的场景。
+- `workflow_run_record_mode=minimal`：同步调用只写最小完成记录，适合高帧率 Trigger。
+- `workflow_run_record_mode=none`：同步调用不写 WorkflowRun 数据库记录，适合只关心实时返回的极简链路；异步 run 不能使用。
+- `return_timing_metadata_enabled=false` 和 `return_node_timings_enabled=false` 是生产默认值。需要排查性能时再打开，返回体才会包含 `timings` 和 `node_timings`。
 
 ### 最小响应 JSON
 

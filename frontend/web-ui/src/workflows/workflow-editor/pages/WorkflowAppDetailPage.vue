@@ -118,6 +118,16 @@
             </Button>
           </div>
         </div>
+        <div v-if="canWriteWorkflows" class="form-grid workflow-runtime-defaults">
+          <label class="field">
+            <span>WorkflowRun 记录</span>
+            <SelectField :model-value="runtimeWorkflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setRuntimeWorkflowRunRecordMode" />
+          </label>
+          <label class="field">
+            <span>返回诊断数据</span>
+            <SelectField :model-value="runtimeReturnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setRuntimeReturnDiagnostics" />
+          </label>
+        </div>
         <EmptyState v-if="runtimes.length === 0" title="还没有 WorkflowAppRuntime" description="创建 runtime 后可启动、查看 health，并作为 TriggerSource 的目标。" />
         <div v-else class="resource-table">
           <table>
@@ -387,6 +397,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -408,6 +419,25 @@ import type { FlowApplicationBinding, WorkflowAppRuntime, WorkflowJsonObject, Wo
 
 type RuntimeControlAction = 'start' | 'stop' | 'restart'
 type RunSubmitMode = 'async' | 'sync'
+type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
+type SelectValue = string | number | boolean | null
+
+interface SelectOption {
+  label: string
+  value: SelectValue
+  description?: string
+}
+
+const workflowRunRecordModeOptions: SelectOption[] = [
+  { label: 'full', value: 'full', description: '保留完整 WorkflowRun 记录' },
+  { label: 'minimal', value: 'minimal', description: '只写最小状态记录' },
+  { label: 'none', value: 'none', description: '同步调用不写 WorkflowRun 数据库记录' },
+]
+
+const returnDiagnosticsOptions: SelectOption[] = [
+  { label: '否', value: 'false', description: '生产默认，不返回 timings 和 node_timings' },
+  { label: '是', value: 'true', description: '排查问题时返回耗时诊断' },
+]
 
 const route = useRoute()
 const router = useRouter()
@@ -424,6 +454,8 @@ const busyRuntimeId = ref<string | null>(null)
 const runtimePayloadText = ref('{}')
 const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
+const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('full')
+const runtimeReturnDiagnostics = ref('false')
 
 const applicationId = computed(() => String(route.params.applicationId ?? ''))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -762,6 +794,38 @@ function openSelectedRuntimeTriggerSource(): void {
   void router.push(triggerSourceCreatePath(runtime.workflow_runtime_id))
 }
 
+function selectValueToString(value: SelectValue): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function setRuntimeWorkflowRunRecordMode(value: SelectValue): void {
+  const nextValue = selectValueToString(value)
+  runtimeWorkflowRunRecordMode.value = nextValue === 'minimal' || nextValue === 'none' ? nextValue : 'full'
+}
+
+function setRuntimeReturnDiagnostics(value: SelectValue): void {
+  runtimeReturnDiagnostics.value = selectValueToString(value) === 'true' ? 'true' : 'false'
+}
+
+function buildRuntimeDefaultExecutionMetadata(): WorkflowJsonObject {
+  return {
+    workflow_run_record_mode: runtimeWorkflowRunRecordMode.value,
+    return_timing_metadata_enabled: runtimeReturnDiagnostics.value === 'true',
+    return_node_timings_enabled: runtimeReturnDiagnostics.value === 'true',
+    trace_level: 'none',
+    retain_trace_enabled: false,
+    retain_node_records_enabled: false,
+  }
+}
+
+function readRuntimeWorkflowRunRecordMode(runtime: WorkflowAppRuntime): WorkflowRunRecordMode {
+  const defaultExecutionMetadata = runtime.metadata.default_execution_metadata
+  const recordMode = typeof defaultExecutionMetadata === 'object' && defaultExecutionMetadata !== null && !Array.isArray(defaultExecutionMetadata)
+    ? (defaultExecutionMetadata as WorkflowJsonObject).workflow_run_record_mode
+    : null
+  return recordMode === 'minimal' || recordMode === 'none' ? recordMode : 'full'
+}
+
 async function loadPage(): Promise<void> {
   loading.value = true
   errorMessage.value = null
@@ -794,7 +858,10 @@ async function createRuntime(): Promise<void> {
       projectId: selectedProjectId.value,
       applicationId: application.value.application_id,
       displayName: `${application.value.display_name || application.value.application_id} runtime`,
-      metadata: { source: 'web-ui-app-detail' },
+      metadata: {
+        source: 'web-ui-app-detail',
+        default_execution_metadata: buildRuntimeDefaultExecutionMetadata(),
+      },
     })
     replaceRuntime(runtime)
     selectedRuntimeId.value = runtime.workflow_runtime_id
@@ -866,6 +933,10 @@ async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
 async function submitRun(mode: RunSubmitMode): Promise<void> {
   const runtime = selectedRuntime.value
   if (!runtime || !canWriteWorkflows.value) return
+  if (mode === 'async' && readRuntimeWorkflowRunRecordMode(runtime) === 'none') {
+    errorMessage.value = '当前 runtime 使用 none 记录模式，不能提交异步 run'
+    return
+  }
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
   try {
