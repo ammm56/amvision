@@ -9,12 +9,17 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
+    DeploymentProcessEventResponse,
     DeploymentProcessStatusResponse,
     DeploymentRuntimeHealthResponse,
+    build_deployment_process_event_response,
     run_deployment_process_health_action,
     run_deployment_process_status_action,
 )
-from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
+from backend.service.application.runtime.deployment.deployment_event_source import (
+    DetectionDeploymentEventSource,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -147,6 +152,40 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
         view = service.get_deployment_instance(deployment_instance_id)
         check_project_visible(principal, view.project_id)
         return config.response_builder(view)
+
+    @router.get(
+        f"/{config.route_segment}/deployment-instances/{{deployment_instance_id}}/events",
+        response_model=list[DeploymentProcessEventResponse],
+    )
+    def get_deployment_events(
+        deployment_instance_id: str,
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+        session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+        dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+        after_sequence: Annotated[int | None, Query(description="只返回 sequence 大于该值的事件", ge=0)] = None,
+        limit: Annotated[int | None, Query(description="最多返回多少条事件", ge=1, le=500)] = None,
+        runtime_mode: Annotated[str | None, Query(description="按 sync 或 async 通道过滤事件")] = None,
+    ) -> list[DeploymentProcessEventResponse]:
+        """读取当前 task 的 DeploymentInstance 事件列表。"""
+
+        service = build_current_service(session_factory, dataset_storage)
+        view = service.get_deployment_instance(deployment_instance_id)
+        check_project_visible(principal, view.project_id)
+        if runtime_mode is not None and runtime_mode not in {"sync", "async"}:
+            raise InvalidRequestError(
+                "runtime_mode 仅支持 sync 或 async",
+                details={"runtime_mode": runtime_mode},
+            )
+        event_source = DetectionDeploymentEventSource(
+            dataset_storage_root_dir=str(dataset_storage.root_dir),
+        )
+        events = event_source.list_events(
+            deployment_instance_id,
+            after_sequence=after_sequence,
+            runtime_mode=runtime_mode,
+            limit=limit,
+        )
+        return [build_deployment_process_event_response(item) for item in events]
 
     @router.post(
         f"/{config.route_segment}/deployment-instances/{{deployment_instance_id}}/sync/start",

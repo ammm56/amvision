@@ -13,6 +13,12 @@ from backend.service.api.rest.v1.routes.task_training.responses import (
     build_detail_response,
     build_summary_response,
 )
+from backend.service.api.rest.v1.routes.task_training.output_files import (
+    TrainingOutputFileDetailResponse,
+    TrainingOutputFileSummaryResponse,
+    list_training_output_files as build_training_output_file_list,
+    read_training_output_file_detail,
+)
 from backend.service.api.rest.v1.routes.task_training.schemas import (
     TrainingTaskDetailResponse,
     TrainingTaskSummaryResponse,
@@ -140,28 +146,39 @@ def delete_training_task(
     task_service.delete_task(task_id)
 
 
-def read_training_output_file(
+def list_training_task_output_files(
     *,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
     task_id: str,
-    file_name: str,
-) -> dict[str, object] | None:
-    """读取训练输出文件内容。"""
+) -> list[TrainingOutputFileSummaryResponse]:
+    """列出非 detection 训练任务输出文件。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
     detail = task_service.get_task(task_id)
     task = detail.task
     require_non_detection_training_task(task)
-    result = dict(task.result) if task.result else {}
-    output_prefix = result.get("output_prefix", f"task-runs/{task.task_id}")
-    object_key = f"{output_prefix}/output-files/{file_name}"
-    resolved = dataset_storage.resolve(object_key)
-    if not resolved.is_file():
-        return None
-    if file_name.endswith(".json"):
-        return dataset_storage.read_json(object_key)
-    return {"file_name": file_name, "size": resolved.stat().st_size}
+    return build_training_output_file_list(task=task, dataset_storage=dataset_storage)
+
+
+def get_training_task_output_file(
+    *,
+    session_factory: SessionFactory,
+    dataset_storage: LocalDatasetStorage,
+    task_id: str,
+    file_name: str,
+) -> TrainingOutputFileDetailResponse:
+    """读取非 detection 训练任务输出文件详情。"""
+
+    task_service = SqlAlchemyTaskService(session_factory)
+    detail = task_service.get_task(task_id)
+    task = detail.task
+    require_non_detection_training_task(task)
+    return read_training_output_file_detail(
+        task=task,
+        dataset_storage=dataset_storage,
+        file_name=file_name,
+    )
 
 
 def require_non_detection_training_task(task: TaskRecord) -> None:

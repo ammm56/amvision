@@ -192,6 +192,17 @@ def test_non_detection_deployment_runtime_controls_cover_sync_and_async_basics(
             assert sync_warmup_payload["healthy_instance_count"] == 1
             assert sync_warmup_payload["warmed_instance_count"] == 1
 
+            sync_events_response = client.get(
+                f"/api/v1/models/{spec.task_type}/deployment-instances/{deployment_instance_id}/events?runtime_mode=sync",
+                headers=_build_model_headers(),
+            )
+            assert sync_events_response.status_code == 200
+            assert [item["event_type"] for item in sync_events_response.json()] == [
+                "deployment.started",
+                "deployment.warmup.completed",
+            ]
+            assert all(item["runtime_mode"] == "sync" for item in sync_events_response.json())
+
             sync_reset_response = client.post(
                 f"/api/v1/models/{spec.task_type}/deployment-instances/{deployment_instance_id}/sync/reset",
                 headers=_build_model_headers(),
@@ -212,6 +223,13 @@ def test_non_detection_deployment_runtime_controls_cover_sync_and_async_basics(
             )
             assert async_status_response.status_code == 200
             assert async_status_response.json()["process_state"] == "running"
+
+            async_events_response = client.get(
+                f"/api/v1/models/{spec.task_type}/deployment-instances/{deployment_instance_id}/events?runtime_mode=async",
+                headers=_build_model_headers(),
+            )
+            assert async_events_response.status_code == 200
+            assert [item["event_type"] for item in async_events_response.json()] == ["deployment.started"]
 
             async_stop_response = client.post(
                 f"/api/v1/models/{spec.task_type}/deployment-instances/{deployment_instance_id}/async/stop",

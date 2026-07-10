@@ -15,23 +15,46 @@ import {
 
 const DEFAULT_TRAINING_RECIPE_ID = 'default'
 
-const detectionTrainingFormatByModelType: Record<string, string> = {
-  yolox: 'coco-detection-v1',
-  rfdetr: 'coco-detection-v1',
-  yolov8: 'yolo-detection-v1',
-  yolo11: 'yolo-detection-v1',
-  yolo26: 'yolo-detection-v1',
+const trainingFormatsByTaskAndModelType: Record<ModelTaskType, Record<string, string[]>> = {
+  detection: {
+    yolox: ['coco-detection-v1', 'voc-detection-v1'],
+    yolov8: ['yolo-detection-v1', 'coco-detection-v1'],
+    yolo11: ['yolo-detection-v1', 'coco-detection-v1'],
+    yolo26: ['yolo-detection-v1', 'coco-detection-v1'],
+    rfdetr: ['coco-detection-v1'],
+  },
+  classification: {
+    yolov8: ['imagenet-classification-v1'],
+    yolo11: ['imagenet-classification-v1'],
+    yolo26: ['imagenet-classification-v1'],
+  },
+  segmentation: {
+    yolov8: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
+    yolo11: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
+    yolo26: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
+    rfdetr: ['coco-instance-seg-v1'],
+  },
+  pose: {
+    yolov8: ['yolo-pose-v1', 'coco-keypoints-v1'],
+    yolo11: ['yolo-pose-v1', 'coco-keypoints-v1'],
+    yolo26: ['yolo-pose-v1', 'coco-keypoints-v1'],
+  },
+  obb: {
+    yolov8: ['dota-obb-v1'],
+    yolo11: ['dota-obb-v1'],
+    yolo26: ['dota-obb-v1'],
+  },
 }
 
 function normalizeText(value: string | null | undefined): string {
   return String(value ?? '').trim().toLowerCase()
 }
 
-function resolveExpectedTrainingExportFormat(taskType: ModelTaskType, modelTypeValue: string): string | null {
-  if (taskType !== 'detection') {
-    return null
-  }
-  return detectionTrainingFormatByModelType[normalizeText(modelTypeValue)] ?? null
+export function resolveSupportedTrainingExportFormats(
+  taskType: ModelTaskType,
+  modelTypeValue: string,
+): string[] {
+  return trainingFormatsByTaskAndModelType[taskType][normalizeText(modelTypeValue)] ?? []
 }
 
 export function useModelTrainingState(options: {
@@ -97,14 +120,17 @@ export function useModelTrainingState(options: {
       return options.messages.trainingExportManifestMissing()
     }
 
-    const expectedFormatId = resolveExpectedTrainingExportFormat(
+    const supportedFormatIds = resolveSupportedTrainingExportFormats(
       options.selectedTaskType.value,
       options.resolvedTrainingModelType.value,
     )
-    if (expectedFormatId !== null && normalizeText(datasetExport.format_id) !== normalizeText(expectedFormatId)) {
+    if (
+      supportedFormatIds.length > 0
+      && !supportedFormatIds.some((formatId) => normalizeText(datasetExport.format_id) === normalizeText(formatId))
+    ) {
       return options.messages.trainingExportFormatMismatch({
         modelType: options.resolvedTrainingModelType.value,
-        formatId: expectedFormatId,
+        formatId: supportedFormatIds.join(' / '),
       })
     }
 

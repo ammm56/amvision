@@ -50,6 +50,8 @@
         <input
           :value="conversionModelType"
           placeholder="yolox / yolov8 / yolo11 / yolo26 / rfdetr"
+          :readonly="Boolean(conversionSelectedModelSummary)"
+          :aria-readonly="Boolean(conversionSelectedModelSummary)"
           required
           @input="emitString('update:conversionModelType', $event)"
         />
@@ -58,6 +60,8 @@
         <span>{{ t('modelOps.fields.sourceModelVersionId') }}</span>
         <input
           :value="conversionSourceModelVersionId"
+          :readonly="Boolean(conversionSelectedModelSummary)"
+          :aria-readonly="Boolean(conversionSelectedModelSummary)"
           required
           @input="emitString('update:conversionSourceModelVersionId', $event)"
         />
@@ -83,7 +87,7 @@
       <Button
         variant="primary"
         type="submit"
-        :disabled="!canWriteTasks || conversionSubmitting || !conversionSourceModelVersionId.trim()"
+        :disabled="!canWriteTasks || conversionSubmitting || !conversionSelectedModelSummary || !conversionSourceModelVersionId.trim()"
       >
         <Wand2 :size="16" />
         {{ conversionSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitConversion') }}

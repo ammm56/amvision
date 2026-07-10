@@ -12,6 +12,7 @@ from backend.service.application.errors import InvalidRequestError, ResourceNotF
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
+from backend.service.application.runtime.deployment.deployment_events import DetectionDeploymentProcessEvent
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
@@ -73,6 +74,18 @@ class DeploymentRuntimeHealthResponse(DeploymentProcessStatusResponse):
     instances: list[DeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
     keep_warm: DeploymentProcessKeepWarmResponse = Field(default_factory=DeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
     local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
+
+
+class DeploymentProcessEventResponse(BaseModel):
+    """描述 deployment 生命周期与健康事件响应。"""
+
+    deployment_instance_id: str = Field(description="DeploymentInstance id")
+    runtime_mode: str = Field(description="运行时通道；sync 或 async")
+    sequence: int = Field(description="事件顺序号")
+    event_type: str = Field(description="事件类型")
+    created_at: str = Field(description="事件发生时间")
+    message: str = Field(description="事件摘要消息")
+    payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
 
 
 def ensure_deployment_visible(
@@ -266,6 +279,22 @@ def build_deployment_runtime_health_response(
         instances=[_build_runtime_instance_health_response(item) for item in process_health.instances],
         keep_warm=_build_keep_warm_response(process_health.keep_warm),
         local_buffer_broker=dict(process_health.local_buffer_broker),
+    )
+
+
+def build_deployment_process_event_response(
+    item: DetectionDeploymentProcessEvent,
+) -> DeploymentProcessEventResponse:
+    """把 deployment 事件转换为 REST 响应。"""
+
+    return DeploymentProcessEventResponse(
+        deployment_instance_id=item.deployment_instance_id,
+        runtime_mode=item.runtime_mode,
+        sequence=item.sequence,
+        event_type=item.event_type,
+        created_at=item.created_at,
+        message=item.message,
+        payload=dict(item.payload),
     )
 
 

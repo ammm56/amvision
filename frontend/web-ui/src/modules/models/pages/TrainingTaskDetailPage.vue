@@ -63,7 +63,60 @@
       </div>
     </section>
 
-    <section v-if="taskType === 'detection'" class="resource-section">
+    <section v-if="task" class="resource-section training-progress-section">
+      <div class="section-heading">
+        <div>
+          <p class="page-kicker">{{ t('trainingDetail.progressKicker') }}</p>
+          <h2>{{ t('trainingDetail.progressTitle') }}</h2>
+        </div>
+        <strong class="training-progress-percent">{{ progressPercentText }}</strong>
+      </div>
+      <div class="training-progress-track" role="progressbar" :aria-valuenow="progressPercent ?? undefined" aria-valuemin="0" aria-valuemax="100">
+        <span :style="{ width: progressBarWidth }" />
+      </div>
+      <div class="summary-grid training-progress-grid">
+        <div>
+          <span>{{ t('trainingDetail.fields.stage') }}</span>
+          <strong>{{ progressStage }}</strong>
+        </div>
+        <div>
+          <span>{{ t('trainingDetail.fields.epoch') }}</span>
+          <strong>{{ progressEpochText }}</strong>
+        </div>
+        <div>
+          <span>{{ t('trainingDetail.fields.learningRate') }}</span>
+          <strong>{{ learningRateText }}</strong>
+        </div>
+        <div>
+          <span>{{ t('trainingDetail.fields.currentMetric') }}</span>
+          <strong>{{ currentMetricText }}</strong>
+        </div>
+      </div>
+      <div class="training-metric-panels">
+        <article class="training-metric-panel">
+          <h3>{{ t('trainingDetail.trainMetricsTitle') }}</h3>
+          <dl v-if="trainMetricEntries.length > 0" class="training-metric-list">
+            <template v-for="metric in trainMetricEntries" :key="metric.name">
+              <dt>{{ metric.name }}</dt>
+              <dd>{{ metric.value }}</dd>
+            </template>
+          </dl>
+          <span v-else class="training-muted-value">-</span>
+        </article>
+        <article class="training-metric-panel">
+          <h3>{{ t('trainingDetail.validationMetricsTitle') }}</h3>
+          <dl v-if="validationMetricEntries.length > 0" class="training-metric-list">
+            <template v-for="metric in validationMetricEntries" :key="metric.name">
+              <dt>{{ metric.name }}</dt>
+              <dd>{{ metric.value }}</dd>
+            </template>
+          </dl>
+          <span v-else class="training-muted-value">-</span>
+        </article>
+      </div>
+    </section>
+
+    <section v-if="task" class="resource-section">
       <div>
         <p class="page-kicker">{{ t('trainingDetail.outputsKicker') }}</p>
         <h2>{{ t('trainingDetail.outputsTitle') }}</h2>
@@ -166,6 +219,32 @@ const taskType = computed<ModelTaskType | null>(() => {
     : null
 })
 const canRegisterCheckpoint = computed(() => Boolean(task.value?.latest_checkpoint_object_key || task.value?.control_status.resume_checkpoint_object_key))
+const progressSnapshot = computed(() => task.value?.progress ?? {})
+const progressPercent = computed(() => readNumber(progressSnapshot.value.percent))
+const progressPercentText = computed(() => progressPercent.value === null ? '-' : `${progressPercent.value.toFixed(1)}%`)
+const progressBarWidth = computed(() => `${Math.min(100, Math.max(0, progressPercent.value ?? 0))}%`)
+const progressStage = computed(() => formatPlainValue(progressSnapshot.value.stage))
+const progressEpochText = computed(() => {
+  const epoch = readNumber(progressSnapshot.value.epoch)
+  const maxEpochs = readNumber(progressSnapshot.value.max_epochs)
+  if (epoch === null && maxEpochs === null) return '-'
+  return `${epoch ?? '-'} / ${maxEpochs ?? '-'}`
+})
+const learningRateText = computed(() => formatMetricValue(progressSnapshot.value.learning_rate))
+const currentMetricText = computed(() => {
+  const name = formatPlainValue(progressSnapshot.value.current_metric_name)
+  const value = formatMetricValue(progressSnapshot.value.current_metric_value)
+  if (name === '-' && value === '-') return bestMetricText.value
+  return `${name}: ${value}`
+})
+const bestMetricText = computed(() => {
+  const name = task.value?.best_metric_name || formatPlainValue(progressSnapshot.value.best_metric_name)
+  const value = task.value?.best_metric_value ?? progressSnapshot.value.best_metric_value
+  if (!name || name === '-') return '-'
+  return `${name}: ${formatMetricValue(value)}`
+})
+const trainMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.train_metrics))
+const validationMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.validation_metrics))
 const selectedOutputContent = computed(() => {
   const outputFile = selectedOutputFile.value
   if (!outputFile) return ''
@@ -206,12 +285,17 @@ async function refreshPage(): Promise<void> {
   try {
     const [taskDetail, files] = await Promise.all([
       getModelTrainingTaskDetail(currentTaskType, taskId.value),
-      currentTaskType === 'detection' ? listModelTrainingOutputFiles(currentTaskType, taskId.value) : Promise.resolve([]),
+      listModelTrainingOutputFiles(currentTaskType, taskId.value),
     ])
     task.value = taskDetail
     outputFiles.value = files
-    if (!selectedOutputFile.value && files[0]) {
-      await selectOutputFile(files[0].file_name)
+    const selectedFileName = selectedOutputFile.value?.file_name
+    const nextFileName = files.some((file) => file.file_name === selectedFileName)
+      ? selectedFileName
+      : files[0]?.file_name
+    selectedOutputFile.value = null
+    if (nextFileName) {
+      await selectOutputFile(nextFileName)
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.loadFailed')
@@ -271,9 +355,6 @@ async function selectOutputFile(fileName: string): Promise<void> {
     errorMessage.value = 'task_type 不能为空'
     return
   }
-  if (taskType.value !== 'detection') {
-    return
-  }
   const currentTaskType = taskType.value
   errorMessage.value = null
   try {
@@ -282,4 +363,129 @@ async function selectOutputFile(fileName: string): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.outputFailed')
   }
 }
+
+function buildMetricEntries(value: unknown): Array<{ name: string; value: string }> {
+  const metrics = readRecord(value)
+  return Object.entries(metrics)
+    .filter(([, metricValue]) => metricValue !== null && metricValue !== undefined)
+    .map(([name, metricValue]) => ({ name, value: formatMetricValue(metricValue) }))
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  return null
+}
+
+function formatMetricValue(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (Number.isInteger(value)) return String(value)
+    return String(Number(value.toFixed(6)))
+  }
+  return formatPlainValue(value)
+}
+
+function formatPlainValue(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return '-'
+}
 </script>
+
+<style scoped>
+.training-progress-section {
+  gap: 14px;
+}
+
+.training-progress-percent {
+  color: var(--accent-strong);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.training-progress-track {
+  height: 8px;
+  overflow: hidden;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.training-progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 160ms ease;
+}
+
+.training-progress-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.training-metric-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.training-metric-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--summary-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.training-metric-panel h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.training-metric-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 7px 12px;
+  margin: 0;
+}
+
+.training-metric-list dt,
+.training-metric-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.training-metric-list dt {
+  color: var(--muted);
+}
+
+.training-metric-list dd {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.training-muted-value {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  .training-progress-grid,
+  .training-metric-panels {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

@@ -27,9 +27,22 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
     task_spec = dict(task.task_spec) if task.task_spec else {}
     result = dict(task.result) if task.result else {}
     metadata = dict(task.metadata) if task.metadata else {}
+    progress = dict(task.progress) if task.progress else {}
     training_summary = result.get("summary")
     training_summary_payload = (
         dict(training_summary) if isinstance(training_summary, dict) else {}
+    )
+    summary_output_files = training_summary_payload.get("output_files")
+    summary_output_files_payload = (
+        dict(summary_output_files) if isinstance(summary_output_files, dict) else {}
+    )
+    result_output_files = result.get("output_files")
+    result_output_files_payload = (
+        dict(result_output_files) if isinstance(result_output_files, dict) else {}
+    )
+    metrics_summary = training_summary_payload.get("metrics_summary")
+    metrics_summary_payload = (
+        dict(metrics_summary) if isinstance(metrics_summary, dict) else {}
     )
     return TrainingTaskSummaryResponse(
         task_id=task.task_id,
@@ -42,7 +55,7 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
         current_attempt_no=task.current_attempt_no,
         started_at=task.started_at,
         finished_at=task.finished_at,
-        progress=dict(task.progress) if task.progress else {},
+        progress=progress,
         result=result,
         error_message=task.error_message,
         metadata=metadata,
@@ -80,19 +93,61 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
             training_summary_payload.get("latest_checkpoint_model_version_id")
         ),
         output_object_prefix=read_optional_str(result.get("output_object_prefix"))
-        or read_optional_str(result.get("output_prefix")),
-        checkpoint_object_key=read_optional_str(result.get("checkpoint_object_key")),
+        or read_optional_str(result.get("output_prefix"))
+        or read_optional_str(training_summary_payload.get("output_object_prefix"))
+        or read_optional_str(training_summary_payload.get("output_prefix"))
+        or read_optional_str(summary_output_files_payload.get("output_object_prefix"))
+        or read_optional_str(result_output_files_payload.get("output_object_prefix")),
+        checkpoint_object_key=read_optional_str(result.get("checkpoint_object_key"))
+        or read_optional_str(training_summary_payload.get("checkpoint_object_key"))
+        or read_optional_str(summary_output_files_payload.get("checkpoint_object_key"))
+        or read_optional_str(result_output_files_payload.get("checkpoint_object_key")),
         latest_checkpoint_object_key=read_optional_str(
             result.get("latest_checkpoint_object_key")
+        )
+        or read_optional_str(
+            training_summary_payload.get("latest_checkpoint_object_key")
+        )
+        or read_optional_str(
+            summary_output_files_payload.get("latest_checkpoint_object_key")
+        )
+        or read_optional_str(
+            result_output_files_payload.get("latest_checkpoint_object_key")
         ),
-        labels_object_key=read_optional_str(result.get("labels_object_key")),
-        metrics_object_key=read_optional_str(result.get("metrics_object_key")),
+        labels_object_key=read_optional_str(result.get("labels_object_key"))
+        or read_optional_str(training_summary_payload.get("labels_object_key"))
+        or read_optional_str(summary_output_files_payload.get("labels_object_key"))
+        or read_optional_str(result_output_files_payload.get("labels_object_key")),
+        metrics_object_key=read_optional_str(result.get("metrics_object_key"))
+        or read_optional_str(training_summary_payload.get("metrics_object_key"))
+        or read_optional_str(summary_output_files_payload.get("metrics_object_key"))
+        or read_optional_str(result_output_files_payload.get("metrics_object_key")),
         validation_metrics_object_key=read_optional_str(
             result.get("validation_metrics_object_key")
+        )
+        or read_optional_str(
+            training_summary_payload.get("validation_metrics_object_key")
+        )
+        or read_optional_str(
+            summary_output_files_payload.get("validation_metrics_object_key")
+        )
+        or read_optional_str(
+            result_output_files_payload.get("validation_metrics_object_key")
         ),
-        summary_object_key=read_optional_str(result.get("summary_object_key")),
-        best_metric_name=read_optional_str(result.get("best_metric_name")),
-        best_metric_value=_read_optional_float(result.get("best_metric_value")),
+        summary_object_key=read_optional_str(result.get("summary_object_key"))
+        or read_optional_str(training_summary_payload.get("summary_object_key"))
+        or read_optional_str(summary_output_files_payload.get("summary_object_key"))
+        or read_optional_str(result_output_files_payload.get("summary_object_key")),
+        best_metric_name=read_optional_str(result.get("best_metric_name"))
+        or read_optional_str(training_summary_payload.get("best_metric_name"))
+        or read_optional_str(metrics_summary_payload.get("best_metric_name"))
+        or read_optional_str(progress.get("best_metric_name")),
+        best_metric_value=_first_optional_float(
+            result.get("best_metric_value"),
+            training_summary_payload.get("best_metric_value"),
+            metrics_summary_payload.get("best_metric_value"),
+            progress.get("best_metric_value"),
+        ),
         training_summary=training_summary_payload,
     )
 
@@ -205,5 +260,15 @@ def _read_optional_float(value: object) -> float | None:
         return None
     if isinstance(value, int | float):
         return float(value)
+    return None
+
+
+def _first_optional_float(*values: object) -> float | None:
+    """返回第一个存在的可选数值，保留 0.0 这类合法指标。"""
+
+    for value in values:
+        parsed = _read_optional_float(value)
+        if parsed is not None:
+            return parsed
     return None
 

@@ -8,10 +8,15 @@ import pytest
 
 from backend.service.api.rest.v1.routes.task_training import (
     catalog as catalog_module,
+    output_files as output_files_module,
     responses as responses_module,
     services as services_module,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 
 
 def test_build_summary_response_exposes_task_type_for_non_detection_training() -> None:
@@ -85,6 +90,94 @@ def test_build_detail_response_exposes_common_training_detail_shape() -> None:
     assert response.control_status.status == "idle"
     assert response.control_status.resume_checkpoint_object_key == "task-runs/task-2/output-files/latest-checkpoint.pt"
     assert response.events[0].event_id == "event-1"
+
+
+def test_build_summary_response_resolves_training_output_files_from_summary() -> None:
+    """验证摘要响应会读取 summary.output_files 中的正式训练产物路径。"""
+
+    task = SimpleNamespace(
+        task_id="task-3",
+        task_kind=catalog_module.YOLO11_CLASSIFICATION_TRAINING_TASK_KIND,
+        worker_pool="classification-worker",
+        state="paused",
+        current_attempt_no=1,
+        project_id="project-1",
+        display_name="classification task",
+        created_by="user-1",
+        created_at="2026-06-13T00:00:00Z",
+        started_at="2026-06-13T00:01:00Z",
+        finished_at=None,
+        error_message=None,
+        progress={"stage": "paused", "best_metric_value": 0.0},
+        result={
+            "summary": {
+                "best_metric_name": "val_top1_accuracy",
+                "best_metric_value": 0.0,
+                "output_files": {
+                    "output_object_prefix": "task-runs/task-3",
+                    "latest_checkpoint_object_key": "task-runs/task-3/output-files/latest-checkpoint.pt",
+                    "labels_object_key": "task-runs/task-3/output-files/labels.txt",
+                    "metrics_object_key": "task-runs/task-3/output-files/train-metrics.json",
+                    "validation_metrics_object_key": "task-runs/task-3/output-files/validation-metrics.json",
+                    "summary_object_key": "task-runs/task-3/output-files/training-summary.json",
+                },
+            }
+        },
+        metadata={"classification_training_control": {}},
+        task_spec={"model_type": "yolo11", "recipe_id": "default"},
+    )
+
+    response = responses_module.build_summary_response(task)
+
+    assert response.output_object_prefix == "task-runs/task-3"
+    assert response.latest_checkpoint_object_key == "task-runs/task-3/output-files/latest-checkpoint.pt"
+    assert response.labels_object_key == "task-runs/task-3/output-files/labels.txt"
+    assert response.metrics_object_key == "task-runs/task-3/output-files/train-metrics.json"
+    assert response.validation_metrics_object_key == "task-runs/task-3/output-files/validation-metrics.json"
+    assert response.summary_object_key == "task-runs/task-3/output-files/training-summary.json"
+    assert response.best_metric_name == "val_top1_accuracy"
+    assert response.best_metric_value == 0.0
+
+
+def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_path) -> None:
+    """验证非 detection output-files helper 会按标准目录读取 ready/pending 状态。"""
+
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "data"))
+    )
+    storage.write_json(
+        "task-runs/task-4/output-files/train-metrics.json",
+        {"final_metrics": {"loss": 0.2, "accuracy": 0.75}},
+    )
+    storage.write_json(
+        "task-runs/task-4/output-files/validation-metrics.json",
+        {"final_metrics": {"top1_accuracy": 0.5, "top5_accuracy": 1.0}},
+    )
+    storage.write_text("task-runs/task-4/output-files/labels.txt", "ok\nng\n")
+    task = SimpleNamespace(
+        task_id="task-4",
+        state="running",
+        result={"output_object_prefix": "task-runs/task-4"},
+        metadata={},
+    )
+
+    summaries = output_files_module.list_training_output_files(
+        task=task,
+        dataset_storage=storage,
+    )
+    by_name = {item.file_name: item for item in summaries}
+    labels = output_files_module.read_training_output_file_detail(
+        task=task,
+        dataset_storage=storage,
+        file_name="labels",
+    )
+
+    assert by_name["train-metrics"].file_status == "ready"
+    assert by_name["validation-metrics"].file_status == "ready"
+    assert by_name["labels"].file_status == "ready"
+    assert by_name["summary"].file_status == "pending"
+    assert by_name["latest-checkpoint"].file_status == "pending"
+    assert labels.lines == ["ok", "ng"]
 
 
 def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatch) -> None:

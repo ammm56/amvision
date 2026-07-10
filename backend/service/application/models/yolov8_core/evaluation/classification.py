@@ -81,9 +81,15 @@ def evaluate_yolov8_classification_samples(
                     correct_top5 += 1
             total += int(batch.targets.size(0))
     model.train(previous_training_mode)
+    top1_accuracy = round(correct_top1 / max(1, total), 6) if total > 0 else 0.0
+    top5_accuracy = round(correct_top5 / max(1, total), 6) if total > 0 else 0.0
+    fitness = round((top1_accuracy + top5_accuracy) / 2.0, 6)
     return {
-        "top1_accuracy": round(correct_top1 / max(1, total), 6) if total > 0 else 0.0,
-        "top5_accuracy": round(correct_top5 / max(1, total), 6) if total > 0 else 0.0,
+        "top1_accuracy": top1_accuracy,
+        "top5_accuracy": top5_accuracy,
+        "metrics/accuracy_top1": top1_accuracy,
+        "metrics/accuracy_top5": top5_accuracy,
+        "fitness": fitness,
     }
 
 

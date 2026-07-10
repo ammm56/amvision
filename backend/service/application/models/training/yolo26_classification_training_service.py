@@ -55,6 +55,11 @@ from backend.service.application.models.training.yolo26_classification_training 
     Yolo26ClassificationTrainingExecutionResult,
     Yolo26ClassificationTrainingSavePoint,
 )
+from backend.service.application.models.training.yolo_classification_training_progress import (
+    append_yolo_classification_epoch_progress,
+    build_yolo_classification_output_files_summary,
+    build_yolo_classification_savepoint_summary,
+)
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
@@ -243,7 +248,6 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             f"{output_prefix}/output-files/validation-metrics.json"
         )
         labels_object_key = f"{output_prefix}/output-files/labels.txt"
-        legacy_labels_json_object_key = f"{output_prefix}/output-files/labels.json"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
         warm_start_reference = resolve_yolo_warm_start_reference(
@@ -271,7 +275,21 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             progress: Yolo26ClassificationTrainingEpochProgress,
         ) -> Yolo26ClassificationTrainingControlCommand | None:
             nonlocal control_state
-            del progress
+            append_yolo_classification_epoch_progress(
+                task_service=self.task_service,
+                task_id=task_record.task_id,
+                model_label=self.model_label,
+                model_type=resolved_model_type,
+                attempt_no=task_record.current_attempt_no,
+                output_prefix=output_prefix,
+                train_metrics_object_key=train_metrics_object_key,
+                validation_metrics_object_key=validation_metrics_object_key,
+                progress=progress,
+                dataset_storage=self.dataset_storage,
+                implementation_mode=self._resolve_implementation_mode(
+                    resolved_model_type
+                ),
+            )
             control_state = self._read_control_state(task_record.task_id)
             if on_control_state_change is not None:
                 on_control_state_change(control_state)
@@ -295,6 +313,10 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
                 str(temporary_latest_checkpoint_path),
                 savepoint.latest_checkpoint_bytes,
             )
+            self.dataset_storage.write_bytes(
+                latest_checkpoint_object_key,
+                savepoint.latest_checkpoint_bytes,
+            )
             validation_accuracy = float(
                 savepoint.validation_metrics.get("top1_accuracy", 0.0)
             )
@@ -303,6 +325,32 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
                 )
+                self.dataset_storage.write_bytes(
+                    checkpoint_object_key,
+                    savepoint.latest_checkpoint_bytes,
+                )
+            self.dataset_storage.write_json(
+                summary_object_key,
+                build_yolo_classification_savepoint_summary(
+                    task_id=task_record.task_id,
+                    status="running",
+                    output_prefix=output_prefix,
+                    dataset_export_id=dataset_export.dataset_export_id,
+                    dataset_export_manifest_key=dataset_export.manifest_object_key,
+                    dataset_version_id=dataset_export.dataset_version_id,
+                    format_id=dataset_export.format_id,
+                    model_type=resolved_model_type,
+                    model_scale=str(payload.get("model_scale") or ""),
+                    output_model_name=str(payload.get("output_model_name") or ""),
+                    savepoint=savepoint,
+                    checkpoint_object_key=checkpoint_object_key,
+                    latest_checkpoint_object_key=latest_checkpoint_object_key,
+                    labels_object_key=labels_object_key,
+                    train_metrics_object_key=train_metrics_object_key,
+                    validation_metrics_object_key=validation_metrics_object_key,
+                    summary_object_key=summary_object_key,
+                ),
+            )
 
         request = Yolo26ClassificationTrainingExecutionRequest(
             dataset_storage=self.dataset_storage,
@@ -427,10 +475,6 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
         self._write_labels_text(
             labels_object_key=labels_object_key,
             labels=execution_result.labels,
-        )
-        self.dataset_storage.write_json(
-            legacy_labels_json_object_key,
-            {"labels": list(execution_result.labels)},
         )
         summary = self._build_training_summary(
             task_record=task_record,
@@ -651,14 +695,15 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
         }
-        output_files = {
-            "checkpoint_object_key": checkpoint_object_key,
-            "latest_checkpoint_object_key": latest_checkpoint_object_key,
-            "labels_object_key": labels_object_key,
-            "metrics_object_key": train_metrics_object_key,
-            "validation_metrics_object_key": validation_metrics_object_key,
-            "summary_object_key": summary_object_key,
-        }
+        output_files = build_yolo_classification_output_files_summary(
+            output_prefix=output_prefix,
+            checkpoint_object_key=checkpoint_object_key,
+            latest_checkpoint_object_key=latest_checkpoint_object_key,
+            labels_object_key=labels_object_key,
+            metrics_object_key=train_metrics_object_key,
+            validation_metrics_object_key=validation_metrics_object_key,
+            summary_object_key=summary_object_key,
+        )
         return {
             "task_id": task_record.task_id,
             "task_type": CLASSIFICATION_TASK_TYPE,

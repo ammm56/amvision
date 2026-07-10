@@ -31,7 +31,13 @@ from backend.service.api.rest.v1.routes.pose_training_tasks.services import (
     submit_pose_training_task,
 )
 from backend.service.api.rest.v1.routes.task_training.services import (
+    get_training_task_output_file,
+    list_training_task_output_files,
     require_project_access,
+)
+from backend.service.api.rest.v1.routes.task_training.output_files import (
+    TrainingOutputFileDetailResponse,
+    TrainingOutputFileSummaryResponse,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -111,6 +117,48 @@ def get_pose_training_task_detail(
     """获取 pose 训练任务详情。"""
 
     return get_training_task_detail(session_factory=session_factory, task_id=task_id)
+
+
+@pose_training_tasks_router.get(
+    "/pose/training-tasks/{task_id}/output-files",
+    response_model=list[TrainingOutputFileSummaryResponse],
+)
+def list_pose_training_output_files(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> list[TrainingOutputFileSummaryResponse]:
+    """列出 pose 训练输出文件。"""
+
+    del principal
+    return list_training_task_output_files(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        task_id=task_id,
+    )
+
+
+@pose_training_tasks_router.get(
+    "/pose/training-tasks/{task_id}/output-files/{file_name}",
+    response_model=TrainingOutputFileDetailResponse,
+)
+def get_pose_training_output_file(
+    task_id: str,
+    file_name: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:read"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> TrainingOutputFileDetailResponse:
+    """读取 pose 训练输出文件详情。"""
+
+    del principal
+    return get_training_task_output_file(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        task_id=task_id,
+        file_name=file_name,
+    )
 
 
 @pose_training_tasks_router.post(

@@ -37,9 +37,18 @@ class Yolo26ClassificationTrainingEpochProgress:
 
     epoch: int
     max_epochs: int
+    evaluation_interval: int
+    validation_ran: bool
     input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float]
+    train_metrics_snapshot: dict[str, object]
+    validation_metrics_snapshot: dict[str, object]
+    current_metric_name: str
+    current_metric_value: float | None
+    best_metric_name: str
+    best_metric_value: float
 
 
 @dataclass(frozen=True)
@@ -188,17 +197,6 @@ def run_yolo26_classification_training_loop(
             "accuracy": round(train_accuracy, 6),
         }
         metrics_history.append({"epoch": epoch, **epoch_metrics})
-        epoch_progress = Yolo26ClassificationTrainingEpochProgress(
-            epoch=epoch,
-            max_epochs=max_epochs,
-            input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
-            train_metrics=epoch_metrics,
-        )
-        cmd = epoch_callback(epoch_progress) if epoch_callback is not None else None
-        if cmd is not None and cmd.terminate_training:
-            raise Yolo26ClassificationTrainingTerminatedError()
-
         val_metrics: dict[str, float] = {}
         should_evaluate = (
             len(val_annotations) > 0 and epoch > 0 and epoch % evaluation_interval == 0
@@ -221,6 +219,7 @@ def run_yolo26_classification_training_loop(
             validation_history.append({"epoch": epoch, **val_metrics})
 
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
+        current_metric_value = current_val_metric if should_evaluate else None
         if current_val_metric > best_metric_value:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
@@ -244,12 +243,36 @@ def run_yolo26_classification_training_loop(
             min_lr_ratio=min_lr_ratio,
             torch_module=imports.torch,
         )
-        if cmd is not None and savepoint_callback is not None:
+        epoch_progress = Yolo26ClassificationTrainingEpochProgress(
+            epoch=epoch,
+            max_epochs=max_epochs,
+            evaluation_interval=evaluation_interval,
+            validation_ran=should_evaluate,
+            input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]),
+            train_metrics={"epoch": epoch, **epoch_metrics},
+            validation_metrics={"epoch": epoch, **val_metrics} if val_metrics else {},
+            train_metrics_snapshot={
+                "final_metrics": metrics_history[-1] if metrics_history else {},
+                "epoch_history": [dict(item) for item in metrics_history],
+                "scheduler": "CosineAnnealingLR",
+            },
+            validation_metrics_snapshot={
+                "final_metrics": validation_history[-1] if validation_history else {},
+                "epoch_history": [dict(item) for item in validation_history],
+            },
+            current_metric_name=best_metric_name,
+            current_metric_value=current_metric_value,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+        )
+        cmd = epoch_callback(epoch_progress) if epoch_callback is not None else None
+        if cmd is not None and cmd.save_checkpoint and savepoint_callback is not None:
             savepoint_callback(
                 Yolo26ClassificationTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
-                    train_metrics=epoch_metrics,
-                    validation_metrics=val_metrics,
+                    train_metrics=epoch_progress.train_metrics,
+                    validation_metrics=epoch_progress.validation_metrics,
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
@@ -258,6 +281,8 @@ def run_yolo26_classification_training_loop(
             )
         if cmd is not None and cmd.pause_training:
             raise Yolo26ClassificationTrainingPausedError()
+        if cmd is not None and cmd.terminate_training:
+            raise Yolo26ClassificationTrainingTerminatedError()
 
     return Yolo26ClassificationTrainingLoopResult(
         best_metric_value=best_metric_value,

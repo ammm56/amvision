@@ -39,6 +39,9 @@ from backend.service.application.models.training.yolo_training_warm_start import
     build_yolo_warm_start_source_summary,
     resolve_yolo_warm_start_reference,
 )
+from backend.service.application.models.training.yolo_task_training_progress import (
+    append_yolo_task_epoch_progress,
+)
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
@@ -221,7 +224,6 @@ class SqlAlchemyYoloV8ObbTrainingService:
             f"{output_prefix}/output-files/validation-metrics.json"
         )
         labels_object_key = f"{output_prefix}/output-files/labels.txt"
-        legacy_labels_json_object_key = f"{output_prefix}/output-files/labels.json"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
         warm_start_reference = resolve_yolo_warm_start_reference(
@@ -246,6 +248,19 @@ class SqlAlchemyYoloV8ObbTrainingService:
         def on_epoch(
             progress: YoloV8ObbTrainingEpochProgress,
         ) -> YoloV8ObbTrainingControlCommand | None:
+            append_yolo_task_epoch_progress(
+                task_service=self.task_service,
+                task_id=task_record.task_id,
+                model_label="YOLOv8 OBB",
+                task_type=OBB_TASK_TYPE,
+                model_type=resolved_model_type,
+                attempt_no=task_record.current_attempt_no,
+                output_prefix=output_prefix,
+                train_metrics_object_key=train_metrics_object_key,
+                progress=progress,
+                dataset_storage=self.dataset_storage,
+                implementation_mode=self._resolve_implementation_mode(resolved_model_type),
+            )
             control_state = self._read_control_state(task_record.task_id)
             if control_state.terminate_requested:
                 return YoloV8ObbTrainingControlCommand(
@@ -404,10 +419,6 @@ class SqlAlchemyYoloV8ObbTrainingService:
         self._write_labels_text(
             labels_object_key=labels_object_key,
             labels=execution_result.labels,
-        )
-        self.dataset_storage.write_json(
-            legacy_labels_json_object_key,
-            {"labels": list(execution_result.labels)},
         )
         summary = self._build_training_summary(
             task_record=task_record,

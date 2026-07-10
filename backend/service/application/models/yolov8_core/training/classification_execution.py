@@ -77,9 +77,18 @@ class YoloV8ClassificationTrainingBatchProgress:
 class YoloV8ClassificationTrainingEpochProgress:
     epoch: int
     max_epochs: int
+    evaluation_interval: int
+    validation_ran: bool
     input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float]
+    train_metrics_snapshot: dict[str, object]
+    validation_metrics_snapshot: dict[str, object]
+    current_metric_name: str
+    current_metric_value: float | None
+    best_metric_name: str
+    best_metric_value: float
 
 
 @dataclass(frozen=True)
@@ -381,18 +390,6 @@ def run_yolov8_classification_training(
             "accuracy": round(train_accuracy, 6),
         }
         metrics_history.append({"epoch": epoch, **epoch_metrics})
-        epoch_progress = YoloV8ClassificationTrainingEpochProgress(
-            epoch=epoch,
-            max_epochs=max_epochs,
-            input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
-            train_metrics=epoch_metrics,
-        )
-        cmd = None
-        if request.epoch_callback is not None:
-            cmd = request.epoch_callback(epoch_progress)
-        if cmd is not None and cmd.terminate_training:
-            raise YoloV8ClassificationTrainingTerminatedError()
         val_metrics: dict[str, float] = {}
         should_evaluate = (
             len(val_annotations) > 0 and epoch > 0 and epoch % evaluation_interval == 0
@@ -414,6 +411,7 @@ def run_yolov8_classification_training(
             )
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
+        current_metric_value = current_val_metric if should_evaluate else None
         is_best = current_val_metric > best_metric_value
         if is_best:
             best_metric_value = current_val_metric
@@ -437,12 +435,38 @@ def run_yolov8_classification_training(
             min_lr_ratio=min_lr_ratio,
             imports=imports,
         )
-        if cmd is not None and request.savepoint_callback is not None:
+        epoch_progress = YoloV8ClassificationTrainingEpochProgress(
+            epoch=epoch,
+            max_epochs=max_epochs,
+            evaluation_interval=evaluation_interval,
+            validation_ran=should_evaluate,
+            input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]),
+            train_metrics={"epoch": epoch, **epoch_metrics},
+            validation_metrics={"epoch": epoch, **val_metrics} if val_metrics else {},
+            train_metrics_snapshot={
+                "final_metrics": metrics_history[-1] if metrics_history else {},
+                "epoch_history": [dict(item) for item in metrics_history],
+                "scheduler": "CosineAnnealingLR",
+            },
+            validation_metrics_snapshot={
+                "final_metrics": validation_history[-1] if validation_history else {},
+                "epoch_history": [dict(item) for item in validation_history],
+            },
+            current_metric_name=best_metric_name,
+            current_metric_value=current_metric_value,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+        )
+        cmd = None
+        if request.epoch_callback is not None:
+            cmd = request.epoch_callback(epoch_progress)
+        if cmd is not None and cmd.save_checkpoint and request.savepoint_callback is not None:
             request.savepoint_callback(
                 YoloV8ClassificationTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
-                    train_metrics=epoch_metrics,
-                    validation_metrics=val_metrics,
+                    train_metrics=epoch_progress.train_metrics,
+                    validation_metrics=epoch_progress.validation_metrics,
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
@@ -451,6 +475,8 @@ def run_yolov8_classification_training(
             )
         if cmd is not None and cmd.pause_training:
             raise YoloV8ClassificationTrainingPausedError()
+        if cmd is not None and cmd.terminate_training:
+            raise YoloV8ClassificationTrainingTerminatedError()
     final_val_metrics = validation_history[-1] if validation_history else {}
     return YoloV8ClassificationTrainingExecutionResult(
         best_metric_value=best_metric_value,
