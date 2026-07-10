@@ -2183,6 +2183,16 @@
             "minimum": 0,
             "default": 0
           },
+          "polygon_background_fill": {
+            "type": "string",
+            "title": "Polygon Background Fill",
+            "description": "polygon ROI 裁剪时，多边形外接矩形中 ROI 外部区域的填充色；bbox ROI 不受影响。",
+            "enum": [
+              "black",
+              "white"
+            ],
+            "default": "black"
+          },
           "output_object_key": {
             "type": "string"
           }

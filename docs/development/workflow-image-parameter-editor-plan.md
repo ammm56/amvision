@@ -83,8 +83,7 @@
 | 工具 | 写回参数 | 适用节点 |
 | --- | --- | --- |
 | bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
-| polygon | `polygon_xy`、`source_points` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
-| four-point | `polygon_xy` 或 `source_points`、`output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
+| polygon | `polygon_xy`、`source_points`；四点透视时同时估算 `output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
 | circle | `center_x`、`center_y`、`radius`、`min_radius`、`max_radius` | `custom.opencv.hough-circles`、`custom.opencv.min-enclosing-circle` |
 | line | `x1`、`y1`、`x2`、`y2`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |
@@ -124,9 +123,11 @@
       "coordinate_space": "source-image",
       "tools": [
         {
-          "tool": "four-point",
+          "tool": "polygon",
           "label": "透视四点",
-          "target_parameters": ["source_points", "output_width", "output_height"]
+          "target_parameters": ["source_points", "output_width", "output_height"],
+          "min_points": 4,
+          "max_points": 4
         }
       ]
     }
@@ -173,16 +174,18 @@
     "coordinate_space": "source-image",
     "tools": [
       {
-        "tool": "four-point",
+        "tool": "polygon",
         "label": "透视四点",
-        "target_parameters": ["source_points", "output_width", "output_height"]
+        "target_parameters": ["source_points", "output_width", "output_height"],
+        "min_points": 4,
+        "max_points": 4
       }
     ]
   }
 }
 ```
 
-只读图片预览不提供 `interaction` 字段；交互式图片面板只解析新的 `interaction.tools[]`，不保留单 `tool` / `target_parameters` 旧格式。
+只读图片预览不提供 `interaction` 字段；交互式图片面板只解析新的 `interaction.tools[]`，不保留单 `tool` / `target_parameters` 旧格式。`polygon` 工具可声明 `min_points` / `max_points`：普通 ROI 至少 3 点，透视变换固定 4 点。
 
 该信息只描述编辑器如何辅助生成参数，不改变节点核心执行协议。
 
@@ -193,7 +196,7 @@
 3. 后端节点生成调试图片时同时检查节点参数和 `execution_metadata.debug_image_panels_enabled`，默认 production runtime 不生成调试图。
 4. 前端图编辑器创建 Preview Run 时发送 `execution_metadata.debug_image_panels_enabled=true`，并把 `shouldRetainPreviewNodeRecords` 改成同时识别 `*-preview` 节点和已打开调试图片面板的普通节点。
 5. 前端扩展节点底部 preview display：普通节点的 `debug_preview` 也按现有 `image-preview` / `gallery-preview` 显示。
-6. 将现有 `ImageViewer` 改造为统一交互式图片面板，保留只读模式，并在编辑模式实现 bbox、polygon、four-point、grid 四类基础 overlay。
+6. 将现有 `ImageViewer` 改造为统一交互式图片面板，保留只读模式，并在编辑模式实现 bbox、polygon、grid、circle、line 等基础 overlay。
 7. 完成参数写回、撤销/取消、坐标换算和脏状态提示，确认后只写回节点 `parameters`。
 8. 给 hough-circles、hough-lines、fit-line、template-match 增加 circle、line、template-region 取参能力。
 9. 节点 catalog 逐步补齐 `parameter_assist`，并为典型 workflow 增加调试验证。

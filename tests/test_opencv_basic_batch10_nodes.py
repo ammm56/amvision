@@ -205,6 +205,118 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
     assert normalized_entry.byte_length == 72 * 48 * 3
 
 
+def test_opencv_basic_crop_polygon_roi_masks_background_execute(tmp_path: Path) -> None:
+    """验证 crop 使用 polygon ROI 时会裁外接矩形并填充 polygon 外部背景。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/polygon-crop-b10.png", _build_polygon_crop_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch10-polygon-crop",
+        template_version="1.0.0",
+        display_name="OpenCV Batch10 Polygon Crop",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi",
+                node_type_id="core.vision.roi-create",
+                parameters={
+                    "roi_kind": "polygon",
+                    "roi_id": "triangle-window",
+                    "polygon_xy": [[10, 10], [50, 10], [10, 50]],
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="crop",
+                node_type_id="custom.opencv.crop",
+                parameters={"polygon_background_fill": "white"},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-roi-polygon-b10",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-crop-polygon-b10",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="crop",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-roi-crop-polygon-b10",
+                source_node_id="roi",
+                source_port="roi",
+                target_node_id="crop",
+                target_port="roi",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="cropped_image",
+                display_name="Cropped Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="crop",
+                source_port="image",
+            ),
+            WorkflowGraphOutput(
+                output_id="crop_summary",
+                display_name="Crop Summary",
+                payload_type_id="value.v1",
+                source_node_id="crop",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/polygon-crop-b10.png",
+                "width": 64,
+                "height": 64,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch10-polygon-crop",
+        },
+    )
+
+    cropped_image = execution_result.outputs["cropped_image"]
+    crop_summary = execution_result.outputs["crop_summary"]
+    cropped_matrix = image_registry.read_matrix(str(cropped_image["image_handle"]))
+
+    assert cropped_image["transport_kind"] == "memory"
+    assert cropped_image["media_type"] == "image/raw"
+    assert cropped_image["pixel_format"] == "bgr24"
+    assert cropped_image["width"] == 40
+    assert cropped_image["height"] == 40
+    assert crop_summary["value"]["roi_kind"] == "polygon"
+    assert crop_summary["value"]["polygon_mask_applied"] is True
+    assert crop_summary["value"]["polygon_background_fill"] == "white"
+    assert cropped_matrix[2, 2].tolist() == [10, 20, 30]
+    assert cropped_matrix[38, 38].tolist() == [255, 255, 255]
+
+
 def test_opencv_basic_batch10_rotation_correct_with_value_input_execute(tmp_path: Path) -> None:
     """验证 rotation-correct 可读取 value.v1 角度输入并交换输出尺寸。"""
 
@@ -359,6 +471,19 @@ def _build_preprocess_test_png_bytes() -> bytes:
         image[row_index, :, 2] = 90 + row_index
     cv2.rectangle(image, (18, 12), (76, 52), (220, 220, 220), thickness=-1)
     cv2.circle(image, (48, 32), 10, (15, 15, 15), thickness=-1)
+    success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _build_polygon_crop_test_png_bytes() -> bytes:
+    """构造 polygon crop 测试图片。"""
+
+    import cv2
+    import numpy as np
+
+    image = np.zeros((64, 64, 3), dtype=np.uint8)
+    image[:, :] = (10, 20, 30)
     success, encoded = cv2.imencode(".png", image)
     assert success is True
     return encoded.tobytes()

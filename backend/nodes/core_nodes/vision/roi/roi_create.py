@@ -38,6 +38,7 @@ from backend.service.application.workflows.graph_executor import (
 
 NODE_NAME = "roi-create"
 DEFAULT_ROI_SIZE = 100.0
+DEFAULT_ROI_KIND = "polygon"
 
 
 def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -130,9 +131,10 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                             "target_parameters": ["bbox_xyxy"],
                         },
                         {
-                            "tool": "four-point",
-                            "label": "四点 ROI",
+                            "tool": "polygon",
+                            "label": "多边形 ROI",
                             "target_parameters": ["polygon_xy"],
+                            "min_points": 3,
                         },
                     ],
                 },
@@ -283,7 +285,7 @@ def _read_roi_kind(raw_value: object) -> str:
     """读取 ROI 类型。"""
 
     if raw_value is None:
-        return "bbox"
+        return DEFAULT_ROI_KIND
     if not isinstance(raw_value, str):
         raise InvalidRequestError("roi-create 节点的 roi_kind 必须是字符串")
     normalized_value = raw_value.strip().lower()
@@ -338,7 +340,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "roi_kind": {
                     "type": "string",
                     "enum": ["bbox", "polygon"],
-                    "default": "bbox",
+                    "default": DEFAULT_ROI_KIND,
                     "title": "ROI 类型",
                 },
                 "roi_id": {"type": "string", "title": "ROI ID"},

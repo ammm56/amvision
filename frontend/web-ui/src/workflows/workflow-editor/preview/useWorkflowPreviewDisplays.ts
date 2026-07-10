@@ -35,6 +35,8 @@ export interface PreviewImageInteractionTool {
   tool: string
   label: string | null
   targetParameters: string[]
+  minPoints: number | null
+  maxPoints: number | null
 }
 
 export interface PreviewImageInteraction {
@@ -530,6 +532,8 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       tool,
       label: readDisplayText(rawTool.label) || null,
       targetParameters: readStringArray(rawTool.target_parameters),
+      minPoints: readDisplayNumber(rawTool.min_points),
+      maxPoints: readDisplayNumber(rawTool.max_points),
     }]
   })
 }

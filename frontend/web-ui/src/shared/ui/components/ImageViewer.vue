@@ -180,7 +180,7 @@
               :r="draftCircle.radius"
             />
             <polygon
-              v-if="draftPointPairs.length === 4"
+              v-if="interactionTool === 'polygon' && draftPointPairs.length >= 3"
               class="image-viewer__overlay-shape image-viewer__overlay-shape--draft"
               :points="draftPointsText"
             />
@@ -248,6 +248,8 @@ interface ViewerImageInteractionTool {
   tool: string
   label?: string | null
   targetParameters: string[]
+  minPoints?: number | null
+  maxPoints?: number | null
 }
 
 interface ViewerImageInteraction {
@@ -293,11 +295,11 @@ interface CircleDraft {
 }
 
 type CircleDraftMode = 'center-radius' | 'three-point'
-type InteractionToolId = 'bbox' | 'four-point' | 'circle' | 'line' | 'grid'
+type InteractionToolId = 'bbox' | 'polygon' | 'circle' | 'line' | 'grid'
 
 const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
   bbox: { label: '矩形 ROI' },
-  'four-point': { label: '四点' },
+  polygon: { label: '多边形 ROI' },
   circle: { label: '圆' },
   line: { label: '线段' },
   grid: { label: '网格' },
@@ -347,6 +349,15 @@ const activeInteractionTool = computed(() => {
 })
 const interactionTool = computed(() => activeInteractionTool.value?.tool ?? '')
 const activeTargetParameters = computed(() => activeInteractionTool.value?.targetParameters ?? [])
+const activePolygonMinPoints = computed(() => {
+  const value = activeInteractionTool.value?.minPoints
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(3, Math.floor(value)) : 3
+})
+const activePolygonMaxPoints = computed(() => {
+  const value = activeInteractionTool.value?.maxPoints
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.max(activePolygonMinPoints.value, Math.floor(value))
+})
 const tuningControls = computed(() => imageInteraction.value?.controls ?? [])
 const interactionAvailable = computed(() => Boolean(
   props.image?.nodeId
@@ -400,7 +411,10 @@ const hasInteractionDraft = computed(() => Boolean(
 const canApplyInteraction = computed(() => {
   if (!interactionAvailable.value) return false
   if (interactionTool.value === 'bbox' || interactionTool.value === 'grid') return Boolean(draftBboxXyxy.value)
-  if (interactionTool.value === 'four-point') return draftPointPairs.value.length === 4
+  if (interactionTool.value === 'polygon') {
+    const pointCount = draftPointPairs.value.length
+    return pointCount >= activePolygonMinPoints.value && (activePolygonMaxPoints.value === null || pointCount <= activePolygonMaxPoints.value)
+  }
   if (interactionTool.value === 'circle') return Boolean(draftCircle.value)
   if (interactionTool.value === 'line') return Boolean(draftLineXyxy.value)
   return false
@@ -416,7 +430,7 @@ const interactionStatusText = computed(() => {
   if (!interactionActive.value) return tuningControls.value.length ? '可调参；取参未启用' : '取参未启用'
   if (interactionTool.value === 'bbox') return draftBboxXyxy.value ? 'bbox 已选择，可应用参数' : '拖拽选择 bbox'
   if (interactionTool.value === 'grid') return draftBboxXyxy.value ? 'grid 区域已选择，可应用参数' : '拖拽选择 grid 区域'
-  if (interactionTool.value === 'four-point') return `四点取参 ${draftPointPairs.value.length}/4`
+  if (interactionTool.value === 'polygon') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
   if (interactionTool.value === 'line') return draftLineXyxy.value ? '线段已选择，可应用参数' : '拖拽选择线段'
   return ''
@@ -503,8 +517,8 @@ function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
     startBboxDraft(point)
     return true
   }
-  if (interactionTool.value === 'four-point') {
-    addDraftPoint(point, 4)
+  if (interactionTool.value === 'polygon') {
+    addDraftPoint(point, activePolygonMaxPoints.value ?? undefined)
     return true
   }
   if (interactionTool.value === 'circle') {
@@ -579,9 +593,11 @@ function stopCircleDraft(): void {
   document.removeEventListener('mouseup', stopCircleDraft)
 }
 
-function addDraftPoint(point: ImagePoint, maxPoints: number): void {
+function addDraftPoint(point: ImagePoint, maxPoints?: number): void {
   clearShapeDrafts({ keepPoints: true })
-  const nextPoints = draftPoints.value.length >= maxPoints ? [point] : [...draftPoints.value, point]
+  const nextPoints = typeof maxPoints === 'number' && draftPoints.value.length >= maxPoints
+    ? [point]
+    : [...draftPoints.value, point]
   draftPoints.value = nextPoints
 }
 
@@ -668,7 +684,7 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
   if ((interactionTool.value === 'bbox' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
   }
-  if (interactionTool.value === 'four-point' && draftPointPairs.value.length === 4) {
+  if (interactionTool.value === 'polygon' && canApplyInteraction.value) {
     return { ...baseEvent, pointsXy: draftPointPairs.value }
   }
   if (interactionTool.value === 'circle' && draftCircle.value) {
@@ -794,7 +810,20 @@ function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerI
     tool: toolItem.tool,
     label: toolItem.label ?? readInteractionToolLabel(toolItem.tool),
     targetParameters: toolItem.targetParameters,
+    minPoints: toolItem.minPoints ?? null,
+    maxPoints: toolItem.maxPoints ?? null,
   }]
+}
+
+function readPolygonInteractionStatusText(): string {
+  const pointCount = draftPointPairs.value.length
+  const minPoints = activePolygonMinPoints.value
+  const maxPoints = activePolygonMaxPoints.value
+  if (maxPoints !== null && maxPoints === minPoints) {
+    return pointCount >= maxPoints ? `多边形 ${pointCount}/${maxPoints}，可应用参数` : `多边形取参 ${pointCount}/${maxPoints}`
+  }
+  if (pointCount >= minPoints) return `多边形 ${pointCount} 点，可应用参数`
+  return `多边形取参 ${pointCount}/${minPoints}`
 }
 
 function isSupportedInteractionTool(tool: string): tool is InteractionToolId {

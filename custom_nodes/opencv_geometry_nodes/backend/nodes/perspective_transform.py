@@ -126,9 +126,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "coordinate_space": "source-image",
                 "tools": [
                     {
-                        "tool": "four-point",
+                        "tool": "polygon",
                         "label": "透视四点",
                         "target_parameters": ["source_points", "output_width", "output_height"],
+                        "min_points": 4,
+                        "max_points": 4,
                     },
                 ],
             },
