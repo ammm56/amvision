@@ -41,6 +41,23 @@
               },
               "media_type": {
                 "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
               }
             },
             "required": [
@@ -181,6 +198,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -352,6 +386,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -541,6 +592,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -735,6 +803,23 @@
               },
               "media_type": {
                 "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
               }
             },
             "required": [
@@ -901,6 +986,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -1099,6 +1201,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -1304,6 +1423,23 @@
               },
               "media_type": {
                 "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
               }
             },
             "required": [
@@ -1384,6 +1520,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -1554,6 +1707,23 @@
               },
               "media_type": {
                 "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
               }
             },
             "required": [
@@ -1634,6 +1804,23 @@
                 "type": "integer"
               },
               "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
                 "type": "string"
               }
             },
@@ -2144,6 +2331,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -2170,6 +2366,22 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },

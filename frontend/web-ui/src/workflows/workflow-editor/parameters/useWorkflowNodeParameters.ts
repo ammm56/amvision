@@ -176,6 +176,31 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     options.setStatusMessage('已更新节点参数')
   }
 
+  function updateNodeParametersByName(node: NodeView, updates: Record<string, unknown>): void {
+    const parameterNames = new Set(nodeParameterFieldsForNode(node).map((field) => field.parameter_name))
+    const nextParameters = { ...node.node.parameters }
+    let changed = false
+    for (const [parameterName, value] of Object.entries(updates)) {
+      if (!parameterNames.has(parameterName)) continue
+      nextParameters[parameterName] = cloneWorkflowJsonValue(value)
+      const draftKey = `${node.node.node_id}:${parameterName}`
+      if (draftKey in options.complexParameterDrafts.value) {
+        options.complexParameterDrafts.value = {
+          ...options.complexParameterDrafts.value,
+          [draftKey]: formatWorkflowJson(value),
+        }
+      }
+      changed = true
+    }
+    if (!changed) {
+      options.setErrorMessage(`${options.readNodeTitle(node)} 没有可更新的目标参数`)
+      return
+    }
+    node.node.parameters = nextParameters
+    options.setErrorMessage(null)
+    options.setStatusMessage('已从图片取参更新节点参数')
+  }
+
   return {
     nodeParameterFieldsForNode,
     isJsonParameter,
@@ -190,6 +215,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     updateNodeParameterFromNumberEvent,
     updateNodeParameterFromCheckboxEvent,
     updateNodeParameterFromEnumValue,
+    updateNodeParametersByName,
     readNodeParameterJsonTextValue,
     updateNodeParameterJsonDraft,
     commitNodeParameterJsonDraft,

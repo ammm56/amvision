@@ -3,6 +3,59 @@ import { computed, ref } from 'vue'
 import { readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
 import type { WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
+export interface PreviewImageCircleOverlay {
+  centerX: number
+  centerY: number
+  radius: number
+}
+
+export interface PreviewImageOverlay {
+  kind: string
+  id: string | null
+  label: string | null
+  pointsXy: Array<[number, number]>
+  bboxXyxy: [number, number, number, number] | null
+  lineXyxy: [number, number, number, number] | null
+  circle: PreviewImageCircleOverlay | null
+  targetParameters: string[]
+}
+
+export interface PreviewImageInteractionControl {
+  parameterName: string
+  label: string
+  control: string
+  min: number | null
+  max: number | null
+  step: number | null
+  value: unknown
+  defaultValue: unknown
+}
+
+export interface PreviewImageInteractionTool {
+  tool: string
+  label: string | null
+  targetParameters: string[]
+}
+
+export interface PreviewImageInteraction {
+  mode: string
+  coordinateSpace: string
+  controls: PreviewImageInteractionControl[]
+  tools: PreviewImageInteractionTool[]
+}
+
+export interface PreviewImageInteractionApplyEvent {
+  nodeId: string
+  tool: string
+  coordinateSpace: string
+  targetParameters: string[]
+  parameters?: Record<string, unknown>
+  bboxXyxy?: [number, number, number, number]
+  pointsXy?: Array<[number, number]>
+  circle?: PreviewImageCircleOverlay
+  lineXyxy?: [number, number, number, number]
+}
+
 export interface PreviewViewerImage {
   nodeId: string
   title: string
@@ -13,6 +66,8 @@ export interface PreviewViewerImage {
   width: number | null
   height: number | null
   objectKey: string | null
+  overlays: PreviewImageOverlay[]
+  interaction: PreviewImageInteraction | null
 }
 
 export interface PreviewGalleryItemView extends PreviewViewerImage {
@@ -249,7 +304,7 @@ async function buildImagePreviewNodeDisplay(
   const payload = displayOutput.payload
   if (!isPreviewJsonObject(payload.image)) return null
   const title = readDisplayText(payload.title) || displayOutput.nodeId
-  const image = await buildPreviewViewerImage(previewRun, payload.image, title, displayOutput.nodeId, registerObjectUrl)
+  const image = await buildPreviewViewerImage(previewRun, payload.image, title, displayOutput.nodeId, registerObjectUrl, payload)
   return {
     nodeId: displayOutput.nodeId,
     nodeTypeId: displayOutput.nodeTypeId,
@@ -312,7 +367,7 @@ async function buildGalleryPreviewNodeDisplay(
   for (const [itemIndex, rawItem] of rawItems.entries()) {
     if (!isPreviewJsonObject(rawItem) || !isPreviewJsonObject(rawItem.image)) continue
     const caption = readDisplayText(rawItem.caption) || `Image ${itemIndex + 1}`
-    const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.nodeId, registerObjectUrl)
+    const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.nodeId, registerObjectUrl, rawItem)
     galleryItems.push({
       ...image,
       title: caption,
@@ -368,6 +423,7 @@ async function buildPreviewViewerImage(
   title: string,
   nodeId: string,
   registerObjectUrl: (objectUrl: string) => void,
+  previewPayload: WorkflowJsonObject | null = null,
 ): Promise<PreviewViewerImage> {
   const transportKind = readDisplayText(imagePayload.transport_kind) || 'unknown'
   const mediaType = readDisplayText(imagePayload.media_type)
@@ -386,6 +442,8 @@ async function buildPreviewViewerImage(
     width: readDisplayNumber(imagePayload.width),
     height: readDisplayNumber(imagePayload.height),
     objectKey,
+    overlays: readPreviewImageOverlays(previewPayload?.overlays),
+    interaction: readPreviewImageInteraction(previewPayload?.interaction),
   }
 }
 
@@ -420,6 +478,113 @@ async function readPreviewImageBlob(previewRun: WorkflowPreviewRun, objectKey: s
 function buildPreviewImageStatusText(transportKind: string, objectKey: string | null): string {
   if (transportKind === 'storage-ref' && objectKey) return '预览图引用暂不可读取'
   return '本次 Preview 未返回可展示图片'
+}
+
+function readPreviewImageOverlays(value: unknown): PreviewImageOverlay[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((rawOverlay) => {
+    if (!isPreviewJsonObject(rawOverlay)) return []
+    const overlay = buildPreviewImageOverlay(rawOverlay)
+    return overlay ? [overlay] : []
+  })
+}
+
+function buildPreviewImageOverlay(rawOverlay: WorkflowJsonObject): PreviewImageOverlay | null {
+  const kind = readDisplayText(rawOverlay.kind) || 'shape'
+  const pointsXy = readPointPairs(rawOverlay.points_xy)
+  const bboxXyxy = readNumberTuple4(rawOverlay.bbox_xyxy)
+  const lineXyxy = readNumberTuple4(rawOverlay.line_xyxy)
+  const circle = readCircleOverlay(rawOverlay.circle)
+  if (pointsXy.length === 0 && bboxXyxy === null && lineXyxy === null && circle === null) return null
+  return {
+    kind,
+    id: readDisplayText(rawOverlay.id) || null,
+    label: readDisplayText(rawOverlay.label) || null,
+    pointsXy,
+    bboxXyxy,
+    lineXyxy,
+    circle,
+    targetParameters: readStringArray(rawOverlay.target_parameters),
+  }
+}
+
+function readPreviewImageInteraction(value: unknown): PreviewImageInteraction | null {
+  if (!isPreviewJsonObject(value)) return null
+  const tools = readPreviewImageInteractionTools(value.tools)
+  if (tools.length === 0) return null
+  return {
+    mode: readDisplayText(value.mode) || 'view',
+    coordinateSpace: readDisplayText(value.coordinate_space) || 'source-image',
+    controls: readPreviewImageInteractionControls(value.controls),
+    tools,
+  }
+}
+
+function readPreviewImageInteractionTools(value: unknown): PreviewImageInteractionTool[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((rawTool) => {
+    if (!isPreviewJsonObject(rawTool)) return []
+    const tool = readDisplayText(rawTool.tool)
+    if (!tool) return []
+    return [{
+      tool,
+      label: readDisplayText(rawTool.label) || null,
+      targetParameters: readStringArray(rawTool.target_parameters),
+    }]
+  })
+}
+
+function readPreviewImageInteractionControls(value: unknown): PreviewImageInteractionControl[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((rawControl) => {
+    if (!isPreviewJsonObject(rawControl)) return []
+    const parameterName = readDisplayText(rawControl.parameter_name)
+    if (!parameterName) return []
+    return [{
+      parameterName,
+      label: readDisplayText(rawControl.label) || parameterName,
+      control: readDisplayText(rawControl.control) || 'slider',
+      min: readDisplayNumber(rawControl.min),
+      max: readDisplayNumber(rawControl.max),
+      step: readDisplayNumber(rawControl.step),
+      value: rawControl.value,
+      defaultValue: rawControl.default_value,
+    }]
+  })
+}
+
+function readPointPairs(value: unknown): Array<[number, number]> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((point) => {
+    if (!Array.isArray(point) || point.length < 2) return []
+    const pointX = readDisplayNumber(point[0])
+    const pointY = readDisplayNumber(point[1])
+    return pointX === null || pointY === null ? [] : [[pointX, pointY] as [number, number]]
+  })
+}
+
+function readNumberTuple4(value: unknown): [number, number, number, number] | null {
+  if (!Array.isArray(value) || value.length < 4) return null
+  const [x1, y1, x2, y2] = value.slice(0, 4).map((item) => readDisplayNumber(item))
+  if (x1 === null || y1 === null || x2 === null || y2 === null) return null
+  return [x1, y1, x2, y2]
+}
+
+function readCircleOverlay(value: unknown): PreviewImageCircleOverlay | null {
+  if (!isPreviewJsonObject(value)) return null
+  const centerX = readDisplayNumber(value.center_x)
+  const centerY = readDisplayNumber(value.center_y)
+  const radius = readDisplayNumber(value.radius)
+  if (centerX === null || centerY === null || radius === null || radius <= 0) return null
+  return { centerX, centerY, radius }
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const text = readDisplayText(item)
+    return text ? [text] : []
+  })
 }
 
 function formatPreviewJson(value: unknown): string {

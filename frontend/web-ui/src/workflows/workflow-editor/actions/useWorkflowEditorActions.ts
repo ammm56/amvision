@@ -15,8 +15,25 @@ export interface WorkflowPreviewRunActionInput extends WorkflowSaveActionInput {
   inputBindings: WorkflowJsonObject
 }
 
+const DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS = 120
+
 function readErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
+}
+
+function readBooleanParameter(parameters: WorkflowJsonObject, parameterName: string): boolean {
+  return parameters[parameterName] === true
+}
+
+function hasDebugImagePanelNode(template: WorkflowGraphTemplate): boolean {
+  return template.nodes.some(
+    (node) => node.enabled !== false && readBooleanParameter(node.parameters, 'debug_image_panel_enabled'),
+  )
+}
+
+function shouldRetainPreviewNodeRecords(template: WorkflowGraphTemplate): boolean {
+  return template.nodes.some((node) => node.enabled !== false && node.node_type_id.endsWith('-preview'))
+    || hasDebugImagePanelNode(template)
 }
 
 export function useWorkflowEditorActions() {
@@ -55,8 +72,13 @@ export function useWorkflowEditorActions() {
         projectId: input.projectId,
         template: input.template,
         inputBindings: input.inputBindings,
-        executionMetadata: { source: 'workflow-graph-workbench' },
+        executionMetadata: {
+          source: 'workflow-graph-workbench',
+          debug_image_panels_enabled: hasDebugImagePanelNode(input.template),
+          retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template),
+        },
         waitMode: 'sync',
+        timeoutSeconds: DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS,
         application: input.application,
       })
       lastPreviewRun.value = previewRun

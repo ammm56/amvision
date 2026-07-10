@@ -14,55 +14,65 @@
 - Template 文件：`data/files/workflows/projects/project-1/templates/workflow-graph-20260710020359/versions/1.0.0/template.json`
 - Application 文件：`data/files/workflows/projects/project-1/applications/workflow-app-20260710020359/application.json`
 
-当前应用已经有两个输入：
+当前应用输入：
 
 - `request_image_ref`：生产默认输入，适合 ZeroMQ / LocalBuffer / BGR24 高性能链路。
 - `request_image_base64`：HTTP 调试或前端 Preview Run 兜底输入。
 
-## 当前实现状态
+## 唯一主线
 
-当前 `template.json` 已经搭好第一阶段空盘检测主线：
+当前 workflow 只保留一条主线，不再保留整图差分、圆模板、插槽模板或调试预览等并行分支。原因是现场图片存在相机截取误差、托盘定位误差和光照差异，整图直接比较不稳定；图面保留多条分支也会增加 Preview Run 和调试负担。
+
+主线目标：先把托盘定位并透视归一到标准图，再按槽位 ROI 逐格判断是否为空槽。
 
 ```text
 Image Ref Coalesce
- -> Load Local Image: 空盘_1080p_01.jpg
- -> Image Diff
- -> Absdiff Threshold
- -> Morphology
- -> Connected Components
- -> Regions Count / Regions Area Ratio
- -> Range Check
+ -> Otsu Threshold
+ -> Morphology Close
+ -> Contour
+ -> Contour Filter
+ -> Contour To ROI
+ -> Perspective Transform
+ -> Hough Circles 特征校验
+ -> ROI Grid Create
+ -> For Each Slot ROI
+      -> Crop 当前槽位
+      -> Crop 参考槽位
+      -> Image Diff
+      -> Absdiff Threshold
+      -> Morphology Open
+      -> Connected Components
+      -> Regions Count / Regions Area Ratio
+      -> Range Check
+      -> Process Decision
+      -> Create Slot Result
+ -> Array Summary
  -> Process Decision
- -> Payload To Value
- -> Create Object
  -> Response Envelope
 ```
 
-默认阈值：
+关键参数：
 
-- `threshold=30`
-- `min_area=120`
-- `abnormal_region_count <= 8`
-- `abnormal_area_ratio <= 0.018`
+- 托盘轮廓：`custom.opencv.contour-to-roi`，`polygon_mode=min-area-rect`。
+- 标准图尺寸：`1800 x 980`。
+- 槽位网格：`6 x 6`，共 36 个槽位。
+- 网格参数：`origin_x=105`、`origin_y=130`、`roi_width=185`、`roi_height=90`、`step_x=285`、`step_y=127`。
+- 单槽异常阈值：`abnormal_region_count <= 6`。
+- 单槽异常面积占比：`abnormal_area_ratio <= 0.025`。
+- 圆特征数量校验：`40 <= hole_feature_count <= 500`。
 
-模板已输出 `core_output_response_envelope_body`，`application.json` 已绑定为 `http-response` 输出。
-
-当前同一 workflow app 中还保留了禁用分支：
-
-- 圆孔模板匹配：`空盘_1080p_圆_01.jpg`
-- 插槽模板匹配：`空盘_1080p_插槽_01.jpg`
-- 固定 ROI 网格：`core.vision.roi-grid-create`
-- 固定四点透视校正：`custom.opencv.perspective-transform`
-- 调试预览：输入图、差异图、二值掩膜和结果预览
+## 当前实现状态
 
 已补齐的通用基础节点：
 
+- `custom.opencv.contour-to-roi`：把 contour 转成 `roi.v1`，支持 `contour-points`、`min-area-rect` 和 `bbox` 三种 polygon 生成方式。
 - `core.vision.roi-grid-create`
 - `core.logic.value-to-roi`
 - `core.logic.array-summary`
+- `core.logic.variable.get`
 - `core.logic.payload-to-value` 已扩展支持 `boolean.v1` 和 `result-record.v1`
 
-本地烟测已验证：使用 `空盘_1080p_01.jpg` 作为输入时，主线返回 `is_empty=true`。
+当前 workflow 不保留业务专用节点，不接 YOLO。后续如果 OpenCV 空槽判断稳定后还需要增强鲁棒性，再在每个槽位 ROI 后增加 YOLO 分类分支；该能力应作为后续明确需求实现，不在当前图里预留禁用分支。
 
 ## 明确不做
 
@@ -76,6 +86,30 @@ Image Ref Coalesce
 
 如果现有节点能力不足，只补通用基础节点。基础节点必须能被后续满盘检测、缺料检测、错位检测、阵列 ROI 检测等其他 workflow app 复用。
 
+## 图像交互取参要求
+
+ROI、找圆、找直线、找边、模板匹配等节点的参数不能长期只靠文本输入。它们应接近 VisionMaster / Halcon 的交互方式：在节点属性面板中显示输入图像，双击进入大图编辑，在图像上直接画 ROI、圆、直线或测量区域，完成后把参数写回节点 `parameters`。
+
+该能力是 workflow graph editor 的通用能力，不属于空盘检测专用节点：
+
+- 节点定义通过 `parameter_ui_schema` 或 `metadata` 声明需要的图像辅助取参工具。
+- 前端根据节点输入端口和最近一次 Preview Run / 当前公开输入解析可用图像。
+- 图像缩略图显示在节点底部，和现有图片预览节点一致；节点参数开关默认关闭，编辑调试时手动打开。
+- 双击节点底部缩略图打开统一交互式图片面板，复用现有 Preview 大图查看能力，并增加 ROI、circle、line、point、polygon 等 overlay 工具。
+- 用户确认后，前端把图像坐标转换成节点参数，例如 `source_points`、`roi`、`min_radius`、`max_radius`、`line_segment`、`search_region`。
+- 后端节点只消费稳定参数，不依赖前端交互状态。
+
+优先实现顺序：
+
+1. ROI polygon / bbox 取参，用于 crop、perspective-transform、roi-grid-create。
+2. Circle 取参，用于 hough-circles、圆孔定位和半径范围估计。
+3. Line 取参，用于找线、边缘定位和角度校正。
+4. Template 区域取参，用于模板匹配节点生成模板 ROI。
+
+## Preview Run 性能要求
+
+空盘检测主线包含 36 个槽位的 `for-each`，直接保留完整 `node_records` 会产生数百条节点记录。图编辑器 Preview Run 在没有 `*-preview` 节点或未打开节点调试图片面板时应默认关闭完整节点记录，只保留最终输出和失败信息；需要查看图像、表格或交互取参时，再手动打开对应节点的调试图片面板或放置 preview 节点。当前 Preview Run 默认执行超时调整为 120 秒，sync 等待约 140 秒，仍需避免用超时掩盖不必要的节点和中间结果开销。
+
 ## 样本用途
 
 开发图片目录：
@@ -85,8 +119,6 @@ Image Ref Coalesce
 当前样本：
 
 - `空盘_1080p_01.jpg`：空盘检测的正常样本和空盘参考图。
-- `空盘_1080p_圆_01.jpg`：圆孔特征模板。
-- `空盘_1080p_插槽_01.jpg`：插槽特征模板。
 - `满盘_1080p_01.jpg`：空盘检测负样本。
 - `缺料_1080p_01.jpg`、`缺料_1080p_02.jpg`、`缺料_1080p_03.jpg`：空盘检测负样本。
 - `错位_1080p_01.jpg`：空盘检测负样本，用于验证定位或对齐失败。
@@ -103,13 +135,17 @@ Image Ref Coalesce
   "code": 200,
   "message": "ok",
   "data": {
+    "format_id": "amvision.empty-tray-result.v2",
+    "inspection_type": "empty-tray",
+    "inspection_branch": "slot-roi-grid",
     "is_empty": true,
-    "state": "empty_ok",
-    "tray_present": true,
-    "alignment_ok": true,
-    "abnormal_area_ratio": 0.001,
-    "abnormal_region_count": 0,
-    "reason": "empty tray passed"
+    "slot_summary": {
+      "count": 36,
+      "truthy_count": 36,
+      "falsey_count": 0,
+      "all_truthy": true
+    },
+    "hole_feature_count": 215
   }
 }
 ```
@@ -121,13 +157,16 @@ Image Ref Coalesce
   "code": 200,
   "message": "ok",
   "data": {
+    "format_id": "amvision.empty-tray-result.v2",
+    "inspection_type": "empty-tray",
+    "inspection_branch": "slot-roi-grid",
     "is_empty": false,
-    "state": "not_empty_or_abnormal",
-    "tray_present": true,
-    "alignment_ok": false,
-    "abnormal_area_ratio": 0.083,
-    "abnormal_region_count": 12,
-    "reason": "empty tray check failed"
+    "slot_summary": {
+      "count": 36,
+      "truthy_count": 0,
+      "falsey_count": 36,
+      "all_truthy": false
+    }
   }
 }
 ```
@@ -135,239 +174,25 @@ Image Ref Coalesce
 字段含义：
 
 - `is_empty`：是否为正常空盘。
-- `state`：空盘检测状态，不表达满盘检测状态。
-- `tray_present`：托盘是否能被基础定位链识别。
-- `alignment_ok`：基础定位或对齐是否满足当前空盘检测要求。
-- `abnormal_area_ratio`：相对空盘参考图的异常前景面积占比。
-- `abnormal_region_count`：异常连通区域数量。
-- `reason`：简短原因。
-
-## 节点总原则
-
-本应用用基础节点组合完成目标。节点分支可同时保留在同一个 workflow app 中，不使用的分支通过 `enabled=false` 关闭。
-
-前端和后端当前都支持节点禁用：
-
-- 前端节点可显示禁用状态。
-- 后端 `WorkflowGraphExecutor` 会跳过 `enabled=false` 的节点。
-
-调试阶段可打开 Image Preview、Mask Overlay、Draw Regions 等节点；生产链路默认关闭这些节点，避免图片编码和预览输出拖慢速度。
-
-## 公共输入层
-
-公共输入层保持当前结构：
-
-```text
-request_image_base64
- -> Image Base64 Decode
- -> Image Ref Coalesce fallback
-
-request_image_ref
- -> Image Ref Coalesce primary
-```
-
-输出统一为当前待检测图像：
-
-```text
-Image Ref Coalesce.image
-```
-
-生产链路优先使用 `request_image_ref`。
-
-## 分支 A：空盘参考差分主线
-
-默认启用。第一阶段优先完成这条主线。
-
-目标：用当前图像与 `空盘_1080p_01.jpg` 的差异判断是否为正常空盘。
-
-节点链路：
-
-```text
-Image Ref Coalesce
- -> Perspective Transform 或固定 ROI Crop
- -> Load Local Image: 空盘_1080p_01.jpg
- -> 对参考图执行同样的 Perspective Transform 或固定 ROI Crop
- -> Image Diff
- -> Absdiff Threshold
- -> Morphology
- -> Connected Components
- -> Regions Count
- -> Regions Area Ratio
- -> Range Check
- -> Presence Check
- -> Process Decision
- -> Response Envelope
-```
-
-第一阶段允许先不用自动定位，使用固定 ROI 或固定 `source_points` 把链路跑通。固定参数跑通后，再加定位和对齐校验。
-
-判定规则：
-
-- `abnormal_region_count <= max_empty_abnormal_regions`
-- `abnormal_area_ratio <= max_empty_abnormal_area_ratio`
-- 上述条件都满足时，`is_empty=true`。
-
-满盘、缺料、错位图片在这条主线中应该触发 `is_empty=false`。
-
-## 分支 B：圆孔特征定位校验
-
-默认禁用，调试时启用。该分支只为当前空盘检测提供定位可信度，不做独立错位检测应用。
-
-目标：用 `空盘_1080p_圆_01.jpg` 或 Hough Circles 检查托盘圆孔特征是否稳定。
-
-节点链路：
-
-```text
-Image Ref Coalesce
- -> Template Match: 空盘_1080p_圆_01.jpg
- -> Regions Filter
- -> Regions Count
- -> Hole Pattern Check
- -> Range Check
-```
-
-可选链路：
-
-```text
-Image Ref Coalesce
- -> Grayscale / CLAHE
- -> Hough Circles
- -> Hole Pattern Check
- -> Range Check
-```
-
-用途：
-
-- 检查托盘是否存在。
-- 检查托盘是否明显错位。
-- 检查圆孔数量、节距和排列是否稳定。
-
-错位样本只用于验证该分支能失败。
-
-## 分支 C：插槽模板辅助校验
-
-默认禁用，作为备选验证分支。
-
-目标：使用 `空盘_1080p_插槽_01.jpg` 验证空盘槽位结构是否可见和稳定。
-
-节点链路：
-
-```text
-Image Ref Coalesce
- -> Template Match: 空盘_1080p_插槽_01.jpg
- -> Regions Filter
- -> Regions Count
- -> Presence Check
-```
-
-用途：
-
-- 辅助确认槽位结构可见。
-- 辅助排查强反光、遮挡和局部错位。
-- 不作为第一阶段唯一判断来源。
-
-## 分支 D：槽位 ROI 逐格判断
-
-默认禁用。通用 ROI 基础节点已经补齐，后续需要逐格判断时可在当前 app 中手动启用并继续接线。
-
-目标：在标准图中按槽位 ROI 逐格判断空盘状态。该分支是后续提高稳定性的重点，但不应写成业务专用节点。
-
-目标链路：
-
-```text
-Perspective Transform 后标准图
- -> ROI Grid Create
- -> For Each ROI
-    -> Value To ROI
-    -> Crop 当前槽位
-    -> Crop 空盘参考图对应槽位
-    -> Image Diff
-    -> Absdiff Threshold
-    -> Connected Components
-    -> Regions Area Ratio
-    -> Range Check
- -> Array Summary
- -> Process Decision
-```
-
-已补齐的通用基础节点：
-
-- `core.vision.roi-grid-create`：按行列、起点、槽位尺寸和间距生成 ROI 列表。
-- `core.logic.value-to-roi`：把 value 中的 ROI 对象转换为 `roi.v1`。
-- `core.logic.array-summary`：汇总多个 ROI 判断结果。
-
-这些节点不得包含空盘业务语义，只处理 ROI、value、array 和基础统计。
-
-## 调试预览分支
-
-默认禁用。
-
-可放入同一 workflow app 中：
-
-```text
-Mask Overlay
-Draw Regions
-Image Preview
-Gallery Preview
-```
-
-用途：
-
-- 查看差分图。
-- 查看阈值图。
-- 查看异常连通区域。
-- 查看对齐后的标准图。
-
-生产运行时默认关闭，避免返回 base64 图片或生成 overlay 图造成额外耗时。
-
-## 默认启用状态
-
-第一阶段：
-
-| 分支 | 默认状态 | 说明 |
-| --- | --- | --- |
-| 公共输入层 | 启用 | 必须保留 |
-| 分支 A 空盘参考差分主线 | 启用 | 第一阶段主判断 |
-| 分支 B 圆孔特征定位校验 | 禁用 | 调试时打开 |
-| 分支 C 插槽模板辅助校验 | 禁用 | 调试时打开 |
-| 分支 D 槽位 ROI 逐格判断 | 禁用 | 待基础节点补齐后启用 |
-| 调试预览分支 | 禁用 | 调参时打开 |
-
-## 实施顺序
-
-1. 保留现有 `request_image_ref` 和 `request_image_base64` 输入。
-2. 完成分支 A：空盘参考差分主线。
-3. 接入 `Response Envelope`，输出统一 JSON。
-4. 使用 `空盘_1080p_01.jpg` 验证 `is_empty=true`。
-5. 使用 `满盘_1080p_01.jpg`、`缺料_1080p_*.jpg`、`错位_1080p_01.jpg` 验证 `is_empty=false`。
-6. 接入分支 B 和分支 C，默认禁用，只用于调试。
-7. 如果需要槽位逐格判断，再补通用 ROI 基础节点并接入分支 D。
-8. 调参稳定后再创建独立满盘检测 workflow app，不在当前 app 中增加满盘通过逻辑。
-
-## 验收条件
-
-- `空盘_1080p_01.jpg` Preview Run 返回 `is_empty=true`。
-- `满盘_1080p_01.jpg` Preview Run 返回 `is_empty=false`。
-- `缺料_1080p_01.jpg`、`缺料_1080p_02.jpg`、`缺料_1080p_03.jpg` Preview Run 返回 `is_empty=false`。
-- `错位_1080p_01.jpg` Preview Run 返回 `is_empty=false` 或 `alignment_ok=false`。
-- 默认启用节点只包含空盘检测主线。
-- 满盘检测逻辑没有混入当前应用。
-- 没有新增业务专用节点或专用节点包。
-- 新增节点如有必要，只能是通用基础节点。
-
-## 后续满盘检测应用边界
-
-空盘检测确认稳定后，再新增独立 workflow app 做满盘检测。
-
-满盘检测应用可以复用：
-
-- 公共输入层。
-- 透视变换或固定 ROI。
-- 圆孔定位校验。
-- 插槽模板匹配。
-- ROI Grid。
-- For Each ROI。
-- Array Summary。
-
-但满盘检测的判定规则、参考图和输出状态必须独立维护，不写入 `workflow-app-20260710020359`。
-
+- `slot_summary`：36 个槽位逐格判断的汇总。
+- `slots`：每个槽位的判断结果、异常连通区域数量和异常面积占比。
+- `hole_feature_count`：透视标准图上的圆特征数量，用于托盘存在和定位可信度校验。
+- `decision`：总判定结果。
+
+## 当前烟测结果
+
+本地使用 `WorkflowGraphExecutor` 直接执行 template，输入为 `request_image_base64`：
+
+| 样本 | 期望 | 结果 | 槽位通过 |
+| --- | --- | --- | --- |
+| `空盘_1080p_01.jpg` | 正常空盘 | `is_empty=true` | 36 / 36 |
+| `满盘_1080p_01.jpg` | 不是空盘 | `is_empty=false` | 0 / 36 |
+| `缺料_1080p_01.jpg` | 不是空盘 | `is_empty=false` | 0 / 36 |
+| `错位_1080p_01.jpg` | 不是空盘 | `is_empty=false` | 0 / 36 |
+
+## 后续扩展
+
+- 若现场空盘图的托盘姿态变化更大，优先调 `contour-to-roi`、`perspective-transform` 和 ROI 网格参数。
+- 若槽位内部误检较多，优先调单槽阈值、形态学核大小、连通区域面积过滤。
+- 若需要更直观调参，优先实现图像交互取参能力，而不是继续新增业务专用节点。
+- 满盘检测应用应新建独立 workflow app，不复用本应用作为满盘通过规则。

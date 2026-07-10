@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import build_circles_payload
@@ -147,7 +148,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if limit is not None:
         circle_items = circle_items[:limit]
 
-    return {
+    outputs: dict[str, object] = {
         "circles": build_circles_payload(
             items=circle_items,
             source_image=image_payload,
@@ -180,3 +181,100 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=image_payload,
+            title="Hough Circles",
+            artifact_name="hough-circles-debug-preview",
+            overlays=_build_circle_overlays(circle_items),
+            interaction=_build_circle_interaction(
+                dp=dp,
+                min_dist=min_dist,
+                param1=param1,
+                param2=param2,
+                min_radius=min_radius,
+                max_radius=max_radius,
+            ),
+        )
+    )
+    return outputs
+
+
+def _build_circle_interaction(
+    *,
+    dp: float,
+    min_dist: float,
+    param1: float,
+    param2: float,
+    min_radius: int,
+    max_radius: int,
+) -> dict[str, object]:
+    """声明 Hough Circles 在图片面板中的取参和调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "circle",
+                "label": "找圆",
+                "target_parameters": ["min_dist", "min_radius", "max_radius"],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("dp", "DP", dp, min_value=0.1, max_value=4.0, step=0.1),
+            _build_numeric_control("min_dist", "Min Dist", min_dist, min_value=1.0, max_value=600.0, step=1.0),
+            _build_numeric_control("param1", "Param1", param1, min_value=1.0, max_value=300.0, step=1.0),
+            _build_numeric_control("param2", "Param2", param2, min_value=1.0, max_value=200.0, step=1.0),
+            _build_numeric_control("min_radius", "Min Radius", min_radius, min_value=0.0, max_value=400.0, step=1.0),
+            _build_numeric_control("max_radius", "Max Radius", max_radius, min_value=0.0, max_value=800.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """把 Hough 圆检测结果转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for circle_item in circle_items:
+        center_xy = circle_item.get("center_xy")
+        radius = circle_item.get("radius")
+        if not isinstance(center_xy, list) or len(center_xy) < 2 or not isinstance(radius, (int, float)):
+            continue
+        circle_index = circle_item.get("circle_index", len(overlays) + 1)
+        overlays.append(
+            {
+                "kind": "circle",
+                "id": f"circle-{circle_index}",
+                "label": f"circle {circle_index}",
+                "circle": {
+                    "center_x": float(center_xy[0]),
+                    "center_y": float(center_xy[1]),
+                    "radius": float(radius),
+                },
+            }
+        )
+    return overlays

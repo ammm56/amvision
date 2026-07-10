@@ -2336,6 +2336,42 @@ a:hover {
   border-radius: 6px;
 }
 
+.workflow-graph-node-preview__image-frame {
+  position: relative;
+  height: 112px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #111619;
+}
+
+.workflow-graph-node-preview__image-frame img {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: contain;
+}
+
+.workflow-graph-node-preview__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.workflow-graph-node-preview__overlay-shape {
+  vector-effect: non-scaling-stroke;
+  stroke: #18b6c4;
+  stroke-width: 2;
+  fill: rgb(24 182 196 / 0.14);
+  paint-order: stroke fill;
+}
+
+.workflow-graph-node-preview__overlay-shape--line,
+.workflow-graph-node-preview__overlay-shape--circle {
+  fill: none;
+}
+
 .workflow-graph-node-preview__empty {
   display: grid;
   min-height: 112px;
@@ -3920,6 +3956,26 @@ a:hover {
   flex-wrap: wrap;
 }
 
+.image-viewer__interaction-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-right: 8px;
+  border-right: 1px solid rgb(255 255 255 / 0.16);
+}
+
+.image-viewer__tool-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 3px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.06);
+}
+
 .image-viewer__close.ui-button {
   min-width: 34px;
   color: #ffffff;
@@ -3954,12 +4010,64 @@ a:hover {
   cursor: grabbing;
 }
 
-.image-viewer__viewport img {
-  max-width: none;
-  max-height: none;
+.image-viewer__viewport--interacting,
+.image-viewer__viewport--interacting:active {
+  cursor: crosshair;
+}
+
+.image-viewer__image-frame {
+  position: relative;
   transform-origin: center center;
   user-select: none;
   will-change: transform;
+}
+
+.image-viewer__image-frame img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  user-select: none;
+}
+
+.image-viewer__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.image-viewer__overlay-shape {
+  vector-effect: non-scaling-stroke;
+  stroke: #18b6c4;
+  stroke-width: 2;
+  fill: rgb(24 182 196 / 0.12);
+  paint-order: stroke fill;
+}
+
+.image-viewer__overlay-shape--line,
+.image-viewer__overlay-shape--circle {
+  fill: none;
+}
+
+.image-viewer__overlay-shape--draft,
+.image-viewer__overlay-shape--draft-line {
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  fill: rgb(245 158 11 / 0.14);
+}
+
+.image-viewer__overlay-shape--draft-line {
+  fill: none;
+}
+
+.image-viewer__overlay-point {
+  vector-effect: non-scaling-stroke;
+  stroke: #111619;
+  stroke-width: 2;
+  fill: #f59e0b;
 }
 
 .image-viewer__empty {
@@ -4139,5 +4247,101 @@ a:hover {
 
   .app-sidebar {
     display: none;
+  }
+}
+.image-viewer__tuning-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  width: min(330px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  background: rgb(28 34 38 / 0.94);
+  box-shadow: 0 16px 32px rgb(0 0 0 / 0.28);
+  color: #f4f8fb;
+}
+
+.image-viewer__tuning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 700;
+}
+
+.image-viewer__tuning-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c8d3d9;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.image-viewer__tuning-list {
+  display: grid;
+  gap: 10px;
+}
+
+.image-viewer__tuning-control {
+  display: grid;
+  grid-template-columns: minmax(82px, 0.9fr) minmax(110px, 1.3fr) 76px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.image-viewer__tuning-control span {
+  min-width: 0;
+  overflow: hidden;
+  color: #d9e4ea;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-viewer__tuning-control input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  accent-color: #18a1ad;
+}
+
+.image-viewer__tuning-control input[type='number'] {
+  width: 76px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.08);
+  color: #ffffff;
+  font: inherit;
+}
+
+.image-viewer__tuning-control input[type='checkbox'] {
+  justify-self: start;
+  accent-color: #18a1ad;
+}
+
+@media (max-width: 760px) {
+  .image-viewer__tuning-panel {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: min(42vh, 320px);
+  }
+
+  .image-viewer__tuning-control {
+    grid-template-columns: minmax(72px, 0.8fr) minmax(96px, 1fr) 70px;
   }
 }

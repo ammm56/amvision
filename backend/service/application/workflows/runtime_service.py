@@ -271,7 +271,7 @@ class WorkflowRuntimeService:
 
         effective_timeout_seconds = resolve_effective_timeout_seconds(
             requested_timeout_seconds=normalized_request.timeout_seconds,
-            fallback_timeout_seconds=30,
+            fallback_timeout_seconds=120,
             execution_policy=execution_policy,
             field_name="timeout_seconds",
         )
@@ -280,8 +280,9 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
         )
-        retain_node_records_enabled = (
-            True if execution_policy is None else execution_policy.retain_node_records_enabled
+        retain_node_records_enabled = _resolve_preview_retain_node_records_enabled(
+            preview_metadata,
+            execution_policy=execution_policy,
         )
 
         now = _now_isoformat()
@@ -1868,6 +1869,23 @@ def _strip_output_diagnostic_timings(
             for item in value
         )
     return value
+
+
+def _resolve_preview_retain_node_records_enabled(
+    metadata: dict[str, object],
+    *,
+    execution_policy: WorkflowExecutionPolicy | None,
+) -> bool:
+    """解析 Preview Run 是否需要保留完整 node_records。
+
+    图编辑器的 Preview Run 可以通过 execution_metadata 显式关闭完整节点记录，避免
+    for-each、大图像中间结果在跨进程响应和数据库持久化时造成明显延迟。
+    """
+
+    explicit_value = _read_optional_bool_flag(metadata.get("retain_node_records_enabled"))
+    if explicit_value is not None:
+        return explicit_value
+    return True if execution_policy is None else execution_policy.retain_node_records_enabled
 
 
 def _elapsed_ms(started_at: float) -> float:

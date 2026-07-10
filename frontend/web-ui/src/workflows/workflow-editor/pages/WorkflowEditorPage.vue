@@ -199,6 +199,8 @@
       @close-image="closeImageViewer"
       @close-table="closePreviewTableViewer"
       @close-json="closePreviewJsonViewer"
+      @apply-image-interaction="applyPreviewImageInteraction"
+      @preview-image-interaction="previewPreviewImageInteraction"
     />
   </section>
 </template>
@@ -231,7 +233,7 @@ import type { WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-
 import { useWorkflowConnectionRules } from '../connections/useWorkflowConnectionRules'
 import { useWorkflowContextMenu, type WorkflowContextMenuState } from '../context/useWorkflowContextMenu'
 import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
-import { useWorkflowPreviewDisplays } from '../preview/useWorkflowPreviewDisplays'
+import { useWorkflowPreviewDisplays, type PreviewImageInteractionApplyEvent } from '../preview/useWorkflowPreviewDisplays'
 import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
 import { previewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
@@ -718,6 +720,7 @@ const graphNodePreviewGalleryItemHeight = 72
 const graphNodePreviewGalleryGap = 6
 const imageRefTransportKindOptions = previewImageRefTransportKindOptions
 const graphNodeWidgetRowHeight = 34
+let imageInteractionPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const routeApplicationId = computed(() => (typeof route.params.applicationId === 'string' ? route.params.applicationId : ''))
@@ -800,6 +803,7 @@ const {
   updateNodeParameterFromNumberEvent,
   updateNodeParameterFromCheckboxEvent,
   updateNodeParameterFromEnumValue,
+  updateNodeParametersByName,
   readNodeParameterJsonTextValue,
   updateNodeParameterJsonDraft,
   commitNodeParameterJsonDraft,
@@ -1077,6 +1081,117 @@ function clampNumber(value: number, minValue: number, maxValue: number): number 
 
 function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue): void {
   updatePreviewImageRefTransportKind(bindingId, value)
+}
+
+function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): boolean {
+  const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
+  if (!targetNode) {
+    errorMessage.value = `未找到取参目标节点：${event.nodeId}`
+    return false
+  }
+  const updates = buildPreviewImageInteractionParameterUpdates(event)
+  if (!updates || Object.keys(updates).length === 0) {
+    errorMessage.value = `${readGraphNodeTitle(targetNode)} 暂不支持当前图片取参结果`
+    return false
+  }
+  updateNodeParametersByName(targetNode, updates)
+  selectNode(event.nodeId)
+  return true
+}
+
+function previewPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): void {
+  if (!applyPreviewImageInteraction(event)) return
+  scheduleImageInteractionPreviewRun()
+}
+
+function scheduleImageInteractionPreviewRun(): void {
+  if (imageInteractionPreviewTimer !== null) window.clearTimeout(imageInteractionPreviewTimer)
+  imageInteractionPreviewTimer = window.setTimeout(() => {
+    imageInteractionPreviewTimer = null
+    if (previewDisabled.value) return
+    void runPreview()
+  }, 250)
+}
+
+function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInteractionApplyEvent): Record<string, unknown> | null {
+  const targetParameters = new Set(event.targetParameters)
+  const updates: Record<string, unknown> = {}
+  if (event.parameters) {
+    for (const [parameterName, value] of Object.entries(event.parameters)) {
+      updates[parameterName] = value
+    }
+  }
+  if ((event.tool === 'bbox' || event.tool === 'grid') && event.bboxXyxy) {
+    const [x1, y1, x2, y2] = event.bboxXyxy
+    const width = Math.max(0, x2 - x1)
+    const height = Math.max(0, y2 - y1)
+    if (width <= 0 || height <= 0) return Object.keys(updates).length ? updates : null
+    if (event.tool === 'grid') {
+      if (targetParameters.has('origin_x')) updates.origin_x = roundInteractionNumber(x1)
+      if (targetParameters.has('origin_y')) updates.origin_y = roundInteractionNumber(y1)
+      if (targetParameters.has('roi_width')) updates.roi_width = roundInteractionNumber(width)
+      if (targetParameters.has('roi_height')) updates.roi_height = roundInteractionNumber(height)
+      if (targetParameters.has('step_x')) updates.step_x = roundInteractionNumber(width)
+      if (targetParameters.has('step_y')) updates.step_y = roundInteractionNumber(height)
+    }
+    if (targetParameters.has('x')) updates.x = roundInteractionNumber(x1)
+    if (targetParameters.has('y')) updates.y = roundInteractionNumber(y1)
+    if (targetParameters.has('width')) updates.width = roundInteractionNumber(width)
+    if (targetParameters.has('height')) updates.height = roundInteractionNumber(height)
+    if (targetParameters.has('bbox_xyxy')) updates.bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
+    if (targetParameters.has('search_bbox_xyxy')) updates.search_bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
+    if (targetParameters.has('source_points')) {
+      updates.source_points = [
+        [roundInteractionNumber(x1), roundInteractionNumber(y1)],
+        [roundInteractionNumber(x2), roundInteractionNumber(y1)],
+        [roundInteractionNumber(x2), roundInteractionNumber(y2)],
+        [roundInteractionNumber(x1), roundInteractionNumber(y2)],
+      ]
+    }
+    return updates
+  }
+  if (event.tool === 'four-point' && event.pointsXy?.length === 4) {
+    const points = event.pointsXy.map(([pointX, pointY]) => [roundInteractionNumber(pointX), roundInteractionNumber(pointY)])
+    if (targetParameters.has('source_points')) updates.source_points = points
+    const [outputWidth, outputHeight] = estimateFourPointOutputSize(points)
+    if (targetParameters.has('output_width')) updates.output_width = outputWidth
+    if (targetParameters.has('output_height')) updates.output_height = outputHeight
+    return updates
+  }
+  if (event.tool === 'circle' && event.circle) {
+    const radius = Math.max(1, event.circle.radius)
+    if (targetParameters.has('center_x')) updates.center_x = roundInteractionNumber(event.circle.centerX)
+    if (targetParameters.has('center_y')) updates.center_y = roundInteractionNumber(event.circle.centerY)
+    if (targetParameters.has('radius')) updates.radius = roundInteractionNumber(radius)
+    if (targetParameters.has('min_radius')) updates.min_radius = Math.max(0, Math.floor(radius * 0.75))
+    if (targetParameters.has('max_radius')) updates.max_radius = Math.max(1, Math.ceil(radius * 1.25))
+    if (targetParameters.has('min_dist')) updates.min_dist = Math.max(1, Math.ceil(radius * 2))
+    return updates
+  }
+  if (event.tool === 'line' && event.lineXyxy) {
+    const [x1, y1, x2, y2] = event.lineXyxy
+    const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
+    if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
+    if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
+    return updates
+  }
+  return Object.keys(updates).length ? updates : null
+}
+
+function estimateFourPointOutputSize(points: number[][]): [number, number] {
+  const topWidth = pointDistance(points[0], points[1])
+  const bottomWidth = pointDistance(points[3], points[2])
+  const leftHeight = pointDistance(points[0], points[3])
+  const rightHeight = pointDistance(points[1], points[2])
+  return [Math.max(1, Math.ceil(Math.max(topWidth, bottomWidth))), Math.max(1, Math.ceil(Math.max(leftHeight, rightHeight)))]
+}
+
+function pointDistance(pointA: number[], pointB: number[]): number {
+  return Math.hypot(pointB[0] - pointA[0], pointB[1] - pointA[1])
+}
+
+function roundInteractionNumber(value: number): number {
+  return Math.round(value * 1000) / 1000
 }
 
 useWorkflowEditorLifecycle({

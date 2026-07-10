@@ -61,6 +61,44 @@ def test_roi_grid_create_generates_row_major_roi_values() -> None:
     assert output["summary"]["value"]["count"] == 6
 
 
+def test_roi_grid_create_uses_defaults_for_blank_parameters_with_source_image() -> None:
+    """验证空参数会回退到常用默认值，避免新建节点 Preview Run 被空值阻断。"""
+
+    output = _roi_grid_create_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-grid-create",
+            node_definition=object(),
+            parameters={
+                "rows": "",
+                "columns": "",
+                "roi_width": "",
+                "roi_height": "",
+                "step_x": "",
+                "step_y": "",
+                "roi_id_prefix": "",
+            },
+            input_values={
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "image-defaults",
+                    "media_type": "image/bgr24",
+                    "width": 640,
+                    "height": 480,
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    roi_items = output["value"]["value"]
+    assert len(roi_items) == 1
+    assert roi_items[0]["roi_id"] == "roi-01-01"
+    assert roi_items[0]["bbox_xyxy"] == [0.0, 0.0, 640.0, 480.0]
+    assert output["summary"]["value"]["rows"] == 1
+    assert output["summary"]["value"]["columns"] == 1
+    assert output["summary"]["value"]["roi_width"] == 640.0
+    assert output["summary"]["value"]["roi_height"] == 480.0
+
 def test_value_to_roi_restores_roi_payload_from_nested_value() -> None:
     """验证 Value To ROI 可从 value.v1 的嵌套字段恢复 roi.v1。"""
 

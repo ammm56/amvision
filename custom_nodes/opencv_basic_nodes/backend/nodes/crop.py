@@ -6,6 +6,7 @@ import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import require_roi_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -50,7 +51,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(cropped_image.shape[0]),
         media_type="image/png",
     )
-    return {
+    outputs: dict[str, object] = {
         "image": output_payload,
         "summary": build_value_payload(
             {
@@ -62,6 +63,35 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=image_payload,
+            title="Crop ROI",
+            artifact_name="crop-debug-preview",
+            overlays=(
+                {
+                    "kind": "bbox",
+                    "id": "crop_bbox",
+                    "label": "crop",
+                    "bbox_xyxy": [crop_x1, crop_y1, crop_x2, crop_y2],
+                    "target_parameters": ["x", "y", "width", "height", "padding"],
+                },
+            ),
+            interaction={
+                "mode": "edit",
+                "coordinate_space": "source-image",
+                "tools": [
+                    {
+                        "tool": "bbox",
+                        "label": "裁剪 ROI",
+                        "target_parameters": ["x", "y", "width", "height", "padding"],
+                    },
+                ],
+            },
+        )
+    )
+    return outputs
 
 
 def _resolve_crop_bbox(

@@ -6,6 +6,7 @@ import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy, require_roi_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -85,27 +86,55 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(output_height),
         media_type="image/png",
     )
-    return {
-        "image": output_payload,
-        "summary": build_value_payload(
-            {
-                "source_kind": source_kind,
-                "source_points": [[round(point_x, 4), round(point_y, 4)] for point_x, point_y in source_points],
-                "source_bbox_xyxy": _build_bbox_xyxy(source_points),
-                "source_point_order": "top-left,top-right,bottom-right,bottom-left",
-                "estimated_output_width": int(estimated_output_width),
-                "estimated_output_height": int(estimated_output_height),
-                "output_width": int(output_width),
-                "output_height": int(output_height),
-                "output_size_source": output_size_source,
-                "transform_matrix": [
-                    [round(float(cell_value), 6) for cell_value in row_values.tolist()]
-                    for row_values in perspective_matrix
-                ],
-                **source_summary,
-            }
-        ),
+    summary_payload = {
+        "source_kind": source_kind,
+        "source_points": [[round(point_x, 4), round(point_y, 4)] for point_x, point_y in source_points],
+        "source_bbox_xyxy": _build_bbox_xyxy(source_points),
+        "source_point_order": "top-left,top-right,bottom-right,bottom-left",
+        "estimated_output_width": int(estimated_output_width),
+        "estimated_output_height": int(estimated_output_height),
+        "output_width": int(output_width),
+        "output_height": int(output_height),
+        "output_size_source": output_size_source,
+        "transform_matrix": [
+            [round(float(cell_value), 6) for cell_value in row_values.tolist()]
+            for row_values in perspective_matrix
+        ],
+        **source_summary,
     }
+    outputs: dict[str, object] = {
+        "image": output_payload,
+        "summary": build_value_payload(summary_payload),
+    }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=image_payload,
+            title="Perspective Source Points",
+            artifact_name="perspective-transform-debug-preview",
+            overlays=(
+                {
+                    "kind": "polygon",
+                    "id": "source_points",
+                    "label": "source_points",
+                    "points_xy": summary_payload["source_points"],
+                    "target_parameters": ["source_points", "output_width", "output_height"],
+                },
+            ),
+            interaction={
+                "mode": "edit",
+                "coordinate_space": "source-image",
+                "tools": [
+                    {
+                        "tool": "four-point",
+                        "label": "透视四点",
+                        "target_parameters": ["source_points", "output_width", "output_height"],
+                    },
+                ],
+            },
+        )
+    )
+    return outputs
 
 
 def _resolve_source_points(

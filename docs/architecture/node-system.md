@@ -153,6 +153,29 @@ custom_nodes/
 - custom node 的注册、卸载和升级不应要求修改核心前端代码结构
 - 与 ComfyUI 对齐的是“节点扩展模型”，不是照搬其无约束运行方式
 
+## 图像交互取参
+
+传统视觉节点的参数编辑需要向 VisionMaster / Halcon 这类工业视觉软件靠拢。ROI、找圆、找直线、找边、模板区域、测量线和标定区域等参数不应长期只靠文本字段输入。
+
+该能力属于 workflow editor 的通用参数编辑能力，不属于某个业务节点或某个应用的专用实现：
+
+- node definition 通过 `parameter_ui_schema` 或 `metadata` 声明参数辅助工具，例如 `roi-editor`、`circle-editor`、`line-editor`、`polygon-editor`、`template-region-editor`。
+- 节点仍通过稳定的 `parameters` 执行，后端节点不依赖前端交互状态。
+- 前端根据节点输入端口、最近一次 Preview Run 输出或当前公开输入解析可用图像，但不在属性面板内显示缩略图。
+- 节点底部沿用现有 preview display 显示缩略图；节点参数提供 `debug_image_panel_enabled` 调试图片面板开关，默认关闭，编辑调试时手动打开。
+- 双击节点底部缩略图打开统一交互式图片面板；该面板复用现有 ImageViewer / Preview 图片查看基础能力，并增加 overlay 编辑层，支持 pan、zoom、ROI、circle、line、point 和 polygon 操作。
+- 用户确认后，前端把图像坐标转换并写回节点参数，例如 `source_points`、`roi`、`line_segment`、`min_radius`、`max_radius`、`search_region`。
+- 参数 schema 仍是最终保存源，workflow template 不保存临时鼠标交互状态。生产 runtime 默认不生成调试缩略图，避免 BGR24 / BufferRef / FrameRef 转 PNG/JPEG/base64 的额外耗时；节点必须同时检查 `debug_image_panel_enabled` 和 `execution_metadata.debug_image_panels_enabled`。
+
+优先级：
+
+1. ROI polygon / bbox：用于 crop、perspective-transform、roi-grid-create 和区域规则。
+2. Circle：用于 hough-circles、圆孔定位、圆度和半径范围估计。
+3. Line：用于 hough-lines、fit-line、找边、角度校正和平行度测量。
+4. Template region：用于模板匹配、局部定位和换型参数准备。
+
+Preview Run 与图像交互取参要保持边界清楚：Preview Run 负责提供可用图像和节点输出；交互编辑器负责把人工选择转换成参数。大循环或大图 workflow 没有预览节点时，Preview Run 默认不应返回完整 `node_records`，避免跨进程序列化和数据库记录拖慢调试。
+
 ## 与核心模块的关系
 
 ### backend-service
