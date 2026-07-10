@@ -43,6 +43,41 @@ def test_local_file_queue_recovers_expired_leased_task(tmp_path: Path) -> None:
     assert reclaimed_task.metadata["last_lease_worker_id"] == "worker-a"
 
 
+def test_local_file_queue_claims_task_once_across_backend_instances(tmp_path: Path) -> None:
+    """验证同一队列目录的多个 backend 实例不会重复领取同一任务。"""
+
+    settings = LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    first_backend = LocalFileQueueBackend(settings)
+    second_backend = LocalFileQueueBackend(settings)
+    queued_task = first_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+
+    first_claim = first_backend.claim_next(queue_name="jobs", worker_id="worker-a")
+    second_claim = second_backend.claim_next(queue_name="jobs", worker_id="worker-b")
+
+    assert first_claim is not None
+    assert first_claim.task_id == queued_task.task_id
+    assert second_claim is None
+
+
+def test_local_file_queue_recovers_leased_task_without_lease_timestamp(tmp_path: Path) -> None:
+    """验证异常中断留下的无 lease 时间文件可以恢复。"""
+
+    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
+    queued_task = queue_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+    pending_path = tmp_path / "queue" / "jobs" / "pending" / f"{queued_task.task_id}.json"
+    leased_path = tmp_path / "queue" / "jobs" / "leased" / f"{queued_task.task_id}.json"
+    leased_path.parent.mkdir(parents=True, exist_ok=True)
+    pending_path.replace(leased_path)
+
+    recovered_count = queue_backend.recover_expired_leases(queue_name="jobs")
+    reclaimed_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
+
+    assert recovered_count == 1
+    assert reclaimed_task is not None
+    assert reclaimed_task.task_id == queued_task.task_id
+    assert reclaimed_task.attempt_count == 1
+
+
 def test_local_file_queue_rejects_stale_lease_completion_after_recovery(tmp_path: Path) -> None:
     """验证旧 worker 不能完成已经被恢复并重新领取的任务。"""
 

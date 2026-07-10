@@ -197,10 +197,19 @@ class LocalFileQueueBackend:
             for task_path in sorted(pending_dir.glob("*.json")):
                 leased_path = leased_dir / task_path.name
                 try:
-                    queue_task = self._read_task(task_path)
                     task_path.replace(leased_path)
                 except FileNotFoundError:
                     continue
+                except PermissionError:
+                    continue
+                try:
+                    queue_task = self._read_task(leased_path)
+                except PersistenceOperationError:
+                    try:
+                        leased_path.replace(task_path)
+                    except OSError:
+                        pass
+                    raise
                 leased_task = QueueMessage(
                     queue_name=queue_task.queue_name,
                     task_id=queue_task.task_id,
@@ -676,7 +685,7 @@ class LocalFileQueueBackend:
 
         leased_at = self._parse_time(queue_task.leased_at)
         if leased_at is None:
-            return False
+            return True
         return (datetime.now(timezone.utc) - leased_at).total_seconds() >= timeout_seconds
 
     def _cleanup_state_dir(self, *, queue_name: str, state_name: str, retention_seconds: float) -> int:

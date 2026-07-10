@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.queue import QueueBackend
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.training.rfdetr_segmentation import (
     RfdetrSegmentationTrainingExecutionRequest,
     RfdetrSegmentationTrainingTerminatedError,
@@ -121,7 +121,7 @@ class SqlAlchemySegmentationTrainingService:
         self,
         *,
         session_factory: SessionFactory,
-        queue_backend: QueueBackend,
+        queue_backend: QueueBackend | None,
         dataset_storage: LocalDatasetStorage,
     ) -> None:
         self.session_factory = session_factory
@@ -137,6 +137,7 @@ class SqlAlchemySegmentationTrainingService:
     ) -> dict[str, object]:
         """创建 segmentation 训练任务并入队。"""
 
+        queue_backend = self._require_queue_backend()
         model_type = self._normalize_model_type(request.model_type)
         dataset_export = self._resolve_dataset_export(
             project_id=request.project_id,
@@ -172,7 +173,7 @@ class SqlAlchemySegmentationTrainingService:
             task_spec=task_spec,
         )
         try:
-            queue_task = self.queue_backend.enqueue(
+            queue_task = queue_backend.enqueue(
                 queue_name=self.training_queue_name,
                 payload=queue_payload,
             )
@@ -200,6 +201,13 @@ class SqlAlchemySegmentationTrainingService:
             "queue_name": self.training_queue_name,
             "queue_task_id": queue_task.task_id,
         }
+
+    def _require_queue_backend(self) -> QueueBackend:
+        """返回提交任务所需队列后端。"""
+
+        if self.queue_backend is None:
+            raise ServiceConfigurationError("segmentation 训练提交缺少队列后端")
+        return self.queue_backend
 
     def process_training_task(
         self,

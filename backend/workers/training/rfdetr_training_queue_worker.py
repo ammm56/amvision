@@ -60,7 +60,7 @@ class RfdetrTrainingQueueWorker:
                 TrainingBackendRunRequest(
                     training_task_id=task_id,
                     model_type="rfdetr",
-                    task_type="detection",
+                    task_type=self._read_task_type(queue_task),
                     metadata={
                         "queue_task_id": queue_task.task_id,
                     },
@@ -132,3 +132,20 @@ class RfdetrTrainingQueueWorker:
                 details={"queue_task_id": queue_task.task_id},
             )
         return task_id
+
+    def _read_task_type(self, queue_task: QueueMessage) -> str:
+        """从队列负载中读取 RF-DETR 训练 task_type。"""
+        import json
+
+        payload = queue_task.payload
+        if isinstance(payload, dict):
+            task_type = payload.get("task_type")
+        else:
+            task_type = json.loads(payload).get("task_type")
+
+        if isinstance(task_type, str) and task_type.strip():
+            return task_type.strip().lower()
+        raise InvalidRequestError(
+            "RF-DETR 训练队列负载缺少 task_type",
+            details={"queue_task_id": queue_task.task_id},
+        )

@@ -464,7 +464,7 @@ class LocalDetectionValidationSessionService:
     def _prediction_output_dir(session_id: str, prediction_id: str) -> PurePosixPath:
         """返回某次预测输出目录的相对路径。"""
 
-        return PurePosixPath("runtime") / "validation-sessions" / session_id / "predictions" / prediction_id
+        return PurePosixPath("runtime") / "validation" / session_id / "pred" / prediction_id
 
 
 def _build_runtime_target_resolver(

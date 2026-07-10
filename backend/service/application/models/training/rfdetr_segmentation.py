@@ -30,6 +30,7 @@ class RfdetrSegmentationTrainingEpochProgress:
 
     epoch: int
     max_epochs: int
+    input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
 
@@ -158,6 +159,7 @@ def _emit_final_callbacks(
             RfdetrSegmentationTrainingEpochProgress(
                 epoch=max(1, request.max_epochs),
                 max_epochs=max(1, request.max_epochs),
+                input_size=result.aligned_input_size,
                 learning_rate=float((request.extra_options or {}).get("learning_rate", 1e-4)),
                 train_metrics=train_metrics,
             )
