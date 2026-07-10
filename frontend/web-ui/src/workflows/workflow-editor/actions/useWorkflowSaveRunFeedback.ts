@@ -1,4 +1,5 @@
 import { formatPreviewRunFailureMessage, readPreviewRunFailureDetails } from '../preview/useWorkflowPreviewValidation'
+import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
 import type { WorkflowAppSaveResult } from '../services/workflow-app.service'
 import type { WorkflowPreviewRun } from '../types'
 
@@ -11,7 +12,7 @@ export interface WorkflowSaveRunFeedbackOptions {
   refreshSavedWorkflowApp: (applicationId: string) => Promise<void>
   resetPreviewRun: () => void
   revokePreviewImageObjectUrls: () => void
-  refreshPreviewNodeDisplays: (previewRun: WorkflowPreviewRun) => Promise<void>
+  refreshPreviewNodeDisplays: (previewRun: WorkflowPreviewRun, options?: PreviewNodeDisplayRefreshOptions) => Promise<void>
   focusGraphNode: (nodeId: string) => void
   setActionError: (message: string | null) => void
   setActionStatus: (message: string | null) => void
@@ -28,8 +29,11 @@ export function useWorkflowSaveRunFeedback(options: WorkflowSaveRunFeedbackOptio
     options.revokePreviewImageObjectUrls()
   }
 
-  async function applyPreviewRunFeedback(previewRun: WorkflowPreviewRun): Promise<void> {
-    await options.refreshPreviewNodeDisplays(previewRun)
+  async function applyPreviewRunFeedback(
+    previewRun: WorkflowPreviewRun,
+    refreshOptions: PreviewNodeDisplayRefreshOptions = {},
+  ): Promise<void> {
+    await options.refreshPreviewNodeDisplays(previewRun, refreshOptions)
     if (previewRun.state === 'failed') {
       const failedNodeId = readDisplayText(readPreviewRunFailureDetails(previewRun)?.node_id)
       if (failedNodeId) {

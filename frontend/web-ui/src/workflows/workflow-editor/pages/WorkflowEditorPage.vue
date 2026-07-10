@@ -196,11 +196,14 @@
       :image="activeImageViewer"
       :table="activePreviewTable"
       :json="activePreviewJson"
+      :preview-running="previewing"
+      :preview-disabled="previewDisabled"
       @close-image="closeImageViewer"
       @close-table="closePreviewTableViewer"
       @close-json="closePreviewJsonViewer"
       @apply-image-interaction="applyPreviewImageInteraction"
       @preview-image-interaction="previewPreviewImageInteraction"
+      @run-image-preview="runPreviewFromImageViewer"
     />
   </section>
 </template>
@@ -1101,16 +1104,21 @@ function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent):
 
 function previewPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): void {
   if (!applyPreviewImageInteraction(event)) return
-  scheduleImageInteractionPreviewRun()
+  scheduleImageInteractionPreviewRun(event.nodeId)
 }
 
-function scheduleImageInteractionPreviewRun(): void {
+function scheduleImageInteractionPreviewRun(nodeId: string | null = null): void {
   if (imageInteractionPreviewTimer !== null) window.clearTimeout(imageInteractionPreviewTimer)
   imageInteractionPreviewTimer = window.setTimeout(() => {
     imageInteractionPreviewTimer = null
     if (previewDisabled.value) return
-    void runPreview()
+    void runPreview({ preserveImageViewerNodeId: nodeId ?? activeImageViewer.value?.nodeId ?? null })
   }, 250)
+}
+
+function runPreviewFromImageViewer(): void {
+  if (previewDisabled.value) return
+  void runPreview({ preserveImageViewerNodeId: activeImageViewer.value?.nodeId ?? null })
 }
 
 function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInteractionApplyEvent): Record<string, unknown> | null {
@@ -1138,7 +1146,10 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     if (targetParameters.has('y')) updates.y = roundInteractionNumber(y1)
     if (targetParameters.has('width')) updates.width = roundInteractionNumber(width)
     if (targetParameters.has('height')) updates.height = roundInteractionNumber(height)
-    if (targetParameters.has('bbox_xyxy')) updates.bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
+    if (targetParameters.has('bbox_xyxy')) {
+      updates.bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
+      updates.roi_kind = 'bbox'
+    }
     if (targetParameters.has('search_bbox_xyxy')) updates.search_bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
     if (targetParameters.has('source_points')) {
       updates.source_points = [
@@ -1153,7 +1164,10 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
   if (event.tool === 'polygon' && event.pointsXy && event.pointsXy.length >= 3) {
     const points = event.pointsXy.map(([pointX, pointY]) => [roundInteractionNumber(pointX), roundInteractionNumber(pointY)])
     if (targetParameters.has('source_points')) updates.source_points = points
-    if (targetParameters.has('polygon_xy')) updates.polygon_xy = points
+    if (targetParameters.has('polygon_xy')) {
+      updates.polygon_xy = points
+      updates.roi_kind = 'polygon'
+    }
     if (points.length === 4) {
       const [outputWidth, outputHeight] = estimateFourPointOutputSize(points)
       if (targetParameters.has('output_width')) updates.output_width = outputWidth

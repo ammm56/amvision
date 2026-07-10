@@ -103,6 +103,14 @@ interface PreviewNodeOutput {
   payload: WorkflowJsonObject
 }
 
+export interface PreviewNodeDisplayRefreshOptions {
+  reopenImageViewerNodeId?: string | null
+}
+
+interface PreviewImageObjectUrlRevokeOptions {
+  closeImageViewer?: boolean
+}
+
 type PreviewNodeDisplayKind = 'image' | 'table' | 'gallery' | 'value'
 
 export interface PreviewNodeDisplay {
@@ -134,8 +142,12 @@ export function useWorkflowPreviewDisplays() {
     previewImageObjectUrls.push(objectUrl)
   }
 
-  async function refreshPreviewNodeDisplays(previewRun: WorkflowPreviewRun): Promise<void> {
-    revokePreviewImageObjectUrls()
+  async function refreshPreviewNodeDisplays(
+    previewRun: WorkflowPreviewRun,
+    options: PreviewNodeDisplayRefreshOptions = {},
+  ): Promise<void> {
+    const reopenImageViewerNodeId = readDisplayText(options.reopenImageViewerNodeId)
+    revokePreviewImageObjectUrls({ closeImageViewer: !reopenImageViewerNodeId })
     const nextDisplays: Record<string, PreviewNodeDisplay> = {}
     const previewDisplays = await Promise.all(
       readPreviewDisplayOutputs(previewRun).map((displayOutput) => (
@@ -148,15 +160,19 @@ export function useWorkflowPreviewDisplays() {
       }
     }
     previewNodeDisplays.value = nextDisplays
+    if (reopenImageViewerNodeId) {
+      const refreshedImage = nextDisplays[reopenImageViewerNodeId]?.image ?? null
+      activeImageViewer.value = refreshedImage?.src ? refreshedImage : null
+    }
   }
 
-  function revokePreviewImageObjectUrls(): void {
+  function revokePreviewImageObjectUrls(options: PreviewImageObjectUrlRevokeOptions = {}): void {
     for (const objectUrl of previewImageObjectUrls) {
       URL.revokeObjectURL(objectUrl)
     }
     previewImageObjectUrls = []
     previewNodeDisplays.value = {}
-    closeImageViewer()
+    if (options.closeImageViewer !== false) closeImageViewer()
   }
 
   function getPreviewNodeDisplay(nodeId: string): PreviewNodeDisplay | null {

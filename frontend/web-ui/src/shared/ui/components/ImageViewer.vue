@@ -36,6 +36,24 @@
               <Check :size="15" />
               应用参数
             </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              type="button"
+              :title="hasInteractionDraft ? '应用当前取参并重新 Preview Run' : '重新执行 Preview Run'"
+              :disabled="previewActionDisabled"
+              @click="runPreviewFromViewer"
+            >
+              <Play :size="15" />
+              {{ previewRunning ? 'Preview 中' : (hasInteractionDraft ? '应用并 Preview' : 'Preview Run') }}
+            </Button>
+            <span
+              v-if="interactionFeedback"
+              class="image-viewer__interaction-feedback"
+              :class="`image-viewer__interaction-feedback--${interactionFeedback.tone}`"
+            >
+              {{ interactionFeedback.text }}
+            </span>
           </div>
           <Button size="sm" variant="secondary" type="button" title="适配窗口" @click="fitImage">
             <Maximize2 :size="15" />
@@ -212,7 +230,7 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { Check, Crosshair, Maximize2, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
+import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
 
 import Button from './Button.vue'
 
@@ -308,12 +326,15 @@ const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
 const props = defineProps<{
   open: boolean
   image: ViewerImage | null
+  previewDisabled?: boolean
+  previewRunning?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   applyInteraction: [event: ViewerImageInteractionApplyEvent]
   previewInteraction: [event: ViewerImageInteractionApplyEvent]
+  runPreview: []
 }>()
 
 const viewportRef = ref<HTMLElement | null>(null)
@@ -334,7 +355,9 @@ const draftPoints = ref<ImagePoint[]>([])
 const circleDraftMode = ref<CircleDraftMode>('center-radius')
 const tuningParameterValues = ref<Record<string, unknown>>({})
 const autoPreviewEnabled = ref(true)
+const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'info' } | null>(null)
 let tuningPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
+let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const imageStyle = computed(() => ({
   transform: `translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`,
@@ -419,6 +442,11 @@ const canApplyInteraction = computed(() => {
   if (interactionTool.value === 'line') return Boolean(draftLineXyxy.value)
   return false
 })
+const previewActionDisabled = computed(() => Boolean(
+  props.previewDisabled
+  || props.previewRunning
+  || (hasInteractionDraft.value && !canApplyInteraction.value),
+))
 const hasVisibleOverlay = computed(() => imageOverlays.value.length > 0 || hasInteractionDraft.value)
 const overlayViewBox = computed(() => {
   const width = naturalWidth.value || props.image?.width || 0
@@ -667,8 +695,12 @@ function resetInteractionState(): void {
 
 function applyInteractionDraft(): void {
   const event = buildInteractionDraftEvent()
-  if (!event) return
+  if (!event) {
+    showInteractionFeedback('当前取参还不完整，不能应用参数', 'warning')
+    return
+  }
   emit('applyInteraction', event)
+  showInteractionFeedback(readAppliedFeedbackText(event), 'success')
 }
 
 function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
@@ -747,6 +779,7 @@ function applyTuningParameters(requestPreview: boolean): void {
     parameters,
   }
   emit('applyInteraction', event)
+  showInteractionFeedback(requestPreview ? '调参已应用，正在 Preview Run' : '调参已应用到节点参数', 'success')
   if (requestPreview) scheduleTuningPreview(event)
 }
 
@@ -756,6 +789,46 @@ function scheduleTuningPreview(event: ViewerImageInteractionApplyEvent): void {
     emit('previewInteraction', event)
     tuningPreviewTimer = null
   }, 350)
+}
+
+function runPreviewFromViewer(): void {
+  if (previewActionDisabled.value) {
+    showInteractionFeedback(
+      props.previewRunning ? 'Preview Run 正在执行' : '当前取参还不完整，不能 Preview',
+      'warning',
+    )
+    return
+  }
+  const event = buildInteractionDraftEvent()
+  if (hasInteractionDraft.value) {
+    if (!event) {
+      showInteractionFeedback('当前取参还不完整，不能 Preview', 'warning')
+      return
+    }
+    emit('applyInteraction', event)
+    showInteractionFeedback(`${readAppliedFeedbackText(event)}，正在 Preview Run`, 'success')
+  } else {
+    showInteractionFeedback('正在 Preview Run', 'info')
+  }
+  emit('runPreview')
+}
+
+function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {
+  if (event.tool === 'bbox') return '矩形 ROI 已应用到节点参数'
+  if (event.tool === 'polygon') return '多边形 ROI 已应用到节点参数'
+  if (event.tool === 'grid') return 'ROI 网格参数已应用'
+  if (event.tool === 'circle') return '圆参数已应用'
+  if (event.tool === 'line') return '线段参数已应用'
+  return '参数已应用到节点'
+}
+
+function showInteractionFeedback(text: string, tone: 'success' | 'warning' | 'info'): void {
+  interactionFeedback.value = { text, tone }
+  if (interactionFeedbackTimer !== null) window.clearTimeout(interactionFeedbackTimer)
+  interactionFeedbackTimer = window.setTimeout(() => {
+    interactionFeedback.value = null
+    interactionFeedbackTimer = null
+  }, 2400)
 }
 
 function overlayKey(overlay: ViewerImageOverlay, index: number): string {
@@ -865,5 +938,6 @@ onUnmounted(() => {
   stopPan()
   stopActiveDraftListeners()
   if (tuningPreviewTimer !== null) window.clearTimeout(tuningPreviewTimer)
+  if (interactionFeedbackTimer !== null) window.clearTimeout(interactionFeedbackTimer)
 })
 </script>

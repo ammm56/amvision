@@ -3976,6 +3976,34 @@ a:hover {
   background: rgb(255 255 255 / 0.06);
 }
 
+.image-viewer__interaction-feedback {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  max-width: 260px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.image-viewer__interaction-feedback--success {
+  color: #bbf7d0;
+  background: rgb(22 163 74 / 0.18);
+}
+
+.image-viewer__interaction-feedback--warning {
+  color: #fde68a;
+  background: rgb(217 119 6 / 0.18);
+}
+
+.image-viewer__interaction-feedback--info {
+  color: #bfdbfe;
+  background: rgb(37 99 235 / 0.18);
+}
+
 .image-viewer__close.ui-button {
   min-width: 34px;
   color: #ffffff;

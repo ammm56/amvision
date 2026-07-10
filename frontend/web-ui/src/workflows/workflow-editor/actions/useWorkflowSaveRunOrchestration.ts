@@ -1,9 +1,14 @@
 import type { ComputedRef, Ref } from 'vue'
 
 import type { WorkflowSaveActionInput, WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
+import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
 import type { WorkflowAppSaveResult } from '../services/workflow-app.service'
 import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 import type { WorkflowValidationIssue } from '../validation/useWorkflowPreflight'
+
+export interface WorkflowPreviewRunUiOptions {
+  preserveImageViewerNodeId?: string | null
+}
 
 export interface WorkflowSaveRunOrchestrationOptions {
   workflowApp: Ref<unknown | null>
@@ -18,7 +23,7 @@ export interface WorkflowSaveRunOrchestrationOptions {
   saveWorkflowDocument: (input: WorkflowSaveActionInput) => Promise<WorkflowAppSaveResult | null>
   runWorkflowPreview: (input: WorkflowPreviewRunActionInput) => Promise<WorkflowPreviewRun | null>
   applyWorkflowSaveFeedback: (result: WorkflowAppSaveResult, options: { wasNewApp: boolean }) => Promise<void>
-  applyPreviewRunFeedback: (previewRun: WorkflowPreviewRun) => Promise<void>
+  applyPreviewRunFeedback: (previewRun: WorkflowPreviewRun, options?: PreviewNodeDisplayRefreshOptions) => Promise<void>
   clearActionMessages: () => void
   revokePreviewImageObjectUrls: () => void
   setActionError: (message: string | null) => void
@@ -54,7 +59,7 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     await options.applyWorkflowSaveFeedback(result, { wasNewApp })
   }
 
-  async function runPreview(): Promise<void> {
+  async function runPreview(uiOptions: WorkflowPreviewRunUiOptions = {}): Promise<void> {
     if (!options.workflowApp.value) return
     const previewBlocker = options.readNewWorkflowAppSaveBlocker()
     if (previewBlocker) {
@@ -74,7 +79,10 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     if (!inputBindings) return
     options.clearActionMessages()
     options.clearContextMenu()
-    options.revokePreviewImageObjectUrls()
+    const preserveImageViewerNodeId = readOptionalText(uiOptions.preserveImageViewerNodeId)
+    if (!preserveImageViewerNodeId) {
+      options.revokePreviewImageObjectUrls()
+    }
     const previewRun = await options.runWorkflowPreview({
       projectId: options.selectedProjectId.value,
       template,
@@ -82,11 +90,15 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       inputBindings,
     })
     if (!previewRun) return
-    await options.applyPreviewRunFeedback(previewRun)
+    await options.applyPreviewRunFeedback(previewRun, { reopenImageViewerNodeId: preserveImageViewerNodeId })
   }
 
   return {
     saveCurrentWorkflowApp,
     runPreview,
   }
+}
+
+function readOptionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
