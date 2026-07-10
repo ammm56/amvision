@@ -31,6 +31,7 @@ from backend.nodes.core_nodes.support.roi.parameters import (
 )
 from backend.nodes.core_nodes.support.roi.payloads import (
     build_roi_payload,
+    iter_roi_payloads,
     require_roi_payload,
 )
 
@@ -42,6 +43,7 @@ __all__ = [
     "build_roi_payload",
     "compute_regions_intersection_metrics",
     "derive_canvas_size_from_payloads",
+    "iter_roi_payloads",
     "normalize_bbox_xyxy",
     "normalize_polygon_xy",
     "polygon_area",
@@ -55,4 +57,3 @@ __all__ = [
     "resolve_roi_canvas_size",
     "select_best_region_item",
 ]
-

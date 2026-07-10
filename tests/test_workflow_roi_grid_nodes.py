@@ -7,6 +7,7 @@ from backend.nodes.core_nodes.logic.collections.array_summary import _array_summ
 from backend.nodes.core_nodes.logic.value.payload_to_value import _payload_to_value_handler
 from backend.nodes.core_nodes.logic.value.value_to_roi import _value_to_roi_handler
 from backend.nodes.core_nodes.vision.roi.roi_grid_create import _roi_grid_create_handler
+from backend.nodes.core_nodes.vision.roi.roi_list_create import _roi_list_create_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -16,6 +17,7 @@ def test_core_catalog_contains_roi_grid_nodes() -> None:
     node_type_ids = {node.node_type_id for node in get_core_workflow_node_definitions()}
 
     assert "core.vision.roi-grid-create" in node_type_ids
+    assert "core.vision.roi-list-create" in node_type_ids
     assert "core.logic.value-to-roi" in node_type_ids
     assert "core.logic.array-summary" in node_type_ids
 
@@ -98,6 +100,57 @@ def test_roi_grid_create_uses_defaults_for_blank_parameters_with_source_image() 
     assert output["summary"]["value"]["columns"] == 1
     assert output["summary"]["value"]["roi_width"] == 640.0
     assert output["summary"]["value"]["roi_height"] == 480.0
+
+
+def test_roi_list_create_merges_single_and_value_list_inputs() -> None:
+    """验证 ROI List Create 可合并多路 roi.v1 和 value.v1 ROI 数组。"""
+
+    output = _roi_list_create_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-list-create",
+            node_definition=object(),
+            parameters={"path": "items"},
+            input_values={
+                "roi": (
+                    {
+                        "roi_id": "slot-a",
+                        "roi_kind": "bbox",
+                        "bbox_xyxy": [0, 0, 10, 10],
+                        "polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                        "area": 100,
+                    },
+                ),
+                "items": {
+                    "value": {
+                        "items": [
+                            {
+                                "roi_id": "slot-b",
+                                "roi_kind": "polygon",
+                                "bbox_xyxy": [20, 20, 40, 42],
+                                "polygon_xy": [[20, 20], [40, 20], [36, 42], [22, 38]],
+                                "area": 380,
+                            }
+                        ]
+                    }
+                },
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "image-list",
+                    "media_type": "image/bgr24",
+                    "width": 80,
+                    "height": 60,
+                },
+            },
+            execution_metadata={},
+        )
+    )
+
+    roi_items = output["value"]["value"]
+    assert [item["roi_id"] for item in roi_items] == ["slot-a", "slot-b"]
+    assert roi_items[0]["source_image"]["image_handle"] == "image-list"
+    assert roi_items[1]["source_image"]["image_handle"] == "image-list"
+    assert output["summary"]["value"]["count"] == 2
+
 
 def test_value_to_roi_restores_roi_payload_from_nested_value() -> None:
     """验证 Value To ROI 可从 value.v1 的嵌套字段恢复 roi.v1。"""

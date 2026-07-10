@@ -54,6 +54,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.draw_roi import (
     NODE_TYPE_ID as DRAW_ROI_NODE_TYPE_ID,
     handle_node as draw_roi_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.draw_rois import (
+    NODE_TYPE_ID as DRAW_ROIS_NODE_TYPE_ID,
+    handle_node as draw_rois_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.gallery_preview import (
     NODE_TYPE_ID as GALLERY_PREVIEW_NODE_TYPE_ID,
     handle_node as gallery_preview_handler,
@@ -114,6 +118,7 @@ NODE_HANDLERS = (
     (DRAW_CONTOURS_NODE_TYPE_ID, draw_contours_handler),
     (DRAW_LINES_NODE_TYPE_ID, draw_lines_handler),
     (DRAW_ROI_NODE_TYPE_ID, draw_roi_handler),
+    (DRAW_ROIS_NODE_TYPE_ID, draw_rois_handler),
     (DRAW_MEASUREMENTS_NODE_TYPE_ID, draw_measurements_handler),
     (MASK_OVERLAY_NODE_TYPE_ID, mask_overlay_handler),
     (BILATERAL_FILTER_NODE_TYPE_ID, bilateral_filter_handler),

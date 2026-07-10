@@ -1,0 +1,79 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.draw-rois",
+  "display_name": "Draw ROIs",
+  "category": "opencv.render",
+  "description": "把 value.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "rois",
+      "display_name": "ROIs",
+      "payload_type_id": "value.v1",
+      "description": "ROI 列表，通常来自 ROI Grid Create.value 或 ROI List Create.value。"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "line_thickness": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2
+      },
+      "font_scale": {
+        "type": "number",
+        "minimum": 0,
+        "default": 0.45
+      },
+      "fill_alpha": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.12
+      },
+      "draw_label": {
+        "type": "boolean",
+        "default": true
+      },
+      "draw_index": {
+        "type": "boolean",
+        "default": true
+      },
+      "draw_bbox": {
+        "type": "boolean",
+        "default": false
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.draw",
+    "vision.render",
+    "inspection.roi.visualize",
+    "inspection.roi.batch"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

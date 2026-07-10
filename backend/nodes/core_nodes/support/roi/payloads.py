@@ -68,3 +68,48 @@ def require_roi_payload(payload: object, *, node_id: str | None = None) -> dict[
         source_image=payload.get("source_image"),
     )
 
+
+def iter_roi_payloads(
+    payload: object,
+    *,
+    node_id: str | None = None,
+    field_name: str = "rois",
+) -> list[dict[str, object]]:
+    """把单个 ROI、多个 ROI 或 value.v1 包装的 ROI 列表统一规范化。
+
+    参数：
+    - payload：可为 roi.v1、roi.v1 数组、value.v1，或包含 items 的对象。
+    - node_id：当前节点 id，用于错误定位。
+    - field_name：错误消息中使用的字段名称。
+
+    返回：
+    - list[dict[str, object]]：规范化后的 ROI 列表。
+    """
+
+    if payload is None:
+        return []
+    if isinstance(payload, tuple):
+        payload = list(payload)
+    if isinstance(payload, list):
+        normalized_items: list[dict[str, object]] = []
+        for item in payload:
+            normalized_items.extend(
+                iter_roi_payloads(item, node_id=node_id, field_name=field_name)
+            )
+        return normalized_items
+    if not isinstance(payload, dict):
+        raise InvalidRequestError(
+            f"{field_name} 必须是 roi.v1、roi.v1 数组或 value.v1",
+            details={"node_id": node_id},
+        )
+    if "value" in payload:
+        return iter_roi_payloads(payload.get("value"), node_id=node_id, field_name=field_name)
+    if "items" in payload:
+        raw_items = payload.get("items")
+        if not isinstance(raw_items, list):
+            raise InvalidRequestError(
+                f"{field_name}.items 必须是 ROI 数组",
+                details={"node_id": node_id},
+            )
+        return iter_roi_payloads(raw_items, node_id=node_id, field_name=field_name)
+    return [require_roi_payload(payload, node_id=node_id)]

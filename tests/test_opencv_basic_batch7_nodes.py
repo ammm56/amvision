@@ -119,8 +119,244 @@ def test_opencv_basic_batch7_draw_roi_execute(tmp_path: Path) -> None:
     roi_overlay_bytes = image_registry.read_bytes(str(roi_overlay["image_handle"]))
 
     assert roi_overlay["transport_kind"] == "memory"
-    assert roi_overlay_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert roi_overlay["media_type"] == "image/raw"
+    assert roi_overlay["pixel_format"] == "bgr24"
+    assert len(roi_overlay_bytes) == 128 * 128 * 3
     assert roi_overlay_bytes != source_bytes
+
+
+def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
+    """验证 roi-list-create 与 draw-rois 可批量绘制槽位 ROI。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    source_bytes = _build_roi_render_test_png_bytes()
+    dataset_storage.write_bytes("inputs/roi-render-list.png", source_bytes)
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch7-draw-rois",
+        template_version="1.0.0",
+        display_name="OpenCV Batch7 Draw ROIs",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi_a",
+                node_type_id="core.vision.roi-create",
+                parameters={
+                    "roi_kind": "bbox",
+                    "roi_id": "slot-a",
+                    "bbox_xyxy": [14, 16, 52, 56],
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="roi_b",
+                node_type_id="core.vision.roi-create",
+                parameters={
+                    "roi_kind": "polygon",
+                    "roi_id": "slot-b",
+                    "polygon_xy": [[70, 22], [108, 28], [100, 74], [66, 70]],
+                },
+            ),
+            WorkflowGraphNode(node_id="roi_list", node_type_id="core.vision.roi-list-create"),
+            WorkflowGraphNode(
+                node_id="draw_rois",
+                node_type_id="custom.opencv.draw-rois",
+                parameters={"fill_alpha": 0.18, "draw_bbox": True},
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-roi-a-image-b7",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_a",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-roi-b-image-b7",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_b",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-roi-a-list-b7",
+                source_node_id="roi_a",
+                source_port="roi",
+                target_node_id="roi_list",
+                target_port="roi",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-roi-b-list-b7",
+                source_node_id="roi_b",
+                source_port="roi",
+                target_node_id="roi_list",
+                target_port="roi",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-draw-rois-image-b7",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="draw_rois",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-roi-list-draw-rois-b7",
+                source_node_id="roi_list",
+                source_port="value",
+                target_node_id="draw_rois",
+                target_port="rois",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="roi_overlay",
+                display_name="ROI Overlay",
+                payload_type_id="image-ref.v1",
+                source_node_id="draw_rois",
+                source_port="image",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/roi-render-list.png",
+                "width": 128,
+                "height": 128,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch7-draw-rois",
+        },
+    )
+
+    roi_overlay = execution_result.outputs["roi_overlay"]
+    roi_overlay_bytes = image_registry.read_bytes(str(roi_overlay["image_handle"]))
+
+    assert roi_overlay["transport_kind"] == "memory"
+    assert roi_overlay["media_type"] == "image/raw"
+    assert roi_overlay["pixel_format"] == "bgr24"
+    assert len(roi_overlay_bytes) == 128 * 128 * 3
+    assert roi_overlay_bytes != source_bytes
+
+
+def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
+    """验证 crop-export 可消费 ROI Grid Create.value 批量输出裁剪图。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/roi-crop-export.png", _build_roi_render_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch7-crop-export-rois",
+        template_version="1.0.0",
+        display_name="OpenCV Batch7 Crop Export ROIs",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi_grid",
+                node_type_id="core.vision.roi-grid-create",
+                parameters={
+                    "rows": 2,
+                    "columns": 2,
+                    "origin_x": 16,
+                    "origin_y": 16,
+                    "roi_width": 24,
+                    "roi_height": 20,
+                    "step_x": 36,
+                    "step_y": 32,
+                    "roi_id_prefix": "slot",
+                },
+            ),
+            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-grid-image-b7",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_grid",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-crop-export-image-b7",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="crop_export",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-grid-crop-export-rois-b7",
+                source_node_id="roi_grid",
+                source_port="value",
+                target_node_id="crop_export",
+                target_port="rois",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="crops",
+                display_name="Crops",
+                payload_type_id="image-refs.v1",
+                source_node_id="crop_export",
+                source_port="crops",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/roi-crop-export.png",
+                "width": 128,
+                "height": 128,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch7-crop-export-rois",
+        },
+    )
+
+    crops = execution_result.outputs["crops"]
+
+    assert crops["count"] == 4
+    assert crops["items"][0]["crop_source"] == "roi"
+    assert crops["items"][0]["roi_id"] == "slot-01-01"
+    assert crops["items"][0]["transport_kind"] == "memory"
+    assert crops["items"][0]["media_type"] == "image/raw"
+    assert crops["items"][0]["pixel_format"] == "bgr24"
+    assert crops["items"][0]["width"] == 24
+    assert crops["items"][0]["height"] == 20
 
 
 def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
