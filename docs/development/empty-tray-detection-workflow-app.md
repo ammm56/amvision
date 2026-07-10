@@ -19,6 +19,51 @@
 - `request_image_ref`：生产默认输入，适合 ZeroMQ / LocalBuffer / BGR24 高性能链路。
 - `request_image_base64`：HTTP 调试或前端 Preview Run 兜底输入。
 
+## 当前实现状态
+
+当前 `template.json` 已经搭好第一阶段空盘检测主线：
+
+```text
+Image Ref Coalesce
+ -> Load Local Image: 空盘_1080p_01.jpg
+ -> Image Diff
+ -> Absdiff Threshold
+ -> Morphology
+ -> Connected Components
+ -> Regions Count / Regions Area Ratio
+ -> Range Check
+ -> Process Decision
+ -> Payload To Value
+ -> Create Object
+ -> Response Envelope
+```
+
+默认阈值：
+
+- `threshold=30`
+- `min_area=120`
+- `abnormal_region_count <= 8`
+- `abnormal_area_ratio <= 0.018`
+
+模板已输出 `core_output_response_envelope_body`，`application.json` 已绑定为 `http-response` 输出。
+
+当前同一 workflow app 中还保留了禁用分支：
+
+- 圆孔模板匹配：`空盘_1080p_圆_01.jpg`
+- 插槽模板匹配：`空盘_1080p_插槽_01.jpg`
+- 固定 ROI 网格：`core.vision.roi-grid-create`
+- 固定四点透视校正：`custom.opencv.perspective-transform`
+- 调试预览：输入图、差异图、二值掩膜和结果预览
+
+已补齐的通用基础节点：
+
+- `core.vision.roi-grid-create`
+- `core.logic.value-to-roi`
+- `core.logic.array-summary`
+- `core.logic.payload-to-value` 已扩展支持 `boolean.v1` 和 `result-record.v1`
+
+本地烟测已验证：使用 `空盘_1080p_01.jpg` 作为输入时，主线返回 `is_empty=true`。
+
 ## 明确不做
 
 - 不在本应用中实现满盘检测通过逻辑。
@@ -223,7 +268,7 @@ Image Ref Coalesce
 
 ## 分支 D：槽位 ROI 逐格判断
 
-默认禁用。等通用 ROI 基础节点补齐后再启用。
+默认禁用。通用 ROI 基础节点已经补齐，后续需要逐格判断时可在当前 app 中手动启用并继续接线。
 
 目标：在标准图中按槽位 ROI 逐格判断空盘状态。该分支是后续提高稳定性的重点，但不应写成业务专用节点。
 
@@ -245,7 +290,7 @@ Perspective Transform 后标准图
  -> Process Decision
 ```
 
-需要补的通用基础节点：
+已补齐的通用基础节点：
 
 - `core.vision.roi-grid-create`：按行列、起点、槽位尺寸和间距生成 ROI 列表。
 - `core.logic.value-to-roi`：把 value 中的 ROI 对象转换为 `roi.v1`。
@@ -325,3 +370,4 @@ Gallery Preview
 - Array Summary。
 
 但满盘检测的判定规则、参考图和输出状态必须独立维护，不写入 `workflow-app-20260710020359`。
+

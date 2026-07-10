@@ -9,7 +9,7 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload, require_boolean_payload, require_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -30,7 +30,12 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     if value_payload is not None:
         candidate_values.append(("value", require_value_payload(value_payload, field_name="value")["value"]))
 
+    boolean_payload = request.input_values.get("boolean")
+    if boolean_payload is not None:
+        candidate_values.append(("boolean", require_boolean_payload(boolean_payload, field_name="boolean")["value"]))
+
     for port_name in (
+        "result",
         "body",
         "detections",
         "segments",
@@ -54,7 +59,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、body、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
+            "payload-to-value 节点至少需要连接一个 value、boolean、result、body、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -71,7 +76,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="logic.transform",
-        description="把 value、response-body、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
+        description="把 value、boolean、result-record、response-body、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -79,6 +84,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="value",
                 display_name="Value",
                 payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="boolean",
+                display_name="Boolean",
+                payload_type_id="boolean.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="result",
+                display_name="Result",
+                payload_type_id="result-record.v1",
                 required=False,
             ),
             NodePortDefinition(
