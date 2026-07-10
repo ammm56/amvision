@@ -12,6 +12,8 @@ from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECT
 from backend.contracts.datasets.exports.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_POSE_DATASET_FORMAT,
 )
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
@@ -30,7 +32,9 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
+    InstanceSegmentationAnnotation,
     ObbAnnotation,
+    PoseAnnotation,
 )
 from backend.service.domain.tasks.yolox_task_specs import YoloXTrainingTaskSpec
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -373,6 +377,133 @@ def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
         100.0,
     ]
     assert dataset_storage.resolve(f"{export_result.export_path}/images/train/ship-1.png").is_file()
+
+
+def test_export_dataset_generates_yolo_segmentation_layout(tmp_path: Path) -> None:
+    """验证导出支持 YOLO instance segmentation 标签文件。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-yolo-seg-1",
+        dataset_id="dataset-yolo-seg-1",
+        project_id="project-1",
+        task_type="segmentation",
+        categories=(DatasetCategory(category_id=3, name="scratch"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="scratch-1.jpg",
+                width=100,
+                height=50,
+                split="train",
+                annotations=(
+                    InstanceSegmentationAnnotation(
+                        annotation_id="ann-1",
+                        category_id=3,
+                        bbox_xywh=(10.0, 10.0, 40.0, 20.0),
+                        segmentation=[[
+                            10.0,
+                            10.0,
+                            50.0,
+                            10.0,
+                            50.0,
+                            30.0,
+                            10.0,
+                            30.0,
+                        ]],
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-yolo-seg-1",
+            dataset_version_id="dataset-version-yolo-seg-1",
+            format_id=YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+    label_payload = dataset_storage.resolve(
+        f"{export_result.export_path}/labels/train/scratch-1.txt"
+    ).read_text(encoding="utf-8")
+    manifest_payload = json.loads(
+        dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
+    )
+
+    assert label_payload == (
+        "0 0.100000 0.200000 0.500000 0.200000 "
+        "0.500000 0.600000 0.100000 0.600000"
+    )
+    assert manifest_payload["format_id"] == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+    assert dataset_storage.resolve(
+        f"{export_result.export_path}/images/train/scratch-1.jpg"
+    ).is_file()
+
+
+def test_export_dataset_generates_yolo_pose_layout(tmp_path: Path) -> None:
+    """验证导出支持 YOLO pose 标签文件和 kpt_shape 元数据。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-yolo-pose-1",
+        dataset_id="dataset-yolo-pose-1",
+        project_id="project-1",
+        task_type="pose",
+        categories=(DatasetCategory(category_id=5, name="hand"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="hand-1.jpg",
+                width=100,
+                height=50,
+                split="train",
+                annotations=(
+                    PoseAnnotation(
+                        annotation_id="ann-1",
+                        category_id=5,
+                        bbox_xywh=(10.0, 10.0, 40.0, 20.0),
+                        keypoints=[20.0, 15.0, 2.0, 40.0, 25.0, 1.0],
+                        num_keypoints=2,
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-yolo-pose-1",
+            dataset_version_id="dataset-version-yolo-pose-1",
+            format_id=YOLO_POSE_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert export_result.format_id == YOLO_POSE_DATASET_FORMAT
+    label_payload = dataset_storage.resolve(
+        f"{export_result.export_path}/labels/train/hand-1.txt"
+    ).read_text(encoding="utf-8")
+    manifest_payload = json.loads(
+        dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
+    )
+
+    assert label_payload == (
+        "0 0.300000 0.400000 0.400000 0.400000 "
+        "0.200000 0.300000 2.000000 0.400000 0.500000 1.000000"
+    )
+    assert manifest_payload["format_id"] == YOLO_POSE_DATASET_FORMAT
+    assert manifest_payload["metadata"]["kpt_shape"] == [2, 3]
+    assert dataset_storage.resolve(
+        f"{export_result.export_path}/images/train/hand-1.jpg"
+    ).is_file()
 
 
 def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:

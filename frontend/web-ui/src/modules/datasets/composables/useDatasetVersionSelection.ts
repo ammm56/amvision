@@ -62,6 +62,22 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     () => availableDatasetVersions.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value) ?? null,
   )
 
+  const resolvedDatasetId = computed(() => {
+    const relation = datasetVersionRelation.value
+    if (relation?.dataset_version_id === resolvedDatasetVersionId.value && relation.dataset_id.trim().length > 0) {
+      return relation.dataset_id.trim()
+    }
+    const importDatasetId = selectedDatasetVersionImport.value?.dataset_id?.trim()
+    if (importDatasetId) {
+      return importDatasetId
+    }
+    const exportDatasetId = options.exports.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value)?.dataset_id.trim()
+    if (exportDatasetId) {
+      return exportDatasetId
+    }
+    return options.datasetId.value.trim()
+  })
+
   const selectedDatasetVersionFormatLabel = computed(() => {
     const formatTypeValue = selectedDatasetVersionImport.value?.format_type ?? ''
     return formatTypeValue ? resolveImportFormatDisplayName(formatTypeValue) : options.t('common.noValue')
@@ -130,6 +146,9 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
         return
       }
       datasetVersionRelation.value = relation
+      if (relation.dataset_id.trim().length > 0) {
+        options.datasetId.value = relation.dataset_id.trim()
+      }
     } catch {
       if (requestId !== datasetVersionRelationRequestId) {
         return
@@ -153,6 +172,7 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     datasetVersionSearch,
     datasetVersionSearchInput,
     resolvedDatasetVersionId,
+    resolvedDatasetId,
     availableDatasetVersions,
     filteredDatasetVersions,
     selectedDatasetVersionImport,

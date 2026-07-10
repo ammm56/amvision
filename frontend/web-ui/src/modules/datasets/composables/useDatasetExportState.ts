@@ -14,6 +14,7 @@ interface UseDatasetExportStateOptions {
   datasetId: Ref<string>
   datasetVersionId: Ref<string>
   resolvedDatasetVersionId: Ref<string>
+  resolvedDatasetId: Ref<string>
   exportFormatId: Ref<string>
   exports: Ref<DatasetExportSummary[]>
   errorMessage: Ref<string | null>
@@ -53,7 +54,7 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
   }
 
   async function loadCurrentDatasetExports(): Promise<void> {
-    await loadDatasetExports(options.datasetId.value.trim(), options.resolvedDatasetVersionId.value)
+    await loadDatasetExports(options.resolvedDatasetId.value, options.resolvedDatasetVersionId.value)
   }
 
   async function submitExportForm(): Promise<void> {
@@ -67,7 +68,7 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
     try {
       const submission = await createDatasetExport({
         projectId: options.selectedProjectId.value,
-        datasetId: options.datasetId.value.trim(),
+        datasetId: options.resolvedDatasetId.value,
         datasetVersionId: options.resolvedDatasetVersionId.value,
         formatId: options.exportFormatId.value,
         displayName: exportDisplayName.value,
@@ -113,7 +114,7 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
   }
 
   watch(
-    [options.resolvedDatasetVersionId, () => options.datasetId.value.trim()],
+    [options.resolvedDatasetVersionId, options.resolvedDatasetId],
     ([nextDatasetVersionId, nextDatasetId]) => {
       void loadDatasetExports(nextDatasetId, nextDatasetVersionId)
     },
