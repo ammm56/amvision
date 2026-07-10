@@ -162,10 +162,10 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
     assert adaptive_image["height"] == 20
     assert otsu_image["width"] == 80
     assert otsu_image["height"] == 40
-    assert image_registry.read_bytes(str(grayscale_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
-    assert image_registry.read_bytes(str(resized_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
-    assert image_registry.read_bytes(str(adaptive_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
-    assert image_registry.read_bytes(str(otsu_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    _assert_bgr24_image_payload(image_registry, grayscale_image)
+    _assert_bgr24_image_payload(image_registry, resized_image)
+    _assert_bgr24_image_payload(image_registry, adaptive_image)
+    _assert_bgr24_image_payload(image_registry, otsu_image)
 
 
 def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> None:
@@ -417,6 +417,17 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _assert_bgr24_image_payload(image_registry: ExecutionImageRegistry, image_payload: dict[str, object]) -> None:
+    """验证节点输出保留为内存 bgr24 图片，不做额外 PNG 编码。"""
+
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/raw"
+    assert image_payload["pixel_format"] == "bgr24"
+    assert image_payload["layout"] == "HWC"
+    image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
+    assert len(image_bytes) == int(image_payload["width"]) * int(image_payload["height"]) * 3
 
 
 def _build_preprocess_test_png_bytes() -> bytes:

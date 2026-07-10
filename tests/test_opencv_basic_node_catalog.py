@@ -19,7 +19,11 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert actual_catalog_payload == expected_catalog_payload
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,
-        payload_type_ids={"contours.v1", "measurements.v1", "rotated-rects.v1", "lines.v1", "circles.v1", "ellipses.v1"},
+        payload_type_ids={"measurements.v1", "rotated-rects.v1", "lines.v1", "circles.v1", "ellipses.v1"},
+    )
+    _assert_custom_catalog_does_not_redeclare_core_payload(
+        catalog_payload=actual_catalog_payload,
+        payload_type_id="contours.v1",
     )
 
 
@@ -52,3 +56,15 @@ def _assert_source_image_schema_supports_local_buffer_refs(
         assert "frame_ref" in source_image_schema["properties"]
         assert requirements_by_kind["buffer"] == {"buffer_ref"}
         assert requirements_by_kind["frame"] == {"frame_ref"}
+
+
+def _assert_custom_catalog_does_not_redeclare_core_payload(
+    *,
+    catalog_payload: dict[str, object],
+    payload_type_id: str,
+) -> None:
+    """验证 custom catalog 不重复声明已经提升为 core 的 payload 规则。"""
+
+    payload_contracts = catalog_payload["payload_contracts"]
+    assert isinstance(payload_contracts, list)
+    assert all(contract["payload_type_id"] != payload_type_id for contract in payload_contracts)

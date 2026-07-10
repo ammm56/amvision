@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+import logging
 from queue import Empty
 from threading import Event, Lock, Thread
 from time import monotonic
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 
 
 WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS = 15.0
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -581,7 +583,16 @@ class WorkflowPreviewRunManager:
             existing_events.append(new_event)
             self._write_events(preview_run_id, tuple(existing_events), event_lock=active_event_lock)
             self._publish_preview_run_event(new_event)
-        self._publish_project_summary_event(preview_run_id, new_event)
+        try:
+            self._publish_project_summary_event(preview_run_id, new_event)
+        except Exception:
+            LOGGER.exception(
+                "workflow preview run project summary event publish failed",
+                extra={
+                    "preview_run_id": preview_run_id,
+                    "event_type": new_event.event_type,
+                },
+            )
         return new_event
 
     def _publish_preview_run_event(self, event: WorkflowPreviewRunEvent) -> None:

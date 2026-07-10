@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from backend.nodes.core_catalog import get_core_workflow_node_definitions
+from backend.contracts.workflows.workflow_graph import validate_node_definition_catalog
+from backend.nodes.core_catalog import (
+    get_core_workflow_node_definitions,
+    get_core_workflow_payload_contracts,
+)
 from backend.nodes.core_nodes.vision.roi.roi_from_contour import _roi_from_contour_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -59,6 +63,20 @@ def test_roi_from_contour_catalog_contains_node_definition() -> None:
     node_type_ids = {node_definition.node_type_id for node_definition in get_core_workflow_node_definitions()}
 
     assert "core.vision.roi-from-contour" in node_type_ids
+
+
+def test_core_catalog_contains_contours_payload_contract() -> None:
+    """验证 core 节点目录可独立校验 contours.v1 引用。"""
+
+    node_definitions = get_core_workflow_node_definitions()
+    payload_contracts = get_core_workflow_payload_contracts()
+    payload_type_ids = {contract.payload_type_id for contract in payload_contracts}
+
+    assert "contours.v1" in payload_type_ids
+    validate_node_definition_catalog(
+        node_definitions=node_definitions,
+        payload_contracts=payload_contracts,
+    )
 
 
 def test_roi_from_contour_outputs_min_area_rect_for_dense_contour() -> None:

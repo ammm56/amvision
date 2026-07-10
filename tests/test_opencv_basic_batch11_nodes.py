@@ -318,21 +318,25 @@ def test_opencv_basic_batch11_fill_holes_and_distance_transform_execute(tmp_path
     distance_image = execution_result.outputs["distance_image"]
     distance_summary = execution_result.outputs["distance_summary"]
 
-    import cv2
     import numpy as np
 
-    filled_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(filled_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_GRAYSCALE,
-    )
+    assert filled_image["media_type"] == "image/raw"
+    assert filled_image["pixel_format"] == "bgr24"
+    filled_shape = tuple(int(value) for value in filled_image["shape"])
+    filled_matrix = np.frombuffer(
+        image_registry.read_bytes(str(filled_image["image_handle"])),
+        dtype=np.uint8,
+    ).reshape(filled_shape)
 
     assert filled_image["width"] == 96
     assert filled_image["height"] == 96
     assert fill_summary["value"]["filled_hole_pixel_count"] > 0
     assert fill_summary["value"]["output_foreground_pixel_count"] > fill_summary["value"]["input_foreground_pixel_count"]
-    assert int(filled_matrix[48, 48]) == 255
+    assert int(filled_matrix[48, 48, 0]) == 255
     assert distance_image["width"] == 96
     assert distance_image["height"] == 96
+    assert distance_image["media_type"] == "image/raw"
+    assert distance_image["pixel_format"] == "bgr24"
     assert distance_summary["value"]["distance_type"] == "l2"
     assert distance_summary["value"]["mask_size"] == 5
     assert distance_summary["value"]["normalize_output"] is True

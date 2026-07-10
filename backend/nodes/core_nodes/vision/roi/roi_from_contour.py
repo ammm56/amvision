@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import cv2
+import numpy as np
+
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -9,6 +12,11 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
+from backend.nodes.core_nodes.support.contour import (
+    contour_points_to_matrix,
+    require_contours_payload,
+    resolve_contours_source_image,
+)
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import (
     build_roi_payload,
@@ -19,13 +27,6 @@ from backend.nodes.core_nodes.support.roi import (
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes._opencv_shared.backend.runtime.geometry import contour_points_to_matrix
-from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
-from custom_nodes._opencv_shared.backend.runtime.payloads import (
-    require_contours_payload,
-    resolve_contours_source_image,
-)
-from custom_nodes._opencv_shared.backend.runtime.validators import require_non_negative_int
 
 
 NODE_NAME = "roi-from-contour"
@@ -34,7 +35,7 @@ NODE_NAME = "roi-from-contour"
 def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把 contours.v1 中的一个 contour item 转换为 roi.v1。"""
 
-    contours_payload = require_contours_payload(request.input_values.get("contours"))
+    contours_payload = require_contours_payload(request.input_values.get("contours"), node_id=request.node_id)
     contour_index = _read_contour_index(request.parameters.get("contour_index"))
     roi_kind = _read_roi_kind(request.parameters.get("roi_kind"))
     require_quad = _read_require_quad(request.parameters.get("require_quad"))
@@ -125,7 +126,9 @@ def _read_contour_index(raw_value: object) -> int:
 
     if raw_value in {None, ""}:
         return 0
-    return int(require_non_negative_int(raw_value, field_name="contour_index"))
+    if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
+        raise InvalidRequestError("roi-from-contour 节点的 contour_index 必须是非负整数")
+    return int(raw_value)
 
 
 def _read_roi_kind(raw_value: object) -> str:
@@ -201,13 +204,12 @@ def _build_polygon_points(
         normalized_bbox = normalize_bbox_xyxy(bbox_xyxy, field_name="bbox_xyxy")
         return _build_bbox_polygon(normalized_bbox)
 
-    cv2_module, np_module = require_opencv_imports()
     contour_matrix = contour_points_to_matrix(
         points=[[int(round(point[0])), int(round(point[1]))] for point in source_points],
-        np_module=np_module,
+        np_module=np,
     )
-    rotated_rect = cv2_module.minAreaRect(contour_matrix)
-    box_points = cv2_module.boxPoints(rotated_rect).tolist()
+    rotated_rect = cv2.minAreaRect(contour_matrix)
+    box_points = cv2.boxPoints(rotated_rect).tolist()
     return [[round(float(point[0]), 4), round(float(point[1]), 4)] for point in box_points]
 
 

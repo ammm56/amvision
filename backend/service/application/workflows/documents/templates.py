@@ -50,10 +50,16 @@ class WorkflowTemplateDocumentStore:
     def validate_template(self, template: WorkflowGraphTemplate) -> WorkflowTemplateValidationSummary:
         """校验图模板。"""
 
-        validate_workflow_graph_template(
-            template=template,
-            node_definitions=self.node_definitions,
-        )
+        try:
+            validate_workflow_graph_template(
+                template=template,
+                node_definitions=self.node_definitions,
+            )
+        except ValueError as exc:
+            raise InvalidRequestError(
+                "Workflow 图模板校验失败",
+                details={"reason": str(exc)},
+            ) from exc
         return summarize_workflow_template(template)
 
     def list_templates(self, *, project_id: str) -> tuple[WorkflowTemplateSummary, ...]:
@@ -446,3 +452,4 @@ class WorkflowTemplateDocumentStore:
             template_output_ids=validation_summary.template_output_ids,
             referenced_node_type_ids=validation_summary.referenced_node_type_ids,
         )
+

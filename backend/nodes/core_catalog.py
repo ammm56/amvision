@@ -413,6 +413,46 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="contours.v1",
+            display_name="Contours",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": _build_image_ref_json_schema(),
+                    "source_object_key": {"type": "string"},
+                    "count": {"type": "integer", "minimum": 0},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "contour_index": {"type": "integer", "minimum": 0},
+                                "point_count": {"type": "integer", "minimum": 0},
+                                "bbox_xyxy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                },
+                                "points": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "number"},
+                                        "minItems": 2,
+                                        "maxItems": 2,
+                                    },
+                                },
+                            },
+                            "required": ["contour_index", "bbox_xyxy", "points"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="roi.v1",
             display_name="Region Of Interest",
             transport_kind="inline-json",
