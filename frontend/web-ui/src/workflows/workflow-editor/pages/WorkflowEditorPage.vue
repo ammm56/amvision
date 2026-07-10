@@ -1153,6 +1153,7 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
   if (event.tool === 'four-point' && event.pointsXy?.length === 4) {
     const points = event.pointsXy.map(([pointX, pointY]) => [roundInteractionNumber(pointX), roundInteractionNumber(pointY)])
     if (targetParameters.has('source_points')) updates.source_points = points
+    if (targetParameters.has('polygon_xy')) updates.polygon_xy = points
     const [outputWidth, outputHeight] = estimateFourPointOutputSize(points)
     if (targetParameters.has('output_width')) updates.output_width = outputWidth
     if (targetParameters.has('output_height')) updates.output_height = outputHeight

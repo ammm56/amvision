@@ -1,12 +1,10 @@
-"""OpenCV contour-to-roi 通用节点测试。"""
+"""Core ROI From Contour 节点测试。"""
 
 from __future__ import annotations
 
+from backend.nodes.core_catalog import get_core_workflow_node_definitions
+from backend.nodes.core_nodes.vision.roi.roi_from_contour import _roi_from_contour_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from custom_nodes.opencv_shape_nodes.backend.nodes.contour_to_roi import handle_node
-from custom_nodes.opencv_shape_nodes.workflow.catalog_builder import (
-    build_custom_node_catalog_payload,
-)
 
 
 def _build_contours_payload() -> dict[str, object]:
@@ -32,12 +30,12 @@ def _build_contours_payload() -> dict[str, object]:
     }
 
 
-def test_contour_to_roi_outputs_polygon_roi_for_quad_contour() -> None:
+def test_roi_from_contour_outputs_polygon_roi_for_quad_contour() -> None:
     """验证四点 contour 可以转换为 polygon roi.v1。"""
 
-    output = handle_node(
+    output = _roi_from_contour_handler(
         WorkflowNodeExecutionRequest(
-            node_id="contour-to-roi",
+            node_id="roi-from-contour",
             node_definition=object(),
             parameters={"roi_id_prefix": "tray", "display_name_prefix": "Tray"},
             input_values={"contours": _build_contours_payload()},
@@ -55,19 +53,15 @@ def test_contour_to_roi_outputs_polygon_roi_for_quad_contour() -> None:
     assert output["summary"]["value"]["point_count"] == 4
 
 
-def test_contour_to_roi_catalog_contains_node_definition() -> None:
-    """验证 contour-to-roi 已写入 OpenCV shape 节点目录。"""
+def test_roi_from_contour_catalog_contains_node_definition() -> None:
+    """验证 roi-from-contour 已写入 core 节点目录。"""
 
-    catalog = build_custom_node_catalog_payload()
-    node_type_ids = {
-        node_definition["node_type_id"]
-        for node_definition in catalog["node_definitions"]
-    }
+    node_type_ids = {node_definition.node_type_id for node_definition in get_core_workflow_node_definitions()}
 
-    assert "custom.opencv.contour-to-roi" in node_type_ids
+    assert "core.vision.roi-from-contour" in node_type_ids
 
 
-def test_contour_to_roi_outputs_min_area_rect_for_dense_contour() -> None:
+def test_roi_from_contour_outputs_min_area_rect_for_dense_contour() -> None:
     """验证多点 contour 可以通过 min-area-rect 转成四点 ROI。"""
 
     contours_payload = _build_contours_payload()
@@ -82,9 +76,9 @@ def test_contour_to_roi_outputs_min_area_rect_for_dense_contour() -> None:
         [10, 70],
     ]
 
-    output = handle_node(
+    output = _roi_from_contour_handler(
         WorkflowNodeExecutionRequest(
-            node_id="contour-to-roi",
+            node_id="roi-from-contour",
             node_definition=object(),
             parameters={
                 "roi_id_prefix": "tray",

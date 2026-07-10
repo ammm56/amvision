@@ -195,8 +195,14 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
     assert normalized_image["transport_kind"] == "memory"
     assert normalized_image["width"] == 72
     assert normalized_image["height"] == 48
-    assert image_registry.read_bytes(str(cropped_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
-    assert image_registry.read_bytes(str(normalized_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    cropped_entry = image_registry.get_entry(str(cropped_image["image_handle"]))
+    assert cropped_image["media_type"] == "image/raw"
+    assert cropped_image["pixel_format"] == "bgr24"
+    assert cropped_entry.byte_length == 72 * 48 * 3
+    normalized_entry = image_registry.get_entry(str(normalized_image["image_handle"]))
+    assert normalized_image["media_type"] == "image/raw"
+    assert normalized_image["pixel_format"] == "bgr24"
+    assert normalized_entry.byte_length == 72 * 48 * 3
 
 
 def test_opencv_basic_batch10_rotation_correct_with_value_input_execute(tmp_path: Path) -> None:
@@ -314,7 +320,10 @@ def test_opencv_basic_batch10_rotation_correct_with_value_input_execute(tmp_path
     assert rotation_summary["value"]["source_height"] == 30
     assert rotation_summary["value"]["output_width"] == 31
     assert rotation_summary["value"]["output_height"] == 80
-    assert image_registry.read_bytes(str(rotated_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    rotated_entry = image_registry.get_entry(str(rotated_image["image_handle"]))
+    assert rotated_image["media_type"] == "image/raw"
+    assert rotated_image["pixel_format"] == "bgr24"
+    assert rotated_entry.byte_length == 31 * 80 * 3
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:

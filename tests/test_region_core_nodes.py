@@ -457,6 +457,30 @@ def test_roi_create_bbox_handler_returns_roi_payload() -> None:
     assert output["summary"]["value"]["bbox_xyxy"] == [0.0, 0.0, 10.0, 10.0]
 
 
+def test_roi_create_uses_source_image_as_default_bbox() -> None:
+    """验证 roi-create 空参数时默认使用输入图整图 ROI。"""
+
+    image_payload = build_memory_image_payload(
+        image_handle="roi-default-image",
+        width=640,
+        height=480,
+        media_type="image/bgr24",
+    )
+    output = _roi_create_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-create",
+            node_definition=object(),
+            parameters={"roi_id": "full-image"},
+            input_values={"image": image_payload},
+            execution_metadata={},
+        )
+    )
+
+    assert output["roi"]["roi_id"] == "full-image"
+    assert output["roi"]["bbox_xyxy"] == [0.0, 0.0, 640.0, 480.0]
+    assert output["roi"]["polygon_xy"] == [[0.0, 0.0], [640.0, 0.0], [640.0, 480.0], [0.0, 480.0]]
+    assert output["summary"]["value"]["source_image_attached"] is True
+
 def test_roi_create_value_input_overrides_bbox_parameters() -> None:
     """验证 roi-create 可通过 value.v1 动态覆盖默认 bbox ROI。"""
 

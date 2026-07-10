@@ -44,6 +44,7 @@
 - [docs/examples/workflows/README.md](examples/workflows/README.md) 说明 workflow template/application 源 JSON 与 LocalBufferBroker 输入形状的关系
 - [docs/development/empty-tray-detection-workflow-app.md](development/empty-tray-detection-workflow-app.md) 固定 `workflow-app-20260710020359` 空盘检测应用的目标、边界、基础节点分支和验证样本规则
 - [docs/development/workflow-image-parameter-editor-plan.md](development/workflow-image-parameter-editor-plan.md) 固定 ROI、找圆、找直线、模板区域等图像交互取参能力的节点清单、前端图片面板设计和实现顺序
+- [docs/development/roi-node-boundary-plan.md](development/roi-node-boundary-plan.md) 固定 ROI 创建、转换、使用、绘制、规则判断和交互取参的节点边界与实现位置
 - [docs/deployment/README.md](deployment/README.md) 汇总开发环境、运行时、打包、安装和部署文档
 - [docs/operations/README.md](operations/README.md) 汇总现场运维、排障和受控上线手册
 - [docs/operations/release-full-troubleshooting.md](operations/release-full-troubleshooting.md) 汇总 `release/full/` 的日志入口、worker profile 检查点和现场排障顺序

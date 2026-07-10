@@ -25,6 +25,10 @@ from backend.nodes.core_nodes.support.roi import (
     polygon_bbox_xyxy,
     read_optional_text,
 )
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_parameter_schema,
+)
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
@@ -33,12 +37,14 @@ from backend.service.application.workflows.graph_executor import (
 
 
 NODE_NAME = "roi-create"
+DEFAULT_ROI_SIZE = 100.0
 
 
 def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """根据 bbox 或 polygon 创建 roi.v1。"""
 
     roi_value = _read_optional_roi_value_input(request.input_values.get("value"))
+    source_image = _resolve_source_image(request, roi_value=roi_value)
     roi_kind = _resolve_roi_kind(request, roi_value=roi_value)
     roi_id = (
         _read_optional_text_from_value(roi_value, field_name="roi_id")
@@ -54,17 +60,15 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
         field_name="display_name",
         node_name=NODE_NAME,
     )
-    source_image = None
-    if request.input_values.get("image") is not None:
-        source_image = require_image_payload(request.input_values.get("image"))
-    elif roi_value is not None and roi_value.get("source_image") is not None:
-        source_image = require_image_payload(roi_value.get("source_image"))
+
+    default_bbox_xyxy = _build_default_bbox_xyxy(source_image)
     if roi_kind == "bbox":
         bbox_xyxy = normalize_bbox_xyxy(
             _resolve_geometry_value(
                 roi_value=roi_value,
                 field_name="bbox_xyxy",
                 parameter_value=request.parameters.get("bbox_xyxy"),
+                default_value=default_bbox_xyxy,
             ),
             field_name="bbox_xyxy",
             node_id=request.node_id,
@@ -77,12 +81,14 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                 roi_value=roi_value,
                 field_name="polygon_xy",
                 parameter_value=request.parameters.get("polygon_xy"),
+                default_value=bbox_to_polygon_xy(default_bbox_xyxy),
             ),
             field_name="polygon_xy",
             node_id=request.node_id,
         )
         bbox_xyxy = polygon_bbox_xyxy(polygon_xy)
         area = polygon_area(polygon_xy)
+
     roi_payload = build_roi_payload(
         roi_id=roi_id,
         display_name=display_name,
@@ -92,7 +98,7 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
         area=area,
         source_image=source_image,
     )
-    return {
+    outputs: dict[str, object] = {
         "roi": roi_payload,
         "summary": build_value_payload(
             {
@@ -102,9 +108,100 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                 "bbox_xyxy": roi_payload["bbox_xyxy"],
                 "display_name": roi_payload.get("display_name"),
                 "source_kind": "value-input" if roi_value is not None else "parameters",
+                "source_image_attached": source_image is not None,
             }
         ),
     }
+    if source_image is not None:
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="ROI Create",
+                artifact_name="roi-create-debug-preview",
+                overlays=_build_roi_overlays(roi_payload),
+                interaction={
+                    "mode": "edit",
+                    "coordinate_space": "source-image",
+                    "tools": [
+                        {
+                            "tool": "bbox",
+                            "label": "矩形 ROI",
+                            "target_parameters": ["bbox_xyxy"],
+                        },
+                        {
+                            "tool": "four-point",
+                            "label": "四点 ROI",
+                            "target_parameters": ["polygon_xy"],
+                        },
+                    ],
+                },
+            )
+        )
+    return outputs
+
+
+def _resolve_source_image(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    roi_value: dict[str, object] | None,
+) -> dict[str, object] | None:
+    """读取 ROI 关联的输入图像。"""
+
+    if request.input_values.get("image") is not None:
+        return require_image_payload(request.input_values.get("image"))
+    if roi_value is not None and roi_value.get("source_image") is not None:
+        return require_image_payload(roi_value.get("source_image"))
+    return None
+
+
+def _build_default_bbox_xyxy(source_image: dict[str, object] | None) -> list[float]:
+    """为新节点构造可直接运行的默认 bbox。"""
+
+    width = _read_source_image_dimension(source_image, field_name="width")
+    height = _read_source_image_dimension(source_image, field_name="height")
+    return [0.0, 0.0, width, height]
+
+
+def _read_source_image_dimension(source_image: dict[str, object] | None, *, field_name: str) -> float:
+    """读取输入图尺寸；缺失时使用通用默认 ROI 尺寸。"""
+
+    if source_image is None:
+        return DEFAULT_ROI_SIZE
+    raw_value = source_image.get(field_name)
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+        return DEFAULT_ROI_SIZE
+    value = float(raw_value)
+    return value if value > 0 else DEFAULT_ROI_SIZE
+
+
+def _build_roi_overlays(roi_payload: dict[str, object]) -> list[dict[str, object]]:
+    """把 ROI 转为统一图片面板覆盖层。"""
+
+    roi_kind = str(roi_payload.get("roi_kind") or "bbox")
+    roi_id = str(roi_payload.get("roi_id") or "roi")
+    label = str(roi_payload.get("display_name") or roi_id)
+    if roi_kind == "polygon":
+        points_xy = roi_payload.get("polygon_xy")
+        if isinstance(points_xy, list) and points_xy:
+            return [
+                {
+                    "kind": "polygon",
+                    "id": roi_id,
+                    "label": label,
+                    "points_xy": points_xy,
+                    "target_parameters": ["polygon_xy"],
+                }
+            ]
+    return [
+        {
+            "kind": "bbox",
+            "id": roi_id,
+            "label": label,
+            "bbox_xyxy": roi_payload["bbox_xyxy"],
+            "target_parameters": ["bbox_xyxy"],
+        }
+    ]
 
 
 def _read_optional_roi_value_input(raw_payload: object) -> dict[str, object] | None:
@@ -149,12 +246,23 @@ def _resolve_geometry_value(
     roi_value: dict[str, object] | None,
     field_name: str,
     parameter_value: object,
+    default_value: object,
 ) -> object:
-    """优先读取 value 输入中的几何字段，否则回退到节点参数。"""
+    """优先读取 value 输入中的几何字段，否则读取节点参数，空值使用默认几何。"""
 
-    if roi_value is not None and roi_value.get(field_name) is not None:
-        return roi_value.get(field_name)
-    return parameter_value
+    if roi_value is not None:
+        value_input = roi_value.get(field_name)
+        if not _is_blank_geometry(value_input):
+            return value_input
+    if not _is_blank_geometry(parameter_value):
+        return parameter_value
+    return default_value
+
+
+def _is_blank_geometry(raw_value: object) -> bool:
+    """判断几何参数是否为空；不能用 set 判断，因为 list 不可哈希。"""
+
+    return raw_value is None or raw_value == ""
 
 
 def _read_optional_text_from_value(
@@ -189,7 +297,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.vision.roi-create",
         display_name="Create ROI",
         category="vision.roi",
-        description="创建矩形或多边形 ROI，支持固定参数默认值或 value.v1 动态覆盖，供 coverage、inside、offset 等工业规则节点复用。",
+        description="创建矩形或多边形 ROI；图像交互式取参也集中在这里完成，供裁剪、绘制、量测和规则判断节点复用。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -217,6 +325,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Summary",
                 payload_type_id="value.v1",
             ),
+            NodePortDefinition(
+                name="debug_preview",
+                display_name="Debug Preview",
+                payload_type_id="response-body.v1",
+                required=False,
+            ),
         ),
         parameter_schema={
             "type": "object",
@@ -232,6 +346,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "bbox_xyxy": {
                     "type": "array",
                     "title": "矩形坐标",
+                    "default": [0, 0, 100, 100],
                     "items": {"type": "number"},
                     "minItems": 4,
                     "maxItems": 4,
@@ -239,6 +354,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "polygon_xy": {
                     "type": "array",
                     "title": "多边形坐标",
+                    "default": [[0, 0], [100, 0], [100, 100], [0, 100]],
                     "items": {
                         "type": "array",
                         "items": {"type": "number"},
@@ -246,9 +362,11 @@ CORE_NODE_SPEC = CoreNodeSpec(
                         "maxItems": 2,
                     },
                 },
+                **build_debug_panel_parameter_schema(),
             },
+            "required": [],
         },
-        capability_tags=("vision.roi", "inspection.roi"),
+        capability_tags=("vision.roi", "vision.roi.create", "inspection.roi"),
     ),
     handler=_roi_create_handler,
 )

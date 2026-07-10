@@ -37,10 +37,10 @@
 | ROI 创建 | `core.vision.roi-create` | 创建 bbox / polygon ROI | 在图上画 bbox / polygon |
 | ROI 网格 | `core.vision.roi-grid-create` | 按行列生成槽位 ROI | 在图上选原点、单格尺寸、行列方向和步距 |
 | ROI 转换 | `core.logic.value-to-roi` | 把 value 转成 ROI | 跟随 ROI 创建节点，通常不单独交互 |
-| 裁剪 | `custom.opencv.crop` | 根据 x/y/width/height 裁图 | 在图上画 bbox，并写回 crop 参数 |
+| 裁剪 | `custom.opencv.crop` | 根据输入 `roi.v1` 裁图 | 不取参，只消费 ROI |
 | 透视变换 | `custom.opencv.perspective-transform` | 四点透视矫正 | 在图上点选 4 个角点，写回 `source_points` |
 | 平面变换 | `custom.opencv.planar-transform-bridge` | 透视结果和 ROI 坐标互转 | 复用透视四点和输出尺寸 |
-| 轮廓转 ROI | `custom.opencv.contour-to-roi` | 从 contour 生成 ROI | 需要在结果图上确认 contour 或选择 index |
+| 轮廓转 ROI | `core.vision.roi-from-contour` | 从 contour 生成 ROI | 参数来自 contour，后续可在结果图上确认 contour 或选择 index |
 | Hough 圆 | `custom.opencv.hough-circles` | 找圆孔或圆形特征 | 在图上选搜索 ROI、估计半径范围和目标圆 |
 | Hough 线 | `custom.opencv.hough-lines` | 找直线或边线 | 在图上选搜索 ROI、线段、角度范围和方向 |
 | 拟合线 | `custom.opencv.fit-line` | 从轮廓拟合直线 | 在图上选 contour 或搜索 ROI |
@@ -82,9 +82,9 @@
 
 | 工具 | 写回参数 | 适用节点 |
 | --- | --- | --- |
-| bbox | `x`、`y`、`width`、`height` 或 `bbox_xyxy` | `custom.opencv.crop`、`core.vision.roi-create` |
+| bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
 | polygon | `polygon_xy`、`source_points` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
-| four-point | `source_points`、`output_width`、`output_height` | `custom.opencv.perspective-transform` |
+| four-point | `polygon_xy` 或 `source_points`、`output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
 | circle | `center_x`、`center_y`、`radius`、`min_radius`、`max_radius` | `custom.opencv.hough-circles`、`custom.opencv.min-enclosing-circle` |
 | line | `x1`、`y1`、`x2`、`y2`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |

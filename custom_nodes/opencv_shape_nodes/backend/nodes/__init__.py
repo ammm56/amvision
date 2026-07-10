@@ -14,10 +14,6 @@ from custom_nodes.opencv_shape_nodes.backend.nodes.contour_filter import (
     NODE_TYPE_ID as CONTOUR_FILTER_NODE_TYPE_ID,
     handle_node as contour_filter_handler,
 )
-from custom_nodes.opencv_shape_nodes.backend.nodes.contour_to_roi import (
-    NODE_TYPE_ID as CONTOUR_TO_ROI_NODE_TYPE_ID,
-    handle_node as contour_to_roi_handler,
-)
 from custom_nodes.opencv_shape_nodes.backend.nodes.contours_to_regions import (
     NODE_TYPE_ID as CONTOURS_TO_REGIONS_NODE_TYPE_ID,
     handle_node as contours_to_regions_handler,
@@ -56,7 +52,6 @@ NODE_HANDLERS = (
     (CONTOUR_NODE_TYPE_ID, contour_handler),
     (CONTOUR_APPROX_NODE_TYPE_ID, contour_approx_handler),
     (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),
-    (CONTOUR_TO_ROI_NODE_TYPE_ID, contour_to_roi_handler),
     (CONTOURS_TO_REGIONS_NODE_TYPE_ID, contours_to_regions_handler),
     (CONVEX_HULL_NODE_TYPE_ID, convex_hull_handler),
     (FIT_ELLIPSE_NODE_TYPE_ID, fit_ellipse_handler),

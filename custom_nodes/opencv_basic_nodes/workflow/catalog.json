@@ -2290,7 +2290,7 @@
       "node_type_id": "custom.opencv.crop",
       "display_name": "Crop",
       "category": "opencv.filter",
-      "description": "按 ROI 或显式矩形参数裁剪输入图片，并输出裁剪摘要，适合先收紧工位窗口再进入后续差异、轮廓和量测规则链。",
+      "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
@@ -2308,7 +2308,7 @@
           "display_name": "ROI",
           "payload_type_id": "roi.v1",
           "description": "",
-          "required": false,
+          "required": true,
           "multiple": false,
           "metadata": {}
         }
@@ -2331,34 +2331,11 @@
           "required": true,
           "multiple": false,
           "metadata": {}
-        },
-        {
-          "name": "debug_preview",
-          "display_name": "Debug Preview",
-          "payload_type_id": "response-body.v1",
-          "description": "",
-          "required": false,
-          "multiple": false,
-          "metadata": {}
         }
       ],
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "x": {
-            "type": "number"
-          },
-          "y": {
-            "type": "number"
-          },
-          "width": {
-            "type": "number",
-            "exclusiveMinimum": 0
-          },
-          "height": {
-            "type": "number",
-            "exclusiveMinimum": 0
-          },
           "padding": {
             "type": "integer",
             "minimum": 0,
@@ -2366,22 +2343,6 @@
           },
           "output_object_key": {
             "type": "string"
-          },
-          "debug_image_panel_enabled": {
-            "type": "boolean",
-            "title": "显示调试图",
-            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
-            "default": false
-          },
-          "debug_image_panel_transport_mode": {
-            "type": "string",
-            "title": "调试图返回方式",
-            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
-            "enum": [
-              "storage-ref",
-              "inline-base64"
-            ],
-            "default": "storage-ref"
           }
         }
       },
