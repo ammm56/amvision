@@ -176,6 +176,69 @@ class WorkflowApplicationDocumentStore:
             resource_summary=resource_summary,
         )
 
+    def update_application_metadata(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        actor_id: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> WorkflowApplicationDocument:
+        """只更新流程应用的基础显示信息，不修改图模板引用和绑定。"""
+
+        normalized_project_id = normalize_identifier(project_id, "project_id")
+        normalized_application_id = normalize_identifier(application_id, "application_id")
+        object_key = build_application_object_key(
+            project_id=normalized_project_id,
+            application_id=normalized_application_id,
+        )
+        if not self.dataset_storage.resolve(object_key).is_file():
+            raise ResourceNotFoundError(
+                "请求的 workflow application 不存在",
+                details={
+                    "project_id": normalized_project_id,
+                    "application_id": normalized_application_id,
+                },
+            )
+        application = FlowApplication.model_validate(self.dataset_storage.read_json(object_key))
+        updates: dict[str, object] = {}
+        if display_name is not None:
+            normalized_display_name = normalize_optional_non_empty_text(display_name, "display_name")
+            if normalized_display_name is None:
+                raise InvalidRequestError("display_name 不能为空")
+            updates["display_name"] = normalized_display_name
+        if description is not None:
+            updates["description"] = description.strip()
+        if not updates:
+            return self.get_application(
+                project_id=normalized_project_id,
+                application_id=normalized_application_id,
+            )
+        updated_application = application.model_copy(update=updates)
+        validation_summary = self.validate_application(
+            project_id=normalized_project_id,
+            application=updated_application,
+        )
+        resource_summary = build_resource_summary_for_save(
+            dataset_storage=self.dataset_storage,
+            object_key=object_key,
+            actor_id=actor_id,
+        )
+        self.dataset_storage.write_json(object_key, updated_application.model_dump(mode="json"))
+        write_resource_summary(
+            dataset_storage=self.dataset_storage,
+            object_key=object_key,
+            summary=resource_summary,
+        )
+        return WorkflowApplicationDocument(
+            project_id=normalized_project_id,
+            object_key=object_key,
+            application=updated_application,
+            validation_summary=validation_summary,
+            resource_summary=resource_summary,
+        )
+
     def get_application_summary(
         self,
         *,

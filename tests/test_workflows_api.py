@@ -59,6 +59,15 @@ def test_validate_save_and_get_workflow_template_and_application(tmp_path: Path)
                 "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
                 headers=_build_workflow_read_headers(),
             )
+            update_application_response = client.patch(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_write_headers(),
+                json={"display_name": "Inspection API App Renamed"},
+            )
+            get_renamed_application_response = client.get(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_read_headers(),
+            )
 
         assert validate_template_response.status_code == 200
         assert validate_template_response.json()["valid"] is True
@@ -84,6 +93,11 @@ def test_validate_save_and_get_workflow_template_and_application(tmp_path: Path)
         assert get_application_response.status_code == 200
         assert get_application_response.json()["application"]["application_id"] == "inspection-api-app"
         assert get_application_response.json()["application"]["template_ref"]["source_uri"] == template_object_key
+
+        assert update_application_response.status_code == 200
+        assert update_application_response.json()["application"]["display_name"] == "Inspection API App Renamed"
+        assert get_renamed_application_response.status_code == 200
+        assert get_renamed_application_response.json()["application"]["display_name"] == "Inspection API App Renamed"
     finally:
         session_factory.engine.dispose()
 

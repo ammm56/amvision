@@ -2,6 +2,10 @@
   <section class="workflow-graph-workbench" :class="`workflow-graph-workbench--${graphTheme}`">
     <WorkflowGraphToolbar
       :editor-title="editorTitle"
+      :title-draft="editorTitleDraft"
+      :title-editing="editorTitleEditing"
+      :title-saving="editorTitleSaving"
+      :title-editable="editorTitleEditable"
       :node-count="graphNodes.length"
       :edge-count="graphLinks.length"
       :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
@@ -12,6 +16,10 @@
       :graph-theme="graphTheme"
       :preview-disabled="previewDisabled"
       :save-disabled="saveDisabled"
+      @begin-title-edit="beginEditorTitleEdit"
+      @update-title-draft="updateEditorTitleDraft"
+      @commit-title="commitEditorTitleEdit"
+      @cancel-title="cancelEditorTitleEdit"
       @refresh="loadPage"
       @toggle-theme="toggleGraphTheme"
       @preview="runPreview"
@@ -269,6 +277,7 @@ import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedbac
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
+import { updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
 import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
@@ -313,6 +322,9 @@ const templateInputs = ref<WorkflowGraphInput[]>([])
 const templateOutputs = ref<WorkflowGraphOutput[]>([])
 const contextMenu = ref<ContextMenuState | null>(null)
 const complexParameterDrafts = ref<Record<string, string>>({})
+const editorTitleEditing = ref(false)
+const editorTitleSaving = ref(false)
+const editorTitleDraft = ref('')
 const canvasRef = ref<HTMLElement | null>(null)
 const {
   shouldIgnoreStagePointer,
@@ -823,8 +835,61 @@ const {
   },
 })
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
+const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
 const saveDisabled = computed(() => saving.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => previewing.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+
+function beginEditorTitleEdit(): void {
+  if (!editorTitleEditable.value || editorTitleSaving.value) return
+  editorTitleDraft.value = editorTitle.value
+  editorTitleEditing.value = true
+  clearActionMessages()
+}
+
+function updateEditorTitleDraft(value: string): void {
+  editorTitleDraft.value = value
+}
+
+function cancelEditorTitleEdit(): void {
+  if (editorTitleSaving.value) return
+  editorTitleDraft.value = ''
+  editorTitleEditing.value = false
+}
+
+async function commitEditorTitleEdit(): Promise<void> {
+  const app = workflowApp.value
+  if (!app || !editorTitleEditable.value || editorTitleSaving.value) return
+  const nextDisplayName = editorTitleDraft.value.trim()
+  if (!nextDisplayName) {
+    errorMessage.value = '应用名称不能为空'
+    return
+  }
+  if (nextDisplayName === app.applicationDocument.application.display_name) {
+    cancelEditorTitleEdit()
+    return
+  }
+  editorTitleSaving.value = true
+  errorMessage.value = null
+  statusMessage.value = null
+  try {
+    const updatedApplicationDocument = await updateWorkflowApplicationMetadata(
+      selectedProjectId.value,
+      app.applicationDocument.application_id,
+      { displayName: nextDisplayName },
+    )
+    workflowApp.value = {
+      ...app,
+      applicationDocument: updatedApplicationDocument,
+    }
+    editorTitleDraft.value = ''
+    editorTitleEditing.value = false
+    statusMessage.value = '应用名称已更新'
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '应用名称更新失败'
+  } finally {
+    editorTitleSaving.value = false
+  }
+}
 
 function updateNodeEnabled(node: GraphNodeView, event: Event): void {
   const target = event.target

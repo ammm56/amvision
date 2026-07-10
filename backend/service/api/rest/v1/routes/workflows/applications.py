@@ -26,6 +26,7 @@ from .schemas import (
     WorkflowApplicationDocumentResponse,
     WorkflowApplicationSaveRequestBody,
     WorkflowApplicationSummaryResponse,
+    WorkflowApplicationUpdateRequestBody,
     WorkflowApplicationValidateRequestBody,
     WorkflowApplicationValidationResponse,
 )
@@ -81,6 +82,35 @@ def save_flow_application(
         project_id=project_id,
         application=body.application,
         actor_id=principal.principal_id,
+    )
+    return _build_application_document_response(document, workflow_service=service)
+
+
+@workflow_applications_router.patch(
+    "/projects/{project_id}/applications/{application_id}",
+    response_model=WorkflowApplicationDocumentResponse,
+)
+def update_flow_application_metadata(
+    project_id: str,
+    application_id: str,
+    body: WorkflowApplicationUpdateRequestBody,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
+) -> WorkflowApplicationDocumentResponse:
+    """更新流程应用名称、说明等基础信息。"""
+
+    _ensure_project_visible(principal=principal, project_id=project_id)
+    service = _build_workflow_json_service(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    document = service.update_application_metadata(
+        project_id=project_id,
+        application_id=application_id,
+        actor_id=principal.principal_id,
+        display_name=body.display_name,
+        description=body.description,
     )
     return _build_application_document_response(document, workflow_service=service)
 

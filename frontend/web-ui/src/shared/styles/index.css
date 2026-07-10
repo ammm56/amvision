@@ -2472,6 +2472,23 @@ a:hover {
   min-width: 0;
 }
 
+.workflow-graph-toolbar__title-main,
+.workflow-graph-toolbar__title-view,
+.workflow-graph-toolbar__title-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.workflow-graph-toolbar__title-main {
+  flex: 1;
+}
+
+.workflow-graph-toolbar__title-view {
+  flex: 1;
+}
+
 .workflow-graph-toolbar__title h1,
 .workflow-graph-toolbar__title p {
   margin: 0;
@@ -2485,6 +2502,45 @@ a:hover {
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workflow-graph-toolbar__title-edit,
+.workflow-graph-toolbar__title-editor button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid #4a555b;
+  border-radius: 8px;
+  color: #dce7eb;
+  background: #2a3034;
+}
+
+.workflow-graph-toolbar__title-edit:hover,
+.workflow-graph-toolbar__title-editor button:hover:not(:disabled) {
+  background: #323a3f;
+}
+
+.workflow-graph-toolbar__title-editor {
+  flex: 1;
+}
+
+.workflow-graph-toolbar__title-editor input {
+  width: min(360px, 100%);
+  min-width: 160px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #4a555b;
+  border-radius: 8px;
+  color: #f3f6f7;
+  background: #1f2529;
+}
+
+.workflow-graph-toolbar__title-editor input:focus {
+  border-color: #47b6c4;
+  outline: 2px solid rgb(71 182 196 / 0.24);
 }
 
 .workflow-graph-toolbar__title p,
@@ -3106,14 +3162,19 @@ a:hover {
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar__back,
-.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary {
+.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary,
+.workflow-graph-workbench .workflow-graph-toolbar__title-edit,
+.workflow-graph-workbench .workflow-graph-toolbar__title-editor button,
+.workflow-graph-workbench .workflow-graph-toolbar__title-editor input {
   color: var(--graph-text);
   border-color: var(--graph-line);
   background: var(--graph-panel);
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar__back:hover,
-.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled) {
+.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled),
+.workflow-graph-workbench .workflow-graph-toolbar__title-edit:hover,
+.workflow-graph-workbench .workflow-graph-toolbar__title-editor button:hover:not(:disabled) {
   background: var(--graph-panel-strong);
 }
 

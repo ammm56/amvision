@@ -676,6 +676,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         backToApps: '返回应用',
         previewRun: 'Preview Run',
         saveWorkflowApp: '保存应用',
+        renameWorkflowApp: '修改应用名称',
+        saveAppName: '保存名称',
+        cancelAppNameEdit: '取消修改',
         toggleNodePalette: '节点面板',
       },
       fields: {
@@ -1759,6 +1762,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         backToApps: 'Back to Workflow App',
         previewRun: 'Preview Run',
         saveWorkflowApp: 'Save App',
+        renameWorkflowApp: 'Rename App',
+        saveAppName: 'Save name',
+        cancelAppNameEdit: 'Cancel rename',
         toggleNodePalette: 'Node Palette',
       },
       fields: {
@@ -2836,6 +2842,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         backToApps: 'Workflow App へ戻る',
         previewRun: 'Preview Run',
         saveWorkflowApp: 'アプリを保存',
+        renameWorkflowApp: 'アプリ名を変更',
+        saveAppName: '名前を保存',
+        cancelAppNameEdit: '変更をキャンセル',
         toggleNodePalette: 'Node Palette',
       },
       fields: {
@@ -3913,6 +3922,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         backToApps: 'Workflow App 으로 돌아가기',
         previewRun: 'Preview Run',
         saveWorkflowApp: '앱 저장',
+        renameWorkflowApp: '앱 이름 변경',
+        saveAppName: '이름 저장',
+        cancelAppNameEdit: '변경 취소',
         toggleNodePalette: 'Node Palette',
       },
       fields: {

@@ -34,7 +34,7 @@ export interface WorkflowDocumentLoaderOptions {
   resetNewWorkflowAppDraft: () => void
   createLocalWorkflowAppDraft: () => WorkflowAppDocument
   initializePublicBindings: (appDocument: WorkflowAppDocument) => void
-  initializePreviewInputs: (bindings: FlowApplicationBinding[]) => void
+  initializePreviewInputs: (bindings: FlowApplicationBinding[], options?: { preserveExisting?: boolean }) => void
   normalizeLoadedRequestImageInputBindings: () => void
   readSelection: () => WorkflowSelectionState
   setSelection: (selection: WorkflowSelectionState) => void
@@ -48,20 +48,20 @@ export interface WorkflowDocumentLoaderOptions {
 }
 
 export function useWorkflowDocumentLoader(options: WorkflowDocumentLoaderOptions) {
-  function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument): void {
+  function initializeWorkflowAppDrafts(appDocument: WorkflowAppDocument, draftOptions: { preservePreviewInputs?: boolean } = {}): void {
     options.templateInputs.value = appDocument.graphDocument.template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } }))
     options.templateOutputs.value = appDocument.graphDocument.template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } }))
     options.initializePublicBindings(appDocument)
     normalizeLoadedHttpResponseOutputIds(appDocument.graphDocument.template.nodes)
     options.normalizeLoadedRequestImageInputBindings()
-    options.initializePreviewInputs(options.applicationBindingsDraft.value)
+    options.initializePreviewInputs(options.applicationBindingsDraft.value, { preserveExisting: draftOptions.preservePreviewInputs === true })
   }
 
   async function refreshSavedWorkflowApp(applicationId: string): Promise<void> {
     const previousSelection = options.readSelection()
     const refreshedApp = await getWorkflowApp(options.selectedProjectId.value, applicationId)
     options.workflowApp.value = refreshedApp
-    initializeWorkflowAppDrafts(refreshedApp)
+    initializeWorkflowAppDrafts(refreshedApp, { preservePreviewInputs: true })
     options.clearComplexParameterDrafts()
     options.liteGraphAdapter.value?.loadTemplate(refreshedApp.graphDocument.template)
     options.graphEdges.value = cloneGraphEdges(refreshedApp.graphDocument.template.edges)

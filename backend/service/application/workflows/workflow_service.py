@@ -223,6 +223,25 @@ class LocalWorkflowJsonService:
             actor_id=actor_id,
         )
 
+    def update_application_metadata(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        actor_id: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> WorkflowApplicationDocument:
+        """只更新流程应用基础显示信息。"""
+
+        return self.application_documents.update_application_metadata(
+            project_id=project_id,
+            application_id=application_id,
+            actor_id=actor_id,
+            display_name=display_name,
+            description=description,
+        )
+
     def get_application_summary(
         self,
         *,

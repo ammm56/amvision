@@ -41,6 +41,13 @@ class WorkflowApplicationSaveRequestBody(BaseModel):
     application: FlowApplication = Field(description="待保存的流程应用")
 
 
+class WorkflowApplicationUpdateRequestBody(BaseModel):
+    """描述流程应用轻量更新请求体。"""
+
+    display_name: str | None = Field(default=None, description="流程应用显示名称")
+    description: str | None = Field(default=None, description="流程应用说明")
+
+
 class WorkflowTemplateCopyRequestBody(BaseModel):
     """描述图模板版本复制请求体。"""
 

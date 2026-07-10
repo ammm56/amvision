@@ -17,6 +17,7 @@ export interface PreviewValueField {
 }
 
 export interface PreviewInputState {
+  payloadTypeId: string
   valueFields: PreviewValueField[]
   file: File | null
   mediaType: string
@@ -33,6 +34,10 @@ export const previewImageRefTransportKindOptions: PreviewSelectOption[] = [
 
 interface WorkflowPreviewInputsOptions {
   getBindingPayloadTypeId: (binding: FlowApplicationBinding) => string
+}
+
+export interface InitializePreviewInputsOptions {
+  preserveExisting?: boolean
 }
 
 export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) {
@@ -64,6 +69,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
       })
     }
     return {
+      payloadTypeId,
       valueFields,
       file: null,
       mediaType: '',
@@ -74,13 +80,23 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     }
   }
 
-  function initializePreviewInputs(applicationBindings: FlowApplicationBinding[]): void {
+  function initializePreviewInputs(applicationBindings: FlowApplicationBinding[], initOptions: InitializePreviewInputsOptions = {}): void {
     const nextInputState: Record<string, PreviewInputState> = {}
     for (const binding of applicationBindings) {
       if (binding.direction !== 'input') continue
-      nextInputState[binding.binding_id] = createEmptyPreviewInputState(binding)
+      nextInputState[binding.binding_id] = initOptions.preserveExisting
+        ? reuseCompatiblePreviewInputState(binding)
+        : createEmptyPreviewInputState(binding)
     }
     previewInputState.value = nextInputState
+  }
+
+  function reuseCompatiblePreviewInputState(binding: FlowApplicationBinding): PreviewInputState {
+    const previousState = previewInputState.value[binding.binding_id]
+    if (!previousState) return createEmptyPreviewInputState(binding)
+    const payloadTypeId = options.getBindingPayloadTypeId(binding)
+    if (previousState.payloadTypeId === payloadTypeId) return previousState
+    return createEmptyPreviewInputState(binding)
   }
 
   function setPreviewInputStateForBinding(binding: FlowApplicationBinding): void {

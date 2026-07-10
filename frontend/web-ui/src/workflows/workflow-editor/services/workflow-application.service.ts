@@ -19,6 +19,11 @@ export interface WorkflowApplicationCopyInput {
   description?: string
 }
 
+export interface WorkflowApplicationMetadataUpdateInput {
+  displayName?: string
+  description?: string
+}
+
 function encodePathPart(value: string): string {
   return encodeURIComponent(value)
 }
@@ -38,6 +43,23 @@ export async function saveWorkflowApplication(projectId: string, application: Fl
   return apiRequest<WorkflowApplicationDocument>(
     `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(application.application_id)}`,
     { method: 'PUT', body: { application } },
+  )
+}
+
+export async function updateWorkflowApplicationMetadata(
+  projectId: string,
+  applicationId: string,
+  input: WorkflowApplicationMetadataUpdateInput,
+): Promise<WorkflowApplicationDocument> {
+  return apiRequest<WorkflowApplicationDocument>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}`,
+    {
+      method: 'PATCH',
+      body: {
+        display_name: input.displayName ?? null,
+        description: input.description ?? null,
+      },
+    },
   )
 }
 
