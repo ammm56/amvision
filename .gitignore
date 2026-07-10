@@ -260,3 +260,5 @@ runtimes/third_party/
 
 # local Postman debug dataset packages should not live under docs git paths
 docs/api/postman/assets/*.zip
+
+.codex/*.toml
