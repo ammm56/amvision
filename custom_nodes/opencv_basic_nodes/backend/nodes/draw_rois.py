@@ -33,6 +33,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, np_module = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
+    image_matrix = image_matrix.copy()
     roi_items = iter_roi_payloads(
         request.input_values.get("rois"),
         node_id=request.node_id,

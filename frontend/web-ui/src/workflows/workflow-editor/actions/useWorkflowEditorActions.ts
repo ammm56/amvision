@@ -74,6 +74,7 @@ export function useWorkflowEditorActions() {
         inputBindings: input.inputBindings,
         executionMetadata: {
           source: 'workflow-graph-workbench',
+          preview_execution_mode: 'inline',
           debug_image_panels_enabled: hasDebugImagePanelNode(input.template),
           retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template),
         },

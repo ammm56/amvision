@@ -219,8 +219,13 @@ def encode_matrix_to_image_bytes(
 ) -> bytes:
     """把 OpenCV matrix 编码为 PNG/JPEG/BMP bytes。"""
 
-    normalized_extension = extension.strip() if isinstance(extension, str) and extension.strip() else ".png"
-    success, encoded_image = cv2_module.imencode(normalized_extension, image_matrix)
+    normalized_extension = extension.strip().lower() if isinstance(extension, str) and extension.strip() else ".png"
+    encode_params: list[int] = []
+    if normalized_extension in {".jpg", ".jpeg"}:
+        encode_params = [int(cv2_module.IMWRITE_JPEG_QUALITY), 82]
+    elif normalized_extension == ".png":
+        encode_params = [int(cv2_module.IMWRITE_PNG_COMPRESSION), 1]
+    success, encoded_image = cv2_module.imencode(normalized_extension, image_matrix, encode_params)
     if success is not True:
         raise ServiceConfigurationError(error_message)
     return encoded_image.tobytes()

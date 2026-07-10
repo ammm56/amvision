@@ -86,6 +86,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
+    image_matrix = image_matrix.copy()
     measurement_payload = require_value_payload(request.input_values.get("measurement"), field_name="measurement")
     measurement_items = _normalize_measurement_items(measurement_payload["value"])
 

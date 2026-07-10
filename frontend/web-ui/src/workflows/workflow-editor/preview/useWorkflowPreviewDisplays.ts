@@ -137,8 +137,12 @@ export function useWorkflowPreviewDisplays() {
   async function refreshPreviewNodeDisplays(previewRun: WorkflowPreviewRun): Promise<void> {
     revokePreviewImageObjectUrls()
     const nextDisplays: Record<string, PreviewNodeDisplay> = {}
-    for (const displayOutput of readPreviewDisplayOutputs(previewRun)) {
-      const previewDisplay = await buildPreviewNodeDisplay(previewRun, displayOutput, registerPreviewImageObjectUrl)
+    const previewDisplays = await Promise.all(
+      readPreviewDisplayOutputs(previewRun).map((displayOutput) => (
+        buildPreviewNodeDisplay(previewRun, displayOutput, registerPreviewImageObjectUrl)
+      )),
+    )
+    for (const previewDisplay of previewDisplays) {
       if (previewDisplay) {
         nextDisplays[previewDisplay.nodeId] = previewDisplay
       }
@@ -365,18 +369,17 @@ async function buildGalleryPreviewNodeDisplay(
 ): Promise<PreviewNodeDisplay> {
   const payload = displayOutput.payload
   const rawItems = Array.isArray(payload.items) ? payload.items : []
-  const galleryItems: PreviewGalleryItemView[] = []
-  for (const [itemIndex, rawItem] of rawItems.entries()) {
-    if (!isPreviewJsonObject(rawItem) || !isPreviewJsonObject(rawItem.image)) continue
+  const galleryItems = (await Promise.all(rawItems.map(async (rawItem, itemIndex): Promise<PreviewGalleryItemView | null> => {
+    if (!isPreviewJsonObject(rawItem) || !isPreviewJsonObject(rawItem.image)) return null
     const caption = readDisplayText(rawItem.caption) || `Image ${itemIndex + 1}`
     const image = await buildPreviewViewerImage(previewRun, rawItem.image, caption, displayOutput.nodeId, registerObjectUrl, rawItem)
-    galleryItems.push({
+    return {
       ...image,
       title: caption,
       caption,
       cropIndex: readDisplayNumber(rawItem.crop_index),
-    })
-  }
+    }
+  }))).filter((item): item is PreviewGalleryItemView => item !== null)
   const totalCount = readDisplayNumber(payload.total_count) ?? galleryItems.length
   return {
     nodeId: displayOutput.nodeId,

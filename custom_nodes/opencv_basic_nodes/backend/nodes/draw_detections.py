@@ -28,6 +28,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
+    image_matrix = image_matrix.copy()
 
     raw_line_thickness = request.parameters.get("line_thickness")
     if raw_line_thickness in (None, ""):

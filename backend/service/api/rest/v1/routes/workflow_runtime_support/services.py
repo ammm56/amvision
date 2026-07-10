@@ -10,7 +10,9 @@ from backend.service.application.deployments import PublishedInferenceGateway
 from backend.service.application.errors import PermissionDeniedError, ServiceConfigurationError
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel, LocalBufferBrokerProcessSupervisor
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.infrastructure.db.session import SessionFactory
@@ -30,6 +32,8 @@ def build_workflow_runtime_service(
         session_factory=require_session_factory(request),
         dataset_storage=require_dataset_storage(request),
         node_catalog_registry=require_node_catalog_registry(request),
+        workflow_node_runtime_registry=require_workflow_node_runtime_registry(request),
+        workflow_service_node_runtime_context=require_workflow_service_node_runtime_context(request),
         worker_manager=require_workflow_runtime_worker_manager(request),
         preview_run_manager=read_workflow_preview_run_manager(request),
         local_buffer_broker_event_channel=(
@@ -84,6 +88,24 @@ def require_workflow_runtime_worker_manager(request: Request) -> WorkflowRuntime
     if not isinstance(worker_manager, WorkflowRuntimeWorkerManager):
         raise ServiceConfigurationError("当前服务尚未完成 workflow_runtime_worker_manager 装配")
     return worker_manager
+
+
+def require_workflow_node_runtime_registry(request: Request) -> WorkflowNodeRuntimeRegistry:
+    """从 application.state 中读取已加载的 WorkflowNodeRuntimeRegistry。"""
+
+    runtime_registry = getattr(request.app.state, "workflow_node_runtime_registry", None)
+    if not isinstance(runtime_registry, WorkflowNodeRuntimeRegistry):
+        raise ServiceConfigurationError("当前服务尚未完成 workflow_node_runtime_registry 装配")
+    return runtime_registry
+
+
+def require_workflow_service_node_runtime_context(request: Request) -> WorkflowServiceNodeRuntimeContext:
+    """从 application.state 中读取 workflow 节点运行时上下文。"""
+
+    runtime_context = getattr(request.app.state, "workflow_service_node_runtime_context", None)
+    if not isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
+        raise ServiceConfigurationError("当前服务尚未完成 workflow_service_node_runtime_context 装配")
+    return runtime_context
 
 
 def read_workflow_preview_run_manager(request: Request) -> WorkflowPreviewRunManager | None:

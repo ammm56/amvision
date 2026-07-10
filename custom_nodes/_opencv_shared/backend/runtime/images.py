@@ -17,23 +17,47 @@ from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_i
 from custom_nodes._opencv_shared.backend.runtime.validators import normalize_optional_object_key
 
 
-class EncodedImageBytes(bytes):
-    """携带原始 OpenCV matrix 的编码图片 bytes。
+class EncodedImageBytes:
+    """携带 OpenCV matrix 的懒编码图片对象。
 
     说明：
-    - 对旧代码表现为普通 bytes。
-    - 对 build_output_image_payload，未指定 object_key 时可跳过编码 bytes，
-      直接把 image_matrix 注册为 raw BGR24 memory image-ref。
+    - 大多数节点没有显式 output_object_key 时会直接输出 memory/raw BGR24，
+      不需要先 PNG 编码。
+    - 只有确实需要落盘时，bytes(content) 才触发编码。
     """
 
-    image_matrix: Any
+    def __init__(self, *, request: object, image_matrix: Any, extension: str, error_message: str) -> None:
+        """保存懒编码所需的最小上下文。"""
 
-    def __new__(cls, value: bytes, image_matrix: Any):
-        """创建 bytes 兼容对象。"""
+        self.request = request
+        self.image_matrix = image_matrix
+        self.extension = extension
+        self.error_message = error_message
+        self._encoded_bytes: bytes | None = None
 
-        current = super().__new__(cls, value)
-        current.image_matrix = image_matrix
-        return current
+    def __bytes__(self) -> bytes:
+        """按需执行 OpenCV 编码并缓存结果。"""
+
+        if self._encoded_bytes is None:
+            cv2_module, _ = require_opencv_imports()
+            encode_params: list[int] = []
+            normalized_extension = self.extension.strip().lower() or ".png"
+            if normalized_extension in {".jpg", ".jpeg"}:
+                encode_params = [int(cv2_module.IMWRITE_JPEG_QUALITY), 82]
+            elif normalized_extension == ".png":
+                encode_params = [int(cv2_module.IMWRITE_PNG_COMPRESSION), 1]
+            success, encoded_image = cv2_module.imencode(
+                normalized_extension,
+                self.image_matrix,
+                encode_params,
+            )
+            if success is not True:
+                raise ServiceConfigurationError(
+                    self.error_message,
+                    details={"node_id": getattr(self.request, "node_id", "")},
+                )
+            self._encoded_bytes = encoded_image.tobytes()
+        return self._encoded_bytes
 
 
 def load_image_matrix(
@@ -60,7 +84,7 @@ def load_image_matrix(
         cv2_module=cv2_module,
         np_module=np_module,
         imdecode_flags=imdecode_flags,
-        copy_raw=True,
+        copy_raw=False,
     )
     resolved_source_object_key = image_payload.get("object_key")
     return (
@@ -160,17 +184,15 @@ def encode_png_image_bytes(
     *,
     image_matrix: Any,
     error_message: str,
-) -> bytes:
-    """把 OpenCV matrix 编码为 PNG 字节。"""
+) -> EncodedImageBytes:
+    """返回按需编码为 PNG 的图片对象。"""
 
-    cv2_module, _ = require_opencv_imports()
-    success, encoded_image = cv2_module.imencode(".png", image_matrix)
-    if success is not True:
-        raise ServiceConfigurationError(
-            error_message,
-            details={"node_id": getattr(request, "node_id", "")},
-        )
-    return EncodedImageBytes(encoded_image.tobytes(), image_matrix)
+    return EncodedImageBytes(
+        request=request,
+        image_matrix=image_matrix,
+        extension=".png",
+        error_message=error_message,
+    )
 
 def require_dataset_path(request: object, object_key: str):
     """把 object key 解析为本地绝对路径。

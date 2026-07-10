@@ -86,6 +86,8 @@ def _normalize_path_segment(value: str, *, fallback: str) -> str:
 def _infer_file_extension_from_media_type(media_type: str) -> str:
     """根据媒体类型推断 artifact 文件扩展名。"""
 
+    if isinstance(media_type, str) and media_type.strip().lower() == "image/raw":
+        return ".jpg"
     guessed_extension = mimetypes.guess_extension(media_type.strip()) if isinstance(media_type, str) else None
     if isinstance(guessed_extension, str) and guessed_extension:
         return guessed_extension

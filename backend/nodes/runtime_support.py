@@ -1029,6 +1029,27 @@ def build_response_image_payload(
     normalized_mode = _normalize_response_transport_mode(response_transport_mode)
     original_image_payload = require_image_payload(image_payload)
     source_was_raw = _is_raw_image_payload(original_image_payload)
+    original_object_key = _normalize_optional_text(original_image_payload.get("object_key"))
+    if (
+        normalized_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF
+        and original_image_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE
+        and object_key is None
+        and not source_was_raw
+        and original_object_key is not None
+    ):
+        response_image: dict[str, object] = {
+            "transport_kind": normalized_mode,
+            "media_type": str(original_image_payload["media_type"]),
+            "object_key": original_object_key,
+        }
+        normalized_width = _normalize_optional_dimension(original_image_payload.get("width"))
+        normalized_height = _normalize_optional_dimension(original_image_payload.get("height"))
+        if normalized_width is not None:
+            response_image["width"] = normalized_width
+        if normalized_height is not None:
+            response_image["height"] = normalized_height
+        return response_image
+
     normalized_image_payload, image_bytes = _load_json_safe_image_bytes(
         request,
         image_payload=original_image_payload,
@@ -1277,7 +1298,7 @@ def _resolve_encoded_output_extension(target_object_key: str | None) -> str:
         suffix = PurePosixPath(target_object_key.strip()).suffix.lower()
         if suffix in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
             return suffix
-    return ".png"
+    return ".jpg"
 
 
 def _is_raw_image_payload(payload: dict[str, object]) -> bool:
@@ -1341,7 +1362,7 @@ def _build_default_target_object_key(
     if output_extension is not None:
         target_extension = output_extension
     elif _is_raw_image_payload(normalized_source_payload):
-        target_extension = ".png"
+        target_extension = ".jpg"
     else:
         target_extension = infer_file_extension_from_media_type(
             str(normalized_source_payload.get("media_type") or "image/png")

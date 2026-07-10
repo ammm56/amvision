@@ -26,6 +26,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
+    image_matrix = image_matrix.copy()
     circles_payload = require_circles_payload(request.input_values.get("circles"))
 
     raw_line_thickness = request.parameters.get("line_thickness")
