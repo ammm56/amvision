@@ -331,7 +331,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         output_ports=(
             NodePortDefinition(
                 name="value",
-                display_name="Value",
+                display_name="ROIs",
                 payload_type_id="value.v1",
             ),
             NodePortDefinition(

@@ -6,6 +6,7 @@ from backend.nodes.core_catalog import get_core_workflow_node_definitions
 from backend.nodes.core_nodes.logic.collections.array_summary import _array_summary_handler
 from backend.nodes.core_nodes.logic.value.payload_to_value import _payload_to_value_handler
 from backend.nodes.core_nodes.logic.value.value_to_roi import _value_to_roi_handler
+from backend.nodes.core_nodes.io.preview.value_preview import _value_preview_handler
 from backend.nodes.core_nodes.vision.roi.roi_grid_create import _roi_grid_create_handler
 from backend.nodes.core_nodes.vision.roi.roi_list_create import _roi_list_create_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -187,6 +188,63 @@ def test_value_to_roi_restores_roi_payload_from_nested_value() -> None:
     assert output["roi"]["roi_id"] == "slot-01-02"
     assert output["roi"]["source_image"]["image_handle"] == "image-b"
     assert output["summary"]["value"]["source_image_attached"] is True
+
+
+def test_value_preview_accepts_single_roi_payload() -> None:
+    """验证 Value Preview 可直接预览单个 roi.v1。"""
+
+    output = _value_preview_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="value-preview-roi",
+            node_definition=object(),
+            parameters={"title": "ROI Preview"},
+            input_values={
+                "roi": {
+                    "roi_id": "slot-preview",
+                    "roi_kind": "bbox",
+                    "bbox_xyxy": [1, 2, 11, 12],
+                    "polygon_xy": [[1, 2], [11, 2], [11, 12], [1, 12]],
+                    "area": 100,
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    body = output["body"]
+    assert body["type"] == "value-preview"
+    assert body["title"] == "ROI Preview"
+    assert body["value"]["roi_id"] == "slot-preview"
+
+
+def test_value_preview_accepts_roi_list_payload() -> None:
+    """验证 Value Preview 可预览 value.v1 包装的 ROI 列表。"""
+
+    output = _value_preview_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="value-preview-rois",
+            node_definition=object(),
+            parameters={"path": "0.roi_id"},
+            input_values={
+                "rois": {
+                    "value": [
+                        {
+                            "roi_id": "slot-list",
+                            "roi_kind": "bbox",
+                            "bbox_xyxy": [0, 0, 10, 10],
+                            "polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                            "area": 100,
+                        }
+                    ]
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    body = output["body"]
+    assert body["value"] == "slot-list"
+    assert body["status_text"] == "Path: 0.roi_id"
 
 
 def test_array_summary_reports_truthy_and_numeric_metrics() -> None:

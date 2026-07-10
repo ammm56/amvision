@@ -10,11 +10,13 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import require_value_payload, try_extract_value_by_path
+from backend.nodes.core_nodes.support.roi import iter_roi_payloads, require_roi_payload
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
 def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把任意 value.v1 包装成可显示的 value-preview body。
+    """把 value.v1、roi.v1 或 ROI 列表包装成可显示的 value-preview body。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -23,8 +25,7 @@ def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     - dict[str, object]：包含 value-preview body 的节点输出。
     """
 
-    value_payload = require_value_payload(request.input_values.get("value"), field_name="value")
-    preview_value = value_payload["value"]
+    preview_value = _read_preview_value(request)
     normalized_path = _read_optional_path_parameter(request.parameters.get("path"))
     preview_body: dict[str, object] = {
         "type": "value-preview",
@@ -44,6 +45,32 @@ def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
             preview_body["missing_path"] = True
             preview_body["empty_text"] = f"未找到路径：{normalized_path}"
     return {"body": preview_body}
+
+
+def _read_preview_value(request: WorkflowNodeExecutionRequest) -> object:
+    """按优先级读取 Value Preview 输入。
+
+    参数：
+    - request：当前 workflow 节点执行请求。
+
+    返回：
+    - object：可直接显示的 JSON 结构。
+    """
+
+    raw_value = request.input_values.get("value")
+    if raw_value is not None:
+        value_payload = require_value_payload(raw_value, field_name="value")
+        return value_payload["value"]
+    raw_roi = request.input_values.get("roi")
+    if raw_roi is not None:
+        return require_roi_payload(raw_roi, node_id=request.node_id)
+    raw_rois = request.input_values.get("rois")
+    if raw_rois is not None:
+        return iter_roi_payloads(raw_rois, node_id=request.node_id, field_name="rois")
+    raise InvalidRequestError(
+        "Value Preview 节点需要 value、roi 或 rois 输入",
+        details={"node_id": request.node_id},
+    )
 
 
 def _read_optional_path_parameter(raw_value: object) -> str | None:
@@ -67,7 +94,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.io.value-preview",
         display_name="Value Preview",
         category="ui.preview",
-        description="把任意 value.v1 转成可直接在 workflow editor 和 HTTP 响应里显示的 JSON 预览 body。",
+        description="把 value.v1、roi.v1 或 ROI 列表转成 workflow editor 和 HTTP 响应可显示的 JSON 预览 body。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -75,6 +102,19 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="value",
                 display_name="Value",
                 payload_type_id="value.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="roi",
+                display_name="ROI",
+                payload_type_id="roi.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="rois",
+                display_name="ROIs",
+                payload_type_id="value.v1",
+                required=False,
             ),
         ),
         output_ports=(
