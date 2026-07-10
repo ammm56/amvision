@@ -13,6 +13,7 @@
 - SDK 已实现已有 DeploymentInstance 的 `sync/async` runtime 启动、预热、重置、停止、状态、health 和推理调用。
 - Console 参考实现已经沿用现有 `Config/config_*.json + key + 方法` 模式，第三方程序只选择配置 key 和调用方法，不直接拼 `task_type`、`deployment_instance_id`、`runtime_mode` 等参数。
 - 现场使用的 `config_*.json` 可由项目工作台右上角“生成 SDK 配置包”统一导出，部署页和推理页不单独增加配置包入口。生成接口见 [docs/api/sdk-config-packages.md](sdk-config-packages.md)。
+- `sdks/dotnet/tests/Amvision.Workflows.Tests/Program.cs` 当前已经覆盖 ZeroMQ envelope、BGR24 raw 图片触发、WorkflowAppRuntime HTTP 调用、TriggerSource 管理、SystemConfig、模型 DeploymentInstance runtime 控制、同步推理、异步 inference task 创建和结果读取等 SDK 底层路径。
 
 ## 调用方关系
 
@@ -33,6 +34,12 @@ Amvision.Workflows SDK
 ```
 
 SDK 不直接访问数据库、对象存储、deployment worker 内部对象、LocalBufferBroker 内部文件池或模型进程内队列。SDK 只调用已经公开的 REST API，并把常用图片输入方式封装成稳定方法。
+
+## 与 workflow deployment 节点的边界
+
+Workflow 图里直接调用已发布模型的 `core.model.detection / classification / segmentation / pose / obb` 节点通过 `PublishedInferenceGateway` 走同步 deployment runtime，适合“图内拿到推理结果并继续规则判定或组装回执”的场景。
+
+异步 deployment runtime 不由这些直连模型节点切换。需要异步任务语义时，应使用模型 inference task 提交节点或 SDK 的异步 inference task API。这样可以避免同一个 workflow 节点既承担同步返回结果，又承担异步任务登记、排队、结果查询和审计职责。
 
 ## 不实现的管理能力
 
@@ -313,21 +320,24 @@ SDK 底层和 Console 参考实现都需要做参数校验：
 - `score_threshold` 如设置，建议限制在 `0-1`。
 - `default_image_path` 只用于调试或默认文件输入，不用于相机高频输入。
 
-## 测试要求
+## 测试状态
 
-.NET SDK 需要补充以下测试：
+当前 `sdks/dotnet/tests/Amvision.Workflows.Tests/Program.cs` 已覆盖：
 
-- runtime control URL、HTTP method 和 path segment 编码测试。
-- `sync/async` runtime mode 参数测试。
-- `task_type` 参数测试。
-- 同步 infer multipart body 测试。
-- image base64 request body 测试。
-- 异步 inference task create URL/body 测试。
-- get inference task 和 get result URL 测试。
-- Console config `model_deployments` 读取测试。
-- 多个 `config_*.json` 合并 catalog 测试。
-- `runtime`、`trigger_source` 重复 key 配置错误测试。
-- `model_deployment` 相同配置去重和冲突配置错误测试。
+- runtime control URL、HTTP method、path segment 编码和 `sync/async` runtime mode 参数。
+- `task_type` 参数校验。
+- 同步 infer JSON body、multipart upload body、image bytes 和 image base64 helper。
+- 异步 inference task create URL/body。
+- get inference task 和 get result URL。
+- ZeroMQ envelope、image bytes、image base64、raw BGR24、纯事件触发和 timeout/error reply。
+- WorkflowAppRuntime、TriggerSource、SystemConfig 和 typed response 反序列化。
+
+当前仍需要继续收口的测试：
+
+- Console config `model_deployments` 读取、多个 `config_*.json` 合并 catalog。
+- `runtime`、`trigger_source` 重复 key 配置错误。
+- `model_deployment` 相同配置去重和冲突配置错误。
+- Console 层按配置 key 调用 model deployment 的端到端命令测试。
 
 ## 与 workflow app SDK 的边界
 

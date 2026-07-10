@@ -1,0 +1,196 @@
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, type Pinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { useProjectStore } from '@/app/stores/project.store'
+import { useSessionStore } from '@/app/stores/session.store'
+import { i18n } from '@/platform/i18n'
+import DeploymentOperationsPage from './DeploymentOperationsPage.vue'
+import {
+  listTaskDeploymentEvents,
+  listTaskDeployments,
+  runTaskDeploymentHealthAction,
+  runTaskDeploymentStatusAction,
+  type DeploymentHealthAction,
+  type DeploymentStatusAction,
+  type ModelTaskType,
+  type TaskDeploymentInstance,
+  type TaskDeploymentProcessEvent,
+  type TaskDeploymentProcessStatus,
+  type TaskDeploymentRuntimeHealth,
+} from '../services/deployment.service'
+
+vi.mock('../services/deployment.service', () => ({
+  createTaskDeployment: vi.fn(),
+  listTaskDeploymentEvents: vi.fn(),
+  listTaskDeployments: vi.fn(),
+  runTaskDeploymentHealthAction: vi.fn(),
+  runTaskDeploymentStatusAction: vi.fn(),
+}))
+
+vi.mock('@/modules/models/services/model.service', () => ({
+  getDeploymentSourceModelDetail: vi.fn(),
+  listDeploymentSourceModels: vi.fn(),
+}))
+
+const deployment: TaskDeploymentInstance = {
+  deployment_instance_id: 'deployment-1',
+  project_id: 'project-1',
+  display_name: 'Barcode sync deployment',
+  status: 'created',
+  model_id: 'model-1',
+  model_version_id: 'model-version-1',
+  model_build_id: 'model-build-1',
+  model_name: 'barcode-detector',
+  model_scale: 'n',
+  task_type: 'detection',
+  source_kind: 'model-build',
+  runtime_profile_id: 'runtime-profile-1',
+  runtime_backend: 'tensorrt',
+  device_name: 'cuda',
+  runtime_precision: 'fp16',
+  runtime_execution_mode: 'sync',
+  instance_count: 2,
+  input_size: [640, 640],
+  labels: ['barcode'],
+  created_at: '2026-07-10T01:00:00Z',
+  updated_at: '2026-07-10T01:00:00Z',
+  metadata: {},
+}
+
+const status: TaskDeploymentProcessStatus = {
+  deployment_instance_id: 'deployment-1',
+  display_name: 'Barcode sync deployment',
+  runtime_mode: 'sync',
+  desired_state: 'running',
+  process_state: 'running',
+  process_id: 8123,
+  auto_restart: true,
+  restart_count: 1,
+  restart_count_rollover_count: 0,
+  last_exit_code: null,
+  last_error: null,
+  instance_count: 2,
+}
+
+const coldHealth: TaskDeploymentRuntimeHealth = {
+  ...status,
+  healthy_instance_count: 2,
+  warmed_instance_count: 0,
+  pinned_output_total_bytes: 2048,
+  instances: [
+    { instance_id: 'worker-0', healthy: true, warmed: false, busy: false },
+    { instance_id: 'worker-1', healthy: true, warmed: false, busy: false },
+  ],
+  keep_warm: { enabled: true },
+  local_buffer_broker: { pool_name: 'default' },
+}
+
+const warmHealth: TaskDeploymentRuntimeHealth = {
+  ...coldHealth,
+  warmed_instance_count: 2,
+  instances: coldHealth.instances.map((item) => ({ ...item, warmed: true })),
+}
+
+const event: TaskDeploymentProcessEvent = {
+  deployment_instance_id: 'deployment-1',
+  runtime_mode: 'sync',
+  sequence: 1,
+  event_type: 'runtime.started',
+  created_at: '2026-07-10T01:01:00Z',
+  message: 'runtime process started',
+  payload: {},
+}
+
+describe('DeploymentOperationsPage', () => {
+  let pinia: Pinia
+
+  beforeEach(() => {
+    pinia = createPinia()
+    const projectStore = useProjectStore(pinia)
+    const sessionStore = useSessionStore(pinia)
+
+    projectStore.projects = [{ project_id: 'project-1', display_name: 'Project 1', description: '' }]
+    projectStore.selectedProjectId = 'project-1'
+    sessionStore.currentUser = {
+      principal_id: 'user-1',
+      principal_type: 'user',
+      project_ids: ['project-1'],
+      scopes: ['models:write', 'models:read'],
+      username: 'tester',
+      display_name: 'Tester',
+      auth_provider_kind: 'local',
+      auth_credential_kind: 'session',
+    }
+    sessionStore.accessToken = 'test-token'
+    sessionStore.bootstrap = {
+      auth_mode: 'local',
+      bearer_auth_enabled: true,
+      websocket_query_token_enabled: true,
+      default_project_id: 'project-1',
+      projects: [],
+      features: {},
+      limits: {},
+      devices: {
+        cuda: { available: true, device_count: 1 },
+        gpu: { available: true, devices: [{ name: 'GPU 0' }] },
+      },
+    } as never
+
+    vi.mocked(listTaskDeployments).mockImplementation(async (taskType: ModelTaskType) => (
+      taskType === 'detection' ? [deployment] : []
+    ))
+    vi.mocked(runTaskDeploymentStatusAction).mockImplementation(
+      async (_taskType: ModelTaskType, _deploymentId: string, mode: string, action: DeploymentStatusAction) => ({
+        ...status,
+        runtime_mode: mode,
+        process_state: action === 'stop' ? 'stopped' : 'running',
+      }),
+    )
+    vi.mocked(runTaskDeploymentHealthAction).mockImplementation(
+      async (_taskType: ModelTaskType, _deploymentId: string, mode: string, action: DeploymentHealthAction) => ({
+        ...(action === 'warmup' ? warmHealth : coldHealth),
+        runtime_mode: mode,
+      }),
+    )
+    vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event])
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders deployment runtime health and dispatches runtime actions', async () => {
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Barcode sync deployment')
+    expect(wrapper.text()).toContain('running')
+    expect(wrapper.text()).toContain('2048')
+    expect(wrapper.text()).toContain('runtime.started')
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'status')
+    expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'health')
+
+    await clickButtonByText(wrapper, '预热')
+    await flushPromises()
+    expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'warmup')
+
+    await clickButtonByText(wrapper, '重置')
+    await flushPromises()
+    expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'reset')
+
+    await clickButtonByText(wrapper, '停止')
+    await flushPromises()
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
+  })
+})
+
+async function clickButtonByText(wrapper: VueWrapper, text: string): Promise<void> {
+  const button = wrapper.findAll('button').find((item) => item.text().includes(text))
+  expect(button, `button ${text} exists`).toBeTruthy()
+  await button!.trigger('click')
+}

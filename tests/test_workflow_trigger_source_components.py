@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +15,14 @@ import zmq
 
 from backend.contracts.buffers.buffer_ref import BufferRef
 from backend.contracts.workflows import TriggerResultContract
+from backend.contracts.workflows.workflow_graph import (
+    NODE_IMPLEMENTATION_CORE,
+    NODE_RUNTIME_WORKER_TASK,
+    NodeDefinition,
+)
+from backend.nodes.core_nodes.support.deployment_model import run_direct_model_inference
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.workflows.execution.contracts import WorkflowNodeExecutionRequest
 from backend.service.application.workflows.trigger_sources import (
     InputBindingMapper,
     RawTriggerEvent,
@@ -386,6 +394,57 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
     assert local_buffer_writer.write_calls[0]["pool_name"] == "image-640x640"
+
+
+def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_default() -> None:
+    """验证 BGR24 高速触发默认不返回 workflow 和 deployment 诊断字段。"""
+
+    trigger_result, runtime_service, local_buffer_writer = _run_bgr24_deployment_trigger_smoke(
+        return_diagnostics=False
+    )
+
+    assert trigger_result.state == "succeeded"
+    assert "timings" not in trigger_result.metadata
+    assert "node_timings" not in trigger_result.metadata
+    assert local_buffer_writer.write_calls[0]["media_type"] == "image/raw"
+    assert local_buffer_writer.write_calls[0]["shape"] == (2, 2, 3)
+    assert local_buffer_writer.write_calls[0]["dtype"] == "uint8"
+    assert local_buffer_writer.write_calls[0]["layout"] == "HWC"
+    assert local_buffer_writer.write_calls[0]["pixel_format"] == "bgr24"
+    assert runtime_service.gateway.last_request is not None
+    assert runtime_service.gateway.last_request.runtime_mode == "sync"
+    assert runtime_service.gateway.last_request.input_image_bytes is None
+    assert runtime_service.gateway.last_request.image_payload["transport_kind"] == "buffer"
+    assert runtime_service.gateway.last_request.image_payload["buffer_ref"]["media_type"] == "image/raw"
+    result_payload = trigger_result.response_payload["result"]
+    assert result_payload["detections"]["items"][0]["class_name"] == "barcode"
+    assert "timings" not in result_payload["detections"]["metadata"]
+    assert "runtime_infer_ms" not in result_payload["runtime_session_info"]["metadata"]
+
+
+def test_zeromq_bgr24_trigger_returns_diagnostics_when_enabled() -> None:
+    """验证显式开启诊断后 BGR24 触发返回 workflow 和 deployment 耗时字段。"""
+
+    trigger_result, runtime_service, _ = _run_bgr24_deployment_trigger_smoke(
+        return_diagnostics=True
+    )
+
+    assert trigger_result.state == "succeeded"
+    assert trigger_result.metadata["timings"]["trigger_submit_total_ms"] >= 0
+    assert trigger_result.metadata["timings"]["workflow_worker_execute_ms"] == 3.5
+    assert trigger_result.metadata["timings"]["zeromq_adapter_total_ms"] >= 0
+    assert trigger_result.metadata["node_timings"] == [
+        {
+            "node_id": "deployment-detect",
+            "node_type_id": "core.model.detection",
+            "runtime_kind": "worker-task",
+            "duration_ms": 3.5,
+        }
+    ]
+    assert runtime_service.gateway.last_request is not None
+    result_payload = trigger_result.response_payload["result"]
+    assert result_payload["detections"]["metadata"]["timings"]["runtime_infer_ms"] == 2.25
+    assert result_payload["runtime_session_info"]["metadata"]["runtime_infer_ms"] == 2.25
 
 
 def test_zeromq_trigger_adapter_defaults_content_frame_to_image_ref_binding() -> None:
@@ -978,6 +1037,314 @@ def _build_trigger_source(
     )
 
 
+def _run_bgr24_deployment_trigger_smoke(
+    *,
+    return_diagnostics: bool,
+) -> tuple[TriggerResultContract, "_DeploymentModelWorkflowRuntimeService", "_FakeLocalBufferWriter"]:
+    """执行 BGR24 ZeroMQ -> WorkflowRuntime -> DeploymentInstance smoke。"""
+
+    default_execution_metadata = (
+        {
+            "return_timing_metadata_enabled": True,
+            "return_node_timings_enabled": True,
+        }
+        if return_diagnostics
+        else {}
+    )
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
+        transport_config={
+            "bind_endpoint": f"inproc://zeromq-bgr24-deployment-{uuid4().hex}",
+            "default_input_binding": "request_image_ref",
+            "buffer_ttl_seconds": 5,
+            "pool_name": "image-raw-bgr24",
+        },
+        default_execution_metadata=default_execution_metadata,
+    )
+    local_buffer_writer = _FakeLocalBufferWriter()
+    runtime_service = _DeploymentModelWorkflowRuntimeService()
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    supervisor = TriggerSourceSupervisor(
+        adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
+        workflow_submitter=WorkflowSubmitter(runtime_service=runtime_service),
+    )
+    bgr24_bytes = bytes(range(12))
+
+    with _install_fake_published_inference_module():
+        trigger_result = adapter.handle_multipart_message(
+            trigger_source=trigger_source,
+            frames=[
+                json.dumps(
+                    {
+                        "event_id": "event-bgr24",
+                        "trace_id": "trace-bgr24",
+                        "media_type": "image/raw",
+                        "shape": [2, 2, 3],
+                        "dtype": "uint8",
+                        "layout": "HWC",
+                        "pixel_format": "bgr24",
+                        "metadata": {"line_id": "line-a"},
+                    }
+                ).encode("utf-8"),
+                bgr24_bytes,
+            ],
+            event_handler=supervisor,
+        )
+    return trigger_result, runtime_service, local_buffer_writer
+
+
+@dataclass(frozen=True)
+class _PublishedInferenceRequest:
+    """测试用 PublishedInferenceRequest 最小形状。"""
+
+    task_type: str
+    deployment_instance_id: str
+    image_payload: dict[str, object]
+    input_image_bytes: bytes | None = None
+    score_threshold: float | None = None
+    top_k: int | None = None
+    mask_threshold: float | None = None
+    keypoint_confidence_threshold: float | None = None
+    auto_start_process: bool = False
+    runtime_mode: str = "sync"
+    save_result_image: bool = False
+    return_preview_image_base64: bool = False
+    extra_options: dict[str, object] | None = None
+    trace_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _PublishedInferenceResult:
+    """测试用 PublishedInferenceResult 最小形状。"""
+
+    task_type: str
+    deployment_instance_id: str
+    latency_ms: float | None
+    image_width: int
+    image_height: int
+    detections: tuple[dict[str, object], ...] = ()
+    categories: tuple[dict[str, object], ...] = ()
+    top_category: dict[str, object] | None = None
+    instances: tuple[dict[str, object], ...] = ()
+    preview_image_payload: dict[str, object] | None = None
+    runtime_session_info: dict[str, object] | None = None
+    metadata: dict[str, object] | None = None
+
+
+class _FakePublishedInferenceModule:
+    """供 deployment_model helper 延迟 import 使用的轻量模块替身。"""
+
+    PublishedInferenceRequest = _PublishedInferenceRequest
+    PublishedInferenceResult = _PublishedInferenceResult
+
+
+class _install_fake_published_inference_module:
+    """临时注入轻量 deployments 模块，避免测试环境加载 torch。"""
+
+    module_name = "backend.service.application.deployments"
+
+    def __enter__(self):
+        """安装 fake module。"""
+
+        self.previous_module = sys.modules.get(self.module_name)
+        sys.modules[self.module_name] = _FakePublishedInferenceModule()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        """恢复原始 module。"""
+
+        _ = exc_type, exc, traceback
+        if self.previous_module is None:
+            sys.modules.pop(self.module_name, None)
+            return
+        sys.modules[self.module_name] = self.previous_module
+
+
+class _DeploymentModelWorkflowRuntimeService:
+    """调用 deployment model helper 的 WorkflowRuntimeService 替身。"""
+
+    def __init__(self) -> None:
+        """初始化 fake gateway 和最后一次请求。"""
+
+        self.gateway = _CapturingPublishedInferenceGateway()
+        self.last_request = None
+
+    def invoke_workflow_app_runtime_with_response(
+        self,
+        workflow_runtime_id: str,
+        request,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRuntimeSyncInvokeResult:
+        """把 WorkflowRuntime invoke 转成一次 deployment detection 节点调用。"""
+
+        _ = created_by
+        self.last_request = request
+        inference_result, _ = run_direct_model_inference(
+            WorkflowNodeExecutionRequest(
+                node_id="deployment-detect",
+                node_definition=NodeDefinition(
+                    node_type_id="core.model.detection",
+                    display_name="Detection",
+                    category="model.inference",
+                    implementation_kind=NODE_IMPLEMENTATION_CORE,
+                    runtime_kind=NODE_RUNTIME_WORKER_TASK,
+                ),
+                parameters={
+                    "deployment_instance_id": "deployment-1",
+                    "score_threshold": 0.3,
+                },
+                input_values={
+                    "image": request.input_bindings["request_image_ref"],
+                },
+                execution_metadata=dict(request.execution_metadata),
+                runtime_context=_FakeWorkflowServiceNodeRuntimeContext(self.gateway),
+            ),
+            task_type="detection",
+        )
+        workflow_metadata = dict(request.execution_metadata)
+        if workflow_metadata.get("return_timing_metadata_enabled") is True:
+            workflow_metadata["timings"] = {"worker_execute_ms": 3.5}
+        if workflow_metadata.get("return_node_timings_enabled") is True:
+            workflow_metadata["node_timings"] = [
+                {
+                    "node_id": "deployment-detect",
+                    "node_type_id": "core.model.detection",
+                    "runtime_kind": "worker-task",
+                    "duration_ms": 3.5,
+                }
+            ]
+        outputs = {
+            "http_response": {
+                "status_code": 200,
+                "detections": {
+                    "items": list(inference_result.detections),
+                    "metadata": dict(inference_result.metadata),
+                },
+                "runtime_session_info": dict(inference_result.runtime_session_info),
+            }
+        }
+        return WorkflowRuntimeSyncInvokeResult(
+            workflow_run=WorkflowRun(
+                workflow_run_id="workflow-run-bgr24",
+                workflow_runtime_id=workflow_runtime_id,
+                project_id="project-1",
+                application_id="app-1",
+                state="succeeded",
+                outputs=outputs,
+                metadata=workflow_metadata,
+            ),
+            raw_outputs=outputs,
+        )
+
+
+class _CapturingPublishedInferenceGateway:
+    """记录 PublishedInferenceRequest 并返回固定 detection 结果。"""
+
+    def __init__(self) -> None:
+        """初始化最后一次请求。"""
+
+        self.last_request: _PublishedInferenceRequest | None = None
+
+    def infer(self, request: _PublishedInferenceRequest) -> _PublishedInferenceResult:
+        """返回包含 diagnostics 的固定推理结果。"""
+
+        self.last_request = request
+        return _PublishedInferenceResult(
+            task_type=request.task_type,
+            deployment_instance_id=request.deployment_instance_id,
+            latency_ms=2.25,
+            image_width=2,
+            image_height=2,
+            detections=(
+                {
+                    "class_id": 0,
+                    "class_name": "barcode",
+                    "score": 0.91,
+                    "bbox": [0.0, 0.0, 2.0, 2.0],
+                },
+            ),
+            runtime_session_info={
+                "runtime_backend": "tensorrt",
+                "metadata": {
+                    "runtime_infer_ms": 2.25,
+                    "instance_id": "worker-0",
+                },
+            },
+            metadata={
+                "instance_id": "worker-0",
+                "timings": {
+                    "runtime_infer_ms": 2.25,
+                },
+            },
+        )
+
+
+class _FakeWorkflowServiceNodeRuntimeContext:
+    """满足 service node runtime context 形状的测试替身。"""
+
+    session_factory = None
+    dataset_storage = None
+
+    def __init__(self, gateway: _CapturingPublishedInferenceGateway) -> None:
+        """保存 PublishedInferenceGateway。"""
+
+        self._gateway = gateway
+
+    def build_task_service(self):
+        """占位 task service builder。"""
+
+    def build_dataset_import_service(self):
+        """占位 dataset import service builder。"""
+
+    def build_dataset_export_task_service(self):
+        """占位 dataset export service builder。"""
+
+    def build_training_task_service(self, *, task_type: str, model_type: str):
+        """占位 training service builder。"""
+
+        _ = task_type, model_type
+
+    def build_conversion_task_service(self, *, task_type: str, model_type: str):
+        """占位 conversion service builder。"""
+
+        _ = task_type, model_type
+
+    def build_validation_session_service(self, *, task_type: str):
+        """占位 validation session service builder。"""
+
+        _ = task_type
+
+    def build_evaluation_task_service(self, *, task_type: str):
+        """占位 evaluation service builder。"""
+
+        _ = task_type
+
+    def build_deployment_service(self, *, task_type: str):
+        """占位 deployment service builder。"""
+
+        _ = task_type
+
+    def build_inference_task_service(self, *, task_type: str):
+        """占位 inference service builder。"""
+
+        _ = task_type
+
+    def require_deployment_process_supervisor(self, *, task_type: str, runtime_mode: str):
+        """占位 deployment supervisor resolver。"""
+
+        _ = task_type, runtime_mode
+
+    def build_published_inference_gateway(self) -> _CapturingPublishedInferenceGateway:
+        """返回测试用 PublishedInferenceGateway。"""
+
+        return self._gateway
+
+
 def _wait_for_zeromq_adapter_running(
     adapter: ZeroMqTriggerAdapter,
     trigger_source_id: str,
@@ -1276,7 +1643,12 @@ class _FakeLocalBufferWriter:
                 "content": content,
                 "owner_kind": owner_kind,
                 "owner_id": owner_id,
+                "media_type": media_type,
                 "pool_name": pool_name,
+                "shape": shape,
+                "dtype": dtype,
+                "layout": layout,
+                "pixel_format": pixel_format,
                 "ttl_seconds": ttl_seconds,
                 "trace_id": trace_id,
             }
@@ -1287,7 +1659,7 @@ class _FakeLocalBufferWriter:
                 lease_id="lease-1",
                 path="data/buffers/pool-001.dat",
                 offset=0,
-                size=10,
+                size=len(content),
                 shape=shape,
                 dtype=dtype,
                 layout=layout,

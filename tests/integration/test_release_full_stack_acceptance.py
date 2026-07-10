@@ -11,11 +11,22 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from dataclasses import dataclass
 from urllib.error import URLError
 from urllib.request import urlopen
 
 import psutil
 import pytest
+
+
+@dataclass
+class _SoakWorkloadProcess:
+    """描述 release/full soak 期间可选启动的外部负载进程。"""
+
+    process: subprocess.Popen
+    log_file: Path
+    stdout_handle: object
+    command: list[str]
 
 
 def test_release_full_stack_start_health_openapi_and_stop() -> None:
@@ -38,6 +49,8 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     state_file = release_root / "logs" / logs_subdir / "runtime-state.json"
     resource_baseline_file = state_file.parent / "resource-baseline.json"
     component_resource_refs: list[tuple[int, float]] = []
+    base_url = f"http://127.0.0.1:{port}"
+    workload_process: _SoakWorkloadProcess | None = None
 
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(
@@ -76,11 +89,11 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     )
 
     try:
-        _wait_for_http_json(f"http://127.0.0.1:{port}/api/v1/system/health", timeout_seconds=90)
-        docs_html = _wait_for_http_text(f"http://127.0.0.1:{port}/docs", timeout_seconds=30)
+        _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=90)
+        docs_html = _wait_for_http_text(f"{base_url}/docs", timeout_seconds=30)
         assert "swagger" in docs_html.lower() or "openapi" in docs_html.lower()
 
-        openapi_payload = _wait_for_http_json(f"http://127.0.0.1:{port}/openapi.json", timeout_seconds=30)
+        openapi_payload = _wait_for_http_json(f"{base_url}/openapi.json", timeout_seconds=30)
         paths = openapi_payload.get("paths")
         assert isinstance(paths, dict)
         assert "/api/v1/models/detection/training-tasks" in paths
@@ -103,6 +116,12 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         }.issubset(component_names)
         _assert_component_logs_exist(release_root, components)
         initial_resources = _collect_process_resources(components)
+        workload_process = _start_optional_soak_workload(
+            release_root=release_root,
+            logs_dir=state_file.parent,
+            base_url=base_url,
+            port=port,
+        )
         component_resource_refs = [
             (int(item["pid"]), float(item["create_time"]))
             for item in initial_resources
@@ -111,6 +130,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             {
                 "elapsed_seconds": 0.0,
                 "resources": initial_resources,
+                "system_health": _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=10),
             }
         ]
 
@@ -119,13 +139,15 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         next_sample_at = started_at + sample_interval_seconds
         while time.monotonic() < deadline:
             assert start_process.poll() is None
-            _wait_for_http_json(f"http://127.0.0.1:{port}/api/v1/system/health", timeout_seconds=10)
+            system_health = _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=10)
+            _assert_optional_workload_ok(workload_process)
             now = time.monotonic()
             if now >= next_sample_at:
                 resource_samples.append(
                     {
                         "elapsed_seconds": round(now - started_at, 3),
                         "resources": _collect_process_resources(components),
+                        "system_health": system_health,
                     }
                 )
                 next_sample_at = now + sample_interval_seconds
@@ -136,6 +158,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
             {
                 "elapsed_seconds": round(time.monotonic() - started_at, 3),
                 "resources": final_resources,
+                "system_health": _wait_for_http_json(f"{base_url}/api/v1/system/health", timeout_seconds=10),
             }
         )
         resource_baseline_file.write_text(
@@ -150,6 +173,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
                         initial_resources=initial_resources,
                         final_resources=final_resources,
                     ),
+                    "workload": _snapshot_optional_workload(workload_process),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -159,6 +183,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         )
         assert resource_baseline_file.is_file()
     finally:
+        _stop_optional_workload(workload_process)
         stop_result = subprocess.run(
             [
                 str(python_executable),
@@ -241,6 +266,105 @@ def _assert_component_logs_exist(release_root: Path, components: list[object]) -
         assert isinstance(log_file_raw, str) and log_file_raw.strip()
         log_file_path = _resolve_runtime_path(release_root, log_file_raw)
         assert log_file_path.is_file(), f"组件日志文件不存在: {log_file_path}"
+
+
+def _start_optional_soak_workload(
+    *,
+    release_root: Path,
+    logs_dir: Path,
+    base_url: str,
+    port: int,
+) -> _SoakWorkloadProcess | None:
+    """按环境变量启动 release/full 长稳负载进程。"""
+
+    command_payload = os.environ.get("AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON")
+    if not command_payload:
+        return None
+    try:
+        command = json.loads(command_payload)
+    except json.JSONDecodeError as exc:
+        raise AssertionError("AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON 必须是 JSON 数组") from exc
+    if (
+        not isinstance(command, list)
+        or not command
+        or any(not isinstance(item, str) or not item.strip() for item in command)
+    ):
+        raise AssertionError("AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON 必须是非空字符串数组")
+    cwd = Path(os.environ.get("AMVISION_RELEASE_FULL_SOAK_WORKLOAD_CWD", str(release_root))).resolve()
+    log_file = logs_dir / "soak-workload.log"
+    stdout_handle = log_file.open("w", encoding="utf-8")
+    env = os.environ.copy()
+    env["AMVISION_RELEASE_FULL_BASE_URL"] = base_url
+    env["AMVISION_RELEASE_FULL_PORT"] = str(port)
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=stdout_handle,
+        stderr=subprocess.STDOUT,
+    )
+    return _SoakWorkloadProcess(
+        process=process,
+        log_file=log_file,
+        stdout_handle=stdout_handle,
+        command=list(command),
+    )
+
+
+def _assert_optional_workload_ok(workload_process: _SoakWorkloadProcess | None) -> None:
+    """确认可选负载进程未异常退出。"""
+
+    if workload_process is None:
+        return
+    return_code = workload_process.process.poll()
+    if return_code is None or return_code == 0:
+        return
+    raise AssertionError(
+        "release/full soak workload 进程异常退出: "
+        f"returncode={return_code}, log_tail={_read_log_tail(workload_process.log_file)}"
+    )
+
+
+def _snapshot_optional_workload(workload_process: _SoakWorkloadProcess | None) -> dict[str, object] | None:
+    """生成可选负载进程的 baseline 摘要。"""
+
+    if workload_process is None:
+        return None
+    return {
+        "command": workload_process.command,
+        "pid": workload_process.process.pid,
+        "returncode": workload_process.process.poll(),
+        "log_file": str(workload_process.log_file),
+    }
+
+
+def _stop_optional_workload(workload_process: _SoakWorkloadProcess | None) -> None:
+    """停止可选负载进程并关闭日志句柄。"""
+
+    if workload_process is None:
+        return
+    try:
+        if workload_process.process.poll() is None:
+            workload_process.process.terminate()
+            try:
+                workload_process.process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                workload_process.process.kill()
+                workload_process.process.wait(timeout=20)
+    finally:
+        workload_process.stdout_handle.close()
+
+
+def _read_log_tail(log_file: Path, *, max_chars: int = 2000) -> str:
+    """读取日志末尾，便于失败时定位。"""
+
+    if not log_file.is_file():
+        return ""
+    content = log_file.read_text(encoding="utf-8", errors="replace")
+    return content[-max_chars:]
 
 
 def _collect_process_resources(components: list[object]) -> list[dict[str, object]]:

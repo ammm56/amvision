@@ -288,6 +288,24 @@ release/
 - 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录，以及保留或占位的 `python/` 目录
 - 如果后续需要推理专用目录，建议从 `release/full/` 复制一份后再手工调整 `requirements.txt`、`python/` 和不需要的 worker launcher
 
+## 长稳 soak 验收入口
+
+`tests/integration/test_release_full_stack_acceptance.py` 是 `release/full` 的显式验收入口。默认只做短时启动、health、OpenAPI、组件日志、资源快照和 stop 回收检查；现场长稳验证通过环境变量放大。
+
+常用变量：
+
+- `AMVISION_RELEASE_FULL_ROOT`：指定待验收的 `release/full` 目录。
+- `AMVISION_RELEASE_FULL_PYTHON`：指定发布目录内 Python 解释器。
+- `AMVISION_RELEASE_FULL_PORT`：指定 backend-service 端口。
+- `AMVISION_RELEASE_FULL_SOAK_SECONDS`：指定驻留秒数。
+- `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS`：指定资源采样间隔。
+- `AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON`：可选负载命令，必须是 JSON 字符串数组，例如用于启动 .NET Console 循环执行 BGR24 ZeroMQ TriggerSource、WorkflowAppRuntime 和模型 DeploymentInstance 调用。
+- `AMVISION_RELEASE_FULL_SOAK_WORKLOAD_CWD`：可选负载命令工作目录，默认是 `release/full`。
+
+资源基线输出在本轮 logs 子目录的 `resource-baseline.json`，包含 backend-service、各 worker profile 的 RSS、CPU、线程变化，以及每次采样时 `/api/v1/system/health` 返回的 `local_buffer_broker` 摘要。启用 workload 后，`soak-workload.log` 会保存外部负载进程输出。
+
+长稳场景建议把 workload 固定为“workflow trigger + deployment runtime + LocalBufferBroker”的真实调用循环：例如先由前端或配置包创建好 WorkflowAppRuntime、ZeroMQ TriggerSource 和 DeploymentInstance，再用 .NET Console 按配置 key 持续发送 BGR24 raw 图片触发，并同步调用模型 deployment sync/async 控制面和推理接口。`release/full` 验收脚本只负责拉起平台、采样和回收，不在测试里创建生产资源。
+
 ## 兼容性管理
 
 - Python 版本、关键依赖版本和目标平台兼容性必须写入 runtime manifest
