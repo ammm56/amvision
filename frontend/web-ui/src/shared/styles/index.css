@@ -4182,6 +4182,20 @@ a:hover {
   fill: rgb(56 189 248 / 0.1);
 }
 
+.image-viewer__overlay-shape--line-search-roi {
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  stroke-dasharray: 9 5;
+  fill: rgb(56 189 248 / 0.12);
+}
+
+.image-viewer__overlay-shape--line-angle-guide {
+  stroke: #facc15;
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  fill: none;
+}
+
 .image-viewer__overlay-label {
   vector-effect: non-scaling-stroke;
   paint-order: stroke fill;
@@ -4198,6 +4212,10 @@ a:hover {
 
 .image-viewer__overlay-label--search-region {
   fill: #bae6fd;
+}
+
+.image-viewer__overlay-label--line-guide {
+  fill: #fde68a;
 }
 
 .image-viewer__overlay-point {

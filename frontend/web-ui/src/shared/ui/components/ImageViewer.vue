@@ -227,6 +227,30 @@
               :width="draftBboxXyxy[2] - draftBboxXyxy[0]"
               :height="draftBboxXyxy[3] - draftBboxXyxy[1]"
             />
+            <rect
+              v-if="draftLineSearchBboxXyxy"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--line-search-roi"
+              :x="draftLineSearchBboxXyxy[0]"
+              :y="draftLineSearchBboxXyxy[1]"
+              :width="draftLineSearchBboxXyxy[2] - draftLineSearchBboxXyxy[0]"
+              :height="draftLineSearchBboxXyxy[3] - draftLineSearchBboxXyxy[1]"
+            />
+            <line
+              v-if="draftLineAngleGuideMin"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--line-angle-guide"
+              :x1="draftLineAngleGuideMin[0]"
+              :y1="draftLineAngleGuideMin[1]"
+              :x2="draftLineAngleGuideMin[2]"
+              :y2="draftLineAngleGuideMin[3]"
+            />
+            <line
+              v-if="draftLineAngleGuideMax"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--line-angle-guide"
+              :x1="draftLineAngleGuideMax[0]"
+              :y1="draftLineAngleGuideMax[1]"
+              :x2="draftLineAngleGuideMax[2]"
+              :y2="draftLineAngleGuideMax[3]"
+            />
             <line
               v-if="draftLineXyxy"
               class="image-viewer__overlay-shape image-viewer__overlay-shape--draft-line"
@@ -235,6 +259,14 @@
               :x2="draftLineXyxy[2]"
               :y2="draftLineXyxy[3]"
             />
+            <text
+              v-if="draftLineGuideLabel"
+              class="image-viewer__overlay-label image-viewer__overlay-label--line-guide"
+              :x="draftLineGuideLabel.x"
+              :y="draftLineGuideLabel.y"
+            >
+              {{ draftLineGuideLabel.text }}
+            </text>
             <circle
               v-if="draftCircle"
               class="image-viewer__overlay-shape image-viewer__overlay-shape--draft-line"
@@ -360,6 +392,13 @@ interface CircleDraft {
   radius: number
 }
 
+interface LineVisualGuide {
+  searchBboxXyxy: [number, number, number, number] | null
+  angleGuideMin: [number, number, number, number] | null
+  angleGuideMax: [number, number, number, number] | null
+  label: { x: number; y: number; text: string } | null
+}
+
 type CircleDraftMode = 'center-radius' | 'three-point'
 type TemplateRegionStage = 'template' | 'search'
 type InteractionToolId = 'bbox' | 'rect' | 'polygon' | 'contour' | 'circle' | 'line' | 'grid' | 'template-region'
@@ -465,6 +504,46 @@ const draftLineXyxy = computed<[number, number, number, number] | null>(() => {
     roundImageCoordinate(line.current.y),
   ]
 })
+const draftLineVisualGuide = computed<LineVisualGuide | null>(() => {
+  const line = draftLineXyxy.value
+  if (!line || interactionTool.value !== 'line') return null
+  const [x1, y1, x2, y2] = line
+  const targetParameters = new Set(activeTargetParameters.value)
+  const length = pointDistance([x1, y1], [x2, y2])
+  const angleDeg = normalizeLineAngleDeg((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
+  const centerX = (x1 + x2) / 2
+  const centerY = (y1 + y2) / 2
+  const angleTolerance = 8
+  const showSearchBbox = targetParameters.has('search_bbox_xyxy')
+  const showAngleRange = targetParameters.has('angle_min_deg') && targetParameters.has('angle_max_deg')
+  const searchPadding = Math.max(8, length * 0.08)
+  const searchBboxXyxy = showSearchBbox
+    ? [
+        roundImageCoordinate(Math.min(x1, x2) - searchPadding),
+        roundImageCoordinate(Math.min(y1, y2) - searchPadding),
+        roundImageCoordinate(Math.max(x1, x2) + searchPadding),
+        roundImageCoordinate(Math.max(y1, y2) + searchPadding),
+      ] as [number, number, number, number]
+    : null
+  const angleGuideMin = showAngleRange
+    ? buildLineFromCenterAngle(centerX, centerY, length, angleDeg - angleTolerance)
+    : null
+  const angleGuideMax = showAngleRange
+    ? buildLineFromCenterAngle(centerX, centerY, length, angleDeg + angleTolerance)
+    : null
+  const label = (showSearchBbox || showAngleRange)
+    ? {
+        x: roundImageCoordinate(centerX + 8),
+        y: roundImageCoordinate(Math.max(16, centerY - 10)),
+        text: showAngleRange ? `${angleDeg}° ±${angleTolerance}°` : 'Search ROI',
+      }
+    : null
+  return { searchBboxXyxy, angleGuideMin, angleGuideMax, label }
+})
+const draftLineSearchBboxXyxy = computed(() => draftLineVisualGuide.value?.searchBboxXyxy ?? null)
+const draftLineAngleGuideMin = computed(() => draftLineVisualGuide.value?.angleGuideMin ?? null)
+const draftLineAngleGuideMax = computed(() => draftLineVisualGuide.value?.angleGuideMax ?? null)
+const draftLineGuideLabel = computed(() => draftLineVisualGuide.value?.label ?? null)
 const draftPointPairs = computed<Array<[number, number]>>(() => draftPoints.value.map((point) => [roundImageCoordinate(point.x), roundImageCoordinate(point.y)]))
 const draftPointsText = computed(() => draftPointPairs.value.map(([pointX, pointY]) => `${pointX},${pointY}`).join(' '))
 const draftCircle = computed<CircleDraft | null>(() => {
@@ -1158,6 +1237,19 @@ function normalizeLineAngleDeg(angleDeg: number): number {
   if (normalizedAngle >= 90) normalizedAngle -= 180
   if (normalizedAngle < -90) normalizedAngle += 180
   return roundImageCoordinate(normalizedAngle)
+}
+
+function buildLineFromCenterAngle(centerX: number, centerY: number, length: number, angleDeg: number): [number, number, number, number] {
+  const radians = (angleDeg * Math.PI) / 180
+  const halfLength = Math.max(1, length) / 2
+  const deltaX = Math.cos(radians) * halfLength
+  const deltaY = Math.sin(radians) * halfLength
+  return [
+    roundImageCoordinate(centerX - deltaX),
+    roundImageCoordinate(centerY - deltaY),
+    roundImageCoordinate(centerX + deltaX),
+    roundImageCoordinate(centerY + deltaY),
+  ]
 }
 
 function roundImageCoordinate(value: number): number {

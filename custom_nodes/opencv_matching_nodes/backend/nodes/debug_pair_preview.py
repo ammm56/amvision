@@ -44,6 +44,10 @@ def build_pair_match_debug_preview_output(
     selected_match_id: str | None = None,
     show_match_lines: bool = True,
     show_homography_projection: bool = True,
+    selected_match_only: bool = False,
+    show_left_points: bool = True,
+    show_right_points: bool = True,
+    manual_pair_line_xyxy: list[float] | None = None,
     max_match_lines: int = 200,
 ) -> dict[str, object]:
     """构建 ORB Match / Homography 这类双图节点的 debug_preview 输出。
@@ -61,6 +65,9 @@ def build_pair_match_debug_preview_output(
     - selected_match_id：可选高亮 match id，用于图片面板点选后的反馈。
     - show_match_lines：是否绘制匹配线；关闭后仍保留调参控件。
     - show_homography_projection：是否绘制 homography 投影框。
+    - selected_match_only：是否只绘制点选的匹配线，便于排查误匹配。
+    - show_left_points / show_right_points：是否绘制左右图匹配端点。
+    - manual_pair_line_xyxy：可选手动点对线，用于双图人工点对调试。
     - max_match_lines：最多绘制的匹配线数量，避免调试图过载。
 
     返回：
@@ -83,11 +90,16 @@ def build_pair_match_debug_preview_output(
             match_items=match_items,
             inlier_match_ids=inlier_match_ids,
             selected_match_id=selected_match_id,
+            selected_match_only=selected_match_only,
+            show_left_points=show_left_points,
+            show_right_points=show_right_points,
             max_match_lines=max_match_lines,
         )
         if show_match_lines
         else []
     )
+    if manual_pair_line_xyxy is not None:
+        overlays.append(_build_manual_pair_overlay(manual_pair_line_xyxy))
     if homography_matrix is not None and show_homography_projection:
         projected_overlay = _build_homography_projection_overlay(
             context,
@@ -176,14 +188,20 @@ def _build_pair_match_overlays(
     match_items: list[dict[str, object]],
     inlier_match_ids: set[str] | None,
     selected_match_id: str | None,
+    selected_match_only: bool,
+    show_left_points: bool,
+    show_right_points: bool,
     max_match_lines: int,
 ) -> list[dict[str, object]]:
     """把 feature match 转成拼接图坐标系下的匹配线 overlay。"""
 
     overlays: list[dict[str, object]] = []
+    match_line_count = 0
     for match_item in match_items:
-        match_id = str(match_item.get("match_id") or f"match-{len(overlays) + 1}")
+        match_id = str(match_item.get("match_id") or f"match-{match_line_count + 1}")
         if inlier_match_ids is not None and match_id not in inlier_match_ids:
+            continue
+        if selected_match_only and selected_match_id and match_id != selected_match_id:
             continue
         query_xy = match_item.get("query_xy")
         train_xy = match_item.get("train_xy")
@@ -210,9 +228,72 @@ def _build_pair_match_overlays(
                 },
             }
         )
-        if len(overlays) >= max_match_lines:
+        if show_left_points:
+            overlays.append(
+                _build_pair_endpoint_overlay(
+                    match_id=match_id,
+                    side="left",
+                    point_x=float(query_xy[0]),
+                    point_y=float(query_xy[1]),
+                    selected=is_selected,
+                )
+            )
+        if show_right_points:
+            overlays.append(
+                _build_pair_endpoint_overlay(
+                    match_id=match_id,
+                    side="right",
+                    point_x=float(train_xy[0]) + float(context.image_b_offset_x),
+                    point_y=float(train_xy[1]),
+                    selected=is_selected,
+                )
+            )
+        match_line_count += 1
+        if match_line_count >= max_match_lines:
             break
     return overlays
+
+
+def _build_pair_endpoint_overlay(
+    *,
+    match_id: str,
+    side: str,
+    point_x: float,
+    point_y: float,
+    selected: bool,
+) -> dict[str, object]:
+    """构建左右图匹配端点 overlay，辅助用户确认匹配线落点。"""
+
+    label = f"{side} {match_id}" if not selected else f"selected {side} {match_id}"
+    return {
+        "kind": "circle",
+        "id": f"{match_id}-{side}-point",
+        "label": label,
+        "circle": {
+            "center_x": round(point_x, 4),
+            "center_y": round(point_y, 4),
+            "radius": 4.0 if not selected else 6.0,
+        },
+        "target_parameters": ["debug_selected_match_id"],
+        "parameters": {
+            "debug_selected_match_id": match_id,
+        },
+    }
+
+
+def _build_manual_pair_overlay(manual_pair_line_xyxy: list[float]) -> dict[str, object]:
+    """构建用户在双图上手动画出的点对线。"""
+
+    return {
+        "kind": "line",
+        "id": "manual-pair",
+        "label": "manual pair",
+        "line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
+        "target_parameters": ["debug_manual_pair_line_xyxy"],
+        "parameters": {
+            "debug_manual_pair_line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
+        },
+    }
 
 
 def _build_homography_projection_overlay(

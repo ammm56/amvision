@@ -1277,6 +1277,9 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     const angleDeg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
     const normalizedAngleDeg = normalizeLineAngleDeg(angleDeg)
     if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
+    if (targetParameters.has('debug_manual_pair_line_xyxy')) {
+      updates.debug_manual_pair_line_xyxy = event.lineXyxy.map(roundInteractionNumber)
+    }
     if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
     if (targetParameters.has('angle_deg')) updates.angle_deg = normalizedAngleDeg
     if (targetParameters.has('line_angle_deg')) updates.line_angle_deg = normalizedAngleDeg

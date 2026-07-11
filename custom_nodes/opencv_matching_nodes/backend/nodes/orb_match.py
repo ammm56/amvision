@@ -85,6 +85,22 @@ def _read_optional_debug_selected_match_id(raw_value: object) -> str | None:
     return normalized_value or None
 
 
+def _read_optional_debug_manual_pair_line(raw_value: object) -> list[float] | None:
+    """读取图片面板手动画出的双图点对线，仅用于调试显示。"""
+
+    if raw_value is None or raw_value == "":
+        return None
+    if isinstance(raw_value, list) and len(raw_value) == 0:
+        return None
+    if not isinstance(raw_value, list) or len(raw_value) < 4:
+        raise InvalidRequestError("debug_manual_pair_line_xyxy 必须是 4 个数字组成的数组")
+    try:
+        values = [float(item) for item in raw_value[:4]]
+    except (TypeError, ValueError) as error:
+        raise InvalidRequestError("debug_manual_pair_line_xyxy 必须是 4 个数字组成的数组") from error
+    return values
+
+
 def _read_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
     """读取布尔参数。"""
 
@@ -139,6 +155,24 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     debug_max_match_lines = _read_debug_max_match_lines(request.parameters.get("debug_max_match_lines"))
     debug_selected_match_id = _read_optional_debug_selected_match_id(
         request.parameters.get("debug_selected_match_id")
+    )
+    debug_selected_match_only = _read_bool(
+        request.parameters.get("debug_selected_match_only"),
+        field_name="debug_selected_match_only",
+        default_value=False,
+    )
+    debug_show_left_points = _read_bool(
+        request.parameters.get("debug_show_left_points"),
+        field_name="debug_show_left_points",
+        default_value=True,
+    )
+    debug_show_right_points = _read_bool(
+        request.parameters.get("debug_show_right_points"),
+        field_name="debug_show_right_points",
+        default_value=True,
+    )
+    debug_manual_pair_line_xyxy = _read_optional_debug_manual_pair_line(
+        request.parameters.get("debug_manual_pair_line_xyxy")
     )
 
     descriptor_matrix_a = np_module.array(features_a_payload["descriptors"], dtype=np_module.uint8)
@@ -238,9 +272,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 max_distance=max_distance,
                 debug_show_match_lines=debug_show_match_lines,
                 debug_max_match_lines=debug_max_match_lines,
+                debug_selected_match_only=debug_selected_match_only,
+                debug_show_left_points=debug_show_left_points,
+                debug_show_right_points=debug_show_right_points,
             ),
             selected_match_id=debug_selected_match_id,
             show_match_lines=debug_show_match_lines,
+            selected_match_only=debug_selected_match_only,
+            show_left_points=debug_show_left_points,
+            show_right_points=debug_show_right_points,
+            manual_pair_line_xyxy=debug_manual_pair_line_xyxy,
             max_match_lines=debug_max_match_lines,
         )
     )
@@ -254,6 +295,9 @@ def _build_orb_match_interaction(
     max_distance: float | None,
     debug_show_match_lines: bool,
     debug_max_match_lines: int,
+    debug_selected_match_only: bool,
+    debug_show_left_points: bool,
+    debug_show_right_points: bool,
 ) -> dict[str, object]:
     """声明 ORB Match 在双图图片面板中的调参能力。"""
 
@@ -264,8 +308,8 @@ def _build_orb_match_interaction(
         "tools": [
             {
                 "tool": "line",
-                "label": "匹配线点选",
-                "target_parameters": ["debug_selected_match_id"],
+                "label": "匹配线 / 手动点对",
+                "target_parameters": ["debug_manual_pair_line_xyxy"],
             }
         ],
         "controls": [
@@ -294,6 +338,9 @@ def _build_orb_match_interaction(
                 step=1.0,
             ),
             build_checkbox_control("debug_show_match_lines", "显示匹配线", debug_show_match_lines),
+            build_checkbox_control("debug_selected_match_only", "只显示点选匹配", debug_selected_match_only),
+            build_checkbox_control("debug_show_left_points", "显示左图端点", debug_show_left_points),
+            build_checkbox_control("debug_show_right_points", "显示右图端点", debug_show_right_points),
             build_numeric_control(
                 "debug_max_match_lines",
                 "最多显示匹配线",
