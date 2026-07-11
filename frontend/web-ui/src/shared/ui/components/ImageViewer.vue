@@ -346,6 +346,9 @@ interface ViewerImageInteractionTool {
   targetParameters: string[]
   minPoints?: number | null
   maxPoints?: number | null
+  angleToleranceDeg?: number | null
+  searchPaddingRatio?: number | null
+  searchPaddingMin?: number | null
 }
 
 interface ViewerImageInteraction {
@@ -373,6 +376,9 @@ interface ViewerImageInteractionApplyEvent {
   coordinateSpace: string
   targetParameters: string[]
   parameters?: Record<string, unknown>
+  angleToleranceDeg?: number | null
+  searchPaddingRatio?: number | null
+  searchPaddingMin?: number | null
   bboxXyxy?: [number, number, number, number]
   templateBboxXyxy?: [number, number, number, number]
   searchBboxXyxy?: [number, number, number, number]
@@ -490,6 +496,18 @@ const activePolygonMaxPoints = computed(() => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return Math.max(activePolygonMinPoints.value, Math.floor(value))
 })
+const activeLineAngleToleranceDeg = computed(() => {
+  const value = activeInteractionTool.value?.angleToleranceDeg
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 8
+})
+const activeLineSearchPaddingRatio = computed(() => {
+  const value = activeInteractionTool.value?.searchPaddingRatio
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0.08
+})
+const activeLineSearchPaddingMin = computed(() => {
+  const value = activeInteractionTool.value?.searchPaddingMin
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 8
+})
 const tuningControls = computed(() => imageInteraction.value?.controls ?? [])
 const interactionAvailable = computed(() => Boolean(
   props.image?.nodeId
@@ -527,10 +545,10 @@ const draftLineVisualGuide = computed<LineVisualGuide | null>(() => {
   const angleDeg = normalizeLineAngleDeg((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
   const centerX = (x1 + x2) / 2
   const centerY = (y1 + y2) / 2
-  const angleTolerance = 8
+  const angleTolerance = activeLineAngleToleranceDeg.value
   const showSearchBbox = targetParameters.has('search_bbox_xyxy')
   const showAngleRange = targetParameters.has('angle_min_deg') && targetParameters.has('angle_max_deg')
-  const searchPadding = Math.max(8, length * 0.08)
+  const searchPadding = Math.max(activeLineSearchPaddingMin.value, length * activeLineSearchPaddingRatio.value)
   const searchBboxXyxy = showSearchBbox
     ? [
         roundImageCoordinate(Math.min(x1, x2) - searchPadding),
@@ -899,6 +917,9 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     tool: interactionTool.value,
     coordinateSpace: interaction.coordinateSpace,
     targetParameters: activeTargetParameters.value,
+    angleToleranceDeg: activeInteractionTool.value?.angleToleranceDeg ?? null,
+    searchPaddingRatio: activeInteractionTool.value?.searchPaddingRatio ?? null,
+    searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
   }
   if ((interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
@@ -971,6 +992,9 @@ function applyTuningParameters(requestPreview: boolean): void {
     tool: interactionTool.value,
     coordinateSpace: interaction.coordinateSpace,
     targetParameters: activeTargetParameters.value,
+    angleToleranceDeg: activeInteractionTool.value?.angleToleranceDeg ?? null,
+    searchPaddingRatio: activeInteractionTool.value?.searchPaddingRatio ?? null,
+    searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
     parameters,
   }
   emit('applyInteraction', event)
@@ -1045,6 +1069,9 @@ function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteract
     tool,
     coordinateSpace: interaction.coordinateSpace,
     targetParameters,
+    angleToleranceDeg: activeInteractionTool.value?.angleToleranceDeg ?? null,
+    searchPaddingRatio: activeInteractionTool.value?.searchPaddingRatio ?? null,
+    searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
     parameters: overlay.parameters,
   }
 
@@ -1103,8 +1130,17 @@ function readOverlayShapeClass(overlay: ViewerImageOverlay, shapeKind: string): 
   return [
     'image-viewer__overlay-shape',
     `image-viewer__overlay-shape--${shapeKind}`,
+    readOverlayKindClass(overlay.kind),
     { 'image-viewer__overlay-shape--selectable': Boolean(buildOverlayPickEvent(overlay)) },
-  ]
+  ].filter(Boolean)
+}
+
+function readOverlayKindClass(kind: string): string {
+  const normalizedKind = kind
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalizedKind ? `image-viewer__overlay-shape--kind-${normalizedKind}` : ''
 }
 
 function readOverlayBbox(overlay: ViewerImageOverlay): [number, number, number, number] | null {
@@ -1199,6 +1235,9 @@ function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerI
     targetParameters: toolItem.targetParameters,
     minPoints: toolItem.minPoints ?? null,
     maxPoints: toolItem.maxPoints ?? null,
+    angleToleranceDeg: toolItem.angleToleranceDeg ?? null,
+    searchPaddingRatio: toolItem.searchPaddingRatio ?? null,
+    searchPaddingMin: toolItem.searchPaddingMin ?? null,
   }]
 }
 

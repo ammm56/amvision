@@ -25,6 +25,13 @@ from backend.nodes.core_nodes.support.roi import (
     polygon_area,
     polygon_bbox_xyxy,
 )
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_debug_panel_parameter_schema,
+    build_interaction_tool,
+    build_polygon_overlay,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -36,7 +43,7 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     """把 contours.v1 中的一个 contour item 转换为 roi.v1。"""
 
     contours_payload = require_contours_payload(request.input_values.get("contours"), node_id=request.node_id)
-    contour_index = _read_contour_index(request.parameters.get("contour_index"))
+    selected_contour_index = _read_selected_contour_index(request.parameters.get("selected_contour_index"))
     roi_kind = _read_roi_kind(request.parameters.get("roi_kind"))
     require_quad = _read_require_quad(request.parameters.get("require_quad"))
     polygon_mode = _read_polygon_mode(request.parameters.get("polygon_mode"))
@@ -47,15 +54,8 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     )
 
     contour_items = contours_payload["items"]
-    if not contour_items:
-        raise InvalidRequestError("roi-from-contour 节点要求 contours.items 不能为空")
-    if contour_index >= len(contour_items):
-        raise InvalidRequestError(
-            "roi-from-contour 节点的 contour_index 超出范围",
-            details={"contour_index": contour_index, "count": len(contour_items)},
-        )
-
-    contour_item = contour_items[contour_index]
+    contour_item = _select_contour_item(contour_items, selected_contour_index, node_id=request.node_id)
+    resolved_contour_index = int(contour_item["contour_index"])
     source_points = normalize_polygon_xy(
         contour_item.get("points"),
         field_name="contour.points",
@@ -71,7 +71,7 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
             "roi-from-contour 节点当前要求 contour.points 必须是四点轮廓",
             details={
                 "node_id": request.node_id,
-                "contour_index": contour_index,
+                "selected_contour_index": resolved_contour_index,
                 "point_count": len(points),
             },
         )
@@ -87,14 +87,13 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         bbox_xyxy = polygon_bbox_xyxy(points)
         polygon_xy = points
     area = int(round(polygon_area(polygon_xy)))
-    contour_original_index = int(contour_item["contour_index"])
     source_image = resolve_contours_source_image(
         contours_payload=contours_payload,
         image_payload=request.input_values.get("image"),
     )
     roi_payload = build_roi_payload(
-        roi_id=f"{roi_id_prefix}-{contour_original_index}",
-        display_name=f"{display_name_prefix} {contour_original_index}",
+        roi_id=f"{roi_id_prefix}-{resolved_contour_index}",
+        display_name=f"{display_name_prefix} {resolved_contour_index}",
         roi_kind=roi_kind,
         bbox_xyxy=bbox_xyxy,
         polygon_xy=polygon_xy,
@@ -102,14 +101,13 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         source_image=source_image,
     )
 
-    return {
+    outputs: dict[str, object] = {
         "roi": roi_payload,
         "summary": build_value_payload(
             {
                 "roi_id": roi_payload["roi_id"],
                 "roi_kind": roi_kind,
-                "contour_index": contour_original_index,
-                "selected_index": contour_index,
+                "selected_contour_index": resolved_contour_index,
                 "source_point_count": len(source_points),
                 "point_count": len(points),
                 "polygon_mode": polygon_mode,
@@ -119,16 +117,76 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
             }
         ),
     }
+    if source_image is not None:
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="ROI From Contour",
+                artifact_name="roi-from-contour-debug-preview",
+                overlays=_build_contour_overlays(
+                    contour_items,
+                    selected_contour_index=resolved_contour_index,
+                ),
+                interaction=build_debug_panel_interaction(
+                    tools=[
+                        build_interaction_tool(
+                            "contour",
+                            "轮廓点选",
+                            ["selected_contour_index"],
+                            extra={"min_points": 3},
+                        )
+                    ],
+                ),
+            )
+        )
+    return outputs
 
 
-def _read_contour_index(raw_value: object) -> int:
-    """读取 contours.items 中的序号，默认使用第一个 contour。"""
+def _read_selected_contour_index(raw_value: object) -> int | None:
+    """读取要选择的真实 contour_index，空值表示使用第一个 contour。"""
 
     if raw_value in {None, ""}:
-        return 0
+        return None
     if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
-        raise InvalidRequestError("roi-from-contour 节点的 contour_index 必须是非负整数")
+        raise InvalidRequestError("roi-from-contour 节点的 selected_contour_index 必须是非负整数")
     return int(raw_value)
+
+
+def _select_contour_item(
+    contour_items: object,
+    selected_contour_index: int | None,
+    *,
+    node_id: str,
+) -> dict[str, object]:
+    """按 contours.v1 中的真实 contour_index 选择 contour item。"""
+
+    if not isinstance(contour_items, list) or not contour_items:
+        raise InvalidRequestError("roi-from-contour 节点要求 contours.items 不能为空")
+    if selected_contour_index is None:
+        first_item = contour_items[0]
+        if not isinstance(first_item, dict):
+            raise InvalidRequestError("roi-from-contour 节点的 contour item 必须是对象", details={"node_id": node_id})
+        return first_item
+    for contour_item in contour_items:
+        if not isinstance(contour_item, dict):
+            continue
+        if int(contour_item.get("contour_index", -1)) == selected_contour_index:
+            return contour_item
+    available_indices = [
+        int(contour_item.get("contour_index"))
+        for contour_item in contour_items[:20]
+        if isinstance(contour_item, dict) and isinstance(contour_item.get("contour_index"), int)
+    ]
+    raise InvalidRequestError(
+        "roi-from-contour 节点没有找到 selected_contour_index 对应的 contour",
+        details={
+            "node_id": node_id,
+            "selected_contour_index": selected_contour_index,
+            "available_contour_indices": available_indices,
+            "count": len(contour_items),
+        },
+    )
 
 
 def _read_roi_kind(raw_value: object) -> str:
@@ -213,6 +271,51 @@ def _build_polygon_points(
     return [[round(float(point[0]), 4), round(float(point[1]), 4)] for point in box_points]
 
 
+def _build_contour_overlays(
+    contour_items: list[dict[str, object]],
+    *,
+    selected_contour_index: int,
+) -> list[dict[str, object]]:
+    """把 contours.v1 转成 ImageViewer 可点选 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for contour_item in contour_items[:120]:
+        raw_points = contour_item.get("points")
+        if not isinstance(raw_points, list) or len(raw_points) < 3:
+            continue
+        contour_index = int(contour_item.get("contour_index", len(overlays)))
+        polygon_xy = _decimate_overlay_points(raw_points)
+        overlays.append(
+            build_polygon_overlay(
+                overlay_id=f"contour-{contour_index}",
+                label=f"contour {contour_index}",
+                polygon_xy=polygon_xy,
+                kind="selected-contour" if contour_index == selected_contour_index else "contour",
+                target_parameters=["selected_contour_index"],
+                parameters={"selected_contour_index": contour_index},
+            )
+        )
+    return overlays
+
+
+def _decimate_overlay_points(raw_points: list[object]) -> list[list[float]]:
+    """减少 overlay 点数，避免大轮廓拖慢编辑态 SVG。"""
+
+    point_count = len(raw_points)
+    step = max(1, point_count // 80)
+    selected_points = raw_points[::step]
+    if selected_points[-1:] != raw_points[-1:]:
+        selected_points.append(raw_points[-1])
+    normalized_points: list[list[float]] = []
+    for raw_point in selected_points:
+        if not isinstance(raw_point, list) or len(raw_point) < 2:
+            continue
+        point_x, point_y = raw_point[:2]
+        if isinstance(point_x, (int, float)) and isinstance(point_y, (int, float)):
+            normalized_points.append([float(point_x), float(point_y)])
+    return normalized_points
+
+
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.vision.roi-from-contour",
@@ -245,11 +348,21 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 display_name="Summary",
                 payload_type_id="value.v1",
             ),
+            NodePortDefinition(
+                name="debug_preview",
+                display_name="Debug Preview",
+                payload_type_id="response-body.v1",
+                required=False,
+            ),
         ),
         parameter_schema={
             "type": "object",
             "properties": {
-                "contour_index": {"type": "integer", "minimum": 0, "default": 0, "title": "Contour Index"},
+                "selected_contour_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "title": "Selected Contour Index",
+                },
                 "roi_kind": {
                     "type": "string",
                     "enum": ["polygon", "bbox"],
@@ -269,6 +382,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "default": "Contour ROI",
                     "title": "Display Name Prefix",
                 },
+                **build_debug_panel_parameter_schema(),
             },
             "required": [],
         },

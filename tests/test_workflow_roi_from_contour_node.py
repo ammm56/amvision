@@ -54,6 +54,7 @@ def test_roi_from_contour_outputs_polygon_roi_for_quad_contour() -> None:
     assert roi["polygon_xy"] == [[10.0, 20.0], [110.0, 20.0], [110.0, 80.0], [10.0, 80.0]]
     assert roi["area"] == 6000
     assert roi["source_image"]["image_handle"] == "tray-image"
+    assert output["summary"]["value"]["selected_contour_index"] == 7
     assert output["summary"]["value"]["point_count"] == 4
 
 
@@ -115,3 +116,31 @@ def test_roi_from_contour_outputs_min_area_rect_for_dense_contour() -> None:
     assert output["summary"]["value"]["source_point_count"] == 8
     assert output["summary"]["value"]["point_count"] == 4
     assert output["summary"]["value"]["polygon_mode"] == "min-area-rect"
+
+
+def test_roi_from_contour_selects_by_contour_payload_index() -> None:
+    """验证显式选择使用 contours.v1 的真实 contour_index，而不是 items 下标。"""
+
+    contours_payload = _build_contours_payload()
+    contours_payload["items"].append(
+        {
+            "contour_index": 12,
+            "point_count": 4,
+            "bbox_xyxy": [30, 40, 70, 90],
+            "points": [[30, 40], [70, 40], [70, 90], [30, 90]],
+        }
+    )
+
+    output = _roi_from_contour_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-from-contour",
+            node_definition=object(),
+            parameters={"selected_contour_index": 12, "roi_id_prefix": "slot"},
+            input_values={"contours": contours_payload},
+            execution_metadata={},
+        )
+    )
+
+    assert output["roi"]["roi_id"] == "slot-12"
+    assert output["roi"]["bbox_xyxy"] == [30.0, 40.0, 70.0, 90.0]
+    assert output["summary"]["value"]["selected_contour_index"] == 12

@@ -38,6 +38,9 @@ export interface PreviewImageInteractionTool {
   targetParameters: string[]
   minPoints: number | null
   maxPoints: number | null
+  angleToleranceDeg: number | null
+  searchPaddingRatio: number | null
+  searchPaddingMin: number | null
 }
 
 export interface PreviewImageInteraction {
@@ -53,6 +56,9 @@ export interface PreviewImageInteractionApplyEvent {
   coordinateSpace: string
   targetParameters: string[]
   parameters?: Record<string, unknown>
+  angleToleranceDeg?: number | null
+  searchPaddingRatio?: number | null
+  searchPaddingMin?: number | null
   bboxXyxy?: [number, number, number, number]
   templateBboxXyxy?: [number, number, number, number]
   searchBboxXyxy?: [number, number, number, number]
@@ -558,6 +564,9 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       targetParameters: readStringArray(rawTool.target_parameters),
       minPoints: readDisplayNumber(rawTool.min_points),
       maxPoints: readDisplayNumber(rawTool.max_points),
+      angleToleranceDeg: readDisplayNumber(rawTool.angle_tolerance_deg),
+      searchPaddingRatio: readDisplayNumber(rawTool.search_padding_ratio),
+      searchPaddingMin: readDisplayNumber(rawTool.search_padding_min),
     }]
   })
 }

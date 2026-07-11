@@ -174,6 +174,8 @@ custom_nodes/
 3. Line：用于 hough-lines、fit-line、找边、角度校正和平行度测量。
 4. Template region：用于模板匹配、局部定位和换型参数准备。
 
+Line 工具的搜索 ROI、角度容差和搜索框 padding 必须由节点通过 `debug_preview.interaction.tools[]` 声明，例如 `angle_tolerance_deg`、`search_padding_ratio`、`search_padding_min`。前端 ImageViewer 只负责按声明显示方向线、搜索 ROI 和角度范围，并把结果写回节点参数，不在页面层硬编码算法默认值。
+
 ### Matching 双图交互协议
 
 ORB、Homography、模板定位这类参考对位节点不应把调试交互伪装成普通 `line` 或 `polygon`。它们需要保留清楚的业务语义，同时复用 ImageViewer 的底层绘制能力：

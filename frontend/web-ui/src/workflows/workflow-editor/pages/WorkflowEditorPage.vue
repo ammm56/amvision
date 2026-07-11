@@ -1276,19 +1276,20 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
     const angleDeg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
     const normalizedAngleDeg = normalizeLineAngleDeg(angleDeg)
+    const angleToleranceDeg = readLineInteractionAngleToleranceDeg(event)
+    const searchPadding = readLineInteractionSearchPadding(event, length)
     if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
     if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
     if (targetParameters.has('angle_deg')) updates.angle_deg = normalizedAngleDeg
     if (targetParameters.has('line_angle_deg')) updates.line_angle_deg = normalizedAngleDeg
-    if (targetParameters.has('angle_min_deg')) updates.angle_min_deg = roundInteractionNumber(Math.max(-90, normalizedAngleDeg - 8))
-    if (targetParameters.has('angle_max_deg')) updates.angle_max_deg = roundInteractionNumber(Math.min(90, normalizedAngleDeg + 8))
+    if (targetParameters.has('angle_min_deg')) updates.angle_min_deg = roundInteractionNumber(Math.max(-90, normalizedAngleDeg - angleToleranceDeg))
+    if (targetParameters.has('angle_max_deg')) updates.angle_max_deg = roundInteractionNumber(Math.min(90, normalizedAngleDeg + angleToleranceDeg))
     if (targetParameters.has('search_bbox_xyxy')) {
-      const padding = Math.max(8, length * 0.08)
       updates.search_bbox_xyxy = [
-        roundInteractionNumber(Math.min(x1, x2) - padding),
-        roundInteractionNumber(Math.min(y1, y2) - padding),
-        roundInteractionNumber(Math.max(x1, x2) + padding),
-        roundInteractionNumber(Math.max(y1, y2) + padding),
+        roundInteractionNumber(Math.min(x1, x2) - searchPadding),
+        roundInteractionNumber(Math.min(y1, y2) - searchPadding),
+        roundInteractionNumber(Math.max(x1, x2) + searchPadding),
+        roundInteractionNumber(Math.max(y1, y2) + searchPadding),
       ]
     }
     return updates
@@ -1310,6 +1311,19 @@ function normalizeLineAngleDeg(angleDeg: number): number {
   if (normalizedAngle >= 90) normalizedAngle -= 180
   if (normalizedAngle < -90) normalizedAngle += 180
   return roundInteractionNumber(normalizedAngle)
+}
+
+function readLineInteractionAngleToleranceDeg(event: PreviewImageInteractionApplyEvent): number {
+  const value = event.angleToleranceDeg
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 8
+}
+
+function readLineInteractionSearchPadding(event: PreviewImageInteractionApplyEvent, lineLength: number): number {
+  const ratioValue = event.searchPaddingRatio
+  const minValue = event.searchPaddingMin
+  const ratio = typeof ratioValue === 'number' && Number.isFinite(ratioValue) ? Math.max(0, ratioValue) : 0.08
+  const minPadding = typeof minValue === 'number' && Number.isFinite(minValue) ? Math.max(0, minValue) : 8
+  return Math.max(minPadding, lineLength * ratio)
 }
 
 function buildBoundingBoxFromPoints(points: number[][]): [number, number, number, number] {

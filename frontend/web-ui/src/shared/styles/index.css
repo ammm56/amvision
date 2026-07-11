@@ -4196,6 +4196,43 @@ a:hover {
   fill: none;
 }
 
+.image-viewer__overlay-shape--kind-contour,
+.image-viewer__overlay-shape--kind-selected-contour {
+  stroke: #14b8a6;
+  fill: rgb(20 184 166 / 0.12);
+}
+
+.image-viewer__overlay-shape--kind-selected-contour {
+  stroke-width: 3;
+  fill: rgb(20 184 166 / 0.22);
+}
+
+.image-viewer__overlay-shape--kind-search-roi {
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  fill: rgb(56 189 248 / 0.1);
+}
+
+.image-viewer__overlay-shape--kind-match-line {
+  stroke: #f59e0b;
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.image-viewer__overlay-shape--kind-match-point {
+  stroke: #111619;
+  stroke-width: 2;
+  fill: #f59e0b;
+}
+
+.image-viewer__overlay-shape--kind-homography-overlay {
+  stroke: #a855f7;
+  stroke-width: 2.5;
+  stroke-dasharray: 10 4;
+  fill: rgb(168 85 247 / 0.12);
+}
+
 .image-viewer__overlay-label {
   vector-effect: non-scaling-stroke;
   paint-order: stroke fill;

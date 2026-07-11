@@ -279,6 +279,11 @@ def _build_line_interaction(
                 "line",
                 "方向线段",
                 ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
+                extra={
+                    "angle_tolerance_deg": 8.0,
+                    "search_padding_ratio": 0.08,
+                    "search_padding_min": 8.0,
+                },
             ),
             build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
         ],

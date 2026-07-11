@@ -26,7 +26,7 @@ ROI 相关节点需要按“创建 ROI、转换 ROI、使用 ROI、绘制 ROI、
 | --- | --- | --- | --- |
 | `core.vision.roi-create` | `roi_create.py` | 创建单个 bbox / polygon ROI | 是 |
 | `core.vision.roi-grid-create` | `roi_grid_create.py` | 创建规则网格 ROI 列表 | 是 |
-| `core.vision.roi-from-contour` | 已实现 | 从 contour item 创建 ROI | 否，参数来自 contour |
+| `core.vision.roi-from-contour` | 已实现 | 从 contour item 创建 ROI | 是，点选已有 contour 并写回 `selected_contour_index` |
 | `core.vision.roi-from-region` | 新增 | 从 region / detection 的 bbox 或 polygon 创建 ROI | 否 |
 | `core.vision.roi-list-create` | `roi_list_create.py` | 把多个 ROI 或 value 列表规整为 ROI 列表 | 否 |
 
@@ -45,7 +45,7 @@ ROI 相关节点需要按“创建 ROI、转换 ROI、使用 ROI、绘制 ROI、
 | `core.vision.regions-to-rois` | core ROI | regions / detections 批量转 ROI 列表 |
 | `core.logic.value-to-roi` | 保留或并入 ROI | 仅做 value 到 roi.v1 的通用转换 |
 
-`core.vision.roi-from-contour` 是 contour 到 ROI 的唯一入口；ROI 生成能力统一归到 core ROI 边界内。
+`core.vision.roi-from-contour` 是 contour 到 ROI 的唯一入口；ROI 生成能力统一归到 core ROI 边界内。该节点使用 `selected_contour_index` 表示 `contours.v1.items[].contour_index` 的真实编号，不使用列表下标，避免 Contour Filter、Min Area Rect 和 ROI From Contour 的点选语义不一致。
 
 ### 3. ROI 使用节点
 

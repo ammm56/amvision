@@ -19,7 +19,7 @@
 1. 只靠节点参数开关不够安全。生产 runtime 可能直接执行已保存的 workflow template，如果用户忘记关闭调试面板，仍会发生 BGR24 / BufferRef / FrameRef 到 PNG/JPEG/base64 的转换。因此必须使用双开关：节点参数 `debug_image_panel_enabled=true`，并且执行元数据 `debug_image_panels_enabled=true` 时，节点才生成调试图片。
 2. 现有前端只从 `node_records.outputs` 中识别 `payload.type` 以 `-preview` 结尾的输出。普通视觉节点要显示节点底部图片，必须输出兼容 `image-preview` 或 `gallery-preview` 的 `debug_preview` 输出，而不是发明另一套显示路径。
 3. 现有图编辑器 `retain_node_records_enabled` 只按 `node_type_id.endsWith('-preview')` 判断。后续需要改成同时检查启用节点中是否存在 `debug_image_panel_enabled=true`，否则普通节点虽然生成了 `debug_preview`，前端也拿不到 node_records。
-4. `NodeDefinition.metadata` 和 `parameter_ui_schema` 前后端都已经存在，可以承载 `parameter_assist`，不需要先改合同大结构。但具体 metadata 结构要统一，避免每个节点自己造字段。
+4. 图像交互工具由节点执行时返回的 `debug_preview.interaction` 声明，避免节点 catalog、页面代码和 runtime 输出出现多套参数辅助协议。
 5. `ImageViewer` 当前是只读查看器，后续要改成统一交互式图片面板时，需要保留只读模式。生产 runtime 的图片查看仍是只读；只有 workflow graph editor 传入交互上下文时才允许 overlay 编辑和参数写回。
 
 ## 目标边界
@@ -40,7 +40,7 @@
 | 裁剪 | `custom.opencv.crop` | 根据输入 `roi.v1` 裁图 | 不取参，只消费 ROI |
 | 透视变换 | `custom.opencv.perspective-transform` | 四点透视矫正 | 在图上点选 4 个角点，写回 `source_points` |
 | 平面变换 | `custom.opencv.planar-transform-bridge` | 透视结果和 ROI 坐标互转 | 复用透视四点和输出尺寸 |
-| 轮廓转 ROI | `core.vision.roi-from-contour` | 从 contour 生成 ROI | 参数来自 contour，后续可在结果图上确认 contour 或选择 index |
+| 轮廓转 ROI | `core.vision.roi-from-contour` | 从 contour 生成 ROI | 在 debug 图上点选 contour，写回 `selected_contour_index` |
 | Hough 圆 | `custom.opencv.hough-circles` | 找圆孔或圆形特征 | 在图上选搜索 ROI、估计半径范围和目标圆 |
 | Hough 线 | `custom.opencv.hough-lines` | 找直线或边线 | 在图上选搜索 ROI、线段、角度范围和方向 |
 | 拟合线 | `custom.opencv.fit-line` | 从轮廓拟合直线 | 在图上选 contour 或搜索 ROI |
@@ -85,13 +85,13 @@
 | bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
 | polygon | `polygon_xy`、`source_points`；四点透视时同时估算 `output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
 | circle | `center_x`、`center_y`、`radius`、`min_radius`、`max_radius` | `custom.opencv.hough-circles`、`custom.opencv.min-enclosing-circle` |
-| line | `x1`、`y1`、`x2`、`y2`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、测量节点 |
+| line | `line_xyxy`、`search_bbox_xyxy`、`min_line_length`、`angle_min_deg`、`angle_max_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |
-| template-region | `template_roi`、`search_roi` 或输入模板图来源 | `custom.opencv.template-match` |
+| template-region | `template_bbox_xyxy`、`search_bbox_xyxy` 或输入模板图来源 | `custom.opencv.template-match` |
 
 ## 节点定义扩展方式
 
-节点定义中增加前端可读的参数辅助信息，统一放在 `metadata.parameter_assist`。`parameter_ui_schema` 继续负责普通参数表单，不承载复杂图像交互状态。
+交互取参能力统一由节点本次 `debug_preview.interaction` 输出声明，前端不从节点类型名猜测工具，也不在页面层硬编码算法默认值。`parameter_ui_schema` 继续负责普通参数表单，不承载复杂图像交互状态。
 
 节点参数统一增加调试开关，默认关闭：
 
@@ -112,26 +112,30 @@
 }
 ```
 
-节点 metadata 示例：
+节点 `debug_preview.interaction` 示例：
 
 ```json
 {
-  "parameter_assist": [
+  "mode": "edit",
+  "coordinate_space": "source-image",
+  "tools": [
     {
-      "image_input_port": "image",
-      "preview_output_port": "debug_preview",
-      "coordinate_space": "source-image",
-      "tools": [
-        {
-          "tool": "polygon",
-          "label": "透视四点",
-          "target_parameters": ["source_points", "output_width", "output_height"],
-          "min_points": 4,
-          "max_points": 4
-        }
-      ]
+      "tool": "line",
+      "label": "方向线段",
+      "target_parameters": ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
+      "angle_tolerance_deg": 8,
+      "search_padding_ratio": 0.08,
+      "search_padding_min": 8
     }
   ],
+  "controls": []
+}
+```
+
+节点定义仍只声明 `debug_preview` 输出端口和 debug 开关参数：
+
+```json
+{
   "debug_image_panel": {
     "enabled_parameter": "debug_image_panel_enabled",
     "transport_parameter": "debug_image_panel_transport_mode",
@@ -193,7 +197,7 @@ ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 
 
 ## 实现阶段
 
-1. 建立 `metadata.parameter_assist` 和 `debug_image_panel` 元数据格式，先覆盖 ROI、crop、perspective-transform、roi-grid-create。
+1. 普通节点通过 `debug_preview.interaction` 声明图像取参工具，不再新增一套 `metadata.parameter_assist` 路径。
 2. 给第一批节点补 `debug_image_panel_enabled`、`debug_image_panel_transport_mode` 参数和 `debug_preview` 输出端口。
 3. 后端节点生成调试图片时同时检查节点参数和 `execution_metadata.debug_image_panels_enabled`，默认 production runtime 不生成调试图。
 4. 前端图编辑器创建 Preview Run 时发送 `execution_metadata.debug_image_panels_enabled=true`，并把 `shouldRetainPreviewNodeRecords` 改成同时识别 `*-preview` 节点和已打开调试图片面板的普通节点。
@@ -201,7 +205,7 @@ ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 
 6. 将现有 `ImageViewer` 改造为统一交互式图片面板，保留只读模式，并在编辑模式实现 bbox、polygon、grid、circle、line 等基础 overlay。
 7. 完成参数写回、撤销/取消、坐标换算和脏状态提示，确认后只写回节点 `parameters`。
 8. 给 hough-circles、hough-lines、fit-line、template-match 增加 circle、line、template-region 取参能力。
-9. 节点 catalog 逐步补齐 `parameter_assist`，并为典型 workflow 增加调试验证。
+9. 为典型 workflow 增加调试验证，确认节点返回的 `debug_preview.interaction`、overlay 和参数写回保持一致。
 10. 对大图和高分辨率图像做性能保护：默认关闭调试图片面板，打开时优先 storage-ref / artifact，不把大图 base64 长期塞进节点参数或完整 node_records。
 
 ## 仍需注意的问题
