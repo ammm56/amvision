@@ -52,6 +52,7 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
                     "max_line_gap": 8.0,
                     "sort_by": "length_pixels",
                     "descending": True,
+                    "debug_image_panel_enabled": True,
                 },
             ),
             WorkflowGraphNode(node_id="value", node_type_id="custom.opencv.payload-to-value"),
@@ -134,6 +135,7 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch3-hough-lines",
+            "debug_image_panels_enabled": True,
         },
     )
 
@@ -150,6 +152,14 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
     assert lines_summary["value"]["count"] == lines["count"]
     assert lines_summary["value"]["max_length_pixels"] >= 40.0
     assert lines_value["value"]["count"] == lines["count"]
+    debug_preview = _read_record_output(execution_result, node_id="lines", output_name="debug_preview")
+    interaction = debug_preview["interaction"]
+    tools_by_name = {tool["tool"]: tool for tool in interaction["tools"]}
+    controls_by_name = {control["parameter_name"]: control for control in interaction["controls"]}
+    assert debug_preview["type"] == "image-preview"
+    assert set(tools_by_name["line"]["target_parameters"]) == {"search_bbox_xyxy", "min_line_length"}
+    assert tools_by_name["bbox"]["target_parameters"] == ["search_bbox_xyxy"]
+    assert {"threshold", "min_line_length", "max_line_gap"} <= set(controls_by_name)
 
 
 def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
@@ -178,6 +188,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
                     "max_radius": 24,
                     "sort_by": "radius",
                     "descending": True,
+                    "debug_image_panel_enabled": True,
                 },
             ),
             WorkflowGraphNode(node_id="value", node_type_id="custom.opencv.payload-to-value"),
@@ -246,6 +257,7 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch3-hough-circles",
+            "debug_image_panels_enabled": True,
         },
     )
 
@@ -258,6 +270,19 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     assert circles_summary["value"]["count"] == circles["count"]
     assert circles_summary["value"]["max_radius_detected"] >= 14.0
     assert circles_value["value"]["count"] == circles["count"]
+    debug_preview = _read_record_output(execution_result, node_id="circles", output_name="debug_preview")
+    interaction = debug_preview["interaction"]
+    tools_by_name = {tool["tool"]: tool for tool in interaction["tools"]}
+    controls_by_name = {control["parameter_name"]: control for control in interaction["controls"]}
+    assert debug_preview["type"] == "image-preview"
+    assert set(tools_by_name["circle"]["target_parameters"]) == {
+        "search_bbox_xyxy",
+        "min_dist",
+        "min_radius",
+        "max_radius",
+    }
+    assert tools_by_name["bbox"]["target_parameters"] == ["search_bbox_xyxy"]
+    assert {"param1", "param2", "min_radius", "max_radius"} <= set(controls_by_name)
 
 
 def test_opencv_basic_batch3_fit_line_execute(tmp_path: Path) -> None:
@@ -519,6 +544,22 @@ def _create_repository_executor() -> WorkflowGraphExecutor:
     )
     runtime_registry_loader.refresh()
     return WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+
+
+def _read_record_output(
+    execution_result,
+    *,
+    node_id: str,
+    output_name: str,
+) -> dict[str, object]:
+    """从节点执行记录中读取指定输出。"""
+
+    for record in execution_result.node_records:
+        if record.node_id == node_id:
+            output_payload = record.outputs.get(output_name)
+            assert isinstance(output_payload, dict)
+            return output_payload
+    raise AssertionError(f"node record not found: {node_id}")
 
 
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:

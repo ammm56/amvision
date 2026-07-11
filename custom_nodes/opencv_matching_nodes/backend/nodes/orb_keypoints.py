@@ -7,6 +7,13 @@ from backend.nodes.core_nodes.support.roi import build_roi_mask, require_roi_pay
 from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes._opencv_shared.backend.runtime.search_roi import (
+    ResolvedSearchRoi,
+    build_search_roi_overlay,
+    build_search_roi_summary,
+    clip_bbox_xyxy,
+    read_optional_bbox_xyxy,
+)
 from custom_nodes._opencv_shared.backend.runtime.features import build_local_features_payload
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
 from custom_nodes._opencv_shared.backend.runtime.validators import (
@@ -146,6 +153,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_roi_payload = request.input_values.get("roi")
     roi_payload = require_roi_payload(raw_roi_payload, node_id=request.node_id) if raw_roi_payload is not None else None
     mask_matrix = None
+    search_roi: ResolvedSearchRoi | None = None
     if roi_payload is not None and use_roi_mask:
         mask_matrix = build_roi_mask(
             roi_payload=roi_payload,
@@ -153,6 +161,36 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             image_height=int(image_matrix.shape[0]),
         ).astype(np_module.uint8)
         mask_matrix *= 255
+        search_roi = ResolvedSearchRoi(
+            image_matrix=image_matrix,
+            bbox_xyxy=[int(value) for value in roi_payload["bbox_xyxy"]],
+            offset_x=0,
+            offset_y=0,
+            source="roi-input",
+            roi_id=str(roi_payload["roi_id"]),
+            roi_kind=str(roi_payload["roi_kind"]),
+            polygon_bbox_only=roi_payload["roi_kind"] == "polygon",
+        )
+    elif use_roi_mask:
+        raw_search_bbox = read_optional_bbox_xyxy(request.parameters.get("search_bbox_xyxy"))
+        if raw_search_bbox is not None:
+            image_height, image_width = image_matrix.shape[:2]
+            clipped_search_bbox = clip_bbox_xyxy(
+                raw_search_bbox,
+                image_width=int(image_width),
+                image_height=int(image_height),
+                field_name="search_bbox_xyxy",
+            )
+            x1_value, y1_value, x2_value, y2_value = clipped_search_bbox
+            mask_matrix = np_module.zeros((int(image_height), int(image_width)), dtype=np_module.uint8)
+            mask_matrix[y1_value:y2_value, x1_value:x2_value] = 255
+            search_roi = ResolvedSearchRoi(
+                image_matrix=image_matrix[y1_value:y2_value, x1_value:x2_value],
+                bbox_xyxy=clipped_search_bbox,
+                offset_x=x1_value,
+                offset_y=y1_value,
+                source="parameter",
+            )
 
     orb_detector = cv2_module.ORB_create(
         nfeatures=max_features,
@@ -200,6 +238,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         roi_payload=roi_payload,
     )
     response_values = [float(item["response"]) for item in feature_items]
+    search_roi_summary = (
+        build_search_roi_summary(search_roi)
+        if search_roi is not None
+        else {"search_roi_source": "full-image"}
+    )
     outputs: dict[str, object] = {
         "features": features_payload,
         "summary": build_value_payload(
@@ -223,6 +266,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "min_response": round(min(response_values), 6) if response_values else None,
                 "roi_id": roi_payload["roi_id"] if roi_payload is not None else None,
                 "roi_kind": roi_payload["roi_kind"] if roi_payload is not None else None,
+                **search_roi_summary,
             }
         ),
     }
@@ -232,7 +276,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             image_payload=image_payload,
             title="ORB Keypoints",
             artifact_name="orb-keypoints-debug-preview",
-            overlays=_build_keypoint_overlays(feature_items, roi_payload=roi_payload),
+            overlays=_build_keypoint_overlays(feature_items, roi_payload=roi_payload, search_roi=search_roi),
             interaction=_build_orb_keypoints_interaction(
                 max_features=max_features,
                 scale_factor=scale_factor,
@@ -264,7 +308,7 @@ def _build_orb_keypoints_interaction(
             {
                 "tool": "bbox",
                 "label": "参考区域",
-                "target_parameters": [],
+                "target_parameters": ["search_bbox_xyxy"],
             },
         ],
         "controls": [
@@ -305,10 +349,15 @@ def _build_keypoint_overlays(
     feature_items: list[dict[str, object]],
     *,
     roi_payload: dict[str, object] | None,
+    search_roi: ResolvedSearchRoi | None,
 ) -> list[dict[str, object]]:
     """把 ORB 关键点和可选 ROI 转换为图片面板 overlay。"""
 
     overlays: list[dict[str, object]] = []
+    if search_roi is not None and roi_payload is None:
+        search_roi_overlay = build_search_roi_overlay(search_roi)
+        if search_roi_overlay is not None:
+            overlays.append(search_roi_overlay)
     if roi_payload is not None:
         polygon_xy = roi_payload.get("polygon_xy")
         if isinstance(polygon_xy, list) and len(polygon_xy) >= 3:

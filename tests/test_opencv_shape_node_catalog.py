@@ -37,3 +37,22 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.shape-nodes"
     }
+    assert {item["category"] for item in actual_catalog_payload["node_definitions"]} == {
+        "opencv.shape"
+    }
+    node_by_type = {
+        item["node_type_id"]: item
+        for item in actual_catalog_payload["node_definitions"]
+    }
+    assert (
+        node_by_type["custom.opencv.hough-lines"]["parameter_schema"]["properties"]["debug_image_panel_enabled"][
+            "default"
+        ]
+        is False
+    )
+    assert (
+        node_by_type["custom.opencv.hough-circles"]["parameter_schema"]["properties"]["debug_image_panel_enabled"][
+            "default"
+        ]
+        is False
+    )

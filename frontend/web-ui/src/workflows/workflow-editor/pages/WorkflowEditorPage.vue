@@ -1249,6 +1249,14 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     if (targetParameters.has('center_x')) updates.center_x = roundInteractionNumber(event.circle.centerX)
     if (targetParameters.has('center_y')) updates.center_y = roundInteractionNumber(event.circle.centerY)
     if (targetParameters.has('radius')) updates.radius = roundInteractionNumber(radius)
+    if (targetParameters.has('search_bbox_xyxy')) {
+      updates.search_bbox_xyxy = [
+        roundInteractionNumber(event.circle.centerX - radius),
+        roundInteractionNumber(event.circle.centerY - radius),
+        roundInteractionNumber(event.circle.centerX + radius),
+        roundInteractionNumber(event.circle.centerY + radius),
+      ]
+    }
     if (targetParameters.has('min_radius')) updates.min_radius = Math.max(0, Math.floor(radius * 0.75))
     if (targetParameters.has('max_radius')) updates.max_radius = Math.max(1, Math.ceil(radius * 1.25))
     if (targetParameters.has('min_dist')) updates.min_dist = Math.max(1, Math.ceil(radius * 2))
@@ -1259,6 +1267,15 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
     if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
     if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
+    if (targetParameters.has('search_bbox_xyxy')) {
+      const padding = Math.max(8, length * 0.08)
+      updates.search_bbox_xyxy = [
+        roundInteractionNumber(Math.min(x1, x2) - padding),
+        roundInteractionNumber(Math.min(y1, y2) - padding),
+        roundInteractionNumber(Math.max(x1, x2) + padding),
+        roundInteractionNumber(Math.max(y1, y2) + padding),
+      ]
+    }
     return updates
   }
   return Object.keys(updates).length ? updates : null

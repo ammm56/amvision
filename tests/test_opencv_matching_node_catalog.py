@@ -30,6 +30,16 @@ def test_opencv_matching_node_catalog_builder_matches_checked_in_catalog() -> No
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.matching-nodes"
     }
+    assert {item["category"] for item in actual_catalog_payload["node_definitions"]} == {
+        "opencv.matching"
+    }
+    node_by_type = {
+        item["node_type_id"]: item
+        for item in actual_catalog_payload["node_definitions"]
+    }
+    orb_properties = node_by_type["custom.opencv.orb-keypoints"]["parameter_schema"]["properties"]
+    assert "search_bbox_xyxy" in orb_properties
+    assert orb_properties["debug_image_panel_enabled"]["default"] is False
     assert {
         contract["payload_type_id"] for contract in actual_catalog_payload["payload_contracts"]
     } >= {

@@ -236,7 +236,7 @@ def _build_circle_interaction(
             {
                 "tool": "circle",
                 "label": "找圆",
-                "target_parameters": ["min_dist", "min_radius", "max_radius"],
+                "target_parameters": ["search_bbox_xyxy", "min_dist", "min_radius", "max_radius"],
             },
         ],
         "controls": [

@@ -2029,6 +2029,16 @@
             "type": "boolean",
             "default": true
           },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "可选参考区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
           "feature_id_prefix": {
             "type": "string",
             "default": "orb"

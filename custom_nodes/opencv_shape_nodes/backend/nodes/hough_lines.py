@@ -239,7 +239,7 @@ def _build_line_interaction(
             {
                 "tool": "line",
                 "label": "找线",
-                "target_parameters": ["min_line_length"],
+                "target_parameters": ["search_bbox_xyxy", "min_line_length"],
             },
             {
                 "tool": "bbox",

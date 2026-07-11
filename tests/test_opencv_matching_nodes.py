@@ -342,6 +342,100 @@ def test_opencv_matching_orb_keypoints_with_roi_execute(tmp_path: Path) -> None:
     assert all(20.0 <= float(item["y"]) <= 150.0 for item in features["items"])
 
 
+def test_opencv_matching_orb_keypoints_with_search_bbox_execute(tmp_path: Path) -> None:
+    """验证 ORB 特征提取可直接使用图片面板写回的 search_bbox_xyxy。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    reference_bytes, _current_bytes, _expected_homography = _build_orb_registration_pair_png_bytes()
+    dataset_storage.write_bytes("inputs/orb-reference.png", reference_bytes)
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-matching-orb-search-bbox",
+        template_version="1.0.0",
+        display_name="OpenCV Matching ORB Search BBox",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="orb",
+                node_type_id="custom.opencv.orb-keypoints",
+                parameters={
+                    "max_features": 300,
+                    "use_roi_mask": True,
+                    "search_bbox_xyxy": [10, 20, 110, 150],
+                    "debug_image_panel_enabled": True,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-orb-image",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="orb",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="features",
+                display_name="Features",
+                payload_type_id="local-features.v1",
+                source_node_id="orb",
+                source_port="features",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="orb",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/orb-reference.png",
+                "width": 240,
+                "height": 180,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "workflow_run_id": "opencv-matching-orb-search-bbox",
+            "debug_image_panels_enabled": True,
+        },
+    )
+
+    features = execution_result.outputs["features"]
+    summary = execution_result.outputs["summary"]
+    debug_preview = _read_record_output(execution_result, node_id="orb", output_name="debug_preview")
+    interaction = debug_preview["interaction"]
+    bbox_tool = next(tool for tool in interaction["tools"] if tool["tool"] == "bbox")
+
+    assert features["count"] > 0
+    assert summary["value"]["search_roi_source"] == "parameter"
+    assert summary["value"]["search_bbox_xyxy"] == [10, 20, 110, 150]
+    assert all(10.0 <= float(item["x"]) <= 110.0 for item in features["items"])
+    assert all(20.0 <= float(item["y"]) <= 150.0 for item in features["items"])
+    assert debug_preview["type"] == "image-preview"
+    assert bbox_tool["target_parameters"] == ["search_bbox_xyxy"]
+    assert any(overlay.get("id") == "search-roi" for overlay in debug_preview["overlays"])
+
+
 def _create_repository_executor() -> WorkflowGraphExecutor:
     """创建绑定仓库 custom_nodes 的 workflow 执行器。"""
 
