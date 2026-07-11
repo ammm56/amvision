@@ -98,6 +98,17 @@ def _read_optional_debug_selected_match_id(raw_value: object) -> str | None:
     return normalized_value or None
 
 
+def _read_optional_debug_selected_projection_id(raw_value: object) -> str | None:
+    """读取图片面板点选的 homography 投影框 id，仅用于调试图高亮。"""
+
+    if raw_value in {None, ""}:
+        return None
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError("debug_selected_projection_id 必须是字符串")
+    normalized_value = raw_value.strip()
+    return normalized_value or None
+
+
 def _read_optional_debug_manual_pair_line(raw_value: object) -> list[float] | None:
     """读取图片面板手动画出的双图点对线，仅用于调试显示。"""
 
@@ -166,6 +177,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     debug_max_match_lines = _read_debug_max_match_lines(request.parameters.get("debug_max_match_lines"))
     debug_selected_match_id = _read_optional_debug_selected_match_id(
         request.parameters.get("debug_selected_match_id")
+    )
+    debug_selected_projection_id = _read_optional_debug_selected_projection_id(
+        request.parameters.get("debug_selected_projection_id")
     )
     debug_selected_match_only = _read_bool(
         request.parameters.get("debug_selected_match_only"),
@@ -330,6 +344,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             show_left_points=debug_show_left_points,
             show_right_points=debug_show_right_points,
             manual_pair_line_xyxy=debug_manual_pair_line_xyxy,
+            selected_projection_id=debug_selected_projection_id,
             max_match_lines=debug_max_match_lines,
         )
     )
@@ -356,10 +371,20 @@ def _build_homography_interaction(
         "coordinate_space": "source-image-pair",
         "tools": [
             {
-                "tool": "line",
-                "label": "内点线 / 手动点对",
+                "tool": "match-line",
+                "label": "点选内点线",
+                "target_parameters": ["debug_selected_match_id"],
+            },
+            {
+                "tool": "point-pair",
+                "label": "手动点对",
                 "target_parameters": ["debug_manual_pair_line_xyxy"],
-            }
+            },
+            {
+                "tool": "homography-overlay",
+                "label": "点选投影框",
+                "target_parameters": ["debug_selected_projection_id"],
+            },
         ],
         "controls": [
             build_numeric_control(

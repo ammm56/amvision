@@ -401,7 +401,18 @@ interface LineVisualGuide {
 
 type CircleDraftMode = 'center-radius' | 'three-point'
 type TemplateRegionStage = 'template' | 'search'
-type InteractionToolId = 'bbox' | 'rect' | 'polygon' | 'contour' | 'circle' | 'line' | 'grid' | 'template-region'
+type InteractionToolId =
+  | 'bbox'
+  | 'rect'
+  | 'polygon'
+  | 'contour'
+  | 'circle'
+  | 'line'
+  | 'grid'
+  | 'template-region'
+  | 'match-line'
+  | 'point-pair'
+  | 'homography-overlay'
 
 const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
   bbox: { label: '矩形 ROI' },
@@ -412,6 +423,9 @@ const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
   line: { label: '线段' },
   grid: { label: '网格' },
   'template-region': { label: '模板区域' },
+  'match-line': { label: '匹配线' },
+  'point-pair': { label: '手动点对' },
+  'homography-overlay': { label: '投影框' },
 }
 
 const props = defineProps<{
@@ -584,6 +598,7 @@ const canApplyInteraction = computed(() => {
   }
   if (interactionTool.value === 'circle') return Boolean(draftCircle.value)
   if (interactionTool.value === 'line') return Boolean(draftLineXyxy.value)
+  if (interactionTool.value === 'point-pair') return Boolean(draftLineXyxy.value)
   return false
 })
 const previewActionDisabled = computed(() => Boolean(
@@ -608,6 +623,9 @@ const interactionStatusText = computed(() => {
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
   if (interactionTool.value === 'line') return readLineInteractionStatusText()
+  if (interactionTool.value === 'point-pair') return draftLineXyxy.value ? '手动点对已选择，可应用参数' : '从左图目标点拖拽到右图对应点'
+  if (interactionTool.value === 'match-line') return '点击匹配线或端点，写回点选 match id'
+  if (interactionTool.value === 'homography-overlay') return '点击 homography 投影框，写回点选 overlay id'
   return ''
 })
 
@@ -684,6 +702,7 @@ function handleViewportDoubleClick(): void {
 
 function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
   if (!interactionActive.value || !interactionAvailable.value || event.button !== 0) return false
+  if (isPickOnlyInteractionTool(interactionTool.value)) return false
   event.preventDefault()
   event.stopPropagation()
   const point = readImagePointFromEvent(event)
@@ -701,7 +720,7 @@ function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
     else startCircleDraft(point)
     return true
   }
-  if (interactionTool.value === 'line') {
+  if (interactionTool.value === 'line' || interactionTool.value === 'point-pair') {
     startLineDraft(point)
     return true
   }
@@ -898,7 +917,7 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
   if (interactionTool.value === 'circle' && draftCircle.value) {
     return { ...baseEvent, circle: draftCircle.value }
   }
-  if (interactionTool.value === 'line' && draftLineXyxy.value) {
+  if ((interactionTool.value === 'line' || interactionTool.value === 'point-pair') && draftLineXyxy.value) {
     return { ...baseEvent, lineXyxy: draftLineXyxy.value }
   }
   return null
@@ -998,6 +1017,9 @@ function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): strin
   if (event.tool === 'grid') return 'ROI 网格参数已应用'
   if (event.tool === 'circle') return '圆参数已应用'
   if (event.tool === 'line') return '线段参数已应用'
+  if (event.tool === 'point-pair') return '手动点对已应用'
+  if (event.tool === 'match-line') return '匹配线点选已应用'
+  if (event.tool === 'homography-overlay') return '投影框点选已应用'
   return '参数已应用到节点'
 }
 
@@ -1061,6 +1083,17 @@ function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteract
 
   if (tool === 'line' && overlay.lineXyxy) {
     return { ...baseEvent, lineXyxy: overlay.lineXyxy }
+  }
+
+  if (tool === 'match-line' && (overlay.lineXyxy || overlay.circle)) {
+    return { ...baseEvent, lineXyxy: overlay.lineXyxy ?? undefined, circle: overlay.circle ?? undefined }
+  }
+
+  if (tool === 'homography-overlay') {
+    if (overlay.pointsXy.length >= 3) return { ...baseEvent, pointsXy: overlay.pointsXy }
+    const bboxPoints = readOverlayBboxPoints(overlay)
+    if (bboxPoints.length >= 3) return { ...baseEvent, pointsXy: bboxPoints }
+    return Object.keys(overlay.parameters).length > 0 ? baseEvent : null
   }
 
   return null
@@ -1207,6 +1240,10 @@ function readLineInteractionStatusText(): string {
 
 function isSupportedInteractionTool(tool: string): tool is InteractionToolId {
   return Object.prototype.hasOwnProperty.call(interactionToolRegistry, tool)
+}
+
+function isPickOnlyInteractionTool(tool: string): boolean {
+  return tool === 'match-line' || tool === 'homography-overlay'
 }
 
 function buildCircleFromThreePoints(points: ImagePoint[]): CircleDraft | null {

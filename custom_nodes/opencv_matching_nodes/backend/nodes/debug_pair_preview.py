@@ -48,6 +48,7 @@ def build_pair_match_debug_preview_output(
     show_left_points: bool = True,
     show_right_points: bool = True,
     manual_pair_line_xyxy: list[float] | None = None,
+    selected_projection_id: str | None = None,
     max_match_lines: int = 200,
 ) -> dict[str, object]:
     """构建 ORB Match / Homography 这类双图节点的 debug_preview 输出。
@@ -68,6 +69,7 @@ def build_pair_match_debug_preview_output(
     - selected_match_only：是否只绘制点选的匹配线，便于排查误匹配。
     - show_left_points / show_right_points：是否绘制左右图匹配端点。
     - manual_pair_line_xyxy：可选手动点对线，用于双图人工点对调试。
+    - selected_projection_id：可选点选的投影框 id，用于 homography overlay 高亮。
     - max_match_lines：最多绘制的匹配线数量，避免调试图过载。
 
     返回：
@@ -106,6 +108,7 @@ def build_pair_match_debug_preview_output(
             cv2_module=cv2_module,
             np_module=np_module,
             homography_matrix=homography_matrix,
+            selected_projection_id=selected_projection_id,
         )
         if projected_overlay is not None:
             overlays.append(projected_overlay)
@@ -213,7 +216,7 @@ def _build_pair_match_overlays(
         label_prefix = "selected" if is_selected else ("inlier" if inlier_match_ids is not None else "match")
         overlays.append(
             {
-                "kind": "line",
+                "kind": "match-line",
                 "id": match_id,
                 "label": f"{label_prefix} {match_id}",
                 "line_xyxy": [
@@ -225,6 +228,10 @@ def _build_pair_match_overlays(
                 "target_parameters": ["debug_selected_match_id"],
                 "parameters": {
                     "debug_selected_match_id": match_id,
+                    "selected_match_id": match_id,
+                    "match_role": label_prefix,
+                    "query_xy": [round(float(query_xy[0]), 4), round(float(query_xy[1]), 4)],
+                    "train_xy": [round(float(train_xy[0]), 4), round(float(train_xy[1]), 4)],
                 },
             }
         )
@@ -266,7 +273,7 @@ def _build_pair_endpoint_overlay(
 
     label = f"{side} {match_id}" if not selected else f"selected {side} {match_id}"
     return {
-        "kind": "circle",
+        "kind": "match-point",
         "id": f"{match_id}-{side}-point",
         "label": label,
         "circle": {
@@ -277,6 +284,8 @@ def _build_pair_endpoint_overlay(
         "target_parameters": ["debug_selected_match_id"],
         "parameters": {
             "debug_selected_match_id": match_id,
+            "selected_match_id": match_id,
+            "match_point_side": side,
         },
     }
 
@@ -285,7 +294,7 @@ def _build_manual_pair_overlay(manual_pair_line_xyxy: list[float]) -> dict[str, 
     """构建用户在双图上手动画出的点对线。"""
 
     return {
-        "kind": "line",
+        "kind": "point-pair",
         "id": "manual-pair",
         "label": "manual pair",
         "line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
@@ -302,6 +311,7 @@ def _build_homography_projection_overlay(
     cv2_module: Any,
     np_module: Any,
     homography_matrix: Any,
+    selected_projection_id: str | None,
 ) -> dict[str, object] | None:
     """把左图外框通过 homography 投影到右图并返回 polygon overlay。"""
 
@@ -326,11 +336,19 @@ def _build_homography_projection_overlay(
                 round(float(point[1]), 4),
             ]
         )
+    projection_id = "homography-projection"
+    is_selected = selected_projection_id == projection_id
     return {
-        "kind": "polygon",
-        "id": "homography-projection",
-        "label": "homography projection",
+        "kind": "homography-overlay",
+        "id": projection_id,
+        "label": "selected homography projection" if is_selected else "homography projection",
         "polygon_xy": polygon_xy,
+        "target_parameters": ["debug_selected_projection_id"],
+        "parameters": {
+            "debug_selected_projection_id": projection_id,
+            "selected_projection_id": projection_id,
+            "overlay_role": "homography-projection",
+        },
     }
 
 

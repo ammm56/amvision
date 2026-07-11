@@ -118,6 +118,12 @@
         "description": "图片面板点选内点匹配线后写回，仅用于调试高亮，不影响 homography 估计结果。",
         "default": ""
       },
+      "debug_selected_projection_id": {
+        "type": "string",
+        "title": "点选投影框 id",
+        "description": "图片面板点选 homography 投影框后写回，仅用于调试高亮，不影响 homography 估计结果。",
+        "default": ""
+      },
       "debug_selected_match_only": {
         "type": "boolean",
         "title": "只显示点选内点",

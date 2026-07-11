@@ -307,10 +307,15 @@ def _build_orb_match_interaction(
         "coordinate_space": "source-image-pair",
         "tools": [
             {
-                "tool": "line",
-                "label": "匹配线 / 手动点对",
+                "tool": "match-line",
+                "label": "点选匹配线",
+                "target_parameters": ["debug_selected_match_id"],
+            },
+            {
+                "tool": "point-pair",
+                "label": "手动点对",
                 "target_parameters": ["debug_manual_pair_line_xyxy"],
-            }
+            },
         ],
         "controls": [
             build_numeric_control(

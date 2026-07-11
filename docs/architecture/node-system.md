@@ -174,6 +174,17 @@ custom_nodes/
 3. Line：用于 hough-lines、fit-line、找边、角度校正和平行度测量。
 4. Template region：用于模板匹配、局部定位和换型参数准备。
 
+### Matching 双图交互协议
+
+ORB、Homography、模板定位这类参考对位节点不应把调试交互伪装成普通 `line` 或 `polygon`。它们需要保留清楚的业务语义，同时复用 ImageViewer 的底层绘制能力：
+
+- `match-line` 表示一条可点选的匹配线，用于写回 `debug_selected_match_id`，只影响调试高亮和筛选，不改变正式匹配结果。
+- `point-pair` 表示人工标记的一组左右图点对，用于写回 `debug_manual_pair_line_xyxy`，后续可扩展为多点对、人工校正和验证集记录。
+- `homography-overlay` 表示 Homography 投影框，用于写回 `debug_selected_projection_id`，只影响调试高亮，不改变 `planar-transform.v1` 输出。
+- 后端节点通过 `debug_preview.interaction.tools[]` 声明可用工具和 `target_parameters`，通过 `overlays[]` 携带 `kind`、`id`、`target_parameters` 和 `parameters`。前端只按声明写回参数，不猜测节点内部语义。
+- 语义 overlay 可复用 `line_xyxy`、`polygon_xy`、`circle` 等基础图形字段绘制，但 `kind` 必须保留业务语义，避免后续双图 overlay、匹配筛选、手动点对和投影框编辑继续叠临时字段。
+- 这些调试参数只能用于编辑期 Preview Run；生产 runtime 默认关闭 `debug_image_panel_enabled`，不得因为 matching 调试图产生额外 BGR24 编码、数据库记录或节点输出负担。
+
 Preview Run 与图像交互取参要保持边界清楚：Preview Run 负责提供可用图像和节点输出；交互编辑器负责把人工选择转换成参数。大循环或大图 workflow 没有预览节点时，Preview Run 默认不应返回完整 `node_records`，避免跨进程序列化和数据库记录拖慢调试。
 
 ## 与核心模块的关系
