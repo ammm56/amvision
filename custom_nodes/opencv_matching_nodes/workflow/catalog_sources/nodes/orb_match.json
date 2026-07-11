@@ -80,6 +80,25 @@
           "inline-base64"
         ],
         "default": "storage-ref"
+      },
+      "debug_show_match_lines": {
+        "type": "boolean",
+        "title": "显示匹配线",
+        "description": "仅控制 debug_preview 中是否绘制 ORB 匹配线，不影响 matches 输出。",
+        "default": true
+      },
+      "debug_max_match_lines": {
+        "type": "integer",
+        "title": "最多显示匹配线",
+        "description": "限制 debug_preview 绘制的匹配线数量，避免双图调试图过载。",
+        "minimum": 1,
+        "default": 200
+      },
+      "debug_selected_match_id": {
+        "type": "string",
+        "title": "点选匹配 id",
+        "description": "图片面板点选匹配线后写回，仅用于调试高亮，不影响正式匹配结果。",
+        "default": ""
       }
     }
   },

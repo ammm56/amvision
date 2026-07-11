@@ -38,6 +38,14 @@ def _read_optional_non_negative_int(raw_value: object, *, field_name: str) -> in
     return require_non_negative_int(raw_value, field_name=field_name)
 
 
+def _read_optional_positive_int(raw_value: object, *, field_name: str) -> int | None:
+    """读取可选正整数参数。"""
+
+    if raw_value in {None, ""}:
+        return None
+    return require_positive_int(raw_value, field_name=field_name)
+
+
 def _normalize_sort_by(value: object) -> str:
     """规范化 contour-filter 的排序字段。"""
 
@@ -79,9 +87,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     descending = bool(request.parameters.get("descending", False))
     raw_limit = request.parameters.get("limit")
     limit = None if raw_limit in {None, ""} else require_positive_int(raw_limit, field_name="limit")
+    selected_contour_index = _read_optional_positive_int(
+        request.parameters.get("selected_contour_index"),
+        field_name="selected_contour_index",
+    )
 
     filtered_items: list[tuple[dict[str, object], dict[str, object]]] = []
     for contour_item in contours_payload["items"]:
+        contour_index = int(contour_item["contour_index"])
+        if selected_contour_index is not None and contour_index != selected_contour_index:
+            continue
         contour_metrics = compute_contour_metrics_from_points(
             points=contour_item["points"],
             cv2_module=cv2_module,
@@ -145,6 +160,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "sort_by": sort_by,
                 "descending": descending,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "total_area": round(sum(float(item["area"]) for item in summary_metrics), 4),
                 "max_area": round(max((float(item["area"]) for item in summary_metrics), default=0.0), 4),
                 "min_area": round(min((float(item["area"]) for item in summary_metrics), default=0.0), 4),

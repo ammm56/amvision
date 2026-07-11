@@ -203,6 +203,7 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
                     "min_area": 200.0,
                     "sort_by": "area",
                     "descending": True,
+                    "debug_image_panel_enabled": True,
                 },
             ),
             WorkflowGraphNode(
@@ -388,6 +389,7 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     regions_summary = execution_result.outputs["regions_summary"]
     rotated_rects_value = execution_result.outputs["rotated_rects_value"]
     contour_debug_preview = _read_record_output(execution_result, node_id="contour", output_name="debug_preview")
+    filter_debug_preview = _read_record_output(execution_result, node_id="filter", output_name="debug_preview")
     rect_debug_preview = _read_record_output(execution_result, node_id="rect", output_name="debug_preview")
 
     assert filtered_contours["count"] == 2
@@ -422,13 +424,21 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
         for overlay in rect_debug_preview["overlays"]
         if "selected_contour_index" in overlay.get("target_parameters", [])
     )
+    filter_pick_overlay = next(
+        overlay
+        for overlay in filter_debug_preview["overlays"]
+        if "selected_contour_index" in overlay.get("target_parameters", [])
+    )
     assert contour_debug_preview["type"] == "image-preview"
+    assert filter_debug_preview["type"] == "image-preview"
     assert rect_debug_preview["type"] == "image-preview"
     assert contour_tools_by_name["contour"]["target_parameters"] == [
         "search_bbox_xyxy",
         "selected_contour_index",
     ]
     assert isinstance(contour_pick_overlay["parameters"]["selected_contour_index"], int)
+    assert filter_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert isinstance(filter_pick_overlay["parameters"]["selected_contour_index"], int)
     assert rect_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
     assert isinstance(rect_pick_overlay["parameters"]["selected_contour_index"], int)
 

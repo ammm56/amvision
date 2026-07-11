@@ -64,6 +64,14 @@ def _read_optional_limit(raw_value: object) -> int | None:
     return require_positive_int(raw_value, field_name="limit")
 
 
+def _read_optional_selected_contour_index(raw_value: object) -> int | None:
+    """读取可选点选 contour 序号。"""
+
+    if raw_value in {None, ""}:
+        return None
+    return require_positive_int(raw_value, field_name="selected_contour_index")
+
+
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对 contour 集合执行多边形近似。"""
 
@@ -73,11 +81,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     epsilon_value = _read_epsilon_value(request.parameters.get("epsilon_value"), epsilon_mode=epsilon_mode)
     closed = _read_closed(request.parameters.get("closed"))
     limit = _read_optional_limit(request.parameters.get("limit"))
+    selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     approximated_items: list[dict[str, object]] = []
     reduced_point_ratios: list[float] = []
-    for contour_position, contour_item in enumerate(contours_payload["items"], start=1):
-        if limit is not None and contour_position > limit:
+    for contour_item in contours_payload["items"]:
+        if selected_contour_index is not None and int(contour_item["contour_index"]) != selected_contour_index:
+            continue
+        if limit is not None and len(approximated_items) >= limit:
             break
         contour_matrix = contour_points_to_matrix(points=contour_item["points"], np_module=np_module)
         source_point_count = int(contour_item["point_count"])
@@ -122,6 +133,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "epsilon_value": round(float(epsilon_value), 6),
                 "closed": closed,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "mean_reduced_point_ratio": round(
                     (
                         sum(reduced_point_ratios) / len(reduced_point_ratios)

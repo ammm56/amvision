@@ -51,6 +51,12 @@
         "type": "integer",
         "minimum": 1
       },
+      "selected_contour_index": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Selected Contour Index",
+        "description": "可选点选 contour 序号；设置后只计算该 contour 的凸包。"
+      },
       "debug_image_panel_enabled": {
         "type": "boolean",
         "title": "显示调试图",

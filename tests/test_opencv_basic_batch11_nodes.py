@@ -29,6 +29,7 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
     dataset_storage.write_bytes("inputs/shape-b11.png", _build_shape_test_png_bytes())
 
     template = WorkflowGraphTemplate(
@@ -50,17 +51,32 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
             WorkflowGraphNode(
                 node_id="approx",
                 node_type_id="custom.opencv.contour-approx",
-                parameters={"epsilon_mode": "perimeter-ratio", "epsilon_value": 0.03},
+                parameters={
+                    "epsilon_mode": "perimeter-ratio",
+                    "epsilon_value": 0.03,
+                    "selected_contour_index": 1,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(
                 node_id="hull",
                 node_type_id="custom.opencv.convex-hull",
-                parameters={"sort_by": "hull_area", "descending": True},
+                parameters={
+                    "sort_by": "hull_area",
+                    "descending": True,
+                    "selected_contour_index": 1,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(
                 node_id="ellipse",
                 node_type_id="custom.opencv.fit-ellipse",
-                parameters={"sort_by": "major_axis", "descending": True},
+                parameters={
+                    "sort_by": "major_axis",
+                    "descending": True,
+                    "selected_contour_index": 1,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(node_id="ellipse_value", node_type_id="custom.opencv.payload-to-value"),
         ),
@@ -189,7 +205,9 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
         },
         execution_metadata={
             "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch11-contour-shape",
+            "debug_image_panels_enabled": True,
         },
     )
 
@@ -201,21 +219,33 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
     ellipses = execution_result.outputs["ellipses"]
     ellipse_summary = execution_result.outputs["ellipse_summary"]
     ellipse_value = execution_result.outputs["ellipse_value"]
+    approx_debug_preview = _read_record_output(execution_result, node_id="approx", output_name="debug_preview")
+    hull_debug_preview = _read_record_output(execution_result, node_id="hull", output_name="debug_preview")
+    ellipse_debug_preview = _read_record_output(execution_result, node_id="ellipse", output_name="debug_preview")
 
     assert original_contours["count"] == 2
-    assert approx_contours["count"] == 2
+    assert approx_contours["count"] == 1
     assert approx_summary["value"]["epsilon_mode"] == "perimeter-ratio"
+    assert approx_summary["value"]["selected_contour_index"] == 1
     assert approx_summary["value"]["mean_reduced_point_ratio"] > 0
     assert approx_contours["items"][0]["point_count"] <= original_contours["items"][0]["point_count"]
-    assert hull_contours["count"] == 2
+    assert hull_contours["count"] == 1
     assert float(hull_contours["items"][0]["hull_area"]) >= float(hull_contours["items"][0]["contour_area"])
     assert 0.0 < float(hull_contours["items"][0]["solidity"]) <= 1.0
-    assert hull_summary["value"]["count"] == 2
-    assert ellipses["count"] >= 1
+    assert hull_summary["value"]["count"] == 1
+    assert hull_summary["value"]["selected_contour_index"] == 1
+    assert ellipses["count"] == 1
     assert float(ellipses["items"][0]["major_axis"]) >= float(ellipses["items"][0]["minor_axis"])
     assert float(ellipses["items"][0]["area"]) > 0
+    assert ellipse_summary["value"]["selected_contour_index"] == 1
     assert ellipse_summary["value"]["count"] == ellipses["count"]
     assert ellipse_value["value"]["count"] == ellipses["count"]
+    assert _first_pickable_overlay(approx_debug_preview)["parameters"]["selected_contour_index"] == 1
+    assert _first_pickable_overlay(hull_debug_preview)["parameters"]["selected_contour_index"] == 1
+    assert _first_pickable_overlay(ellipse_debug_preview)["parameters"]["selected_contour_index"] == 1
+    assert approx_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert hull_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert ellipse_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
 
 
 def test_opencv_basic_batch11_fill_holes_and_distance_transform_execute(tmp_path: Path) -> None:
@@ -362,6 +392,34 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _read_record_output(
+    execution_result,
+    *,
+    node_id: str,
+    output_name: str,
+) -> dict[str, object]:
+    """从节点执行记录中读取指定输出。"""
+
+    for record in execution_result.node_records:
+        if record.node_id == node_id:
+            output_payload = record.outputs.get(output_name)
+            assert isinstance(output_payload, dict)
+            return output_payload
+    raise AssertionError(f"node record not found: {node_id}")
+
+
+def _first_pickable_overlay(debug_preview: dict[str, object]) -> dict[str, object]:
+    """读取第一个可写回 selected_contour_index 的 overlay。"""
+
+    overlays = debug_preview.get("overlays")
+    assert isinstance(overlays, list)
+    for overlay in overlays:
+        assert isinstance(overlay, dict)
+        if "selected_contour_index" in overlay.get("target_parameters", []):
+            return overlay
+    raise AssertionError("pickable contour overlay not found")
 
 
 def _build_shape_test_png_bytes() -> bytes:

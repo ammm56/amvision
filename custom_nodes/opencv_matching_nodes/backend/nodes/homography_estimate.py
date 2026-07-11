@@ -6,6 +6,7 @@ from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_matching_nodes.backend.nodes.debug_pair_preview import (
+    build_checkbox_control,
     build_numeric_control,
     build_pair_match_debug_preview_output,
 )
@@ -78,6 +79,25 @@ def _read_max_iters(raw_value: object) -> int:
     return require_positive_int(raw_value, field_name="max_iters")
 
 
+def _read_debug_max_match_lines(raw_value: object) -> int:
+    """读取 debug_preview 中最多绘制的内点匹配线数量。"""
+
+    if raw_value in {None, ""}:
+        return 200
+    return require_positive_int(raw_value, field_name="debug_max_match_lines")
+
+
+def _read_optional_debug_selected_match_id(raw_value: object) -> str | None:
+    """读取图片面板点选的 match id，仅用于调试图高亮。"""
+
+    if raw_value in {None, ""}:
+        return None
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError("debug_selected_match_id 必须是字符串")
+    normalized_value = raw_value.strip()
+    return normalized_value or None
+
+
 def _read_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
     """读取布尔参数。"""
 
@@ -116,6 +136,20 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request.parameters.get("include_inverse_matrix"),
         field_name="include_inverse_matrix",
         default_value=True,
+    )
+    debug_show_match_lines = _read_bool(
+        request.parameters.get("debug_show_match_lines"),
+        field_name="debug_show_match_lines",
+        default_value=True,
+    )
+    debug_show_homography_projection = _read_bool(
+        request.parameters.get("debug_show_homography_projection"),
+        field_name="debug_show_homography_projection",
+        default_value=True,
+    )
+    debug_max_match_lines = _read_debug_max_match_lines(request.parameters.get("debug_max_match_lines"))
+    debug_selected_match_id = _read_optional_debug_selected_match_id(
+        request.parameters.get("debug_selected_match_id")
     )
 
     match_items = matches_payload["items"]
@@ -246,9 +280,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 confidence=confidence,
                 max_iters=max_iters,
                 min_match_count=min_match_count,
+                debug_show_match_lines=debug_show_match_lines,
+                debug_show_homography_projection=debug_show_homography_projection,
+                debug_max_match_lines=debug_max_match_lines,
             ),
             inlier_match_ids=set(inlier_match_ids),
             homography_matrix=homography_matrix,
+            selected_match_id=debug_selected_match_id,
+            show_match_lines=debug_show_match_lines,
+            show_homography_projection=debug_show_homography_projection,
+            max_match_lines=debug_max_match_lines,
         )
     )
     return outputs
@@ -260,13 +301,22 @@ def _build_homography_interaction(
     confidence: float,
     max_iters: int,
     min_match_count: int,
+    debug_show_match_lines: bool,
+    debug_show_homography_projection: bool,
+    debug_max_match_lines: int,
 ) -> dict[str, object]:
     """声明 Homography Estimate 在双图图片面板中的调参能力。"""
 
     return {
         "mode": "edit",
         "coordinate_space": "source-image-pair",
-        "tools": [],
+        "tools": [
+            {
+                "tool": "line",
+                "label": "内点匹配线点选",
+                "target_parameters": ["debug_selected_match_id"],
+            }
+        ],
         "controls": [
             build_numeric_control(
                 "ransac_reprojection_threshold",
@@ -298,6 +348,20 @@ def _build_homography_interaction(
                 min_match_count,
                 min_value=4.0,
                 max_value=200.0,
+                step=1.0,
+            ),
+            build_checkbox_control("debug_show_match_lines", "显示内点线", debug_show_match_lines),
+            build_checkbox_control(
+                "debug_show_homography_projection",
+                "显示投影框",
+                debug_show_homography_projection,
+            ),
+            build_numeric_control(
+                "debug_max_match_lines",
+                "最多显示内点线",
+                debug_max_match_lines,
+                min_value=1.0,
+                max_value=1000.0,
                 step=1.0,
             ),
         ],

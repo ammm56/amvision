@@ -528,7 +528,7 @@ const interactionStatusText = computed(() => {
   if (interactionTool.value === 'template-region') return readTemplateRegionStatusText()
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
-  if (interactionTool.value === 'line') return draftLineXyxy.value ? '线段已选择，可应用参数' : '拖拽选择线段'
+  if (interactionTool.value === 'line') return readLineInteractionStatusText()
   return ''
 })
 
@@ -678,6 +678,7 @@ function moveLineDraft(event: MouseEvent): void {
 function stopLineDraft(): void {
   document.removeEventListener('mousemove', moveLineDraft)
   document.removeEventListener('mouseup', stopLineDraft)
+  if (draftLineXyxy.value) showInteractionFeedback(readLineInteractionStatusText(), 'success')
 }
 
 function startCircleDraft(point: ImagePoint): void {
@@ -1110,6 +1111,21 @@ function readPolygonInteractionStatusText(): string {
   return `多边形取参 ${pointCount}/${minPoints}`
 }
 
+function readLineInteractionStatusText(): string {
+  const targetParameters = new Set(activeTargetParameters.value)
+  if (!draftLineXyxy.value) {
+    if (targetParameters.has('search_bbox_xyxy') && targetParameters.has('angle_min_deg') && targetParameters.has('angle_max_deg')) {
+      return '拖拽目标方向线段，自动写回搜索 ROI、最小线长和角度范围'
+    }
+    if (targetParameters.has('search_bbox_xyxy')) return '拖拽目标线段，自动写回搜索 ROI'
+    return '拖拽选择线段'
+  }
+  const [x1, y1, x2, y2] = draftLineXyxy.value
+  const length = roundImageCoordinate(pointDistance([x1, y1], [x2, y2]))
+  const angleDeg = normalizeLineAngleDeg((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
+  return `线段已选择：${length}px / ${angleDeg}°，可应用参数`
+}
+
 function isSupportedInteractionTool(tool: string): tool is InteractionToolId {
   return Object.prototype.hasOwnProperty.call(interactionToolRegistry, tool)
 }
@@ -1135,6 +1151,13 @@ function buildCircleFromThreePoints(points: ImagePoint[]): CircleDraft | null {
 
 function pointDistance(pointA: number[], pointB: number[]): number {
   return Math.hypot(pointB[0] - pointA[0], pointB[1] - pointA[1])
+}
+
+function normalizeLineAngleDeg(angleDeg: number): number {
+  let normalizedAngle = angleDeg % 180
+  if (normalizedAngle >= 90) normalizedAngle -= 180
+  if (normalizedAngle < -90) normalizedAngle += 180
+  return roundImageCoordinate(normalizedAngle)
 }
 
 function roundImageCoordinate(value: number): number {

@@ -236,6 +236,24 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
     assert len(match_debug_preview["overlays"]) > 0
     assert any(overlay.get("kind") == "line" for overlay in match_debug_preview["overlays"])
     assert any(overlay.get("kind") == "polygon" for overlay in homography_debug_preview["overlays"])
+    match_line_overlay = next(overlay for overlay in match_debug_preview["overlays"] if overlay.get("kind") == "line")
+    homography_line_overlay = next(
+        overlay for overlay in homography_debug_preview["overlays"] if overlay.get("kind") == "line"
+    )
+    assert match_line_overlay["target_parameters"] == ["debug_selected_match_id"]
+    assert "debug_selected_match_id" in match_line_overlay["parameters"]
+    assert homography_line_overlay["target_parameters"] == ["debug_selected_match_id"]
+    assert "debug_selected_match_id" in homography_line_overlay["parameters"]
+    match_interaction = match_debug_preview["interaction"]
+    homography_interaction = homography_debug_preview["interaction"]
+    assert any(tool["tool"] == "line" for tool in match_interaction["tools"])
+    assert any(control["parameter_name"] == "debug_show_match_lines" for control in match_interaction["controls"])
+    assert any(control["parameter_name"] == "debug_max_match_lines" for control in match_interaction["controls"])
+    assert any(tool["tool"] == "line" for tool in homography_interaction["tools"])
+    assert any(
+        control["parameter_name"] == "debug_show_homography_projection"
+        for control in homography_interaction["controls"]
+    )
 
 
 def test_opencv_matching_orb_keypoints_with_roi_execute(tmp_path: Path) -> None:

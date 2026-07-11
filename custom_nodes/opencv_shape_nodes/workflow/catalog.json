@@ -2002,6 +2002,12 @@
             "type": "integer",
             "minimum": 1
           },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只近似该 contour。"
+          },
           "debug_image_panel_enabled": {
             "type": "boolean",
             "title": "显示调试图",
@@ -2136,6 +2142,12 @@
           "limit": {
             "type": "integer",
             "minimum": 1
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只保留该 contour。"
           },
           "debug_image_panel_enabled": {
             "type": "boolean",
@@ -2324,6 +2336,12 @@
             "type": "integer",
             "minimum": 1
           },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只计算该 contour 的凸包。"
+          },
           "debug_image_panel_enabled": {
             "type": "boolean",
             "title": "显示调试图",
@@ -2431,6 +2449,12 @@
           "limit": {
             "type": "integer",
             "minimum": 1
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的拟合椭圆。"
           },
           "debug_image_panel_enabled": {
             "type": "boolean",
@@ -3093,6 +3117,12 @@
           "limit": {
             "type": "integer",
             "minimum": 1
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的最小外接圆。"
           },
           "debug_image_panel_enabled": {
             "type": "boolean",

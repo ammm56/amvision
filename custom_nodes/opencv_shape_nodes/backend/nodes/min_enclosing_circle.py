@@ -28,6 +28,14 @@ def _read_optional_limit(raw_value: object) -> int | None:
     return require_positive_int(raw_value, field_name="limit")
 
 
+def _read_optional_selected_contour_index(raw_value: object) -> int | None:
+    """读取可选点选 contour 序号。"""
+
+    if raw_value in {None, ""}:
+        return None
+    return require_positive_int(raw_value, field_name="selected_contour_index")
+
+
 def _normalize_sort_by(value: object) -> str:
     """规范化 min-enclosing-circle 的排序字段。"""
 
@@ -56,9 +64,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
     descending = bool(request.parameters.get("descending", True))
     limit = _read_optional_limit(request.parameters.get("limit"))
+    selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     circle_items: list[dict[str, object]] = []
-    for circle_index, contour_item in enumerate(contours_payload["items"], start=1):
+    for contour_item in contours_payload["items"]:
+        contour_index = int(contour_item["contour_index"])
+        if selected_contour_index is not None and contour_index != selected_contour_index:
+            continue
         point_array = np_module.array(contour_item["points"], dtype=np_module.float32)
         if point_array.shape[0] < 2:
             continue
@@ -77,8 +89,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         center_y = round(float(center_xy[1]), 4)
         circle_items.append(
             {
-                "circle_index": int(circle_index),
-                "contour_index": int(contour_item["contour_index"]),
+                "circle_index": len(circle_items) + 1,
+                "contour_index": contour_index,
                 "point_count": int(contour_item["point_count"]),
                 "center_xy": [center_x, center_y],
                 "center_x": center_x,
@@ -101,6 +113,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     circle_items.sort(key=lambda current_item: current_item[sort_by], reverse=descending)
     if limit is not None:
         circle_items = circle_items[:limit]
+    for circle_index, circle_item in enumerate(circle_items, start=1):
+        circle_item["circle_index"] = circle_index
 
     source_image = contours_payload.get("source_image")
     source_object_key = (
@@ -120,6 +134,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "sort_by": sort_by,
                 "descending": descending,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "max_radius": round(
                     max((float(item["radius"]) for item in circle_items), default=0.0),
                     4,
@@ -158,7 +173,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
 
 def _build_min_enclosing_circle_interaction(*, limit: int | None) -> dict[str, object]:
-    """声明 Min Enclosing Circle 在图片面板中的圆形结果调试能力。"""
+    """声明 Min Enclosing Circle 在图片面板中的圆形结果点选能力。"""
 
     return {
         "mode": "edit",
@@ -166,8 +181,8 @@ def _build_min_enclosing_circle_interaction(*, limit: int | None) -> dict[str, o
         "tools": [
             {
                 "tool": "circle",
-                "label": "参考圆",
-                "target_parameters": [],
+                "label": "圆点选",
+                "target_parameters": ["selected_contour_index"],
             },
         ],
         "controls": [
@@ -209,16 +224,19 @@ def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[s
         if not isinstance(center_xy, list) or len(center_xy) < 2 or not isinstance(radius, (int, float)):
             continue
         circle_index = int(circle_item.get("circle_index", len(overlays) + 1))
+        contour_index = int(circle_item.get("contour_index", circle_index))
         overlays.append(
             {
                 "kind": "circle",
-                "id": f"min-enclosing-circle-{circle_index}",
-                "label": f"circle {circle_index}",
+                "id": f"min-enclosing-circle-{contour_index}",
+                "label": f"circle {contour_index}",
                 "circle": {
                     "center_x": float(center_xy[0]),
                     "center_y": float(center_xy[1]),
                     "radius": float(radius),
                 },
+                "target_parameters": ["selected_contour_index"],
+                "parameters": {"selected_contour_index": contour_index},
             }
         )
     return overlays

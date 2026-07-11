@@ -41,6 +41,9 @@ def build_pair_match_debug_preview_output(
     interaction: dict[str, object],
     inlier_match_ids: set[str] | None = None,
     homography_matrix: Any | None = None,
+    selected_match_id: str | None = None,
+    show_match_lines: bool = True,
+    show_homography_projection: bool = True,
     max_match_lines: int = 200,
 ) -> dict[str, object]:
     """构建 ORB Match / Homography 这类双图节点的 debug_preview 输出。
@@ -55,6 +58,9 @@ def build_pair_match_debug_preview_output(
     - interaction：图片面板交互和调参声明。
     - inlier_match_ids：可选内点 id 集合；提供后仅绘制内点匹配线。
     - homography_matrix：可选 3x3 homography，用于把左图外框投影到右图。
+    - selected_match_id：可选高亮 match id，用于图片面板点选后的反馈。
+    - show_match_lines：是否绘制匹配线；关闭后仍保留调参控件。
+    - show_homography_projection：是否绘制 homography 投影框。
     - max_match_lines：最多绘制的匹配线数量，避免调试图过载。
 
     返回：
@@ -71,13 +77,18 @@ def build_pair_match_debug_preview_output(
         source_a_image=source_a_image,
         source_b_image=source_b_image,
     )
-    overlays = _build_pair_match_overlays(
-        context,
-        match_items=match_items,
-        inlier_match_ids=inlier_match_ids,
-        max_match_lines=max_match_lines,
+    overlays = (
+        _build_pair_match_overlays(
+            context,
+            match_items=match_items,
+            inlier_match_ids=inlier_match_ids,
+            selected_match_id=selected_match_id,
+            max_match_lines=max_match_lines,
+        )
+        if show_match_lines
+        else []
     )
-    if homography_matrix is not None:
+    if homography_matrix is not None and show_homography_projection:
         projected_overlay = _build_homography_projection_overlay(
             context,
             cv2_module=cv2_module,
@@ -164,6 +175,7 @@ def _build_pair_match_overlays(
     *,
     match_items: list[dict[str, object]],
     inlier_match_ids: set[str] | None,
+    selected_match_id: str | None,
     max_match_lines: int,
 ) -> list[dict[str, object]]:
     """把 feature match 转成拼接图坐标系下的匹配线 overlay。"""
@@ -179,17 +191,23 @@ def _build_pair_match_overlays(
             continue
         if not isinstance(train_xy, list) or len(train_xy) < 2:
             continue
+        is_selected = selected_match_id is not None and match_id == selected_match_id
+        label_prefix = "selected" if is_selected else ("inlier" if inlier_match_ids is not None else "match")
         overlays.append(
             {
                 "kind": "line",
                 "id": match_id,
-                "label": match_id if inlier_match_ids is None else f"inlier {match_id}",
+                "label": f"{label_prefix} {match_id}",
                 "line_xyxy": [
                     float(query_xy[0]),
                     float(query_xy[1]),
                     float(train_xy[0]) + float(context.image_b_offset_x),
                     float(train_xy[1]),
                 ],
+                "target_parameters": ["debug_selected_match_id"],
+                "parameters": {
+                    "debug_selected_match_id": match_id,
+                },
             }
         )
         if len(overlays) >= max_match_lines:
@@ -255,4 +273,19 @@ def build_numeric_control(
         "step": step,
         "value": value,
         "default_value": value,
+    }
+
+
+def build_checkbox_control(parameter_name: str, label: str, value: bool) -> dict[str, object]:
+    """构造图片面板实时调参使用的布尔控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "checkbox",
+        "min": None,
+        "max": None,
+        "step": None,
+        "value": bool(value),
+        "default_value": bool(value),
     }

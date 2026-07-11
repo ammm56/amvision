@@ -6,6 +6,7 @@ from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_matching_nodes.backend.nodes.debug_pair_preview import (
+    build_checkbox_control,
     build_numeric_control,
     build_pair_match_debug_preview_output,
 )
@@ -65,6 +66,25 @@ def _read_optional_max_distance(raw_value: object) -> float | None:
     return float(require_non_negative_float(raw_value, field_name="max_distance"))
 
 
+def _read_debug_max_match_lines(raw_value: object) -> int:
+    """读取 debug_preview 中最多绘制的匹配线数量。"""
+
+    if raw_value in {None, ""}:
+        return 200
+    return require_positive_int(raw_value, field_name="debug_max_match_lines")
+
+
+def _read_optional_debug_selected_match_id(raw_value: object) -> str | None:
+    """读取图片面板点选的 match id，仅用于调试图高亮。"""
+
+    if raw_value in {None, ""}:
+        return None
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError("debug_selected_match_id 必须是字符串")
+    normalized_value = raw_value.strip()
+    return normalized_value or None
+
+
 def _read_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
     """读取布尔参数。"""
 
@@ -111,6 +131,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     ratio_test_threshold = _read_ratio_test_threshold(request.parameters.get("ratio_test_threshold"))
     max_matches = _read_max_matches(request.parameters.get("max_matches"))
     max_distance = _read_optional_max_distance(request.parameters.get("max_distance"))
+    debug_show_match_lines = _read_bool(
+        request.parameters.get("debug_show_match_lines"),
+        field_name="debug_show_match_lines",
+        default_value=True,
+    )
+    debug_max_match_lines = _read_debug_max_match_lines(request.parameters.get("debug_max_match_lines"))
+    debug_selected_match_id = _read_optional_debug_selected_match_id(
+        request.parameters.get("debug_selected_match_id")
+    )
 
     descriptor_matrix_a = np_module.array(features_a_payload["descriptors"], dtype=np_module.uint8)
     descriptor_matrix_b = np_module.array(features_b_payload["descriptors"], dtype=np_module.uint8)
@@ -207,7 +236,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 ratio_test_threshold=ratio_test_threshold,
                 max_matches=max_matches,
                 max_distance=max_distance,
+                debug_show_match_lines=debug_show_match_lines,
+                debug_max_match_lines=debug_max_match_lines,
             ),
+            selected_match_id=debug_selected_match_id,
+            show_match_lines=debug_show_match_lines,
+            max_match_lines=debug_max_match_lines,
         )
     )
     return outputs
@@ -218,6 +252,8 @@ def _build_orb_match_interaction(
     ratio_test_threshold: float,
     max_matches: int,
     max_distance: float | None,
+    debug_show_match_lines: bool,
+    debug_max_match_lines: int,
 ) -> dict[str, object]:
     """声明 ORB Match 在双图图片面板中的调参能力。"""
 
@@ -225,7 +261,13 @@ def _build_orb_match_interaction(
     return {
         "mode": "edit",
         "coordinate_space": "source-image-pair",
-        "tools": [],
+        "tools": [
+            {
+                "tool": "line",
+                "label": "匹配线点选",
+                "target_parameters": ["debug_selected_match_id"],
+            }
+        ],
         "controls": [
             build_numeric_control(
                 "ratio_test_threshold",
@@ -249,6 +291,15 @@ def _build_orb_match_interaction(
                 resolved_max_distance,
                 min_value=0.0,
                 max_value=512.0,
+                step=1.0,
+            ),
+            build_checkbox_control("debug_show_match_lines", "显示匹配线", debug_show_match_lines),
+            build_numeric_control(
+                "debug_max_match_lines",
+                "最多显示匹配线",
+                debug_max_match_lines,
+                min_value=1.0,
+                max_value=1000.0,
                 step=1.0,
             ),
         ],

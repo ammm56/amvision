@@ -441,7 +441,11 @@ def test_opencv_basic_batch3_min_enclosing_circle_execute(tmp_path: Path) -> Non
             WorkflowGraphNode(
                 node_id="circle",
                 node_type_id="custom.opencv.min-enclosing-circle",
-                parameters={"sort_by": "radius", "descending": True},
+                parameters={
+                    "sort_by": "radius",
+                    "descending": True,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(node_id="value", node_type_id="custom.opencv.payload-to-value"),
         ),
@@ -523,18 +527,28 @@ def test_opencv_basic_batch3_min_enclosing_circle_execute(tmp_path: Path) -> Non
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch3-min-enclosing-circle",
+            "debug_image_panels_enabled": True,
         },
     )
 
     circles = execution_result.outputs["circles"]
     circles_summary = execution_result.outputs["circles_summary"]
     circles_value = execution_result.outputs["circles_value"]
+    debug_preview = _read_record_output(execution_result, node_id="circle", output_name="debug_preview")
 
     assert circles["count"] >= 1
     assert 16.0 <= float(circles["items"][0]["radius"]) <= 22.0
     assert float(circles["items"][0]["fill_ratio"]) > 0.6
     assert circles_summary["value"]["count"] == circles["count"]
     assert circles_value["value"]["count"] == circles["count"]
+    assert debug_preview["type"] == "image-preview"
+    assert debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    pick_overlay = next(
+        overlay
+        for overlay in debug_preview["overlays"]
+        if "selected_contour_index" in overlay.get("target_parameters", [])
+    )
+    assert isinstance(pick_overlay["parameters"]["selected_contour_index"], int)
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:

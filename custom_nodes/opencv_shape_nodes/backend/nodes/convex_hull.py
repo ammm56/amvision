@@ -30,6 +30,14 @@ def _read_optional_limit(raw_value: object) -> int | None:
     return require_positive_int(raw_value, field_name="limit")
 
 
+def _read_optional_selected_contour_index(raw_value: object) -> int | None:
+    """读取可选点选 contour 序号。"""
+
+    if raw_value in {None, ""}:
+        return None
+    return require_positive_int(raw_value, field_name="selected_contour_index")
+
+
 def _read_sort_by(raw_value: object) -> str:
     """读取排序字段。"""
 
@@ -61,9 +69,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     sort_by = _read_sort_by(request.parameters.get("sort_by"))
     descending = _read_descending(request.parameters.get("descending"))
     limit = _read_optional_limit(request.parameters.get("limit"))
+    selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     hull_items: list[dict[str, object]] = []
     for contour_item in contours_payload["items"]:
+        if selected_contour_index is not None and int(contour_item["contour_index"]) != selected_contour_index:
+            continue
         contour_matrix = contour_points_to_matrix(points=contour_item["points"], np_module=np_module)
         convex_hull = cv2_module.convexHull(contour_matrix)
         hull_item = build_contour_item_from_cv_contour(
@@ -112,6 +123,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "sort_by": sort_by,
                 "descending": descending,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "mean_solidity": round(
                     (
                         sum(float(item["solidity"]) for item in hull_items) / len(hull_items)

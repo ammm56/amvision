@@ -92,6 +92,31 @@
           "inline-base64"
         ],
         "default": "storage-ref"
+      },
+      "debug_show_match_lines": {
+        "type": "boolean",
+        "title": "显示内点线",
+        "description": "仅控制 debug_preview 中是否绘制 homography 内点匹配线，不影响 transform 输出。",
+        "default": true
+      },
+      "debug_show_homography_projection": {
+        "type": "boolean",
+        "title": "显示投影框",
+        "description": "仅控制 debug_preview 中是否绘制 homography 投影框。",
+        "default": true
+      },
+      "debug_max_match_lines": {
+        "type": "integer",
+        "title": "最多显示内点线",
+        "description": "限制 debug_preview 绘制的内点匹配线数量，避免双图调试图过载。",
+        "minimum": 1,
+        "default": 200
+      },
+      "debug_selected_match_id": {
+        "type": "string",
+        "title": "点选匹配 id",
+        "description": "图片面板点选内点匹配线后写回，仅用于调试高亮，不影响 homography 估计结果。",
+        "default": ""
       }
     }
   },

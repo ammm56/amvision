@@ -273,7 +273,7 @@ def _build_line_interaction(
         "tools": [
             {
                 "tool": "line",
-                "label": "找线",
+                "label": "方向线段",
                 "target_parameters": ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
             },
             {

@@ -39,9 +39,16 @@ def build_contours_debug_preview_output(
         artifact_name=artifact_name,
         overlays=_build_contour_overlays(list(contour_items)),
         interaction={
-            "mode": "inspect",
+            "mode": "edit",
             "coordinate_space": "source-image",
-            "tools": [],
+            "tools": [
+                {
+                    "tool": "contour",
+                    "label": "轮廓点选",
+                    "target_parameters": ["selected_contour_index"],
+                    "min_points": 3,
+                },
+            ],
             "controls": [],
         },
     )
@@ -62,6 +69,8 @@ def _build_contour_overlays(contour_items: list[dict[str, object]]) -> list[dict
                 "id": f"contour-{contour_index}",
                 "label": f"contour {contour_index}",
                 "points_xy": _decimate_points(raw_points, max_points=160),
+                "target_parameters": ["selected_contour_index"],
+                "parameters": {"selected_contour_index": contour_index},
             }
         )
     return overlays

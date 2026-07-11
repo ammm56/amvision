@@ -44,6 +44,14 @@ def _read_optional_limit(raw_value: object) -> int | None:
     return require_positive_int(raw_value, field_name="limit")
 
 
+def _read_optional_selected_contour_index(raw_value: object) -> int | None:
+    """读取可选点选 contour 序号。"""
+
+    if raw_value in {None, ""}:
+        return None
+    return require_positive_int(raw_value, field_name="selected_contour_index")
+
+
 def _read_sort_by(raw_value: object) -> str:
     """读取排序字段。"""
 
@@ -109,11 +117,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     sort_by = _read_sort_by(request.parameters.get("sort_by"))
     descending = _read_descending(request.parameters.get("descending"))
     limit = _read_optional_limit(request.parameters.get("limit"))
+    selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     ellipse_items: list[dict[str, object]] = []
     skipped_contour_indices: list[int] = []
     for contour_item in contours_payload["items"]:
         contour_index = int(contour_item["contour_index"])
+        if selected_contour_index is not None and contour_index != selected_contour_index:
+            continue
         point_count = int(contour_item["point_count"])
         if point_count < 5:
             skipped_contour_indices.append(contour_index)
@@ -199,6 +210,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "sort_by": sort_by,
                 "descending": descending,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "skipped_count": len(skipped_contour_indices),
                 "skipped_contour_indices": skipped_contour_indices,
                 "max_major_axis": round(max((float(item["major_axis"]) for item in ellipse_items), default=0.0), 4),
@@ -228,16 +240,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
 
 def _build_fit_ellipse_interaction(*, limit: int | None) -> dict[str, object]:
-    """声明 Fit Ellipse 在图片面板中的椭圆结果调试能力。"""
+    """声明 Fit Ellipse 在图片面板中的椭圆结果点选能力。"""
 
     return {
         "mode": "edit",
         "coordinate_space": "source-image",
         "tools": [
             {
-                "tool": "circle",
-                "label": "参考圆/椭圆",
-                "target_parameters": [],
+                "tool": "contour",
+                "label": "椭圆点选",
+                "target_parameters": ["selected_contour_index"],
+                "min_points": 5,
             },
         ],
         "controls": [
@@ -286,11 +299,12 @@ def _build_ellipse_overlays(ellipse_items: list[dict[str, object]]) -> list[dict
         ):
             continue
         ellipse_index = int(ellipse_item.get("ellipse_index", len(overlays) + 1))
+        contour_index = int(ellipse_item.get("contour_index", ellipse_index))
         overlays.append(
             {
                 "kind": "polygon",
-                "id": f"fit-ellipse-{ellipse_index}",
-                "label": f"ellipse {ellipse_index}",
+                "id": f"fit-ellipse-{contour_index}",
+                "label": f"ellipse {contour_index}",
                 "points_xy": _approximate_ellipse_points(
                     center_x=float(center_xy[0]),
                     center_y=float(center_xy[1]),
@@ -299,6 +313,8 @@ def _build_ellipse_overlays(ellipse_items: list[dict[str, object]]) -> list[dict
                     angle_deg=float(angle_deg),
                     point_count=72,
                 ),
+                "target_parameters": ["selected_contour_index"],
+                "parameters": {"selected_contour_index": contour_index},
             }
         )
     return overlays
