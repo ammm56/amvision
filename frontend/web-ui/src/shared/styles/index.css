@@ -4152,6 +4152,38 @@ a:hover {
   fill: none;
 }
 
+.image-viewer__overlay-shape--template-region {
+  stroke: #22c55e;
+  stroke-width: 2.5;
+  stroke-dasharray: 10 4;
+  fill: rgb(34 197 94 / 0.16);
+}
+
+.image-viewer__overlay-shape--search-region {
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  fill: rgb(56 189 248 / 0.1);
+}
+
+.image-viewer__overlay-label {
+  vector-effect: non-scaling-stroke;
+  paint-order: stroke fill;
+  stroke: #111619;
+  stroke-width: 4;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.image-viewer__overlay-label--template-region {
+  fill: #bbf7d0;
+}
+
+.image-viewer__overlay-label--search-region {
+  fill: #bae6fd;
+}
+
 .image-viewer__overlay-point {
   vector-effect: non-scaling-stroke;
   stroke: #111619;

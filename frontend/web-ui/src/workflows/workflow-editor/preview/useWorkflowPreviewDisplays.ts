@@ -53,6 +53,8 @@ export interface PreviewImageInteractionApplyEvent {
   targetParameters: string[]
   parameters?: Record<string, unknown>
   bboxXyxy?: [number, number, number, number]
+  templateBboxXyxy?: [number, number, number, number]
+  searchBboxXyxy?: [number, number, number, number]
   pointsXy?: Array<[number, number]>
   circle?: PreviewImageCircleOverlay
   lineXyxy?: [number, number, number, number]

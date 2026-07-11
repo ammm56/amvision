@@ -15,6 +15,7 @@ from custom_nodes._opencv_shared.backend.runtime.search_roi import (
     ResolvedSearchRoi,
     build_search_roi_overlay,
     build_search_roi_summary,
+    clip_bbox_xyxy,
     resolve_search_roi,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
@@ -284,13 +285,27 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         input_name="image",
         imdecode_flags=imdecode_flags,
     )
-    _template_image_payload, _template_object_key, template_image_matrix = load_image_matrix(
-        request,
-        input_name="template_image",
-        imdecode_flags=imdecode_flags,
-    )
     source_height = int(source_image_matrix.shape[0])
     source_width = int(source_image_matrix.shape[1])
+    raw_template_bbox_xyxy = request.parameters.get("template_bbox_xyxy")
+    template_bbox_xyxy: list[int] | None = None
+    if raw_template_bbox_xyxy is not None and raw_template_bbox_xyxy != "":
+        template_bbox_xyxy = clip_bbox_xyxy(
+            raw_template_bbox_xyxy,
+            image_width=source_width,
+            image_height=source_height,
+            field_name="template_bbox_xyxy",
+        )
+        template_x1, template_y1, template_x2, template_y2 = template_bbox_xyxy
+        template_image_matrix = source_image_matrix[template_y1:template_y2, template_x1:template_x2].copy()
+        template_source = "template-bbox"
+    else:
+        _template_image_payload, _template_object_key, template_image_matrix = load_image_matrix(
+            request,
+            input_name="template_image",
+            imdecode_flags=imdecode_flags,
+        )
+        template_source = "template-image-input"
     search_roi = resolve_search_roi(request, image_matrix=source_image_matrix)
     search_image_matrix = search_roi.image_matrix
     search_bbox_xyxy = search_roi.bbox_xyxy or [0, 0, source_width, source_height]
@@ -382,6 +397,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         "search_bbox_xyxy": [int(value) for value in search_bbox_xyxy],
         "search_width": search_width,
         "search_height": search_height,
+        "template_source": template_source,
+        "template_bbox_xyxy": template_bbox_xyxy,
         "template_width": template_width,
         "template_height": template_height,
         "candidate_count": candidate_count,
@@ -411,7 +428,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             image_payload=source_image_payload,
             title="Template Match",
             artifact_name="template-match-debug-preview",
-            overlays=_build_template_match_overlays(region_items, search_roi=search_roi),
+            overlays=_build_template_match_overlays(
+                region_items,
+                search_roi=search_roi,
+                template_bbox_xyxy=template_bbox_xyxy,
+            ),
             interaction=_build_template_match_interaction(
                 score_threshold=score_threshold,
                 max_matches=max_matches,
@@ -436,8 +457,8 @@ def _build_template_match_interaction(
         "tools": [
             {
                 "tool": "template-region",
-                "label": "模板搜索区域",
-                "target_parameters": ["search_bbox_xyxy"],
+                "label": "模板 / 搜索区域",
+                "target_parameters": ["template_bbox_xyxy", "search_bbox_xyxy"],
             },
         ],
         "controls": [
@@ -475,10 +496,21 @@ def _build_template_match_overlays(
     region_items: list[dict[str, object]],
     *,
     search_roi: ResolvedSearchRoi,
+    template_bbox_xyxy: list[int] | None,
 ) -> list[dict[str, object]]:
     """把模板匹配结果转换为图片面板 overlay。"""
 
     overlays: list[dict[str, object]] = []
+    if template_bbox_xyxy is not None:
+        overlays.append(
+            {
+                "kind": "bbox",
+                "id": "template-roi",
+                "label": "Template ROI",
+                "bbox_xyxy": [float(value) for value in template_bbox_xyxy],
+                "target_parameters": ["template_bbox_xyxy"],
+            }
+        )
     search_roi_overlay = build_search_roi_overlay(search_roi)
     if search_roi_overlay is not None:
         overlays.append(search_roi_overlay)

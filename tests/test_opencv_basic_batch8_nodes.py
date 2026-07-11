@@ -142,6 +142,107 @@ def test_opencv_basic_batch8_template_match_execute(tmp_path: Path) -> None:
     assert "roi_polygon_bbox_only" not in summary["value"]
 
 
+def test_opencv_basic_batch8_template_match_with_template_bbox_execute(tmp_path: Path) -> None:
+    """验证 template-match 可直接从输入图 template_bbox_xyxy 裁出模板。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    source_bytes, _template_bytes = _build_template_match_test_png_bytes()
+    dataset_storage.write_bytes("inputs/template-match-source.png", source_bytes)
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch8-template-match-template-bbox",
+        template_version="1.0.0",
+        display_name="OpenCV Batch8 Template Match Template Bbox",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="match",
+                node_type_id="custom.opencv.template-match",
+                parameters={
+                    "method": "ccoeff-normed",
+                    "score_threshold": 0.99,
+                    "max_matches": 4,
+                    "nms_iou_threshold": 0.2,
+                    "template_bbox_xyxy": [16, 20, 34, 38],
+                    "search_bbox_xyxy": [0, 0, 128, 128],
+                    "debug_image_panel_enabled": True,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-match-image-template-bbox-b8",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="match",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="regions",
+                display_name="Regions",
+                payload_type_id="regions.v1",
+                source_node_id="match",
+                source_port="regions",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="match",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/template-match-source.png",
+                "width": 128,
+                "height": 128,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "workflow_run_id": "opencv-batch8-template-match-template-bbox",
+            "debug_image_panels_enabled": True,
+        },
+    )
+
+    regions = execution_result.outputs["regions"]
+    summary = execution_result.outputs["summary"]
+    debug_preview = _read_record_output(execution_result, node_id="match", output_name="debug_preview")
+    interaction = debug_preview["interaction"]
+    tools_by_name = {tool["tool"]: tool for tool in interaction["tools"]}
+
+    assert regions["count"] == 2
+    assert [item["bbox_xyxy"] for item in regions["items"]] == [
+        [16.0, 20.0, 34.0, 38.0],
+        [74.0, 58.0, 92.0, 76.0],
+    ]
+    assert summary["value"]["template_source"] == "template-bbox"
+    assert summary["value"]["template_bbox_xyxy"] == [16, 20, 34, 38]
+    assert summary["value"]["search_bbox_xyxy"] == [0, 0, 128, 128]
+    assert set(tools_by_name["template-region"]["target_parameters"]) == {
+        "template_bbox_xyxy",
+        "search_bbox_xyxy",
+    }
+
+
 def test_opencv_basic_batch8_template_match_with_roi_execute(tmp_path: Path) -> None:
     """验证 template-match 可通过 roi.v1 只搜索局部窗口。"""
 
@@ -294,6 +395,19 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _read_record_output(execution_result: object, *, node_id: str, output_name: str) -> dict[str, object]:
+    """读取节点记录中的调试输出，避免把 debug preview 当成业务输出强绑定。"""
+
+    node_records = getattr(execution_result, "node_records")
+    for node_record in node_records:
+        if node_record.node_id != node_id:
+            continue
+        output_payload = node_record.outputs.get(output_name)
+        assert isinstance(output_payload, dict)
+        return output_payload
+    raise AssertionError(f"node record output not found: {node_id}.{output_name}")
 
 
 def _build_template_match_test_png_bytes() -> tuple[bytes, bytes]:

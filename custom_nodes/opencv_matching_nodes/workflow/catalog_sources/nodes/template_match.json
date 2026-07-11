@@ -15,7 +15,8 @@
     {
       "name": "template_image",
       "display_name": "Template Image",
-      "payload_type_id": "image-ref.v1"
+      "payload_type_id": "image-ref.v1",
+      "required": false
     },
     {
       "name": "roi",
@@ -91,6 +92,16 @@
         "type": "array",
         "title": "Search ROI",
         "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "number"
+        }
+      },
+      "template_bbox_xyxy": {
+        "type": "array",
+        "title": "Template ROI",
+        "description": "可选模板区域 [x1, y1, x2, y2]；填写后直接从输入图片裁出模板，不再强制连接 Template Image。",
         "minItems": 4,
         "maxItems": 4,
         "items": {

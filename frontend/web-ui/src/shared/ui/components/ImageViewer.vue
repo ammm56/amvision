@@ -28,6 +28,14 @@
             <Button v-if="interactionTool === 'circle'" size="sm" variant="secondary" type="button" title="切换圆取参方式" @click="toggleCircleDraftMode">
               {{ circleDraftMode === 'center-radius' ? '中心半径' : '三点圆' }}
             </Button>
+            <div v-if="interactionTool === 'template-region'" class="image-viewer__tool-tabs">
+              <Button size="sm" :variant="templateRegionStage === 'template' ? 'primary' : 'secondary'" type="button" title="绘制模板 ROI" @click="selectTemplateRegionStage('template')">
+                模板 ROI
+              </Button>
+              <Button size="sm" :variant="templateRegionStage === 'search' ? 'primary' : 'secondary'" type="button" title="绘制搜索 ROI" @click="selectTemplateRegionStage('search')">
+                搜索 ROI
+              </Button>
+            </div>
             <Button size="sm" variant="secondary" type="button" title="清除当前取参草稿" :disabled="!hasInteractionDraft" @click="clearInteractionDraft">
               <Trash2 :size="15" />
               清除
@@ -175,6 +183,38 @@
               />
             </template>
             <rect
+              v-if="draftTemplateBboxXyxy"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--template-region"
+              :x="draftTemplateBboxXyxy[0]"
+              :y="draftTemplateBboxXyxy[1]"
+              :width="draftTemplateBboxXyxy[2] - draftTemplateBboxXyxy[0]"
+              :height="draftTemplateBboxXyxy[3] - draftTemplateBboxXyxy[1]"
+            />
+            <text
+              v-if="draftTemplateBboxXyxy"
+              class="image-viewer__overlay-label image-viewer__overlay-label--template-region"
+              :x="draftTemplateBboxXyxy[0]"
+              :y="Math.max(14, draftTemplateBboxXyxy[1] - 6)"
+            >
+              Template
+            </text>
+            <rect
+              v-if="draftSearchBboxXyxy"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--search-region"
+              :x="draftSearchBboxXyxy[0]"
+              :y="draftSearchBboxXyxy[1]"
+              :width="draftSearchBboxXyxy[2] - draftSearchBboxXyxy[0]"
+              :height="draftSearchBboxXyxy[3] - draftSearchBboxXyxy[1]"
+            />
+            <text
+              v-if="draftSearchBboxXyxy"
+              class="image-viewer__overlay-label image-viewer__overlay-label--search-region"
+              :x="draftSearchBboxXyxy[0]"
+              :y="Math.max(14, draftSearchBboxXyxy[1] - 6)"
+            >
+              Search
+            </text>
+            <rect
               v-if="draftBboxXyxy"
               class="image-viewer__overlay-shape image-viewer__overlay-shape--draft"
               :x="draftBboxXyxy[0]"
@@ -296,6 +336,8 @@ interface ViewerImageInteractionApplyEvent {
   targetParameters: string[]
   parameters?: Record<string, unknown>
   bboxXyxy?: [number, number, number, number]
+  templateBboxXyxy?: [number, number, number, number]
+  searchBboxXyxy?: [number, number, number, number]
   pointsXy?: Array<[number, number]>
   circle?: ViewerImageCircleOverlay
   lineXyxy?: [number, number, number, number]
@@ -313,6 +355,7 @@ interface CircleDraft {
 }
 
 type CircleDraftMode = 'center-radius' | 'three-point'
+type TemplateRegionStage = 'template' | 'search'
 type InteractionToolId = 'bbox' | 'polygon' | 'circle' | 'line' | 'grid' | 'template-region'
 
 const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
@@ -354,6 +397,9 @@ const draftCircleCenter = ref<ImagePoint | null>(null)
 const draftCircleEdge = ref<ImagePoint | null>(null)
 const draftPoints = ref<ImagePoint[]>([])
 const circleDraftMode = ref<CircleDraftMode>('center-radius')
+const templateRegionStage = ref<TemplateRegionStage>('template')
+const draftTemplateBboxXyxy = ref<[number, number, number, number] | null>(null)
+const draftSearchBboxXyxy = ref<[number, number, number, number] | null>(null)
 const tuningParameterValues = ref<Record<string, unknown>>({})
 const autoPreviewEnabled = ref(true)
 const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'info' } | null>(null)
@@ -428,13 +474,23 @@ const draftCircle = computed<CircleDraft | null>(() => {
 })
 const hasInteractionDraft = computed(() => Boolean(
   draftBbox.value
+  || draftTemplateBboxXyxy.value
+  || draftSearchBboxXyxy.value
   || draftLine.value
   || draftCircle.value
   || draftPointPairs.value.length > 0,
 ))
 const canApplyInteraction = computed(() => {
   if (!interactionAvailable.value) return false
-  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid' || interactionTool.value === 'template-region') return Boolean(draftBboxXyxy.value)
+  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid') return Boolean(draftBboxXyxy.value)
+  if (interactionTool.value === 'template-region') {
+    const targetParameters = new Set(activeTargetParameters.value)
+    const requiresTemplate = targetParameters.has('template_bbox_xyxy')
+    const requiresSearch = targetParameters.has('search_bbox_xyxy')
+    if (requiresTemplate && !draftTemplateBboxXyxy.value) return false
+    if (requiresSearch && !draftSearchBboxXyxy.value) return false
+    return Boolean(draftTemplateBboxXyxy.value || draftSearchBboxXyxy.value)
+  }
   if (interactionTool.value === 'polygon') {
     const pointCount = draftPointPairs.value.length
     return pointCount >= activePolygonMinPoints.value && (activePolygonMaxPoints.value === null || pointCount <= activePolygonMaxPoints.value)
@@ -459,7 +515,7 @@ const interactionStatusText = computed(() => {
   if (!interactionActive.value) return tuningControls.value.length ? '可调参；取参未启用' : '取参未启用'
   if (interactionTool.value === 'bbox') return draftBboxXyxy.value ? 'bbox 已选择，可应用参数' : '拖拽选择 bbox'
   if (interactionTool.value === 'grid') return draftBboxXyxy.value ? 'grid 区域已选择，可应用参数' : '拖拽选择 grid 区域'
-  if (interactionTool.value === 'template-region') return draftBboxXyxy.value ? '模板搜索区域已选择，可应用参数' : '拖拽选择模板搜索区域'
+  if (interactionTool.value === 'template-region') return readTemplateRegionStatusText()
   if (interactionTool.value === 'polygon') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
   if (interactionTool.value === 'line') return draftLineXyxy.value ? '线段已选择，可应用参数' : '拖拽选择线段'
@@ -581,6 +637,17 @@ function moveBboxDraft(event: MouseEvent): void {
 function stopBboxDraft(): void {
   document.removeEventListener('mousemove', moveBboxDraft)
   document.removeEventListener('mouseup', stopBboxDraft)
+  if (interactionTool.value === 'template-region' && draftBboxXyxy.value) {
+    if (templateRegionStage.value === 'template') {
+      draftTemplateBboxXyxy.value = draftBboxXyxy.value
+      templateRegionStage.value = 'search'
+      showInteractionFeedback('模板 ROI 已选择，请继续绘制搜索 ROI', 'info')
+    } else {
+      draftSearchBboxXyxy.value = draftBboxXyxy.value
+      showInteractionFeedback('搜索 ROI 已选择，可以应用参数', 'success')
+    }
+    draftBbox.value = null
+  }
 }
 
 function startLineDraft(point: ImagePoint): void {
@@ -670,8 +737,17 @@ function toggleCircleDraftMode(): void {
   clearInteractionDraft()
 }
 
+function selectTemplateRegionStage(stage: TemplateRegionStage): void {
+  templateRegionStage.value = stage
+  draftBbox.value = null
+  stopBboxDraft()
+}
+
 function clearInteractionDraft(): void {
   clearShapeDrafts()
+  draftTemplateBboxXyxy.value = null
+  draftSearchBboxXyxy.value = null
+  templateRegionStage.value = 'template'
   stopActiveDraftListeners()
 }
 
@@ -715,8 +791,16 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     coordinateSpace: interaction.coordinateSpace,
     targetParameters: activeTargetParameters.value,
   }
-  if ((interactionTool.value === 'bbox' || interactionTool.value === 'grid' || interactionTool.value === 'template-region') && draftBboxXyxy.value) {
+  if ((interactionTool.value === 'bbox' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
+  }
+  if (interactionTool.value === 'template-region' && canApplyInteraction.value) {
+    return {
+      ...baseEvent,
+      bboxXyxy: draftSearchBboxXyxy.value ?? draftTemplateBboxXyxy.value ?? undefined,
+      templateBboxXyxy: draftTemplateBboxXyxy.value ?? undefined,
+      searchBboxXyxy: draftSearchBboxXyxy.value ?? undefined,
+    }
   }
   if (interactionTool.value === 'polygon' && canApplyInteraction.value) {
     return { ...baseEvent, pointsXy: draftPointPairs.value }
@@ -817,7 +901,7 @@ function runPreviewFromViewer(): void {
 
 function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {
   if (event.tool === 'bbox') return '矩形 ROI 已应用到节点参数'
-  if (event.tool === 'template-region') return '模板搜索区域已应用到节点参数'
+  if (event.tool === 'template-region') return '模板 ROI / 搜索 ROI 已应用到节点参数'
   if (event.tool === 'polygon') return '多边形 ROI 已应用到节点参数'
   if (event.tool === 'grid') return 'ROI 网格参数已应用'
   if (event.tool === 'circle') return '圆参数已应用'
@@ -889,6 +973,16 @@ function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerI
     minPoints: toolItem.minPoints ?? null,
     maxPoints: toolItem.maxPoints ?? null,
   }]
+}
+
+function readTemplateRegionStatusText(): string {
+  const templateReady = Boolean(draftTemplateBboxXyxy.value)
+  const searchReady = Boolean(draftSearchBboxXyxy.value)
+  const currentStageText = templateRegionStage.value === 'template' ? '模板 ROI' : '搜索 ROI'
+  if (templateReady && searchReady) return '模板 ROI 和搜索 ROI 已选择，可应用参数'
+  if (templateReady) return '模板 ROI 已选择，继续拖拽选择搜索 ROI'
+  if (searchReady) return '搜索 ROI 已选择，继续拖拽选择模板 ROI'
+  return `拖拽选择${currentStageText}`
 }
 
 function readPolygonInteractionStatusText(): string {
