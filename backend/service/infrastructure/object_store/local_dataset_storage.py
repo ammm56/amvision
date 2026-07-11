@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import stat
+import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -277,7 +278,17 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2)
+        temporary_path = target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            # 同目录临时文件 + replace 可以避免进程中断时把目标 JSON 留成半截文件。
+            temporary_path.write_text(encoded_payload, encoding="utf-8")
+            temporary_path.replace(target_path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
 
     def read_json(self, relative_path: str) -> object:
         """读取本地文件中的 JSON 内容。

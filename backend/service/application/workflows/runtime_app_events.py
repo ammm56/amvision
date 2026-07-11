@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from threading import Lock
 
 from backend.contracts.workflows.resource_semantics import build_workflow_app_runtime_events_object_key
@@ -63,9 +64,17 @@ def read_workflow_app_runtime_events(
         return ()
 
     object_key = build_workflow_app_runtime_events_object_key(workflow_runtime_id)
-    if not dataset_storage.resolve(object_key).exists():
+    event_path = dataset_storage.resolve(object_key)
+    if not event_path.exists():
         return ()
-    payload = dataset_storage.read_json(object_key)
+    try:
+        raw_payload = event_path.read_text(encoding="utf-8").strip()
+        if not raw_payload:
+            return ()
+        payload = json.loads(raw_payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # 事件文件只是 runtime 生命周期日志，损坏时不能阻塞停止、删除等主流程。
+        return ()
     if not isinstance(payload, list):
         return ()
     events: list[WorkflowAppRuntimeEvent] = []
