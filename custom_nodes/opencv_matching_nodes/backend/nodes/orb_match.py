@@ -78,31 +78,39 @@ def _read_debug_max_match_lines(raw_value: object) -> int:
     return require_positive_int(raw_value, field_name="debug_max_match_lines")
 
 
-def _read_optional_debug_selected_match_id(raw_value: object) -> str | None:
-    """读取图片面板点选的 match id，仅用于调试图高亮。"""
+def _read_debug_selected_match_ids(raw_value: object) -> set[str]:
+    """读取图片面板点选的 match id 集合，仅用于调试图高亮和筛选。"""
 
     if raw_value in {None, ""}:
-        return None
-    if not isinstance(raw_value, str):
-        raise InvalidRequestError("debug_selected_match_id 必须是字符串")
-    normalized_value = raw_value.strip()
-    return normalized_value or None
+        return set()
+    if not isinstance(raw_value, list):
+        raise InvalidRequestError("debug_selected_match_ids 必须是字符串数组")
+    selected_match_ids: set[str] = set()
+    for item in raw_value:
+        if not isinstance(item, str):
+            raise InvalidRequestError("debug_selected_match_ids 必须是字符串数组")
+        normalized_value = item.strip()
+        if normalized_value:
+            selected_match_ids.add(normalized_value)
+    return selected_match_ids
 
 
-def _read_optional_debug_manual_pair_line(raw_value: object) -> list[float] | None:
-    """读取图片面板手动画出的双图点对线，仅用于调试显示。"""
+def _read_debug_manual_pair_lines(raw_value: object) -> list[list[float]]:
+    """读取图片面板手动画出的双图点对线列表，仅用于调试显示。"""
 
     if raw_value is None or raw_value == "":
-        return None
-    if isinstance(raw_value, list) and len(raw_value) == 0:
-        return None
-    if not isinstance(raw_value, list) or len(raw_value) < 4:
-        raise InvalidRequestError("debug_manual_pair_line_xyxy 必须是 4 个数字组成的数组")
-    try:
-        values = [float(item) for item in raw_value[:4]]
-    except (TypeError, ValueError) as error:
-        raise InvalidRequestError("debug_manual_pair_line_xyxy 必须是 4 个数字组成的数组") from error
-    return values
+        return []
+    if not isinstance(raw_value, list):
+        raise InvalidRequestError("debug_manual_pair_lines_xyxy 必须是点对线数组")
+    normalized_lines: list[list[float]] = []
+    for raw_line in raw_value:
+        if not isinstance(raw_line, list) or len(raw_line) < 4:
+            raise InvalidRequestError("debug_manual_pair_lines_xyxy 的每一项必须是 4 个数字组成的数组")
+        try:
+            normalized_lines.append([float(item) for item in raw_line[:4]])
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError("debug_manual_pair_lines_xyxy 的每一项必须是 4 个数字组成的数组") from error
+    return normalized_lines
 
 
 def _read_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
@@ -157,8 +165,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         default_value=True,
     )
     debug_max_match_lines = _read_debug_max_match_lines(request.parameters.get("debug_max_match_lines"))
-    debug_selected_match_id = _read_optional_debug_selected_match_id(
-        request.parameters.get("debug_selected_match_id")
+    debug_selected_match_ids = _read_debug_selected_match_ids(
+        request.parameters.get("debug_selected_match_ids")
     )
     debug_selected_match_only = _read_bool(
         request.parameters.get("debug_selected_match_only"),
@@ -175,8 +183,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         field_name="debug_show_right_points",
         default_value=True,
     )
-    debug_manual_pair_line_xyxy = _read_optional_debug_manual_pair_line(
-        request.parameters.get("debug_manual_pair_line_xyxy")
+    debug_manual_pair_lines_xyxy = _read_debug_manual_pair_lines(
+        request.parameters.get("debug_manual_pair_lines_xyxy")
     )
 
     descriptor_matrix_a = np_module.array(features_a_payload["descriptors"], dtype=np_module.uint8)
@@ -280,12 +288,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 debug_show_left_points=debug_show_left_points,
                 debug_show_right_points=debug_show_right_points,
             ),
-            selected_match_id=debug_selected_match_id,
+            selected_match_ids=debug_selected_match_ids,
             show_match_lines=debug_show_match_lines,
             selected_match_only=debug_selected_match_only,
             show_left_points=debug_show_left_points,
             show_right_points=debug_show_right_points,
-            manual_pair_line_xyxy=debug_manual_pair_line_xyxy,
+            manual_pair_lines_xyxy=debug_manual_pair_lines_xyxy,
             max_match_lines=debug_max_match_lines,
         )
     )
@@ -309,8 +317,8 @@ def _build_orb_match_interaction(
     return build_debug_panel_interaction(
         coordinate_space="source-image-pair",
         tools=[
-            build_interaction_tool("match-line", "点选匹配线", ["debug_selected_match_id"]),
-            build_interaction_tool("point-pair", "手动点对", ["debug_manual_pair_line_xyxy"]),
+            build_interaction_tool("match-line", "点选匹配线", ["debug_selected_match_ids"]),
+            build_interaction_tool("point-pair", "手动点对", ["debug_manual_pair_lines_xyxy"]),
         ],
         controls=[
             build_numeric_control(

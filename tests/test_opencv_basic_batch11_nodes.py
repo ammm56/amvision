@@ -240,8 +240,12 @@ def test_opencv_basic_batch11_contour_shape_nodes_execute(tmp_path: Path) -> Non
     assert ellipse_summary["value"]["selected_contour_index"] == 1
     assert ellipse_summary["value"]["count"] == ellipses["count"]
     assert ellipse_value["value"]["count"] == ellipses["count"]
-    assert _first_pickable_overlay(approx_debug_preview)["parameters"]["selected_contour_index"] == 1
-    assert _first_pickable_overlay(hull_debug_preview)["parameters"]["selected_contour_index"] == 1
+    approx_pick_overlay = _first_pickable_overlay(approx_debug_preview)
+    hull_pick_overlay = _first_pickable_overlay(hull_debug_preview)
+    assert approx_pick_overlay["parameters"]["selected_contour_index"] == 1
+    assert hull_pick_overlay["parameters"]["selected_contour_index"] == 1
+    assert approx_pick_overlay["kind"] == "selected-contour"
+    assert hull_pick_overlay["kind"] == "selected-contour"
     assert _first_pickable_overlay(ellipse_debug_preview)["parameters"]["selected_contour_index"] == 1
     assert approx_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
     assert hull_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]

@@ -259,6 +259,15 @@
               :x2="draftLineXyxy[2]"
               :y2="draftLineXyxy[3]"
             />
+            <line
+              v-for="(pairLine, index) in draftPairLines"
+              :key="`draft-pair-line-${index}`"
+              class="image-viewer__overlay-shape image-viewer__overlay-shape--kind-point-pair"
+              :x1="pairLine[0]"
+              :y1="pairLine[1]"
+              :x2="pairLine[2]"
+              :y2="pairLine[3]"
+            />
             <text
               v-if="draftLineGuideLabel"
               class="image-viewer__overlay-label image-viewer__overlay-label--line-guide"
@@ -385,6 +394,7 @@ interface ViewerImageInteractionApplyEvent {
   pointsXy?: Array<[number, number]>
   circle?: ViewerImageCircleOverlay
   lineXyxy?: [number, number, number, number]
+  pairLinesXyxy?: Array<[number, number, number, number]>
 }
 
 interface ImagePoint {
@@ -460,6 +470,7 @@ const interactionActive = ref(false)
 const selectedInteractionTool = ref('')
 const draftBbox = ref<{ start: ImagePoint; current: ImagePoint } | null>(null)
 const draftLine = ref<{ start: ImagePoint; current: ImagePoint } | null>(null)
+const draftPairLines = ref<Array<[number, number, number, number]>>([])
 const draftCircleCenter = ref<ImagePoint | null>(null)
 const draftCircleEdge = ref<ImagePoint | null>(null)
 const draftPoints = ref<ImagePoint[]>([])
@@ -596,6 +607,7 @@ const hasInteractionDraft = computed(() => Boolean(
   || draftTemplateBboxXyxy.value
   || draftSearchBboxXyxy.value
   || draftLine.value
+  || draftPairLines.value.length > 0
   || draftCircle.value
   || draftPointPairs.value.length > 0,
 ))
@@ -616,7 +628,7 @@ const canApplyInteraction = computed(() => {
   }
   if (interactionTool.value === 'circle') return Boolean(draftCircle.value)
   if (interactionTool.value === 'line') return Boolean(draftLineXyxy.value)
-  if (interactionTool.value === 'point-pair') return Boolean(draftLineXyxy.value)
+  if (interactionTool.value === 'point-pair') return draftPairLines.value.length > 0 || Boolean(draftLineXyxy.value)
   return false
 })
 const previewActionDisabled = computed(() => Boolean(
@@ -641,7 +653,9 @@ const interactionStatusText = computed(() => {
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
   if (interactionTool.value === 'line') return readLineInteractionStatusText()
-  if (interactionTool.value === 'point-pair') return draftLineXyxy.value ? '手动点对已选择，可应用参数' : '从左图目标点拖拽到右图对应点'
+  if (interactionTool.value === 'point-pair') return draftPairLines.value.length > 0
+    ? `已添加 ${draftPairLines.value.length} 组点对，可继续拖拽添加`
+    : '从左图目标点拖拽到右图对应点'
   if (interactionTool.value === 'match-line') return '点击匹配线或端点，写回点选 match id'
   if (interactionTool.value === 'homography-overlay') return '点击 homography 投影框，写回点选 overlay id'
   return ''
@@ -777,7 +791,7 @@ function stopBboxDraft(): void {
 }
 
 function startLineDraft(point: ImagePoint): void {
-  clearShapeDrafts()
+  clearShapeDrafts({ keepPairLines: interactionTool.value === 'point-pair' })
   draftLine.value = { start: point, current: point }
   document.addEventListener('mousemove', moveLineDraft)
   document.addEventListener('mouseup', stopLineDraft)
@@ -794,7 +808,14 @@ function moveLineDraft(event: MouseEvent): void {
 function stopLineDraft(): void {
   document.removeEventListener('mousemove', moveLineDraft)
   document.removeEventListener('mouseup', stopLineDraft)
-  if (draftLineXyxy.value) showInteractionFeedback(readLineInteractionStatusText(), 'success')
+  if (!draftLineXyxy.value) return
+  if (interactionTool.value === 'point-pair') {
+    draftPairLines.value = [...draftPairLines.value, draftLineXyxy.value]
+    draftLine.value = null
+    showInteractionFeedback(`已添加 ${draftPairLines.value.length} 组点对`, 'success')
+    return
+  }
+  showInteractionFeedback(readLineInteractionStatusText(), 'success')
 }
 
 function startCircleDraft(point: ImagePoint): void {
@@ -878,12 +899,13 @@ function clearInteractionDraft(): void {
   stopActiveDraftListeners()
 }
 
-function clearShapeDrafts(options: { keepPoints?: boolean } = {}): void {
+function clearShapeDrafts(options: { keepPoints?: boolean; keepPairLines?: boolean } = {}): void {
   draftBbox.value = null
   draftLine.value = null
   draftCircleCenter.value = null
   draftCircleEdge.value = null
   if (!options.keepPoints) draftPoints.value = []
+  if (!options.keepPairLines) draftPairLines.value = []
 }
 
 function stopActiveDraftListeners(): void {
@@ -938,8 +960,14 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
   if (interactionTool.value === 'circle' && draftCircle.value) {
     return { ...baseEvent, circle: draftCircle.value }
   }
-  if ((interactionTool.value === 'line' || interactionTool.value === 'point-pair') && draftLineXyxy.value) {
+  if (interactionTool.value === 'line' && draftLineXyxy.value) {
     return { ...baseEvent, lineXyxy: draftLineXyxy.value }
+  }
+  if (interactionTool.value === 'point-pair') {
+    const pairLinesXyxy = draftLineXyxy.value
+      ? [...draftPairLines.value, draftLineXyxy.value]
+      : [...draftPairLines.value]
+    return pairLinesXyxy.length > 0 ? { ...baseEvent, pairLinesXyxy } : null
   }
   return null
 }
@@ -1110,6 +1138,10 @@ function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteract
 
   if (tool === 'line' && overlay.lineXyxy) {
     return { ...baseEvent, lineXyxy: overlay.lineXyxy }
+  }
+
+  if (tool === 'point-pair' && overlay.lineXyxy) {
+    return { ...baseEvent, pairLinesXyxy: [overlay.lineXyxy] }
   }
 
   if (tool === 'match-line' && (overlay.lineXyxy || overlay.circle)) {

@@ -245,19 +245,27 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
     homography_projection_overlay = next(
         overlay for overlay in homography_debug_preview["overlays"] if overlay.get("kind") == "homography-overlay"
     )
-    assert match_line_overlay["target_parameters"] == ["debug_selected_match_id"]
-    assert "debug_selected_match_id" in match_line_overlay["parameters"]
-    assert homography_line_overlay["target_parameters"] == ["debug_selected_match_id"]
-    assert "debug_selected_match_id" in homography_line_overlay["parameters"]
+    assert match_line_overlay["target_parameters"] == ["debug_selected_match_ids"]
+    assert "debug_selected_match_ids" in match_line_overlay["parameters"]
+    assert isinstance(match_line_overlay["parameters"]["debug_selected_match_ids"], list)
+    assert homography_line_overlay["target_parameters"] == ["debug_selected_match_ids"]
+    assert "debug_selected_match_ids" in homography_line_overlay["parameters"]
+    assert isinstance(homography_line_overlay["parameters"]["debug_selected_match_ids"], list)
     assert homography_projection_overlay["target_parameters"] == ["debug_selected_projection_id"]
     assert "debug_selected_projection_id" in homography_projection_overlay["parameters"]
     assert "points_xy" in homography_projection_overlay
     match_interaction = match_debug_preview["interaction"]
     homography_interaction = homography_debug_preview["interaction"]
-    assert any(tool["tool"] == "match-line" for tool in match_interaction["tools"])
+    match_line_tool = next(tool for tool in match_interaction["tools"] if tool["tool"] == "match-line")
+    match_point_pair_tool = next(tool for tool in match_interaction["tools"] if tool["tool"] == "point-pair")
+    assert match_line_tool["target_parameters"] == ["debug_selected_match_ids"]
+    assert match_point_pair_tool["target_parameters"] == ["debug_manual_pair_lines_xyxy"]
     assert any(control["parameter_name"] == "debug_show_match_lines" for control in match_interaction["controls"])
     assert any(control["parameter_name"] == "debug_max_match_lines" for control in match_interaction["controls"])
-    assert any(tool["tool"] == "match-line" for tool in homography_interaction["tools"])
+    homography_match_line_tool = next(tool for tool in homography_interaction["tools"] if tool["tool"] == "match-line")
+    homography_point_pair_tool = next(tool for tool in homography_interaction["tools"] if tool["tool"] == "point-pair")
+    assert homography_match_line_tool["target_parameters"] == ["debug_selected_match_ids"]
+    assert homography_point_pair_tool["target_parameters"] == ["debug_manual_pair_lines_xyxy"]
     assert any(tool["tool"] == "homography-overlay" for tool in homography_interaction["tools"])
     assert any(
         control["parameter_name"] == "debug_show_homography_projection"

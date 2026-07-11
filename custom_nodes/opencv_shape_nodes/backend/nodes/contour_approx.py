@@ -153,6 +153,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             contour_items=approximated_items,
             title="Contour Approx",
             artifact_name="contour-approx-debug-preview",
+            selected_contour_index=selected_contour_index,
         )
     )
     return outputs

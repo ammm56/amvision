@@ -174,6 +174,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             contour_items=contour_items,
             title="Contour Filter",
             artifact_name="contour-filter-debug-preview",
+            selected_contour_index=selected_contour_index,
         )
     )
     return outputs

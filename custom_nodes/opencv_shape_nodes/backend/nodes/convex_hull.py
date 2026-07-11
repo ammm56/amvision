@@ -143,6 +143,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             contour_items=hull_items,
             title="Convex Hull",
             artifact_name="convex-hull-debug-preview",
+            selected_contour_index=selected_contour_index,
         )
     )
     return outputs

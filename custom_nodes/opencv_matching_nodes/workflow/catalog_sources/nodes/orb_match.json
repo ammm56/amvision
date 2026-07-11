@@ -94,11 +94,14 @@
         "minimum": 1,
         "default": 200
       },
-      "debug_selected_match_id": {
-        "type": "string",
-        "title": "点选匹配 id",
-        "description": "图片面板点选匹配线后写回，仅用于调试高亮，不影响正式匹配结果。",
-        "default": ""
+      "debug_selected_match_ids": {
+        "type": "array",
+        "title": "点选匹配 ids",
+        "description": "图片面板点选匹配线后写回的 match id 集合，仅用于调试高亮和筛选，不影响正式匹配结果。",
+        "items": {
+          "type": "string"
+        },
+        "default": []
       },
       "debug_selected_match_only": {
         "type": "boolean",
@@ -118,15 +121,18 @@
         "description": "控制 debug_preview 是否显示右图匹配端点。",
         "default": true
       },
-      "debug_manual_pair_line_xyxy": {
+      "debug_manual_pair_lines_xyxy": {
         "type": "array",
-        "title": "手动点对线",
-        "description": "图片面板手动画出的左右图点对线，仅用于调试显示。",
+        "title": "手动点对线列表",
+        "description": "图片面板手动画出的左右图点对线列表，仅用于调试显示。",
         "items": {
-          "type": "number"
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
         },
-        "minItems": 4,
-        "maxItems": 4,
         "default": []
       }
     }

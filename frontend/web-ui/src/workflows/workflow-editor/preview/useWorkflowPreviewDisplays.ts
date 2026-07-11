@@ -65,6 +65,7 @@ export interface PreviewImageInteractionApplyEvent {
   pointsXy?: Array<[number, number]>
   circle?: PreviewImageCircleOverlay
   lineXyxy?: [number, number, number, number]
+  pairLinesXyxy?: Array<[number, number, number, number]>
 }
 
 export interface PreviewViewerImage {

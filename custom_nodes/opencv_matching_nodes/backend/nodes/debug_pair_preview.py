@@ -49,13 +49,13 @@ def build_pair_match_debug_preview_output(
     interaction: dict[str, object],
     inlier_match_ids: set[str] | None = None,
     homography_matrix: Any | None = None,
-    selected_match_id: str | None = None,
+    selected_match_ids: set[str] | None = None,
     show_match_lines: bool = True,
     show_homography_projection: bool = True,
     selected_match_only: bool = False,
     show_left_points: bool = True,
     show_right_points: bool = True,
-    manual_pair_line_xyxy: list[float] | None = None,
+    manual_pair_lines_xyxy: list[list[float]] | None = None,
     selected_projection_id: str | None = None,
     max_match_lines: int = 200,
 ) -> dict[str, object]:
@@ -71,12 +71,12 @@ def build_pair_match_debug_preview_output(
     - interaction：图片面板交互和调参声明。
     - inlier_match_ids：可选内点 id 集合；提供后仅绘制内点匹配线。
     - homography_matrix：可选 3x3 homography，用于把左图外框投影到右图。
-    - selected_match_id：可选高亮 match id，用于图片面板点选后的反馈。
+    - selected_match_ids：可选高亮 match id 集合，用于图片面板点选后的反馈。
     - show_match_lines：是否绘制匹配线；关闭后仍保留调参控件。
     - show_homography_projection：是否绘制 homography 投影框。
     - selected_match_only：是否只绘制点选的匹配线，便于排查误匹配。
     - show_left_points / show_right_points：是否绘制左右图匹配端点。
-    - manual_pair_line_xyxy：可选手动点对线，用于双图人工点对调试。
+    - manual_pair_lines_xyxy：可选手动点对线列表，用于双图人工点对调试。
     - selected_projection_id：可选点选的投影框 id，用于 homography overlay 高亮。
     - max_match_lines：最多绘制的匹配线数量，避免调试图过载。
 
@@ -99,7 +99,7 @@ def build_pair_match_debug_preview_output(
             context,
             match_items=match_items,
             inlier_match_ids=inlier_match_ids,
-            selected_match_id=selected_match_id,
+            selected_match_ids=selected_match_ids or set(),
             selected_match_only=selected_match_only,
             show_left_points=show_left_points,
             show_right_points=show_right_points,
@@ -108,8 +108,8 @@ def build_pair_match_debug_preview_output(
         if show_match_lines
         else []
     )
-    if manual_pair_line_xyxy is not None:
-        overlays.append(_build_manual_pair_overlay(manual_pair_line_xyxy))
+    for pair_index, manual_pair_line_xyxy in enumerate(manual_pair_lines_xyxy or (), start=1):
+        overlays.append(_build_manual_pair_overlay(manual_pair_line_xyxy, pair_index=pair_index))
     if homography_matrix is not None and show_homography_projection:
         projected_overlay = _build_homography_projection_overlay(
             context,
@@ -198,7 +198,7 @@ def _build_pair_match_overlays(
     *,
     match_items: list[dict[str, object]],
     inlier_match_ids: set[str] | None,
-    selected_match_id: str | None,
+    selected_match_ids: set[str],
     selected_match_only: bool,
     show_left_points: bool,
     show_right_points: bool,
@@ -212,7 +212,7 @@ def _build_pair_match_overlays(
         match_id = str(match_item.get("match_id") or f"match-{match_line_count + 1}")
         if inlier_match_ids is not None and match_id not in inlier_match_ids:
             continue
-        if selected_match_only and selected_match_id and match_id != selected_match_id:
+        if selected_match_only and selected_match_ids and match_id not in selected_match_ids:
             continue
         query_xy = match_item.get("query_xy")
         train_xy = match_item.get("train_xy")
@@ -220,7 +220,7 @@ def _build_pair_match_overlays(
             continue
         if not isinstance(train_xy, list) or len(train_xy) < 2:
             continue
-        is_selected = selected_match_id is not None and match_id == selected_match_id
+        is_selected = match_id in selected_match_ids
         label_prefix = "selected" if is_selected else ("inlier" if inlier_match_ids is not None else "match")
         overlays.append(
             build_line_overlay(
@@ -233,10 +233,11 @@ def _build_pair_match_overlays(
                     float(train_xy[0]) + float(context.image_b_offset_x),
                     float(train_xy[1]),
                 ],
-                target_parameters=["debug_selected_match_id"],
+                target_parameters=["debug_selected_match_ids"],
                 parameters={
-                    "debug_selected_match_id": match_id,
-                    "selected_match_id": match_id,
+                    "debug_selected_match_ids": [match_id],
+                    "selected_match_ids": [match_id],
+                    "selection_mode": "toggle",
                     "match_role": label_prefix,
                     "query_xy": [round(float(query_xy[0]), 4), round(float(query_xy[1]), 4)],
                     "train_xy": [round(float(train_xy[0]), 4), round(float(train_xy[1]), 4)],
@@ -287,26 +288,28 @@ def _build_pair_endpoint_overlay(
         center_x=point_x,
         center_y=point_y,
         radius=6.0 if selected else 4.0,
-        target_parameters=["debug_selected_match_id"],
+        target_parameters=["debug_selected_match_ids"],
         parameters={
-            "debug_selected_match_id": match_id,
-            "selected_match_id": match_id,
+            "debug_selected_match_ids": [match_id],
+            "selected_match_ids": [match_id],
+            "selection_mode": "toggle",
             "match_point_side": side,
         },
     )
 
 
-def _build_manual_pair_overlay(manual_pair_line_xyxy: list[float]) -> dict[str, object]:
+def _build_manual_pair_overlay(manual_pair_line_xyxy: list[float], *, pair_index: int) -> dict[str, object]:
     """构建用户在双图上手动画出的点对线。"""
 
+    normalized_line = [round(float(item), 4) for item in manual_pair_line_xyxy[:4]]
     return build_line_overlay(
         kind="point-pair",
-        overlay_id="manual-pair",
-        label="manual pair",
-        line_xyxy=[round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
-        target_parameters=["debug_manual_pair_line_xyxy"],
+        overlay_id=f"manual-pair-{pair_index}",
+        label=f"manual pair {pair_index}",
+        line_xyxy=normalized_line,
+        target_parameters=["debug_manual_pair_lines_xyxy"],
         parameters={
-            "debug_manual_pair_line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
+            "debug_manual_pair_lines_xyxy": [normalized_line],
         },
     )
 

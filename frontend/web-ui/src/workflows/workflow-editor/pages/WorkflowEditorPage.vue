@@ -1157,7 +1157,7 @@ function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent):
     errorMessage.value = `未找到取参目标节点：${event.nodeId}`
     return false
   }
-  const updates = buildPreviewImageInteractionParameterUpdates(event)
+  const updates = buildPreviewImageInteractionParameterUpdates(event, targetNode.node.parameters)
   if (!updates || Object.keys(updates).length === 0) {
     errorMessage.value = `${readGraphNodeTitle(targetNode)} 暂不支持当前图片取参结果`
     return false
@@ -1186,7 +1186,10 @@ function runPreviewFromImageViewer(): void {
   void runPreview({ preserveImageViewerNodeId: activeImageViewer.value?.nodeId ?? null })
 }
 
-function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInteractionApplyEvent): Record<string, unknown> | null {
+function buildPreviewImageInteractionParameterUpdates(
+  event: PreviewImageInteractionApplyEvent,
+  currentParameters: Record<string, unknown>,
+): Record<string, unknown> | null {
   const targetParameters = new Set(event.targetParameters)
   const updates: Record<string, unknown> = {}
   if (event.parameters) {
@@ -1294,16 +1297,71 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     }
     return updates
   }
-  if (event.tool === 'point-pair' && event.lineXyxy) {
-    if (targetParameters.has('debug_manual_pair_line_xyxy')) {
-      updates.debug_manual_pair_line_xyxy = event.lineXyxy.map(roundInteractionNumber)
+  if (event.tool === 'point-pair' && event.pairLinesXyxy && event.pairLinesXyxy.length > 0) {
+    if (targetParameters.has('debug_manual_pair_lines_xyxy')) {
+      updates.debug_manual_pair_lines_xyxy = mergePairLineList(
+        currentParameters.debug_manual_pair_lines_xyxy,
+        event.pairLinesXyxy,
+      )
     }
     return Object.keys(updates).length ? updates : null
   }
-  if (event.tool === 'match-line' || event.tool === 'homography-overlay') {
+  if (event.tool === 'match-line') {
+    if (targetParameters.has('debug_selected_match_ids')) {
+      updates.debug_selected_match_ids = toggleStringSelectionList(
+        currentParameters.debug_selected_match_ids,
+        readStringArrayParameter(event.parameters?.debug_selected_match_ids),
+      )
+    }
+    return Object.keys(updates).length ? updates : null
+  }
+  if (event.tool === 'homography-overlay') {
     return Object.keys(updates).length ? updates : null
   }
   return Object.keys(updates).length ? updates : null
+}
+
+function toggleStringSelectionList(currentValue: unknown, pickedValues: string[]): string[] {
+  const selectedValues = readStringArrayParameter(currentValue)
+  const selectedSet = new Set(selectedValues)
+  for (const pickedValue of pickedValues) {
+    if (selectedSet.has(pickedValue)) selectedSet.delete(pickedValue)
+    else selectedSet.add(pickedValue)
+  }
+  return Array.from(selectedSet)
+}
+
+function readStringArrayParameter(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => (typeof item === 'string' && item.trim() ? [item.trim()] : []))
+}
+
+function mergePairLineList(
+  currentValue: unknown,
+  pickedLines: Array<[number, number, number, number]>,
+): number[][] {
+  const mergedLines = readPairLineArrayParameter(currentValue)
+  const lineKeys = new Set(mergedLines.map((line) => line.join(',')))
+  for (const pickedLine of pickedLines) {
+    const normalizedLine = pickedLine.map(roundInteractionNumber)
+    const lineKey = normalizedLine.join(',')
+    if (!lineKeys.has(lineKey)) {
+      mergedLines.push(normalizedLine)
+      lineKeys.add(lineKey)
+    }
+  }
+  return mergedLines
+}
+
+function readPairLineArrayParameter(value: unknown): number[][] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!Array.isArray(item) || item.length < 4) return []
+    const normalizedLine = item.slice(0, 4).map((point) => Number(point))
+    return normalizedLine.every((point) => Number.isFinite(point))
+      ? [normalizedLine.map(roundInteractionNumber)]
+      : []
+  })
 }
 
 function normalizeLineAngleDeg(angleDeg: number): number {
