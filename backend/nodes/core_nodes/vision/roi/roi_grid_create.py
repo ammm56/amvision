@@ -14,8 +14,12 @@ from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import bbox_area, bbox_to_polygon_xy, build_roi_payload
 from backend.nodes.debug_image_panel import (
+    build_bbox_overlay,
     build_debug_image_preview_output,
+    build_debug_panel_interaction,
     build_debug_panel_parameter_schema,
+    build_interaction_tool,
+    build_numeric_control,
 )
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
@@ -122,14 +126,12 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                 title="ROI Grid",
                 artifact_name="roi-grid-debug-preview",
                 overlays=_build_roi_grid_overlays(roi_items),
-                interaction={
-                    "mode": "edit",
-                    "coordinate_space": "source-image",
-                    "tools": [
-                        {
-                            "tool": "grid",
-                            "label": "ROI 网格",
-                            "target_parameters": [
+                interaction=build_debug_panel_interaction(
+                    tools=[
+                        build_interaction_tool(
+                            "grid",
+                            "ROI 网格",
+                            [
                                 "rows",
                                 "columns",
                                 "origin_x",
@@ -139,44 +141,49 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                                 "step_x",
                                 "step_y",
                             ],
-                        },
+                        ),
                     ],
-                    "controls": [
-                        _build_numeric_control("rows", "Rows", rows, min_value=1.0, max_value=30.0, step=1.0),
-                        _build_numeric_control("columns", "Columns", columns, min_value=1.0, max_value=30.0, step=1.0),
-                        _build_numeric_control("roi_width", "ROI Width", roi_width, min_value=1.0, max_value=default_roi_width, step=1.0),
-                        _build_numeric_control("roi_height", "ROI Height", roi_height, min_value=1.0, max_value=default_roi_height, step=1.0),
-                        _build_numeric_control("step_x", "Step X", step_x, min_value=1.0, max_value=default_roi_width, step=1.0),
-                        _build_numeric_control("step_y", "Step Y", step_y, min_value=1.0, max_value=default_roi_height, step=1.0),
+                    controls=[
+                        build_numeric_control("rows", "Rows", rows, min_value=1.0, max_value=30.0, step=1.0),
+                        build_numeric_control("columns", "Columns", columns, min_value=1.0, max_value=30.0, step=1.0),
+                        build_numeric_control(
+                            "roi_width",
+                            "ROI Width",
+                            roi_width,
+                            min_value=1.0,
+                            max_value=max(default_roi_width, 1.0),
+                            step=1.0,
+                        ),
+                        build_numeric_control(
+                            "roi_height",
+                            "ROI Height",
+                            roi_height,
+                            min_value=1.0,
+                            max_value=max(default_roi_height, 1.0),
+                            step=1.0,
+                        ),
+                        build_numeric_control(
+                            "step_x",
+                            "Step X",
+                            step_x,
+                            min_value=1.0,
+                            max_value=max(default_roi_width, 1.0),
+                            step=1.0,
+                        ),
+                        build_numeric_control(
+                            "step_y",
+                            "Step Y",
+                            step_y,
+                            min_value=1.0,
+                            max_value=max(default_roi_height, 1.0),
+                            step=1.0,
+                        ),
                     ],
-                },
+                ),
             )
         )
     return outputs
 
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    normalized_max_value = max(float(max_value), float(min_value))
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": normalized_max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
 
 def _iter_grid_indices(*, rows: int, columns: int, row_major: bool) -> list[tuple[int, int]]:
     """按指定顺序生成行列索引。"""
@@ -195,12 +202,11 @@ def _build_roi_grid_overlays(roi_items: list[dict[str, object]]) -> list[dict[st
         if not isinstance(bbox_xyxy, list) or len(bbox_xyxy) != 4:
             continue
         overlays.append(
-            {
-                "kind": "bbox",
-                "id": str(roi_item.get("roi_id") or "roi"),
-                "label": str(roi_item.get("display_name") or roi_item.get("roi_id") or "ROI"),
-                "bbox_xyxy": [float(value) for value in bbox_xyxy],
-                "target_parameters": [
+            build_bbox_overlay(
+                overlay_id=str(roi_item.get("roi_id") or "roi"),
+                label=str(roi_item.get("display_name") or roi_item.get("roi_id") or "ROI"),
+                bbox_xyxy=[float(value) for value in bbox_xyxy],
+                target_parameters=[
                     "rows",
                     "columns",
                     "origin_x",
@@ -210,7 +216,7 @@ def _build_roi_grid_overlays(roi_items: list[dict[str, object]]) -> list[dict[st
                     "step_x",
                     "step_y",
                 ],
-            }
+            )
         )
     return overlays
 

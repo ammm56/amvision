@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+    build_polygon_overlay,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
@@ -188,44 +194,19 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 def _build_min_area_rect_interaction(*, limit: int | None) -> dict[str, object]:
     """声明 Min Area Rect 在图片面板中的调参能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "contour",
-                "label": "矩形点选",
-                "target_parameters": ["selected_contour_index"],
-                "min_points": 4,
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool(
+                "contour",
+                "矩形点选",
+                ["selected_contour_index"],
+                extra={"min_points": 4},
+            ),
         ],
-        "controls": [
-            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        controls=[
+            build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
         ],
-    }
-
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
+    )
 
 
 def _build_rotated_rect_overlays(rotated_rect_items: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -245,13 +226,13 @@ def _build_rotated_rect_overlays(rotated_rect_items: list[dict[str, object]]) ->
             continue
         contour_index = int(rect_item.get("contour_index", item_index))
         overlays.append(
-            {
-                "kind": "polygon",
-                "id": f"min-area-rect-{contour_index}",
-                "label": f"rect {contour_index}",
-                "points_xy": points_xy,
-                "target_parameters": ["selected_contour_index"],
-                "parameters": {"selected_contour_index": contour_index},
-            }
+            build_polygon_overlay(
+                kind="rotated-rect",
+                overlay_id=f"min-area-rect-{contour_index}",
+                label=f"rect {contour_index}",
+                polygon_xy=points_xy,
+                target_parameters=["selected_contour_index"],
+                parameters={"selected_contour_index": contour_index},
+            )
         )
     return overlays

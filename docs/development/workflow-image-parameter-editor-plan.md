@@ -187,6 +187,8 @@
 
 只读图片预览不提供 `interaction` 字段；交互式图片面板只解析新的 `interaction.tools[]`，不保留单 `tool` / `target_parameters` 旧格式。`polygon` 工具可声明 `min_points` / `max_points`：普通 ROI 至少 3 点，透视变换固定 4 点。
 
+ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 或写回参数仍按节点语义使用 `polygon_xy`、`source_points` 等字段。二者不要混用。
+
 该信息只描述编辑器如何辅助生成参数，不改变节点核心执行协议。
 
 ## 实现阶段

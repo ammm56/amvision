@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import (
+    build_checkbox_control,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_matching_nodes.backend.nodes.debug_pair_preview import (
-    build_checkbox_control,
-    build_numeric_control,
     build_pair_match_debug_preview_output,
 )
 from custom_nodes._opencv_shared.backend.runtime.features import (
@@ -302,22 +306,13 @@ def _build_orb_match_interaction(
     """声明 ORB Match 在双图图片面板中的调参能力。"""
 
     resolved_max_distance = float(max_distance) if max_distance is not None else 256.0
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image-pair",
-        "tools": [
-            {
-                "tool": "match-line",
-                "label": "点选匹配线",
-                "target_parameters": ["debug_selected_match_id"],
-            },
-            {
-                "tool": "point-pair",
-                "label": "手动点对",
-                "target_parameters": ["debug_manual_pair_line_xyxy"],
-            },
+    return build_debug_panel_interaction(
+        coordinate_space="source-image-pair",
+        tools=[
+            build_interaction_tool("match-line", "点选匹配线", ["debug_selected_match_id"]),
+            build_interaction_tool("point-pair", "手动点对", ["debug_manual_pair_line_xyxy"]),
         ],
-        "controls": [
+        controls=[
             build_numeric_control(
                 "ratio_test_threshold",
                 "Ratio Test",
@@ -355,4 +350,4 @@ def _build_orb_match_interaction(
                 step=1.0,
             ),
         ],
-    }
+    )

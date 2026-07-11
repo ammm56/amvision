@@ -116,6 +116,198 @@ def build_debug_panel_parameter_schema() -> dict[str, object]:
     }
 
 
+def build_debug_panel_interaction(
+    *,
+    tools: Iterable[Mapping[str, Any]],
+    controls: Iterable[Mapping[str, Any]] | None = None,
+    mode: str = "edit",
+    coordinate_space: str = "source-image",
+) -> dict[str, object]:
+    """构造 ImageViewer 交互声明。
+
+    参数：
+    - tools：节点支持的图像取参工具，例如 rect、circle、line、template-region。
+    - controls：节点支持的实时调参控件，例如 slider、checkbox。
+    - mode：交互模式，当前编辑态统一使用 edit。
+    - coordinate_space：坐标空间，默认使用原图像素坐标。
+
+    返回：
+    - dict[str, object]：前端 ImageViewer 可直接消费的 interaction payload。
+    """
+
+    return {
+        "mode": mode,
+        "coordinate_space": coordinate_space,
+        "tools": [dict(tool) for tool in tools],
+        "controls": [dict(control) for control in controls or ()],
+    }
+
+
+def build_interaction_tool(
+    tool: str,
+    label: str,
+    target_parameters: Iterable[str],
+    *,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, object]:
+    """构造 ImageViewer 工具声明。
+
+    参数：
+    - tool：工具语义名称，例如 bbox、polygon、circle、match-line。
+    - label：界面显示名称。
+    - target_parameters：工具写回的节点参数列表。
+    - extra：工具特有扩展字段，按需透传给前端。
+    """
+
+    payload: dict[str, object] = {
+        "tool": tool,
+        "label": label,
+        "target_parameters": [str(parameter_name) for parameter_name in target_parameters],
+    }
+    if extra:
+        payload.update(dict(extra))
+    return payload
+
+
+def build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造 ImageViewer 实时调参使用的数值控件。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def build_checkbox_control(parameter_name: str, label: str, value: bool) -> dict[str, object]:
+    """构造 ImageViewer 实时调参使用的布尔控件。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "checkbox",
+        "min": None,
+        "max": None,
+        "step": None,
+        "value": bool(value),
+        "default_value": bool(value),
+    }
+
+
+def build_bbox_overlay(
+    *,
+    overlay_id: str,
+    label: str,
+    bbox_xyxy: Iterable[float],
+    kind: str = "bbox",
+    target_parameters: Iterable[str] | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, object]:
+    """构造矩形类 overlay。"""
+
+    payload = _build_overlay_base(
+        kind=kind,
+        overlay_id=overlay_id,
+        label=label,
+        target_parameters=target_parameters,
+        parameters=parameters,
+    )
+    payload["bbox_xyxy"] = [float(value) for value in bbox_xyxy]
+    return payload
+
+
+def build_circle_overlay(
+    *,
+    overlay_id: str,
+    label: str,
+    center_x: float,
+    center_y: float,
+    radius: float,
+    kind: str = "circle",
+    target_parameters: Iterable[str] | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, object]:
+    """构造圆形类 overlay。"""
+
+    payload = _build_overlay_base(
+        kind=kind,
+        overlay_id=overlay_id,
+        label=label,
+        target_parameters=target_parameters,
+        parameters=parameters,
+    )
+    payload["circle"] = {
+        "center_x": round(float(center_x), 4),
+        "center_y": round(float(center_y), 4),
+        "radius": round(float(radius), 4),
+    }
+    return payload
+
+
+def build_line_overlay(
+    *,
+    overlay_id: str,
+    label: str,
+    line_xyxy: Iterable[float],
+    kind: str = "line",
+    target_parameters: Iterable[str] | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, object]:
+    """构造线段类 overlay。"""
+
+    payload = _build_overlay_base(
+        kind=kind,
+        overlay_id=overlay_id,
+        label=label,
+        target_parameters=target_parameters,
+        parameters=parameters,
+    )
+    payload["line_xyxy"] = [round(float(value), 4) for value in line_xyxy]
+    return payload
+
+
+def build_polygon_overlay(
+    *,
+    overlay_id: str,
+    label: str,
+    polygon_xy: Iterable[Iterable[float]],
+    kind: str = "polygon",
+    target_parameters: Iterable[str] | None = None,
+    parameters: Mapping[str, Any] | None = None,
+) -> dict[str, object]:
+    """构造多边形类 overlay。"""
+
+    payload = _build_overlay_base(
+        kind=kind,
+        overlay_id=overlay_id,
+        label=label,
+        target_parameters=target_parameters,
+        parameters=parameters,
+    )
+    # debug preview overlay 协议使用 points_xy，节点 payload 本体才使用 polygon_xy。
+    points_xy: list[list[float]] = []
+    for point in polygon_xy:
+        point_values = list(point)
+        if len(point_values) < 2:
+            continue
+        points_xy.append([round(float(point_values[0]), 4), round(float(point_values[1]), 4)])
+    payload["points_xy"] = points_xy
+    return payload
+
+
 def _read_debug_transport_mode(raw_value: object) -> str:
     """读取 debug 图片返回方式。"""
 
@@ -146,3 +338,25 @@ def _build_debug_preview_artifact_object_key(
         artifact_name=artifact_name,
         media_type=str(image_payload.get("media_type") or "image/png"),
     )
+
+
+def _build_overlay_base(
+    *,
+    kind: str,
+    overlay_id: str,
+    label: str,
+    target_parameters: Iterable[str] | None,
+    parameters: Mapping[str, Any] | None,
+) -> dict[str, object]:
+    """构造 overlay 公共字段，避免各节点手写协议字段。"""
+
+    payload: dict[str, object] = {
+        "kind": kind,
+        "id": overlay_id,
+        "label": label,
+    }
+    if target_parameters is not None:
+        payload["target_parameters"] = [str(parameter_name) for parameter_name in target_parameters]
+    if parameters is not None:
+        payload["parameters"] = dict(parameters)
+    return payload

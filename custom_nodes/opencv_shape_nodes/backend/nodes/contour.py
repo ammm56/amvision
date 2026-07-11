@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+    build_polygon_overlay,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.geometry import build_contour_item_from_cv_contour
@@ -170,51 +176,22 @@ def _build_contour_interaction(
 ) -> dict[str, object]:
     """声明 Contour 在图片面板中的取参和调参能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "rect",
-                "label": "搜索 ROI",
-                "target_parameters": ["search_bbox_xyxy"],
-            },
-            {
-                "tool": "contour",
-                "label": "轮廓点选",
-                "target_parameters": ["search_bbox_xyxy", "selected_contour_index"],
-                "min_points": 3,
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
+            build_interaction_tool(
+                "contour",
+                "轮廓点选",
+                ["search_bbox_xyxy", "selected_contour_index"],
+                extra={"min_points": 3},
+            ),
         ],
-        "controls": [
-            _build_numeric_control("threshold", "Threshold", threshold_value, min_value=0.0, max_value=255.0, step=1.0),
-            _build_numeric_control("min_area", "Min Area", min_area, min_value=0.0, max_value=20000.0, step=10.0),
-            _build_numeric_control("max_contours", "Max Contours", max_contours or 100, min_value=1.0, max_value=500.0, step=1.0),
+        controls=[
+            build_numeric_control("threshold", "Threshold", threshold_value, min_value=0.0, max_value=255.0, step=1.0),
+            build_numeric_control("min_area", "Min Area", min_area, min_value=0.0, max_value=20000.0, step=10.0),
+            build_numeric_control("max_contours", "Max Contours", max_contours or 100, min_value=1.0, max_value=500.0, step=1.0),
         ],
-    }
-
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
+    )
 
 
 def _build_contour_overlays(
@@ -234,14 +211,14 @@ def _build_contour_overlays(
             continue
         contour_index = int(contour_item.get("contour_index", len(overlays) + 1))
         overlays.append(
-            {
-                "kind": "polygon",
-                "id": f"contour-{contour_index}",
-                "label": f"contour {contour_index}",
-                "points_xy": _decimate_points(raw_points, max_points=160),
-                "target_parameters": ["search_bbox_xyxy", "selected_contour_index"],
-                "parameters": {"selected_contour_index": contour_index},
-            }
+            build_polygon_overlay(
+                kind="contour",
+                overlay_id=f"contour-{contour_index}",
+                label=f"contour {contour_index}",
+                polygon_xy=_decimate_points(raw_points, max_points=160),
+                target_parameters=["search_bbox_xyxy", "selected_contour_index"],
+                parameters={"selected_contour_index": contour_index},
+            )
         )
     return overlays
 

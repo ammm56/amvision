@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_polygon_overlay,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -38,19 +43,16 @@ def build_contours_debug_preview_output(
         title=title,
         artifact_name=artifact_name,
         overlays=_build_contour_overlays(list(contour_items)),
-        interaction={
-            "mode": "edit",
-            "coordinate_space": "source-image",
-            "tools": [
-                {
-                    "tool": "contour",
-                    "label": "轮廓点选",
-                    "target_parameters": ["selected_contour_index"],
-                    "min_points": 3,
-                },
+        interaction=build_debug_panel_interaction(
+            tools=[
+                build_interaction_tool(
+                    "contour",
+                    "轮廓点选",
+                    ["selected_contour_index"],
+                    extra={"min_points": 3},
+                ),
             ],
-            "controls": [],
-        },
+        ),
     )
 
 
@@ -64,14 +66,14 @@ def _build_contour_overlays(contour_items: list[dict[str, object]]) -> list[dict
             continue
         contour_index = int(contour_item.get("contour_index", item_index))
         overlays.append(
-            {
-                "kind": "polygon",
-                "id": f"contour-{contour_index}",
-                "label": f"contour {contour_index}",
-                "points_xy": _decimate_points(raw_points, max_points=160),
-                "target_parameters": ["selected_contour_index"],
-                "parameters": {"selected_contour_index": contour_index},
-            }
+            build_polygon_overlay(
+                kind="contour",
+                overlay_id=f"contour-{contour_index}",
+                label=f"contour {contour_index}",
+                polygon_xy=_decimate_points(raw_points, max_points=160),
+                target_parameters=["selected_contour_index"],
+                parameters={"selected_contour_index": contour_index},
+            )
         )
     return overlays
 

@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_line_overlay,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
@@ -267,28 +273,50 @@ def _build_line_interaction(
 ) -> dict[str, object]:
     """声明 Hough Lines 在图片面板中的取参和调参能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "line",
-                "label": "方向线段",
-                "target_parameters": ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
-            },
-            {
-                "tool": "rect",
-                "label": "搜索 ROI",
-                "target_parameters": ["search_bbox_xyxy"],
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool(
+                "line",
+                "方向线段",
+                ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
+            ),
+            build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
         ],
-        "controls": [
-            _build_numeric_control("rho_resolution", "Rho Resolution", rho_resolution, min_value=0.1, max_value=10.0, step=0.1),
-            _build_numeric_control("theta_step_deg", "Theta Step Deg", theta_step_deg, min_value=0.1, max_value=10.0, step=0.1),
-            _build_numeric_control("threshold", "Threshold", threshold, min_value=1.0, max_value=300.0, step=1.0),
-            _build_numeric_control("min_line_length", "Min Line Length", min_line_length, min_value=0.0, max_value=1200.0, step=1.0),
-            _build_numeric_control("max_line_gap", "Max Line Gap", max_line_gap, min_value=0.0, max_value=300.0, step=1.0),
-            _build_numeric_control(
+        controls=[
+            build_numeric_control(
+                "rho_resolution",
+                "Rho Resolution",
+                rho_resolution,
+                min_value=0.1,
+                max_value=10.0,
+                step=0.1,
+            ),
+            build_numeric_control(
+                "theta_step_deg",
+                "Theta Step Deg",
+                theta_step_deg,
+                min_value=0.1,
+                max_value=10.0,
+                step=0.1,
+            ),
+            build_numeric_control("threshold", "Threshold", threshold, min_value=1.0, max_value=300.0, step=1.0),
+            build_numeric_control(
+                "min_line_length",
+                "Min Line Length",
+                min_line_length,
+                min_value=0.0,
+                max_value=1200.0,
+                step=1.0,
+            ),
+            build_numeric_control(
+                "max_line_gap",
+                "Max Line Gap",
+                max_line_gap,
+                min_value=0.0,
+                max_value=300.0,
+                step=1.0,
+            ),
+            build_numeric_control(
                 "angle_min_deg",
                 "Angle Min Deg",
                 -90.0 if angle_min_deg is None else angle_min_deg,
@@ -296,7 +324,7 @@ def _build_line_interaction(
                 max_value=90.0,
                 step=0.5,
             ),
-            _build_numeric_control(
+            build_numeric_control(
                 "angle_max_deg",
                 "Angle Max Deg",
                 90.0 if angle_max_deg is None else angle_max_deg,
@@ -305,30 +333,7 @@ def _build_line_interaction(
                 step=0.5,
             ),
         ],
-    }
-
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
+    )
 
 
 def _build_line_overlays(
@@ -349,16 +354,15 @@ def _build_line_overlays(
             continue
         line_index = line_item.get("line_index", len(overlays) + 1)
         overlays.append(
-            {
-                "kind": "line",
-                "id": f"line-{line_index}",
-                "label": f"line {line_index}",
-                "line_xyxy": [
+            build_line_overlay(
+                overlay_id=f"line-{line_index}",
+                label=f"line {line_index}",
+                line_xyxy=[
                     float(start_xy[0]),
                     float(start_xy[1]),
                     float(end_xy[0]),
                     float(end_xy[1]),
                 ],
-            }
+            )
         )
     return overlays

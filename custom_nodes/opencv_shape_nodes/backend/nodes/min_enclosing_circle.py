@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_circle_overlay,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import (
@@ -175,43 +181,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 def _build_min_enclosing_circle_interaction(*, limit: int | None) -> dict[str, object]:
     """声明 Min Enclosing Circle 在图片面板中的圆形结果点选能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "circle",
-                "label": "圆点选",
-                "target_parameters": ["selected_contour_index"],
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool("circle", "圆点选", ["selected_contour_index"]),
         ],
-        "controls": [
-            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        controls=[
+            build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
         ],
-    }
-
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
+    )
 
 
 def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -226,17 +203,14 @@ def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[s
         circle_index = int(circle_item.get("circle_index", len(overlays) + 1))
         contour_index = int(circle_item.get("contour_index", circle_index))
         overlays.append(
-            {
-                "kind": "circle",
-                "id": f"min-enclosing-circle-{contour_index}",
-                "label": f"circle {contour_index}",
-                "circle": {
-                    "center_x": float(center_xy[0]),
-                    "center_y": float(center_xy[1]),
-                    "radius": float(radius),
-                },
-                "target_parameters": ["selected_contour_index"],
-                "parameters": {"selected_contour_index": contour_index},
-            }
+            build_circle_overlay(
+                overlay_id=f"min-enclosing-circle-{contour_index}",
+                label=f"circle {contour_index}",
+                center_x=float(center_xy[0]),
+                center_y=float(center_xy[1]),
+                radius=float(radius),
+                target_parameters=["selected_contour_index"],
+                parameters={"selected_contour_index": contour_index},
+            )
         )
     return overlays

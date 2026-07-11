@@ -7,7 +7,13 @@ from typing import Any
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.region import build_regions_payload
 from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_bbox_overlay,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
@@ -451,45 +457,34 @@ def _build_template_match_interaction(
 ) -> dict[str, object]:
     """声明 Template Match 在图片面板中的搜索区域和调参能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "template-region",
-                "label": "模板 / 搜索区域",
-                "target_parameters": ["template_bbox_xyxy", "search_bbox_xyxy"],
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool(
+                "template-region",
+                "模板 / 搜索区域",
+                ["template_bbox_xyxy", "search_bbox_xyxy"],
+            ),
         ],
-        "controls": [
-            _build_numeric_control("score_threshold", "Score Threshold", score_threshold, min_value=0.0, max_value=1.0, step=0.01),
-            _build_numeric_control("max_matches", "Max Matches", max_matches, min_value=1.0, max_value=200.0, step=1.0),
-            _build_numeric_control("nms_iou_threshold", "NMS IoU", nms_iou_threshold, min_value=0.0, max_value=1.0, step=0.01),
+        controls=[
+            build_numeric_control(
+                "score_threshold",
+                "Score Threshold",
+                score_threshold,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.01,
+            ),
+            build_numeric_control("max_matches", "Max Matches", max_matches, min_value=1.0, max_value=200.0, step=1.0),
+            build_numeric_control(
+                "nms_iou_threshold",
+                "NMS IoU",
+                nms_iou_threshold,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.01,
+            ),
         ],
-    }
-
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
+    )
 
 
 def _build_template_match_overlays(
@@ -503,13 +498,12 @@ def _build_template_match_overlays(
     overlays: list[dict[str, object]] = []
     if template_bbox_xyxy is not None:
         overlays.append(
-            {
-                "kind": "bbox",
-                "id": "template-roi",
-                "label": "Template ROI",
-                "bbox_xyxy": [float(value) for value in template_bbox_xyxy],
-                "target_parameters": ["template_bbox_xyxy"],
-            }
+            build_bbox_overlay(
+                overlay_id="template-roi",
+                label="Template ROI",
+                bbox_xyxy=[float(value) for value in template_bbox_xyxy],
+                target_parameters=["template_bbox_xyxy"],
+            )
         )
     search_roi_overlay = build_search_roi_overlay(search_roi)
     if search_roi_overlay is not None:
@@ -521,11 +515,10 @@ def _build_template_match_overlays(
         region_id = str(region_item.get("region_id") or f"match-{len(overlays) + 1}")
         score = region_item.get("score")
         overlays.append(
-            {
-                "kind": "bbox",
-                "id": region_id,
-                "label": f"{region_id} {float(score):.3f}" if isinstance(score, (int, float)) else region_id,
-                "bbox_xyxy": [float(value) for value in bbox_xyxy[:4]],
-            }
+            build_bbox_overlay(
+                overlay_id=region_id,
+                label=f"{region_id} {float(score):.3f}" if isinstance(score, (int, float)) else region_id,
+                bbox_xyxy=[float(value) for value in bbox_xyxy[:4]],
+            )
         )
     return overlays

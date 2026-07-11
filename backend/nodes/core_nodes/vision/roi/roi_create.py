@@ -26,8 +26,12 @@ from backend.nodes.core_nodes.support.roi import (
     read_optional_text,
 )
 from backend.nodes.debug_image_panel import (
+    build_bbox_overlay,
     build_debug_image_preview_output,
+    build_debug_panel_interaction,
     build_debug_panel_parameter_schema,
+    build_interaction_tool,
+    build_polygon_overlay,
 )
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
@@ -121,23 +125,17 @@ def _roi_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                 title="ROI Create",
                 artifact_name="roi-create-debug-preview",
                 overlays=_build_roi_overlays(roi_payload),
-                interaction={
-                    "mode": "edit",
-                    "coordinate_space": "source-image",
-                    "tools": [
-                        {
-                            "tool": "bbox",
-                            "label": "矩形 ROI",
-                            "target_parameters": ["bbox_xyxy"],
-                        },
-                        {
-                            "tool": "polygon",
-                            "label": "多边形 ROI",
-                            "target_parameters": ["polygon_xy"],
-                            "min_points": 3,
-                        },
+                interaction=build_debug_panel_interaction(
+                    tools=[
+                        build_interaction_tool("bbox", "矩形 ROI", ["bbox_xyxy"]),
+                        build_interaction_tool(
+                            "polygon",
+                            "多边形 ROI",
+                            ["polygon_xy"],
+                            extra={"min_points": 3},
+                        ),
                     ],
-                },
+                ),
             )
         )
     return outputs
@@ -187,22 +185,20 @@ def _build_roi_overlays(roi_payload: dict[str, object]) -> list[dict[str, object
         points_xy = roi_payload.get("polygon_xy")
         if isinstance(points_xy, list) and points_xy:
             return [
-                {
-                    "kind": "polygon",
-                    "id": roi_id,
-                    "label": label,
-                    "points_xy": points_xy,
-                    "target_parameters": ["polygon_xy"],
-                }
+                build_polygon_overlay(
+                    overlay_id=roi_id,
+                    label=label,
+                    polygon_xy=points_xy,
+                    target_parameters=["polygon_xy"],
+                )
             ]
     return [
-        {
-            "kind": "bbox",
-            "id": roi_id,
-            "label": label,
-            "bbox_xyxy": roi_payload["bbox_xyxy"],
-            "target_parameters": ["bbox_xyxy"],
-        }
+        build_bbox_overlay(
+            overlay_id=roi_id,
+            label=label,
+            bbox_xyxy=roi_payload["bbox_xyxy"],
+            target_parameters=["bbox_xyxy"],
+        )
     ]
 
 

@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backend.nodes.debug_image_panel import build_debug_image_preview_output, is_debug_image_panel_enabled
+from backend.nodes.debug_image_panel import (
+    build_checkbox_control,
+    build_circle_overlay,
+    build_debug_image_preview_output,
+    build_line_overlay,
+    build_numeric_control,
+    build_polygon_overlay,
+    is_debug_image_panel_enabled,
+)
 from backend.nodes.runtime_support import load_image_matrix_from_payload, register_image_matrix
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -215,25 +223,25 @@ def _build_pair_match_overlays(
         is_selected = selected_match_id is not None and match_id == selected_match_id
         label_prefix = "selected" if is_selected else ("inlier" if inlier_match_ids is not None else "match")
         overlays.append(
-            {
-                "kind": "match-line",
-                "id": match_id,
-                "label": f"{label_prefix} {match_id}",
-                "line_xyxy": [
+            build_line_overlay(
+                kind="match-line",
+                overlay_id=match_id,
+                label=f"{label_prefix} {match_id}",
+                line_xyxy=[
                     float(query_xy[0]),
                     float(query_xy[1]),
                     float(train_xy[0]) + float(context.image_b_offset_x),
                     float(train_xy[1]),
                 ],
-                "target_parameters": ["debug_selected_match_id"],
-                "parameters": {
+                target_parameters=["debug_selected_match_id"],
+                parameters={
                     "debug_selected_match_id": match_id,
                     "selected_match_id": match_id,
                     "match_role": label_prefix,
                     "query_xy": [round(float(query_xy[0]), 4), round(float(query_xy[1]), 4)],
                     "train_xy": [round(float(train_xy[0]), 4), round(float(train_xy[1]), 4)],
                 },
-            }
+            )
         )
         if show_left_points:
             overlays.append(
@@ -272,37 +280,35 @@ def _build_pair_endpoint_overlay(
     """构建左右图匹配端点 overlay，辅助用户确认匹配线落点。"""
 
     label = f"{side} {match_id}" if not selected else f"selected {side} {match_id}"
-    return {
-        "kind": "match-point",
-        "id": f"{match_id}-{side}-point",
-        "label": label,
-        "circle": {
-            "center_x": round(point_x, 4),
-            "center_y": round(point_y, 4),
-            "radius": 4.0 if not selected else 6.0,
-        },
-        "target_parameters": ["debug_selected_match_id"],
-        "parameters": {
+    return build_circle_overlay(
+        kind="match-point",
+        overlay_id=f"{match_id}-{side}-point",
+        label=label,
+        center_x=point_x,
+        center_y=point_y,
+        radius=6.0 if selected else 4.0,
+        target_parameters=["debug_selected_match_id"],
+        parameters={
             "debug_selected_match_id": match_id,
             "selected_match_id": match_id,
             "match_point_side": side,
         },
-    }
+    )
 
 
 def _build_manual_pair_overlay(manual_pair_line_xyxy: list[float]) -> dict[str, object]:
     """构建用户在双图上手动画出的点对线。"""
 
-    return {
-        "kind": "point-pair",
-        "id": "manual-pair",
-        "label": "manual pair",
-        "line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
-        "target_parameters": ["debug_manual_pair_line_xyxy"],
-        "parameters": {
+    return build_line_overlay(
+        kind="point-pair",
+        overlay_id="manual-pair",
+        label="manual pair",
+        line_xyxy=[round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
+        target_parameters=["debug_manual_pair_line_xyxy"],
+        parameters={
             "debug_manual_pair_line_xyxy": [round(float(item), 4) for item in manual_pair_line_xyxy[:4]],
         },
-    }
+    )
 
 
 def _build_homography_projection_overlay(
@@ -338,53 +344,15 @@ def _build_homography_projection_overlay(
         )
     projection_id = "homography-projection"
     is_selected = selected_projection_id == projection_id
-    return {
-        "kind": "homography-overlay",
-        "id": projection_id,
-        "label": "selected homography projection" if is_selected else "homography projection",
-        "polygon_xy": polygon_xy,
-        "target_parameters": ["debug_selected_projection_id"],
-        "parameters": {
+    return build_polygon_overlay(
+        kind="homography-overlay",
+        overlay_id=projection_id,
+        label="selected homography projection" if is_selected else "homography projection",
+        polygon_xy=polygon_xy,
+        target_parameters=["debug_selected_projection_id"],
+        parameters={
             "debug_selected_projection_id": projection_id,
             "selected_projection_id": projection_id,
             "overlay_role": "homography-projection",
         },
-    }
-
-
-def build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
-
-
-def build_checkbox_control(parameter_name: str, label: str, value: bool) -> dict[str, object]:
-    """构造图片面板实时调参使用的布尔控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "checkbox",
-        "min": None,
-        "max": None,
-        "step": None,
-        "value": bool(value),
-        "default_value": bool(value),
-    }
+    )

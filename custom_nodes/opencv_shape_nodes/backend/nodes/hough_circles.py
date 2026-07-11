@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.debug_image_panel import build_debug_image_preview_output
+from backend.nodes.debug_image_panel import (
+    build_circle_overlay,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import build_circles_payload
@@ -224,53 +230,25 @@ def _build_circle_interaction(
 ) -> dict[str, object]:
     """声明 Hough Circles 在图片面板中的取参和调参能力。"""
 
-    return {
-        "mode": "edit",
-        "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "rect",
-                "label": "搜索 ROI",
-                "target_parameters": ["search_bbox_xyxy"],
-            },
-            {
-                "tool": "circle",
-                "label": "找圆",
-                "target_parameters": ["search_bbox_xyxy", "min_dist", "min_radius", "max_radius"],
-            },
+    return build_debug_panel_interaction(
+        tools=[
+            build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
+            build_interaction_tool(
+                "circle",
+                "找圆",
+                ["search_bbox_xyxy", "min_dist", "min_radius", "max_radius"],
+            ),
         ],
-        "controls": [
-            _build_numeric_control("dp", "DP", dp, min_value=0.1, max_value=4.0, step=0.1),
-            _build_numeric_control("min_dist", "Min Dist", min_dist, min_value=1.0, max_value=600.0, step=1.0),
-            _build_numeric_control("param1", "Param1", param1, min_value=1.0, max_value=300.0, step=1.0),
-            _build_numeric_control("param2", "Param2", param2, min_value=1.0, max_value=200.0, step=1.0),
-            _build_numeric_control("min_radius", "Min Radius", min_radius, min_value=0.0, max_value=400.0, step=1.0),
-            _build_numeric_control("max_radius", "Max Radius", max_radius, min_value=0.0, max_value=800.0, step=1.0),
+        controls=[
+            build_numeric_control("dp", "DP", dp, min_value=0.1, max_value=4.0, step=0.1),
+            build_numeric_control("min_dist", "Min Dist", min_dist, min_value=1.0, max_value=600.0, step=1.0),
+            build_numeric_control("param1", "Param1", param1, min_value=1.0, max_value=300.0, step=1.0),
+            build_numeric_control("param2", "Param2", param2, min_value=1.0, max_value=200.0, step=1.0),
+            build_numeric_control("min_radius", "Min Radius", min_radius, min_value=0.0, max_value=400.0, step=1.0),
+            build_numeric_control("max_radius", "Max Radius", max_radius, min_value=0.0, max_value=800.0, step=1.0),
         ],
-    }
+    )
 
-
-def _build_numeric_control(
-    parameter_name: str,
-    label: str,
-    value: float | int,
-    *,
-    min_value: float,
-    max_value: float,
-    step: float,
-) -> dict[str, object]:
-    """构造图片面板实时调参使用的数值控件声明。"""
-
-    return {
-        "parameter_name": parameter_name,
-        "label": label,
-        "control": "slider",
-        "min": min_value,
-        "max": max_value,
-        "step": step,
-        "value": value,
-        "default_value": value,
-    }
 
 def _build_circle_overlays(
     circle_items: list[dict[str, object]],
@@ -290,15 +268,12 @@ def _build_circle_overlays(
             continue
         circle_index = circle_item.get("circle_index", len(overlays) + 1)
         overlays.append(
-            {
-                "kind": "circle",
-                "id": f"circle-{circle_index}",
-                "label": f"circle {circle_index}",
-                "circle": {
-                    "center_x": float(center_xy[0]),
-                    "center_y": float(center_xy[1]),
-                    "radius": float(radius),
-                },
-            }
+            build_circle_overlay(
+                overlay_id=f"circle-{circle_index}",
+                label=f"circle {circle_index}",
+                center_x=float(center_xy[0]),
+                center_y=float(center_xy[1]),
+                radius=float(radius),
+            )
         )
     return overlays
