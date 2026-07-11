@@ -178,13 +178,7 @@ def _build_min_area_rect_interaction(*, limit: int | None) -> dict[str, object]:
     return {
         "mode": "edit",
         "coordinate_space": "source-image",
-        "tools": [
-            {
-                "tool": "bbox",
-                "label": "参考区域",
-                "target_parameters": [],
-            },
-        ],
+        "tools": [],
         "controls": [
             _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
         ],

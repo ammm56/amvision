@@ -162,9 +162,15 @@ def _build_contour_interaction(
         "coordinate_space": "source-image",
         "tools": [
             {
-                "tool": "bbox",
+                "tool": "rect",
                 "label": "搜索 ROI",
                 "target_parameters": ["search_bbox_xyxy"],
+            },
+            {
+                "tool": "contour",
+                "label": "轮廓搜索区域",
+                "target_parameters": ["search_bbox_xyxy"],
+                "min_points": 3,
             },
         ],
         "controls": [

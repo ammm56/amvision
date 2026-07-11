@@ -306,7 +306,7 @@ def _build_orb_keypoints_interaction(
         "coordinate_space": "source-image",
         "tools": [
             {
-                "tool": "bbox",
+                "tool": "rect",
                 "label": "参考区域",
                 "target_parameters": ["search_bbox_xyxy"],
             },

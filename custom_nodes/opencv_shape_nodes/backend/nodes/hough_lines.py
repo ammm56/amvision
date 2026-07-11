@@ -242,7 +242,7 @@ def _build_line_interaction(
                 "target_parameters": ["search_bbox_xyxy", "min_line_length"],
             },
             {
-                "tool": "bbox",
+                "tool": "rect",
                 "label": "搜索 ROI",
                 "target_parameters": ["search_bbox_xyxy"],
             },

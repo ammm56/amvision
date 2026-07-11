@@ -266,13 +266,7 @@ def _build_homography_interaction(
     return {
         "mode": "edit",
         "coordinate_space": "source-image-pair",
-        "tools": [
-            {
-                "tool": "bbox",
-                "label": "参考区域",
-                "target_parameters": [],
-            },
-        ],
+        "tools": [],
         "controls": [
             build_numeric_control(
                 "ransac_reprojection_threshold",

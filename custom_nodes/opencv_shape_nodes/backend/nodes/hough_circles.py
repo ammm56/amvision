@@ -229,7 +229,7 @@ def _build_circle_interaction(
         "coordinate_space": "source-image",
         "tools": [
             {
-                "tool": "bbox",
+                "tool": "rect",
                 "label": "搜索 ROI",
                 "target_parameters": ["search_bbox_xyxy"],
             },

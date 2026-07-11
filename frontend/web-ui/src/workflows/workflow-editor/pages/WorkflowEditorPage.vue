@@ -1205,7 +1205,7 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     }
     return Object.keys(updates).length > 0 ? updates : null
   }
-  if ((event.tool === 'bbox' || event.tool === 'grid') && event.bboxXyxy) {
+  if ((event.tool === 'bbox' || event.tool === 'rect' || event.tool === 'grid') && event.bboxXyxy) {
     const [x1, y1, x2, y2] = event.bboxXyxy
     const width = Math.max(0, x2 - x1)
     const height = Math.max(0, y2 - y1)
@@ -1237,13 +1237,15 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     }
     return updates
   }
-  if (event.tool === 'polygon' && event.pointsXy && event.pointsXy.length >= 3) {
+  if ((event.tool === 'polygon' || event.tool === 'contour') && event.pointsXy && event.pointsXy.length >= 3) {
     const points = event.pointsXy.map(([pointX, pointY]) => [roundInteractionNumber(pointX), roundInteractionNumber(pointY)])
     if (targetParameters.has('source_points')) updates.source_points = points
     if (targetParameters.has('polygon_xy')) {
       updates.polygon_xy = points
       updates.roi_kind = 'polygon'
     }
+    if (targetParameters.has('contour_polygon_xy')) updates.contour_polygon_xy = points
+    if (targetParameters.has('search_bbox_xyxy')) updates.search_bbox_xyxy = buildBoundingBoxFromPoints(points)
     if (points.length === 4) {
       const [outputWidth, outputHeight] = estimateFourPointOutputSize(points)
       if (targetParameters.has('output_width')) updates.output_width = outputWidth
@@ -1274,6 +1276,8 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
     if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
     if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
+    if (targetParameters.has('angle_deg')) updates.angle_deg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
+    if (targetParameters.has('line_angle_deg')) updates.line_angle_deg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
     if (targetParameters.has('search_bbox_xyxy')) {
       const padding = Math.max(8, length * 0.08)
       updates.search_bbox_xyxy = [
@@ -1286,6 +1290,17 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     return updates
   }
   return Object.keys(updates).length ? updates : null
+}
+
+function buildBoundingBoxFromPoints(points: number[][]): [number, number, number, number] {
+  const xValues = points.map((point) => point[0])
+  const yValues = points.map((point) => point[1])
+  return [
+    roundInteractionNumber(Math.min(...xValues)),
+    roundInteractionNumber(Math.min(...yValues)),
+    roundInteractionNumber(Math.max(...xValues)),
+    roundInteractionNumber(Math.max(...yValues)),
+  ]
 }
 
 function estimateFourPointOutputSize(points: number[][]): [number, number] {

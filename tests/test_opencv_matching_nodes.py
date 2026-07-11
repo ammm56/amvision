@@ -424,7 +424,7 @@ def test_opencv_matching_orb_keypoints_with_search_bbox_execute(tmp_path: Path) 
     summary = execution_result.outputs["summary"]
     debug_preview = _read_record_output(execution_result, node_id="orb", output_name="debug_preview")
     interaction = debug_preview["interaction"]
-    bbox_tool = next(tool for tool in interaction["tools"] if tool["tool"] == "bbox")
+    rect_tool = next(tool for tool in interaction["tools"] if tool["tool"] == "rect")
 
     assert features["count"] > 0
     assert summary["value"]["search_roi_source"] == "parameter"
@@ -432,7 +432,7 @@ def test_opencv_matching_orb_keypoints_with_search_bbox_execute(tmp_path: Path) 
     assert all(10.0 <= float(item["x"]) <= 110.0 for item in features["items"])
     assert all(20.0 <= float(item["y"]) <= 150.0 for item in features["items"])
     assert debug_preview["type"] == "image-preview"
-    assert bbox_tool["target_parameters"] == ["search_bbox_xyxy"]
+    assert rect_tool["target_parameters"] == ["search_bbox_xyxy"]
     assert any(overlay.get("id") == "search-roi" for overlay in debug_preview["overlays"])
 
 
