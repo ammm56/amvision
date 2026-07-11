@@ -10,6 +10,12 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import build_circles_payload
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
+from custom_nodes._opencv_shared.backend.runtime.search_roi import (
+    ResolvedSearchRoi,
+    build_search_roi_overlay,
+    build_search_roi_summary,
+    resolve_search_roi,
+)
 from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_float,
     require_non_negative_int,
@@ -74,6 +80,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
+    search_roi = resolve_search_roi(request, image_matrix=image_matrix)
     dp = _read_positive_float(request.parameters.get("dp"), field_name="dp", default_value=1.0)
     min_dist = _read_positive_float(
         request.parameters.get("min_dist"),
@@ -107,7 +114,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     limit = _read_optional_limit(request.parameters.get("limit"))
 
     raw_circles = cv2_module.HoughCircles(
-        image_matrix,
+        search_roi.image_matrix,
         method=cv2_module.HOUGH_GRADIENT,
         dp=dp,
         minDist=min_dist,
@@ -121,6 +128,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         for circle_index, raw_circle in enumerate(raw_circles[0], start=1):
             center_x = round(float(raw_circle[0]), 4)
             center_y = round(float(raw_circle[1]), 4)
+            center_x += float(search_roi.offset_x)
+            center_y += float(search_roi.offset_y)
+            center_x = round(center_x, 4)
+            center_y = round(center_y, 4)
             radius = round(float(raw_circle[2]), 4)
             diameter = round(float(radius * 2.0), 4)
             area = round(float(math.pi * radius * radius), 4)
@@ -178,6 +189,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                     ),
                     4,
                 ),
+                **build_search_roi_summary(search_roi),
             }
         ),
     }
@@ -187,7 +199,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             image_payload=image_payload,
             title="Hough Circles",
             artifact_name="hough-circles-debug-preview",
-            overlays=_build_circle_overlays(circle_items),
+            overlays=_build_circle_overlays(circle_items, search_roi=search_roi),
             interaction=_build_circle_interaction(
                 dp=dp,
                 min_dist=min_dist,
@@ -216,6 +228,11 @@ def _build_circle_interaction(
         "mode": "edit",
         "coordinate_space": "source-image",
         "tools": [
+            {
+                "tool": "bbox",
+                "label": "搜索 ROI",
+                "target_parameters": ["search_bbox_xyxy"],
+            },
             {
                 "tool": "circle",
                 "label": "找圆",
@@ -255,10 +272,17 @@ def _build_numeric_control(
         "default_value": value,
     }
 
-def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[str, object]]:
+def _build_circle_overlays(
+    circle_items: list[dict[str, object]],
+    *,
+    search_roi: ResolvedSearchRoi,
+) -> list[dict[str, object]]:
     """把 Hough 圆检测结果转换为图片面板 overlay。"""
 
     overlays: list[dict[str, object]] = []
+    search_roi_overlay = build_search_roi_overlay(search_roi)
+    if search_roi_overlay is not None:
+        overlays.append(search_roi_overlay)
     for circle_item in circle_items:
         center_xy = circle_item.get("center_xy")
         radius = circle_item.get("radius")

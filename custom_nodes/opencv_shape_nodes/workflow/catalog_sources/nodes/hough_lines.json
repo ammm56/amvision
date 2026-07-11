@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.hough-lines",
   "display_name": "Hough Lines",
-  "category": "opencv.analysis",
+  "category": "opencv.shape",
   "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
@@ -11,6 +11,12 @@
       "name": "image",
       "display_name": "Image",
       "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
     }
   ],
   "output_ports": [
@@ -36,23 +42,28 @@
     "properties": {
       "rho_resolution": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 1
       },
       "theta_step_deg": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 1
       },
       "threshold": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "default": 60
       },
       "min_line_length": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 20
       },
       "max_line_gap": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 5
       },
       "sort_by": {
         "type": "string",
@@ -62,10 +73,12 @@
           "angle_deg",
           "midpoint_x",
           "midpoint_y"
-        ]
+        ],
+        "default": "length_pixels"
       },
       "descending": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       },
       "limit": {
         "type": "integer",
@@ -90,7 +103,7 @@
       "search_bbox_xyxy": {
         "type": "array",
         "title": "Search ROI",
-        "description": "可选搜索区域 [x1, y1, x2, y2]；为空时使用整张图。",
+        "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
         "minItems": 4,
         "maxItems": 4,
         "items": {

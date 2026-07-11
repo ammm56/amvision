@@ -20,8 +20,20 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     - dict[str, object]：包装后的 value payload。
     """
 
+    supported_ports = (
+        "contours",
+        "measurements",
+        "rotated_rects",
+        "lines",
+        "circles",
+        "ellipses",
+        "regions",
+        "features",
+        "matches",
+        "planar_transform",
+    )
     candidate_values: list[tuple[str, dict[str, object]]] = []
-    for port_name in ("contours", "measurements", "rotated_rects", "lines", "circles", "ellipses"):
+    for port_name in supported_ports:
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
@@ -34,7 +46,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     if not candidate_values:
         raise InvalidRequestError(
-            "opencv payload-to-value 节点至少需要连接 contours、measurements、rotated_rects、lines、circles 或 ellipses 输入",
+            "opencv payload-to-value 节点至少需要连接一个 OpenCV 结构化 payload 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:

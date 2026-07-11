@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.measure",
   "display_name": "Measure",
-  "category": "opencv.analysis",
+  "category": "opencv.measurement",
   "description": "对 contour 集合执行面积、周长与包围框度量。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

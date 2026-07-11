@@ -244,4 +244,10 @@ def build_contour_item_from_cv_contour(
         "point_count": len(contour_points),
         "bbox_xyxy": list(contour_metrics["bbox_xyxy"]),
         "points": contour_points,
+        "width": int(contour_metrics["width"]),
+        "height": int(contour_metrics["height"]),
+        "area": float(contour_metrics["area"]),
+        "perimeter": float(contour_metrics["perimeter"]),
+        "center_xy": list(contour_metrics["center_xy"]),
+        "aspect_ratio": float(contour_metrics["aspect_ratio"]),
     }

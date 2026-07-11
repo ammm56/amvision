@@ -5,6 +5,10 @@ from __future__ import annotations
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes.opencv_matching_nodes.backend.nodes.debug_pair_preview import (
+    build_numeric_control,
+    build_pair_match_debug_preview_output,
+)
 from custom_nodes._opencv_shared.backend.runtime.features import (
     build_feature_matches_payload,
     require_feature_matches_payload,
@@ -170,7 +174,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     matches_payload = require_feature_matches_payload(matches_payload)
     distance_values = [float(item["distance"]) for item in match_items]
-    return {
+    outputs: dict[str, object] = {
         "matches": matches_payload,
         "summary": build_value_payload(
             {
@@ -188,4 +192,70 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "max_distance_observed": round(max(distance_values), 6) if distance_values else None,
             }
         ),
+    }
+    outputs.update(
+        build_pair_match_debug_preview_output(
+            request,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            source_a_image=features_a_payload.get("source_image"),
+            source_b_image=features_b_payload.get("source_image"),
+            title="ORB Match",
+            artifact_name="orb-match-debug-preview",
+            match_items=match_items,
+            interaction=_build_orb_match_interaction(
+                ratio_test_threshold=ratio_test_threshold,
+                max_matches=max_matches,
+                max_distance=max_distance,
+            ),
+        )
+    )
+    return outputs
+
+
+def _build_orb_match_interaction(
+    *,
+    ratio_test_threshold: float,
+    max_matches: int,
+    max_distance: float | None,
+) -> dict[str, object]:
+    """声明 ORB Match 在双图图片面板中的调参能力。"""
+
+    resolved_max_distance = float(max_distance) if max_distance is not None else 256.0
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image-pair",
+        "tools": [
+            {
+                "tool": "bbox",
+                "label": "参考区域",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            build_numeric_control(
+                "ratio_test_threshold",
+                "Ratio Test",
+                ratio_test_threshold,
+                min_value=0.05,
+                max_value=0.99,
+                step=0.01,
+            ),
+            build_numeric_control(
+                "max_matches",
+                "Max Matches",
+                max_matches,
+                min_value=1.0,
+                max_value=1000.0,
+                step=1.0,
+            ),
+            build_numeric_control(
+                "max_distance",
+                "Max Distance",
+                resolved_max_distance,
+                min_value=0.0,
+                max_value=512.0,
+                step=1.0,
+            ),
+        ],
     }

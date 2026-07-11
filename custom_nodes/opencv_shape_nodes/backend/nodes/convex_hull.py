@@ -14,6 +14,7 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
     build_contours_payload,
     require_contours_payload,
 )
+from custom_nodes.opencv_shape_nodes.backend.nodes.debug_contours import build_contours_debug_preview_output
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
@@ -96,14 +97,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if limit is not None:
         hull_items = hull_items[:limit]
 
-    return {
-        "contours": build_contours_payload(
-            items=hull_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
-        ),
+    output_contours_payload = build_contours_payload(
+        items=hull_items,
+        source_image=contours_payload.get("source_image"),
+        source_object_key=contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None,
+    )
+    outputs: dict[str, object] = {
+        "contours": output_contours_payload,
         "summary": build_value_payload(
             {
                 "count": len(hull_items),
@@ -122,3 +124,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        build_contours_debug_preview_output(
+            request,
+            contours_payload=output_contours_payload,
+            contour_items=hull_items,
+            title="Convex Hull",
+            artifact_name="convex-hull-debug-preview",
+        )
+    )
+    return outputs

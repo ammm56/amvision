@@ -29,6 +29,12 @@
       "name": "summary",
       "display_name": "Summary",
       "payload_type_id": "value.v1"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "required": false
     }
   ],
   "parameter_schema": {
@@ -93,6 +99,22 @@
       "feature_id_prefix": {
         "type": "string",
         "default": "orb"
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
       }
     }
   },

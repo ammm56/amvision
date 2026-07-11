@@ -1,0 +1,2572 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "measurements.v1",
+      "display_name": "Measurement Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "total_area": {
+                "type": "number"
+              },
+              "mean_area": {
+                "type": "number"
+              },
+              "max_area": {
+                "type": "number"
+              },
+              "min_area": {
+                "type": "number"
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "aspect_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "bbox_xyxy",
+                "area",
+                "perimeter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "rotated-rects.v1",
+      "display_name": "Rotated Rect Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "long_side": {
+                  "type": "number"
+                },
+                "short_side": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "rect_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "center_xy",
+                "size_wh",
+                "long_side",
+                "short_side",
+                "angle_deg",
+                "box_points",
+                "contour_area",
+                "rect_area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "lines.v1",
+      "display_name": "Line Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line_index": {
+                  "type": "integer"
+                },
+                "start_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "end_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "dx_pixels": {
+                  "type": "number"
+                },
+                "dy_pixels": {
+                  "type": "number"
+                },
+                "length_pixels": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "midpoint_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "midpoint_x": {
+                  "type": "number"
+                },
+                "midpoint_y": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "origin_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "direction_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "line_index",
+                "start_xy",
+                "end_xy",
+                "length_pixels",
+                "angle_deg"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "circles.v1",
+      "display_name": "Circle Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "circle_index": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                },
+                "diameter": {
+                  "type": "number"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "circumference": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "circle_index",
+                "center_xy",
+                "radius",
+                "diameter",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "ellipses.v1",
+      "display_name": "Ellipse Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ellipse_index": {
+                  "type": "integer"
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "major_axis": {
+                  "type": "number"
+                },
+                "minor_axis": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "ellipse_index",
+                "center_xy",
+                "major_axis",
+                "minor_axis",
+                "angle_deg",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "local-features.v1",
+      "display_name": "Local Feature Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "feature_extractor": {
+            "type": "string"
+          },
+          "descriptor_kind": {
+            "type": "string"
+          },
+          "descriptor_dtype": {
+            "type": "string"
+          },
+          "descriptor_norm": {
+            "type": "string"
+          },
+          "descriptor_length": {
+            "type": "integer"
+          },
+          "wta_k": {
+            "type": "integer"
+          },
+          "roi_id": {
+            "type": "string"
+          },
+          "roi_kind": {
+            "type": "string"
+          },
+          "roi_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature_id": {
+                  "type": "string"
+                },
+                "feature_index": {
+                  "type": "integer"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "response": {
+                  "type": "number"
+                },
+                "octave": {
+                  "type": "integer"
+                },
+                "class_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "feature_id",
+                "feature_index",
+                "x",
+                "y",
+                "point_xy",
+                "size",
+                "angle_deg",
+                "response",
+                "octave",
+                "class_id"
+              ]
+            }
+          },
+          "descriptors": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "feature_extractor",
+          "descriptor_kind",
+          "descriptor_dtype",
+          "descriptor_length",
+          "items",
+          "descriptors"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "feature-matches.v1",
+      "display_name": "Feature Match Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "matcher_kind": {
+            "type": "string"
+          },
+          "cross_check": {
+            "type": "boolean"
+          },
+          "ratio_test_threshold": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match_id": {
+                  "type": "string"
+                },
+                "query_feature_id": {
+                  "type": "string"
+                },
+                "train_feature_id": {
+                  "type": "string"
+                },
+                "query_index": {
+                  "type": "integer"
+                },
+                "train_index": {
+                  "type": "integer"
+                },
+                "distance": {
+                  "type": "number"
+                },
+                "query_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "train_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "match_id",
+                "query_feature_id",
+                "train_feature_id",
+                "query_index",
+                "train_index",
+                "distance",
+                "query_xy",
+                "train_xy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matcher_kind",
+          "cross_check",
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "planar-transform.v1",
+      "display_name": "Planar Transform Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "transform_kind": {
+            "type": "string"
+          },
+          "matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "inverse_matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "match_count": {
+            "type": "integer"
+          },
+          "inlier_count": {
+            "type": "integer"
+          },
+          "inlier_match_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reprojection_error": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "transform_kind",
+          "matrix_3x3",
+          "match_count",
+          "inlier_count",
+          "inlier_match_ids"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-circles",
+      "display_name": "Draw Circles",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_radius": {
+            "type": "boolean",
+            "default": false
+          },
+          "draw_diameter": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_center": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-contours",
+      "display_name": "Draw Contours",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 contours.v1 结果绘制到图片上，适合轮廓调试和规则依据复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_bbox": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.contour.debug"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-detections",
+      "display_name": "Draw Detections",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 detection 结果绘制到图片上。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "待绘制 detection 的原图。",
+          "required": true,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "原图",
+                "en-US": "Image"
+              },
+              "description": {
+                "zh-CN": "待绘制 detection 的原图。",
+                "en-US": "Source image that receives the detection overlay."
+              }
+            }
+          }
+        },
+        {
+          "name": "detections",
+          "display_name": "Detections",
+          "payload_type_id": "detections.v1",
+          "description": "标准 detections.v1 检测结果。",
+          "required": true,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "检测结果",
+                "en-US": "Detections"
+              },
+              "description": {
+                "zh-CN": "标准 detections.v1 检测结果。",
+                "en-US": "Standard detections.v1 payload to render on the image."
+              }
+            }
+          }
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "绘制完成后的输出图片。",
+          "required": true,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "输出图片",
+                "en-US": "Image"
+              },
+              "description": {
+                "zh-CN": "绘制完成后的输出图片。",
+                "en-US": "Rendered output image with boxes and labels."
+              }
+            }
+          }
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2,
+            "description": "绘制 bbox 边框时使用的线宽。",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "线宽",
+                "en-US": "Line thickness"
+              },
+              "description": {
+                "zh-CN": "绘制 bbox 边框时使用的线宽。",
+                "en-US": "Stroke width used for detection boxes."
+              }
+            }
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5,
+            "description": "绘制标签文本时使用的字体缩放。",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "字体缩放",
+                "en-US": "Font scale"
+              },
+              "description": {
+                "zh-CN": "绘制标签文本时使用的字体缩放。",
+                "en-US": "Font scale used when drawing labels."
+              }
+            }
+          },
+          "draw_scores": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否把 score 一起画到标签文本中。",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "绘制 score",
+                "en-US": "Draw scores"
+              },
+              "description": {
+                "zh-CN": "是否把 score 一起画到标签文本中。",
+                "en-US": "Whether to include detection scores in the label text."
+              }
+            }
+          },
+          "output_object_key": {
+            "type": "string",
+            "description": "可选输出 object key；留空时返回 memory image-ref。",
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "输出 object key",
+                "en-US": "Output object key"
+              },
+              "description": {
+                "zh-CN": "可选输出 object key；留空时返回 memory image-ref。",
+                "en-US": "Optional output object key. When omitted, the node returns a memory image-ref."
+              }
+            }
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "绘制检测框",
+            "en-US": "Draw Detections"
+          },
+          "description": {
+            "zh-CN": "通过 OpenCV 把 detection 结果绘制到图片上。",
+            "en-US": "Draw detection boxes and labels on the image with OpenCV."
+          }
+        }
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-lines",
+      "display_name": "Draw Lines",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_indices": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_angle": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_length": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_midpoint": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-measurements",
+      "display_name": "Draw Measurements",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把通用量测 summary 绘制到图片上，适合距离、偏移、槽宽和同心度依据复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "measurement",
+          "display_name": "Measurement",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "point_radius": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 4
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "inspection.measurement.visualize"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-regions",
+      "display_name": "Draw Regions",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上，适合模板匹配、分割和缺陷区域复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "mask_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35
+          },
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "draw_masks": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_polygons": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_boxes": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_labels": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw-regions",
+        "opencv.draw",
+        "vision.render",
+        "vision.region.debug"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-roi",
+      "display_name": "Draw ROI",
+      "category": "opencv.render",
+      "description": "通过 OpenCV 把 roi.v1 直接绘制回原图，适合现场复核换型区域、检测范围和工位边界。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.5
+          },
+          "fill_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.18
+          },
+          "draw_label": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_bbox": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "inspection.roi.visualize"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.draw-rois",
+      "display_name": "Draw ROIs",
+      "category": "opencv.render",
+      "description": "把 value.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "rois",
+          "display_name": "ROIs",
+          "payload_type_id": "value.v1",
+          "description": "ROI 列表，通常来自 ROI Grid Create.value 或 ROI List Create.value。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "line_thickness": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "font_scale": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.45
+          },
+          "fill_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.12
+          },
+          "draw_label": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_index": {
+            "type": "boolean",
+            "default": true
+          },
+          "draw_bbox": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.draw",
+        "vision.render",
+        "inspection.roi.visualize",
+        "inspection.roi.batch"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.render-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

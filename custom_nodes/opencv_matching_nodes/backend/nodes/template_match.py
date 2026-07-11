@@ -6,10 +6,17 @@ from typing import Any
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.region import build_regions_payload
-from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy, require_roi_payload
+from backend.nodes.core_nodes.support.roi import bbox_to_polygon_xy
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
+from custom_nodes._opencv_shared.backend.runtime.search_roi import (
+    ResolvedSearchRoi,
+    build_search_roi_overlay,
+    build_search_roi_summary,
+    resolve_search_roi,
+)
 from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_float,
     require_positive_int,
@@ -124,45 +131,6 @@ def _normalize_score_map(*, raw_result_map: Any, method_name: str, np_module: An
     else:
         score_map = 1.0 - normalized_result_map
     return np_module.clip(score_map, 0.0, 1.0)
-
-
-def _clip_search_bbox(
-    *,
-    bbox_xyxy: list[float],
-    image_width: int,
-    image_height: int,
-) -> list[int]:
-    """把搜索 bbox 限制在图片范围内。"""
-
-    x1_value = max(0, min(image_width - 1, int(round(float(bbox_xyxy[0])))))
-    y1_value = max(0, min(image_height - 1, int(round(float(bbox_xyxy[1])))))
-    x2_value = max(x1_value + 1, min(image_width, int(round(float(bbox_xyxy[2])))))
-    y2_value = max(y1_value + 1, min(image_height, int(round(float(bbox_xyxy[3])))))
-    return [x1_value, y1_value, x2_value, y2_value]
-
-
-def _extract_search_matrix(
-    *,
-    image_matrix: Any,
-    roi_payload: dict[str, object] | None,
-) -> tuple[Any, list[int], bool]:
-    """根据可选 ROI 解析实际搜索窗口。"""
-
-    image_height = int(image_matrix.shape[0])
-    image_width = int(image_matrix.shape[1])
-    if roi_payload is None:
-        return image_matrix, [0, 0, image_width, image_height], False
-    search_bbox_xyxy = _clip_search_bbox(
-        bbox_xyxy=roi_payload["bbox_xyxy"],
-        image_width=image_width,
-        image_height=image_height,
-    )
-    x1_value, y1_value, x2_value, y2_value = search_bbox_xyxy
-    return (
-        image_matrix[y1_value:y2_value, x1_value:x2_value],
-        search_bbox_xyxy,
-        roi_payload["roi_kind"] == "polygon",
-    )
 
 
 def _compute_bbox_iou(bbox_a_xyxy: list[float], bbox_b_xyxy: list[float]) -> float:
@@ -321,12 +289,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         input_name="template_image",
         imdecode_flags=imdecode_flags,
     )
-    raw_roi_payload = request.input_values.get("roi")
-    roi_payload = require_roi_payload(raw_roi_payload, node_id=request.node_id) if raw_roi_payload is not None else None
-    search_image_matrix, search_bbox_xyxy, roi_bbox_only = _extract_search_matrix(
-        image_matrix=source_image_matrix,
-        roi_payload=roi_payload,
-    )
+    source_height = int(source_image_matrix.shape[0])
+    source_width = int(source_image_matrix.shape[1])
+    search_roi = resolve_search_roi(request, image_matrix=source_image_matrix)
+    search_image_matrix = search_roi.image_matrix
+    search_bbox_xyxy = search_roi.bbox_xyxy or [0, 0, source_width, source_height]
 
     template_height = int(template_image_matrix.shape[0])
     template_width = int(template_image_matrix.shape[1])
@@ -428,13 +395,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         "mean_score": round(sum(score_values) / len(score_values), 6) if score_values else None,
         "items": summary_items,
     }
-    if roi_payload is not None:
-        summary_payload["roi_id"] = roi_payload["roi_id"]
-        summary_payload["roi_kind"] = roi_payload["roi_kind"]
-        summary_payload["roi_bbox_xyxy"] = [round(float(value), 4) for value in roi_payload["bbox_xyxy"]]
-        summary_payload["roi_polygon_bbox_only"] = roi_bbox_only
+    summary_payload.update(build_search_roi_summary(search_roi))
 
-    return {
+    outputs: dict[str, object] = {
         "regions": build_regions_payload(
             source_image=source_image_payload,
             selected_frame_index=None,
@@ -442,3 +405,95 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         ),
         "summary": build_value_payload(summary_payload),
     }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=source_image_payload,
+            title="Template Match",
+            artifact_name="template-match-debug-preview",
+            overlays=_build_template_match_overlays(region_items, search_roi=search_roi),
+            interaction=_build_template_match_interaction(
+                score_threshold=score_threshold,
+                max_matches=max_matches,
+                nms_iou_threshold=nms_iou_threshold,
+            ),
+        )
+    )
+    return outputs
+
+
+def _build_template_match_interaction(
+    *,
+    score_threshold: float,
+    max_matches: int,
+    nms_iou_threshold: float,
+) -> dict[str, object]:
+    """声明 Template Match 在图片面板中的搜索区域和调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "template-region",
+                "label": "模板搜索区域",
+                "target_parameters": ["search_bbox_xyxy"],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("score_threshold", "Score Threshold", score_threshold, min_value=0.0, max_value=1.0, step=0.01),
+            _build_numeric_control("max_matches", "Max Matches", max_matches, min_value=1.0, max_value=200.0, step=1.0),
+            _build_numeric_control("nms_iou_threshold", "NMS IoU", nms_iou_threshold, min_value=0.0, max_value=1.0, step=0.01),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_template_match_overlays(
+    region_items: list[dict[str, object]],
+    *,
+    search_roi: ResolvedSearchRoi,
+) -> list[dict[str, object]]:
+    """把模板匹配结果转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    search_roi_overlay = build_search_roi_overlay(search_roi)
+    if search_roi_overlay is not None:
+        overlays.append(search_roi_overlay)
+    for region_item in region_items[:100]:
+        bbox_xyxy = region_item.get("bbox_xyxy")
+        if not isinstance(bbox_xyxy, list) or len(bbox_xyxy) < 4:
+            continue
+        region_id = str(region_item.get("region_id") or f"match-{len(overlays) + 1}")
+        score = region_item.get("score")
+        overlays.append(
+            {
+                "kind": "bbox",
+                "id": region_id,
+                "label": f"{region_id} {float(score):.3f}" if isinstance(score, (int, float)) else region_id,
+                "bbox_xyxy": [float(value) for value in bbox_xyxy[:4]],
+            }
+        )
+    return overlays

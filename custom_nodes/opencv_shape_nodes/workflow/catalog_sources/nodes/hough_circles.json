@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.hough-circles",
   "display_name": "Hough Circles",
-  "category": "opencv.analysis",
+  "category": "opencv.shape",
   "description": "对输入图片执行 Hough 圆检测，并输出结构化 circles.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
@@ -11,6 +11,12 @@
       "name": "image",
       "display_name": "Image",
       "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
     }
   ],
   "output_ports": [
@@ -36,27 +42,33 @@
     "properties": {
       "dp": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 1
       },
       "min_dist": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 20
       },
       "param1": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 100
       },
       "param2": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 20
       },
       "min_radius": {
         "type": "integer",
-        "minimum": 0
+        "minimum": 0,
+        "default": 0
       },
       "max_radius": {
         "type": "integer",
-        "minimum": 0
+        "minimum": 0,
+        "default": 0
       },
       "sort_by": {
         "type": "string",
@@ -67,14 +79,26 @@
           "area",
           "center_x",
           "center_y"
-        ]
+        ],
+        "default": "radius"
       },
       "descending": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       },
       "limit": {
         "type": "integer",
         "minimum": 1
+      },
+      "search_bbox_xyxy": {
+        "type": "array",
+        "title": "Search ROI",
+        "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "number"
+        }
       },
       "debug_image_panel_enabled": {
         "type": "boolean",

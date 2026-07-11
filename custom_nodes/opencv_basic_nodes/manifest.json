@@ -3,13 +3,11 @@
   "id": "opencv.basic-nodes",
   "version": "0.1.0",
   "displayName": "OpenCV Basic Nodes",
-  "description": "提供一组 OpenCV 预处理、渲染、导出与预览节点。",
+  "description": "提供一组 OpenCV 预处理、过滤、裁剪、导出与预览节点。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",
     "vision.filter",
-    "vision.render",
-    "vision.analysis",
     "vision.preview"
   ],
   "permissionScopes": [

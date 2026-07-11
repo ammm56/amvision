@@ -1,0 +1,29 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "opencv.render-nodes",
+  "version": "0.1.0",
+  "displayName": "OpenCV Render Nodes",
+  "description": "提供 OpenCV 绘制和调试显示节点，只负责把 ROI、圆、线、轮廓、region 等结果画回图像。",
+  "category": "custom-node-pack",
+  "capabilities": [
+    "pipeline.node",
+    "vision.render",
+    "vision.preview"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.opencv_render_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json"
+}

@@ -379,7 +379,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `regions-area-ratio`
 - `region-continuity-score`
 - `region-gap-check`
@@ -624,7 +624,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `industrial_local_directory_polling_cursor_guard.template.json`
 - `industrial_local_directory_polling_cursor_guard.application.json`
 
-前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / mask-overlay` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_detection_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_detection_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_roi_delivery_bundle` 继续把这条工业主线往结果交付面收口，覆盖“PLC 回写 + JSON/CSV 归档 + MES HTTP + Local DB”同图闭环；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate`、`industrial_single_frame_calibrated_template_edge_gate`、`industrial_single_frame_calibrated_orb_homography_gate`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate`、`industrial_single_frame_reference_diff_defect_gate`、`industrial_single_frame_sobel_laplacian_edge_gap_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 量测、参考图差异、边缘预增强和标定对位这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度、本地 JSON 标定矫正后的 template-match + caliper-edge 定位门、本地 JSON 标定矫正后的 ORB + homography 参考对位门、本地 JSON 标定矫正后的 ORB -> bridge -> template-match + caliper-edge + ROI 规则门、`image-diff -> absdiff-threshold -> connected-components -> 工业规则链` 的参考图缺陷门、`sobel/laplacian -> contour -> edge-profile-gap / edge-break` 的边线完整性门，以及双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_detection_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_poll_detection_position_gate` 与 `industrial_local_directory_watch_detection_position_gate` 则分别把 `directory-poll`、`directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“固定周期轮询触发”和“目录变化触发”两类更贴现场的守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
+前两组样例聚焦“单图输入 -> 规则判定 -> `process-decision` -> 结果回传”，不把相机、PLC 或特定模型耦合进模板本体。`industrial_single_frame_segments_continuity_gate` 则把“分割输出 -> `segments.v1` -> `regions.v1` -> 工业规则链”这层也一起接通；`industrial_single_frame_regions_overlay_review` 与 `industrial_single_frame_segments_overlay_review` 进一步把 `draw-roi / draw-regions` 这层 checked-in，分别覆盖“上游已是标准 `regions.v1`”和“上游仍是 `segments.v1` 需要先桥接”的两种现场复核入口；`industrial_single_frame_yoloe_text_overlay_review`、`industrial_single_frame_yoloe_visual_overlay_review`、`industrial_single_frame_sam3_semantic_overlay_review` 与 `industrial_single_frame_sam3_interactive_overlay_review` 则继续把这条 overlay 复核链直接前移到 YOLOE / SAM3 节点本身，分别覆盖“文本开放词汇检测”“视觉提示检测”“文本语义分割”和“交互分割”四类本项目自带上游；`industrial_single_frame_detection_position_gate` 对应把“检测输出 -> `detections.v1` -> `regions.v1` -> 工业规则链”这层接通；`industrial_single_frame_usb_uvc_detection_position_gate` 与 `industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate` 则继续把同一条工业规则链前移到 USB / UVC 相机直采入口，分别覆盖“相机单帧检测位置门”和“相机单帧分割连续性门”两类更贴现场联机调试的主线；`industrial_single_frame_glue_roi_delivery_bundle` 继续把这条工业主线往结果交付面收口，覆盖“PLC 回写 + JSON/CSV 归档 + MES HTTP + Local DB”同图闭环；`industrial_single_frame_glue_polygon_roi_changeover` 进一步演示多边形 ROI 的换型和现场回调；`industrial_single_frame_line_pair_measure_gate`、`industrial_single_frame_calibrated_template_edge_gate`、`industrial_single_frame_calibrated_orb_homography_gate`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate`、`industrial_single_frame_reference_diff_defect_gate`、`industrial_single_frame_sobel_laplacian_edge_gap_gate` 与 `industrial_single_frame_circle_concentricity_gate` 则把传统 OpenCV 量测、参考图差异、边缘预增强和标定对位这层收成 checked-in 现场模板，分别覆盖双边线槽宽/平行度、本地 JSON 标定矫正后的 template-match + caliper-edge 定位门、本地 JSON 标定矫正后的 ORB + homography 参考对位门、本地 JSON 标定矫正后的 ORB -> bridge -> template-match + caliper-edge + ROI 规则门、`image-diff -> absdiff-threshold -> connected-components -> 工业规则链` 的参考图缺陷门、`sobel/laplacian -> contour -> edge-profile-gap / edge-break` 的边线完整性门，以及双圆孔径/同心度/圆度；`industrial_local_directory_batch_input` 把本地文件夹小批量输入这层单独收成可复用模板；`industrial_local_directory_batch_segments_continuity_gate` 与 `industrial_local_directory_batch_regions_continuity_gate` 则把“目录批次 -> 分割/区域结果 -> 连续性规则链 -> CSV / JSON 归档”两类上游入口接到同一套批次骨架；`industrial_local_directory_batch_detection_position_gate` 继续把这条目录批次输入主线真正接到“逐图检测 -> 规则判定 -> CSV 持续归档 -> 批次 JSON 汇总”的现场闭环；`industrial_local_directory_poll_detection_position_gate` 与 `industrial_local_directory_watch_detection_position_gate` 则分别把 `directory-poll`、`directory-watch` TriggerSource 标准化后的 `payload / event` 直接接进同一条检测与规则批次骨架，覆盖“固定周期轮询触发”和“目录变化触发”两类更贴现场的守护式接入；`industrial_local_directory_polling_cursor_guard` 则把“目录轮询守护 / cursor 落盘恢复 / 批次归档 JSON”这层独立收成可复用状态模板。
 
 其中 `industrial_single_frame_reference_diff_watershed_surface_gate` 是新补的参考图表面异常模板，专门覆盖“差异热力图复核 + 粘连异常的 watershed 拆分 + foreground-change-ratio / surface-uniformity-metrics 规则门”这条更贴脏污、残留和连片异常的主线。
 
@@ -738,7 +738,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-inside-check`
 - `process-decision`
@@ -768,7 +768,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 注意事项：
 
-- 这条样例会把 `mask-overlay.image` 直接接到 `process-decision.image`，所以输出的 `inspection_result` 会携带最终复核图引用
+- 这条样例会把 `draw-regions.image` 直接接到 `process-decision.image`，所以输出的 `inspection_result` 会携带最终复核图引用
 - 该样例默认使用多边形 ROI，更适合不规则工位或换型边界复核
 
 ### industrial_single_frame_segments_overlay_review
@@ -781,7 +781,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-coverage-check`
 - `process-decision`
@@ -824,7 +824,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-inside-check`
 - `process-decision`
@@ -870,7 +870,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-inside-check`
 - `process-decision`
@@ -918,7 +918,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-coverage-check`
 - `process-decision`
@@ -962,7 +962,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `regions-filter`
 - `roi-create`
 - `draw-roi`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-coverage-check`
 - `process-decision`
@@ -1551,7 +1551,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 注意事项：
 
 - 这条样例把 `homography` 质量门和下游 `template-match / caliper-edge / ROI` 规则门一起保留，避免只看桥接后的单一路径
-- `reference_frame_current_image` 和 `reference_frame_alignment_roi` 是这条样例的关键中间产物，后续也适合继续接 `draw-roi`、`mask-overlay` 或更多量测节点
+- `reference_frame_current_image` 和 `reference_frame_alignment_roi` 是这条样例的关键中间产物，后续也适合继续接 `draw-roi`、`draw-regions` 或更多量测节点
 - 如果现场位姿变化其实很小，仍建议先用 `industrial_single_frame_calibrated_template_edge_gate`，只有模板链不稳时再切到这条更重的参考对位方案
 
 ### industrial_single_frame_reference_diff_defect_gate
@@ -1566,7 +1566,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `image-diff`
 - `absdiff-threshold`
 - `connected-components`
-- `mask-overlay`
+- `draw-regions`
 - `presence-check`
 - `regions-area-ratio`
 - `range-check`
@@ -1606,7 +1606,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 注意事项：
 
 - 样例默认先裁 ROI，再对当前图和参考图做差异；这要求两张图在 ROI 内已经基本对齐，若现场存在明显旋转、缩放或视角变化，当前更适合先走标定/模板定位或后续 ORB / homography 配准链
-- `connected-components` 的 `source_image` 显式绑定到 `crop_image.image`，这样后续 `regions-area-ratio` 和 `mask-overlay` 都基于同一张裁剪图计算，不会把差异面积错误换算到整图
+- `connected-components` 的 `source_image` 显式绑定到 `crop_image.image`，这样后续 `regions-area-ratio` 和 `draw-regions` 都基于同一张裁剪图计算，不会把差异面积错误换算到整图
 - `presence-check` 在这条样例里表达的是“差异块数量是否超限”，不是简单的“有无目标”；默认允许少量小差异并同时用 `regions-area-ratio` 控制总异常面积
 
 ### industrial_single_frame_reference_diff_watershed_surface_gate
@@ -1623,7 +1623,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `absdiff-threshold`
 - `watershed`
 - `connected-components`
-- `mask-overlay`
+- `draw-regions`
 - `surface-uniformity-metrics`
 - `foreground-change-ratio`
 - `value-field-extract(cluster_count_per_10k_pixels)`

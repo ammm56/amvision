@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import (
@@ -152,13 +153,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if limit is not None:
         line_items = line_items[:limit]
 
-    return {
+    source_image = contours_payload.get("source_image")
+    source_object_key = (
+        contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None
+    )
+    outputs: dict[str, object] = {
         "lines": build_lines_payload(
             items=line_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
+            source_image=source_image,
+            source_object_key=source_object_key,
         ),
         "summary": build_value_payload(
             {
@@ -186,3 +191,94 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    if isinstance(source_image, dict):
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="Fit Line",
+                artifact_name="fit-line-debug-preview",
+                overlays=_build_line_overlays(line_items),
+                interaction=_build_line_interaction(
+                    reps=reps,
+                    aeps=aeps,
+                    limit=limit,
+                ),
+            )
+        )
+    return outputs
+
+
+def _build_line_interaction(
+    *,
+    reps: float,
+    aeps: float,
+    limit: int | None,
+) -> dict[str, object]:
+    """声明 Fit Line 在图片面板中的线段取参和调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "line",
+                "label": "参考线段",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("reps", "REPS", reps, min_value=0.001, max_value=2.0, step=0.001),
+            _build_numeric_control("aeps", "AEPS", aeps, min_value=0.001, max_value=2.0, step=0.001),
+            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_line_overlays(line_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """把拟合直线结果转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for line_item in line_items:
+        start_xy = line_item.get("start_xy")
+        end_xy = line_item.get("end_xy")
+        if not isinstance(start_xy, list) or len(start_xy) < 2 or not isinstance(end_xy, list) or len(end_xy) < 2:
+            continue
+        line_index = int(line_item.get("line_index", len(overlays) + 1))
+        overlays.append(
+            {
+                "kind": "line",
+                "id": f"fit-line-{line_index}",
+                "label": f"fit line {line_index}",
+                "line_xyxy": [
+                    float(start_xy[0]),
+                    float(start_xy[1]),
+                    float(end_xy[0]),
+                    float(end_xy[1]),
+                ],
+            }
+        )
+    return overlays

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import (
@@ -101,13 +102,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if limit is not None:
         circle_items = circle_items[:limit]
 
-    return {
+    source_image = contours_payload.get("source_image")
+    source_object_key = (
+        contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None
+    )
+    outputs: dict[str, object] = {
         "circles": build_circles_payload(
             items=circle_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
+            source_image=source_image,
+            source_object_key=source_object_key,
         ),
         "summary": build_value_payload(
             {
@@ -138,3 +143,82 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    if isinstance(source_image, dict):
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="Min Enclosing Circle",
+                artifact_name="min-enclosing-circle-debug-preview",
+                overlays=_build_circle_overlays(circle_items),
+                interaction=_build_min_enclosing_circle_interaction(limit=limit),
+            )
+        )
+    return outputs
+
+
+def _build_min_enclosing_circle_interaction(*, limit: int | None) -> dict[str, object]:
+    """声明 Min Enclosing Circle 在图片面板中的圆形结果调试能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "circle",
+                "label": "参考圆",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_circle_overlays(circle_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """把最小外接圆结果转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for circle_item in circle_items[:120]:
+        center_xy = circle_item.get("center_xy")
+        radius = circle_item.get("radius")
+        if not isinstance(center_xy, list) or len(center_xy) < 2 or not isinstance(radius, (int, float)):
+            continue
+        circle_index = int(circle_item.get("circle_index", len(overlays) + 1))
+        overlays.append(
+            {
+                "kind": "circle",
+                "id": f"min-enclosing-circle-{circle_index}",
+                "label": f"circle {circle_index}",
+                "circle": {
+                    "center_x": float(center_xy[0]),
+                    "center_y": float(center_xy[1]),
+                    "radius": float(radius),
+                },
+            }
+        )
+    return overlays

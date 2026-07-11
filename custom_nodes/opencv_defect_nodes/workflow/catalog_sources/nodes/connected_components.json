@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.connected-components",
   "display_name": "Connected Components",
-  "category": "opencv.analysis",
+  "category": "opencv.defect",
   "description": "把二值前景图分解成连通区域，并输出标准 regions.v1 与摘要。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

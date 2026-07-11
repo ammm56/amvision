@@ -2407,700 +2407,6 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-circles",
-      "display_name": "Draw Circles",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "circles",
-          "display_name": "Circles",
-          "payload_type_id": "circles.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "point_radius": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 3
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "draw_indices": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_radius": {
-            "type": "boolean",
-            "default": false
-          },
-          "draw_diameter": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_center": {
-            "type": "boolean",
-            "default": true
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "vision.geometry"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-contours",
-      "display_name": "Draw Contours",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 contours.v1 结果绘制到图片上，适合轮廓调试和规则依据复核。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "contours",
-          "display_name": "Contours",
-          "payload_type_id": "contours.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "draw_indices": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_bbox": {
-            "type": "boolean",
-            "default": false
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "vision.contour.debug"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-detections",
-      "display_name": "Draw Detections",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 detection 结果绘制到图片上。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "待绘制 detection 的原图。",
-          "required": true,
-          "multiple": false,
-          "metadata": {
-            "i18n": {
-              "display_name": {
-                "zh-CN": "原图",
-                "en-US": "Image"
-              },
-              "description": {
-                "zh-CN": "待绘制 detection 的原图。",
-                "en-US": "Source image that receives the detection overlay."
-              }
-            }
-          }
-        },
-        {
-          "name": "detections",
-          "display_name": "Detections",
-          "payload_type_id": "detections.v1",
-          "description": "标准 detections.v1 检测结果。",
-          "required": true,
-          "multiple": false,
-          "metadata": {
-            "i18n": {
-              "display_name": {
-                "zh-CN": "检测结果",
-                "en-US": "Detections"
-              },
-              "description": {
-                "zh-CN": "标准 detections.v1 检测结果。",
-                "en-US": "Standard detections.v1 payload to render on the image."
-              }
-            }
-          }
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "绘制完成后的输出图片。",
-          "required": true,
-          "multiple": false,
-          "metadata": {
-            "i18n": {
-              "display_name": {
-                "zh-CN": "输出图片",
-                "en-US": "Image"
-              },
-              "description": {
-                "zh-CN": "绘制完成后的输出图片。",
-                "en-US": "Rendered output image with boxes and labels."
-              }
-            }
-          }
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2,
-            "description": "绘制 bbox 边框时使用的线宽。",
-            "x-amvision-i18n": {
-              "title": {
-                "zh-CN": "线宽",
-                "en-US": "Line thickness"
-              },
-              "description": {
-                "zh-CN": "绘制 bbox 边框时使用的线宽。",
-                "en-US": "Stroke width used for detection boxes."
-              }
-            }
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5,
-            "description": "绘制标签文本时使用的字体缩放。",
-            "x-amvision-i18n": {
-              "title": {
-                "zh-CN": "字体缩放",
-                "en-US": "Font scale"
-              },
-              "description": {
-                "zh-CN": "绘制标签文本时使用的字体缩放。",
-                "en-US": "Font scale used when drawing labels."
-              }
-            }
-          },
-          "draw_scores": {
-            "type": "boolean",
-            "default": true,
-            "description": "是否把 score 一起画到标签文本中。",
-            "x-amvision-i18n": {
-              "title": {
-                "zh-CN": "绘制 score",
-                "en-US": "Draw scores"
-              },
-              "description": {
-                "zh-CN": "是否把 score 一起画到标签文本中。",
-                "en-US": "Whether to include detection scores in the label text."
-              }
-            }
-          },
-          "output_object_key": {
-            "type": "string",
-            "description": "可选输出 object key；留空时返回 memory image-ref。",
-            "x-amvision-i18n": {
-              "title": {
-                "zh-CN": "输出 object key",
-                "en-US": "Output object key"
-              },
-              "description": {
-                "zh-CN": "可选输出 object key；留空时返回 memory image-ref。",
-                "en-US": "Optional output object key. When omitted, the node returns a memory image-ref."
-              }
-            }
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {
-        "i18n": {
-          "display_name": {
-            "zh-CN": "绘制检测框",
-            "en-US": "Draw Detections"
-          },
-          "description": {
-            "zh-CN": "通过 OpenCV 把 detection 结果绘制到图片上。",
-            "en-US": "Draw detection boxes and labels on the image with OpenCV."
-          }
-        }
-      }
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-lines",
-      "display_name": "Draw Lines",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "lines",
-          "display_name": "Lines",
-          "payload_type_id": "lines.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "point_radius": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 3
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "draw_indices": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_angle": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_length": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_midpoint": {
-            "type": "boolean",
-            "default": true
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "vision.geometry"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-measurements",
-      "display_name": "Draw Measurements",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把通用量测 summary 绘制到图片上，适合距离、偏移、槽宽和同心度依据复核。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "measurement",
-          "display_name": "Measurement",
-          "payload_type_id": "value.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "point_radius": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 4
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "draw_labels": {
-            "type": "boolean",
-            "default": true
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "inspection.measurement.visualize"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-roi",
-      "display_name": "Draw ROI",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 roi.v1 直接绘制回原图，适合现场复核换型区域、检测范围和工位边界。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "roi",
-          "display_name": "ROI",
-          "payload_type_id": "roi.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "fill_alpha": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.18
-          },
-          "draw_label": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_bbox": {
-            "type": "boolean",
-            "default": false
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "inspection.roi.visualize"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.draw-rois",
-      "display_name": "Draw ROIs",
-      "category": "opencv.render",
-      "description": "把 value.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "rois",
-          "display_name": "ROIs",
-          "payload_type_id": "value.v1",
-          "description": "ROI 列表，通常来自 ROI Grid Create.value 或 ROI List Create.value。",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.45
-          },
-          "fill_alpha": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.12
-          },
-          "draw_label": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_index": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_bbox": {
-            "type": "boolean",
-            "default": false
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "inspection.roi.visualize",
-        "inspection.roi.batch"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.gallery-preview",
       "display_name": "Gallery Preview",
       "category": "opencv.preview",
@@ -3423,101 +2729,6 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.opencv.mask-overlay",
-      "display_name": "Mask Overlay",
-      "category": "opencv.render",
-      "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 叠加回原图，适合分割、差异前景和缺陷区域的现场复核。",
-      "implementation_kind": "custom-node",
-      "runtime_kind": "python-callable",
-      "input_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        },
-        {
-          "name": "regions",
-          "display_name": "Regions",
-          "payload_type_id": "regions.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "image",
-          "display_name": "Image",
-          "payload_type_id": "image-ref.v1",
-          "description": "",
-          "required": true,
-          "multiple": false,
-          "metadata": {}
-        }
-      ],
-      "parameter_schema": {
-        "type": "object",
-        "properties": {
-          "mask_alpha": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.35
-          },
-          "line_thickness": {
-            "type": "integer",
-            "minimum": 1,
-            "default": 2
-          },
-          "font_scale": {
-            "type": "number",
-            "minimum": 0,
-            "default": 0.5
-          },
-          "draw_masks": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_polygons": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_boxes": {
-            "type": "boolean",
-            "default": true
-          },
-          "draw_labels": {
-            "type": "boolean",
-            "default": true
-          },
-          "output_object_key": {
-            "type": "string"
-          }
-        }
-      },
-      "parameter_ui_schema": null,
-      "capability_tags": [
-        "opencv.draw",
-        "vision.render",
-        "vision.segmentation.visualize"
-      ],
-      "runtime_requirements": {
-        "python_packages": [
-          "opencv-python",
-          "numpy"
-        ]
-      },
-      "node_pack_id": "opencv.basic-nodes",
-      "node_pack_version": "0.1.0",
-      "metadata": {}
-    },
-    {
-      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.median-blur",
       "display_name": "Median Blur",
       "category": "opencv.filter",
@@ -3791,7 +3002,7 @@
       "node_type_id": "custom.opencv.payload-to-value",
       "display_name": "OpenCV Payload To Value",
       "category": "opencv.transform",
-      "description": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1、circles.v1 或 ellipses.v1 包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
+      "description": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "input_ports": [
@@ -3914,6 +3125,86 @@
               }
             }
           }
+        },
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "待包装的 regions 结果。",
+          "required": false,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "区域结果",
+                "en-US": "Regions"
+              },
+              "description": {
+                "zh-CN": "待包装的 regions 结果。",
+                "en-US": "Regions result to wrap as value.v1."
+              }
+            }
+          }
+        },
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "local-features.v1",
+          "description": "待包装的 local-features 结果。",
+          "required": false,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "特征点结果",
+                "en-US": "Features"
+              },
+              "description": {
+                "zh-CN": "待包装的 local-features 结果。",
+                "en-US": "Local-features result to wrap as value.v1."
+              }
+            }
+          }
+        },
+        {
+          "name": "matches",
+          "display_name": "Matches",
+          "payload_type_id": "feature-matches.v1",
+          "description": "待包装的 feature-matches 结果。",
+          "required": false,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "特征匹配结果",
+                "en-US": "Matches"
+              },
+              "description": {
+                "zh-CN": "待包装的 feature-matches 结果。",
+                "en-US": "Feature-matches result to wrap as value.v1."
+              }
+            }
+          }
+        },
+        {
+          "name": "planar_transform",
+          "display_name": "Planar Transform",
+          "payload_type_id": "planar-transform.v1",
+          "description": "待包装的 planar-transform 结果。",
+          "required": false,
+          "multiple": false,
+          "metadata": {
+            "i18n": {
+              "display_name": {
+                "zh-CN": "平面变换结果",
+                "en-US": "Planar Transform"
+              },
+              "description": {
+                "zh-CN": "待包装的 planar-transform 结果。",
+                "en-US": "Planar-transform result to wrap as value.v1."
+              }
+            }
+          }
         }
       ],
       "output_ports": [
@@ -3957,8 +3248,8 @@
             "en-US": "OpenCV Payload To Value"
           },
           "description": {
-            "zh-CN": "把 contours.v1、measurements.v1、rotated-rects.v1、lines.v1、circles.v1 或 ellipses.v1 包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
-            "en-US": "Wrap contours.v1, measurements.v1, rotated-rects.v1, lines.v1, circles.v1, or ellipses.v1 as value.v1 so the result can be composed into JSON responses or previewed as JSON."
+            "zh-CN": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
+            "en-US": "Wrap OpenCV geometry, matching, and region payloads as value.v1 so the result can be composed into JSON responses or previewed as JSON."
           }
         }
       }

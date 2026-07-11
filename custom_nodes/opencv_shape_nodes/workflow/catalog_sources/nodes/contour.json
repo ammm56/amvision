@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour",
   "display_name": "Contour",
-  "category": "opencv.analysis",
+  "category": "opencv.shape",
   "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
@@ -11,6 +11,12 @@
       "name": "image",
       "display_name": "Image",
       "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1",
+      "required": false
     }
   ],
   "output_ports": [
@@ -18,6 +24,17 @@
       "name": "contours",
       "display_name": "Contours",
       "payload_type_id": "contours.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "required": false
     }
   ],
   "parameter_schema": {
@@ -26,7 +43,18 @@
       "threshold": {
         "type": "integer",
         "minimum": 0,
-        "maximum": 255
+        "maximum": 255,
+        "default": 127
+      },
+      "threshold_mode": {
+        "type": "string",
+        "enum": [
+          "binary",
+          "binary-inverse",
+          "otsu",
+          "otsu-inverse"
+        ],
+        "default": "binary"
       },
       "retrieval_mode": {
         "type": "string",
@@ -35,7 +63,8 @@
           "list",
           "tree",
           "ccomp"
-        ]
+        ],
+        "default": "external"
       },
       "approximation": {
         "type": "string",
@@ -44,15 +73,43 @@
           "none",
           "tc89-l1",
           "tc89-kcos"
-        ]
+        ],
+        "default": "simple"
       },
       "min_area": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 0
       },
       "max_contours": {
         "type": "integer",
         "minimum": 1
+      },
+      "search_bbox_xyxy": {
+        "type": "array",
+        "title": "Search ROI",
+        "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "number"
+        }
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
       }
     }
   },

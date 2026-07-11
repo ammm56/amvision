@@ -138,13 +138,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             ]
         else:
             polygon_xy = [[float(point[0]), float(point[1])] for point in bbox_to_polygon_xy(bbox_xyxy)]
-        mask_payload = register_image_bytes(
-            request,
-            content=encode_png_image_bytes(
+        encoded_mask_bytes = bytes(
+            encode_png_image_bytes(
                 request,
                 image_matrix=(component_mask * 255).astype(np_module.uint8),
                 error_message="OpenCV connected-components 无法编码组件 mask",
-            ),
+            )
+        )
+        mask_payload = register_image_bytes(
+            request,
+            content=encoded_mask_bytes,
             media_type="image/png",
             width=int(component_mask.shape[1]),
             height=int(component_mask.shape[0]),

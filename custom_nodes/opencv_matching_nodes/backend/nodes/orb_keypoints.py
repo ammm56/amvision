@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import build_roi_mask, require_roi_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.features import build_local_features_payload
@@ -199,7 +200,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         roi_payload=roi_payload,
     )
     response_values = [float(item["response"]) for item in feature_items]
-    return {
+    outputs: dict[str, object] = {
         "features": features_payload,
         "summary": build_value_payload(
             {
@@ -225,3 +226,125 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=image_payload,
+            title="ORB Keypoints",
+            artifact_name="orb-keypoints-debug-preview",
+            overlays=_build_keypoint_overlays(feature_items, roi_payload=roi_payload),
+            interaction=_build_orb_keypoints_interaction(
+                max_features=max_features,
+                scale_factor=scale_factor,
+                level_count=level_count,
+                edge_threshold=edge_threshold,
+                patch_size=patch_size,
+                fast_threshold=fast_threshold,
+            ),
+        )
+    )
+    return outputs
+
+
+def _build_orb_keypoints_interaction(
+    *,
+    max_features: int,
+    scale_factor: float,
+    level_count: int,
+    edge_threshold: int,
+    patch_size: int,
+    fast_threshold: int,
+) -> dict[str, object]:
+    """声明 ORB Keypoints 在图片面板中的调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "bbox",
+                "label": "参考区域",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("max_features", "Max Features", max_features, min_value=10.0, max_value=5000.0, step=10.0),
+            _build_numeric_control("scale_factor", "Scale Factor", scale_factor, min_value=1.01, max_value=2.5, step=0.01),
+            _build_numeric_control("level_count", "Level Count", level_count, min_value=1.0, max_value=16.0, step=1.0),
+            _build_numeric_control("edge_threshold", "Edge Threshold", edge_threshold, min_value=0.0, max_value=128.0, step=1.0),
+            _build_numeric_control("patch_size", "Patch Size", patch_size, min_value=2.0, max_value=128.0, step=1.0),
+            _build_numeric_control("fast_threshold", "FAST Threshold", fast_threshold, min_value=0.0, max_value=255.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_keypoint_overlays(
+    feature_items: list[dict[str, object]],
+    *,
+    roi_payload: dict[str, object] | None,
+) -> list[dict[str, object]]:
+    """把 ORB 关键点和可选 ROI 转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    if roi_payload is not None:
+        polygon_xy = roi_payload.get("polygon_xy")
+        if isinstance(polygon_xy, list) and len(polygon_xy) >= 3:
+            overlays.append(
+                {
+                    "kind": "polygon",
+                    "id": str(roi_payload.get("roi_id") or "roi-mask"),
+                    "label": str(roi_payload.get("display_name") or "ROI mask"),
+                    "points_xy": polygon_xy,
+                }
+            )
+        else:
+            overlays.append(
+                {
+                    "kind": "bbox",
+                    "id": str(roi_payload.get("roi_id") or "roi-mask"),
+                    "label": str(roi_payload.get("display_name") or "ROI mask"),
+                    "bbox_xyxy": [float(value) for value in roi_payload["bbox_xyxy"]],
+                }
+            )
+    for feature_item in feature_items[:500]:
+        point_xy = feature_item.get("point_xy")
+        if not isinstance(point_xy, list) or len(point_xy) < 2:
+            continue
+        feature_index = int(feature_item.get("feature_index", len(overlays) + 1))
+        radius = max(2.0, float(feature_item.get("size", 4.0)) / 2.0)
+        overlays.append(
+            {
+                "kind": "circle",
+                "id": str(feature_item.get("feature_id") or f"feature-{feature_index}"),
+                "label": str(feature_item.get("feature_id") or f"feature {feature_index}"),
+                "circle": {
+                    "center_x": float(point_xy[0]),
+                    "center_y": float(point_xy[1]),
+                    "radius": radius,
+                },
+            }
+        )
+    return overlays

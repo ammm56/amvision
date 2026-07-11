@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
@@ -180,13 +181,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     for ellipse_index, ellipse_item in enumerate(ellipse_items, start=1):
         ellipse_item["ellipse_index"] = ellipse_index
 
-    return {
+    source_image = contours_payload.get("source_image")
+    source_object_key = (
+        contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None
+    )
+    outputs: dict[str, object] = {
         "ellipses": _build_ellipses_payload(
             items=ellipse_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
+            source_image=source_image,
+            source_object_key=source_object_key,
         ),
         "summary": build_value_payload(
             {
@@ -208,3 +213,122 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    if isinstance(source_image, dict):
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="Fit Ellipse",
+                artifact_name="fit-ellipse-debug-preview",
+                overlays=_build_ellipse_overlays(ellipse_items),
+                interaction=_build_fit_ellipse_interaction(limit=limit),
+            )
+        )
+    return outputs
+
+
+def _build_fit_ellipse_interaction(*, limit: int | None) -> dict[str, object]:
+    """声明 Fit Ellipse 在图片面板中的椭圆结果调试能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "circle",
+                "label": "参考圆/椭圆",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_ellipse_overlays(ellipse_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """把拟合椭圆结果转换为图片面板 polygon overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for ellipse_item in ellipse_items[:120]:
+        center_xy = ellipse_item.get("center_xy")
+        size_wh = ellipse_item.get("size_wh")
+        angle_deg = ellipse_item.get("angle_deg")
+        if (
+            not isinstance(center_xy, list)
+            or len(center_xy) < 2
+            or not isinstance(size_wh, list)
+            or len(size_wh) < 2
+            or not isinstance(angle_deg, (int, float))
+        ):
+            continue
+        ellipse_index = int(ellipse_item.get("ellipse_index", len(overlays) + 1))
+        overlays.append(
+            {
+                "kind": "polygon",
+                "id": f"fit-ellipse-{ellipse_index}",
+                "label": f"ellipse {ellipse_index}",
+                "points_xy": _approximate_ellipse_points(
+                    center_x=float(center_xy[0]),
+                    center_y=float(center_xy[1]),
+                    width=float(size_wh[0]),
+                    height=float(size_wh[1]),
+                    angle_deg=float(angle_deg),
+                    point_count=72,
+                ),
+            }
+        )
+    return overlays
+
+
+def _approximate_ellipse_points(
+    *,
+    center_x: float,
+    center_y: float,
+    width: float,
+    height: float,
+    angle_deg: float,
+    point_count: int,
+) -> list[list[float]]:
+    """用 polygon 点近似椭圆，复用前端已有 overlay 协议。"""
+
+    radius_x = max(0.0, float(width) / 2.0)
+    radius_y = max(0.0, float(height) / 2.0)
+    angle_rad = math.radians(angle_deg)
+    cos_value = math.cos(angle_rad)
+    sin_value = math.sin(angle_rad)
+    points: list[list[float]] = []
+    for index in range(max(12, int(point_count))):
+        theta = 2.0 * math.pi * float(index) / float(max(12, int(point_count)))
+        local_x = radius_x * math.cos(theta)
+        local_y = radius_y * math.sin(theta)
+        points.append(
+            [
+                round(center_x + local_x * cos_value - local_y * sin_value, 4),
+                round(center_y + local_x * sin_value + local_y * cos_value, 4),
+            ]
+        )
+    return points

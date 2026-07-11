@@ -1,0 +1,258 @@
+"""OpenCV matching 节点双图调试预览工具。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from backend.nodes.debug_image_panel import build_debug_image_preview_output, is_debug_image_panel_enabled
+from backend.nodes.runtime_support import load_image_matrix_from_payload, register_image_matrix
+from backend.service.application.errors import InvalidRequestError
+from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+
+
+@dataclass(frozen=True)
+class PairDebugPreviewContext:
+    """描述双图拼接预览的坐标换算信息。"""
+
+    width_a: int
+    height_a: int
+    width_b: int
+    height_b: int
+    gap: int
+
+    @property
+    def image_b_offset_x(self) -> int:
+        """返回右侧图片在拼接图中的 x 偏移。"""
+
+        return self.width_a + self.gap
+
+
+def build_pair_match_debug_preview_output(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    source_a_image: object,
+    source_b_image: object,
+    title: str,
+    artifact_name: str,
+    match_items: list[dict[str, object]],
+    interaction: dict[str, object],
+    inlier_match_ids: set[str] | None = None,
+    homography_matrix: Any | None = None,
+    max_match_lines: int = 200,
+) -> dict[str, object]:
+    """构建 ORB Match / Homography 这类双图节点的 debug_preview 输出。
+
+    参数：
+    - request：当前节点执行请求。
+    - cv2_module / np_module：调用方已加载的 OpenCV / NumPy 模块。
+    - source_a_image / source_b_image：两路 local-features 记录的源图。
+    - title：图片面板标题。
+    - artifact_name：Preview Run artifact 名称。
+    - match_items：feature-matches.v1 中的匹配项。
+    - interaction：图片面板交互和调参声明。
+    - inlier_match_ids：可选内点 id 集合；提供后仅绘制内点匹配线。
+    - homography_matrix：可选 3x3 homography，用于把左图外框投影到右图。
+    - max_match_lines：最多绘制的匹配线数量，避免调试图过载。
+
+    返回：
+    - dict[str, object]：关闭调试图时返回空 dict。
+    """
+
+    if not is_debug_image_panel_enabled(request):
+        return {}
+
+    context, pair_image_payload = _build_pair_image_payload(
+        request,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        source_a_image=source_a_image,
+        source_b_image=source_b_image,
+    )
+    overlays = _build_pair_match_overlays(
+        context,
+        match_items=match_items,
+        inlier_match_ids=inlier_match_ids,
+        max_match_lines=max_match_lines,
+    )
+    if homography_matrix is not None:
+        projected_overlay = _build_homography_projection_overlay(
+            context,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            homography_matrix=homography_matrix,
+        )
+        if projected_overlay is not None:
+            overlays.append(projected_overlay)
+
+    return build_debug_image_preview_output(
+        request,
+        image_payload=pair_image_payload,
+        title=title,
+        artifact_name=artifact_name,
+        overlays=overlays,
+        interaction=interaction,
+    )
+
+
+def _build_pair_image_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    source_a_image: object,
+    source_b_image: object,
+) -> tuple[PairDebugPreviewContext, dict[str, object]]:
+    """读取两路源图并注册拼接后的 raw BGR24 调试图。"""
+
+    if not isinstance(source_a_image, dict) or not isinstance(source_b_image, dict):
+        raise InvalidRequestError("匹配调试图要求 features payload 中包含两路 source_image")
+
+    _payload_a, image_matrix_a = load_image_matrix_from_payload(
+        request,
+        image_payload=source_a_image,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        imdecode_flags=cv2_module.IMREAD_COLOR,
+    )
+    _payload_b, image_matrix_b = load_image_matrix_from_payload(
+        request,
+        image_payload=source_b_image,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        imdecode_flags=cv2_module.IMREAD_COLOR,
+    )
+    image_matrix_a = _ensure_bgr_matrix(cv2_module, image_matrix_a)
+    image_matrix_b = _ensure_bgr_matrix(cv2_module, image_matrix_b)
+
+    height_a, width_a = image_matrix_a.shape[:2]
+    height_b, width_b = image_matrix_b.shape[:2]
+    gap = 24
+    canvas_height = max(int(height_a), int(height_b))
+    canvas_width = int(width_a) + gap + int(width_b)
+    canvas = np_module.full(
+        (canvas_height, canvas_width, 3),
+        fill_value=24,
+        dtype=np_module.uint8,
+    )
+    canvas[0:int(height_a), 0:int(width_a)] = image_matrix_a
+    canvas[0:int(height_b), int(width_a + gap):int(width_a + gap + width_b)] = image_matrix_b
+    context = PairDebugPreviewContext(
+        width_a=int(width_a),
+        height_a=int(height_a),
+        width_b=int(width_b),
+        height_b=int(height_b),
+        gap=gap,
+    )
+    return context, register_image_matrix(request, image_matrix=canvas)
+
+
+def _ensure_bgr_matrix(cv2_module: Any, image_matrix: Any) -> Any:
+    """把灰度或 BGRA matrix 规整为 BGR matrix。"""
+
+    if len(image_matrix.shape) == 2:
+        return cv2_module.cvtColor(image_matrix, cv2_module.COLOR_GRAY2BGR)
+    if len(image_matrix.shape) == 3 and image_matrix.shape[2] == 4:
+        return cv2_module.cvtColor(image_matrix, cv2_module.COLOR_BGRA2BGR)
+    return image_matrix
+
+
+def _build_pair_match_overlays(
+    context: PairDebugPreviewContext,
+    *,
+    match_items: list[dict[str, object]],
+    inlier_match_ids: set[str] | None,
+    max_match_lines: int,
+) -> list[dict[str, object]]:
+    """把 feature match 转成拼接图坐标系下的匹配线 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for match_item in match_items:
+        match_id = str(match_item.get("match_id") or f"match-{len(overlays) + 1}")
+        if inlier_match_ids is not None and match_id not in inlier_match_ids:
+            continue
+        query_xy = match_item.get("query_xy")
+        train_xy = match_item.get("train_xy")
+        if not isinstance(query_xy, list) or len(query_xy) < 2:
+            continue
+        if not isinstance(train_xy, list) or len(train_xy) < 2:
+            continue
+        overlays.append(
+            {
+                "kind": "line",
+                "id": match_id,
+                "label": match_id if inlier_match_ids is None else f"inlier {match_id}",
+                "line_xyxy": [
+                    float(query_xy[0]),
+                    float(query_xy[1]),
+                    float(train_xy[0]) + float(context.image_b_offset_x),
+                    float(train_xy[1]),
+                ],
+            }
+        )
+        if len(overlays) >= max_match_lines:
+            break
+    return overlays
+
+
+def _build_homography_projection_overlay(
+    context: PairDebugPreviewContext,
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    homography_matrix: Any,
+) -> dict[str, object] | None:
+    """把左图外框通过 homography 投影到右图并返回 polygon overlay。"""
+
+    source_corners = np_module.array(
+        [
+            [[0.0, 0.0]],
+            [[float(context.width_a), 0.0]],
+            [[float(context.width_a), float(context.height_a)]],
+            [[0.0, float(context.height_a)]],
+        ],
+        dtype=np_module.float32,
+    )
+    try:
+        projected_corners = cv2_module.perspectiveTransform(source_corners, homography_matrix).reshape(-1, 2)
+    except cv2_module.error:
+        return None
+    polygon_xy: list[list[float]] = []
+    for point in projected_corners:
+        polygon_xy.append(
+            [
+                round(float(point[0]) + float(context.image_b_offset_x), 4),
+                round(float(point[1]), 4),
+            ]
+        )
+    return {
+        "kind": "polygon",
+        "id": "homography-projection",
+        "label": "homography projection",
+        "polygon_xy": polygon_xy,
+    }
+
+
+def build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }

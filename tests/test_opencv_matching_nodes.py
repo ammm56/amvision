@@ -55,7 +55,8 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
                 parameters={
                     "cross_check": False,
                     "ratio_test_threshold": 0.82,
-                    "max_matches": 120
+                    "max_matches": 120,
+                    "debug_image_panel_enabled": True,
                 },
             ),
             WorkflowGraphNode(
@@ -65,6 +66,7 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
                     "method": "ransac",
                     "ransac_reprojection_threshold": 4.0,
                     "min_match_count": 12,
+                    "debug_image_panel_enabled": True,
                 },
             ),
         ),
@@ -193,6 +195,7 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
         execution_metadata={
             "dataset_storage": dataset_storage,
             "workflow_run_id": "opencv-matching-orb-registration",
+            "debug_image_panels_enabled": True,
         },
     )
 
@@ -222,6 +225,17 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
         height=180,
     )
     assert observed_corner_error < 8.0
+    match_debug_preview = _read_record_output(execution_result, node_id="match", output_name="debug_preview")
+    homography_debug_preview = _read_record_output(
+        execution_result,
+        node_id="homography",
+        output_name="debug_preview",
+    )
+    assert match_debug_preview["type"] == "image-preview"
+    assert homography_debug_preview["type"] == "image-preview"
+    assert len(match_debug_preview["overlays"]) > 0
+    assert any(overlay.get("kind") == "line" for overlay in match_debug_preview["overlays"])
+    assert any(overlay.get("kind") == "polygon" for overlay in homography_debug_preview["overlays"])
 
 
 def test_opencv_matching_orb_keypoints_with_roi_execute(tmp_path: Path) -> None:
@@ -340,6 +354,22 @@ def _create_repository_executor() -> WorkflowGraphExecutor:
     )
     runtime_registry_loader.refresh()
     return WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+
+
+def _read_record_output(
+    execution_result,
+    *,
+    node_id: str,
+    output_name: str,
+) -> dict[str, object]:
+    """从节点执行记录中读取指定输出。"""
+
+    for record in execution_result.node_records:
+        if record.node_id == node_id:
+            output_payload = record.outputs.get(output_name)
+            assert isinstance(output_payload, dict)
+            return output_payload
+    raise AssertionError(f"node record not found: {node_id}")
 
 
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:

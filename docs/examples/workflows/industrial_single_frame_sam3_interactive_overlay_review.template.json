@@ -54,7 +54,7 @@
     },
     {
       "node_id": "overlay_regions",
-      "node_type_id": "custom.opencv.mask-overlay",
+      "node_type_id": "custom.opencv.draw-regions",
       "parameters": {
         "mask_alpha": 0.4,
         "draw_masks": true,

@@ -55,7 +55,7 @@
 - `draw-circles`
 - `draw-roi`
 - `draw-measurements`
-- `mask-overlay`
+- `draw-regions`
 - `crop-export`
 - `gallery-preview`
 - `payload-to-value`
@@ -109,7 +109,7 @@
 - `orb-match`
 - `homography-estimate`
 
-当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍是旧形态，但 manifest id 已经是 `opencv.basic-nodes`。经过前五轮试点拆分后，这个 pack 当前主要承载预处理与调试渲染两类能力，后续仍不适合继续把所有新节点都堆进同一个目录。
+当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍保留基础能力边界，manifest id 为 `opencv.basic-nodes`。经过连续拆分后，这个 pack 当前主要承载预处理、导出和桥接能力；调试绘制已经单独收进 `opencv.render-nodes`，不再继续把所有新节点堆进同一个目录。
 
 其中前五轮 pack 拆分试点当前已落地：
 
@@ -120,6 +120,7 @@
 - `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_shape_nodes/`
 - `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform` 已正式迁入 `custom_nodes/opencv_defect_nodes/`
 - `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_matching_nodes/`
+- `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` 已正式迁入 `custom_nodes/opencv_render_nodes/`
 - 公开 `node_type_id` 保持不变，当前仍统一使用 `custom.opencv.*`
 - checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_calibrated_orb_homography_gate.*`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为拆包后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
 - checked-in 样例 `industrial_single_frame_reference_diff_watershed_surface_gate.*` 当前也已补入验证入口，专门覆盖 `opencv.defect-nodes` 中 `heatmap-preview / watershed / connected-components` 到工业规则链的现场闭环。
@@ -213,19 +214,25 @@
 
 这组节点当前已经可以把“模板定位”和“局部特征参考对位”这两条定位链从量测链前面单独收起来，再继续衔接 `opencv.measurement-nodes` 与后续工业规则链。
 
-其中渲染、导出与桥接层当前也已接通：
+其中渲染层当前已独立收进 `opencv.render-nodes`：
 
 - `custom.opencv.draw-contours`
 - `custom.opencv.draw-lines`
 - `custom.opencv.draw-circles`
 - `custom.opencv.draw-roi`
+- `custom.opencv.draw-rois`
 - `custom.opencv.draw-measurements`
-- `custom.opencv.mask-overlay`
+- `custom.opencv.draw-regions`
+
+这组节点只负责把 `contours.v1 / lines.v1 / circles.v1 / roi.v1 / regions.v1` 等结构化结果画回图像，便于现场调试复核；节点输出默认仍走 memory/raw BGR24，只有前端 Preview 显示或显式落盘时才做图片编码。
+
+其中导出与桥接层当前保留在 `opencv.basic-nodes`：
+
 - `custom.opencv.crop-export`
 - `custom.opencv.gallery-preview`
 - `custom.opencv.payload-to-value`
 
-这组节点当前已经可以把“现场调试复核、规则依据叠加、裁剪导出和结果桥接回通用响应体”这层使用面收起来。
+这组节点当前负责裁剪导出、调试列表预览和 OpenCV 结构化 payload 到 `value.v1` 的桥接，不再承载绘制职责。
 
 按当前真实状态看，这套能力已经能覆盖工业单帧现场一条较完整的传统机器视觉主线。当前更主要的问题不是“有没有 OpenCV 节点”，而是：
 
@@ -1128,7 +1135,7 @@ PLC 能力也应至少拆成两类：
 
 ### 当前判断
 
-当前 `opencv_basic_nodes` 不是没有价值，但按真实实现宽度看，它已经不再只是“基础包”。虽然前四轮已经把几何矫正层独立拆到 `opencv.geometry-nodes`、把量测层独立拆到 `opencv.measurement-nodes`、把轮廓与线圆抽取层独立拆到 `opencv.shape-nodes`、把差异与缺陷后处理层独立拆到 `opencv.defect-nodes`，但剩余 pack 仍然同时承载预处理、匹配与调试渲染几类能力；如果继续在同一个目录里无限加节点，后续 catalog、测试、文档和发布维护成本仍会持续上升。
+当前 `opencv_basic_nodes` 不是没有价值，但按真实实现宽度看，它必须保持清晰基础边界。几何矫正层已独立拆到 `opencv.geometry-nodes`，量测层已独立拆到 `opencv.measurement-nodes`，轮廓与线圆抽取层已独立拆到 `opencv.shape-nodes`，差异与缺陷后处理层已独立拆到 `opencv.defect-nodes`，匹配定位层已独立拆到 `opencv.matching-nodes`，调试绘制层也已独立拆到 `opencv.render-nodes`。后续不再把新 OpenCV 能力继续堆回 basic pack。
 
 建议后续不要只在现有 pack 上无限加节点，而是按能力族拆成几包：
 
@@ -1138,27 +1145,29 @@ PLC 能力也应至少拆成两类：
 - `opencv.geometry-nodes`
 - `opencv.matching-nodes`
 - `opencv.defect-nodes`
+- `opencv.render-nodes`
 
 这样比一个越来越大的 `opencv_basic_nodes` 更容易维护。
 
-第一轮拆分约束建议保持：
+当前拆分约束建议保持：
 
-- 第一轮先拆 pack 边界、manifest、catalog 与测试归属，不主动改现有 `custom.opencv.*` 的 `node_type_id`
-- 第一轮不直接打断现有 checked-in workflow、示例文档和上游引用路径
-- 调试渲染、bridge 与导出节点第一轮先继续留在 `opencv.basic-nodes`，避免为此额外再开一个 `render` pack
+- pack 边界、manifest、catalog 与测试归属要和真实职责一致
+- 公开 `custom.opencv.*` 的 `node_type_id` 继续保持稳定，避免不必要的前端图结构迁移
+- 调试绘制进入 `opencv.render-nodes`；导出与 bridge 继续留在 `opencv.basic-nodes`
 
 ### Pack 拆分映射表（第一版）
 
 | 目标 pack | 当前状态 | 建议收纳节点 | 说明 |
 | --- | --- | --- | --- |
-| `opencv.basic-nodes` | 已实现，仍待继续瘦身 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / mask-overlay / crop-export / gallery-preview / payload-to-value` | 承载基础预处理、通用调试渲染、桥接与导出。第一轮继续把 render / bridge 留在这里，不再额外增加新 pack。 |
+| `opencv.basic-nodes` | 已实现，保持基础边界 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / crop-export / gallery-preview / payload-to-value` | 承载基础预处理、裁剪导出和结构化 payload 桥接，不再承载绘制节点。 |
+| `opencv.render-nodes` | 已实现，当前独立承载绘制层 | `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` | 承载现场调试复核和规则依据叠加，输出默认保持 memory/raw BGR24。 |
 | `opencv.shape-nodes` | 已实现，第三步拆分试点已完成 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 承载轮廓、线圆、形状拟合和从图像几何结果到结构化 payload 的抽取层。当前已由 shape pack checked-in catalog 与量测 workflow 样例共同收口。 |
 | `opencv.measurement-nodes` | 已实现，第二轮拆分试点已完成 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 承载工业量测原语，避免和预处理或缺陷流程耦在同一 pack。当前已由 `line_pair_measure_gate / circle_concentricity_gate` 两条样例链收口。 |
 | `opencv.geometry-nodes` | 已实现，第一轮拆分试点已完成 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` | 承载姿态、标定、坐标变换和几何矫正能力。当前已作为 pack 拆分试点落地，并补齐 `planar-transform.v1 -> image-ref.v1 / roi.v1` 这层受控桥接。 |
 | `opencv.matching-nodes` | 已实现，第五步拆分试点已完成 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载模板定位、局部特征匹配与平面对位链。当前 `template-match` 已从 `opencv.basic-nodes` 迁出，ORB / homography 也已落地，并补到 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload 规则。 |
 | `opencv.defect-nodes` | 已实现，第四步拆分试点已完成 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 承载差异、缺陷、形态学后处理与缺陷调试预览链。当前已落地 `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / heatmap-preview / watershed / skeletonize`。 |
 
-如果后续 `draw-* / overlay / preview` 这组节点继续明显增长，再考虑第二轮额外拆出 `opencv.render-nodes`。当前第一轮不需要先把问题拆得过细。
+`draw-* / regions overlay` 这组节点已拆出 `opencv.render-nodes`，后续新增绘制节点直接进入该 pack。
 
 ### 第一批最值得继续补的 OpenCV 常用算子
 
@@ -1343,7 +1352,7 @@ PLC 能力也应至少拆成两类：
 - `custom.opencv.draw-circles`（已实现）
 - `custom.opencv.draw-roi`（已实现）
 - `custom.opencv.draw-measurements`（已实现）
-- `custom.opencv.mask-overlay`（已实现）
+- `custom.opencv.draw-regions`（已实现）
 - `custom.opencv.heatmap-preview`（已实现）
 
 说明：

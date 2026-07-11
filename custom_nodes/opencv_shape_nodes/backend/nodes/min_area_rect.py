@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import build_debug_image_preview_output
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
@@ -126,13 +127,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if limit is not None:
         rotated_rect_items = rotated_rect_items[:limit]
 
-    return {
+    source_image = contours_payload.get("source_image")
+    source_object_key = (
+        contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None
+    )
+    outputs: dict[str, object] = {
         "rotated_rects": _build_rotated_rects_payload(
             items=rotated_rect_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
+            source_image=source_image,
+            source_object_key=source_object_key,
         ),
         "summary": build_value_payload(
             {
@@ -153,3 +158,84 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    if isinstance(source_image, dict):
+        outputs.update(
+            build_debug_image_preview_output(
+                request,
+                image_payload=source_image,
+                title="Min Area Rect",
+                artifact_name="min-area-rect-debug-preview",
+                overlays=_build_rotated_rect_overlays(rotated_rect_items),
+                interaction=_build_min_area_rect_interaction(limit=limit),
+            )
+        )
+    return outputs
+
+
+def _build_min_area_rect_interaction(*, limit: int | None) -> dict[str, object]:
+    """声明 Min Area Rect 在图片面板中的调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image",
+        "tools": [
+            {
+                "tool": "bbox",
+                "label": "参考区域",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
+        ],
+    }
+
+
+def _build_numeric_control(
+    parameter_name: str,
+    label: str,
+    value: float | int,
+    *,
+    min_value: float,
+    max_value: float,
+    step: float,
+) -> dict[str, object]:
+    """构造图片面板实时调参使用的数值控件声明。"""
+
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "slider",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": value,
+        "default_value": value,
+    }
+
+
+def _build_rotated_rect_overlays(rotated_rect_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    """把最小外接旋转矩形结果转换为图片面板 overlay。"""
+
+    overlays: list[dict[str, object]] = []
+    for item_index, rect_item in enumerate(rotated_rect_items[:120], start=1):
+        raw_points = rect_item.get("box_points")
+        if not isinstance(raw_points, list) or len(raw_points) < 4:
+            continue
+        points_xy: list[list[float]] = []
+        for raw_point in raw_points[:4]:
+            if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 2:
+                continue
+            points_xy.append([float(raw_point[0]), float(raw_point[1])])
+        if len(points_xy) < 4:
+            continue
+        contour_index = int(rect_item.get("contour_index", item_index))
+        overlays.append(
+            {
+                "kind": "polygon",
+                "id": f"min-area-rect-{contour_index}",
+                "label": f"rect {contour_index}",
+                "points_xy": points_xy,
+            }
+        )
+    return overlays

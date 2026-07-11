@@ -263,12 +263,9 @@ def test_opencv_basic_batch6_draw_contours_lines_and_measurements_execute(tmp_pa
     line_bytes = image_registry.read_bytes(str(line_overlay["image_handle"]))
     measurement_bytes = image_registry.read_bytes(str(measurement_overlay["image_handle"]))
 
-    assert contour_overlay["transport_kind"] == "memory"
-    assert line_overlay["transport_kind"] == "memory"
-    assert measurement_overlay["transport_kind"] == "memory"
-    assert contour_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert line_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert measurement_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    _assert_bgr24_image_payload(image_registry, contour_overlay)
+    _assert_bgr24_image_payload(image_registry, line_overlay)
+    _assert_bgr24_image_payload(image_registry, measurement_overlay)
     assert contour_bytes != source_bytes
     assert line_bytes != source_bytes
     assert measurement_bytes != source_bytes
@@ -435,10 +432,8 @@ def test_opencv_basic_batch6_draw_circles_and_measurements_execute(tmp_path: Pat
     circle_bytes = image_registry.read_bytes(str(circle_overlay["image_handle"]))
     measurement_bytes = image_registry.read_bytes(str(measurement_overlay["image_handle"]))
 
-    assert circle_overlay["transport_kind"] == "memory"
-    assert measurement_overlay["transport_kind"] == "memory"
-    assert circle_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert measurement_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    _assert_bgr24_image_payload(image_registry, circle_overlay)
+    _assert_bgr24_image_payload(image_registry, measurement_overlay)
     assert circle_bytes != source_bytes
     assert measurement_bytes != source_bytes
 
@@ -461,6 +456,17 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+
+
+def _assert_bgr24_image_payload(image_registry: ExecutionImageRegistry, image_payload: dict[str, object]) -> None:
+    """验证 OpenCV 渲染输出默认保留为 memory/raw BGR24，不做额外 PNG 编码。"""
+
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/raw"
+    assert image_payload["pixel_format"] == "bgr24"
+    assert image_payload["layout"] == "HWC"
+    image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
+    assert len(image_bytes) == int(image_payload["width"]) * int(image_payload["height"]) * 3
 
 
 def _build_line_pair_measure_test_png_bytes() -> bytes:

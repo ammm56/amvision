@@ -5,6 +5,10 @@ from __future__ import annotations
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes.opencv_matching_nodes.backend.nodes.debug_pair_preview import (
+    build_numeric_control,
+    build_pair_match_debug_preview_output,
+)
 from custom_nodes._opencv_shared.backend.runtime.transforms import build_planar_transform_payload
 from custom_nodes._opencv_shared.backend.runtime.features import (
     require_feature_matches_payload,
@@ -208,7 +212,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         source_a_object_key=features_a_payload.get("source_object_key"),
         source_b_object_key=features_b_payload.get("source_object_key"),
     )
-    return {
+    outputs: dict[str, object] = {
         "transform": transform_payload,
         "summary": build_value_payload(
             {
@@ -226,4 +230,81 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "inlier_match_ids": inlier_match_ids,
             }
         ),
+    }
+    outputs.update(
+        build_pair_match_debug_preview_output(
+            request,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            source_a_image=features_a_payload.get("source_image"),
+            source_b_image=features_b_payload.get("source_image"),
+            title="Homography Estimate",
+            artifact_name="homography-estimate-debug-preview",
+            match_items=match_items,
+            interaction=_build_homography_interaction(
+                ransac_reprojection_threshold=ransac_reprojection_threshold,
+                confidence=confidence,
+                max_iters=max_iters,
+                min_match_count=min_match_count,
+            ),
+            inlier_match_ids=set(inlier_match_ids),
+            homography_matrix=homography_matrix,
+        )
+    )
+    return outputs
+
+
+def _build_homography_interaction(
+    *,
+    ransac_reprojection_threshold: float,
+    confidence: float,
+    max_iters: int,
+    min_match_count: int,
+) -> dict[str, object]:
+    """声明 Homography Estimate 在双图图片面板中的调参能力。"""
+
+    return {
+        "mode": "edit",
+        "coordinate_space": "source-image-pair",
+        "tools": [
+            {
+                "tool": "bbox",
+                "label": "参考区域",
+                "target_parameters": [],
+            },
+        ],
+        "controls": [
+            build_numeric_control(
+                "ransac_reprojection_threshold",
+                "RANSAC Threshold",
+                ransac_reprojection_threshold,
+                min_value=0.1,
+                max_value=20.0,
+                step=0.1,
+            ),
+            build_numeric_control(
+                "confidence",
+                "Confidence",
+                confidence,
+                min_value=0.5,
+                max_value=0.999,
+                step=0.001,
+            ),
+            build_numeric_control(
+                "max_iters",
+                "Max Iters",
+                max_iters,
+                min_value=100.0,
+                max_value=10000.0,
+                step=100.0,
+            ),
+            build_numeric_control(
+                "min_match_count",
+                "Min Matches",
+                min_match_count,
+                min_value=4.0,
+                max_value=200.0,
+                step=1.0,
+            ),
+        ],
     }

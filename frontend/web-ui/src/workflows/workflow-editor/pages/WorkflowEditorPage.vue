@@ -1194,7 +1194,7 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
       updates[parameterName] = value
     }
   }
-  if ((event.tool === 'bbox' || event.tool === 'grid') && event.bboxXyxy) {
+  if ((event.tool === 'bbox' || event.tool === 'grid' || event.tool === 'template-region') && event.bboxXyxy) {
     const [x1, y1, x2, y2] = event.bboxXyxy
     const width = Math.max(0, x2 - x1)
     const height = Math.max(0, y2 - y1)
@@ -1206,6 +1206,10 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
       if (targetParameters.has('roi_height')) updates.roi_height = roundInteractionNumber(height)
       if (targetParameters.has('step_x')) updates.step_x = roundInteractionNumber(width)
       if (targetParameters.has('step_y')) updates.step_y = roundInteractionNumber(height)
+    }
+    if (event.tool === 'template-region') {
+      if (targetParameters.has('search_bbox_xyxy')) updates.search_bbox_xyxy = event.bboxXyxy.map(roundInteractionNumber)
+      return Object.keys(updates).length > 0 ? updates : null
     }
     if (targetParameters.has('x')) updates.x = roundInteractionNumber(x1)
     if (targetParameters.has('y')) updates.y = roundInteractionNumber(y1)

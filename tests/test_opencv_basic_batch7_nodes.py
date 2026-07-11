@@ -1,4 +1,4 @@
-"""OpenCV 第七批 ROI 与分割覆盖层节点测试。"""
+"""OpenCV 第七批 ROI 与 regions 绘制节点测试。"""
 
 from __future__ import annotations
 
@@ -359,19 +359,19 @@ def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
     assert crops["items"][0]["height"] == 20
 
 
-def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
-    """验证 connected-components 与 mask-overlay 可接成分割覆盖层调试链。"""
+def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
+    """验证 connected-components 与 draw-regions 可接成分割覆盖层调试链。"""
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    source_bytes = _build_mask_overlay_test_png_bytes()
-    dataset_storage.write_bytes("inputs/mask-overlay.png", source_bytes)
+    source_bytes = _build_regions_overlay_test_png_bytes()
+    dataset_storage.write_bytes("inputs/draw-regions.png", source_bytes)
 
     template = WorkflowGraphTemplate(
-        template_id="opencv-batch7-mask-overlay",
+        template_id="opencv-batch7-draw-regions",
         template_version="1.0.0",
-        display_name="OpenCV Batch7 Mask Overlay",
+        display_name="OpenCV Batch7 Draw Regions",
         nodes=(
             WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
             WorkflowGraphNode(
@@ -385,8 +385,8 @@ def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
                 parameters={"min_area": 40.0, "class_name_default": "defect-area"},
             ),
             WorkflowGraphNode(
-                node_id="mask_overlay",
-                node_type_id="custom.opencv.mask-overlay",
+                node_id="draw_regions",
+                node_type_id="custom.opencv.draw-regions",
                 parameters={"mask_alpha": 0.4, "draw_boxes": True, "draw_polygons": True},
             ),
         ),
@@ -413,17 +413,17 @@ def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
                 target_port="source_image",
             ),
             WorkflowGraphEdge(
-                edge_id="edge-input-mask-overlay-image-b7",
+                edge_id="edge-input-draw-regions-image-b7",
                 source_node_id="input",
                 source_port="image",
-                target_node_id="mask_overlay",
+                target_node_id="draw_regions",
                 target_port="image",
             ),
             WorkflowGraphEdge(
-                edge_id="edge-components-mask-overlay-b7",
+                edge_id="edge-components-draw-regions-b7",
                 source_node_id="components",
                 source_port="regions",
-                target_node_id="mask_overlay",
+                target_node_id="draw_regions",
                 target_port="regions",
             ),
         ),
@@ -438,10 +438,10 @@ def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
         ),
         template_outputs=(
             WorkflowGraphOutput(
-                output_id="mask_overlay",
-                display_name="Mask Overlay",
+                output_id="draw_regions",
+                display_name="Draw Regions",
                 payload_type_id="image-ref.v1",
-                source_node_id="mask_overlay",
+                source_node_id="draw_regions",
                 source_port="image",
             ),
         ),
@@ -451,7 +451,7 @@ def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
         template=template,
         input_values={
             "request_image_base64": {
-                "object_key": "inputs/mask-overlay.png",
+                "object_key": "inputs/draw-regions.png",
                 "width": 128,
                 "height": 128,
                 "media_type": "image/png",
@@ -460,16 +460,18 @@ def test_opencv_basic_batch7_mask_overlay_execute(tmp_path: Path) -> None:
         execution_metadata={
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
-            "workflow_run_id": "opencv-batch7-mask-overlay",
+            "workflow_run_id": "opencv-batch7-draw-regions",
         },
     )
 
-    mask_overlay = execution_result.outputs["mask_overlay"]
-    mask_overlay_bytes = image_registry.read_bytes(str(mask_overlay["image_handle"]))
+    draw_regions = execution_result.outputs["draw_regions"]
+    draw_regions_bytes = image_registry.read_bytes(str(draw_regions["image_handle"]))
 
-    assert mask_overlay["transport_kind"] == "memory"
-    assert mask_overlay_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert mask_overlay_bytes != source_bytes
+    assert draw_regions["transport_kind"] == "memory"
+    assert draw_regions["media_type"] == "image/raw"
+    assert draw_regions["pixel_format"] == "bgr24"
+    assert len(draw_regions_bytes) == int(draw_regions["width"]) * int(draw_regions["height"]) * 3
+    assert draw_regions_bytes != source_bytes
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:
@@ -506,7 +508,7 @@ def _build_roi_render_test_png_bytes() -> bytes:
     return encoded.tobytes()
 
 
-def _build_mask_overlay_test_png_bytes() -> bytes:
+def _build_regions_overlay_test_png_bytes() -> bytes:
     """构造带两个明显前景块的分割覆盖层测试图片。"""
 
     import cv2

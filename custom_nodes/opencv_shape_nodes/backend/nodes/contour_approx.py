@@ -13,6 +13,7 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
     build_contours_payload,
     require_contours_payload,
 )
+from custom_nodes.opencv_shape_nodes.backend.nodes.debug_contours import build_contours_debug_preview_output
 from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_float,
     require_positive_int,
@@ -105,14 +106,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         approximated_item["reduced_point_ratio"] = reduced_point_ratio
         approximated_items.append(approximated_item)
 
-    return {
-        "contours": build_contours_payload(
-            items=approximated_items,
-            source_image=contours_payload.get("source_image"),
-            source_object_key=contours_payload.get("source_object_key")
-            if isinstance(contours_payload.get("source_object_key"), str)
-            else None,
-        ),
+    output_contours_payload = build_contours_payload(
+        items=approximated_items,
+        source_image=contours_payload.get("source_image"),
+        source_object_key=contours_payload.get("source_object_key")
+        if isinstance(contours_payload.get("source_object_key"), str)
+        else None,
+    )
+    outputs: dict[str, object] = {
+        "contours": output_contours_payload,
         "summary": build_value_payload(
             {
                 "count": len(approximated_items),
@@ -132,3 +134,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        build_contours_debug_preview_output(
+            request,
+            contours_payload=output_contours_payload,
+            contour_items=approximated_items,
+            title="Contour Approx",
+            artifact_name="contour-approx-debug-preview",
+        )
+    )
+    return outputs

@@ -1,4 +1,4 @@
-"""Mask Overlay 节点实现。"""
+"""Draw Regions 节点实现。"""
 
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ from custom_nodes._opencv_shared.backend.runtime.images import (
     encode_png_image_bytes,
     load_image_matrix,
 )
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes._opencv_shared.backend.runtime.validators import (
     normalize_optional_object_key,
     require_non_negative_float,
     require_positive_int,
 )
-from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 
 
-NODE_TYPE_ID = "custom.opencv.mask-overlay"
+NODE_TYPE_ID = "custom.opencv.draw-regions"
 
 
 def _read_ratio(raw_value: object, *, field_name: str, default: float) -> float:
@@ -82,7 +82,7 @@ def _build_region_label(region_item: dict[str, object]) -> str:
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把 regions.v1 的 mask、polygon 和 bbox 叠加到图片上。"""
+    """把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上。"""
 
     cv2_module, np_module = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
@@ -165,7 +165,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     encoded_image_bytes = encode_png_image_bytes(
         request,
         image_matrix=image_matrix,
-        error_message="OpenCV 叠加 region mask 后无法编码输出图片",
+        error_message="OpenCV 绘制 regions 后无法编码输出图片",
     )
     return {
         "image": build_output_image_payload(
@@ -173,7 +173,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             source_payload=image_payload,
             content=encoded_image_bytes,
             object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
-            variant_name="mask-overlay",
+            variant_name="draw-regions",
             output_extension=".png",
             width=int(image_matrix.shape[1]),
             height=int(image_matrix.shape[0]),

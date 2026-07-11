@@ -2334,7 +2334,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     assert response_payload["status_code"] == 200
     assert response_payload["body"]["type"] == "image-preview"
     assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
-    assert response_payload["body"]["image"]["media_type"] == "image/png"
+    assert response_payload["body"]["image"]["media_type"] in {"image/jpeg", "image/png"}
     assert response_payload["body"]["image"]["image_base64"]
     assert any(record.node_type_id == "custom.opencv.draw-detections" for record in execution_result.node_records)
 
@@ -2428,8 +2428,11 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
 
     image_payload = execution_result.outputs["rendered_image"]
     assert image_payload["transport_kind"] == "memory"
-    assert image_payload["media_type"] == "image/png"
-    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert image_payload["media_type"] == "image/raw"
+    assert image_payload["pixel_format"] == "bgr24"
+    assert image_payload["layout"] == "HWC"
+    image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
+    assert len(image_bytes) == int(image_payload["width"]) * int(image_payload["height"]) * 3
 
 
 def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_are_null(

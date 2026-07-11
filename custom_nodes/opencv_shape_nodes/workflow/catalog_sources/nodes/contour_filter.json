@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour-filter",
   "display_name": "Contour Filter",
-  "category": "opencv.analysis",
+  "category": "opencv.shape",
   "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
@@ -23,6 +23,12 @@
       "name": "summary",
       "display_name": "Summary",
       "payload_type_id": "value.v1"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "required": false
     }
   ],
   "parameter_schema": {
@@ -77,6 +83,22 @@
       "limit": {
         "type": "integer",
         "minimum": 1
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
       }
     }
   },

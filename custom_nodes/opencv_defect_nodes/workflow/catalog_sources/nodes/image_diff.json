@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-diff",
   "display_name": "Image Diff",
-  "category": "opencv.analysis",
+  "category": "opencv.defect",
   "description": "对当前图片和参考图片执行绝对差分，生成差异图和差异摘要。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

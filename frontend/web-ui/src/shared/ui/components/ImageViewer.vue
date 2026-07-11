@@ -313,7 +313,7 @@ interface CircleDraft {
 }
 
 type CircleDraftMode = 'center-radius' | 'three-point'
-type InteractionToolId = 'bbox' | 'polygon' | 'circle' | 'line' | 'grid'
+type InteractionToolId = 'bbox' | 'polygon' | 'circle' | 'line' | 'grid' | 'template-region'
 
 const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
   bbox: { label: '矩形 ROI' },
@@ -321,6 +321,7 @@ const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
   circle: { label: '圆' },
   line: { label: '线段' },
   grid: { label: '网格' },
+  'template-region': { label: '模板区域' },
 }
 
 const props = defineProps<{
@@ -433,7 +434,7 @@ const hasInteractionDraft = computed(() => Boolean(
 ))
 const canApplyInteraction = computed(() => {
   if (!interactionAvailable.value) return false
-  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid') return Boolean(draftBboxXyxy.value)
+  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid' || interactionTool.value === 'template-region') return Boolean(draftBboxXyxy.value)
   if (interactionTool.value === 'polygon') {
     const pointCount = draftPointPairs.value.length
     return pointCount >= activePolygonMinPoints.value && (activePolygonMaxPoints.value === null || pointCount <= activePolygonMaxPoints.value)
@@ -458,6 +459,7 @@ const interactionStatusText = computed(() => {
   if (!interactionActive.value) return tuningControls.value.length ? '可调参；取参未启用' : '取参未启用'
   if (interactionTool.value === 'bbox') return draftBboxXyxy.value ? 'bbox 已选择，可应用参数' : '拖拽选择 bbox'
   if (interactionTool.value === 'grid') return draftBboxXyxy.value ? 'grid 区域已选择，可应用参数' : '拖拽选择 grid 区域'
+  if (interactionTool.value === 'template-region') return draftBboxXyxy.value ? '模板搜索区域已选择，可应用参数' : '拖拽选择模板搜索区域'
   if (interactionTool.value === 'polygon') return readPolygonInteractionStatusText()
   if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
   if (interactionTool.value === 'line') return draftLineXyxy.value ? '线段已选择，可应用参数' : '拖拽选择线段'
@@ -541,7 +543,7 @@ function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
   event.stopPropagation()
   const point = readImagePointFromEvent(event)
   if (!point) return true
-  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid') {
+  if (interactionTool.value === 'bbox' || interactionTool.value === 'grid' || interactionTool.value === 'template-region') {
     startBboxDraft(point)
     return true
   }
@@ -713,7 +715,7 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     coordinateSpace: interaction.coordinateSpace,
     targetParameters: activeTargetParameters.value,
   }
-  if ((interactionTool.value === 'bbox' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
+  if ((interactionTool.value === 'bbox' || interactionTool.value === 'grid' || interactionTool.value === 'template-region') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
   }
   if (interactionTool.value === 'polygon' && canApplyInteraction.value) {
@@ -815,6 +817,7 @@ function runPreviewFromViewer(): void {
 
 function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {
   if (event.tool === 'bbox') return '矩形 ROI 已应用到节点参数'
+  if (event.tool === 'template-region') return '模板搜索区域已应用到节点参数'
   if (event.tool === 'polygon') return '多边形 ROI 已应用到节点参数'
   if (event.tool === 'grid') return 'ROI 网格参数已应用'
   if (event.tool === 'circle') return '圆参数已应用'
