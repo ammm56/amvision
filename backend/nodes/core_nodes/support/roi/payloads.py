@@ -1,4 +1,4 @@
-"""roi.v1 payload 构造和校验。"""
+"""roi.v1 / roi-list.v1 payload 构造和校验。"""
 
 from __future__ import annotations
 
@@ -69,16 +69,56 @@ def require_roi_payload(payload: object, *, node_id: str | None = None) -> dict[
     )
 
 
+def build_roi_list_payload(roi_items: list[dict[str, object]]) -> dict[str, object]:
+    """构建明确的 roi-list.v1 payload。
+
+    参数：
+    - roi_items：已经规范化或可规范化的 roi.v1 列表。
+
+    返回：
+    - dict[str, object]：包含 items 和 count 的 ROI 列表 payload。
+    """
+
+    normalized_items = [require_roi_payload(item) for item in roi_items]
+    return {
+        "format_id": "amvision.roi-list.v1",
+        "items": normalized_items,
+        "count": len(normalized_items),
+    }
+
+
+def require_roi_list_payload(
+    payload: object,
+    *,
+    node_id: str | None = None,
+    field_name: str = "rois",
+) -> dict[str, object]:
+    """校验并规范化 roi-list.v1 payload。
+
+    参数：
+    - payload：roi-list.v1、roi.v1 数组或可展开的 ROI 容器。
+    - node_id：当前节点 id，用于错误定位。
+    - field_name：错误消息中显示的字段名称。
+
+    返回：
+    - dict[str, object]：规范化后的 roi-list.v1 payload。
+    """
+
+    return build_roi_list_payload(
+        iter_roi_payloads(payload, node_id=node_id, field_name=field_name)
+    )
+
+
 def iter_roi_payloads(
     payload: object,
     *,
     node_id: str | None = None,
     field_name: str = "rois",
 ) -> list[dict[str, object]]:
-    """把单个 ROI、多个 ROI 或 value.v1 包装的 ROI 列表统一规范化。
+    """把单个 ROI、多个 ROI、roi-list.v1 或 value.v1 包装的 ROI 列表统一规范化。
 
     参数：
-    - payload：可为 roi.v1、roi.v1 数组、value.v1，或包含 items 的对象。
+    - payload：可为 roi.v1、roi.v1 数组、roi-list.v1、value.v1，或包含 items 的对象。
     - node_id：当前节点 id，用于错误定位。
     - field_name：错误消息中使用的字段名称。
 
@@ -99,7 +139,7 @@ def iter_roi_payloads(
         return normalized_items
     if not isinstance(payload, dict):
         raise InvalidRequestError(
-            f"{field_name} 必须是 roi.v1、roi.v1 数组或 value.v1",
+            f"{field_name} 必须是 roi.v1、roi-list.v1、roi.v1 数组或 value.v1",
             details={"node_id": node_id},
         )
     if "value" in payload:

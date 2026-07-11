@@ -85,9 +85,12 @@
 | bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
 | polygon | `polygon_xy`、`source_points`；四点透视时同时估算 `output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
 | circle | `center_x`、`center_y`、`radius`、`min_radius`、`max_radius` | `custom.opencv.hough-circles`、`custom.opencv.min-enclosing-circle` |
-| line | `line_xyxy`、`search_bbox_xyxy`、`min_line_length`、`angle_min_deg`、`angle_max_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、测量节点 |
+| line | `line_xyxy`、`search_bbox_xyxy`、`min_line_length`、`angle_min_deg`、`angle_max_deg`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、`custom.opencv.rotation-correct`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |
 | template-region | `template_bbox_xyxy`、`search_bbox_xyxy` 或输入模板图来源 | `custom.opencv.template-match` |
+| point-pair | `source_points`、`target_points`、`debug_manual_pair_lines_xyxy` | `custom.opencv.affine-transform`、`custom.opencv.orb-match`、`custom.opencv.homography-estimate` |
+| match-line | `debug_selected_match_ids` | `custom.opencv.orb-match`、`custom.opencv.homography-estimate` |
+| homography-overlay | `debug_selected_projection_id` | `custom.opencv.homography-estimate` |
 
 ## 节点定义扩展方式
 
@@ -194,6 +197,28 @@
 ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 或写回参数仍按节点语义使用 `polygon_xy`、`source_points` 等字段。二者不要混用。
 
 该信息只描述编辑器如何辅助生成参数，不改变节点核心执行协议。
+
+### Geometry 节点交互边界
+
+`opencv.geometry` 节点只负责几何变换和坐标桥接，不混入 ROI 创建、模板匹配或绘制职责。当前交互协议按节点实际参数划分：
+
+- `perspective-transform`：使用 `polygon` 四点工具写回 `source_points`，并估算 `output_width / output_height`。
+- `rotation-correct`：使用 `line` 工具从图中方向线写回 `angle_deg`，同时提供 `negate_angle / expand_canvas` 调试控件。
+- `affine-transform`：使用 `point-pair` 工具收集三对源点和目标点，写回 `source_points / target_points`；也可继续读取显式 `matrix_2x3`。
+- `undistort`：主要读取标定 config，不适合手动画 ROI 取参；调试图显示矫正结果和 valid ROI，提供 `alpha / crop_to_valid_roi / use_optimal_new_camera_matrix` 控件。
+- `remap`：主要读取标定映射表或上游 mapping；调试图显示 remap 结果，提供边界填充值等快速确认控件。
+
+这些节点的 debug preview 都必须默认关闭；打开时只服务编辑态 Preview Run，不进入生产 runtime 的固定开销。
+
+### Matching 双图交互边界
+
+`opencv.matching` 节点以双图调试图为核心，不把匹配语义降级成普通 line/polygon：
+
+- `orb-match` 输出 `feature-matches.v1`，debug preview 使用 `match-line` 点选匹配线、`point-pair` 手动画左右图点对，并通过控件筛选匹配线数量、距离和显示状态。
+- `homography-estimate` 输出 `planar-transform.v1`，debug preview 使用 `match-line` 点选内点线、`point-pair` 手动补充点对、`homography-overlay` 点选投影框。
+- `template-match` 输出 `regions.v1`，使用 `template-region` 同时管理模板 ROI 和搜索 ROI。
+
+双图 overlay 可以复用 `line_xyxy / points_xy / circle` 等基础绘制字段，但 `kind` 必须保留 `match-line / point-pair / homography-overlay` 这类业务语义，后续才能继续扩展匹配线过滤、点对编辑和投影框状态反馈。
 
 ## 实现阶段
 

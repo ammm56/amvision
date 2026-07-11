@@ -159,12 +159,12 @@ custom_nodes/
 
 该能力属于 workflow editor 的通用参数编辑能力，不属于某个业务节点或某个应用的专用实现：
 
-- node definition 通过 `parameter_ui_schema` 或 `metadata` 声明参数辅助工具，例如 `roi-editor`、`circle-editor`、`line-editor`、`polygon-editor`、`template-region-editor`。
+- 节点通过本次 Preview Run 的 `debug_preview.interaction.tools[]` 声明参数辅助工具，例如 `bbox`、`polygon`、`circle`、`line`、`grid`、`template-region`、`match-line`、`point-pair` 和 `homography-overlay`；前端不从节点类型名硬编码工具。
 - 节点仍通过稳定的 `parameters` 执行，后端节点不依赖前端交互状态。
 - 前端根据节点输入端口、最近一次 Preview Run 输出或当前公开输入解析可用图像，但不在属性面板内显示缩略图。
 - 节点底部沿用现有 preview display 显示缩略图；节点参数提供 `debug_image_panel_enabled` 调试图片面板开关，默认关闭，编辑调试时手动打开。
 - 双击节点底部缩略图打开统一交互式图片面板；该面板复用现有 ImageViewer / Preview 图片查看基础能力，并增加 overlay 编辑层，支持 pan、zoom、ROI、circle、line、point 和 polygon 操作。
-- 用户确认后，前端把图像坐标转换并写回节点参数，例如 `source_points`、`roi`、`line_segment`、`min_radius`、`max_radius`、`search_region`。
+- 用户确认后，前端把图像坐标转换并写回节点参数，例如 `source_points`、`bbox_xyxy`、`polygon_xy`、`line_xyxy`、`angle_deg`、`min_radius`、`max_radius`、`search_bbox_xyxy`、`source_points / target_points`。
 - 参数 schema 仍是最终保存源，workflow template 不保存临时鼠标交互状态。生产 runtime 默认不生成调试缩略图，避免 BGR24 / BufferRef / FrameRef 转 PNG/JPEG/base64 的额外耗时；节点必须同时检查 `debug_image_panel_enabled` 和 `execution_metadata.debug_image_panels_enabled`。
 
 优先级：
@@ -173,6 +173,7 @@ custom_nodes/
 2. Circle：用于 hough-circles、圆孔定位、圆度和半径范围估计。
 3. Line：用于 hough-lines、fit-line、找边、角度校正和平行度测量。
 4. Template region：用于模板匹配、局部定位和换型参数准备。
+5. Geometry：`rotation-correct` 用 line 写回角度，`affine-transform` 用 point-pair 写回三点关系，`undistort/remap` 用 debug preview 检查矫正结果和标定映射。
 
 Line 工具的搜索 ROI、角度容差和搜索框 padding 必须由节点通过 `debug_preview.interaction.tools[]` 声明，例如 `angle_tolerance_deg`、`search_padding_ratio`、`search_padding_min`。前端 ImageViewer 只负责按声明显示方向线、搜索 ROI 和角度范围，并把结果写回节点参数，不在页面层硬编码算法默认值。
 

@@ -15,6 +15,7 @@ from backend.nodes.core_nodes.support.logic import (
     require_value_payload,
 )
 from backend.nodes.core_nodes.support.roi import (
+    build_roi_list_payload,
     build_roi_payload,
     iter_roi_payloads,
 )
@@ -27,7 +28,7 @@ NODE_NAME = "roi-list-create"
 
 
 def _roi_list_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把多个 ROI 输入统一整理为 value.v1 ROI 列表。"""
+    """把多个 ROI 输入统一整理为 roi-list.v1 ROI 列表。"""
 
     source_image = _read_optional_source_image(request.input_values.get("image"))
     roi_items: list[dict[str, object]] = []
@@ -49,7 +50,7 @@ def _roi_list_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
             details={"node_id": request.node_id},
         )
     return {
-        "value": build_value_payload(roi_items),
+        "rois": build_roi_list_payload(roi_items),
         "summary": build_value_payload(
             {
                 "count": len(roi_items),
@@ -120,7 +121,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.vision.roi-list-create",
         display_name="ROI List Create",
         category="vision.roi",
-        description="把单个 ROI、多个 ROI 或 value.v1 中的 ROI 数组统一整理为 ROI 列表，供批量绘制、批量裁剪和槽位判断节点复用。",
+        description="把单个 ROI、多个 ROI 或 value.v1 中的 ROI 数组统一整理为 roi-list.v1，供批量绘制、批量裁剪和槽位判断节点复用。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -146,9 +147,9 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         output_ports=(
             NodePortDefinition(
-                name="value",
+                name="rois",
                 display_name="ROIs",
-                payload_type_id="value.v1",
+                payload_type_id="roi-list.v1",
             ),
             NodePortDefinition(
                 name="summary",

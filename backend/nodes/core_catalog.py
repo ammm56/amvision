@@ -487,6 +487,60 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
             },
         ),
         WorkflowPayloadContract(
+            payload_type_id="roi-list.v1",
+            display_name="ROI List",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "format_id": {
+                        "type": "string",
+                        "const": "amvision.roi-list.v1",
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "roi_id": {"type": "string"},
+                                "display_name": {"type": "string"},
+                                "roi_kind": {
+                                    "type": "string",
+                                    "enum": ["bbox", "polygon"],
+                                },
+                                "bbox_xyxy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                },
+                                "polygon_xy": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "number"},
+                                        "minItems": 2,
+                                        "maxItems": 2,
+                                    },
+                                },
+                                "area": {"type": "integer", "minimum": 0},
+                                "source_image": {"type": "object"},
+                            },
+                            "required": [
+                                "roi_id",
+                                "roi_kind",
+                                "bbox_xyxy",
+                                "polygon_xy",
+                                "area",
+                            ],
+                        },
+                    },
+                    "count": {"type": "integer", "minimum": 0},
+                },
+                "required": ["format_id", "items", "count"],
+            },
+        ),
+        WorkflowPayloadContract(
             payload_type_id="result-record.v1",
             display_name="Inspection Result Record",
             transport_kind="inline-json",

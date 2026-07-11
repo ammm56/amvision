@@ -5,6 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from backend.nodes.core_nodes.support.logic import build_value_payload, extract_value_by_path, require_value_payload
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -70,23 +75,62 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(remapped_image.shape[0]),
         media_type="image/png",
     )
-    return {
-        "image": output_payload,
-        "summary": build_value_payload(
-            {
-                "mapping_source": mapping_source,
-                "map_kind": map_kind,
-                "output_width": int(remapped_image.shape[1]),
-                "output_height": int(remapped_image.shape[0]),
-                "map_width": int(map_x.shape[1]),
-                "map_height": int(map_x.shape[0]),
-                "min_map_x": round(float(map_x.min()), 4),
-                "max_map_x": round(float(map_x.max()), 4),
-                "min_map_y": round(float(map_y.min()), 4),
-                "max_map_y": round(float(map_y.max()), 4),
-            }
-        ),
+    summary_payload = {
+        "mapping_source": mapping_source,
+        "map_kind": map_kind,
+        "output_width": int(remapped_image.shape[1]),
+        "output_height": int(remapped_image.shape[0]),
+        "map_width": int(map_x.shape[1]),
+        "map_height": int(map_x.shape[0]),
+        "min_map_x": round(float(map_x.min()), 4),
+        "max_map_x": round(float(map_x.max()), 4),
+        "min_map_y": round(float(map_y.min()), 4),
+        "max_map_y": round(float(map_y.max()), 4),
     }
+    outputs: dict[str, object] = {
+        "image": output_payload,
+        "summary": build_value_payload(summary_payload),
+    }
+    outputs.update(
+        _build_remap_debug_preview(
+            request,
+            output_payload=output_payload,
+            border_value=border_value,
+        )
+    )
+    return outputs
+
+
+def _build_remap_debug_preview(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    output_payload: object,
+    border_value: int,
+) -> dict[str, object]:
+    """构建 remap 结果调试预览。
+
+    remap 的核心参数通常来自标定文件或上游 mapping 输入，因此图片面板主要承担结果确认和边界填充值快速调节。
+    """
+
+    return build_debug_image_preview_output(
+        request,
+        image_payload=output_payload,
+        title="Remap Result",
+        artifact_name="remap-debug-preview",
+        interaction=build_debug_panel_interaction(
+            tools=[],
+            controls=[
+                build_numeric_control(
+                    "border_value",
+                    "Border value",
+                    int(border_value),
+                    min_value=0,
+                    max_value=255,
+                    step=1,
+                ),
+            ],
+        ),
+    )
 
 
 def _resolve_mapping_object(request: WorkflowNodeExecutionRequest) -> tuple[dict[str, object] | None, str]:

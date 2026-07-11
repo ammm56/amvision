@@ -48,6 +48,8 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
                         "crop_to_valid_roi": False,
                         "border_mode": "constant",
                         "border_value": 0,
+                        "debug_image_panel_enabled": True,
+                        "debug_image_panel_transport_mode": "inline-base64",
                     },
                 ),
         ),
@@ -98,6 +100,13 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
                 source_node_id="undistort",
                 source_port="summary",
             ),
+            WorkflowGraphOutput(
+                output_id="undistort_debug_preview",
+                display_name="Undistort Debug Preview",
+                payload_type_id="response-body.v1",
+                source_node_id="undistort",
+                source_port="debug_preview",
+            ),
         ),
     )
 
@@ -121,11 +130,13 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch13-undistort",
+            "debug_image_panels_enabled": True,
         },
     )
 
     undistorted_image = execution_result.outputs["undistorted_image"]
     undistort_summary = execution_result.outputs["undistort_summary"]
+    undistort_debug_preview = execution_result.outputs["undistort_debug_preview"]
 
     import cv2
     import numpy as np
@@ -134,18 +145,22 @@ def test_opencv_basic_batch13_undistort_with_value_config_execute(tmp_path: Path
         np.frombuffer(source_image_bytes, dtype=np.uint8),
         cv2.IMREAD_COLOR,
     )
-    undistorted_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(undistorted_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    undistorted_entry = image_registry.get_entry(str(undistorted_image["image_handle"]))
+    undistorted_matrix = undistorted_entry.matrix
+    assert undistorted_matrix is not None
 
     assert undistorted_image["transport_kind"] == "memory"
+    assert undistorted_image["media_type"] == "image/raw"
+    assert undistorted_image["pixel_format"] == "bgr24"
     assert undistorted_image["width"] == 64
     assert undistorted_image["height"] == 48
     assert undistort_summary["value"]["config_source"] == "input"
     assert undistort_summary["value"]["output_size_source"] == "source-image"
     assert undistort_summary["value"]["use_optimal_new_camera_matrix"] is False
     assert undistort_summary["value"]["distortion_coefficient_count"] == 5
+    assert undistort_debug_preview["type"] == "image-preview"
+    assert undistort_debug_preview["title"] == "Undistort Result"
+    assert undistort_debug_preview["interaction"]["controls"][0]["parameter_name"] == "alpha"
     assert float(np.mean(np.abs(source_matrix.astype(np.int16) - undistorted_matrix.astype(np.int16)))) < 1.0
 
 
@@ -168,7 +183,12 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
             WorkflowGraphNode(
                 node_id="remap",
                 node_type_id="custom.opencv.remap",
-                parameters={"border_mode": "constant", "border_value": 0},
+                parameters={
+                    "border_mode": "constant",
+                    "border_value": 0,
+                    "debug_image_panel_enabled": True,
+                    "debug_image_panel_transport_mode": "inline-base64",
+                },
             ),
         ),
         edges=(
@@ -218,6 +238,13 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
                 source_node_id="remap",
                 source_port="summary",
             ),
+            WorkflowGraphOutput(
+                output_id="remap_debug_preview",
+                display_name="Remap Debug Preview",
+                payload_type_id="response-body.v1",
+                source_node_id="remap",
+                source_port="debug_preview",
+            ),
         ),
     )
 
@@ -240,25 +267,31 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch13-remap",
+            "debug_image_panels_enabled": True,
         },
     )
 
     remapped_image = execution_result.outputs["remapped_image"]
     remap_summary = execution_result.outputs["remap_summary"]
+    remap_debug_preview = execution_result.outputs["remap_debug_preview"]
 
     import cv2
     import numpy as np
 
-    remapped_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(remapped_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    remapped_entry = image_registry.get_entry(str(remapped_image["image_handle"]))
+    remapped_matrix = remapped_entry.matrix
+    assert remapped_matrix is not None
 
     assert remapped_image["transport_kind"] == "memory"
+    assert remapped_image["media_type"] == "image/raw"
+    assert remapped_image["pixel_format"] == "bgr24"
     assert remapped_image["width"] == 20
     assert remapped_image["height"] == 16
     assert remap_summary["value"]["mapping_source"] == "input"
     assert remap_summary["value"]["map_kind"] == "map_xy"
+    assert remap_debug_preview["type"] == "image-preview"
+    assert remap_debug_preview["title"] == "Remap Result"
+    assert remap_debug_preview["interaction"]["controls"][0]["parameter_name"] == "border_value"
     assert int(remapped_matrix[6, 7, 2]) > 150
     assert int(remapped_matrix[4, 4, 2]) < 20
 

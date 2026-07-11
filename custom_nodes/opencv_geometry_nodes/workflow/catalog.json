@@ -1823,6 +1823,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -1912,6 +1921,22 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },
@@ -2268,6 +2293,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -2315,6 +2349,22 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },
@@ -2380,6 +2430,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -2428,6 +2487,22 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },
@@ -2491,6 +2566,15 @@
           "payload_type_id": "value.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -2598,6 +2682,22 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },

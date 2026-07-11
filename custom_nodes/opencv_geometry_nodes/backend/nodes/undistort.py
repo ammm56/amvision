@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from backend.nodes.core_nodes.support.logic import build_value_payload, extract_value_by_path, require_value_payload
+from backend.nodes.debug_image_panel import (
+    build_bbox_overlay,
+    build_checkbox_control,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_numeric_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -167,29 +174,102 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(undistorted_image.shape[0]),
         media_type="image/png",
     )
-    return {
-        "image": output_payload,
-        "summary": build_value_payload(
-            {
-                "config_source": config_source,
-                "image_width": image_width,
-                "image_height": image_height,
-                "output_width": int(undistorted_image.shape[1]),
-                "output_height": int(undistorted_image.shape[0]),
-                "requested_output_width": int(output_width),
-                "requested_output_height": int(output_height),
-                "output_size_source": output_size_source,
-                "distortion_coefficient_count": int(distortion_coefficients.size),
-                "use_optimal_new_camera_matrix": use_optimal_new_camera_matrix,
-                "new_camera_matrix_source": new_camera_matrix_source,
-                "alpha": round(float(alpha_value), 4),
-                "crop_to_valid_roi": crop_to_valid_roi,
-                "cropped_output": cropped_output,
-                "valid_roi_xywh": valid_roi_xywh,
-                "rectify_matrix_provided": rectify_matrix is not None,
-            }
-        ),
+    summary_payload = {
+        "config_source": config_source,
+        "image_width": image_width,
+        "image_height": image_height,
+        "output_width": int(undistorted_image.shape[1]),
+        "output_height": int(undistorted_image.shape[0]),
+        "requested_output_width": int(output_width),
+        "requested_output_height": int(output_height),
+        "output_size_source": output_size_source,
+        "distortion_coefficient_count": int(distortion_coefficients.size),
+        "use_optimal_new_camera_matrix": use_optimal_new_camera_matrix,
+        "new_camera_matrix_source": new_camera_matrix_source,
+        "alpha": round(float(alpha_value), 4),
+        "crop_to_valid_roi": crop_to_valid_roi,
+        "cropped_output": cropped_output,
+        "valid_roi_xywh": valid_roi_xywh,
+        "rectify_matrix_provided": rectify_matrix is not None,
     }
+    outputs: dict[str, object] = {
+        "image": output_payload,
+        "summary": build_value_payload(summary_payload),
+    }
+    outputs.update(
+        _build_undistort_debug_preview(
+            request,
+            output_payload=output_payload,
+            valid_roi_xywh=valid_roi_xywh,
+            cropped_output=cropped_output,
+            alpha_value=alpha_value,
+            crop_to_valid_roi=crop_to_valid_roi,
+            use_optimal_new_camera_matrix=use_optimal_new_camera_matrix,
+        )
+    )
+    return outputs
+
+
+def _build_undistort_debug_preview(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    output_payload: object,
+    valid_roi_xywh: list[int],
+    cropped_output: bool,
+    alpha_value: float,
+    crop_to_valid_roi: bool,
+    use_optimal_new_camera_matrix: bool,
+) -> dict[str, object]:
+    """构建镜头矫正调试预览。
+
+    调试图只在编辑态 Preview Run 且节点参数显式开启时生成，生产 runtime 不会额外编码图片。
+    """
+
+    overlays: list[dict[str, object]] = []
+    roi_x, roi_y, roi_width, roi_height = valid_roi_xywh
+    if not cropped_output and roi_width > 0 and roi_height > 0:
+        overlays.append(
+            build_bbox_overlay(
+                overlay_id="valid_roi",
+                label="valid_roi",
+                bbox_xyxy=[roi_x, roi_y, roi_x + roi_width, roi_y + roi_height],
+                kind="bbox",
+                target_parameters=["crop_to_valid_roi"],
+                parameters={
+                    "crop_to_valid_roi": True,
+                },
+            )
+        )
+    return build_debug_image_preview_output(
+        request,
+        image_payload=output_payload,
+        title="Undistort Result",
+        artifact_name="undistort-debug-preview",
+        overlays=overlays,
+        interaction=build_debug_panel_interaction(
+            tools=[],
+            controls=[
+                build_numeric_control(
+                    "alpha",
+                    "Alpha",
+                    round(float(alpha_value), 4),
+                    min_value=0.0,
+                    max_value=1.0,
+                    step=0.01,
+                ),
+                build_checkbox_control(
+                    "crop_to_valid_roi",
+                    "Crop valid ROI",
+                    crop_to_valid_roi,
+                ),
+                build_checkbox_control(
+                    "use_optimal_new_camera_matrix",
+                    "Optimal camera matrix",
+                    use_optimal_new_camera_matrix,
+                ),
+            ],
+        ),
+    )
 
 
 def _resolve_config_object(request: WorkflowNodeExecutionRequest) -> tuple[dict[str, object] | None, str]:

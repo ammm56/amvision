@@ -12,7 +12,12 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import build_value_payload
-from backend.nodes.core_nodes.support.roi import bbox_area, bbox_to_polygon_xy, build_roi_payload
+from backend.nodes.core_nodes.support.roi import (
+    bbox_area,
+    bbox_to_polygon_xy,
+    build_roi_list_payload,
+    build_roi_payload,
+)
 from backend.nodes.debug_image_panel import (
     build_bbox_overlay,
     build_debug_image_preview_output,
@@ -100,7 +105,7 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
         )
 
     outputs: dict[str, object] = {
-        "value": build_value_payload(roi_items),
+        "rois": build_roi_list_payload(roi_items),
         "summary": build_value_payload(
             {
                 "rows": rows,
@@ -336,9 +341,9 @@ CORE_NODE_SPEC = CoreNodeSpec(
         ),
         output_ports=(
             NodePortDefinition(
-                name="value",
+                name="rois",
                 display_name="ROIs",
-                payload_type_id="value.v1",
+                payload_type_id="roi-list.v1",
             ),
             NodePortDefinition(
                 name="summary",

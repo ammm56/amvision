@@ -16,7 +16,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 
 
 def _value_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把 value.v1、roi.v1 或 ROI 列表包装成可显示的 value-preview body。
+    """把 value.v1、roi.v1 或 roi-list.v1 包装成可显示的 value-preview body。
 
     参数：
     - request：当前 workflow 节点执行请求。
@@ -94,7 +94,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.io.value-preview",
         display_name="Value Preview",
         category="ui.preview",
-        description="把 value.v1、roi.v1 或 ROI 列表转成 workflow editor 和 HTTP 响应可显示的 JSON 预览 body。",
+        description="把 value.v1、roi.v1 或 roi-list.v1 转成 workflow editor 和 HTTP 响应可显示的 JSON 预览 body。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -113,7 +113,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
             NodePortDefinition(
                 name="rois",
                 display_name="ROIs",
-                payload_type_id="value.v1",
+                payload_type_id="roi-list.v1",
                 required=False,
             ),
         ),

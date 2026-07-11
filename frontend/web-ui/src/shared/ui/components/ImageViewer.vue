@@ -1100,7 +1100,7 @@ function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteract
     angleToleranceDeg: activeInteractionTool.value?.angleToleranceDeg ?? null,
     searchPaddingRatio: activeInteractionTool.value?.searchPaddingRatio ?? null,
     searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
-    parameters: overlay.parameters,
+    parameters: pickOverlayTargetParameters(overlay.parameters, targetParameters),
   }
 
   if ((tool === 'bbox' || tool === 'rect' || tool === 'grid') && readOverlayBbox(overlay)) {
@@ -1156,6 +1156,18 @@ function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteract
   }
 
   return null
+}
+
+function pickOverlayTargetParameters(
+  parameters: Record<string, unknown>,
+  targetParameters: string[],
+): Record<string, unknown> {
+  const allowedParameters = new Set(targetParameters)
+  const pickedParameters: Record<string, unknown> = {}
+  for (const [parameterName, parameterValue] of Object.entries(parameters)) {
+    if (allowedParameters.has(parameterName)) pickedParameters[parameterName] = parameterValue
+  }
+  return pickedParameters
 }
 
 function readOverlayShapeClass(overlay: ViewerImageOverlay, shapeKind: string): Array<string | Record<string, boolean>> {

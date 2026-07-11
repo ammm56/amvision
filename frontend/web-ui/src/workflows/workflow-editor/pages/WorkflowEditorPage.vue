@@ -1298,6 +1298,17 @@ function buildPreviewImageInteractionParameterUpdates(
     return updates
   }
   if (event.tool === 'point-pair' && event.pairLinesXyxy && event.pairLinesXyxy.length > 0) {
+    if (targetParameters.has('source_points') && targetParameters.has('target_points')) {
+      const pointPairs = event.pairLinesXyxy.slice(-3)
+      updates.source_points = pointPairs.map(([sourceX, sourceY]) => [
+        roundInteractionNumber(sourceX),
+        roundInteractionNumber(sourceY),
+      ])
+      updates.target_points = pointPairs.map(([_sourceX, _sourceY, targetX, targetY]) => [
+        roundInteractionNumber(targetX),
+        roundInteractionNumber(targetY),
+      ])
+    }
     if (targetParameters.has('debug_manual_pair_lines_xyxy')) {
       updates.debug_manual_pair_lines_xyxy = mergePairLineList(
         currentParameters.debug_manual_pair_lines_xyxy,

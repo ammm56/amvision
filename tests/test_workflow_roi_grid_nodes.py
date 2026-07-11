@@ -54,8 +54,9 @@ def test_roi_grid_create_generates_row_major_roi_values() -> None:
         )
     )
 
-    roi_items = output["value"]["value"]
+    roi_items = output["rois"]["items"]
     assert len(roi_items) == 6
+    assert output["rois"]["count"] == 6
     assert roi_items[0]["roi_id"] == "slot-01-01"
     assert roi_items[0]["bbox_xyxy"] == [10.0, 20.0, 15.0, 24.0]
     assert roi_items[-1]["roi_id"] == "slot-02-03"
@@ -93,7 +94,7 @@ def test_roi_grid_create_uses_defaults_for_blank_parameters_with_source_image() 
         )
     )
 
-    roi_items = output["value"]["value"]
+    roi_items = output["rois"]["items"]
     assert len(roi_items) == 1
     assert roi_items[0]["roi_id"] == "roi-01-01"
     assert roi_items[0]["bbox_xyxy"] == [0.0, 0.0, 640.0, 480.0]
@@ -146,7 +147,7 @@ def test_roi_list_create_merges_single_and_value_list_inputs() -> None:
         )
     )
 
-    roi_items = output["value"]["value"]
+    roi_items = output["rois"]["items"]
     assert [item["roi_id"] for item in roi_items] == ["slot-a", "slot-b"]
     assert roi_items[0]["source_image"]["image_handle"] == "image-list"
     assert roi_items[1]["source_image"]["image_handle"] == "image-list"
@@ -218,7 +219,7 @@ def test_value_preview_accepts_single_roi_payload() -> None:
 
 
 def test_value_preview_accepts_roi_list_payload() -> None:
-    """验证 Value Preview 可预览 value.v1 包装的 ROI 列表。"""
+    """验证 Value Preview 可预览 roi-list.v1 ROI 列表。"""
 
     output = _value_preview_handler(
         WorkflowNodeExecutionRequest(
@@ -227,7 +228,8 @@ def test_value_preview_accepts_roi_list_payload() -> None:
             parameters={"path": "0.roi_id"},
             input_values={
                 "rois": {
-                    "value": [
+                    "format_id": "amvision.roi-list.v1",
+                    "items": [
                         {
                             "roi_id": "slot-list",
                             "roi_kind": "bbox",
@@ -235,7 +237,8 @@ def test_value_preview_accepts_roi_list_payload() -> None:
                             "polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
                             "area": 100,
                         }
-                    ]
+                    ],
+                    "count": 1,
                 }
             },
             execution_metadata={},

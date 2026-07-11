@@ -5,6 +5,15 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload, extract_value_by_path, require_value_payload
+from backend.nodes.debug_image_panel import (
+    build_checkbox_control,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_line_overlay,
+    build_numeric_control,
+    is_debug_image_panel_enabled,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -29,7 +38,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
-    requested_angle_deg, angle_source = _resolve_requested_angle_deg(request)
+    try:
+        requested_angle_deg, angle_source = _resolve_requested_angle_deg(request)
+    except InvalidRequestError:
+        if not is_debug_image_panel_enabled(request):
+            raise
+        return _build_waiting_for_angle_response(request, image_payload=image_payload, image_matrix=image_matrix)
     negate_angle = _read_optional_bool(
         request.parameters.get("negate_angle"),
         field_name="negate_angle",
@@ -95,7 +109,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(output_height),
         media_type="image/png",
     )
-    return {
+    outputs: dict[str, object] = {
         "image": output_payload,
         "summary": build_value_payload(
             {
@@ -111,6 +125,123 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        _build_rotation_debug_preview(
+            request,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            angle_deg=requested_angle_deg,
+            negate_angle=negate_angle,
+            expand_canvas=expand_canvas,
+        )
+    )
+    return outputs
+
+
+def _build_waiting_for_angle_response(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    image_matrix: object,
+) -> dict[str, object]:
+    """参数未完整时返回原图和取角度面板，方便编辑态先画参考线。"""
+
+    outputs: dict[str, object] = {
+        "image": image_payload,
+        "summary": build_value_payload(
+            {
+                "state": "waiting-for-angle",
+                "message": "请在调试图中画参考线，或填写 angle_deg / angle 输入。",
+            }
+        ),
+    }
+    outputs.update(
+        _build_rotation_debug_preview(
+            request,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            angle_deg=0.0,
+            negate_angle=False,
+            expand_canvas=False,
+        )
+    )
+    return outputs
+
+
+def _build_rotation_debug_preview(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    image_matrix: object,
+    angle_deg: float,
+    negate_angle: bool,
+    expand_canvas: bool,
+) -> dict[str, object]:
+    """构造 Rotation Correct 的统一图像取参面板。"""
+
+    source_height, source_width = image_matrix.shape[:2]
+    return build_debug_image_preview_output(
+        request,
+        image_payload=image_payload,
+        title="Rotation Angle",
+        artifact_name="rotation-correct-debug-preview",
+        overlays=(
+            _build_angle_line_overlay(
+                image_width=int(source_width),
+                image_height=int(source_height),
+                angle_deg=float(angle_deg),
+            ),
+        ),
+        interaction=build_debug_panel_interaction(
+            tools=[
+                build_interaction_tool(
+                    "line",
+                    "参考线取角度",
+                    ["angle_deg"],
+                    extra={
+                        "angle_tolerance_deg": 5.0,
+                        "search_padding_ratio": 0.18,
+                        "search_padding_min": 8.0,
+                    },
+                )
+            ],
+            controls=[
+                build_numeric_control(
+                    "angle_deg",
+                    "Angle Deg",
+                    round(float(angle_deg), 4),
+                    min_value=-180.0,
+                    max_value=180.0,
+                    step=0.1,
+                ),
+                build_checkbox_control("negate_angle", "Negate Angle", negate_angle),
+                build_checkbox_control("expand_canvas", "Expand Canvas", expand_canvas),
+            ],
+        ),
+    )
+
+
+def _build_angle_line_overlay(*, image_width: int, image_height: int, angle_deg: float) -> dict[str, object]:
+    """按当前角度生成穿过图像中心的参考线 overlay。"""
+
+    center_x = float(image_width) / 2.0
+    center_y = float(image_height) / 2.0
+    half_length = max(1.0, min(float(image_width), float(image_height)) * 0.4)
+    angle_rad = math.radians(float(angle_deg))
+    delta_x = math.cos(angle_rad) * half_length
+    delta_y = math.sin(angle_rad) * half_length
+    return build_line_overlay(
+        overlay_id="angle_deg",
+        label=f"angle {round(float(angle_deg), 2)}",
+        line_xyxy=[
+            center_x - delta_x,
+            center_y - delta_y,
+            center_x + delta_x,
+            center_y + delta_y,
+        ],
+        target_parameters=["angle_deg"],
+        parameters={"angle_deg": round(float(angle_deg), 4)},
+    )
 
 
 def _resolve_requested_angle_deg(request: WorkflowNodeExecutionRequest) -> tuple[float, str]:

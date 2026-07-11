@@ -30,8 +30,10 @@ from backend.nodes.core_nodes.support.roi.parameters import (
     read_polygon_parameter,
 )
 from backend.nodes.core_nodes.support.roi.payloads import (
+    build_roi_list_payload,
     build_roi_payload,
     iter_roi_payloads,
+    require_roi_list_payload,
     require_roi_payload,
 )
 
@@ -40,6 +42,7 @@ __all__ = [
     "bbox_to_polygon_xy",
     "build_region_mask",
     "build_roi_mask",
+    "build_roi_list_payload",
     "build_roi_payload",
     "compute_regions_intersection_metrics",
     "derive_canvas_size_from_payloads",
@@ -53,6 +56,7 @@ __all__ = [
     "read_optional_text",
     "read_polygon_parameter",
     "require_regions_payload",
+    "require_roi_list_payload",
     "require_roi_payload",
     "resolve_roi_canvas_size",
     "select_best_region_item",

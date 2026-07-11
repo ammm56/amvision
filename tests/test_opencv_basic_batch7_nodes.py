@@ -126,7 +126,7 @@ def test_opencv_basic_batch7_draw_roi_execute(tmp_path: Path) -> None:
 
 
 def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
-    """验证 roi-list-create 与 draw-rois 可批量绘制槽位 ROI。"""
+    """验证 roi-list-create 与 draw-rois 可通过 roi-list.v1 批量绘制槽位 ROI。"""
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
@@ -204,7 +204,7 @@ def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
             WorkflowGraphEdge(
                 edge_id="edge-roi-list-draw-rois-b7",
                 source_node_id="roi_list",
-                source_port="value",
+                source_port="rois",
                 target_node_id="draw_rois",
                 target_port="rois",
             ),
@@ -257,7 +257,7 @@ def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
 
 
 def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
-    """验证 crop-export 可消费 ROI Grid Create.value 批量输出裁剪图。"""
+    """验证 crop-export 可消费 ROI Grid Create.rois 批量输出裁剪图。"""
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
@@ -305,7 +305,7 @@ def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
             WorkflowGraphEdge(
                 edge_id="edge-grid-crop-export-rois-b7",
                 source_node_id="roi_grid",
-                source_port="value",
+                source_port="rois",
                 target_node_id="crop_export",
                 target_port="rois",
             ),

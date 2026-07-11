@@ -3,7 +3,7 @@
   "node_type_id": "custom.opencv.draw-rois",
   "display_name": "Draw ROIs",
   "category": "opencv.render",
-  "description": "把 value.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
+  "description": "把 roi-list.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
@@ -15,8 +15,8 @@
     {
       "name": "rois",
       "display_name": "ROIs",
-      "payload_type_id": "value.v1",
-      "description": "ROI 列表，通常来自 ROI Grid Create.value 或 ROI List Create.value。"
+      "payload_type_id": "roi-list.v1",
+      "description": "ROI 列表，通常来自 ROI Grid Create.rois 或 ROI List Create.rois。"
     }
   ],
   "output_ports": [

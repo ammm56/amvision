@@ -10,6 +10,15 @@ from backend.nodes.core_nodes.support.logic import (
     extract_value_by_path,
     require_value_payload,
 )
+from backend.nodes.debug_image_panel import (
+    build_checkbox_control,
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_interaction_tool,
+    build_line_overlay,
+    build_numeric_control,
+    is_debug_image_panel_enabled,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -36,12 +45,21 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, np_module = require_opencv_imports()
     image_payload, _source_object_key, image_matrix = load_image_matrix(request)
     transform_object, source_kind = _resolve_transform_object(request)
-    affine_matrix, transform_kind, transform_summary = _resolve_affine_matrix(
-        request,
-        transform_object=transform_object,
-        cv2_module=cv2_module,
-        np_module=np_module,
-    )
+    try:
+        affine_matrix, transform_kind, transform_summary = _resolve_affine_matrix(
+            request,
+            transform_object=transform_object,
+            cv2_module=cv2_module,
+            np_module=np_module,
+        )
+    except InvalidRequestError:
+        if not is_debug_image_panel_enabled(request):
+            raise
+        return _build_waiting_for_point_pairs_response(
+            request,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+        )
     fit_output_bounds = _read_bool_config_field(
         transform_object=transform_object,
         field_name="fit_output_bounds",
@@ -92,7 +110,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         height=int(output_height),
         media_type="image/png",
     )
-    return {
+    outputs: dict[str, object] = {
         "image": output_payload,
         "summary": build_value_payload(
             {
@@ -111,6 +129,141 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             }
         ),
     }
+    outputs.update(
+        _build_affine_debug_preview(
+            request,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            transform_summary=transform_summary,
+            output_width=int(output_width),
+            output_height=int(output_height),
+            fit_output_bounds=fit_output_bounds,
+        )
+    )
+    return outputs
+
+
+def _build_waiting_for_point_pairs_response(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    image_matrix: object,
+) -> dict[str, object]:
+    """参数未完整时返回原图和三点取参面板。"""
+
+    outputs: dict[str, object] = {
+        "image": image_payload,
+        "summary": build_value_payload(
+            {
+                "state": "waiting-for-point-pairs",
+                "message": "请在调试图中绘制 3 组 source -> target 点对，或填写 matrix_2x3。",
+            }
+        ),
+    }
+    source_height, source_width = image_matrix.shape[:2]
+    outputs.update(
+        _build_affine_debug_preview(
+            request,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            transform_summary={},
+            output_width=int(source_width),
+            output_height=int(source_height),
+            fit_output_bounds=False,
+        )
+    )
+    return outputs
+
+
+def _build_affine_debug_preview(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    image_matrix: object,
+    transform_summary: dict[str, object],
+    output_width: int,
+    output_height: int,
+    fit_output_bounds: bool,
+) -> dict[str, object]:
+    """构造 Affine Transform 的统一图像取参面板。"""
+
+    source_height, source_width = image_matrix.shape[:2]
+    return build_debug_image_preview_output(
+        request,
+        image_payload=image_payload,
+        title="Affine Point Pairs",
+        artifact_name="affine-transform-debug-preview",
+        overlays=_build_point_pair_overlays(transform_summary),
+        interaction=build_debug_panel_interaction(
+            tools=[
+                build_interaction_tool(
+                    "point-pair",
+                    "三点仿射",
+                    ["source_points", "target_points"],
+                    extra={
+                        "max_pair_count": 3,
+                        "description": "依次绘制 3 条 source -> target 线段。",
+                    },
+                )
+            ],
+            controls=[
+                build_numeric_control(
+                    "output_width",
+                    "Output Width",
+                    int(output_width),
+                    min_value=1.0,
+                    max_value=max(float(source_width) * 4.0, 1.0),
+                    step=1.0,
+                ),
+                build_numeric_control(
+                    "output_height",
+                    "Output Height",
+                    int(output_height),
+                    min_value=1.0,
+                    max_value=max(float(source_height) * 4.0, 1.0),
+                    step=1.0,
+                ),
+                build_checkbox_control("fit_output_bounds", "Fit Output Bounds", fit_output_bounds),
+            ],
+        ),
+    )
+
+
+def _build_point_pair_overlays(transform_summary: dict[str, object]) -> list[dict[str, object]]:
+    """把 source/target 三点转换成点对线 overlay。"""
+
+    raw_source_points = transform_summary.get("source_points")
+    raw_target_points = transform_summary.get("target_points")
+    if not isinstance(raw_source_points, list) or not isinstance(raw_target_points, list):
+        return []
+    pair_count = min(len(raw_source_points), len(raw_target_points), 3)
+    overlays: list[dict[str, object]] = []
+    for pair_index in range(pair_count):
+        source_point = raw_source_points[pair_index]
+        target_point = raw_target_points[pair_index]
+        if not isinstance(source_point, list) or not isinstance(target_point, list):
+            continue
+        if len(source_point) < 2 or len(target_point) < 2:
+            continue
+        overlays.append(
+            build_line_overlay(
+                overlay_id=f"affine-pair-{pair_index + 1}",
+                label=f"pair {pair_index + 1}",
+                kind="point-pair",
+                line_xyxy=[
+                    float(source_point[0]),
+                    float(source_point[1]),
+                    float(target_point[0]),
+                    float(target_point[1]),
+                ],
+                target_parameters=["source_points", "target_points"],
+                parameters={
+                    "source_points": raw_source_points[:3],
+                    "target_points": raw_target_points[:3],
+                },
+            )
+        )
+    return overlays
 
 
 def _resolve_transform_object(request: WorkflowNodeExecutionRequest) -> tuple[dict[str, object] | None, str]:
