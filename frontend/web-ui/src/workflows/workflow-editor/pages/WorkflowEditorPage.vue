@@ -1274,10 +1274,14 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
   if (event.tool === 'line' && event.lineXyxy) {
     const [x1, y1, x2, y2] = event.lineXyxy
     const length = Math.max(1, Math.hypot(x2 - x1, y2 - y1))
+    const angleDeg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
+    const normalizedAngleDeg = normalizeLineAngleDeg(angleDeg)
     if (targetParameters.has('line_xyxy')) updates.line_xyxy = event.lineXyxy.map(roundInteractionNumber)
     if (targetParameters.has('min_line_length')) updates.min_line_length = roundInteractionNumber(length)
-    if (targetParameters.has('angle_deg')) updates.angle_deg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
-    if (targetParameters.has('line_angle_deg')) updates.line_angle_deg = roundInteractionNumber((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
+    if (targetParameters.has('angle_deg')) updates.angle_deg = normalizedAngleDeg
+    if (targetParameters.has('line_angle_deg')) updates.line_angle_deg = normalizedAngleDeg
+    if (targetParameters.has('angle_min_deg')) updates.angle_min_deg = roundInteractionNumber(Math.max(-90, normalizedAngleDeg - 8))
+    if (targetParameters.has('angle_max_deg')) updates.angle_max_deg = roundInteractionNumber(Math.min(90, normalizedAngleDeg + 8))
     if (targetParameters.has('search_bbox_xyxy')) {
       const padding = Math.max(8, length * 0.08)
       updates.search_bbox_xyxy = [
@@ -1290,6 +1294,13 @@ function buildPreviewImageInteractionParameterUpdates(event: PreviewImageInterac
     return updates
   }
   return Object.keys(updates).length ? updates : null
+}
+
+function normalizeLineAngleDeg(angleDeg: number): number {
+  let normalizedAngle = angleDeg % 180
+  if (normalizedAngle >= 90) normalizedAngle -= 180
+  if (normalizedAngle < -90) normalizedAngle += 180
+  return roundInteractionNumber(normalizedAngle)
 }
 
 function buildBoundingBoxFromPoints(points: number[][]): [number, number, number, number] {

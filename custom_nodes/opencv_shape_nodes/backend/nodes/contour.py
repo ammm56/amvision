@@ -60,6 +60,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if max_contours_raw == "":
         max_contours_raw = None
     max_contours = require_positive_int(max_contours_raw, field_name="max_contours") if max_contours_raw is not None else None
+    selected_contour_index_raw = request.parameters.get("selected_contour_index")
+    selected_contour_index = (
+        require_positive_int(selected_contour_index_raw, field_name="selected_contour_index")
+        if selected_contour_index_raw not in {None, ""}
+        else None
+    )
     raw_retrieval_mode = request.parameters.get("retrieval_mode")
     retrieval_mode = normalize_contour_retrieval_mode(
         "external" if raw_retrieval_mode in {None, ""} else raw_retrieval_mode,
@@ -110,6 +116,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         contour_items.append(contour_item)
         if max_contours is not None and len(contour_items) >= max_contours:
             break
+    if selected_contour_index is not None:
+        contour_items = [
+            item
+            for item in contour_items
+            if int(item.get("contour_index", -1)) == selected_contour_index
+        ]
 
     outputs: dict[str, object] = {
         "contours": build_contours_payload(
@@ -127,6 +139,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "approximation": str(raw_approximation or "simple"),
                 "min_area": min_area,
                 "max_contours": max_contours,
+                "selected_contour_index": selected_contour_index,
                 "max_area": round(max((float(item.get("area", 0.0)) for item in contour_items), default=0.0), 4),
                 **build_search_roi_summary(search_roi),
             }
@@ -168,8 +181,8 @@ def _build_contour_interaction(
             },
             {
                 "tool": "contour",
-                "label": "轮廓搜索区域",
-                "target_parameters": ["search_bbox_xyxy"],
+                "label": "轮廓点选",
+                "target_parameters": ["search_bbox_xyxy", "selected_contour_index"],
                 "min_points": 3,
             },
         ],
@@ -226,6 +239,8 @@ def _build_contour_overlays(
                 "id": f"contour-{contour_index}",
                 "label": f"contour {contour_index}",
                 "points_xy": _decimate_points(raw_points, max_points=160),
+                "target_parameters": ["search_bbox_xyxy", "selected_contour_index"],
+                "parameters": {"selected_contour_index": contour_index},
             }
         )
     return overlays

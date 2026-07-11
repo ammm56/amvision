@@ -4127,12 +4127,28 @@ a:hover {
   pointer-events: none;
 }
 
+.image-viewer__overlay--interactive {
+  pointer-events: auto;
+}
+
 .image-viewer__overlay-shape {
   vector-effect: non-scaling-stroke;
   stroke: #18b6c4;
   stroke-width: 2;
   fill: rgb(24 182 196 / 0.12);
   paint-order: stroke fill;
+  pointer-events: none;
+}
+
+.image-viewer__overlay-shape--selectable {
+  cursor: crosshair;
+  pointer-events: visiblePainted;
+}
+
+.image-viewer__overlay-shape--selectable:hover {
+  stroke: #facc15;
+  stroke-width: 3;
+  fill: rgb(250 204 21 / 0.18);
 }
 
 .image-viewer__overlay-shape--line,

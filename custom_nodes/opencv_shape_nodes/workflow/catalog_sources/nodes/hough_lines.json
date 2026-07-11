@@ -65,6 +65,20 @@
         "minimum": 0,
         "default": 5
       },
+      "angle_min_deg": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90,
+        "title": "Angle Min Deg",
+        "description": "可选线段角度下限，角度范围为 -90 到 90；为空时不限制。"
+      },
+      "angle_max_deg": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90,
+        "title": "Angle Max Deg",
+        "description": "可选线段角度上限，角度范围为 -90 到 90；为空时不限制。"
+      },
       "sort_by": {
         "type": "string",
         "enum": [

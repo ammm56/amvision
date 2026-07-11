@@ -190,7 +190,11 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
             WorkflowGraphNode(
                 node_id="contour",
                 node_type_id="custom.opencv.contour",
-                parameters={"retrieval_mode": "external", "min_area": 10.0},
+                parameters={
+                    "retrieval_mode": "external",
+                    "min_area": 10.0,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(
                 node_id="filter",
@@ -209,7 +213,11 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
             WorkflowGraphNode(
                 node_id="rect",
                 node_type_id="custom.opencv.min-area-rect",
-                parameters={"sort_by": "rect_area", "descending": True},
+                parameters={
+                    "sort_by": "rect_area",
+                    "descending": True,
+                    "debug_image_panel_enabled": True,
+                },
             ),
             WorkflowGraphNode(
                 node_id="regions",
@@ -367,6 +375,7 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
             "dataset_storage": dataset_storage,
             "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-batch1-contour-bridge",
+            "debug_image_panels_enabled": True,
         },
     )
 
@@ -378,6 +387,8 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     regions = execution_result.outputs["regions"]
     regions_summary = execution_result.outputs["regions_summary"]
     rotated_rects_value = execution_result.outputs["rotated_rects_value"]
+    contour_debug_preview = _read_record_output(execution_result, node_id="contour", output_name="debug_preview")
+    rect_debug_preview = _read_record_output(execution_result, node_id="rect", output_name="debug_preview")
 
     assert filtered_contours["count"] == 2
     assert contour_summary["value"]["filtered_count"] == 2
@@ -397,6 +408,29 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert regions_summary["value"]["region_count"] == 2
     assert rotated_rects_value["value"]["count"] == 2
     assert rotated_rects_value["value"]["items"][0]["contour_index"] == rotated_rects["items"][0]["contour_index"]
+    contour_tools_by_name = {
+        tool["tool"]: tool
+        for tool in contour_debug_preview["interaction"]["tools"]
+    }
+    contour_pick_overlay = next(
+        overlay
+        for overlay in contour_debug_preview["overlays"]
+        if "selected_contour_index" in overlay.get("target_parameters", [])
+    )
+    rect_pick_overlay = next(
+        overlay
+        for overlay in rect_debug_preview["overlays"]
+        if "selected_contour_index" in overlay.get("target_parameters", [])
+    )
+    assert contour_debug_preview["type"] == "image-preview"
+    assert rect_debug_preview["type"] == "image-preview"
+    assert contour_tools_by_name["contour"]["target_parameters"] == [
+        "search_bbox_xyxy",
+        "selected_contour_index",
+    ]
+    assert isinstance(contour_pick_overlay["parameters"]["selected_contour_index"], int)
+    assert rect_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert isinstance(rect_pick_overlay["parameters"]["selected_contour_index"], int)
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:
@@ -411,6 +445,22 @@ def _create_repository_executor() -> WorkflowGraphExecutor:
     )
     runtime_registry_loader.refresh()
     return WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+
+
+def _read_record_output(
+    execution_result,
+    *,
+    node_id: str,
+    output_name: str,
+) -> dict[str, object]:
+    """从节点执行记录中读取指定输出。"""
+
+    for record in execution_result.node_records:
+        if record.node_id == node_id:
+            output_payload = record.outputs.get(output_name)
+            assert isinstance(output_payload, dict)
+            return output_payload
+    raise AssertionError(f"node record not found: {node_id}")
 
 
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:

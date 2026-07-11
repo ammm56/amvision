@@ -72,6 +72,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     descending = bool(request.parameters.get("descending", False))
     raw_limit = request.parameters.get("limit")
     limit = None if raw_limit in {None, ""} else require_positive_int(raw_limit, field_name="limit")
+    selected_contour_index_raw = request.parameters.get("selected_contour_index")
+    selected_contour_index = (
+        require_positive_int(selected_contour_index_raw, field_name="selected_contour_index")
+        if selected_contour_index_raw not in {None, ""}
+        else None
+    )
 
     rotated_rect_items: list[dict[str, object]] = []
     for contour_item in contours_payload["items"]:
@@ -122,6 +128,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "fill_ratio": fill_ratio,
             }
         )
+    if selected_contour_index is not None:
+        rotated_rect_items = [
+            item
+            for item in rotated_rect_items
+            if int(item.get("contour_index", -1)) == selected_contour_index
+        ]
 
     rotated_rect_items.sort(key=lambda current_item: current_item[sort_by], reverse=descending)
     if limit is not None:
@@ -145,6 +157,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "sort_by": sort_by,
                 "descending": descending,
                 "limit": limit,
+                "selected_contour_index": selected_contour_index,
                 "max_long_side": round(max((float(item["long_side"]) for item in rotated_rect_items), default=0.0), 4),
                 "max_rect_area": round(max((float(item["rect_area"]) for item in rotated_rect_items), default=0.0), 4),
                 "mean_fill_ratio": round(
@@ -178,7 +191,14 @@ def _build_min_area_rect_interaction(*, limit: int | None) -> dict[str, object]:
     return {
         "mode": "edit",
         "coordinate_space": "source-image",
-        "tools": [],
+        "tools": [
+            {
+                "tool": "contour",
+                "label": "矩形点选",
+                "target_parameters": ["selected_contour_index"],
+                "min_points": 4,
+            },
+        ],
         "controls": [
             _build_numeric_control("limit", "Limit", limit or 20, min_value=1.0, max_value=200.0, step=1.0),
         ],
@@ -230,6 +250,8 @@ def _build_rotated_rect_overlays(rotated_rect_items: list[dict[str, object]]) ->
                 "id": f"min-area-rect-{contour_index}",
                 "label": f"rect {contour_index}",
                 "points_xy": points_xy,
+                "target_parameters": ["selected_contour_index"],
+                "parameters": {"selected_contour_index": contour_index},
             }
         )
     return overlays

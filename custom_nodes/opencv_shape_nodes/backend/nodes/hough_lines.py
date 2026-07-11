@@ -61,6 +61,19 @@ def _read_optional_limit(raw_value: object) -> int | None:
     return require_positive_int(raw_value, field_name="limit")
 
 
+def _read_optional_angle_deg(raw_value: object, *, field_name: str) -> float | None:
+    """读取可选角度过滤参数。"""
+
+    if raw_value is None or raw_value == "":
+        return None
+    normalized_value = float(raw_value)
+    if not math.isfinite(normalized_value):
+        raise InvalidRequestError(f"{field_name} 必须是有效角度")
+    if normalized_value < -90.0 or normalized_value > 90.0:
+        raise InvalidRequestError(f"{field_name} 必须在 -90 到 90 度之间")
+    return normalized_value
+
+
 def _normalize_sort_by(value: object) -> str:
     """规范化 hough-lines 的排序字段。"""
 
@@ -86,6 +99,16 @@ def _normalize_angle_deg(*, dx_pixels: float, dy_pixels: float) -> float:
     if angle_deg >= 90.0:
         angle_deg -= 180.0
     return round(angle_deg, 4)
+
+
+def _angle_passes_filter(angle_deg: float, *, angle_min_deg: float | None, angle_max_deg: float | None) -> bool:
+    """判断线段角度是否落在可选过滤范围内。"""
+
+    if angle_min_deg is not None and angle_deg < angle_min_deg:
+        return False
+    if angle_max_deg is not None and angle_deg > angle_max_deg:
+        return False
+    return True
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -119,6 +142,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         field_name="max_line_gap",
         default_value=5.0,
     )
+    angle_min_deg = _read_optional_angle_deg(request.parameters.get("angle_min_deg"), field_name="angle_min_deg")
+    angle_max_deg = _read_optional_angle_deg(request.parameters.get("angle_max_deg"), field_name="angle_max_deg")
+    if angle_min_deg is not None and angle_max_deg is not None and angle_min_deg > angle_max_deg:
+        raise InvalidRequestError("angle_min_deg 不能大于 angle_max_deg")
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
     descending = bool(request.parameters.get("descending", True))
     limit = _read_optional_limit(request.parameters.get("limit"))
@@ -143,6 +170,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             dy_pixels = float(y2_value - y1_value)
             length_pixels = round(float(math.hypot(dx_pixels, dy_pixels)), 4)
             angle_deg = _normalize_angle_deg(dx_pixels=dx_pixels, dy_pixels=dy_pixels)
+            if not _angle_passes_filter(angle_deg, angle_min_deg=angle_min_deg, angle_max_deg=angle_max_deg):
+                continue
             midpoint_x = round((float(x1_value) + float(x2_value)) / 2.0, 4)
             midpoint_y = round((float(y1_value) + float(y2_value)) / 2.0, 4)
             line_items.append(
@@ -187,6 +216,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "threshold": threshold,
                 "min_line_length": min_line_length,
                 "max_line_gap": max_line_gap,
+                "angle_min_deg": angle_min_deg,
+                "angle_max_deg": angle_max_deg,
                 "max_length_pixels": round(
                     max((float(item["length_pixels"]) for item in line_items), default=0.0),
                     4,
@@ -216,6 +247,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 threshold=threshold,
                 min_line_length=min_line_length,
                 max_line_gap=max_line_gap,
+                angle_min_deg=angle_min_deg,
+                angle_max_deg=angle_max_deg,
             ),
         )
     )
@@ -229,6 +262,8 @@ def _build_line_interaction(
     threshold: int,
     min_line_length: float,
     max_line_gap: float,
+    angle_min_deg: float | None,
+    angle_max_deg: float | None,
 ) -> dict[str, object]:
     """声明 Hough Lines 在图片面板中的取参和调参能力。"""
 
@@ -239,7 +274,7 @@ def _build_line_interaction(
             {
                 "tool": "line",
                 "label": "找线",
-                "target_parameters": ["search_bbox_xyxy", "min_line_length"],
+                "target_parameters": ["search_bbox_xyxy", "min_line_length", "angle_min_deg", "angle_max_deg"],
             },
             {
                 "tool": "rect",
@@ -253,6 +288,22 @@ def _build_line_interaction(
             _build_numeric_control("threshold", "Threshold", threshold, min_value=1.0, max_value=300.0, step=1.0),
             _build_numeric_control("min_line_length", "Min Line Length", min_line_length, min_value=0.0, max_value=1200.0, step=1.0),
             _build_numeric_control("max_line_gap", "Max Line Gap", max_line_gap, min_value=0.0, max_value=300.0, step=1.0),
+            _build_numeric_control(
+                "angle_min_deg",
+                "Angle Min Deg",
+                -90.0 if angle_min_deg is None else angle_min_deg,
+                min_value=-90.0,
+                max_value=90.0,
+                step=0.5,
+            ),
+            _build_numeric_control(
+                "angle_max_deg",
+                "Angle Max Deg",
+                90.0 if angle_max_deg is None else angle_max_deg,
+                min_value=-90.0,
+                max_value=90.0,
+                step=0.5,
+            ),
         ],
     }
 

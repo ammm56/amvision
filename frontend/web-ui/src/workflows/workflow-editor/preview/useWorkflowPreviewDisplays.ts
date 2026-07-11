@@ -18,6 +18,7 @@ export interface PreviewImageOverlay {
   lineXyxy: [number, number, number, number] | null
   circle: PreviewImageCircleOverlay | null
   targetParameters: string[]
+  parameters: Record<string, unknown>
 }
 
 export interface PreviewImageInteractionControl {
@@ -528,17 +529,19 @@ function buildPreviewImageOverlay(rawOverlay: WorkflowJsonObject): PreviewImageO
     lineXyxy,
     circle,
     targetParameters: readStringArray(rawOverlay.target_parameters),
+    parameters: readPreviewObject(rawOverlay.parameters),
   }
 }
 
 function readPreviewImageInteraction(value: unknown): PreviewImageInteraction | null {
   if (!isPreviewJsonObject(value)) return null
   const tools = readPreviewImageInteractionTools(value.tools)
-  if (tools.length === 0) return null
+  const controls = readPreviewImageInteractionControls(value.controls)
+  if (tools.length === 0 && controls.length === 0) return null
   return {
     mode: readDisplayText(value.mode) || 'view',
     coordinateSpace: readDisplayText(value.coordinate_space) || 'source-image',
-    controls: readPreviewImageInteractionControls(value.controls),
+    controls,
     tools,
   }
 }
@@ -610,6 +613,10 @@ function readStringArray(value: unknown): string[] {
     const text = readDisplayText(item)
     return text ? [text] : []
   })
+}
+
+function readPreviewObject(value: unknown): Record<string, unknown> {
+  return isPreviewJsonObject(value) ? value : {}
 }
 
 function formatPreviewJson(value: unknown): string {

@@ -157,9 +157,14 @@ def test_opencv_basic_batch3_hough_lines_execute(tmp_path: Path) -> None:
     tools_by_name = {tool["tool"]: tool for tool in interaction["tools"]}
     controls_by_name = {control["parameter_name"]: control for control in interaction["controls"]}
     assert debug_preview["type"] == "image-preview"
-    assert set(tools_by_name["line"]["target_parameters"]) == {"search_bbox_xyxy", "min_line_length"}
+    assert set(tools_by_name["line"]["target_parameters"]) == {
+        "search_bbox_xyxy",
+        "min_line_length",
+        "angle_min_deg",
+        "angle_max_deg",
+    }
     assert tools_by_name["rect"]["target_parameters"] == ["search_bbox_xyxy"]
-    assert {"threshold", "min_line_length", "max_line_gap"} <= set(controls_by_name)
+    assert {"threshold", "min_line_length", "max_line_gap", "angle_min_deg", "angle_max_deg"} <= set(controls_by_name)
 
 
 def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:

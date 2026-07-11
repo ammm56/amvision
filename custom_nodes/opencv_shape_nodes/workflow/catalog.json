@@ -1882,6 +1882,12 @@
             "type": "integer",
             "minimum": 1
           },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour，便于在调试图上点选目标轮廓。"
+          },
           "search_bbox_xyxy": {
             "type": "array",
             "title": "Search ROI",
@@ -2826,6 +2832,20 @@
             "minimum": 0,
             "default": 5
           },
+          "angle_min_deg": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "title": "Angle Min Deg",
+            "description": "可选线段角度下限，角度范围为 -90 到 90；为空时不限制。"
+          },
+          "angle_max_deg": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "title": "Angle Max Deg",
+            "description": "可选线段角度上限，角度范围为 -90 到 90；为空时不限制。"
+          },
           "sort_by": {
             "type": "string",
             "enum": [
@@ -2960,6 +2980,12 @@
           "limit": {
             "type": "integer",
             "minimum": 1
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的最小外接旋转矩形。"
           },
           "debug_image_panel_enabled": {
             "type": "boolean",

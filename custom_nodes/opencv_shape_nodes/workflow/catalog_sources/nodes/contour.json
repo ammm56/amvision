@@ -85,6 +85,12 @@
         "type": "integer",
         "minimum": 1
       },
+      "selected_contour_index": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Selected Contour Index",
+        "description": "可选点选 contour 序号；设置后只输出该 contour，便于在调试图上点选目标轮廓。"
+      },
       "search_bbox_xyxy": {
         "type": "array",
         "title": "Search ROI",

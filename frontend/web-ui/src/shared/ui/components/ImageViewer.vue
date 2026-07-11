@@ -148,6 +148,7 @@
           <svg
             v-if="overlayViewBox && hasVisibleOverlay"
             class="image-viewer__overlay"
+            :class="{ 'image-viewer__overlay--interactive': overlayPickingActive }"
             :viewBox="overlayViewBox"
             preserveAspectRatio="none"
             aria-hidden="true"
@@ -155,31 +156,35 @@
             <template v-for="(overlay, index) in imageOverlays" :key="overlayKey(overlay, index)">
               <polygon
                 v-if="overlay.pointsXy.length >= 2"
-                class="image-viewer__overlay-shape image-viewer__overlay-shape--polygon"
+                :class="readOverlayShapeClass(overlay, 'polygon')"
                 :points="overlayPoints(overlay)"
+                @mousedown="handleOverlayMouseDown(overlay, $event)"
               />
               <rect
                 v-else-if="overlay.bboxXyxy"
-                class="image-viewer__overlay-shape image-viewer__overlay-shape--bbox"
+                :class="readOverlayShapeClass(overlay, 'bbox')"
                 :x="overlay.bboxXyxy[0]"
                 :y="overlay.bboxXyxy[1]"
                 :width="bboxWidth(overlay)"
                 :height="bboxHeight(overlay)"
+                @mousedown="handleOverlayMouseDown(overlay, $event)"
               />
               <line
                 v-else-if="overlay.lineXyxy"
-                class="image-viewer__overlay-shape image-viewer__overlay-shape--line"
+                :class="readOverlayShapeClass(overlay, 'line')"
                 :x1="overlay.lineXyxy[0]"
                 :y1="overlay.lineXyxy[1]"
                 :x2="overlay.lineXyxy[2]"
                 :y2="overlay.lineXyxy[3]"
+                @mousedown="handleOverlayMouseDown(overlay, $event)"
               />
               <circle
                 v-else-if="overlay.circle"
-                class="image-viewer__overlay-shape image-viewer__overlay-shape--circle"
+                :class="readOverlayShapeClass(overlay, 'circle')"
                 :cx="overlay.circle.centerX"
                 :cy="overlay.circle.centerY"
                 :r="overlay.circle.radius"
+                @mousedown="handleOverlayMouseDown(overlay, $event)"
               />
             </template>
             <rect
@@ -289,6 +294,7 @@ interface ViewerImageOverlay {
   lineXyxy: [number, number, number, number] | null
   circle: ViewerImageCircleOverlay | null
   targetParameters: string[]
+  parameters: Record<string, unknown>
 }
 
 interface ViewerImageInteractionControl {
@@ -507,6 +513,7 @@ const previewActionDisabled = computed(() => Boolean(
   || (hasInteractionDraft.value && !canApplyInteraction.value),
 ))
 const hasVisibleOverlay = computed(() => imageOverlays.value.length > 0 || hasInteractionDraft.value)
+const overlayPickingActive = computed(() => Boolean(interactionActive.value && interactionAvailable.value))
 const overlayViewBox = computed(() => {
   const width = naturalWidth.value || props.image?.width || 0
   const height = naturalHeight.value || props.image?.height || 0
@@ -912,6 +919,108 @@ function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): strin
   if (event.tool === 'circle') return '圆参数已应用'
   if (event.tool === 'line') return '线段参数已应用'
   return '参数已应用到节点'
+}
+
+function handleOverlayMouseDown(overlay: ViewerImageOverlay, event: MouseEvent): void {
+  const pickEvent = buildOverlayPickEvent(overlay)
+  if (!pickEvent) return
+  event.preventDefault()
+  event.stopPropagation()
+  clearInteractionDraft()
+  emit('applyInteraction', pickEvent)
+  showInteractionFeedback(`${readOverlayLabel(overlay)} 已选中，${readAppliedFeedbackText(pickEvent)}`, 'success')
+}
+
+function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteractionApplyEvent | null {
+  const interaction = imageInteraction.value
+  const nodeId = props.image?.nodeId
+  if (!overlayPickingActive.value || !interaction || !nodeId) return null
+
+  const tool = interactionTool.value
+  const targetParameters = overlay.targetParameters.length > 0 ? overlay.targetParameters : activeTargetParameters.value
+  const baseEvent = {
+    nodeId,
+    tool,
+    coordinateSpace: interaction.coordinateSpace,
+    targetParameters,
+    parameters: overlay.parameters,
+  }
+
+  if ((tool === 'bbox' || tool === 'rect' || tool === 'grid') && readOverlayBbox(overlay)) {
+    return { ...baseEvent, bboxXyxy: readOverlayBbox(overlay) ?? undefined }
+  }
+
+  if (tool === 'template-region') {
+    const bboxXyxy = readOverlayBbox(overlay)
+    if (!bboxXyxy) return null
+    if (targetParameters.includes('template_bbox_xyxy') && !targetParameters.includes('search_bbox_xyxy')) {
+      return { ...baseEvent, bboxXyxy, templateBboxXyxy: bboxXyxy }
+    }
+    if (targetParameters.includes('search_bbox_xyxy') && !targetParameters.includes('template_bbox_xyxy')) {
+      return { ...baseEvent, bboxXyxy, searchBboxXyxy: bboxXyxy }
+    }
+    return templateRegionStage.value === 'template'
+      ? { ...baseEvent, bboxXyxy, templateBboxXyxy: bboxXyxy }
+      : { ...baseEvent, bboxXyxy, searchBboxXyxy: bboxXyxy }
+  }
+
+  if (tool === 'polygon' || tool === 'contour') {
+    if (overlay.pointsXy.length >= activePolygonMinPoints.value) {
+      return { ...baseEvent, pointsXy: overlay.pointsXy }
+    }
+    const bboxPoints = readOverlayBboxPoints(overlay)
+    if (bboxPoints.length >= activePolygonMinPoints.value) {
+      return { ...baseEvent, pointsXy: bboxPoints }
+    }
+    return null
+  }
+
+  if (tool === 'circle' && overlay.circle) {
+    return { ...baseEvent, circle: overlay.circle }
+  }
+
+  if (tool === 'line' && overlay.lineXyxy) {
+    return { ...baseEvent, lineXyxy: overlay.lineXyxy }
+  }
+
+  return null
+}
+
+function readOverlayShapeClass(overlay: ViewerImageOverlay, shapeKind: string): Array<string | Record<string, boolean>> {
+  return [
+    'image-viewer__overlay-shape',
+    `image-viewer__overlay-shape--${shapeKind}`,
+    { 'image-viewer__overlay-shape--selectable': Boolean(buildOverlayPickEvent(overlay)) },
+  ]
+}
+
+function readOverlayBbox(overlay: ViewerImageOverlay): [number, number, number, number] | null {
+  if (overlay.bboxXyxy) return overlay.bboxXyxy
+  if (overlay.pointsXy.length === 0) return null
+  const xValues = overlay.pointsXy.map(([pointX]) => pointX)
+  const yValues = overlay.pointsXy.map(([, pointY]) => pointY)
+  return [
+    roundImageCoordinate(Math.min(...xValues)),
+    roundImageCoordinate(Math.min(...yValues)),
+    roundImageCoordinate(Math.max(...xValues)),
+    roundImageCoordinate(Math.max(...yValues)),
+  ]
+}
+
+function readOverlayBboxPoints(overlay: ViewerImageOverlay): Array<[number, number]> {
+  const bboxXyxy = readOverlayBbox(overlay)
+  if (!bboxXyxy) return []
+  const [x1, y1, x2, y2] = bboxXyxy
+  return [
+    [x1, y1],
+    [x2, y1],
+    [x2, y2],
+    [x1, y2],
+  ]
+}
+
+function readOverlayLabel(overlay: ViewerImageOverlay): string {
+  return overlay.label || overlay.id || readInteractionToolLabel(interactionTool.value)
 }
 
 function showInteractionFeedback(text: string, tone: 'success' | 'warning' | 'info'): void {
