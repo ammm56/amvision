@@ -268,6 +268,13 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     options.setStatusMessage(`已删除节点组：${group.name}，组内节点不受影响`)
   }
 
+  function updateGroupColor(groupId: string, color: string): void {
+    const group = options.graphGroups.value.find((item) => item.group_id === groupId)
+    if (!group) return
+    group.color = color
+    options.setStatusMessage(`已更新节点组颜色：${group.name}`)
+  }
+
   function readGroupState(group: WorkflowGraphGroup): WorkflowGraphGroupState {
     const memberNodeIds = new Set(group.member_node_ids)
     const memberNodes = options.graphNodes.value.filter((node) => memberNodeIds.has(node.node.node_id))
@@ -360,6 +367,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     toggleGroupEnabled,
     renameGroup,
     deleteGroup,
+    updateGroupColor,
     readGroupState,
   }
 }

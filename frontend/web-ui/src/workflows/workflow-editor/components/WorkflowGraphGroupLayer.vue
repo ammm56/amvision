@@ -44,6 +44,30 @@
           @dblclick.stop="beginNameEdit(group)"
         >{{ group.name }}</span>
         <span class="workflow-graph-group__count">{{ group.member_node_ids.length }}</span>
+        <span class="workflow-graph-group__color-picker">
+          <button
+            type="button"
+            class="workflow-graph-group__color-button"
+            title="选择节点组颜色"
+            aria-label="选择节点组颜色"
+            :style="{ '--workflow-graph-group-swatch-color': group.color || defaultGroupColor }"
+            @mousedown.stop
+            @click.stop="toggleColorPicker(group.group_id)"
+          />
+          <span v-if="colorPickerGroupId === group.group_id" class="workflow-graph-group__palette" @mousedown.stop @click.stop>
+            <button
+              v-for="color in groupColorOptions"
+              :key="color"
+              type="button"
+              class="workflow-graph-group__swatch"
+              :class="{ 'is-active': readGroupColor(group) === color }"
+              :style="{ '--workflow-graph-group-swatch-color': color }"
+              :title="`设置颜色 ${color}`"
+              :aria-label="`设置节点组颜色 ${color}`"
+              @click="selectGroupColor(group.group_id, color)"
+            />
+          </span>
+        </span>
         <button
           type="button"
           class="workflow-graph-group__delete"
@@ -97,14 +121,18 @@ const emit = defineEmits<{
   toggleGroupEnabled: [group: WorkflowGraphGroup]
   renameGroup: [groupId: string, name: string]
   deleteGroup: [groupId: string]
+  updateGroupColor: [groupId: string, color: string]
 }>()
 
 const editingGroupId = ref<string | null>(null)
 const nameDraft = ref('')
 const nameInputs = new Map<string, HTMLInputElement>()
+const colorPickerGroupId = ref<string | null>(null)
+const defaultGroupColor = '#22b8cf'
+const groupColorOptions = ['#22b8cf', '#4dabf7', '#40c057', '#fab005', '#ff922b', '#da77f2', '#748ffc', '#f06595']
 
 function groupStyle(group: WorkflowGraphGroup): Record<string, string> {
-  return rectStyle(group.rect, group.color || '#22b8cf')
+  return rectStyle(group.rect, readGroupColor(group))
 }
 
 function rectStyle(rect: WorkflowGraphGroupRect, color: string): Record<string, string> {
@@ -122,6 +150,19 @@ function readToggleTitle(group: WorkflowGraphGroup): string {
   if (state === 'enabled') return '禁用节点组'
   if (state === 'disabled') return '启用节点组'
   return '统一启用节点组'
+}
+
+function readGroupColor(group: WorkflowGraphGroup): string {
+  return group.color || defaultGroupColor
+}
+
+function toggleColorPicker(groupId: string): void {
+  colorPickerGroupId.value = colorPickerGroupId.value === groupId ? null : groupId
+}
+
+function selectGroupColor(groupId: string, color: string): void {
+  emit('updateGroupColor', groupId, color)
+  colorPickerGroupId.value = null
 }
 
 function bindNameInput(element: unknown, groupId: string): void {

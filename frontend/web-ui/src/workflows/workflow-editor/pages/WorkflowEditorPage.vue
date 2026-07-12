@@ -62,6 +62,7 @@
           @toggle-group-enabled="toggleGroupEnabled"
           @rename-group="renameGroup"
           @delete-group="deleteGroup"
+          @update-group-color="updateGroupColor"
         />
 
         <WorkflowBoundaryNodeLayer
@@ -960,6 +961,7 @@ const {
   toggleGroupEnabled,
   renameGroup,
   deleteGroup,
+  updateGroupColor,
   readGroupState,
 } = useWorkflowGraphGroups<GraphNodeView>({
   graphGroups,
