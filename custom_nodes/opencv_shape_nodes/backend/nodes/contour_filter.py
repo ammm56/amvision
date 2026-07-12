@@ -148,6 +148,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     contour_items = [item for item, _metrics in filtered_items]
     summary_metrics = [metrics for _item, metrics in filtered_items]
+    source_width, source_height = _read_contours_source_size(contours_payload)
     output_contours_payload = build_contours_payload(
         items=contour_items,
         source_image=contours_payload.get("source_image"),
@@ -192,6 +193,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 sort_by=sort_by,
                 descending=descending,
                 limit=limit,
+                source_width=source_width,
+                source_height=source_height,
             ),
         )
     )
@@ -211,22 +214,28 @@ def _build_contour_filter_controls(
     sort_by: str,
     descending: bool,
     limit: int | None,
+    source_width: int | None,
+    source_height: int | None,
 ) -> list[dict[str, object]]:
     """声明 Contour Filter 在图片面板中的完整调参控件。"""
 
+    area_max, area_step = _build_area_control_range(source_width=source_width, source_height=source_height)
+    width_max = float(max(5000, source_width or 0))
+    height_max = float(max(5000, source_height or 0))
+    point_count_max = _build_point_count_control_max(source_width=source_width, source_height=source_height)
     return [
-        build_number_control("min_area", "Min Area", min_area, min_value=0.0, max_value=200000.0, step=10.0),
-        build_number_control("max_area", "Max Area", max_area, min_value=0.0, max_value=200000.0, step=10.0),
-        build_number_control("min_width", "Min Width", min_width, min_value=0.0, max_value=5000.0, step=1.0),
-        build_number_control("max_width", "Max Width", max_width, min_value=0.0, max_value=5000.0, step=1.0),
-        build_number_control("min_height", "Min Height", min_height, min_value=0.0, max_value=5000.0, step=1.0),
-        build_number_control("max_height", "Max Height", max_height, min_value=0.0, max_value=5000.0, step=1.0),
+        build_number_control("min_area", "Min Area", min_area, min_value=0.0, max_value=area_max, step=area_step),
+        build_number_control("max_area", "Max Area", max_area, min_value=0.0, max_value=area_max, step=area_step),
+        build_number_control("min_width", "Min Width", min_width, min_value=0.0, max_value=width_max, step=1.0),
+        build_number_control("max_width", "Max Width", max_width, min_value=0.0, max_value=width_max, step=1.0),
+        build_number_control("min_height", "Min Height", min_height, min_value=0.0, max_value=height_max, step=1.0),
+        build_number_control("max_height", "Max Height", max_height, min_value=0.0, max_value=height_max, step=1.0),
         build_number_control(
             "min_point_count",
             "Min Points",
             min_point_count,
             min_value=0.0,
-            max_value=20000.0,
+            max_value=point_count_max,
             step=1.0,
         ),
         build_number_control(
@@ -234,7 +243,7 @@ def _build_contour_filter_controls(
             "Max Points",
             max_point_count,
             min_value=0.0,
-            max_value=20000.0,
+            max_value=point_count_max,
             step=1.0,
         ),
         build_select_control(
@@ -253,3 +262,42 @@ def _build_contour_filter_controls(
         build_checkbox_control("descending", "Descending", descending),
         build_number_control("limit", "Output Limit", limit, min_value=1.0, max_value=500.0, step=1.0),
     ]
+
+
+def _read_contours_source_size(contours_payload: dict[str, object]) -> tuple[int | None, int | None]:
+    """从 contours.v1 的 source_image 读取原图尺寸，用于生成自适应调参范围。"""
+
+    source_image = contours_payload.get("source_image")
+    if not isinstance(source_image, dict):
+        return None, None
+    width = _read_positive_int(source_image.get("width"))
+    height = _read_positive_int(source_image.get("height"))
+    return width, height
+
+
+def _read_positive_int(raw_value: object) -> int | None:
+    """读取正整数，失败时返回 None。"""
+
+    if isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, int) and raw_value > 0:
+        return raw_value
+    if isinstance(raw_value, float) and raw_value > 0 and raw_value.is_integer():
+        return int(raw_value)
+    return None
+
+
+def _build_area_control_range(*, source_width: int | None, source_height: int | None) -> tuple[float, float]:
+    """根据当前原图尺寸生成面积调参范围，适配 20MP/8K 工业图像。"""
+
+    image_area = int(source_width or 0) * int(source_height or 0)
+    area_max = float(max(200_000, image_area))
+    area_step = float(max(10, round(max(1, image_area) / 20_000)))
+    return area_max, area_step
+
+
+def _build_point_count_control_max(*, source_width: int | None, source_height: int | None) -> float:
+    """根据当前原图尺寸生成轮廓点数调参范围。"""
+
+    image_perimeter = 2 * (int(source_width or 0) + int(source_height or 0))
+    return float(max(20_000, image_perimeter * 2))

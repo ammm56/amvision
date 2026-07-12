@@ -86,6 +86,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
+    image_height = int(image_matrix.shape[0])
+    image_width = int(image_matrix.shape[1])
     search_roi = resolve_search_roi(request, image_matrix=image_matrix)
     dp = _read_positive_float(request.parameters.get("dp"), field_name="dp", default_value=1.0)
     min_dist = _read_positive_float(
@@ -213,6 +215,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 param2=param2,
                 min_radius=min_radius,
                 max_radius=max_radius,
+                image_width=image_width,
+                image_height=image_height,
             ),
         )
     )
@@ -227,9 +231,15 @@ def _build_circle_interaction(
     param2: float,
     min_radius: int,
     max_radius: int,
+    image_width: int,
+    image_height: int,
 ) -> dict[str, object]:
     """声明 Hough Circles 在图片面板中的取参和调参能力。"""
 
+    long_edge, diagonal_length, radius_max = _build_circle_control_ranges(
+        image_width=image_width,
+        image_height=image_height,
+    )
     return build_debug_panel_interaction(
         tools=[
             build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
@@ -241,13 +251,24 @@ def _build_circle_interaction(
         ],
         controls=[
             build_numeric_control("dp", "DP", dp, min_value=0.1, max_value=4.0, step=0.1),
-            build_numeric_control("min_dist", "Min Dist", min_dist, min_value=1.0, max_value=600.0, step=1.0),
+            build_numeric_control("min_dist", "Min Dist", min_dist, min_value=1.0, max_value=diagonal_length, step=1.0),
             build_numeric_control("param1", "Param1", param1, min_value=1.0, max_value=300.0, step=1.0),
             build_numeric_control("param2", "Param2", param2, min_value=1.0, max_value=200.0, step=1.0),
-            build_numeric_control("min_radius", "Min Radius", min_radius, min_value=0.0, max_value=400.0, step=1.0),
-            build_numeric_control("max_radius", "Max Radius", max_radius, min_value=0.0, max_value=800.0, step=1.0),
+            build_numeric_control("min_radius", "Min Radius", min_radius, min_value=0.0, max_value=radius_max, step=1.0),
+            build_numeric_control("max_radius", "Max Radius", max_radius, min_value=0.0, max_value=long_edge, step=1.0),
         ],
     )
+
+
+def _build_circle_control_ranges(*, image_width: int, image_height: int) -> tuple[float, float, float]:
+    """按原图尺寸生成 Hough Circles 调参范围，避免 20MP/8K 图像被固定上限卡住。"""
+
+    normalized_width = max(1, int(image_width))
+    normalized_height = max(1, int(image_height))
+    long_edge = float(max(800, normalized_width, normalized_height))
+    diagonal_length = float(max(600, math.ceil(math.hypot(normalized_width, normalized_height))))
+    radius_max = float(max(400, math.ceil(min(normalized_width, normalized_height) / 2)))
+    return long_edge, diagonal_length, radius_max
 
 
 def _build_circle_overlays(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from backend.nodes.runtime_support import build_response_image_payload
+from backend.nodes.runtime_support import build_preview_response_image_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import require_image_refs_payload
 from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
@@ -35,14 +35,18 @@ def _build_gallery_item(
     """
 
     output_object_key = None
+    display_object_key = None
     if isinstance(output_dir, str) and output_dir.strip():
         base_name = _build_gallery_output_name(image_item=image_item, item_index=item_index)
-        output_object_key = f"{output_dir.strip().rstrip('/')}/{base_name}"
-    response_image = build_response_image_payload(
+        normalized_output_dir = output_dir.strip().rstrip("/")
+        output_object_key = f"{normalized_output_dir}/{base_name}"
+        display_object_key = f"{normalized_output_dir}/{PurePosixPath(base_name).stem}-display.jpg"
+    response_image = build_preview_response_image_payload(
         request,
         image_payload=image_item,
         response_transport_mode=response_transport_mode,
         object_key=output_object_key,
+        display_object_key=display_object_key,
         variant_name=f"gallery-preview-{item_index:03d}",
     )
     default_caption = "Image"

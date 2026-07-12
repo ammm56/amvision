@@ -8,7 +8,8 @@ from typing import Any
 from backend.nodes.runtime_support import (
     RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
     RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
-    build_response_image_payload,
+    PREVIEW_DISPLAY_MEDIA_TYPE,
+    build_preview_response_image_payload,
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -69,18 +70,22 @@ def build_debug_image_preview_output(
 
     normalized_image_payload = require_image_payload(image_payload)
     response_transport_mode = _read_debug_transport_mode(request.parameters.get(DEBUG_IMAGE_PANEL_TRANSPORT_PARAMETER))
-    output_object_key = None
-    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF:
-        output_object_key = _build_debug_preview_artifact_object_key(
-            request,
-            image_payload=normalized_image_payload,
-            artifact_name=artifact_name,
-        )
-    response_image = build_response_image_payload(
+    output_object_key = _build_debug_preview_artifact_object_key(
+        request,
+        artifact_name=artifact_name,
+        media_type=str(normalized_image_payload.get("media_type") or "image/png"),
+    )
+    display_object_key = _build_debug_preview_artifact_object_key(
+        request,
+        artifact_name=f"{artifact_name}-display",
+        media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
+    )
+    response_image = build_preview_response_image_payload(
         request,
         image_payload=normalized_image_payload,
         response_transport_mode=response_transport_mode,
         object_key=output_object_key,
+        display_object_key=display_object_key,
         variant_name=artifact_name,
     )
     preview_body: dict[str, object] = {
@@ -387,8 +392,8 @@ def _read_debug_transport_mode(raw_value: object) -> str:
 def _build_debug_preview_artifact_object_key(
     request: WorkflowNodeExecutionRequest,
     *,
-    image_payload: dict[str, object],
     artifact_name: str,
+    media_type: str,
 ) -> str | None:
     """为 Preview Run 自动生成 debug 图片 artifact object key。"""
 
@@ -399,7 +404,7 @@ def _build_debug_preview_artifact_object_key(
         preview_run_id=preview_run_id,
         node_id=request.node_id,
         artifact_name=artifact_name,
-        media_type=str(image_payload.get("media_type") or "image/png"),
+        media_type=media_type,
     )
 
 

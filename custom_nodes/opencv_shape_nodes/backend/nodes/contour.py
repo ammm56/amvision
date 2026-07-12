@@ -167,6 +167,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 approximation=str(raw_approximation or "simple"),
                 min_area=min_area,
                 max_contours=max_contours,
+                image_width=int(image_matrix.shape[1]),
+                image_height=int(image_matrix.shape[0]),
             ),
         )
     )
@@ -181,9 +183,12 @@ def _build_contour_interaction(
     approximation: str,
     min_area: float,
     max_contours: int | None,
+    image_width: int,
+    image_height: int,
 ) -> dict[str, object]:
     """声明 Contour 在图片面板中的取参和调参能力。"""
 
+    area_max, area_step = _build_area_control_range(image_width=image_width, image_height=image_height)
     return build_debug_panel_interaction(
         tools=[
             build_interaction_tool("rect", "搜索 ROI", ["search_bbox_xyxy"]),
@@ -229,10 +234,19 @@ def _build_contour_interaction(
                     ("tc89-kcos", "TC89 KCOS"),
                 ],
             ),
-            build_numeric_control("min_area", "Min Area", min_area, min_value=0.0, max_value=20000.0, step=10.0),
+            build_numeric_control("min_area", "Min Area", min_area, min_value=0.0, max_value=area_max, step=area_step),
             build_number_control("max_contours", "Max Contours", max_contours, min_value=1.0, max_value=500.0, step=1.0),
         ],
     )
+
+
+def _build_area_control_range(*, image_width: int, image_height: int) -> tuple[float, float]:
+    """根据当前原图尺寸生成面积调参范围，适配 20MP/8K 工业图像。"""
+
+    image_area = max(1, int(image_width) * int(image_height))
+    area_max = float(max(20_000, image_area))
+    area_step = float(max(10, round(image_area / 20_000)))
+    return area_max, area_step
 
 
 def _build_contour_overlays(

@@ -78,12 +78,22 @@ export interface PreviewViewerImage {
   nodeId: string
   title: string
   src: string | null
+  displaySrc: string | null
+  sourceSrc: string | null
   statusText: string
   transportKind: string
   mediaType: string
   width: number | null
   height: number | null
   objectKey: string | null
+  displayWidth: number | null
+  displayHeight: number | null
+  displayObjectKey: string | null
+  sourceWidth: number | null
+  sourceHeight: number | null
+  sourceObjectKey: string | null
+  displayScale: number | null
+  previewImageKind: string | null
   overlays: PreviewImageOverlay[]
   interaction: PreviewImageInteraction | null
 }
@@ -462,6 +472,59 @@ async function buildPreviewViewerImage(
   registerObjectUrl: (objectUrl: string) => void,
   previewPayload: WorkflowJsonObject | null = null,
 ): Promise<PreviewViewerImage> {
+  const displayPayload = isPreviewJsonObject(imagePayload.display_image) ? imagePayload.display_image : imagePayload
+  const sourcePayload = isPreviewJsonObject(imagePayload.source_image) ? imagePayload.source_image : imagePayload
+  const displayImage = await resolvePreviewImagePayload(previewRun, displayPayload, registerObjectUrl)
+  const sourceImage = await resolvePreviewImagePayload(previewRun, sourcePayload, registerObjectUrl)
+  const sourceWidth = readDisplayNumber(imagePayload.source_width)
+    ?? sourceImage.width
+    ?? readDisplayNumber(imagePayload.width)
+  const sourceHeight = readDisplayNumber(imagePayload.source_height)
+    ?? sourceImage.height
+    ?? readDisplayNumber(imagePayload.height)
+  const displayWidth = readDisplayNumber(imagePayload.display_width)
+    ?? displayImage.width
+    ?? sourceWidth
+  const displayHeight = readDisplayNumber(imagePayload.display_height)
+    ?? displayImage.height
+    ?? sourceHeight
+  return {
+    nodeId,
+    title,
+    src: displayImage.src,
+    displaySrc: displayImage.src,
+    sourceSrc: sourceImage.src ?? displayImage.src,
+    statusText: displayImage.src ? '预览图已生成' : buildPreviewImageStatusText(displayImage.transportKind, displayImage.objectKey),
+    transportKind: displayImage.transportKind,
+    mediaType: sourceImage.mediaType || displayImage.mediaType,
+    width: sourceWidth,
+    height: sourceHeight,
+    objectKey: displayImage.objectKey,
+    displayWidth,
+    displayHeight,
+    displayObjectKey: displayImage.objectKey,
+    sourceWidth,
+    sourceHeight,
+    sourceObjectKey: sourceImage.objectKey,
+    displayScale: readDisplayNumber(imagePayload.display_scale),
+    previewImageKind: readDisplayText(imagePayload.preview_image_kind),
+    overlays: readPreviewImageOverlays(previewPayload?.overlays),
+    interaction: readPreviewImageInteraction(previewPayload?.interaction),
+  }
+}
+
+async function resolvePreviewImagePayload(
+  previewRun: WorkflowPreviewRun,
+  imagePayload: WorkflowJsonObject,
+  registerObjectUrl: (objectUrl: string) => void,
+): Promise<{
+  src: string | null
+  transportKind: string
+  mediaType: string
+  objectKey: string | null
+  width: number | null
+  height: number | null
+}> {
   const transportKind = readDisplayText(imagePayload.transport_kind) || 'unknown'
   const mediaType = readDisplayText(imagePayload.media_type)
   const objectKey = readDisplayText(imagePayload.object_key) || null
@@ -470,17 +533,12 @@ async function buildPreviewViewerImage(
     ? `data:${mediaType || 'image/png'};base64,${imageBase64}`
     : await resolveStoragePreviewImageSrc(previewRun, objectKey, registerObjectUrl)
   return {
-    nodeId,
-    title,
     src,
-    statusText: src ? '预览图已生成' : buildPreviewImageStatusText(transportKind, objectKey),
     transportKind,
     mediaType,
+    objectKey,
     width: readDisplayNumber(imagePayload.width),
     height: readDisplayNumber(imagePayload.height),
-    objectKey,
-    overlays: readPreviewImageOverlays(previewPayload?.overlays),
-    interaction: readPreviewImageInteraction(previewPayload?.interaction),
   }
 }
 

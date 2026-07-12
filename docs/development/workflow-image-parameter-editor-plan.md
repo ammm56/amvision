@@ -67,6 +67,19 @@
 - 返回方式：调试面板优先使用 `storage-ref` / Preview Run artifact，避免大图 inline-base64；只有小图或明确配置时才使用 inline-base64。
 - 节点记录：打开调试面板时 Preview Run 需要保留对应节点记录；关闭时不保留完整 `node_records`，只保留最终输出和错误信息。前端 `retain_node_records_enabled` 判定必须同时识别 `*-preview` 节点和 `debug_image_panel_enabled=true` 的普通节点。
 
+### 高分辨率图片显示边界
+
+现场常见工业相机图片会达到 20MP、4K、8K 或更高。高分辨率支持必须分清“算法取参”和“前端预览”两条链路，不能为了页面显示性能把算法输入或交互取参图改成缩略图。
+
+- 生产链路、Preview Run 算法链路和节点间 image-ref 数据继续使用原始图像，默认保持 BGR24 / BufferRef / FrameRef / 原始 storage-ref，不因为前端显示需求缩放。
+- ROI、circle、line、template-region、point-pair、match-line、homography-overlay 等交互式参数面板必须使用原图坐标系和原图像素尺寸。`适配`、`100%`、放大、缩小、平移都只是显示变换，写回参数始终是原图像素坐标。
+- 节点卡片底部小预览、`core.io.image-preview` 和普通 debug preview 可以使用显示图优化性能。只有当图片超过阈值时才生成显示图；当前以超过 1920x1080 像素量或长边超过 1920px 作为阈值，display 图长边统一控制在 1920px，并按原始长宽比缩放，横图、竖图和细长图都以最大尺寸边作为长边。
+- 缩略显示图只用于“看一眼”和节点卡片预览，不参与算法、取参、坐标计算、保存参数、workflow runtime 调用或 TriggerSource 高频调用。
+- 交互式图片面板打开时必须能拿到原始图像引用。可以后续扩展 tile / pyramid / region decode viewer 来改善 20MP/8K 的浏览性能，但不能把交互图替换成缩略图。
+- preview payload 后续应显式区分 `source_image` 和 `display_image`：`source_width/source_height` 表示原图坐标空间，`display_width/display_height` 表示前端小预览显示图尺寸。没有该字段时前端按旧 payload 的 `width/height` 作为原图尺寸处理。
+- `ImageViewer` 的 overlay、鼠标点选、拖拽框选和参数写回统一使用 `source_width/source_height`。节点卡片里的 `<img>` 可以显示 `display_image`，但双击进入交互面板后要切回 `source_image` 或按原图坐标工作的高分辨率查看模式。
+- 高分辨率图片优化优先目标是减少前端卡片小图解码、base64 体积和不必要 PNG/JPEG 编码；不允许牺牲工业取参精度。
+
 ### 统一交互式图片面板
 
 双击节点底部缩略图进入统一交互式图片面板。现有 `WorkflowNodePreviewDisplay.vue`、`useWorkflowPreviewDisplays.ts` 和共享 `ImageViewer.vue` 是改造基础，不再新增一套独立图片查看器。
@@ -77,6 +90,7 @@
 - 确认后写回当前节点 `parameters`，取消时不修改参数。
 - 坐标以原始图像像素为准，不以显示缩放坐标为准。
 - 交互式图片面板只在 workflow graph editor 中可编辑；生产 runtime 返回的图片查看仍按普通只读预览处理。
+- 交互式图片面板中的 `适配` 按窗口可视区域等比缩放完整显示原图，`100%` 表示按原图像素 1:1 查看；两者都只改变显示比例，不改变图像数据和坐标系。
 
 ### 工具和参数映射
 

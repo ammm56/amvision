@@ -32,6 +32,12 @@ IMAGE_TRANSPORT_BUFFER = "buffer"
 IMAGE_TRANSPORT_FRAME = "frame"
 RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64 = "inline-base64"
 RESPONSE_IMAGE_TRANSPORT_STORAGE_REF = "storage-ref"
+PREVIEW_DISPLAY_HIGH_RESOLUTION_PIXELS = 1920 * 1080
+PREVIEW_DISPLAY_HIGH_RESOLUTION_LONG_EDGE = 1920
+PREVIEW_DISPLAY_MAX_LONG_EDGE = 1920
+PREVIEW_DISPLAY_MEDIA_TYPE = "image/jpeg"
+PREVIEW_DISPLAY_EXTENSION = ".jpg"
+PreviewLoadedImage = tuple[dict[str, object], Any, int, int]
 
 
 @dataclass(frozen=True)
@@ -1090,6 +1096,177 @@ def build_response_image_payload(
     return response_image
 
 
+def build_preview_response_image_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: object,
+    response_transport_mode: str = RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
+    object_key: str | None = None,
+    display_object_key: str | None = None,
+    variant_name: str = "preview-image",
+    overwrite: bool = True,
+) -> dict[str, object]:
+    """构建前端 Preview 使用的 source/display 双层图片结构。
+
+    source_image 始终表示原图坐标空间，交互式取参面板必须使用它；
+    display_image 只服务节点卡片和 gallery 缩略预览，高分辨率图片才会降采样。
+    """
+
+    normalized_mode = _normalize_response_transport_mode(response_transport_mode)
+    original_image_payload = require_image_payload(image_payload)
+    source_width, source_height = _read_payload_dimensions(original_image_payload)
+    high_resolution = _is_high_resolution_preview_image(source_width, source_height)
+    dimensions_unknown = source_width is None or source_height is None
+    source_mode = normalized_mode
+    if (
+        (high_resolution or dimensions_unknown)
+        and normalized_mode == RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64
+        and object_key is not None
+    ):
+        source_mode = RESPONSE_IMAGE_TRANSPORT_STORAGE_REF
+
+    source_image = build_response_image_payload(
+        request,
+        image_payload=original_image_payload,
+        response_transport_mode=source_mode,
+        object_key=object_key,
+        variant_name=variant_name,
+        overwrite=overwrite,
+    )
+    source_width, source_height = _read_payload_dimensions(source_image, fallback=(source_width, source_height))
+    display_image = source_image
+    display_scale = 1.0
+    loaded_image: PreviewLoadedImage | None = None
+    if source_width is None or source_height is None:
+        loaded_image = _load_preview_image_matrix(
+            request,
+            image_payload=original_image_payload,
+        )
+        _, _, loaded_width, loaded_height = loaded_image
+        source_width = loaded_width if loaded_width > 0 else None
+        source_height = loaded_height if loaded_height > 0 else None
+    if _is_high_resolution_preview_image(source_width, source_height):
+        display_image, detected_source_width, detected_source_height, display_scale = _build_resized_preview_display_image(
+            request,
+            image_payload=original_image_payload,
+            source_image=source_image,
+            response_transport_mode=normalized_mode,
+            object_key=display_object_key,
+            variant_name=f"{variant_name}-display",
+            loaded_image=loaded_image,
+        )
+        source_width = detected_source_width
+        source_height = detected_source_height
+
+    display_width, display_height = _read_payload_dimensions(display_image)
+    response_image = dict(display_image)
+    response_image["source_image"] = dict(source_image)
+    response_image["display_image"] = dict(display_image)
+    if source_width is not None:
+        response_image["source_width"] = int(source_width)
+    if source_height is not None:
+        response_image["source_height"] = int(source_height)
+    if display_width is not None:
+        response_image["display_width"] = int(display_width)
+    if display_height is not None:
+        response_image["display_height"] = int(display_height)
+    response_image["display_scale"] = round(float(display_scale), 8)
+    response_image["preview_image_kind"] = "display" if display_image != source_image else "source"
+    return response_image
+
+
+def _build_resized_preview_display_image(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    source_image: dict[str, object],
+    response_transport_mode: str,
+    object_key: str | None,
+    variant_name: str,
+    loaded_image: PreviewLoadedImage | None = None,
+) -> tuple[dict[str, object], int | None, int | None, float]:
+    """为节点卡片构建高分辨率图片的 display 版本。"""
+
+    import cv2  # noqa: PLC0415
+
+    if loaded_image is None:
+        normalized_payload, image_matrix, source_width, source_height = _load_preview_image_matrix(
+            request,
+            image_payload=image_payload,
+        )
+    else:
+        normalized_payload, image_matrix, source_width, source_height = loaded_image
+    if source_width <= 0 or source_height <= 0:
+        return dict(source_image), None, None, 1.0
+    scale = min(1.0, PREVIEW_DISPLAY_MAX_LONG_EDGE / float(max(source_width, source_height)))
+    if scale >= 1.0:
+        return dict(source_image), source_width, source_height, 1.0
+
+    display_width = max(1, int(round(source_width * scale)))
+    display_height = max(1, int(round(source_height * scale)))
+    display_matrix = cv2.resize(
+        image_matrix,
+        (display_width, display_height),
+        interpolation=cv2.INTER_AREA,
+    )
+    display_bytes = encode_matrix_to_image_bytes(
+        cv2_module=cv2,
+        image_matrix=display_matrix,
+        extension=PREVIEW_DISPLAY_EXTENSION,
+        error_message="Preview display 图片无法编码",
+    )
+    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF and object_key is not None:
+        stored_payload = write_image_bytes(
+            request,
+            source_payload=normalized_payload,
+            content=display_bytes,
+            object_key=object_key,
+            variant_name=variant_name,
+            output_extension=PREVIEW_DISPLAY_EXTENSION,
+            width=display_width,
+            height=display_height,
+            media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
+        )
+        display_image: dict[str, object] = {
+            "transport_kind": RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
+            "media_type": PREVIEW_DISPLAY_MEDIA_TYPE,
+            "object_key": str(stored_payload["object_key"]),
+            "width": display_width,
+            "height": display_height,
+        }
+        return display_image, source_width, source_height, scale
+
+    display_image = {
+        "transport_kind": RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
+        "media_type": PREVIEW_DISPLAY_MEDIA_TYPE,
+        "image_base64": base64.b64encode(display_bytes).decode("ascii"),
+        "width": display_width,
+        "height": display_height,
+    }
+    return display_image, source_width, source_height, scale
+
+
+def _load_preview_image_matrix(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+) -> PreviewLoadedImage:
+    """读取 Preview helper 专用图片矩阵，避免高分辨率预览重复解码。"""
+
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    normalized_payload, image_matrix = load_image_matrix_from_payload(
+        request,
+        image_payload=image_payload,
+        cv2_module=cv2,
+        np_module=np,
+    )
+    if image_matrix.ndim < 2:
+        return normalized_payload, image_matrix, 0, 0
+    return normalized_payload, image_matrix, int(image_matrix.shape[1]), int(image_matrix.shape[0])
+
+
 def copy_image_payload(
     request: WorkflowNodeExecutionRequest,
     *,
@@ -1306,6 +1483,35 @@ def _is_raw_image_payload(payload: dict[str, object]) -> bool:
 
     media_type = payload.get("media_type")
     return isinstance(media_type, str) and media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW
+
+
+def _read_payload_dimensions(
+    payload: dict[str, object],
+    *,
+    fallback: tuple[int | None, int | None] = (None, None),
+) -> tuple[int | None, int | None]:
+    """读取图片 payload 尺寸，缺失时使用 fallback。"""
+
+    fallback_width, fallback_height = fallback
+    width = _normalize_optional_dimension(payload.get("width"))
+    height = _normalize_optional_dimension(payload.get("height"))
+    return (
+        width if width is not None else fallback_width,
+        height if height is not None else fallback_height,
+    )
+
+
+def _is_high_resolution_preview_image(width: int | None, height: int | None) -> bool:
+    """判断 Preview 缩略展示是否需要单独 display 图。"""
+
+    if width is None or height is None:
+        return False
+    pixel_count = int(width) * int(height)
+    long_edge = max(int(width), int(height))
+    return (
+        pixel_count > PREVIEW_DISPLAY_HIGH_RESOLUTION_PIXELS
+        or long_edge > PREVIEW_DISPLAY_HIGH_RESOLUTION_LONG_EDGE
+    )
 
 
 def infer_file_extension_from_media_type(media_type: str) -> str:

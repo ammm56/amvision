@@ -4,7 +4,7 @@
       <div class="image-viewer__toolbar">
         <div class="image-viewer__title">
           <strong>{{ image.title }}</strong>
-          <span>{{ image.width || '-' }} × {{ image.height || '-' }} / {{ image.mediaType || 'unknown' }}</span>
+          <span>{{ sourceImageWidth || '-' }} × {{ sourceImageHeight || '-' }} / {{ image.mediaType || 'unknown' }}</span>
         </div>
         <div class="image-viewer__actions">
           <div v-if="interactionAvailable" class="image-viewer__interaction-actions">
@@ -151,11 +151,12 @@
             应用并 Preview
           </Button>
         </div>
-        <div v-if="image.src" class="image-viewer__image-frame" :style="imageStyle">
+        <div v-if="viewerImageSrc" class="image-viewer__image-frame" :style="imageFrameStyle">
           <img
             ref="imageRef"
-            :src="image.src"
+            :src="viewerImageSrc"
             :alt="image.title"
+            :style="imageElementStyle"
             draggable="false"
             @load="handleImageLoad"
           />
@@ -325,7 +326,7 @@
           <span v-for="metric in imageMetricItems" :key="metric">{{ metric }}</span>
         </div>
         <span v-if="interactionStatusText">{{ interactionStatusText }}</span>
-        <span>{{ image.objectKey || 'inline-base64' }}</span>
+        <span>{{ image.sourceObjectKey || image.objectKey || 'inline-base64' }}</span>
       </div>
     </div>
   </Teleport>
@@ -394,10 +395,20 @@ interface ViewerImage {
   nodeId?: string
   title: string
   src: string | null
+  displaySrc?: string | null
+  sourceSrc?: string | null
   mediaType?: string | null
   width?: number | null
   height?: number | null
   objectKey?: string | null
+  displayWidth?: number | null
+  displayHeight?: number | null
+  displayObjectKey?: string | null
+  sourceWidth?: number | null
+  sourceHeight?: number | null
+  sourceObjectKey?: string | null
+  displayScale?: number | null
+  previewImageKind?: string | null
   overlays?: ViewerImageOverlay[]
   interaction?: ViewerImageInteraction | null
 }
@@ -507,9 +518,40 @@ const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'i
 let tuningPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
 
-const imageStyle = computed(() => ({
+const viewerImageSrc = computed(() => props.image?.sourceSrc || props.image?.src || null)
+const sourceImageWidth = computed(() => {
+  const value = props.image?.sourceWidth ?? props.image?.width ?? naturalWidth.value
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
+const sourceImageHeight = computed(() => {
+  const value = props.image?.sourceHeight ?? props.image?.height ?? naturalHeight.value
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
+const imageCoordinateWidth = computed(() => {
+  const value = sourceImageWidth.value || naturalWidth.value
+  return value > 0 ? value : 1
+})
+const imageCoordinateHeight = computed(() => {
+  const value = sourceImageHeight.value || naturalHeight.value
+  return value > 0 ? value : 1
+})
+const imageFrameStyle = computed(() => ({
+  width: `${imageCoordinateWidth.value}px`,
+  height: `${imageCoordinateHeight.value}px`,
   transform: `translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`,
 }))
+const imageElementStyle = computed(() => ({
+  width: `${imageCoordinateWidth.value}px`,
+  height: `${imageCoordinateHeight.value}px`,
+}))
+const displayImageWidth = computed(() => {
+  const value = props.image?.displayWidth ?? props.image?.width
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
+const displayImageHeight = computed(() => {
+  const value = props.image?.displayHeight ?? props.image?.height
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
 const imageOverlays = computed(() => props.image?.overlays ?? [])
 const imageInteraction = computed(() => props.image?.interaction ?? null)
 const availableInteractionTools = computed(() => readAvailableInteractionTools(imageInteraction.value))
@@ -662,22 +704,28 @@ const previewActionDisabled = computed(() => Boolean(
 const hasVisibleOverlay = computed(() => imageOverlays.value.length > 0 || hasInteractionDraft.value)
 const overlayPickingActive = computed(() => Boolean(interactionActive.value && interactionAvailable.value))
 const overlayViewBox = computed(() => {
-  const width = naturalWidth.value || props.image?.width || 0
-  const height = naturalHeight.value || props.image?.height || 0
+  const width = sourceImageWidth.value || naturalWidth.value || 0
+  const height = sourceImageHeight.value || naturalHeight.value || 0
   return width > 0 && height > 0 ? `0 0 ${width} ${height}` : ''
 })
 const imageMetricItems = computed(() => {
-  const width = naturalWidth.value || props.image?.width || 0
-  const height = naturalHeight.value || props.image?.height || 0
+  const width = sourceImageWidth.value || naturalWidth.value || 0
+  const height = sourceImageHeight.value || naturalHeight.value || 0
   if (width <= 0 || height <= 0) return []
   const pixelCount = width * height
   const aspectRatio = readAspectRatio(width, height)
-  return [
+  const metrics = [
     `${width} × ${height}px`,
     `${formatMetricNumber(pixelCount)} pixels`,
     `${formatMegapixels(pixelCount)} MP`,
     aspectRatio ? `ratio ${aspectRatio}` : '',
   ].filter(Boolean)
+  const displayWidth = displayImageWidth.value
+  const displayHeight = displayImageHeight.value
+  if (displayWidth > 0 && displayHeight > 0 && (displayWidth !== width || displayHeight !== height)) {
+    metrics.push(`display ${displayWidth} × ${displayHeight}px`)
+  }
+  return metrics
 })
 const interactionStatusText = computed(() => {
   if (!interactionAvailable.value) return ''
@@ -697,7 +745,7 @@ const interactionStatusText = computed(() => {
   return ''
 })
 
-watch(() => [props.open, props.image?.src, props.image?.nodeId] as const, ([open]) => {
+watch(() => [props.open, viewerImageSrc.value, props.image?.nodeId] as const, ([open]) => {
   resetInteractionState()
   initializeTuningParameterValues()
   if (!open) return
@@ -715,8 +763,8 @@ function handleImageLoad(): void {
 
 function updateNaturalImageSize(): void {
   const image = imageRef.value
-  naturalWidth.value = image?.naturalWidth || props.image?.width || 0
-  naturalHeight.value = image?.naturalHeight || props.image?.height || 0
+  naturalWidth.value = sourceImageWidth.value || image?.naturalWidth || 0
+  naturalHeight.value = sourceImageHeight.value || image?.naturalHeight || 0
 }
 
 function fitImage(): void {
@@ -725,8 +773,8 @@ function fitImage(): void {
   if (!viewport || !image) return
   updateNaturalImageSize()
   const viewportBounds = viewport.getBoundingClientRect()
-  const sourceWidth = naturalWidth.value || props.image?.width || 1
-  const sourceHeight = naturalHeight.value || props.image?.height || 1
+  const sourceWidth = imageCoordinateWidth.value
+  const sourceHeight = imageCoordinateHeight.value
   scale.value = Math.min(viewportBounds.width / sourceWidth, viewportBounds.height / sourceHeight, 1)
   offsetX.value = 0
   offsetY.value = 0
@@ -887,8 +935,8 @@ function readImagePointFromEvent(event: MouseEvent): ImagePoint | null {
   if (!image) return null
   updateNaturalImageSize()
   const imageBounds = image.getBoundingClientRect()
-  const sourceWidth = naturalWidth.value || props.image?.width || image.naturalWidth || 0
-  const sourceHeight = naturalHeight.value || props.image?.height || image.naturalHeight || 0
+  const sourceWidth = sourceImageWidth.value || naturalWidth.value || image.naturalWidth || 0
+  const sourceHeight = sourceImageHeight.value || naturalHeight.value || image.naturalHeight || 0
   if (imageBounds.width <= 0 || imageBounds.height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return null
   return {
     x: clampNumber(((event.clientX - imageBounds.left) / imageBounds.width) * sourceWidth, 0, sourceWidth),

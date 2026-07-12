@@ -125,6 +125,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
+    image_height = int(image_matrix.shape[0])
+    image_width = int(image_matrix.shape[1])
     search_roi = resolve_search_roi(request, image_matrix=image_matrix)
     search_image_matrix = search_roi.image_matrix
     rho_resolution = _read_positive_float(
@@ -255,6 +257,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 max_line_gap=max_line_gap,
                 angle_min_deg=angle_min_deg,
                 angle_max_deg=angle_max_deg,
+                image_width=image_width,
+                image_height=image_height,
             ),
         )
     )
@@ -270,9 +274,12 @@ def _build_line_interaction(
     max_line_gap: float,
     angle_min_deg: float | None,
     angle_max_deg: float | None,
+    image_width: int,
+    image_height: int,
 ) -> dict[str, object]:
     """声明 Hough Lines 在图片面板中的取参和调参能力。"""
 
+    long_edge, diagonal_length = _build_line_control_ranges(image_width=image_width, image_height=image_height)
     return build_debug_panel_interaction(
         tools=[
             build_interaction_tool(
@@ -304,13 +311,13 @@ def _build_line_interaction(
                 max_value=10.0,
                 step=0.1,
             ),
-            build_numeric_control("threshold", "Threshold", threshold, min_value=1.0, max_value=300.0, step=1.0),
+            build_numeric_control("threshold", "Threshold", threshold, min_value=1.0, max_value=long_edge, step=1.0),
             build_numeric_control(
                 "min_line_length",
                 "Min Line Length",
                 min_line_length,
                 min_value=0.0,
-                max_value=1200.0,
+                max_value=diagonal_length,
                 step=1.0,
             ),
             build_numeric_control(
@@ -318,7 +325,7 @@ def _build_line_interaction(
                 "Max Line Gap",
                 max_line_gap,
                 min_value=0.0,
-                max_value=300.0,
+                max_value=long_edge,
                 step=1.0,
             ),
             build_numeric_control(
@@ -339,6 +346,16 @@ def _build_line_interaction(
             ),
         ],
     )
+
+
+def _build_line_control_ranges(*, image_width: int, image_height: int) -> tuple[float, float]:
+    """按原图尺寸生成 Hough Lines 调参范围，适配 20MP/8K 工业图像。"""
+
+    normalized_width = max(1, int(image_width))
+    normalized_height = max(1, int(image_height))
+    long_edge = float(max(300, normalized_width, normalized_height))
+    diagonal_length = float(max(1200, math.ceil(math.hypot(normalized_width, normalized_height))))
+    return long_edge, diagonal_length
 
 
 def _build_line_overlays(

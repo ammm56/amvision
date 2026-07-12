@@ -166,6 +166,7 @@ custom_nodes/
 - 双击节点底部缩略图打开统一交互式图片面板；该面板复用现有 ImageViewer / Preview 图片查看基础能力，并增加 overlay 编辑层，支持 pan、zoom、ROI、circle、line、point 和 polygon 操作。
 - 用户确认后，前端把图像坐标转换并写回节点参数，例如 `source_points`、`bbox_xyxy`、`polygon_xy`、`line_xyxy`、`angle_deg`、`min_radius`、`max_radius`、`search_bbox_xyxy`、`source_points / target_points`。
 - 参数 schema 仍是最终保存源，workflow template 不保存临时鼠标交互状态。生产 runtime 默认不生成调试缩略图，避免 BGR24 / BufferRef / FrameRef 转 PNG/JPEG/base64 的额外耗时；节点必须同时检查 `debug_image_panel_enabled` 和 `execution_metadata.debug_image_panels_enabled`。
+- 高分辨率图像要区分节点小预览和交互取参面板：节点小预览在超过 1920x1080 像素量或长边超过 1920px 时自动使用长边 1920px 的 display 图，交互取参面板必须使用原图坐标和原图像素。`适配`、`100%`、缩放和平移只影响显示，不影响写回参数。后续如果需要优化 8K 原图浏览，应扩展 tile / pyramid viewer，而不是把取参图换成缩略图。
 
 优先级：
 

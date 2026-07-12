@@ -10,8 +10,9 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.runtime_support import (
+    PREVIEW_DISPLAY_MEDIA_TYPE,
     RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
-    build_response_image_payload,
+    build_preview_response_image_payload,
     require_image_payload,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -31,13 +32,24 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
         else None
     )
     response_transport_mode = str(request.parameters.get("response_transport_mode", "inline-base64")).strip()
-    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF and normalized_output_object_key is None:
-        normalized_output_object_key = _build_preview_artifact_object_key(request)
-    response_image = build_response_image_payload(
+    source_object_key = normalized_output_object_key or _build_preview_artifact_object_key(
+        request,
+        artifact_name="image-preview",
+        media_type=str(require_image_payload(request.input_values.get("image")).get("media_type") or "image/png"),
+    )
+    display_object_key = _build_preview_artifact_object_key(
+        request,
+        artifact_name="image-preview-display",
+        media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
+    )
+    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF:
+        normalized_output_object_key = source_object_key
+    response_image = build_preview_response_image_payload(
         request,
         image_payload=request.input_values.get("image"),
         response_transport_mode=response_transport_mode,
-        object_key=normalized_output_object_key,
+        object_key=normalized_output_object_key or source_object_key,
+        display_object_key=display_object_key,
         variant_name="image-preview",
     )
     preview_body: dict[str, object] = {
@@ -50,7 +62,12 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
     return {"body": preview_body}
 
 
-def _build_preview_artifact_object_key(request: WorkflowNodeExecutionRequest) -> str | None:
+def _build_preview_artifact_object_key(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    artifact_name: str,
+    media_type: str,
+) -> str | None:
     """为 storage-ref Preview Run 自动生成受生命周期管理的 artifact 路径。
 
     参数：
@@ -63,12 +80,11 @@ def _build_preview_artifact_object_key(request: WorkflowNodeExecutionRequest) ->
     preview_run_id = read_preview_run_id(request.execution_metadata)
     if preview_run_id is None:
         return None
-    image_payload = require_image_payload(request.input_values.get("image"))
     return build_preview_run_artifact_object_key(
         preview_run_id=preview_run_id,
         node_id=request.node_id,
-        artifact_name="image-preview",
-        media_type=str(image_payload.get("media_type") or "image/png"),
+        artifact_name=artifact_name,
+        media_type=media_type,
     )
 
 

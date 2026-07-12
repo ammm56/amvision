@@ -98,8 +98,8 @@ const emit = defineEmits<{
 }>()
 
 function readOverlayViewBox(image: PreviewViewerImage | null): string {
-  const width = image?.width ?? 0
-  const height = image?.height ?? 0
+  const width = image?.sourceWidth ?? image?.width ?? 0
+  const height = image?.sourceHeight ?? image?.height ?? 0
   return width > 0 && height > 0 ? `0 0 ${width} ${height}` : ''
 }
 
