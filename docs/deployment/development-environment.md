@@ -89,7 +89,7 @@ python -m pytest tests/test_release_assembly.py tests/test_bootstrap_chains.py t
 python -m pytest --collect-only -q
 ```
 
-`pytest.ini` 已经把默认临时目录固定为仓库根目录下的 `.tmp/pytest`。常规测试不需要再手写 `--basetemp`；只有并行跑多条长链或排查 Windows 文件句柄占用时，才临时指定新的 `.tmp/<name>` 子目录。
+`pytest.ini` 已经把默认临时目录固定为仓库根目录下的 `.tmp/pytest`，并把 pytest cache 固定到 `.tmp/pytest-cache`。常规测试不需要再手写 `--basetemp`；只有并行跑多条长链或排查 Windows 文件句柄占用时，才临时指定新的 `.tmp/<name>` 子目录。
 
 前端最小回归：
 
