@@ -131,6 +131,46 @@ def test_graph_executor_allows_dual_image_inputs_to_arrive_separately(tmp_path: 
     assert image_registry.read_bytes(str(image_ref_payload["image_handle"])) == source_bytes
 
 
+def test_image_ref_coalesce_allows_empty_when_explicitly_configured(tmp_path: Path) -> None:
+    """验证可选外部图片输入可以显式输出空值，继续交给下游 fallback 链路处理。"""
+
+    custom_nodes_root_dir = tmp_path / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=node_pack_loader),
+        node_pack_loader=node_pack_loader,
+    )
+    runtime_registry_loader.refresh()
+
+    template = WorkflowGraphTemplate(
+        template_id="optional-image-ref-coalesce-template",
+        template_version="1.0.0",
+        display_name="Optional Image Ref Coalesce Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="resolve_optional_image",
+                node_type_id="core.logic.image-ref-coalesce",
+                parameters={"allow_empty": True},
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="image",
+                display_name="Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="resolve_optional_image",
+                source_port="image",
+            ),
+        ),
+    )
+    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+
+    result = executor.execute(template=template, input_values={})
+
+    assert result.outputs["image"] is None
+
+
 def _build_dual_input_image_template() -> WorkflowGraphTemplate:
     """构造一个最小双输入图片模板。
 

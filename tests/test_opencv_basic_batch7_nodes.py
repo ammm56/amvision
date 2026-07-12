@@ -359,6 +359,124 @@ def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
     assert crops["items"][0]["height"] == 20
 
 
+def test_opencv_basic_batch7_image_refs_statistics_execute(tmp_path: Path) -> None:
+    """验证 image-refs-statistics 可对批量 crop 计算指标并输出 empty 判断。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/roi-statistics.png", _build_image_refs_statistics_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch7-image-refs-statistics",
+        template_version="1.0.0",
+        display_name="OpenCV Batch7 Image Refs Statistics",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi_grid",
+                node_type_id="core.vision.roi-grid-create",
+                parameters={
+                    "rows": 1,
+                    "columns": 2,
+                    "origin_x": 0,
+                    "origin_y": 0,
+                    "roi_width": 64,
+                    "roi_height": 64,
+                    "step_x": 64,
+                    "step_y": 64,
+                    "roi_id_prefix": "slot",
+                },
+            ),
+            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="statistics",
+                node_type_id="custom.opencv.image-refs-statistics",
+                parameters={
+                    "decision_metric": "edge_density",
+                    "empty_max": 0.02,
+                    "canny_low_threshold": 50,
+                    "canny_high_threshold": 150,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-grid-image-b7-stat",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_grid",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-crop-export-image-b7-stat",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="crop_export",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-grid-crop-export-rois-b7-stat",
+                source_node_id="roi_grid",
+                source_port="rois",
+                target_node_id="crop_export",
+                target_port="rois",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-crop-export-statistics-images-b7",
+                source_node_id="crop_export",
+                source_port="crops",
+                target_node_id="statistics",
+                target_port="images",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="statistics",
+                display_name="Statistics",
+                payload_type_id="value.v1",
+                source_node_id="statistics",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/roi-statistics.png",
+                "width": 128,
+                "height": 64,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch7-image-refs-statistics",
+        },
+    )
+
+    statistics = execution_result.outputs["statistics"]["value"]
+
+    assert statistics["count"] == 2
+    assert statistics["decision_enabled"] is True
+    assert statistics["items"][0]["roi_id"] == "slot-01-01"
+    assert statistics["items"][0]["is_empty"] is True
+    assert statistics["items"][1]["roi_id"] == "slot-01-02"
+    assert statistics["items"][1]["is_empty"] is False
+
+
 def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
     """验证 connected-components 与 draw-regions 可接成分割覆盖层调试链。"""
 
@@ -517,6 +635,22 @@ def _build_regions_overlay_test_png_bytes() -> bytes:
     image = np.zeros((128, 128, 3), dtype=np.uint8)
     cv2.rectangle(image, (18, 20), (56, 82), (255, 255, 255), thickness=-1)
     cv2.circle(image, (92, 70), 18, (255, 255, 255), thickness=-1)
+    success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _build_image_refs_statistics_test_png_bytes() -> bytes:
+    """构造左侧平滑、右侧高边缘密度的批量统计测试图片。"""
+
+    import cv2
+    import numpy as np
+
+    image = np.full((64, 128, 3), 128, dtype=np.uint8)
+    for x in range(72, 124, 8):
+        cv2.line(image, (x, 4), (x, 60), (255, 255, 255), thickness=2)
+    for y in range(8, 60, 8):
+        cv2.line(image, (68, y), (124, y), (0, 0, 0), thickness=2)
     success, encoded = cv2.imencode(".png", image)
     assert success is True
     return encoded.tobytes()

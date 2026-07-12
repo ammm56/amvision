@@ -2590,6 +2590,139 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-refs-statistics",
+      "display_name": "Image Refs Statistics",
+      "category": "opencv.analysis",
+      "description": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "待统计的图片集合，通常来自 Crop Export.crops。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "每张图片的统计指标和可选 empty / non-empty 判断结果。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "可作为 workflow HTTP 输出的统计结果 body。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_items": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Max Items",
+            "description": "最多统计多少张图片；留空时统计全部。"
+          },
+          "dark_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 64,
+            "title": "Dark Threshold",
+            "description": "低于或等于该灰度值的像素计入 dark_ratio。"
+          },
+          "bright_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 192,
+            "title": "Bright Threshold",
+            "description": "高于或等于该灰度值的像素计入 bright_ratio。"
+          },
+          "canny_low_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 50,
+            "title": "Canny Low Threshold",
+            "description": "计算 edge_density 时使用的 Canny 低阈值。"
+          },
+          "canny_high_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 150,
+            "title": "Canny High Threshold",
+            "description": "计算 edge_density 时使用的 Canny 高阈值。"
+          },
+          "decision_metric": {
+            "type": "string",
+            "enum": [
+              "none",
+              "mean_gray",
+              "std_gray",
+              "dark_ratio",
+              "bright_ratio",
+              "edge_density"
+            ],
+            "default": "none",
+            "title": "Decision Metric",
+            "description": "用于 empty 判断的指标；none 表示只统计不判断。"
+          },
+          "empty_min": {
+            "type": "number",
+            "title": "Empty Min",
+            "description": "empty 判断下限；留空表示不检查下限。"
+          },
+          "empty_max": {
+            "type": "number",
+            "title": "Empty Max",
+            "description": "empty 判断上限；留空表示不检查上限。"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.statistics",
+        "inspection.batch",
+        "inspection.empty-check"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "图片集合统计",
+            "en-US": "Image Refs Statistics"
+          },
+          "description": {
+            "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
+            "en-US": "Compute grayscale, brightness and edge statistics for each image in image-refs.v1, with optional empty / non-empty decisions for batch ROI inspection."
+          }
+        }
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.invert",
       "display_name": "Invert",
       "category": "opencv.filter",

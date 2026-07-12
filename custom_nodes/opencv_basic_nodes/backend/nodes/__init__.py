@@ -42,6 +42,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.grayscale import (
     NODE_TYPE_ID as GRAYSCALE_NODE_TYPE_ID,
     handle_node as grayscale_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_statistics import (
+    NODE_TYPE_ID as IMAGE_REFS_STATISTICS_NODE_TYPE_ID,
+    handle_node as image_refs_statistics_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.invert import (
     NODE_TYPE_ID as INVERT_NODE_TYPE_ID,
     handle_node as invert_handler,
@@ -91,6 +95,7 @@ NODE_HANDLERS = (
     (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
+    (IMAGE_REFS_STATISTICS_NODE_TYPE_ID, image_refs_statistics_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
     (LAPLACIAN_NODE_TYPE_ID, laplacian_handler),
     (RESIZE_NODE_TYPE_ID, resize_handler),

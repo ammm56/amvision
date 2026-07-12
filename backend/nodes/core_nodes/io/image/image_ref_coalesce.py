@@ -36,6 +36,7 @@ def _normalize_optional_image_ref_payload(
 def _image_ref_coalesce_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """按 primary 优先、fallback 兜底的顺序返回首个可用 image-ref payload。"""
 
+    allow_empty = bool(request.parameters.get("allow_empty"))
     primary_payload = _normalize_optional_image_ref_payload(
         request.input_values.get("primary"),
         request=request,
@@ -51,6 +52,9 @@ def _image_ref_coalesce_handler(request: WorkflowNodeExecutionRequest) -> dict[s
     )
     if fallback_payload is not None:
         return {"image": fallback_payload}
+
+    if allow_empty:
+        return {"image": None}
 
     raise InvalidRequestError(
         "image-ref-coalesce 至少需要一个可用输入",
@@ -87,7 +91,17 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 payload_type_id="image-ref.v1",
             ),
         ),
-        parameter_schema={"type": "object", "properties": {}},
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "allow_empty": {
+                    "type": "boolean",
+                    "default": False,
+                    "title": "Allow Empty",
+                    "description": "允许两个输入都为空时输出空 image，用于上游可选输入继续交给后续 fallback 处理。",
+                }
+            },
+        },
         capability_tags=("logic.transform", "coalesce", "image.ref"),
     ),
     handler=_image_ref_coalesce_handler,
