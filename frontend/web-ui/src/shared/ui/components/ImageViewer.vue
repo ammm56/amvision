@@ -333,7 +333,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
 
 import Button from './Button.vue'
@@ -517,6 +517,7 @@ const autoPreviewEnabled = ref(true)
 const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'info' } | null>(null)
 let tuningPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
+let fitImageAnimationFrame: number | null = null
 
 const viewerImageSrc = computed(() => props.image?.sourceSrc || props.image?.src || null)
 const sourceImageWidth = computed(() => {
@@ -538,7 +539,7 @@ const imageCoordinateHeight = computed(() => {
 const imageFrameStyle = computed(() => ({
   width: `${imageCoordinateWidth.value}px`,
   height: `${imageCoordinateHeight.value}px`,
-  transform: `translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`,
+  transform: `translate(-50%, -50%) translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`,
 }))
 const imageElementStyle = computed(() => ({
   width: `${imageCoordinateWidth.value}px`,
@@ -750,6 +751,9 @@ watch(() => [props.open, viewerImageSrc.value, props.image?.nodeId] as const, ([
   initializeTuningParameterValues()
   if (!open) return
   resetView()
+  void nextTick(() => {
+    if (imageRef.value?.complete) scheduleFitImage()
+  })
 })
 
 watch(tuningControls, () => {
@@ -758,7 +762,15 @@ watch(tuningControls, () => {
 
 function handleImageLoad(): void {
   updateNaturalImageSize()
-  fitImage()
+  scheduleFitImage()
+}
+
+function scheduleFitImage(): void {
+  if (fitImageAnimationFrame !== null) window.cancelAnimationFrame(fitImageAnimationFrame)
+  fitImageAnimationFrame = window.requestAnimationFrame(() => {
+    fitImageAnimationFrame = null
+    fitImage()
+  })
 }
 
 function updateNaturalImageSize(): void {
@@ -1502,5 +1514,6 @@ onUnmounted(() => {
   stopActiveDraftListeners()
   if (tuningPreviewTimer !== null) window.clearTimeout(tuningPreviewTimer)
   if (interactionFeedbackTimer !== null) window.clearTimeout(interactionFeedbackTimer)
+  if (fitImageAnimationFrame !== null) window.cancelAnimationFrame(fitImageAnimationFrame)
 })
 </script>

@@ -4087,8 +4087,6 @@ a:hover {
 
 .image-viewer__viewport {
   position: relative;
-  display: grid;
-  place-items: center;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -4113,7 +4111,9 @@ a:hover {
 }
 
 .image-viewer__image-frame {
-  position: relative;
+  position: absolute;
+  top: 50%;
+  left: 50%;
   transform-origin: center center;
   user-select: none;
   will-change: transform;
