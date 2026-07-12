@@ -30,6 +30,12 @@ export interface PreviewImageInteractionControl {
   step: number | null
   value: unknown
   defaultValue: unknown
+  options: PreviewImageInteractionControlOption[]
+}
+
+export interface PreviewImageInteractionControlOption {
+  value: string
+  label: string
 }
 
 export interface PreviewImageInteractionTool {
@@ -587,6 +593,20 @@ function readPreviewImageInteractionControls(value: unknown): PreviewImageIntera
       step: readDisplayNumber(rawControl.step),
       value: rawControl.value,
       defaultValue: rawControl.default_value,
+      options: readPreviewImageInteractionControlOptions(rawControl.options),
+    }]
+  })
+}
+
+function readPreviewImageInteractionControlOptions(value: unknown): Array<{ value: string; label: string }> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((rawOption) => {
+    if (!isPreviewJsonObject(rawOption)) return []
+    const optionValue = readDisplayText(rawOption.value)
+    if (optionValue === '') return []
+    return [{
+      value: optionValue,
+      label: readDisplayText(rawOption.label) || optionValue,
     }]
   })
 }

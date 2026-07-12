@@ -10,6 +10,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import build_value_payload, require_boolean_payload, require_value_payload
+from backend.nodes.core_nodes.support.roi import require_roi_list_payload, require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -33,6 +34,14 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     boolean_payload = request.input_values.get("boolean")
     if boolean_payload is not None:
         candidate_values.append(("boolean", require_boolean_payload(boolean_payload, field_name="boolean")["value"]))
+
+    roi_payload = request.input_values.get("roi")
+    if roi_payload is not None:
+        candidate_values.append(("roi", require_roi_payload(roi_payload, node_id=request.node_id)))
+
+    roi_list_payload = request.input_values.get("rois")
+    if roi_list_payload is not None:
+        candidate_values.append(("rois", require_roi_list_payload(roi_list_payload, node_id=request.node_id)["items"]))
 
     for port_name in (
         "result",
@@ -59,7 +68,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、boolean、result、body、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
+            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、result、body、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -76,7 +85,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="logic.transform",
-        description="把 value、boolean、result-record、response-body、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
+        description="把 value、boolean、roi、roi-list、result-record、response-body、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、for-each、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -90,6 +99,18 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="boolean",
                 display_name="Boolean",
                 payload_type_id="boolean.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="roi",
+                display_name="ROI",
+                payload_type_id="roi.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="rois",
+                display_name="ROIs",
+                payload_type_id="roi-list.v1",
                 required=False,
             ),
             NodePortDefinition(

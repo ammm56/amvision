@@ -42,12 +42,16 @@
     "properties": {
       "threshold": {
         "type": "integer",
+        "title": "Threshold",
+        "description": "普通 binary 模式下使用的阈值；Otsu 模式会由 OpenCV 自动求阈值。",
         "minimum": 0,
         "maximum": 255,
         "default": 127
       },
       "threshold_mode": {
         "type": "string",
+        "title": "Threshold Mode",
+        "description": "轮廓提取前的二值化方式。",
         "enum": [
           "binary",
           "binary-inverse",
@@ -58,6 +62,8 @@
       },
       "retrieval_mode": {
         "type": "string",
+        "title": "Retrieval Mode",
+        "description": "OpenCV findContours 的轮廓层级检索方式。",
         "enum": [
           "external",
           "list",
@@ -68,6 +74,8 @@
       },
       "approximation": {
         "type": "string",
+        "title": "Approximation",
+        "description": "OpenCV findContours 的轮廓点近似方式。",
         "enum": [
           "simple",
           "none",
@@ -78,11 +86,15 @@
       },
       "min_area": {
         "type": "number",
+        "title": "Min Area",
+        "description": "小于该面积的 contour 会被过滤，单位为像素面积。",
         "minimum": 0,
         "default": 0
       },
       "max_contours": {
         "type": "integer",
+        "title": "Max Contours",
+        "description": "最多输出的 contour 数量；为空表示不限制。",
         "minimum": 1
       },
       "selected_contour_index": {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from backend.nodes.debug_image_panel import (
     build_debug_image_preview_output,
@@ -21,6 +21,7 @@ def build_contours_debug_preview_output(
     title: str,
     artifact_name: str,
     selected_contour_index: int | None = None,
+    controls: Iterable[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """按 contours.v1 的 source_image 构造 debug_preview 输出。
 
@@ -31,6 +32,7 @@ def build_contours_debug_preview_output(
     - title：图片面板标题。
     - artifact_name：Preview Run artifact 名称。
     - selected_contour_index：当前节点已经点选的 contour index，用于高亮反馈。
+    - controls：可选调参控件，供 contour 消费节点复用。
 
     返回：
     - dict[str, object]：debug_preview 输出；未启用或缺少 source_image 时返回空 dict。
@@ -57,6 +59,7 @@ def build_contours_debug_preview_output(
                     extra={"min_points": 3},
                 ),
             ],
+            controls=controls,
         ),
     )
 

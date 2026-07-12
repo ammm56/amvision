@@ -36,6 +36,8 @@
     "properties": {
       "sort_by": {
         "type": "string",
+        "title": "Sort By",
+        "description": "输出 rotated rect 前使用的排序字段。",
         "enum": [
           "contour_index",
           "contour_area",
@@ -49,10 +51,14 @@
       },
       "descending": {
         "type": "boolean",
+        "title": "Descending",
+        "description": "启用后按 sort_by 倒序输出。",
         "default": false
       },
       "limit": {
         "type": "integer",
+        "title": "Output Limit",
+        "description": "排序后最多输出多少个 rotated rect；为空表示不限制。",
         "minimum": 1
       },
       "selected_contour_index": {

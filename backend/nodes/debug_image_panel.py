@@ -192,6 +192,69 @@ def build_numeric_control(
     }
 
 
+def build_number_control(
+    parameter_name: str,
+    label: str,
+    value: float | int | str | None,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    step: float | None = None,
+) -> dict[str, object]:
+    """构造 ImageViewer 实时调参使用的可留空数值输入控件。"""
+
+    normalized_value: object = "" if value is None else value
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "number",
+        "min": min_value,
+        "max": max_value,
+        "step": step,
+        "value": normalized_value,
+        "default_value": normalized_value,
+    }
+
+
+def build_select_control(
+    parameter_name: str,
+    label: str,
+    value: object,
+    *,
+    options: Iterable[Mapping[str, Any] | tuple[object, object]],
+) -> dict[str, object]:
+    """构造 ImageViewer 实时调参使用的枚举选择控件。"""
+
+    normalized_options: list[dict[str, object]] = []
+    for option in options:
+        if isinstance(option, Mapping):
+            option_value = option.get("value")
+            option_label = option.get("label", option_value)
+        else:
+            option_values = tuple(option)
+            if len(option_values) < 2:
+                continue
+            option_value = option_values[0]
+            option_label = option_values[1]
+        normalized_options.append(
+            {
+                "value": option_value,
+                "label": str(option_label),
+            }
+        )
+    return {
+        "parameter_name": parameter_name,
+        "label": label,
+        "control": "select",
+        "min": None,
+        "max": None,
+        "step": None,
+        "value": value,
+        "default_value": value,
+        "options": normalized_options,
+    }
+
+
 def build_checkbox_control(parameter_name: str, label: str, value: bool) -> dict[str, object]:
     """构造 ImageViewer 实时调参使用的布尔控件。"""
 

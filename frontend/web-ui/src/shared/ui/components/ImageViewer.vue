@@ -110,6 +110,20 @@
                   @change="updateTuningControlFromEvent(control, $event, true)"
                 >
               </template>
+              <template v-else-if="control.control === 'select'">
+                <select
+                  :value="readTuningControlInputValue(control)"
+                  @change="updateTuningControlFromEvent(control, $event, true)"
+                >
+                  <option
+                    v-for="option in control.options ?? []"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </template>
               <template v-else>
                 <input
                   v-if="control.control === 'slider'"
@@ -306,7 +320,10 @@
         <div v-else class="image-viewer__empty">当前图片没有可浏览的 src</div>
       </div>
       <div class="image-viewer__status">
-        <span>{{ Math.round(scale * 100) }}%</span>
+        <div class="image-viewer__status-group">
+          <span>{{ Math.round(scale * 100) }}%</span>
+          <span v-for="metric in imageMetricItems" :key="metric">{{ metric }}</span>
+        </div>
         <span v-if="interactionStatusText">{{ interactionStatusText }}</span>
         <span>{{ image.objectKey || 'inline-base64' }}</span>
       </div>
@@ -347,6 +364,12 @@ interface ViewerImageInteractionControl {
   step: number | null
   value: unknown
   defaultValue: unknown
+  options?: ViewerImageInteractionControlOption[]
+}
+
+interface ViewerImageInteractionControlOption {
+  value: string
+  label: string
 }
 
 interface ViewerImageInteractionTool {
@@ -642,6 +665,19 @@ const overlayViewBox = computed(() => {
   const width = naturalWidth.value || props.image?.width || 0
   const height = naturalHeight.value || props.image?.height || 0
   return width > 0 && height > 0 ? `0 0 ${width} ${height}` : ''
+})
+const imageMetricItems = computed(() => {
+  const width = naturalWidth.value || props.image?.width || 0
+  const height = naturalHeight.value || props.image?.height || 0
+  if (width <= 0 || height <= 0) return []
+  const pixelCount = width * height
+  const aspectRatio = readAspectRatio(width, height)
+  return [
+    `${width} × ${height}px`,
+    `${formatMetricNumber(pixelCount)} pixels`,
+    `${formatMegapixels(pixelCount)} MP`,
+    aspectRatio ? `ratio ${aspectRatio}` : '',
+  ].filter(Boolean)
 })
 const interactionStatusText = computed(() => {
   if (!interactionAvailable.value) return ''
@@ -984,6 +1020,8 @@ function readInitialTuningValue(control: ViewerImageInteractionControl): unknown
   if (control.value !== undefined && control.value !== null && control.value !== '') return control.value
   if (control.defaultValue !== undefined && control.defaultValue !== null && control.defaultValue !== '') return control.defaultValue
   if (control.control === 'checkbox') return false
+  if (control.control === 'select') return control.options?.[0]?.value ?? ''
+  if (control.control === 'number') return ''
   if (control.min !== null) return control.min
   return 0
 }
@@ -999,8 +1037,15 @@ function readTuningBooleanValue(control: ViewerImageInteractionControl): boolean
 
 function updateTuningControlFromEvent(control: ViewerImageInteractionControl, event: Event, requestPreview: boolean): void {
   const target = event.target
-  if (!(target instanceof HTMLInputElement)) return
-  const value = control.control === 'checkbox' ? target.checked : Number(target.value)
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) return
+  let value: unknown
+  if (control.control === 'checkbox' && target instanceof HTMLInputElement) {
+    value = target.checked
+  } else if (control.control === 'select') {
+    value = target.value
+  } else {
+    value = target.value === '' ? '' : Number(target.value)
+  }
   tuningParameterValues.value = {
     ...tuningParameterValues.value,
     [control.parameterName]: value,
@@ -1350,6 +1395,30 @@ function buildCircleFromThreePoints(points: ImagePoint[]): CircleDraft | null {
 
 function pointDistance(pointA: number[], pointB: number[]): number {
   return Math.hypot(pointB[0] - pointA[0], pointB[1] - pointA[1])
+}
+
+function readAspectRatio(width: number, height: number): string {
+  const divisor = greatestCommonDivisor(Math.round(width), Math.round(height))
+  return divisor > 0 ? `${Math.round(width / divisor)}:${Math.round(height / divisor)}` : ''
+}
+
+function greatestCommonDivisor(firstValue: number, secondValue: number): number {
+  let leftValue = Math.abs(firstValue)
+  let rightValue = Math.abs(secondValue)
+  while (rightValue > 0) {
+    const nextValue = leftValue % rightValue
+    leftValue = rightValue
+    rightValue = nextValue
+  }
+  return leftValue
+}
+
+function formatMetricNumber(value: number): string {
+  return Math.round(value).toLocaleString('en-US')
+}
+
+function formatMegapixels(pixelCount: number): string {
+  return (pixelCount / 1_000_000).toFixed(pixelCount >= 10_000_000 ? 1 : 2)
 }
 
 function normalizeLineAngleDeg(angleDeg: number): number {

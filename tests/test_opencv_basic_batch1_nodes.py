@@ -414,6 +414,18 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
         tool["tool"]: tool
         for tool in contour_debug_preview["interaction"]["tools"]
     }
+    contour_controls_by_name = {
+        control["parameter_name"]: control
+        for control in contour_debug_preview["interaction"]["controls"]
+    }
+    filter_controls_by_name = {
+        control["parameter_name"]: control
+        for control in filter_debug_preview["interaction"]["controls"]
+    }
+    rect_controls_by_name = {
+        control["parameter_name"]: control
+        for control in rect_debug_preview["interaction"]["controls"]
+    }
     contour_pick_overlay = next(
         overlay
         for overlay in contour_debug_preview["overlays"]
@@ -436,10 +448,39 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
         "search_bbox_xyxy",
         "selected_contour_index",
     ]
+    assert {
+        "threshold",
+        "threshold_mode",
+        "retrieval_mode",
+        "approximation",
+        "min_area",
+        "max_contours",
+    } <= set(contour_controls_by_name)
+    assert contour_controls_by_name["threshold_mode"]["control"] == "select"
+    assert contour_controls_by_name["retrieval_mode"]["control"] == "select"
+    assert contour_controls_by_name["approximation"]["control"] == "select"
     assert isinstance(contour_pick_overlay["parameters"]["selected_contour_index"], int)
     assert filter_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert {
+        "min_area",
+        "max_area",
+        "min_width",
+        "max_width",
+        "min_height",
+        "max_height",
+        "min_point_count",
+        "max_point_count",
+        "sort_by",
+        "descending",
+        "limit",
+    } <= set(filter_controls_by_name)
+    assert filter_controls_by_name["sort_by"]["control"] == "select"
+    assert filter_controls_by_name["descending"]["control"] == "checkbox"
     assert isinstance(filter_pick_overlay["parameters"]["selected_contour_index"], int)
     assert rect_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert {"sort_by", "descending", "limit"} <= set(rect_controls_by_name)
+    assert rect_controls_by_name["sort_by"]["control"] == "select"
+    assert rect_controls_by_name["descending"]["control"] == "checkbox"
     assert isinstance(rect_pick_overlay["parameters"]["selected_contour_index"], int)
 
 

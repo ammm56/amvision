@@ -9,6 +9,7 @@ from backend.nodes.core_nodes.logic.value.value_to_roi import _value_to_roi_hand
 from backend.nodes.core_nodes.io.preview.value_preview import _value_preview_handler
 from backend.nodes.core_nodes.vision.roi.roi_grid_create import _roi_grid_create_handler
 from backend.nodes.core_nodes.vision.roi.roi_list_create import _roi_list_create_handler
+from backend.nodes.core_nodes.vision.roi.roi_list_item_get import _roi_list_item_get_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -19,6 +20,7 @@ def test_core_catalog_contains_roi_grid_nodes() -> None:
 
     assert "core.vision.roi-grid-create" in node_type_ids
     assert "core.vision.roi-list-create" in node_type_ids
+    assert "core.vision.roi-list-item-get" in node_type_ids
     assert "core.logic.value-to-roi" in node_type_ids
     assert "core.logic.array-summary" in node_type_ids
 
@@ -122,6 +124,19 @@ def test_roi_list_create_merges_single_and_value_list_inputs() -> None:
                         "area": 100,
                     },
                 ),
+                "rois": {
+                    "format_id": "amvision.roi-list.v1",
+                    "items": [
+                        {
+                            "roi_id": "slot-c",
+                            "roi_kind": "bbox",
+                            "bbox_xyxy": [50, 20, 60, 30],
+                            "polygon_xy": [[50, 20], [60, 20], [60, 30], [50, 30]],
+                            "area": 100,
+                        }
+                    ],
+                    "count": 1,
+                },
                 "items": {
                     "value": {
                         "items": [
@@ -148,10 +163,50 @@ def test_roi_list_create_merges_single_and_value_list_inputs() -> None:
     )
 
     roi_items = output["rois"]["items"]
-    assert [item["roi_id"] for item in roi_items] == ["slot-a", "slot-b"]
+    assert [item["roi_id"] for item in roi_items] == ["slot-a", "slot-c", "slot-b"]
     assert roi_items[0]["source_image"]["image_handle"] == "image-list"
     assert roi_items[1]["source_image"]["image_handle"] == "image-list"
-    assert output["summary"]["value"]["count"] == 2
+    assert roi_items[2]["source_image"]["image_handle"] == "image-list"
+    assert output["summary"]["value"]["count"] == 3
+
+
+def test_roi_list_item_get_selects_single_roi_from_roi_list() -> None:
+    """验证 ROI List Item Get 可从 roi-list.v1 中取出单个 roi.v1。"""
+
+    output = _roi_list_item_get_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-list-item-get",
+            node_definition=object(),
+            parameters={"index": -1, "allow_negative": True},
+            input_values={
+                "rois": {
+                    "format_id": "amvision.roi-list.v1",
+                    "items": [
+                        {
+                            "roi_id": "slot-01",
+                            "roi_kind": "bbox",
+                            "bbox_xyxy": [0, 0, 10, 10],
+                            "polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                            "area": 100,
+                        },
+                        {
+                            "roi_id": "slot-02",
+                            "roi_kind": "bbox",
+                            "bbox_xyxy": [20, 0, 30, 10],
+                            "polygon_xy": [[20, 0], [30, 0], [30, 10], [20, 10]],
+                            "area": 100,
+                        },
+                    ],
+                    "count": 2,
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert output["roi"]["roi_id"] == "slot-02"
+    assert output["summary"]["value"]["index"] == -1
+    assert output["summary"]["value"]["normalized_index"] == 1
 
 
 def test_value_to_roi_restores_roi_payload_from_nested_value() -> None:
@@ -293,3 +348,33 @@ def test_payload_to_value_wraps_boolean_payload_value() -> None:
     )
 
     assert output["value"]["value"] is True
+
+
+def test_payload_to_value_wraps_roi_list_items_for_for_each() -> None:
+    """验证 Payload To Value 可把 roi-list.v1 转成 for-each 可迭代数组。"""
+
+    output = _payload_to_value_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="payload-to-value-rois",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "rois": {
+                    "format_id": "amvision.roi-list.v1",
+                    "items": [
+                        {
+                            "roi_id": "slot-loop",
+                            "roi_kind": "bbox",
+                            "bbox_xyxy": [0, 0, 10, 10],
+                            "polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                            "area": 100,
+                        }
+                    ],
+                    "count": 1,
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert output["value"]["value"][0]["roi_id"] == "slot-loop"

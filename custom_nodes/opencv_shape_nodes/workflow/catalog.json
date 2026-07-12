@@ -1839,12 +1839,16 @@
         "properties": {
           "threshold": {
             "type": "integer",
+            "title": "Threshold",
+            "description": "普通 binary 模式下使用的阈值；Otsu 模式会由 OpenCV 自动求阈值。",
             "minimum": 0,
             "maximum": 255,
             "default": 127
           },
           "threshold_mode": {
             "type": "string",
+            "title": "Threshold Mode",
+            "description": "轮廓提取前的二值化方式。",
             "enum": [
               "binary",
               "binary-inverse",
@@ -1855,6 +1859,8 @@
           },
           "retrieval_mode": {
             "type": "string",
+            "title": "Retrieval Mode",
+            "description": "OpenCV findContours 的轮廓层级检索方式。",
             "enum": [
               "external",
               "list",
@@ -1865,6 +1871,8 @@
           },
           "approximation": {
             "type": "string",
+            "title": "Approximation",
+            "description": "OpenCV findContours 的轮廓点近似方式。",
             "enum": [
               "simple",
               "none",
@@ -1875,11 +1883,15 @@
           },
           "min_area": {
             "type": "number",
+            "title": "Min Area",
+            "description": "小于该面积的 contour 会被过滤，单位为像素面积。",
             "minimum": 0,
             "default": 0
           },
           "max_contours": {
             "type": "integer",
+            "title": "Max Contours",
+            "description": "最多输出的 contour 数量；为空表示不限制。",
             "minimum": 1
           },
           "selected_contour_index": {
@@ -2095,38 +2107,56 @@
         "properties": {
           "min_area": {
             "type": "number",
+            "title": "Min Area",
+            "description": "保留面积大于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "max_area": {
             "type": "number",
+            "title": "Max Area",
+            "description": "保留面积小于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "min_width": {
             "type": "number",
+            "title": "Min Width",
+            "description": "保留外接 bbox 宽度大于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "max_width": {
             "type": "number",
+            "title": "Max Width",
+            "description": "保留外接 bbox 宽度小于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "min_height": {
             "type": "number",
+            "title": "Min Height",
+            "description": "保留外接 bbox 高度大于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "max_height": {
             "type": "number",
+            "title": "Max Height",
+            "description": "保留外接 bbox 高度小于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "min_point_count": {
             "type": "integer",
+            "title": "Min Points",
+            "description": "保留点数大于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "max_point_count": {
             "type": "integer",
+            "title": "Max Points",
+            "description": "保留点数小于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
           "sort_by": {
             "type": "string",
+            "title": "Sort By",
+            "description": "过滤后 contour 的排序字段。",
             "enum": [
               "contour_index",
               "point_count",
@@ -2134,13 +2164,19 @@
               "width",
               "height",
               "perimeter"
-            ]
+            ],
+            "default": "contour_index"
           },
           "descending": {
-            "type": "boolean"
+            "type": "boolean",
+            "title": "Descending",
+            "description": "启用后按 sort_by 倒序输出。",
+            "default": false
           },
           "limit": {
             "type": "integer",
+            "title": "Output Limit",
+            "description": "排序后最多输出多少个 contour；为空表示不限制。",
             "minimum": 1
           },
           "selected_contour_index": {
@@ -2986,6 +3022,8 @@
         "properties": {
           "sort_by": {
             "type": "string",
+            "title": "Sort By",
+            "description": "输出 rotated rect 前使用的排序字段。",
             "enum": [
               "contour_index",
               "contour_area",
@@ -2999,10 +3037,14 @@
           },
           "descending": {
             "type": "boolean",
+            "title": "Descending",
+            "description": "启用后按 sort_by 倒序输出。",
             "default": false
           },
           "limit": {
             "type": "integer",
+            "title": "Output Limit",
+            "description": "排序后最多输出多少个 rotated rect；为空表示不限制。",
             "minimum": 1
           },
           "selected_contour_index": {

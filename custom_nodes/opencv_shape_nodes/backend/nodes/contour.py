@@ -7,8 +7,10 @@ from backend.nodes.debug_image_panel import (
     build_debug_image_preview_output,
     build_debug_panel_interaction,
     build_interaction_tool,
+    build_number_control,
     build_numeric_control,
     build_polygon_overlay,
+    build_select_control,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -160,6 +162,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             overlays=_build_contour_overlays(contour_items, search_roi=search_roi),
             interaction=_build_contour_interaction(
                 threshold_value=threshold_value,
+                threshold_mode=threshold_mode,
+                retrieval_mode=str(raw_retrieval_mode or "external"),
+                approximation=str(raw_approximation or "simple"),
                 min_area=min_area,
                 max_contours=max_contours,
             ),
@@ -171,6 +176,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 def _build_contour_interaction(
     *,
     threshold_value: int,
+    threshold_mode: str,
+    retrieval_mode: str,
+    approximation: str,
     min_area: float,
     max_contours: int | None,
 ) -> dict[str, object]:
@@ -188,8 +196,41 @@ def _build_contour_interaction(
         ],
         controls=[
             build_numeric_control("threshold", "Threshold", threshold_value, min_value=0.0, max_value=255.0, step=1.0),
+            build_select_control(
+                "threshold_mode",
+                "Threshold Mode",
+                threshold_mode,
+                options=[
+                    ("binary", "Binary"),
+                    ("binary-inverse", "Binary Inverse"),
+                    ("otsu", "Otsu"),
+                    ("otsu-inverse", "Otsu Inverse"),
+                ],
+            ),
+            build_select_control(
+                "retrieval_mode",
+                "Retrieval Mode",
+                retrieval_mode,
+                options=[
+                    ("external", "External"),
+                    ("list", "List"),
+                    ("tree", "Tree"),
+                    ("ccomp", "CComp"),
+                ],
+            ),
+            build_select_control(
+                "approximation",
+                "Approximation",
+                approximation,
+                options=[
+                    ("simple", "Simple"),
+                    ("none", "None"),
+                    ("tc89-l1", "TC89 L1"),
+                    ("tc89-kcos", "TC89 KCOS"),
+                ],
+            ),
             build_numeric_control("min_area", "Min Area", min_area, min_value=0.0, max_value=20000.0, step=10.0),
-            build_numeric_control("max_contours", "Max Contours", max_contours or 100, min_value=1.0, max_value=500.0, step=1.0),
+            build_number_control("max_contours", "Max Contours", max_contours, min_value=1.0, max_value=500.0, step=1.0),
         ],
     )
 

@@ -40,6 +40,12 @@ def _roi_list_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
     )
     roi_items.extend(
         _attach_source_image_to_items(
+            iter_roi_payloads(request.input_values.get("rois"), node_id=request.node_id, field_name="rois"),
+            source_image=source_image,
+        )
+    )
+    roi_items.extend(
+        _attach_source_image_to_items(
             _read_items_value_input(request),
             source_image=source_image,
         )
@@ -129,6 +135,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="roi",
                 display_name="ROI",
                 payload_type_id="roi.v1",
+                required=False,
+                multiple=True,
+            ),
+            NodePortDefinition(
+                name="rois",
+                display_name="ROIs",
+                payload_type_id="roi-list.v1",
                 required=False,
                 multiple=True,
             ),

@@ -3992,6 +3992,14 @@ a:hover {
   font-size: 12px;
 }
 
+.image-viewer__status-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .image-viewer__title {
   display: grid;
   gap: 3px;
@@ -4516,6 +4524,22 @@ a:hover {
   background: rgb(255 255 255 / 0.08);
   color: #ffffff;
   font: inherit;
+}
+
+.image-viewer__tuning-control select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.08);
+  color: #ffffff;
+  font: inherit;
+}
+
+.image-viewer__tuning-control select option {
+  color: #0f172a;
 }
 
 .image-viewer__tuning-control input[type='checkbox'] {

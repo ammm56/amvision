@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import (
+    build_checkbox_control,
+    build_number_control,
+    build_select_control,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.payloads import (
@@ -175,6 +180,76 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             title="Contour Filter",
             artifact_name="contour-filter-debug-preview",
             selected_contour_index=selected_contour_index,
+            controls=_build_contour_filter_controls(
+                min_area=min_area,
+                max_area=max_area,
+                min_width=min_width,
+                max_width=max_width,
+                min_height=min_height,
+                max_height=max_height,
+                min_point_count=min_point_count,
+                max_point_count=max_point_count,
+                sort_by=sort_by,
+                descending=descending,
+                limit=limit,
+            ),
         )
     )
     return outputs
+
+
+def _build_contour_filter_controls(
+    *,
+    min_area: float | None,
+    max_area: float | None,
+    min_width: float | None,
+    max_width: float | None,
+    min_height: float | None,
+    max_height: float | None,
+    min_point_count: int | None,
+    max_point_count: int | None,
+    sort_by: str,
+    descending: bool,
+    limit: int | None,
+) -> list[dict[str, object]]:
+    """声明 Contour Filter 在图片面板中的完整调参控件。"""
+
+    return [
+        build_number_control("min_area", "Min Area", min_area, min_value=0.0, max_value=200000.0, step=10.0),
+        build_number_control("max_area", "Max Area", max_area, min_value=0.0, max_value=200000.0, step=10.0),
+        build_number_control("min_width", "Min Width", min_width, min_value=0.0, max_value=5000.0, step=1.0),
+        build_number_control("max_width", "Max Width", max_width, min_value=0.0, max_value=5000.0, step=1.0),
+        build_number_control("min_height", "Min Height", min_height, min_value=0.0, max_value=5000.0, step=1.0),
+        build_number_control("max_height", "Max Height", max_height, min_value=0.0, max_value=5000.0, step=1.0),
+        build_number_control(
+            "min_point_count",
+            "Min Points",
+            min_point_count,
+            min_value=0.0,
+            max_value=20000.0,
+            step=1.0,
+        ),
+        build_number_control(
+            "max_point_count",
+            "Max Points",
+            max_point_count,
+            min_value=0.0,
+            max_value=20000.0,
+            step=1.0,
+        ),
+        build_select_control(
+            "sort_by",
+            "Sort By",
+            sort_by,
+            options=[
+                ("contour_index", "Contour Index"),
+                ("point_count", "Point Count"),
+                ("area", "Area"),
+                ("width", "Width"),
+                ("height", "Height"),
+                ("perimeter", "Perimeter"),
+            ],
+        ),
+        build_checkbox_control("descending", "Descending", descending),
+        build_number_control("limit", "Output Limit", limit, min_value=1.0, max_value=500.0, step=1.0),
+    ]

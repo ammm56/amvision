@@ -36,38 +36,56 @@
     "properties": {
       "min_area": {
         "type": "number",
+        "title": "Min Area",
+        "description": "保留面积大于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "max_area": {
         "type": "number",
+        "title": "Max Area",
+        "description": "保留面积小于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "min_width": {
         "type": "number",
+        "title": "Min Width",
+        "description": "保留外接 bbox 宽度大于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "max_width": {
         "type": "number",
+        "title": "Max Width",
+        "description": "保留外接 bbox 宽度小于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "min_height": {
         "type": "number",
+        "title": "Min Height",
+        "description": "保留外接 bbox 高度大于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "max_height": {
         "type": "number",
+        "title": "Max Height",
+        "description": "保留外接 bbox 高度小于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "min_point_count": {
         "type": "integer",
+        "title": "Min Points",
+        "description": "保留点数大于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "max_point_count": {
         "type": "integer",
+        "title": "Max Points",
+        "description": "保留点数小于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
       "sort_by": {
         "type": "string",
+        "title": "Sort By",
+        "description": "过滤后 contour 的排序字段。",
         "enum": [
           "contour_index",
           "point_count",
@@ -75,13 +93,19 @@
           "width",
           "height",
           "perimeter"
-        ]
+        ],
+        "default": "contour_index"
       },
       "descending": {
-        "type": "boolean"
+        "type": "boolean",
+        "title": "Descending",
+        "description": "启用后按 sort_by 倒序输出。",
+        "default": false
       },
       "limit": {
         "type": "integer",
+        "title": "Output Limit",
+        "description": "排序后最多输出多少个 contour；为空表示不限制。",
         "minimum": 1
       },
       "selected_contour_index": {
