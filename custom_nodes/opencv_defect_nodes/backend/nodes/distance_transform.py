@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -24,7 +26,7 @@ NODE_TYPE_ID = "custom.opencv.distance-transform"
 def _read_foreground_threshold(raw_value: object) -> int:
     """读取前景阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1
     return require_uint8_int(raw_value, field_name="foreground_threshold")
 
@@ -32,7 +34,7 @@ def _read_foreground_threshold(raw_value: object) -> int:
 def _read_distance_type(raw_value: object, *, cv2_module) -> tuple[str, int]:
     """读取距离类型。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "l2", cv2_module.DIST_L2
     if not isinstance(raw_value, str):
         raise InvalidRequestError("distance-transform 节点的 distance_type 必须是字符串")
@@ -49,7 +51,7 @@ def _read_distance_type(raw_value: object, *, cv2_module) -> tuple[str, int]:
 def _read_mask_size(raw_value: object, *, cv2_module) -> tuple[object, int]:
     """读取 mask_size。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 3, cv2_module.DIST_MASK_3
     if raw_value == "precise":
         return "precise", cv2_module.DIST_MASK_PRECISE
@@ -65,7 +67,7 @@ def _read_mask_size(raw_value: object, *, cv2_module) -> tuple[object, int]:
 def _read_normalize_output(raw_value: object) -> bool:
     """读取 normalize_output。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return True
     if not isinstance(raw_value, bool):
         raise InvalidRequestError("distance-transform 节点的 normalize_output 必须是布尔值")
@@ -75,7 +77,7 @@ def _read_normalize_output(raw_value: object) -> bool:
 def _read_output_scale(raw_value: object) -> float:
     """读取输出缩放倍数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1.0
     return require_non_negative_float(raw_value, field_name="output_scale")
 

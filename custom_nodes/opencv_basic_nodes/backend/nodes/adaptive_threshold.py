@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -31,21 +33,21 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
     raw_max_value = request.parameters.get("max_value")
-    max_value = 255 if raw_max_value in {None, ""} else require_uint8_int(raw_max_value, field_name="max_value")
+    max_value = 255 if is_empty_parameter(raw_max_value) else require_uint8_int(raw_max_value, field_name="max_value")
     raw_method = request.parameters.get("adaptive_method")
     adaptive_method = normalize_adaptive_threshold_method(
-        "gaussian" if raw_method in {None, ""} else raw_method,
+        "gaussian" if is_empty_parameter(raw_method) else raw_method,
         cv2_module=cv2_module,
     )
     raw_threshold_type = request.parameters.get("threshold_type")
     threshold_type = normalize_binary_threshold_mode(
-        "binary" if raw_threshold_type in {None, ""} else raw_threshold_type,
+        "binary" if is_empty_parameter(raw_threshold_type) else raw_threshold_type,
         cv2_module=cv2_module,
     )
     raw_block_size = request.parameters.get("block_size")
-    block_size = 11 if raw_block_size in {None, ""} else normalize_adaptive_block_size(raw_block_size)
+    block_size = 11 if is_empty_parameter(raw_block_size) else normalize_adaptive_block_size(raw_block_size)
     raw_c_value = request.parameters.get("c_value")
-    c_value = 2.0 if raw_c_value in {None, ""} else require_number(raw_c_value, field_name="c_value")
+    c_value = 2.0 if is_empty_parameter(raw_c_value) else require_number(raw_c_value, field_name="c_value")
 
     threshold_image = cv2_module.adaptiveThreshold(
         image_matrix,

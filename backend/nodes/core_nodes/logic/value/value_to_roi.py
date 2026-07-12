@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -24,7 +26,7 @@ def _value_to_roi_handler(request: WorkflowNodeExecutionRequest) -> dict[str, ob
 
     value_root = require_value_payload(request.input_values.get("value"), field_name="value")["value"]
     raw_path = request.parameters.get("path")
-    roi_candidate = value_root if raw_path in {None, ""} else extract_value_by_path(root=value_root, path=_read_path(raw_path))
+    roi_candidate = value_root if is_empty_parameter(raw_path) else extract_value_by_path(root=value_root, path=_read_path(raw_path))
     if not isinstance(roi_candidate, dict):
         raise InvalidRequestError(f"{NODE_NAME} 节点提取到的 ROI 必须是对象")
     roi_payload = require_roi_payload(roi_candidate, node_id=request.node_id)

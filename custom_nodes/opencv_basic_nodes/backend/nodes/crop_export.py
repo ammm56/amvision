@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
@@ -34,7 +36,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     image_height, image_width = image_matrix.shape[:2]
     raw_box_padding = request.parameters.get("box_padding")
-    box_padding = 0 if raw_box_padding in {None, ""} else require_non_negative_int(raw_box_padding, field_name="box_padding")
+    box_padding = 0 if is_empty_parameter(raw_box_padding) else require_non_negative_int(raw_box_padding, field_name="box_padding")
     max_crops_raw = request.parameters.get("max_crops")
     if max_crops_raw == "":
         max_crops_raw = None
@@ -213,7 +215,7 @@ def _build_background_fill_value(image_matrix: object, background_fill: str) -> 
 def _read_polygon_background_fill(raw_value: object) -> str:
     """读取 polygon ROI 外部背景填充色。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "black"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("polygon_background_fill 必须是字符串")

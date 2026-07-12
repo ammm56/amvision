@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -22,7 +24,7 @@ NODE_TYPE_ID = "custom.opencv.fill-holes"
 def _read_foreground_threshold(raw_value: object) -> int:
     """读取前景阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1
     return require_uint8_int(raw_value, field_name="foreground_threshold")
 

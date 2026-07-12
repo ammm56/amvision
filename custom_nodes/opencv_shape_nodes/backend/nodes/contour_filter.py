@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.debug_image_panel import (
     build_checkbox_control,
@@ -30,7 +32,7 @@ NODE_TYPE_ID = "custom.opencv.contour-filter"
 def _read_optional_non_negative_float(raw_value: object, *, field_name: str) -> float | None:
     """读取可选非负浮点参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_non_negative_float(raw_value, field_name=field_name)
 
@@ -38,7 +40,7 @@ def _read_optional_non_negative_float(raw_value: object, *, field_name: str) -> 
 def _read_optional_non_negative_int(raw_value: object, *, field_name: str) -> int | None:
     """读取可选非负整数参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_non_negative_int(raw_value, field_name=field_name)
 
@@ -46,7 +48,7 @@ def _read_optional_non_negative_int(raw_value: object, *, field_name: str) -> in
 def _read_optional_positive_int(raw_value: object, *, field_name: str) -> int | None:
     """读取可选正整数参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name=field_name)
 
@@ -91,7 +93,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
     descending = bool(request.parameters.get("descending", False))
     raw_limit = request.parameters.get("limit")
-    limit = None if raw_limit in {None, ""} else require_positive_int(raw_limit, field_name="limit")
+    limit = None if is_empty_parameter(raw_limit) else require_positive_int(raw_limit, field_name="limit")
     selected_contour_index = _read_optional_positive_int(
         request.parameters.get("selected_contour_index"),
         field_name="selected_contour_index",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
@@ -45,7 +47,7 @@ def _build_ellipses_payload(
 def _read_optional_limit(raw_value: object) -> int | None:
     """读取可选 limit。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="limit")
 
@@ -53,7 +55,7 @@ def _read_optional_limit(raw_value: object) -> int | None:
 def _read_optional_selected_contour_index(raw_value: object) -> int | None:
     """读取可选点选 contour 序号。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="selected_contour_index")
 
@@ -61,7 +63,7 @@ def _read_optional_selected_contour_index(raw_value: object) -> int | None:
 def _read_sort_by(raw_value: object) -> str:
     """读取排序字段。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "major_axis"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("fit-ellipse 节点的 sort_by 必须是字符串")
@@ -84,7 +86,7 @@ def _read_sort_by(raw_value: object) -> str:
 def _read_descending(raw_value: object) -> bool:
     """读取 descending。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return True
     if not isinstance(raw_value, bool):
         raise InvalidRequestError("fit-ellipse 节点的 descending 必须是布尔值")

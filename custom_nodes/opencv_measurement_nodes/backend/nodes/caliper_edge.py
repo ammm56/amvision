@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 from typing import Any
 
@@ -24,7 +26,7 @@ NODE_TYPE_ID = "custom.opencv.caliper-edge"
 def _read_edge_orientation(raw_value: object) -> str:
     """读取边方向。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "vertical"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("edge_orientation 必须是字符串")
@@ -37,7 +39,7 @@ def _read_edge_orientation(raw_value: object) -> str:
 def _read_edge_polarity(raw_value: object) -> str:
     """读取边极性。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "any"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("edge_polarity 必须是字符串")
@@ -50,7 +52,7 @@ def _read_edge_polarity(raw_value: object) -> str:
 def _read_profile_reduction(raw_value: object) -> str:
     """读取投影归并方式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "mean"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("profile_reduction 必须是字符串")
@@ -63,7 +65,7 @@ def _read_profile_reduction(raw_value: object) -> str:
 def _read_gradient_threshold(raw_value: object) -> float:
     """读取最小梯度阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 5.0
     return float(require_non_negative_float(raw_value, field_name="gradient_threshold"))
 
@@ -71,7 +73,7 @@ def _read_gradient_threshold(raw_value: object) -> float:
 def _read_smoothing_kernel_size(raw_value: object) -> int:
     """读取平滑核大小。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 5
     return int(normalize_odd_kernel_size(raw_value))
 

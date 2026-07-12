@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
@@ -29,7 +31,7 @@ NODE_TYPE_ID = "custom.opencv.min-enclosing-circle"
 def _read_optional_limit(raw_value: object) -> int | None:
     """读取可选 limit。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="limit")
 
@@ -37,7 +39,7 @@ def _read_optional_limit(raw_value: object) -> int | None:
 def _read_optional_selected_contour_index(raw_value: object) -> int | None:
     """读取可选点选 contour 序号。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="selected_contour_index")
 

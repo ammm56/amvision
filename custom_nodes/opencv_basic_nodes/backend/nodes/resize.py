@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -23,7 +25,7 @@ NODE_TYPE_ID = "custom.opencv.resize"
 def _read_optional_dimension(raw_value: object, *, field_name: str) -> int | None:
     """读取可选 resize 维度。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name=field_name)
 
@@ -46,7 +48,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         target_height = max(1, int(round(source_height * (target_width / float(source_width)))))
 
     raw_interpolation = request.parameters.get("interpolation")
-    if raw_interpolation in {None, ""}:
+    if is_empty_parameter(raw_interpolation):
         interpolation = (
             cv2_module.INTER_AREA
             if target_width <= source_width and target_height <= source_height

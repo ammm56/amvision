@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import base64
 
 from backend.service.application.errors import InvalidRequestError
@@ -58,7 +60,7 @@ def read_positive_int_parameter(
     """读取正整数参数，并在 null 或空字符串时回退默认值。"""
 
     raw_value = request.parameters.get(field_name)
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default
     return require_positive_int(raw_value, field_name=field_name)
 
@@ -72,7 +74,7 @@ def read_non_negative_float_parameter(
     """读取非负浮点参数，并在 null 或空字符串时回退默认值。"""
 
     raw_value = request.parameters.get(field_name)
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default
     return require_non_negative_float(raw_value, field_name=field_name)
 

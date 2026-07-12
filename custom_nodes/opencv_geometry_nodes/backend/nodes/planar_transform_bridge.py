@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 from typing import Any
 
@@ -100,7 +102,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         raw_interpolation = request.parameters.get("interpolation")
         interpolation = (
             cv2_module.INTER_LINEAR
-            if raw_interpolation in {None, ""}
+            if is_empty_parameter(raw_interpolation)
             else normalize_resize_interpolation(raw_interpolation, cv2_module=cv2_module)
         )
         border_mode = _resolve_border_mode(request.parameters.get("border_mode"), cv2_module=cv2_module)
@@ -180,7 +182,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 def _read_direction(raw_value: object) -> str:
     """读取投影方向。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "source-a-to-source-b"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("direction 必须是字符串")
@@ -342,14 +344,14 @@ def _resolve_image_output_shape(
             "translation_offset_y": round(float(translation_offset_y), 4),
         }
 
-    if raw_output_width in {None, ""} and raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_width) and is_empty_parameter(raw_output_height):
         if fit_output_bounds and fit_width is not None and fit_height is not None:
             return fit_width, fit_height, "fit-bounds", translated_matrix, fit_bounds_summary
         if target_width is not None and target_height is not None:
             return target_width, target_height, "transform-target-image", translated_matrix, fit_bounds_summary
         return source_image_width, source_image_height, "source-image", translated_matrix, fit_bounds_summary
 
-    if raw_output_width in {None, ""}:
+    if is_empty_parameter(raw_output_width):
         fallback_width = fit_width if fit_output_bounds and fit_width is not None else target_width
         if fallback_width is None:
             fallback_width = source_image_width
@@ -361,7 +363,7 @@ def _resolve_image_output_shape(
             fit_bounds_summary,
         )
 
-    if raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_height):
         fallback_height = fit_height if fit_output_bounds and fit_height is not None else target_height
         if fallback_height is None:
             fallback_height = source_image_height
@@ -461,7 +463,7 @@ def _project_roi_payload(
 def _resolve_output_roi_id(*, input_roi_id: str, output_roi_id: object, direction: str) -> str:
     """解析输出 ROI ID。"""
 
-    if output_roi_id in {None, ""}:
+    if is_empty_parameter(output_roi_id):
         suffix = "a2b" if direction == "source-a-to-source-b" else "b2a"
         return f"{input_roi_id}-{suffix}"
     if not isinstance(output_roi_id, str):
@@ -481,7 +483,7 @@ def _resolve_output_display_name(
 ) -> str | None:
     """解析输出 ROI 显示名。"""
 
-    if output_display_name not in {None, ""}:
+    if not is_empty_parameter(output_display_name):
         if not isinstance(output_display_name, str):
             raise InvalidRequestError("output_display_name 必须是字符串")
         normalized_value = output_display_name.strip()
@@ -516,7 +518,7 @@ def _read_optional_bool(raw_value: object, *, default_value: bool) -> bool:
 def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
     """解析边界填充模式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return cv2_module.BORDER_CONSTANT
     if not isinstance(raw_value, str):
         raise InvalidRequestError("border_mode 必须是字符串")
@@ -537,6 +539,6 @@ def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
 def _read_optional_border_value(raw_value: object) -> int:
     """读取边界填充值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0
     return require_uint8_int(raw_value, field_name="border_value")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -19,7 +21,7 @@ NODE_TYPE_ID = "custom.opencv.line-angle"
 def _read_line_strategy(raw_value: object) -> str:
     """读取 line 选择策略。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "longest"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("line_strategy 必须是字符串")
@@ -32,7 +34,7 @@ def _read_line_strategy(raw_value: object) -> str:
 def _read_optional_line_index(raw_value: object) -> int | None:
     """读取可选 line_index。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="line_index")
 
@@ -40,7 +42,7 @@ def _read_optional_line_index(raw_value: object) -> int | None:
 def _read_optional_reference_angle(raw_value: object) -> float | None:
     """读取可选参考角度。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return float(require_number(raw_value, field_name="reference_angle_deg"))
 
@@ -48,7 +50,7 @@ def _read_optional_reference_angle(raw_value: object) -> float | None:
 def _read_output_metric(raw_value: object, *, reference_angle_deg: float | None) -> str:
     """读取输出指标类型。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "delta_angle_deg" if reference_angle_deg is not None else "angle_deg"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("output_metric 必须是字符串")

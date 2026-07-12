@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -21,7 +23,7 @@ NODE_TYPE_ID = "custom.opencv.slot-width"
 def _read_line_strategy(raw_value: object, *, default_value: str) -> str:
     """读取 line 选择策略。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default_value
     if not isinstance(raw_value, str):
         raise InvalidRequestError("line_strategy 必须是字符串")
@@ -34,7 +36,7 @@ def _read_line_strategy(raw_value: object, *, default_value: str) -> str:
 def _read_optional_line_index(raw_value: object, *, field_name: str) -> int | None:
     """读取可选 line_index。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name=field_name)
 
@@ -42,7 +44,7 @@ def _read_optional_line_index(raw_value: object, *, field_name: str) -> int | No
 def _read_output_metric(raw_value: object) -> str:
     """读取输出指标类型。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "mean_width_pixels"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("output_metric 必须是字符串")

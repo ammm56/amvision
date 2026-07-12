@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
@@ -42,7 +44,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_interpolation = request.parameters.get("interpolation")
     interpolation = (
         cv2_module.INTER_LINEAR
-        if raw_interpolation in {None, ""}
+        if is_empty_parameter(raw_interpolation)
         else normalize_resize_interpolation(raw_interpolation, cv2_module=cv2_module)
     )
     border_mode = _resolve_border_mode(request.parameters.get("border_mode"), cv2_module=cv2_module)
@@ -252,15 +254,15 @@ def _resolve_output_size(
 
     raw_output_width = request.parameters.get("output_width")
     raw_output_height = request.parameters.get("output_height")
-    if raw_output_width in {None, ""} and raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_width) and is_empty_parameter(raw_output_height):
         return estimated_output_width, estimated_output_height, "estimated"
-    if raw_output_width in {None, ""}:
+    if is_empty_parameter(raw_output_width):
         return (
             estimated_output_width,
             require_positive_int(raw_output_height, field_name="output_height"),
             "mixed",
         )
-    if raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_height):
         return (
             require_positive_int(raw_output_width, field_name="output_width"),
             estimated_output_height,
@@ -289,7 +291,7 @@ def _build_bbox_xyxy(source_points: list[tuple[float, float]]) -> list[float]:
 def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
     """解析边界填充模式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return cv2_module.BORDER_CONSTANT
     if not isinstance(raw_value, str):
         raise InvalidRequestError("border_mode 必须是字符串")
@@ -310,6 +312,6 @@ def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
 def _read_optional_border_value(raw_value: object) -> int:
     """读取边界填充值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0
     return require_uint8_int(raw_value, field_name="border_value")

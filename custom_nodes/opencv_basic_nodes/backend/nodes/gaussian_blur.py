@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -26,9 +28,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     image_payload, _, image_matrix = load_image_matrix(request)
 
     raw_kernel_size = request.parameters.get("kernel_size")
-    kernel_size = 5 if raw_kernel_size in {None, ""} else normalize_odd_kernel_size(raw_kernel_size)
+    kernel_size = 5 if is_empty_parameter(raw_kernel_size) else normalize_odd_kernel_size(raw_kernel_size)
     raw_sigma_x = request.parameters.get("sigma_x")
-    sigma_x = 0.0 if raw_sigma_x in {None, ""} else require_non_negative_float(raw_sigma_x, field_name="sigma_x")
+    sigma_x = 0.0 if is_empty_parameter(raw_sigma_x) else require_non_negative_float(raw_sigma_x, field_name="sigma_x")
     blurred_image = cv2_module.GaussianBlur(image_matrix, (kernel_size, kernel_size), sigma_x)
     encoded_image = encode_png_image_bytes(
         request,

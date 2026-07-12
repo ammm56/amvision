@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -33,7 +35,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     cv2_module, np_module = require_opencv_imports()
     raw_diff_mode = request.parameters.get("diff_mode")
-    diff_mode = "grayscale" if raw_diff_mode in {None, ""} else normalize_image_diff_mode(raw_diff_mode)
+    diff_mode = "grayscale" if is_empty_parameter(raw_diff_mode) else normalize_image_diff_mode(raw_diff_mode)
     imdecode_flags = cv2_module.IMREAD_GRAYSCALE if diff_mode == "grayscale" else cv2_module.IMREAD_COLOR
     image_payload, _, image_matrix = load_image_matrix(
         request,

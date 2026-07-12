@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -23,7 +25,7 @@ NODE_TYPE_ID = "custom.opencv.skeletonize"
 def _read_foreground_threshold(raw_value: object) -> int:
     """读取前景阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1
     return require_uint8_int(raw_value, field_name="foreground_threshold")
 
@@ -40,7 +42,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     foreground_threshold = _read_foreground_threshold(request.parameters.get("foreground_threshold"))
     max_iterations = (
         None
-        if request.parameters.get("max_iterations") in {None, ""}
+        if is_empty_parameter(request.parameters.get("max_iterations"))
         else require_non_negative_int(request.parameters.get("max_iterations"), field_name="max_iterations")
     )
 

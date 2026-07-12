@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
@@ -36,7 +38,7 @@ NODE_TYPE_ID = "custom.opencv.hough-circles"
 def _read_positive_float(raw_value: object, *, field_name: str, default_value: float) -> float:
     """读取正浮点参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return float(default_value)
     normalized_value = require_non_negative_float(raw_value, field_name=field_name)
     if normalized_value <= 0:
@@ -47,7 +49,7 @@ def _read_positive_float(raw_value: object, *, field_name: str, default_value: f
 def _read_non_negative_int(raw_value: object, *, field_name: str, default_value: int) -> int:
     """读取非负整数参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return int(default_value)
     return int(require_non_negative_int(raw_value, field_name=field_name))
 
@@ -55,7 +57,7 @@ def _read_non_negative_int(raw_value: object, *, field_name: str, default_value:
 def _read_optional_limit(raw_value: object) -> int | None:
     """读取可选 limit。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="limit")
 

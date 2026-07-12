@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -99,7 +101,7 @@ def _build_summary_matrix(*, output_image, cv2_module):
 def _read_kernel_size(raw_value: object) -> int:
     """读取 Laplacian kernel size。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 3
     if isinstance(raw_value, bool) or not isinstance(raw_value, int):
         raise InvalidRequestError("kernel_size 必须是整数")
@@ -111,7 +113,7 @@ def _read_kernel_size(raw_value: object) -> int:
 def _read_scale(raw_value: object) -> float:
     """读取 Laplacian scale。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1.0
     return float(require_non_negative_float(raw_value, field_name="scale"))
 
@@ -119,7 +121,7 @@ def _read_scale(raw_value: object) -> float:
 def _read_delta(raw_value: object) -> float:
     """读取 Laplacian delta。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.0
     return float(require_number(raw_value, field_name="delta"))
 
@@ -127,7 +129,7 @@ def _read_delta(raw_value: object) -> float:
 def _read_optional_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
     """读取布尔参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return bool(default_value)
     if not isinstance(raw_value, bool):
         raise InvalidRequestError(f"{field_name} 必须是布尔值")

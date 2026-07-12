@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import cv2
 import numpy as np
 
@@ -146,7 +148,7 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 def _read_selected_contour_index(raw_value: object) -> int | None:
     """读取要选择的真实 contour_index，空值表示使用第一个 contour。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
         raise InvalidRequestError("roi-from-contour 节点的 selected_contour_index 必须是非负整数")
@@ -192,7 +194,7 @@ def _select_contour_item(
 def _read_roi_kind(raw_value: object) -> str:
     """读取输出 ROI 类型。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "polygon"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("roi-from-contour 节点的 roi_kind 必须是字符串")
@@ -205,7 +207,7 @@ def _read_roi_kind(raw_value: object) -> str:
 def _read_require_quad(raw_value: object) -> bool:
     """读取是否强制要求四点轮廓。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return True
     if not isinstance(raw_value, bool):
         raise InvalidRequestError("roi-from-contour 节点的 require_quad 必须是布尔值")
@@ -215,7 +217,7 @@ def _read_require_quad(raw_value: object) -> bool:
 def _read_polygon_mode(raw_value: object) -> str:
     """读取 polygon 生成方式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "contour-points"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("roi-from-contour 节点的 polygon_mode 必须是字符串")
@@ -230,7 +232,7 @@ def _read_polygon_mode(raw_value: object) -> str:
 def _read_text(raw_value: object, *, default_value: str) -> str:
     """读取可选文本参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default_value
     if not isinstance(raw_value, str) or not raw_value.strip():
         raise InvalidRequestError("roi-from-contour 节点的文本参数必须是非空字符串")

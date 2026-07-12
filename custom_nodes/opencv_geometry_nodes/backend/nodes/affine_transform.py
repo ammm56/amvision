@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 from typing import Any
 
@@ -78,7 +80,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_interpolation = request.parameters.get("interpolation")
     interpolation = (
         cv2_module.INTER_LINEAR
-        if raw_interpolation in {None, ""}
+        if is_empty_parameter(raw_interpolation)
         else normalize_resize_interpolation(raw_interpolation, cv2_module=cv2_module)
     )
     border_mode = _resolve_border_mode(request.parameters.get("border_mode"), cv2_module=cv2_module)

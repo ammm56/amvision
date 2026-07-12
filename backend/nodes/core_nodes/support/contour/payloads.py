@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from typing import Any
 
 from backend.nodes.core_nodes.support.roi import normalize_bbox_xyxy
@@ -173,7 +175,7 @@ def _normalize_points(raw_points: object, *, node_id: str | None) -> list[list[f
 def _read_contour_index(raw_value: object, *, default_value: int, node_id: str | None) -> int:
     """读取 contour_index。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return int(default_value)
     if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
         raise InvalidRequestError(
@@ -186,7 +188,7 @@ def _read_contour_index(raw_value: object, *, default_value: int, node_id: str |
 def _read_count(raw_value: object, *, default_value: int, node_id: str | None) -> int:
     """读取 count 或 point_count。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return int(default_value)
     if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
         raise InvalidRequestError(

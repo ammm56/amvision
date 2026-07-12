@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -25,11 +27,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, _ = require_opencv_imports()
     image_payload, _, image_matrix = load_image_matrix(request)
     raw_diameter = request.parameters.get("diameter")
-    diameter = 9 if raw_diameter in {None, ""} else require_positive_int(raw_diameter, field_name="diameter")
+    diameter = 9 if is_empty_parameter(raw_diameter) else require_positive_int(raw_diameter, field_name="diameter")
     raw_sigma_color = request.parameters.get("sigma_color")
-    sigma_color = 75.0 if raw_sigma_color in {None, ""} else require_non_negative_float(raw_sigma_color, field_name="sigma_color")
+    sigma_color = 75.0 if is_empty_parameter(raw_sigma_color) else require_non_negative_float(raw_sigma_color, field_name="sigma_color")
     raw_sigma_space = request.parameters.get("sigma_space")
-    sigma_space = 75.0 if raw_sigma_space in {None, ""} else require_non_negative_float(raw_sigma_space, field_name="sigma_space")
+    sigma_space = 75.0 if is_empty_parameter(raw_sigma_space) else require_non_negative_float(raw_sigma_space, field_name="sigma_space")
     filtered_image = cv2_module.bilateralFilter(image_matrix, diameter, sigma_color, sigma_space)
     encoded_image = encode_png_image_bytes(
         request,

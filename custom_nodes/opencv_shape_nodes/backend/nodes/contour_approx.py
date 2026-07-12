@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -27,7 +29,7 @@ NODE_TYPE_ID = "custom.opencv.contour-approx"
 def _read_epsilon_mode(raw_value: object) -> str:
     """读取 epsilon 模式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "perimeter-ratio"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("contour-approx 节点的 epsilon_mode 必须是字符串")
@@ -41,7 +43,7 @@ def _read_epsilon_value(raw_value: object, *, epsilon_mode: str) -> float:
     """读取 epsilon 值。"""
 
     default_value = 0.02 if epsilon_mode == "perimeter-ratio" else 2.0
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default_value
     return require_non_negative_float(raw_value, field_name="epsilon_value")
 
@@ -49,7 +51,7 @@ def _read_epsilon_value(raw_value: object, *, epsilon_mode: str) -> float:
 def _read_closed(raw_value: object) -> bool:
     """读取 closed 参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return True
     if not isinstance(raw_value, bool):
         raise InvalidRequestError("contour-approx 节点的 closed 必须是布尔值")
@@ -59,7 +61,7 @@ def _read_closed(raw_value: object) -> bool:
 def _read_optional_limit(raw_value: object) -> int | None:
     """读取可选 limit。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="limit")
 
@@ -67,7 +69,7 @@ def _read_optional_limit(raw_value: object) -> int | None:
 def _read_optional_selected_contour_index(raw_value: object) -> int | None:
     """读取可选点选 contour 序号。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="selected_contour_index")
 

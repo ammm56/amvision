@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -26,7 +28,7 @@ NODE_TYPE_ID = "custom.opencv.watershed"
 def _read_foreground_threshold(raw_value: object) -> int:
     """读取前景阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1
     return require_uint8_int(raw_value, field_name="foreground_threshold")
 
@@ -34,7 +36,7 @@ def _read_foreground_threshold(raw_value: object) -> int:
 def _read_distance_threshold_ratio(raw_value: object) -> float:
     """读取 sure foreground 距离阈值比例。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.35
     normalized_value = require_non_negative_float(raw_value, field_name="distance_threshold_ratio")
     if normalized_value > 1.0:
@@ -82,17 +84,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     foreground_threshold = _read_foreground_threshold(request.parameters.get("foreground_threshold"))
     opening_kernel_size = (
         3
-        if request.parameters.get("opening_kernel_size") in {None, ""}
+        if is_empty_parameter(request.parameters.get("opening_kernel_size"))
         else require_positive_int(request.parameters.get("opening_kernel_size"), field_name="opening_kernel_size")
     )
     opening_iterations = (
         1
-        if request.parameters.get("opening_iterations") in {None, ""}
+        if is_empty_parameter(request.parameters.get("opening_iterations"))
         else require_non_negative_int(request.parameters.get("opening_iterations"), field_name="opening_iterations")
     )
     background_dilate_iterations = (
         1
-        if request.parameters.get("background_dilate_iterations") in {None, ""}
+        if is_empty_parameter(request.parameters.get("background_dilate_iterations"))
         else require_non_negative_int(
             request.parameters.get("background_dilate_iterations"),
             field_name="background_dilate_iterations",
@@ -100,7 +102,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     boundary_gap_iterations = (
         1
-        if request.parameters.get("boundary_gap_iterations") in {None, ""}
+        if is_empty_parameter(request.parameters.get("boundary_gap_iterations"))
         else require_non_negative_int(
             request.parameters.get("boundary_gap_iterations"),
             field_name="boundary_gap_iterations",

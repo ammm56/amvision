@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -32,13 +34,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
 
     raw_operation = request.parameters.get("operation")
-    operation_name = normalize_morphology_operation("open" if raw_operation in {None, ""} else raw_operation)
+    operation_name = normalize_morphology_operation("open" if is_empty_parameter(raw_operation) else raw_operation)
     raw_kernel_shape = request.parameters.get("shape")
-    kernel_shape = normalize_kernel_shape("rect" if raw_kernel_shape in {None, ""} else raw_kernel_shape, cv2_module=cv2_module)
+    kernel_shape = normalize_kernel_shape("rect" if is_empty_parameter(raw_kernel_shape) else raw_kernel_shape, cv2_module=cv2_module)
     raw_kernel_size = request.parameters.get("kernel_size")
-    kernel_size = 3 if raw_kernel_size in {None, ""} else normalize_odd_kernel_size(raw_kernel_size)
+    kernel_size = 3 if is_empty_parameter(raw_kernel_size) else normalize_odd_kernel_size(raw_kernel_size)
     raw_iterations = request.parameters.get("iterations")
-    iterations = 1 if raw_iterations in {None, ""} else require_positive_int(raw_iterations, field_name="iterations")
+    iterations = 1 if is_empty_parameter(raw_iterations) else require_positive_int(raw_iterations, field_name="iterations")
     kernel = cv2_module.getStructuringElement(kernel_shape, (kernel_size, kernel_size))
     if operation_name == "erode":
         output_image = cv2_module.erode(image_matrix, kernel, iterations=iterations)

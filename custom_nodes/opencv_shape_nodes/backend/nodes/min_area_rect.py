@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.debug_image_panel import (
     build_debug_image_preview_output,
@@ -79,11 +81,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
     descending = bool(request.parameters.get("descending", False))
     raw_limit = request.parameters.get("limit")
-    limit = None if raw_limit in {None, ""} else require_positive_int(raw_limit, field_name="limit")
+    limit = None if is_empty_parameter(raw_limit) else require_positive_int(raw_limit, field_name="limit")
     selected_contour_index_raw = request.parameters.get("selected_contour_index")
     selected_contour_index = (
         require_positive_int(selected_contour_index_raw, field_name="selected_contour_index")
-        if selected_contour_index_raw not in {None, ""}
+        if not is_empty_parameter(selected_contour_index_raw)
         else None
     )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -28,9 +30,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
 
     raw_threshold = request.parameters.get("threshold")
-    threshold = 127 if raw_threshold in {None, ""} else require_non_negative_float(raw_threshold, field_name="threshold")
+    threshold = 127 if is_empty_parameter(raw_threshold) else require_non_negative_float(raw_threshold, field_name="threshold")
     raw_max_value = request.parameters.get("max_value")
-    max_value = 255 if raw_max_value in {None, ""} else require_non_negative_float(raw_max_value, field_name="max_value")
+    max_value = 255 if is_empty_parameter(raw_max_value) else require_non_negative_float(raw_max_value, field_name="max_value")
     _, threshold_image = cv2_module.threshold(image_matrix, threshold, max_value, cv2_module.THRESH_BINARY)
     encoded_image = encode_png_image_bytes(
         request,

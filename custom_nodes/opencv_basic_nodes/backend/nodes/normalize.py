@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -67,7 +69,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 def _read_alpha_beta(raw_value: object, *, field_name: str, default_value: float) -> float:
     """读取 normalize 上下限。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return float(default_value)
     return float(require_number(raw_value, field_name=field_name))
 
@@ -75,7 +77,7 @@ def _read_alpha_beta(raw_value: object, *, field_name: str, default_value: float
 def _read_bool(raw_value: object, *, field_name: str, default_value: bool) -> bool:
     """读取布尔参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return bool(default_value)
     if not isinstance(raw_value, bool):
         raise InvalidRequestError(f"{field_name} 必须是布尔值")

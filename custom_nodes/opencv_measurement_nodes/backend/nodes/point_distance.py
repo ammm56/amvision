@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -17,7 +19,7 @@ NODE_TYPE_ID = "custom.opencv.point-distance"
 def _read_output_metric(raw_value: object) -> str:
     """读取输出指标类型。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "distance_pixels"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("output_metric 必须是字符串")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.debug_image_panel import (
     build_debug_image_preview_output,
@@ -39,7 +41,7 @@ NODE_TYPE_ID = "custom.opencv.contour"
 def _normalize_threshold_mode(raw_value: object) -> str:
     """读取 contour 二值化模式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "binary"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("threshold_mode 必须是字符串")
@@ -60,10 +62,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     search_roi = resolve_search_roi(request, image_matrix=image_matrix)
 
     raw_threshold = request.parameters.get("threshold")
-    threshold_value = 127 if raw_threshold in {None, ""} else require_uint8_int(raw_threshold, field_name="threshold")
+    threshold_value = 127 if is_empty_parameter(raw_threshold) else require_uint8_int(raw_threshold, field_name="threshold")
     threshold_mode = _normalize_threshold_mode(request.parameters.get("threshold_mode"))
     raw_min_area = request.parameters.get("min_area")
-    min_area = 0 if raw_min_area in {None, ""} else require_non_negative_float(raw_min_area, field_name="min_area")
+    min_area = 0 if is_empty_parameter(raw_min_area) else require_non_negative_float(raw_min_area, field_name="min_area")
     max_contours_raw = request.parameters.get("max_contours")
     if max_contours_raw == "":
         max_contours_raw = None
@@ -71,17 +73,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     selected_contour_index_raw = request.parameters.get("selected_contour_index")
     selected_contour_index = (
         require_positive_int(selected_contour_index_raw, field_name="selected_contour_index")
-        if selected_contour_index_raw not in {None, ""}
+        if not is_empty_parameter(selected_contour_index_raw)
         else None
     )
     raw_retrieval_mode = request.parameters.get("retrieval_mode")
     retrieval_mode = normalize_contour_retrieval_mode(
-        "external" if raw_retrieval_mode in {None, ""} else raw_retrieval_mode,
+        "external" if is_empty_parameter(raw_retrieval_mode) else raw_retrieval_mode,
         cv2_module=cv2_module,
     )
     raw_approximation = request.parameters.get("approximation")
     approximation = normalize_contour_approximation(
-        "simple" if raw_approximation in {None, ""} else raw_approximation,
+        "simple" if is_empty_parameter(raw_approximation) else raw_approximation,
         cv2_module=cv2_module,
     )
 

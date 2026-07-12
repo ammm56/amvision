@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes import register_image_bytes
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.region import (
@@ -31,7 +33,7 @@ NODE_TYPE_ID = "custom.opencv.connected-components"
 def _read_optional_non_negative_float(raw_value: object, *, field_name: str) -> float | None:
     """读取可选非负浮点参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_non_negative_float(raw_value, field_name=field_name)
 
@@ -85,15 +87,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_foreground_threshold = request.parameters.get("foreground_threshold")
     foreground_threshold = (
         0
-        if raw_foreground_threshold in {None, ""}
+        if is_empty_parameter(raw_foreground_threshold)
         else require_uint8_int(raw_foreground_threshold, field_name="foreground_threshold")
     )
     raw_connectivity = request.parameters.get("connectivity")
-    connectivity = 8 if raw_connectivity in {None, ""} else normalize_connected_components_connectivity(raw_connectivity)
+    connectivity = 8 if is_empty_parameter(raw_connectivity) else normalize_connected_components_connectivity(raw_connectivity)
     min_area = _read_optional_non_negative_float(request.parameters.get("min_area"), field_name="min_area")
     max_area = _read_optional_non_negative_float(request.parameters.get("max_area"), field_name="max_area")
     raw_max_components = request.parameters.get("max_components")
-    max_components = None if raw_max_components in {None, ""} else require_positive_int(raw_max_components, field_name="max_components")
+    max_components = None if is_empty_parameter(raw_max_components) else require_positive_int(raw_max_components, field_name="max_components")
     region_id_prefix = _read_region_id_prefix(request.parameters.get("region_id_prefix"))
     class_id_default = _read_class_id_default(request.parameters.get("class_id_default"))
     class_name_default = _read_class_name_default(request.parameters.get("class_name_default"))

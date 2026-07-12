@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -25,7 +27,7 @@ NODE_TYPE_ID = "custom.opencv.convex-hull"
 def _read_optional_limit(raw_value: object) -> int | None:
     """读取可选 limit。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="limit")
 
@@ -33,7 +35,7 @@ def _read_optional_limit(raw_value: object) -> int | None:
 def _read_optional_selected_contour_index(raw_value: object) -> int | None:
     """读取可选点选 contour 序号。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return require_positive_int(raw_value, field_name="selected_contour_index")
 
@@ -41,7 +43,7 @@ def _read_optional_selected_contour_index(raw_value: object) -> int | None:
 def _read_sort_by(raw_value: object) -> str:
     """读取排序字段。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "contour_index"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("convex-hull 节点的 sort_by 必须是字符串")
@@ -54,7 +56,7 @@ def _read_sort_by(raw_value: object) -> str:
 def _read_descending(raw_value: object) -> bool:
     """读取 descending。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return False
     if not isinstance(raw_value, bool):
         raise InvalidRequestError("convex-hull 节点的 descending 必须是布尔值")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 import math
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
@@ -148,7 +150,7 @@ def _build_background_fill_value(image_matrix: object, background_fill: str) -> 
 def _read_padding(raw_value: object) -> int:
     """读取裁剪 padding。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0
     return require_non_negative_int(raw_value, field_name="padding")
 
@@ -156,7 +158,7 @@ def _read_padding(raw_value: object) -> int:
 def _read_polygon_background_fill(raw_value: object) -> str:
     """读取 polygon ROI 外部背景填充色。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "black"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("polygon_background_fill 必须是字符串")

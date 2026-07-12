@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from typing import Any
 
 from backend.nodes.core_nodes.support.logic import build_value_payload, extract_value_by_path, require_value_payload
@@ -124,7 +126,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     raw_interpolation = request.parameters.get("interpolation")
     interpolation = (
         cv2_module.INTER_LINEAR
-        if raw_interpolation in {None, ""}
+        if is_empty_parameter(raw_interpolation)
         else normalize_resize_interpolation(raw_interpolation, cv2_module=cv2_module)
     )
     border_mode = _resolve_border_mode(request.parameters.get("border_mode"), cv2_module=cv2_module)
@@ -322,11 +324,11 @@ def _resolve_output_size(
         field_name="output_height",
         parameter_value=request.parameters.get("output_height"),
     )
-    if raw_output_width in {None, ""} and raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_width) and is_empty_parameter(raw_output_height):
         return int(image_width), int(image_height), "source-image"
-    if raw_output_width in {None, ""}:
+    if is_empty_parameter(raw_output_width):
         return int(image_width), require_positive_int(raw_output_height, field_name="output_height"), "mixed"
-    if raw_output_height in {None, ""}:
+    if is_empty_parameter(raw_output_height):
         return require_positive_int(raw_output_width, field_name="output_width"), int(image_height), "mixed"
     return (
         require_positive_int(raw_output_width, field_name="output_width"),
@@ -398,7 +400,7 @@ def _read_bool_config_field(
         field_name=field_name,
         parameter_value=parameter_value,
     )
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return bool(default_value)
     if not isinstance(raw_value, bool):
         raise InvalidRequestError(f"{field_name} 必须是布尔值")
@@ -408,7 +410,7 @@ def _read_bool_config_field(
 def _read_alpha(raw_value: object) -> float:
     """读取 optimal camera matrix 的 alpha。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.0
     alpha_value = require_number(raw_value, field_name="alpha")
     if alpha_value < 0.0 or alpha_value > 1.0:
@@ -419,7 +421,7 @@ def _read_alpha(raw_value: object) -> float:
 def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
     """解析边界填充模式。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return cv2_module.BORDER_CONSTANT
     if not isinstance(raw_value, str):
         raise InvalidRequestError("border_mode 必须是字符串")
@@ -440,7 +442,7 @@ def _resolve_border_mode(raw_value: object, *, cv2_module) -> int:
 def _read_optional_border_value(raw_value: object) -> int:
     """读取边界填充值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0
     return require_uint8_int(raw_value, field_name="border_value")
 
@@ -448,7 +450,7 @@ def _read_optional_border_value(raw_value: object) -> int:
 def _read_optional_text(raw_value: object, *, field_name: str) -> str | None:
     """读取可选文本参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     if not isinstance(raw_value, str):
         raise InvalidRequestError(f"{field_name} 必须是字符串")

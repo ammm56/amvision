@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -29,12 +31,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         imdecode_flags=cv2_module.IMREAD_GRAYSCALE,
     )
     raw_threshold = request.parameters.get("threshold")
-    threshold_value = 25 if raw_threshold in {None, ""} else require_uint8_int(raw_threshold, field_name="threshold")
+    threshold_value = 25 if is_empty_parameter(raw_threshold) else require_uint8_int(raw_threshold, field_name="threshold")
     raw_max_value = request.parameters.get("max_value")
-    max_value = 255 if raw_max_value in {None, ""} else require_uint8_int(raw_max_value, field_name="max_value")
+    max_value = 255 if is_empty_parameter(raw_max_value) else require_uint8_int(raw_max_value, field_name="max_value")
     raw_threshold_type = request.parameters.get("threshold_type")
     threshold_type = normalize_binary_threshold_mode(
-        "binary" if raw_threshold_type in {None, ""} else raw_threshold_type,
+        "binary" if is_empty_parameter(raw_threshold_type) else raw_threshold_type,
         cv2_module=cv2_module,
     )
     _, threshold_image = cv2_module.threshold(

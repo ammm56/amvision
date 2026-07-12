@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.nodes.parameter_utils import is_empty_parameter
+
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_payload,
@@ -29,11 +31,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
 
     raw_threshold1 = request.parameters.get("threshold1")
-    threshold1 = 50 if raw_threshold1 in {None, ""} else require_non_negative_float(raw_threshold1, field_name="threshold1")
+    threshold1 = 50 if is_empty_parameter(raw_threshold1) else require_non_negative_float(raw_threshold1, field_name="threshold1")
     raw_threshold2 = request.parameters.get("threshold2")
-    threshold2 = 150 if raw_threshold2 in {None, ""} else require_non_negative_float(raw_threshold2, field_name="threshold2")
+    threshold2 = 150 if is_empty_parameter(raw_threshold2) else require_non_negative_float(raw_threshold2, field_name="threshold2")
     raw_aperture_size = request.parameters.get("aperture_size")
-    aperture_size = 3 if raw_aperture_size in {None, ""} else require_aperture_size(raw_aperture_size)
+    aperture_size = 3 if is_empty_parameter(raw_aperture_size) else require_aperture_size(raw_aperture_size)
     l2_gradient = bool(request.parameters.get("l2_gradient", False))
     output_image = cv2_module.Canny(
         image_matrix,
