@@ -14,6 +14,7 @@ from backend.nodes.debug_image_panel import (
     build_interaction_tool,
     build_numeric_control,
 )
+from backend.nodes.parameter_utils import is_empty_parameter
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
@@ -25,7 +26,6 @@ from custom_nodes._opencv_shared.backend.runtime.search_roi import (
     resolve_search_roi,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
-    is_empty_parameter,
     require_non_negative_float,
     require_positive_int,
 )
