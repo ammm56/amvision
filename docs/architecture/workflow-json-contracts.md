@@ -414,11 +414,11 @@ barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 cu
 当前还没有落地：
 
 - 更完整的 custom node 运行时隔离与依赖装载
-- 流程编辑器前端
+- 流程编辑器前端的节点组持久化和批量状态控制
 
 ## 下一步建议
 
-1. 在节点编辑器里补齐 node group、分类和节点包版本展示。
+1. 在节点编辑器里补齐 `WorkflowGraphTemplate.groups`，节点组只作为 editor artifact 保存，不作为 runtime node 执行。
 2. 把 custom_nodes 资产纳入发行装配与发布校验。
 3. 再把图执行结果接入现有任务状态流和现场端点绑定。
 

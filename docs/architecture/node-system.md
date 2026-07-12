@@ -153,6 +153,21 @@ custom_nodes/
 - custom node 的注册、卸载和升级不应要求修改核心前端代码结构
 - 与 ComfyUI 对齐的是“节点扩展模型”，不是照搬其无约束运行方式
 
+## 节点组边界
+
+节点组用于 workflow editor 中的画布整理、调试分支管理和批量启用 / 禁用节点。节点组可以向 ComfyUI 的 group 框体验靠拢，但它不是 runtime node。
+
+节点组的正式边界：
+
+- 节点组是 `WorkflowGraphTemplate.groups` 中的 editor artifact。
+- 节点组不注册 `NodeDefinition`，不出现在 node catalog，也没有输入输出端口。
+- 节点组不参与 DAG 拓扑排序、不执行、不产生 node record。
+- 节点组只在编辑器层批量写入成员节点已有的 `enabled` 字段。
+- WorkflowAppRuntime、TriggerSource 和高帧率生产链路只读取普通节点和节点 `enabled` 状态，不读取节点组。
+- 组成员按画布矩形完整包含判断；拖动组时组内节点同步移动；调整组框大小后重新计算成员。
+
+详细设计见 [docs/development/workflow-graph-groups-plan.md](../development/workflow-graph-groups-plan.md)。
+
 ## 图像交互取参
 
 传统视觉节点的参数编辑需要向 VisionMaster / Halcon 这类工业视觉软件靠拢。ROI、找圆、找直线、找边、模板区域、测量线和标定区域等参数不应长期只靠文本字段输入。
