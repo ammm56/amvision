@@ -44,6 +44,16 @@
           @dblclick.stop="beginNameEdit(group)"
         >{{ group.name }}</span>
         <span class="workflow-graph-group__count">{{ group.member_node_ids.length }}</span>
+        <button
+          type="button"
+          class="workflow-graph-group__delete"
+          title="删除节点组，不删除组内节点"
+          aria-label="删除节点组"
+          @mousedown.stop
+          @click.stop="emit('deleteGroup', group.group_id)"
+        >
+          <Trash2 :size="13" />
+        </button>
       </div>
       <button
         type="button"
@@ -68,7 +78,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { CheckCircle, CircleDotDashed, CircleOff } from '@lucide/vue'
+import { CheckCircle, CircleDotDashed, CircleOff, Trash2 } from '@lucide/vue'
 
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
 import type { WorkflowGraphGroupState } from '../graph/useWorkflowGraphGroups'
@@ -86,6 +96,7 @@ const emit = defineEmits<{
   startGroupResize: [event: MouseEvent, group: WorkflowGraphGroup]
   toggleGroupEnabled: [group: WorkflowGraphGroup]
   renameGroup: [groupId: string, name: string]
+  deleteGroup: [groupId: string]
 }>()
 
 const editingGroupId = ref<string | null>(null)

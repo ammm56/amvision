@@ -2739,6 +2739,23 @@ a:hover {
   background: rgb(255 255 255 / 0.18);
 }
 
+.workflow-graph-group__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  color: #ffd7dc;
+  background: rgb(255 92 113 / 0.18);
+}
+
+.workflow-graph-group__delete:hover {
+  color: #ffffff;
+  background: rgb(255 92 113 / 0.34);
+}
+
 .workflow-graph-group__name {
   overflow: hidden;
   font-size: 13px;

@@ -257,6 +257,17 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     options.setStatusMessage(`已更新节点组名称：${normalizedName}`)
   }
 
+  function deleteGroup(groupId: string): void {
+    const group = options.graphGroups.value.find((item) => item.group_id === groupId)
+    if (!group) return
+    options.graphGroups.value = options.graphGroups.value.filter((item) => item.group_id !== groupId)
+    if (selectedGroupId.value === groupId) selectedGroupId.value = null
+    if (groupDragState.value?.groupId === groupId) groupDragState.value = null
+    if (groupResizeState.value?.groupId === groupId) groupResizeState.value = null
+    removeDocumentListeners()
+    options.setStatusMessage(`已删除节点组：${group.name}，组内节点不受影响`)
+  }
+
   function readGroupState(group: WorkflowGraphGroup): WorkflowGraphGroupState {
     const memberNodeIds = new Set(group.member_node_ids)
     const memberNodes = options.graphNodes.value.filter((node) => memberNodeIds.has(node.node.node_id))
@@ -348,6 +359,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     syncMembershipAfterNodeDrag,
     toggleGroupEnabled,
     renameGroup,
+    deleteGroup,
     readGroupState,
   }
 }

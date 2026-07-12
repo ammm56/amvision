@@ -61,6 +61,7 @@
           @start-group-resize="startGroupResize"
           @toggle-group-enabled="toggleGroupEnabled"
           @rename-group="renameGroup"
+          @delete-group="deleteGroup"
         />
 
         <WorkflowBoundaryNodeLayer
@@ -958,6 +959,7 @@ const {
   syncMembershipAfterNodeDrag,
   toggleGroupEnabled,
   renameGroup,
+  deleteGroup,
   readGroupState,
 } = useWorkflowGraphGroups<GraphNodeView>({
   graphGroups,
