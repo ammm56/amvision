@@ -7,6 +7,7 @@ import type {
   FlowApplication,
   FlowApplicationBinding,
   WorkflowGraphEdge,
+  WorkflowGraphGroup,
   WorkflowGraphInput,
   WorkflowGraphOutput,
   WorkflowGraphTemplate,
@@ -31,6 +32,7 @@ export interface WorkflowDocumentBuilderOptions<NodeView extends WorkflowDocumen
   workflowApp: Ref<WorkflowAppDocument | null>
   graphNodes: Ref<NodeView[]>
   graphEdges: Ref<WorkflowGraphEdge[]>
+  graphGroups: Ref<WorkflowGraphGroup[]>
   templateInputs: Ref<WorkflowGraphInput[]>
   templateOutputs: Ref<WorkflowGraphOutput[]>
   applicationBindingsDraft: Ref<FlowApplicationBinding[]>
@@ -59,6 +61,12 @@ export function useWorkflowDocumentBuilder<NodeView extends WorkflowDocumentBuil
       edges: options.graphEdges.value.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
       template_inputs: options.templateInputs.value.map((input) => ({ ...input, metadata: { ...input.metadata } })),
       template_outputs: options.templateOutputs.value.map((output) => ({ ...output, metadata: { ...output.metadata } })),
+      groups: options.graphGroups.value.map((group) => ({
+        ...group,
+        rect: { ...group.rect },
+        member_node_ids: [...group.member_node_ids],
+        metadata: { ...group.metadata },
+      })),
     }
   }
 

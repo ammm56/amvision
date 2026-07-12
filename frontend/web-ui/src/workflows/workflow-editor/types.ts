@@ -132,6 +132,26 @@ export interface WorkflowGraphOutput {
   metadata: WorkflowJsonObject
 }
 
+export interface WorkflowGraphGroupRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface WorkflowGraphGroup {
+  group_id: string
+  name: string
+  enabled: boolean
+  rect: WorkflowGraphGroupRect
+  member_node_ids: string[]
+  membership_policy: 'full-containment'
+  color?: string | null
+  collapsed: boolean
+  locked: boolean
+  metadata: WorkflowJsonObject
+}
+
 export interface WorkflowGraphTemplate {
   format_id: 'amvision.workflow-graph-template.v1'
   template_id: string
@@ -142,6 +162,7 @@ export interface WorkflowGraphTemplate {
   edges: WorkflowGraphEdge[]
   template_inputs: WorkflowGraphInput[]
   template_outputs: WorkflowGraphOutput[]
+  groups: WorkflowGraphGroup[]
   metadata: WorkflowJsonObject
 }
 

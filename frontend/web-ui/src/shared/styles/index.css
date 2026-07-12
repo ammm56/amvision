@@ -2656,9 +2656,140 @@ a:hover {
   z-index: 1;
 }
 
+.workflow-graph-stage .workflow-graph-group-layer {
+  z-index: 1;
+}
+
 .workflow-graph-stage .workflow-graph-node,
 .workflow-graph-stage .workflow-graph-boundary-node {
   z-index: 2;
+}
+
+.workflow-graph-group-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.workflow-graph-group {
+  position: absolute;
+  min-width: 180px;
+  min-height: 120px;
+  border: 2px solid color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 10%, transparent);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  pointer-events: auto;
+}
+
+.workflow-graph-group.is-selected {
+  border-color: var(--workflow-graph-group-color, #22b8cf);
+  background: color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 16%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.08),
+    0 0 0 3px color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 24%, transparent);
+}
+
+.workflow-graph-group.is-disabled {
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.workflow-graph-group.is-mixed {
+  border-style: dotted;
+}
+
+.workflow-graph-group--draft {
+  pointer-events: none;
+  border-style: dashed;
+  background: rgb(34 184 207 / 0.1);
+}
+
+.workflow-graph-group__header {
+  position: absolute;
+  top: -32px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  max-width: min(420px, 100%);
+  min-height: 28px;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 54%, #3a444a);
+  border-radius: 8px;
+  color: #e8f7fa;
+  background: color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 20%, #202529);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.18);
+  cursor: move;
+}
+
+.workflow-graph-group__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  color: #effcff;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.workflow-graph-group__toggle:hover {
+  background: rgb(255 255 255 / 0.18);
+}
+
+.workflow-graph-group__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-graph-group__name-input {
+  width: 160px;
+  height: 22px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 6px;
+  padding: 0 6px;
+  color: #f5fdff;
+  background: rgb(0 0 0 / 0.2);
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+
+.workflow-graph-group__name-input:focus {
+  border-color: #ffffff;
+}
+
+.workflow-graph-group__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: #e8f7fa;
+  background: rgb(255 255 255 / 0.12);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workflow-graph-group__resize {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 58%, #ffffff);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, transparent 0 42%, rgb(255 255 255 / 0.7) 42% 52%, transparent 52%),
+    color-mix(in srgb, var(--workflow-graph-group-color, #22b8cf) 40%, #202529);
+  cursor: nwse-resize;
 }
 
 .workflow-graph-floating-panel {

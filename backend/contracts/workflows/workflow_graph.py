@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from typing import Literal
 
@@ -426,6 +427,80 @@ class WorkflowGraphOutput(BaseModel):
         return self
 
 
+class WorkflowGraphGroupRect(BaseModel):
+    """描述 workflow editor 节点组在画布中的矩形区域。
+
+    字段：
+    - x：组框左上角画布 x 坐标。
+    - y：组框左上角画布 y 坐标。
+    - width：组框宽度，必须大于 0。
+    - height：组框高度，必须大于 0。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+    @model_validator(mode="after")
+    def validate_group_rect(self) -> WorkflowGraphGroupRect:
+        """校验节点组矩形尺寸，避免保存不可见或不可操作的组。"""
+
+        for field_name in ("x", "y", "width", "height"):
+            field_value = getattr(self, field_name)
+            if not math.isfinite(field_value):
+                raise ValueError(f"节点组 rect.{field_name} 必须是有限数值")
+        if self.width <= 0:
+            raise ValueError("节点组 rect.width 必须大于 0")
+        if self.height <= 0:
+            raise ValueError("节点组 rect.height 必须大于 0")
+        return self
+
+
+class WorkflowGraphGroup(BaseModel):
+    """描述 workflow editor 节点组。
+
+    节点组是编辑器 artifact，不是 runtime node。它只用于画布整理、分支调试和批量
+    写入成员节点 enabled 状态，不参与 DAG、执行器或 node record。
+
+    字段：
+    - group_id：模板内唯一组 id。
+    - name：组显示名称。
+    - enabled：组目标启用状态。
+    - rect：组框矩形区域。
+    - member_node_ids：组成员节点 id。
+    - membership_policy：成员判定策略，当前固定为 full-containment。
+    - color：组框颜色。
+    - collapsed：是否折叠显示。
+    - locked：是否锁定编辑。
+    - metadata：附加元数据。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    group_id: str
+    name: str
+    enabled: bool = True
+    rect: WorkflowGraphGroupRect
+    member_node_ids: tuple[str, ...] = ()
+    membership_policy: Literal["full-containment"] = "full-containment"
+    color: str | None = None
+    collapsed: bool = False
+    locked: bool = False
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_graph_group(self) -> WorkflowGraphGroup:
+        """校验节点组基础字段。"""
+
+        _require_stripped_text(self.group_id, "group_id")
+        _require_stripped_text(self.name, "name")
+        _ensure_unique_names(self.member_node_ids, f"节点组 {self.group_id} 成员")
+        return self
+
+
 class WorkflowGraphTemplate(BaseModel):
     """描述可保存、可加载、可复用的工作流图模板。
 
@@ -439,6 +514,7 @@ class WorkflowGraphTemplate(BaseModel):
     - edges：边列表。
     - template_inputs：对外暴露的逻辑输入列表。
     - template_outputs：对外暴露的逻辑输出列表。
+    - groups：编辑器节点组列表，只用于画布组织和批量 enabled 状态操作。
     - metadata：附加元数据。
     """
 
@@ -453,6 +529,7 @@ class WorkflowGraphTemplate(BaseModel):
     edges: tuple[WorkflowGraphEdge, ...] = ()
     template_inputs: tuple[WorkflowGraphInput, ...] = ()
     template_outputs: tuple[WorkflowGraphOutput, ...] = ()
+    groups: tuple[WorkflowGraphGroup, ...] = ()
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -468,6 +545,7 @@ class WorkflowGraphTemplate(BaseModel):
         _ensure_unique_names(tuple(edge.edge_id for edge in self.edges), "图模板边")
         _ensure_unique_names(tuple(item.input_id for item in self.template_inputs), "图模板输入")
         _ensure_unique_names(tuple(item.output_id for item in self.template_outputs), "图模板输出")
+        _ensure_unique_names(tuple(group.group_id for group in self.groups), "图模板节点组")
 
         node_ids = {node.node_id for node in self.nodes}
         for edge in self.edges:
@@ -481,6 +559,10 @@ class WorkflowGraphTemplate(BaseModel):
         for item in self.template_outputs:
             if item.source_node_id not in node_ids:
                 raise ValueError(f"模板输出 {item.output_id} 引用了不存在的 source_node_id")
+        for group in self.groups:
+            for member_node_id in group.member_node_ids:
+                if member_node_id not in node_ids:
+                    raise ValueError(f"节点组 {group.group_id} 引用了不存在的 member_node_id")
         return self
 
 

@@ -10,6 +10,7 @@ export interface WorkflowEditorLifecycleOptions {
   stopPortConnection: () => void
   stopStagePan: () => void
   stopMinimapNavigation: () => void
+  cancelTransientGraphOperations?: () => void
   revokePreviewImageObjectUrls: () => void
 }
 
@@ -32,6 +33,7 @@ export function useWorkflowEditorLifecycle(options: WorkflowEditorLifecycleOptio
     options.stopPortConnection()
     options.stopStagePan()
     options.stopMinimapNavigation()
+    options.cancelTransientGraphOperations?.()
     options.revokePreviewImageObjectUrls()
     window.removeEventListener('keydown', options.handleKeydown)
     window.removeEventListener('resize', options.updateStageSize)

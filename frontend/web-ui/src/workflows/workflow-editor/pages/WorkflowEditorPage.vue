@@ -16,11 +16,13 @@
       :graph-theme="graphTheme"
       :preview-disabled="previewDisabled"
       :save-disabled="saveDisabled"
+      :group-create-mode="groupCreateMode"
       @begin-title-edit="beginEditorTitleEdit"
       @update-title-draft="updateEditorTitleDraft"
       @commit-title="commitEditorTitleEdit"
       @cancel-title="cancelEditorTitleEdit"
       @refresh="loadPage"
+      @toggle-group-create-mode="toggleGroupCreateMode"
       @toggle-theme="toggleGraphTheme"
       @preview="runPreview"
       @save="saveCurrentWorkflowApp"
@@ -29,7 +31,7 @@
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
-      @mousedown="startStagePan"
+      @mousedown="handleStageMouseDown"
       @wheel="handleStageWheel"
       @contextmenu.prevent="openStageContextMenu"
     >
@@ -47,6 +49,18 @@
           @select-link="selectGraphLink"
           @open-link-context-menu="openGraphLinkContextMenu"
           @start-edge-target-reconnect="startEdgeTargetReconnect"
+        />
+
+        <WorkflowGraphGroupLayer
+          :groups="graphGroups"
+          :selected-group-id="selectedGroupId"
+          :draft-rect="draftGroupRect"
+          :read-group-state="readGroupState"
+          @select-group="selectGroup"
+          @start-group-drag="startGroupDrag"
+          @start-group-resize="startGroupResize"
+          @toggle-group-enabled="toggleGroupEnabled"
+          @rename-group="renameGroup"
         />
 
         <WorkflowBoundaryNodeLayer
@@ -226,6 +240,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
+import WorkflowGraphGroupLayer from '../components/WorkflowGraphGroupLayer.vue'
 import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
 import WorkflowGraphNodeLayer from '../components/WorkflowGraphNodeLayer.vue'
 import WorkflowGraphOverlayLayer from '../components/WorkflowGraphOverlayLayer.vue'
@@ -262,6 +277,7 @@ import { useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../binding
 import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingEditorActions'
 import { useWorkflowBoundaryNodes, type WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { useWorkflowGraphDeletion } from '../graph/useWorkflowGraphDeletion'
+import { useWorkflowGraphGroups } from '../graph/useWorkflowGraphGroups'
 import { useWorkflowRequestImageInputs } from '../graph/useWorkflowRequestImageInputs'
 import { useWorkflowNodeDisplayHelpers } from '../nodes/useWorkflowNodeDisplayHelpers'
 import { useWorkflowGraphNodeViews, type WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
@@ -278,7 +294,7 @@ import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOr
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
 import { updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
-import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
+import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
 type SelectValue = WorkflowNodeParameterSelectValue
@@ -318,6 +334,7 @@ const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const graphNodes = ref<GraphNodeView[]>([])
 const graphEdges = ref<WorkflowGraphEdge[]>([])
+const graphGroups = ref<WorkflowGraphGroup[]>([])
 const templateInputs = ref<WorkflowGraphInput[]>([])
 const templateOutputs = ref<WorkflowGraphOutput[]>([])
 const contextMenu = ref<ContextMenuState | null>(null)
@@ -697,15 +714,6 @@ const {
   },
 })
 const {
-  startNodeDrag,
-  stopNodeDrag,
-} = useWorkflowNodeDrag<GraphNodeView>({
-  graphNodes,
-  connectionDraft,
-  screenToWorld,
-  selectNode,
-})
-const {
   boundaryDragState,
   startBoundaryDrag,
   stopBoundaryDrag,
@@ -778,6 +786,7 @@ const {
   workflowApp,
   graphNodes,
   graphEdges,
+  graphGroups,
   templateInputs,
   templateOutputs,
   applicationBindingsDraft,
@@ -936,6 +945,43 @@ const {
   clampNumber,
 })
 const {
+  selectedGroupId,
+  groupCreateMode,
+  draftGroupRect,
+  toggleGroupCreateMode,
+  cancelTransientGroupOperations,
+  startGroupCreate,
+  selectGroup,
+  clearGroupSelection,
+  startGroupDrag,
+  startGroupResize,
+  syncMembershipAfterNodeDrag,
+  toggleGroupEnabled,
+  renameGroup,
+  readGroupState,
+} = useWorkflowGraphGroups<GraphNodeView>({
+  graphGroups,
+  graphNodes,
+  screenToWorld,
+  readNodeHeight: nodeVisualHeight,
+  setStatusMessage: (message) => {
+    statusMessage.value = message
+  },
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
+})
+const {
+  startNodeDrag,
+  stopNodeDrag,
+} = useWorkflowNodeDrag<GraphNodeView>({
+  graphNodes,
+  connectionDraft,
+  screenToWorld,
+  selectNode,
+  onStop: syncMembershipAfterNodeDrag,
+})
+const {
   graphLinkMidpoints,
   selectedEdgeReconnectHandles,
 } = useWorkflowEdgeHandles({
@@ -1023,6 +1069,7 @@ const {
   workflowApp,
   graphNodes,
   graphEdges,
+  graphGroups,
   templateInputs,
   templateOutputs,
   applicationBindingsDraft,
@@ -1145,6 +1192,16 @@ function getBindingPayloadTypeId(binding: FlowApplicationBinding): string {
 
 function clampNumber(value: number, minValue: number, maxValue: number): number {
   return Math.min(maxValue, Math.max(minValue, value))
+}
+
+function handleStageMouseDown(event: MouseEvent): void {
+  if (startGroupCreate(event)) {
+    contextMenu.value = null
+    nodePicker.value = null
+    return
+  }
+  clearGroupSelection()
+  startStagePan(event)
 }
 
 function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue): void {
@@ -1432,6 +1489,7 @@ useWorkflowEditorLifecycle({
   stopPortConnection,
   stopStagePan,
   stopMinimapNavigation,
+  cancelTransientGraphOperations: cancelTransientGroupOperations,
   revokePreviewImageObjectUrls,
 })
 </script>

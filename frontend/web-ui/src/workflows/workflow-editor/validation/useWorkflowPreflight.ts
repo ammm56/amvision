@@ -55,6 +55,8 @@ export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>
     if (duplicateInputId) return { message: `应用输入 id 重复：${duplicateInputId}`, boundaryKind: 'entry', bindingId: duplicateInputId }
     const duplicateOutputId = findDuplicateValue(template.template_outputs.map((output) => output.output_id))
     if (duplicateOutputId) return { message: `应用输出 id 重复：${duplicateOutputId}`, boundaryKind: 'result', bindingId: duplicateOutputId }
+    const duplicateGroupId = findDuplicateValue(template.groups.map((group) => group.group_id))
+    if (duplicateGroupId) return { message: `节点组 id 重复：${duplicateGroupId}` }
 
     const nodeViewsById = new Map(options.graphNodes.value.map((node) => [node.node.node_id, node]))
     const inputUsage = new Map<string, string[]>()
@@ -62,6 +64,20 @@ export function useWorkflowPreflight<NodeView extends WorkflowPreflightNodeView>
       const graphNode = nodeViewsById.get(node.node_id)
       if (!graphNode) return { message: `节点 ${node.node_id} 没有画布视图，请刷新后重试。`, nodeId: node.node_id }
       if (!options.nodeDefinitionsById.value.has(node.node_type_id)) return { message: `节点 ${node.node_id} 引用了不可用的 Node type：${node.node_type_id}`, nodeId: node.node_id }
+    }
+
+    for (const group of template.groups) {
+      if (!group.group_id.trim()) return { message: '节点组 id 不能为空。' }
+      if (!group.name.trim()) return { message: `节点组 ${group.group_id} 名称不能为空。` }
+      if (!Number.isFinite(group.rect.x) || !Number.isFinite(group.rect.y) || !Number.isFinite(group.rect.width) || !Number.isFinite(group.rect.height)) {
+        return { message: `节点组 ${group.group_id} 的画布矩形坐标无效。` }
+      }
+      if (group.rect.width <= 0 || group.rect.height <= 0) return { message: `节点组 ${group.group_id} 的宽高必须大于 0。` }
+      const duplicateMemberNodeId = findDuplicateValue(group.member_node_ids)
+      if (duplicateMemberNodeId) return { message: `节点组 ${group.group_id} 成员重复：${duplicateMemberNodeId}`, nodeId: duplicateMemberNodeId }
+      for (const memberNodeId of group.member_node_ids) {
+        if (!nodeViewsById.has(memberNodeId)) return { message: `节点组 ${group.group_id} 引用了不存在的节点：${memberNodeId}` }
+      }
     }
 
     for (const edge of template.edges) {

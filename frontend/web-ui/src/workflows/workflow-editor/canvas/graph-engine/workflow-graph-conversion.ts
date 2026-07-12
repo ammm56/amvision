@@ -1,4 +1,12 @@
-import type { WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowGraphTemplate, WorkflowJsonObject } from '../../types'
+import type {
+  WorkflowGraphEdge,
+  WorkflowGraphGroup,
+  WorkflowGraphInput,
+  WorkflowGraphNode,
+  WorkflowGraphOutput,
+  WorkflowGraphTemplate,
+  WorkflowJsonObject,
+} from '../../types'
 
 export interface WorkflowCanvasNodeSnapshot {
   node_id: string
@@ -17,6 +25,7 @@ export interface WorkflowCanvasGraphSnapshot {
   edges: WorkflowGraphEdge[]
   template_inputs: WorkflowGraphInput[]
   template_outputs: WorkflowGraphOutput[]
+  groups: WorkflowGraphGroup[]
 }
 
 function readNumber(value: unknown, fallback: number): number {
@@ -39,6 +48,15 @@ function snapshotNodeToGraphNode(snapshot: WorkflowCanvasNodeSnapshot): Workflow
   }
 }
 
+function cloneGraphGroup(group: WorkflowGraphGroup): WorkflowGraphGroup {
+  return {
+    ...group,
+    rect: { ...group.rect },
+    member_node_ids: [...group.member_node_ids],
+    metadata: { ...group.metadata },
+  }
+}
+
 export function workflowTemplateToCanvasSnapshot(template: WorkflowGraphTemplate): WorkflowCanvasGraphSnapshot {
   return {
     nodes: template.nodes.map((node, index) => ({
@@ -55,6 +73,7 @@ export function workflowTemplateToCanvasSnapshot(template: WorkflowGraphTemplate
     edges: template.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
     template_inputs: template.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
     template_outputs: template.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
+    groups: template.groups.map(cloneGraphGroup),
   }
 }
 
@@ -68,6 +87,7 @@ export function canvasSnapshotToWorkflowTemplate(
     edges: snapshot.edges.map((edge) => ({ ...edge, metadata: { ...edge.metadata } })),
     template_inputs: snapshot.template_inputs.map((input) => ({ ...input, metadata: { ...input.metadata } })),
     template_outputs: snapshot.template_outputs.map((output) => ({ ...output, metadata: { ...output.metadata } })),
+    groups: snapshot.groups.map(cloneGraphGroup),
     metadata: { ...sourceTemplate.metadata },
   }
 }

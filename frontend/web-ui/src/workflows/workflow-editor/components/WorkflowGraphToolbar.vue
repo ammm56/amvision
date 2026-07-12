@@ -64,6 +64,10 @@
       <span v-if="statusMessage">{{ statusMessage }}</span>
     </div>
     <div class="workflow-graph-toolbar__actions">
+      <Button :variant="groupCreateMode ? 'primary' : 'secondary'" :disabled="loading" @click="emit('toggleGroupCreateMode')">
+        <BoxSelect :size="16" />
+        节点组
+      </Button>
       <Button variant="secondary" :disabled="loading" @click="emit('refresh')">
         <RefreshCw :size="16" />
         {{ t('common.refresh') }}
@@ -87,7 +91,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { ArrowLeft, Check, Moon, Play, RefreshCw, Save, SquarePen, Sun, X } from '@lucide/vue'
+import { ArrowLeft, BoxSelect, Check, Moon, Play, RefreshCw, Save, SquarePen, Sun, X } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -110,6 +114,7 @@ const props = defineProps<{
   graphTheme: string
   previewDisabled: boolean
   saveDisabled: boolean
+  groupCreateMode: boolean
 }>()
 
 const emit = defineEmits<{
@@ -118,6 +123,7 @@ const emit = defineEmits<{
   commitTitle: []
   cancelTitle: []
   refresh: []
+  toggleGroupCreateMode: []
   toggleTheme: []
   preview: []
   save: []

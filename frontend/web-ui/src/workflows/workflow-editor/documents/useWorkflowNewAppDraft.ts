@@ -90,6 +90,7 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       edges: [],
       template_inputs: [],
       template_outputs: [],
+      groups: [],
       metadata: { source: 'workflow-graph-editor' },
     }
   }

@@ -23,6 +23,7 @@ export interface WorkflowNodeDragOptions<NodeView extends WorkflowNodeDragNodeVi
   connectionDraft: Ref<WorkflowConnectionDraftState | null>
   screenToWorld: (clientX: number, clientY: number) => { x: number; y: number }
   selectNode: (nodeId: string) => void
+  onStop?: () => void
 }
 
 export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(options: WorkflowNodeDragOptions<NodeView>) {
@@ -54,9 +55,11 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
   }
 
   function stopNodeDrag(): void {
+    const wasDragging = Boolean(nodeDragState.value)
     nodeDragState.value = null
     document.removeEventListener('mousemove', moveDraggedNode)
     document.removeEventListener('mouseup', stopNodeDrag)
+    if (wasDragging) options.onStop?.()
   }
 
   return {
