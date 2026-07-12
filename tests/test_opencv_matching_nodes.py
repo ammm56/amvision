@@ -57,6 +57,8 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
                     "ratio_test_threshold": 0.82,
                     "max_matches": 120,
                     "debug_image_panel_enabled": True,
+                    "debug_selected_match_ids": ["match-1"],
+                    "debug_manual_pair_lines_xyxy": [[12.0, 16.0, 260.0, 22.0]],
                 },
             ),
             WorkflowGraphNode(
@@ -67,6 +69,8 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
                     "ransac_reprojection_threshold": 4.0,
                     "min_match_count": 12,
                     "debug_image_panel_enabled": True,
+                    "debug_selected_match_ids": ["match-1"],
+                    "debug_manual_pair_lines_xyxy": [[12.0, 16.0, 260.0, 22.0]],
                 },
             ),
         ),
@@ -235,7 +239,9 @@ def test_opencv_matching_orb_homography_execute(tmp_path: Path) -> None:
     assert homography_debug_preview["type"] == "image-preview"
     assert len(match_debug_preview["overlays"]) > 0
     assert any(overlay.get("kind") == "match-line" for overlay in match_debug_preview["overlays"])
+    assert any(overlay.get("kind") == "point-pair" for overlay in match_debug_preview["overlays"])
     assert any(overlay.get("kind") == "homography-overlay" for overlay in homography_debug_preview["overlays"])
+    assert any(overlay.get("kind") == "point-pair" for overlay in homography_debug_preview["overlays"])
     match_line_overlay = next(
         overlay for overlay in match_debug_preview["overlays"] if overlay.get("kind") == "match-line"
     )

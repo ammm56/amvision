@@ -25,6 +25,7 @@ from custom_nodes._opencv_shared.backend.runtime.search_roi import (
     resolve_search_roi,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    is_empty_parameter,
     require_non_negative_float,
     require_positive_int,
 )
@@ -37,7 +38,7 @@ NODE_TYPE_ID = "custom.opencv.template-match"
 def _read_match_method(raw_value: object) -> str:
     """读取模板匹配方法。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "ccoeff-normed"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("method 必须是字符串")
@@ -62,7 +63,7 @@ def _resolve_match_method(method_name: str, *, cv2_module: Any) -> int:
 def _read_score_threshold(raw_value: object) -> float:
     """读取匹配分数阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.8
     normalized_value = require_non_negative_float(raw_value, field_name="score_threshold")
     if normalized_value > 1.0:
@@ -73,7 +74,7 @@ def _read_score_threshold(raw_value: object) -> float:
 def _read_nms_iou_threshold(raw_value: object) -> float:
     """读取匹配框去重 IoU 阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.3
     normalized_value = require_non_negative_float(raw_value, field_name="nms_iou_threshold")
     if normalized_value > 1.0:
@@ -84,7 +85,7 @@ def _read_nms_iou_threshold(raw_value: object) -> float:
 def _read_max_matches(raw_value: object) -> int:
     """读取最多返回的匹配数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1
     return require_positive_int(raw_value, field_name="max_matches")
 

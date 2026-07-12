@@ -20,6 +20,7 @@ from custom_nodes._opencv_shared.backend.runtime.features import (
     require_local_features_payload,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    is_empty_parameter,
     require_non_negative_float,
     require_positive_int,
 )
@@ -33,7 +34,7 @@ def _read_matcher_kind(raw_value: object, *, descriptor_norm: str) -> str:
     """读取 matcher_kind。"""
 
     default_value = "bf-hamming2" if descriptor_norm == "hamming2" else "bf-hamming"
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return default_value
     if not isinstance(raw_value, str):
         raise InvalidRequestError("matcher_kind 必须是字符串")
@@ -46,7 +47,7 @@ def _read_matcher_kind(raw_value: object, *, descriptor_norm: str) -> str:
 def _read_ratio_test_threshold(raw_value: object) -> float:
     """读取 ratio_test_threshold。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.75
     normalized_value = require_non_negative_float(raw_value, field_name="ratio_test_threshold")
     if normalized_value <= 0.0 or normalized_value >= 1.0:
@@ -57,7 +58,7 @@ def _read_ratio_test_threshold(raw_value: object) -> float:
 def _read_max_matches(raw_value: object) -> int:
     """读取最大匹配数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 100
     return require_positive_int(raw_value, field_name="max_matches")
 
@@ -65,7 +66,7 @@ def _read_max_matches(raw_value: object) -> int:
 def _read_optional_max_distance(raw_value: object) -> float | None:
     """读取可选最大距离阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     return float(require_non_negative_float(raw_value, field_name="max_distance"))
 
@@ -73,7 +74,7 @@ def _read_optional_max_distance(raw_value: object) -> float | None:
 def _read_debug_max_match_lines(raw_value: object) -> int:
     """读取 debug_preview 中最多绘制的匹配线数量。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 200
     return require_positive_int(raw_value, field_name="debug_max_match_lines")
 
@@ -81,7 +82,7 @@ def _read_debug_max_match_lines(raw_value: object) -> int:
 def _read_debug_selected_match_ids(raw_value: object) -> set[str]:
     """读取图片面板点选的 match id 集合，仅用于调试图高亮和筛选。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return set()
     if not isinstance(raw_value, list):
         raise InvalidRequestError("debug_selected_match_ids 必须是字符串数组")
@@ -186,7 +187,6 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     debug_manual_pair_lines_xyxy = _read_debug_manual_pair_lines(
         request.parameters.get("debug_manual_pair_lines_xyxy")
     )
-
     descriptor_matrix_a = np_module.array(features_a_payload["descriptors"], dtype=np_module.uint8)
     descriptor_matrix_b = np_module.array(features_b_payload["descriptors"], dtype=np_module.uint8)
     raw_match_count = 0

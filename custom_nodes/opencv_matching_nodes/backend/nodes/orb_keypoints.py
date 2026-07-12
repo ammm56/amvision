@@ -25,6 +25,7 @@ from custom_nodes._opencv_shared.backend.runtime.search_roi import (
 from custom_nodes._opencv_shared.backend.runtime.features import build_local_features_payload
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    is_empty_parameter,
     require_non_negative_int,
     require_non_negative_float,
     require_positive_int,
@@ -38,7 +39,7 @@ NODE_TYPE_ID = "custom.opencv.orb-keypoints"
 def _read_scale_factor(raw_value: object) -> float:
     """读取 ORB scale_factor。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 1.2
     normalized_value = require_non_negative_float(raw_value, field_name="scale_factor")
     if normalized_value <= 1.0:
@@ -49,7 +50,7 @@ def _read_scale_factor(raw_value: object) -> float:
 def _read_positive_int(raw_value: object, *, field_name: str, default_value: int) -> int:
     """读取正整数参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return int(default_value)
     return require_positive_int(raw_value, field_name=field_name)
 
@@ -62,7 +63,7 @@ def _read_non_negative_int_parameter(
 ) -> int:
     """读取非负整数参数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return int(default_value)
     return require_non_negative_int(raw_value, field_name=field_name)
 
@@ -70,7 +71,7 @@ def _read_non_negative_int_parameter(
 def _read_wta_k(raw_value: object) -> int:
     """读取 ORB WTA_K。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 2
     normalized_value = require_positive_int(raw_value, field_name="wta_k")
     if normalized_value not in {2, 3, 4}:
@@ -81,7 +82,7 @@ def _read_wta_k(raw_value: object) -> int:
 def _read_score_type(raw_value: object) -> str:
     """读取 ORB score_type。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "harris"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("score_type 必须是字符串")

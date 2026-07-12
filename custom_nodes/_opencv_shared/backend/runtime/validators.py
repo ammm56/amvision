@@ -6,6 +6,20 @@ from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
 
+
+def is_empty_parameter(value: object) -> bool:
+    """判断节点参数是否按“未填写”处理。
+
+    参数：
+    - value：节点参数原始值，可能是字符串、数组、对象或 None。
+
+    返回：
+    - bool：仅 None 和空字符串表示未填写；数组或对象必须保留给后续类型校验。
+    """
+
+    return value is None or (isinstance(value, str) and value == "")
+
+
 def require_positive_int(value: object, *, field_name: str) -> int:
     """把输入值解析为正整数。
 

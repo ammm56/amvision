@@ -20,6 +20,7 @@ from custom_nodes._opencv_shared.backend.runtime.features import (
     require_local_features_payload,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    is_empty_parameter,
     require_non_negative_float,
     require_positive_int,
 )
@@ -32,7 +33,7 @@ NODE_TYPE_ID = "custom.opencv.homography-estimate"
 def _read_method(raw_value: object) -> str:
     """读取 homography 估计方法。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return "ransac"
     if not isinstance(raw_value, str):
         raise InvalidRequestError("method 必须是字符串")
@@ -45,7 +46,7 @@ def _read_method(raw_value: object) -> str:
 def _read_ransac_reprojection_threshold(raw_value: object) -> float:
     """读取 RANSAC 重投影阈值。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 3.0
     normalized_value = require_non_negative_float(
         raw_value,
@@ -59,7 +60,7 @@ def _read_ransac_reprojection_threshold(raw_value: object) -> float:
 def _read_confidence(raw_value: object) -> float:
     """读取 findHomography confidence。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 0.995
     normalized_value = require_non_negative_float(raw_value, field_name="confidence")
     if normalized_value <= 0.0 or normalized_value >= 1.0:
@@ -70,7 +71,7 @@ def _read_confidence(raw_value: object) -> float:
 def _read_min_match_count(raw_value: object) -> int:
     """读取最小匹配数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 4
     return require_positive_int(raw_value, field_name="min_match_count")
 
@@ -78,7 +79,7 @@ def _read_min_match_count(raw_value: object) -> int:
 def _read_max_iters(raw_value: object) -> int:
     """读取最大迭代次数。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 2000
     return require_positive_int(raw_value, field_name="max_iters")
 
@@ -86,7 +87,7 @@ def _read_max_iters(raw_value: object) -> int:
 def _read_debug_max_match_lines(raw_value: object) -> int:
     """读取 debug_preview 中最多绘制的内点匹配线数量。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return 200
     return require_positive_int(raw_value, field_name="debug_max_match_lines")
 
@@ -94,7 +95,7 @@ def _read_debug_max_match_lines(raw_value: object) -> int:
 def _read_debug_selected_match_ids(raw_value: object) -> set[str]:
     """读取图片面板点选的 match id 集合，仅用于调试图高亮和筛选。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return set()
     if not isinstance(raw_value, list):
         raise InvalidRequestError("debug_selected_match_ids 必须是字符串数组")
@@ -111,7 +112,7 @@ def _read_debug_selected_match_ids(raw_value: object) -> set[str]:
 def _read_optional_debug_selected_projection_id(raw_value: object) -> str | None:
     """读取图片面板点选的 homography 投影框 id，仅用于调试图高亮。"""
 
-    if raw_value in {None, ""}:
+    if is_empty_parameter(raw_value):
         return None
     if not isinstance(raw_value, str):
         raise InvalidRequestError("debug_selected_projection_id 必须是字符串")
@@ -211,7 +212,6 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     debug_manual_pair_lines_xyxy = _read_debug_manual_pair_lines(
         request.parameters.get("debug_manual_pair_lines_xyxy")
     )
-
     match_items = matches_payload["items"]
     if len(match_items) < max(4, min_match_count):
         raise InvalidRequestError(
