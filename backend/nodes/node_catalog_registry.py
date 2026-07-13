@@ -33,7 +33,10 @@ class NodeCatalogRegistry:
         )
         return NodeCatalogSnapshot(
             node_pack_manifests=custom_node_catalog.node_pack_manifests,
-            payload_contracts=get_core_workflow_payload_contracts() + custom_node_catalog.payload_contracts,
+            payload_contracts=_merge_payload_contracts(
+                get_core_workflow_payload_contracts(),
+                custom_node_catalog.payload_contracts,
+            ),
             node_definitions=get_core_workflow_node_definitions() + custom_node_catalog.node_definitions,
         )
 
@@ -51,3 +54,33 @@ class NodeCatalogRegistry:
         """返回统一目录中的 workflow 节点定义列表。"""
 
         return self.get_catalog_snapshot().node_definitions
+
+
+def _merge_payload_contracts(
+    *payload_contract_groups: tuple[WorkflowPayloadContract, ...],
+) -> tuple[WorkflowPayloadContract, ...]:
+    """按 payload_type_id 合并 core 与节点包 payload 规则。
+
+    参数：
+    - payload_contract_groups：按优先级传入的 payload 规则分组，core 规则应放在前面。
+
+    返回：
+    - tuple[WorkflowPayloadContract, ...]：去重后的 payload 规则。
+
+    说明：
+    - 相同 payload_type_id 且定义一致时只保留第一份，避免统一目录出现重复名称。
+    - 相同 payload_type_id 但定义不一致时直接报错，防止节点包静默覆盖 core 规则。
+    """
+
+    merged_contracts: list[WorkflowPayloadContract] = []
+    contract_index: dict[str, WorkflowPayloadContract] = {}
+    for payload_contract_group in payload_contract_groups:
+        for contract in payload_contract_group:
+            existing_contract = contract_index.get(contract.payload_type_id)
+            if existing_contract is None:
+                contract_index[contract.payload_type_id] = contract
+                merged_contracts.append(contract)
+                continue
+            if existing_contract.model_dump(mode="json") != contract.model_dump(mode="json"):
+                raise ValueError(f"payload 规则 存在重复且定义不一致: {contract.payload_type_id}")
+    return tuple(merged_contracts)
