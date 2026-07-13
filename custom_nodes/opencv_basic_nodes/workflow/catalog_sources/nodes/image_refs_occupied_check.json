@@ -23,7 +23,15 @@
       "name": "images",
       "display_name": "Images",
       "payload_type_id": "image-refs.v1",
-      "description": "待检查的图片集合，通常来自 Crop Export.crops。"
+      "description": "待检查的图片集合，通常来自 Crop Export.crops；未连接 metrics 时节点会直接从 images 计算指标。",
+      "required": false
+    },
+    {
+      "name": "metrics",
+      "display_name": "Metrics",
+      "payload_type_id": "value.v1",
+      "description": "可选的 Image Refs Slot Metrics.summary。连接后按已有指标判定；images 可只用于编辑态调试图。",
+      "required": false
     }
   ],
   "output_ports": [
@@ -38,6 +46,12 @@
       "display_name": "Body",
       "payload_type_id": "response-body.v1",
       "description": "可作为 workflow HTTP 输出的批量有料检查结果 body。"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "description": "仅编辑 Preview Run 使用的有料检查 contact sheet 和交互式调参面板。"
     }
   ],
   "parameter_schema": {
@@ -146,6 +160,22 @@
         "default": 2,
         "title": "Min Passed Rules",
         "description": "至少有多少条启用规则通过才判 occupied；用于避免单一指标被光照或纹理误导。"
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
       }
     }
   },

@@ -1,17 +1,35 @@
-"""Image refs 批量槽位指标公共工具。"""
+"""Image refs 批量槽位指标节点和公共工具。"""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any
 
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.debug_image_panel import (
+    build_debug_image_preview_output,
+    build_debug_panel_interaction,
+    build_number_control,
+    build_numeric_control,
+    build_select_control,
+    is_debug_image_panel_enabled,
+)
 from backend.nodes.parameter_utils import is_empty_parameter
+from backend.nodes.runtime_support import load_image_matrix_from_payload, register_image_matrix
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.payloads import require_image_refs_payload
 from custom_nodes._opencv_shared.backend.runtime.validators import (
     require_non_negative_float,
     require_positive_int,
     require_uint8_int,
 )
+
+
+NODE_TYPE_ID = "custom.opencv.image-refs-slot-metrics"
+NODE_DISPLAY_NAME = "image-refs-slot-metrics"
 
 
 @dataclass(frozen=True)
@@ -25,6 +43,73 @@ class ImageRefsSlotMetricConfig:
     canny_high_threshold: int
     dark_morph_kernel_size: int
     dark_component_min_area: float | None
+
+
+def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """计算 image-refs.v1 图片集合的槽位指标。
+
+    该节点只负责输出稳定的 per-slot metrics，不直接做 empty / occupied 判断。
+    这样现场调试时可以先看指标，再把指标接到空槽、有料或其他规则节点中。
+    """
+
+    cv2_module, np_module = require_opencv_imports()
+    image_refs_payload = require_image_refs_payload(request.input_values.get("images"))
+    config = read_slot_metric_config(request, node_display_name=NODE_DISPLAY_NAME)
+    source_items = list(image_refs_payload["items"])
+    if config.max_items is not None:
+        source_items = source_items[: config.max_items]
+
+    metric_items: list[dict[str, object]] = []
+    debug_records: list[dict[str, object]] = []
+    for item_index, image_item in enumerate(source_items, start=1):
+        image_payload, image_matrix = load_image_matrix_from_payload(
+            request,
+            image_payload=image_item,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            copy_raw=False,
+        )
+        metric_item = build_slot_metric_item(
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            item_index=item_index,
+            config=config,
+            node_display_name=NODE_DISPLAY_NAME,
+        )
+        metric_items.append(metric_item)
+        debug_records.append(
+            {
+                "image_payload": image_payload,
+                "image_matrix": image_matrix,
+                "item": metric_item,
+            }
+        )
+
+    payload = {
+        "format_id": "amvision.image-refs-slot-metrics.v1",
+        "count": len(metric_items),
+        "total_count": int(image_refs_payload.get("count", len(image_refs_payload["items"]))),
+        "rules": build_slot_metric_rule_summary(config),
+        "items": metric_items,
+    }
+    return {
+        "summary": build_value_payload(payload),
+        "body": {
+            "type": "image-refs-slot-metrics",
+            **payload,
+        },
+        **build_slot_metric_debug_preview_output(
+            request,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_records=debug_records,
+            title="Image Refs Slot Metrics",
+            controls=build_slot_metric_controls(config),
+            artifact_name="slot-metrics-debug-preview",
+        ),
+    }
 
 
 def read_slot_metric_config(
@@ -78,6 +163,107 @@ def read_slot_metric_config(
             field_name="dark_component_min_area",
             default_value=20,
         ),
+    )
+
+
+def build_slot_metric_rule_summary(config: ImageRefsSlotMetricConfig) -> dict[str, object]:
+    """返回槽位指标计算规则。"""
+
+    return {
+        "max_items": config.max_items,
+        "dark_threshold": config.dark_threshold,
+        "bright_threshold": config.bright_threshold,
+        "canny_low_threshold": config.canny_low_threshold,
+        "canny_high_threshold": config.canny_high_threshold,
+        "dark_morph_kernel_size": config.dark_morph_kernel_size,
+        "dark_component_min_area": config.dark_component_min_area,
+    }
+
+
+def build_slot_metric_controls(config: ImageRefsSlotMetricConfig) -> list[dict[str, object]]:
+    """构造槽位指标节点和规则节点共用的 ImageViewer 调参控件。"""
+
+    return [
+        build_number_control("max_items", "Max Items", config.max_items, min_value=1, step=1),
+        build_numeric_control("dark_threshold", "Dark Threshold", config.dark_threshold, min_value=0, max_value=255, step=1),
+        build_numeric_control(
+            "bright_threshold",
+            "Bright Threshold",
+            config.bright_threshold,
+            min_value=0,
+            max_value=255,
+            step=1,
+        ),
+        build_numeric_control(
+            "canny_low_threshold",
+            "Canny Low",
+            config.canny_low_threshold,
+            min_value=0,
+            max_value=255,
+            step=1,
+        ),
+        build_numeric_control(
+            "canny_high_threshold",
+            "Canny High",
+            config.canny_high_threshold,
+            min_value=0,
+            max_value=255,
+            step=1,
+        ),
+        build_select_control(
+            "dark_morph_kernel_size",
+            "Dark Morph Kernel",
+            config.dark_morph_kernel_size,
+            options=((1, "1 / off"), (3, "3"), (5, "5"), (7, "7"), (9, "9"), (11, "11")),
+        ),
+        build_number_control(
+            "dark_component_min_area",
+            "Dark Component Min Area",
+            config.dark_component_min_area,
+            min_value=0,
+            step=1,
+        ),
+    ]
+
+
+def build_slot_metric_debug_preview_output(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image_records: list[dict[str, object]],
+    title: str,
+    controls: list[dict[str, object]],
+    artifact_name: str,
+    ok_decisions: tuple[str, ...] = (),
+    bad_decisions: tuple[str, ...] = (),
+) -> dict[str, object]:
+    """构造批量槽位指标调试图。
+
+    只有编辑态 Preview Run 显式打开 debug image panel 时才会生成 contact sheet。
+    生产 runtime 不会进入这里，避免批量裁剪图被再次编码。
+    """
+
+    if not is_debug_image_panel_enabled(request) or not image_records:
+        return {}
+    contact_sheet = _build_slot_metric_contact_sheet(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_records=image_records,
+        ok_decisions=ok_decisions,
+        bad_decisions=bad_decisions,
+    )
+    preview_image_payload = register_image_matrix(
+        request,
+        image_matrix=contact_sheet,
+        created_by_node_id=request.node_id,
+    )
+    return build_debug_image_preview_output(
+        request,
+        image_payload=preview_image_payload,
+        title=title,
+        interaction=build_debug_panel_interaction(tools=(), controls=controls),
+        artifact_name=artifact_name,
     )
 
 
@@ -153,6 +339,153 @@ def build_slot_metric_item(
         if passthrough_key in image_payload:
             result[passthrough_key] = image_payload[passthrough_key]
     return result
+
+
+def _build_slot_metric_contact_sheet(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image_records: list[dict[str, object]],
+    ok_decisions: tuple[str, ...],
+    bad_decisions: tuple[str, ...],
+) -> Any:
+    """把批量槽位图片和关键指标绘制成一张调试 contact sheet。"""
+
+    count = len(image_records)
+    columns = min(6, max(1, int(math.ceil(math.sqrt(count)))))
+    rows = int(math.ceil(count / columns))
+    tile_width = 220
+    tile_height = 140
+    label_height = 64
+    gap = 8
+    canvas_width = columns * tile_width + (columns + 1) * gap
+    canvas_height = rows * (tile_height + label_height) + (rows + 1) * gap
+    canvas = np_module.full((canvas_height, canvas_width, 3), 32, dtype=np_module.uint8)
+
+    for record_index, record in enumerate(image_records):
+        row = record_index // columns
+        column = record_index % columns
+        origin_x = gap + column * (tile_width + gap)
+        origin_y = gap + row * (tile_height + label_height + gap)
+        image_matrix = _normalize_preview_matrix(cv2_module=cv2_module, image_matrix=record["image_matrix"])
+        resized_image = _fit_image_to_tile(
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_matrix=image_matrix,
+            tile_width=tile_width,
+            tile_height=tile_height,
+        )
+        image_y = origin_y
+        image_x = origin_x
+        canvas[image_y : image_y + tile_height, image_x : image_x + tile_width] = resized_image
+        item = record["item"]
+        border_color = _decision_color(str(item.get("decision") or ""), ok_decisions=ok_decisions, bad_decisions=bad_decisions)
+        cv2_module.rectangle(
+            canvas,
+            (origin_x, origin_y),
+            (origin_x + tile_width - 1, origin_y + tile_height + label_height - 1),
+            border_color,
+            2,
+        )
+        _draw_slot_metric_labels(
+            cv2_module=cv2_module,
+            canvas=canvas,
+            item=item,
+            origin_x=origin_x + 8,
+            origin_y=origin_y + tile_height + 18,
+            color=border_color,
+        )
+    return canvas
+
+
+def _normalize_preview_matrix(*, cv2_module: Any, image_matrix: Any) -> Any:
+    """把灰度或带 alpha 图片整理成 BGR 预览图。"""
+
+    if len(image_matrix.shape) == 2:
+        return cv2_module.cvtColor(image_matrix, cv2_module.COLOR_GRAY2BGR)
+    if image_matrix.shape[2] == 4:
+        return cv2_module.cvtColor(image_matrix, cv2_module.COLOR_BGRA2BGR)
+    return image_matrix
+
+
+def _fit_image_to_tile(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image_matrix: Any,
+    tile_width: int,
+    tile_height: int,
+) -> Any:
+    """按比例缩放图片并居中放入固定 tile。"""
+
+    height, width = image_matrix.shape[:2]
+    scale = min(tile_width / max(width, 1), tile_height / max(height, 1))
+    resized_width = max(1, int(round(width * scale)))
+    resized_height = max(1, int(round(height * scale)))
+    resized = cv2_module.resize(image_matrix, (resized_width, resized_height), interpolation=cv2_module.INTER_AREA)
+    tile = np_module.full((tile_height, tile_width, 3), 18, dtype=np_module.uint8)
+    offset_x = (tile_width - resized_width) // 2
+    offset_y = (tile_height - resized_height) // 2
+    tile[offset_y : offset_y + resized_height, offset_x : offset_x + resized_width] = resized
+    return tile
+
+
+def _decision_color(
+    decision: str,
+    *,
+    ok_decisions: tuple[str, ...],
+    bad_decisions: tuple[str, ...],
+) -> tuple[int, int, int]:
+    """按判断结果选择 BGR 颜色。"""
+
+    if decision in ok_decisions:
+        return (80, 190, 80)
+    if decision in bad_decisions:
+        return (80, 80, 230)
+    if decision == "unknown":
+        return (40, 180, 230)
+    return (220, 180, 60)
+
+
+def _draw_slot_metric_labels(
+    *,
+    cv2_module: Any,
+    canvas: Any,
+    item: dict[str, object],
+    origin_x: int,
+    origin_y: int,
+    color: tuple[int, int, int],
+) -> None:
+    """把槽位序号、判断和关键指标写到 contact sheet。"""
+
+    metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    roi_id = str(item.get("roi_id") or f"#{item.get('index')}")
+    decision = str(item.get("decision") or "metrics")
+    failed_rules = item.get("failed_rules") if isinstance(item.get("failed_rules"), list) else []
+    lines = [
+        f"{item.get('index')}. {roi_id} {decision}",
+        "std={:.1f} dark={:.3f} edge={:.3f}".format(
+            float(metrics.get("std_gray", 0) or 0),
+            float(metrics.get("dark_ratio", 0) or 0),
+            float(metrics.get("edge_density", 0) or 0),
+        ),
+        "comp={:.3f} max={:.3f}{}".format(
+            float(metrics.get("dark_component_area_ratio", 0) or 0),
+            float(metrics.get("largest_dark_component_area_ratio", 0) or 0),
+            f" fail={len(failed_rules)}" if failed_rules else "",
+        ),
+    ]
+    for line_index, line in enumerate(lines):
+        cv2_module.putText(
+            canvas,
+            line[:34],
+            (origin_x, origin_y + line_index * 18),
+            cv2_module.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            color if line_index == 0 else (225, 225, 225),
+            1,
+            cv2_module.LINE_AA,
+        )
 
 
 def measure_dark_components(

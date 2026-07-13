@@ -46,6 +46,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_statistics import 
     NODE_TYPE_ID as IMAGE_REFS_STATISTICS_NODE_TYPE_ID,
     handle_node as image_refs_statistics_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_slot_metrics import (
+    NODE_TYPE_ID as IMAGE_REFS_SLOT_METRICS_NODE_TYPE_ID,
+    handle_node as image_refs_slot_metrics_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_empty_check import (
     NODE_TYPE_ID as IMAGE_REFS_EMPTY_CHECK_NODE_TYPE_ID,
     handle_node as image_refs_empty_check_handler,
@@ -109,6 +113,7 @@ NODE_HANDLERS = (
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
     (IMAGE_REFS_EMPTY_CHECK_NODE_TYPE_ID, image_refs_empty_check_handler),
     (IMAGE_REFS_OCCUPIED_CHECK_NODE_TYPE_ID, image_refs_occupied_check_handler),
+    (IMAGE_REFS_SLOT_METRICS_NODE_TYPE_ID, image_refs_slot_metrics_handler),
     (IMAGE_REFS_STATISTICS_NODE_TYPE_ID, image_refs_statistics_handler),
     (SLOT_BATCH_STATE_NODE_TYPE_ID, slot_batch_state_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),

@@ -4,15 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload, require_value_payload
+from backend.nodes.debug_image_panel import build_number_control, build_numeric_control, is_debug_image_panel_enabled
+from backend.nodes.parameter_utils import is_empty_parameter
 from backend.nodes.runtime_support import load_image_matrix_from_payload
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes._opencv_shared.backend.runtime.payloads import require_image_refs_payload
 from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_slot_metrics import (
     ImageRefsSlotMetricConfig,
     build_min_check,
+    build_slot_metric_controls,
+    build_slot_metric_debug_preview_output,
     build_slot_metric_item,
+    build_slot_metric_rule_summary,
     read_optional_non_negative_float,
     read_optional_positive_int,
     read_optional_ratio,
@@ -43,31 +49,18 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """对 image-refs.v1 中每张槽位图片执行多指标 occupied / empty 判断。"""
 
     cv2_module, np_module = require_opencv_imports()
-    image_refs_payload = require_image_refs_payload(request.input_values.get("images"))
     config = _read_config(request)
-    source_items = list(image_refs_payload["items"])
-    if config.metric_config.max_items is not None:
-        source_items = source_items[: config.metric_config.max_items]
-
-    check_items: list[dict[str, object]] = []
-    for item_index, image_item in enumerate(source_items, start=1):
-        image_payload, image_matrix = load_image_matrix_from_payload(
-            request,
-            image_payload=image_item,
-            cv2_module=cv2_module,
-            np_module=np_module,
-            copy_raw=False,
-        )
-        metric_item = build_slot_metric_item(
-            cv2_module=cv2_module,
-            np_module=np_module,
-            image_payload=image_payload,
-            image_matrix=image_matrix,
-            item_index=item_index,
-            config=config.metric_config,
-            node_display_name=NODE_DISPLAY_NAME,
-        )
-        check_items.append(_build_check_item(metric_item, config=config))
+    image_refs_payload = _read_optional_image_refs_payload(request.input_values.get("images"))
+    metrics_payload = _read_optional_slot_metrics_payload(request.input_values.get("metrics"))
+    metric_items, total_count, debug_records = _resolve_metric_items(
+        request,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_refs_payload=image_refs_payload,
+        metrics_payload=metrics_payload,
+        config=config,
+    )
+    check_items = [_build_check_item(metric_item, config=config) for metric_item in metric_items]
 
     occupied_count = sum(1 for item in check_items if item.get("is_occupied") is True)
     empty_count = sum(1 for item in check_items if item.get("is_occupied") is False)
@@ -87,7 +80,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     payload = {
         "format_id": "amvision.image-refs-occupied-check.v1",
         "count": len(check_items),
-        "total_count": int(image_refs_payload.get("count", len(image_refs_payload["items"]))),
+        "total_count": total_count,
         "expected_count": config.expected_count,
         "expected_count_matched": expected_count_matched,
         "occupied_count": occupied_count,
@@ -104,7 +97,132 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "type": "image-refs-occupied-check",
             **payload,
         },
+        **build_slot_metric_debug_preview_output(
+            request,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_records=_attach_check_items_to_debug_records(debug_records, check_items),
+            title="Image Refs Occupied Check",
+            controls=_build_occupied_check_controls(config),
+            artifact_name="occupied-check-debug-preview",
+            ok_decisions=("occupied",),
+            bad_decisions=("empty",),
+        ),
     }
+
+
+def _resolve_metric_items(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: object,
+    np_module: object,
+    image_refs_payload: dict[str, object] | None,
+    metrics_payload: dict[str, object] | None,
+    config: OccupiedCheckConfig,
+) -> tuple[list[dict[str, object]], int, list[dict[str, object]]]:
+    """从 metrics 输入或 images 输入得到统一的槽位指标列表。"""
+
+    if metrics_payload is not None:
+        metric_items = list(metrics_payload.get("items") or ())
+        if config.metric_config.max_items is not None:
+            metric_items = metric_items[: config.metric_config.max_items]
+        debug_records = _load_debug_records_from_images(
+            request,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_refs_payload=image_refs_payload,
+            limit=len(metric_items),
+            metric_items=metric_items,
+        )
+        return metric_items, int(metrics_payload.get("total_count", len(metric_items))), debug_records
+    if image_refs_payload is None:
+        raise InvalidRequestError(f"{NODE_DISPLAY_NAME} 节点需要连接 images 或 metrics 输入")
+    return _compute_metrics_from_images(
+        request,
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image_refs_payload=image_refs_payload,
+        config=config.metric_config,
+    )
+
+
+def _compute_metrics_from_images(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: object,
+    np_module: object,
+    image_refs_payload: dict[str, object],
+    config: ImageRefsSlotMetricConfig,
+) -> tuple[list[dict[str, object]], int, list[dict[str, object]]]:
+    """直接从 image-refs.v1 计算槽位指标。"""
+
+    source_items = list(image_refs_payload["items"])
+    if config.max_items is not None:
+        source_items = source_items[: config.max_items]
+    metric_items: list[dict[str, object]] = []
+    debug_records: list[dict[str, object]] = []
+    for item_index, image_item in enumerate(source_items, start=1):
+        image_payload, image_matrix = load_image_matrix_from_payload(
+            request,
+            image_payload=image_item,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            copy_raw=False,
+        )
+        metric_item = build_slot_metric_item(
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_payload=image_payload,
+            image_matrix=image_matrix,
+            item_index=item_index,
+            config=config,
+            node_display_name=NODE_DISPLAY_NAME,
+        )
+        metric_items.append(metric_item)
+        debug_records.append({"image_payload": image_payload, "image_matrix": image_matrix, "item": metric_item})
+    return metric_items, int(image_refs_payload.get("count", len(image_refs_payload["items"]))), debug_records
+
+
+def _load_debug_records_from_images(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    cv2_module: object,
+    np_module: object,
+    image_refs_payload: dict[str, object] | None,
+    limit: int,
+    metric_items: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """metrics 链路下按需读取 images，用于编辑态 contact sheet。"""
+
+    if image_refs_payload is None or not is_debug_image_panel_enabled(request):
+        return []
+    debug_records: list[dict[str, object]] = []
+    for image_item, metric_item in zip(list(image_refs_payload["items"])[:limit], metric_items, strict=False):
+        image_payload, image_matrix = load_image_matrix_from_payload(
+            request,
+            image_payload=image_item,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            copy_raw=False,
+        )
+        debug_records.append({"image_payload": image_payload, "image_matrix": image_matrix, "item": metric_item})
+    return debug_records
+
+
+def _attach_check_items_to_debug_records(
+    debug_records: list[dict[str, object]],
+    check_items: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """把最终判断结果写入 debug record，contact sheet 才能显示 occupied/empty。"""
+
+    if not debug_records:
+        return []
+    merged_records: list[dict[str, object]] = []
+    for record, check_item in zip(debug_records, check_items, strict=False):
+        merged_record = dict(record)
+        merged_record["item"] = check_item
+        merged_records.append(merged_record)
+    return merged_records
 
 
 def _build_check_item(metric_item: dict[str, object], *, config: OccupiedCheckConfig) -> dict[str, object]:
@@ -187,15 +305,8 @@ def _build_overall_state(
 def _build_rule_summary(config: OccupiedCheckConfig) -> dict[str, object]:
     """返回本次检查实际使用的规则配置。"""
 
-    metric_config = config.metric_config
     return {
-        "max_items": metric_config.max_items,
-        "dark_threshold": metric_config.dark_threshold,
-        "bright_threshold": metric_config.bright_threshold,
-        "canny_low_threshold": metric_config.canny_low_threshold,
-        "canny_high_threshold": metric_config.canny_high_threshold,
-        "dark_morph_kernel_size": metric_config.dark_morph_kernel_size,
-        "dark_component_min_area": metric_config.dark_component_min_area,
+        **build_slot_metric_rule_summary(config.metric_config),
         "std_gray_occupied_min": config.std_gray_occupied_min,
         "dark_ratio_occupied_min": config.dark_ratio_occupied_min,
         "edge_density_occupied_min": config.edge_density_occupied_min,
@@ -203,6 +314,90 @@ def _build_rule_summary(config: OccupiedCheckConfig) -> dict[str, object]:
         "largest_dark_component_area_ratio_occupied_min": config.largest_dark_component_area_ratio_occupied_min,
         "occupied_min_pass_count": config.occupied_min_pass_count,
     }
+
+
+def _build_occupied_check_controls(config: OccupiedCheckConfig) -> list[dict[str, object]]:
+    """构造 ImageViewer 中用于有料检查的算法调参控件。"""
+
+    return [
+        *build_slot_metric_controls(config.metric_config),
+        build_number_control("expected_count", "Expected Count", config.expected_count, min_value=1, step=1),
+        build_number_control(
+            "std_gray_occupied_min",
+            "Std Gray Occupied Min",
+            config.std_gray_occupied_min,
+            min_value=0,
+            step=1,
+        ),
+        build_numeric_control(
+            "dark_ratio_occupied_min",
+            "Dark Ratio Occupied Min",
+            config.dark_ratio_occupied_min if config.dark_ratio_occupied_min is not None else 0,
+            min_value=0,
+            max_value=1,
+            step=0.001,
+        ),
+        build_numeric_control(
+            "edge_density_occupied_min",
+            "Edge Density Occupied Min",
+            config.edge_density_occupied_min if config.edge_density_occupied_min is not None else 0,
+            min_value=0,
+            max_value=1,
+            step=0.001,
+        ),
+        build_numeric_control(
+            "dark_component_area_ratio_occupied_min",
+            "Dark Component Area Ratio Occupied Min",
+            config.dark_component_area_ratio_occupied_min
+            if config.dark_component_area_ratio_occupied_min is not None
+            else 0,
+            min_value=0,
+            max_value=1,
+            step=0.001,
+        ),
+        build_numeric_control(
+            "largest_dark_component_area_ratio_occupied_min",
+            "Largest Dark Component Ratio Occupied Min",
+            config.largest_dark_component_area_ratio_occupied_min
+            if config.largest_dark_component_area_ratio_occupied_min is not None
+            else 0,
+            min_value=0,
+            max_value=1,
+            step=0.001,
+        ),
+        build_number_control(
+            "occupied_min_pass_count",
+            "Min Passed Rules",
+            config.occupied_min_pass_count,
+            min_value=1,
+            step=1,
+        ),
+    ]
+
+
+def _read_optional_image_refs_payload(raw_payload: object) -> dict[str, object] | None:
+    """读取可选 image-refs 输入。"""
+
+    if is_empty_parameter(raw_payload):
+        return None
+    return require_image_refs_payload(raw_payload)
+
+
+def _read_optional_slot_metrics_payload(raw_payload: object) -> dict[str, object] | None:
+    """读取可选槽位指标 value 输入。"""
+
+    if is_empty_parameter(raw_payload):
+        return None
+    value_payload = require_value_payload(raw_payload, field_name="metrics")
+    value = value_payload["value"]
+    if not isinstance(value, dict):
+        raise InvalidRequestError("metrics 输入必须是 Image Refs Slot Metrics.summary 输出")
+    if value.get("format_id") != "amvision.image-refs-slot-metrics.v1":
+        raise InvalidRequestError("metrics 输入必须来自 Image Refs Slot Metrics 节点")
+    items = value.get("items")
+    if not isinstance(items, list):
+        raise InvalidRequestError("metrics 输入缺少 items 列表")
+    return value
 
 
 def _read_config(request: WorkflowNodeExecutionRequest) -> OccupiedCheckConfig:

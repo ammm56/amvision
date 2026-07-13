@@ -1,0 +1,136 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-refs-slot-metrics",
+  "display_name": "Image Refs Slot Metrics",
+  "category": "opencv.analysis",
+  "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "图片集合槽位指标",
+        "en-US": "Image Refs Slot Metrics"
+      },
+      "description": {
+        "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
+        "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for every image in image-refs.v1 as the base node for empty, occupied and statistical checks."
+      }
+    }
+  },
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "images",
+      "display_name": "Images",
+      "payload_type_id": "image-refs.v1",
+      "description": "待计算指标的图片集合，通常来自 Crop Export.crops。"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "description": "每张图片的尺寸、ROI 来源和灰度、暗像素、边缘、暗连通域指标。"
+    },
+    {
+      "name": "body",
+      "display_name": "Body",
+      "payload_type_id": "response-body.v1",
+      "description": "可作为 workflow HTTP 输出的批量槽位指标 body。"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "description": "仅编辑 Preview Run 使用的槽位指标 contact sheet 和交互式调参面板。"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "max_items": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Max Items",
+        "description": "最多计算多少张图片；留空时计算全部。"
+      },
+      "dark_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 64,
+        "title": "Dark Threshold",
+        "description": "低于或等于该灰度值的像素计入 dark_ratio 和暗连通域。"
+      },
+      "bright_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 192,
+        "title": "Bright Threshold",
+        "description": "高于或等于该灰度值的像素计入 bright_ratio。"
+      },
+      "canny_low_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 50,
+        "title": "Canny Low Threshold",
+        "description": "计算 edge_density 时使用的 Canny 低阈值。"
+      },
+      "canny_high_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 150,
+        "title": "Canny High Threshold",
+        "description": "计算 edge_density 时使用的 Canny 高阈值。"
+      },
+      "dark_morph_kernel_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 3,
+        "title": "Dark Morph Kernel",
+        "description": "暗像素 mask 做 open 时使用的奇数 kernel size；1 表示不做形态学清理。"
+      },
+      "dark_component_min_area": {
+        "type": "number",
+        "minimum": 0,
+        "default": 20,
+        "title": "Dark Component Min Area",
+        "description": "暗连通域最小面积；用于过滤高光纹理和噪声产生的小暗点。"
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.statistics",
+    "inspection.batch",
+    "inspection.slot",
+    "inspection.metrics"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}
