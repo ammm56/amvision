@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -179,10 +180,14 @@ def _build_roi_label(
     label_parts: list[str] = []
     if draw_index:
         label_parts.append(str(roi_index))
-    label_seed = str(roi_payload.get("display_name") or roi_payload.get("roi_id") or "").strip()
-    if label_seed:
-        label_parts.append(label_seed)
-    return " ".join(label_parts)
+    label_parts.append(
+        choose_ascii_overlay_name(
+            stable_id=roi_payload.get("roi_id"),
+            display_name=roi_payload.get("display_name"),
+            fallback=f"roi-{roi_index:02d}",
+        )
+    )
+    return build_ascii_overlay_label(*label_parts)
 
 
 def _read_line_thickness(raw_value: object) -> int:

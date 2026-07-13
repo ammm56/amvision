@@ -6,6 +6,7 @@ from backend.nodes.core_nodes.support.region import (
     build_region_binary_mask,
     require_regions_payload,
 )
+from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes._opencv_shared.backend.runtime.images import (
@@ -70,15 +71,17 @@ def _build_region_label(region_item: dict[str, object]) -> str:
     """构建 region 标签文本。"""
 
     label_parts: list[str] = []
-    class_name = str(region_item.get("class_name") or "").strip()
-    if class_name:
-        label_parts.append(class_name)
-    else:
-        label_parts.append(str(region_item["region_id"]))
+    label_parts.append(
+        choose_ascii_overlay_name(
+            stable_id=region_item.get("region_id"),
+            display_name=region_item.get("class_name"),
+            fallback="region",
+        )
+    )
     score = region_item.get("score")
     if isinstance(score, (int, float)) and not isinstance(score, bool):
         label_parts.append(f"{float(score):.2f}")
-    return " ".join(label_parts)
+    return build_ascii_overlay_label(*label_parts)
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:

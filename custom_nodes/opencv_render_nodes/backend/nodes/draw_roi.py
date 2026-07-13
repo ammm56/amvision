@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
 from backend.nodes.core_nodes.support.roi import require_roi_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -34,10 +35,14 @@ def _read_ratio(raw_value: object, *, field_name: str, default: float) -> float:
 def _build_roi_label(roi_payload: dict[str, object]) -> str:
     """构建 ROI 标签文本。"""
 
-    label_seed = str(roi_payload.get("display_name") or roi_payload.get("roi_id") or "").strip()
+    label_seed = choose_ascii_overlay_name(
+        stable_id=roi_payload.get("roi_id"),
+        display_name=roi_payload.get("display_name"),
+        fallback="roi",
+    )
     if not label_seed:
         return ""
-    return f"{label_seed} {int(roi_payload['area'])}px"
+    return build_ascii_overlay_label(label_seed, f"{int(roi_payload['area'])}px")
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:

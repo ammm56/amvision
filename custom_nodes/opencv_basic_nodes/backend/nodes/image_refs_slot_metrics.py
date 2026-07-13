@@ -15,6 +15,7 @@ from backend.nodes.debug_image_panel import (
     build_select_control,
     is_debug_image_panel_enabled,
 )
+from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
 from backend.nodes.parameter_utils import is_empty_parameter
 from backend.nodes.runtime_support import load_image_matrix_from_payload, register_image_matrix
 from backend.service.application.errors import InvalidRequestError
@@ -461,12 +462,16 @@ def _draw_slot_metric_labels(
     """把槽位序号、判断和关键指标写到 contact sheet。"""
 
     metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
-    roi_id = str(item.get("roi_id") or f"#{item.get('index')}")
+    roi_id = choose_ascii_overlay_name(
+        stable_id=item.get("roi_id"),
+        display_name=item.get("display_name"),
+        fallback=f"slot-{int(item.get('index') or 0):02d}",
+    )
     decision = str(item.get("decision") or "metrics")
     failed_rules = item.get("failed_rules") if isinstance(item.get("failed_rules"), list) else []
-    title = f"{int(item.get('index') or 0):02d} {roi_id}"
+    title = build_ascii_overlay_label(f"{int(item.get('index') or 0):02d}", roi_id)
     if decision and decision != "metrics":
-        title = f"{title} {decision}"
+        title = build_ascii_overlay_label(title, decision)
     lines = [
         title,
         "std {:.1f} | dark {:.3f}".format(

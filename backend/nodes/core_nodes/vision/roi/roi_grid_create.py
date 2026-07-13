@@ -10,6 +10,7 @@ from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
     NodePortDefinition,
 )
+from backend.nodes.opencv_label_text import choose_ascii_overlay_name
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.roi import (
@@ -209,7 +210,11 @@ def _build_roi_grid_overlays(roi_items: list[dict[str, object]]) -> list[dict[st
         overlays.append(
             build_bbox_overlay(
                 overlay_id=str(roi_item.get("roi_id") or "roi"),
-                label=str(roi_item.get("display_name") or roi_item.get("roi_id") or "ROI"),
+                label=choose_ascii_overlay_name(
+                    stable_id=roi_item.get("roi_id"),
+                    display_name=roi_item.get("display_name"),
+                    fallback="roi",
+                ),
                 bbox_xyxy=[float(value) for value in bbox_xyxy],
                 target_parameters=[
                     "rows",

@@ -7,7 +7,10 @@ from backend.nodes.core_nodes.logic.collections.array_summary import _array_summ
 from backend.nodes.core_nodes.logic.value.payload_to_value import _payload_to_value_handler
 from backend.nodes.core_nodes.logic.value.value_to_roi import _value_to_roi_handler
 from backend.nodes.core_nodes.io.preview.value_preview import _value_preview_handler
-from backend.nodes.core_nodes.vision.roi.roi_grid_create import _roi_grid_create_handler
+from backend.nodes.core_nodes.vision.roi.roi_grid_create import (
+    _build_roi_grid_overlays,
+    _roi_grid_create_handler,
+)
 from backend.nodes.core_nodes.vision.roi.roi_list_create import _roi_list_create_handler
 from backend.nodes.core_nodes.vision.roi.roi_list_item_get import _roi_list_item_get_handler
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -65,6 +68,36 @@ def test_roi_grid_create_generates_row_major_roi_values() -> None:
     assert roi_items[-1]["bbox_xyxy"] == [24.0, 29.0, 29.0, 33.0]
     assert roi_items[0]["source_image"]["image_handle"] == "image-a"
     assert output["summary"]["value"]["count"] == 6
+
+
+def test_roi_grid_create_keeps_chinese_display_name_out_of_overlay_label() -> None:
+    """验证中文 display_name 保留在数据里，但图像 overlay 使用 OpenCV 可绘制的 ROI ID。"""
+
+    output = _roi_grid_create_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-grid-create",
+            node_definition=object(),
+            parameters={
+                "rows": 1,
+                "columns": 1,
+                "origin_x": 10,
+                "origin_y": 20,
+                "roi_width": 30,
+                "roi_height": 40,
+                "roi_id_prefix": "slot",
+                "display_name_prefix": "槽位",
+            },
+            input_values={},
+            execution_metadata={},
+        )
+    )
+
+    roi_item = output["rois"]["items"][0]
+    overlays = _build_roi_grid_overlays([roi_item])
+
+    assert roi_item["display_name"] == "槽位 1-1"
+    assert overlays[0]["label"] == "slot-01-01"
+    assert "?" not in overlays[0]["label"]
 
 
 def test_roi_grid_create_uses_defaults_for_blank_parameters_with_source_image() -> None:
