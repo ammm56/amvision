@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -64,6 +65,40 @@ class FrontendStaticFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
+_FRONTEND_STATIC_MIME_TYPES: dict[str, str] = {
+    ".js": "application/javascript",
+    ".mjs": "application/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".wasm": "application/wasm",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+}
+
+
+def _register_frontend_static_mime_types() -> None:
+    """固定前端构建产物的 MIME 类型，避免受 Windows 注册表污染影响。
+
+    Windows 目标机可能把 `.js` 注册成 `text/plain`，Firefox / Chromium 会拒绝加载
+    Vite 生成的 module script，导致发布包启动成功但前端空白。这里在服务挂载前显式
+    覆盖常见前端资源类型，让 standalone/workstation 发布不依赖系统 MIME 表。
+    """
+
+    for suffix, media_type in _FRONTEND_STATIC_MIME_TYPES.items():
+        mimetypes.add_type(media_type, suffix, strict=True)
+        mimetypes.add_type(media_type, suffix, strict=False)
+
+
 def _resolve_frontend_static_dir() -> Path | None:
     """按当前工作目录解析可供 backend-service 托管的前端静态目录。"""
 
@@ -83,6 +118,7 @@ def _register_frontend_static_files(application: FastAPI) -> None:
     frontend_static_dir = _resolve_frontend_static_dir()
     if frontend_static_dir is None:
         return
+    _register_frontend_static_mime_types()
     application.mount(
         "/",
         FrontendStaticFiles(directory=str(frontend_static_dir), html=True),

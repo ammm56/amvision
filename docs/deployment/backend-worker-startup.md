@@ -126,6 +126,14 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 - 如果只需要单进程联调，也可以继续使用 `config/backend-worker.json` 里的全量 `enabled_consumer_kinds`
 - 不同硬件环境和 worker 集合应通过 release profile 表达，不再复制 `release/full/` 后手工删除 worker launcher 或依赖
 
+## worker 心跳文件
+
+- 独立 worker profile 使用共享队列目录下的 `_worker_health/` 写入本地心跳。
+- 每个 profile 必须写入独立心跳文件，文件名形如 `backend-worker-amvision-dataset-export-worker.json`，避免多个 worker 并发启动时抢同一个临时文件。
+- 心跳写入使用进程级唯一临时文件，再原子替换目标文件，防止第一次启动时多个 worker 同时写 `backend-worker.json.tmp` 导致某个 worker 初始化失败。
+- backend-service 的诊断接口会聚合 `_worker_health/backend-worker-*.json`，设置页只显示 backend-worker 总状态，同时保留每个 profile 的明细。
+- full 一键启动器会等待每个 worker 日志出现 `backend-worker ready` 后再继续；如果 worker 初始化失败，启动器会直接输出对应 `worker-<profile>.log` 的日志尾部。
+
 ## 当前最小验收建议
 
 1. 先通过 `backend-service` 创建任务，再确认队列目录有新任务写入。

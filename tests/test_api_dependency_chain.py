@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import sqlite3
 from pathlib import Path
 
@@ -287,6 +288,11 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
     (frontend_dir / "index.html").write_text("<html><body>amvision frontend</body></html>\n", encoding="utf-8")
     (frontend_dir / "assets").mkdir(parents=True, exist_ok=True)
     (frontend_dir / "assets" / "app.js").write_text("console.log('app');\n", encoding="utf-8")
+    (frontend_dir / "assets" / "style.css").write_text("body { color: #111; }\n", encoding="utf-8")
+
+    # 模拟现场 Windows 机器把 .js 注册成 text/plain 的情况，服务端应在挂载前修正。
+    mimetypes.add_type("text/plain", ".js", strict=True)
+    mimetypes.add_type("text/plain", ".js", strict=False)
 
     monkeypatch.chdir(tmp_path)
 
@@ -305,12 +311,18 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
         with TestClient(application) as client:
             root_response = client.get("/")
             route_fallback_response = client.get("/workflows/editor")
+            asset_response = client.get("/assets/app.js")
+            css_response = client.get("/assets/style.css")
             missing_asset_response = client.get("/assets/missing.js")
 
         assert root_response.status_code == 200
         assert "amvision frontend" in root_response.text
         assert route_fallback_response.status_code == 200
         assert "amvision frontend" in route_fallback_response.text
+        assert asset_response.status_code == 200
+        assert asset_response.headers["content-type"].startswith("application/javascript")
+        assert css_response.status_code == 200
+        assert css_response.headers["content-type"].startswith("text/css")
         assert missing_asset_response.status_code == 404
     finally:
         application.state.session_factory.engine.dispose()

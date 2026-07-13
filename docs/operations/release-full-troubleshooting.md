@@ -115,7 +115,57 @@ python -m backend.maintenance.main assemble-release --profile-id full-cpu --rele
 
 如果必须在 CPU 机器上跑模型推理，应使用 ONNX Runtime / OpenVINO CPU 路线构建和部署模型，不应使用 TensorRT 构建。
 
-### 4. API 能访问，但任务一直停在 `queued`
+### 4. 后端 health 正常，但浏览器空白且控制台提示 JS MIME type 错误
+
+先看浏览器开发者工具 Console 和 Network：
+
+- `/api/v1/system/health` 返回 200
+- `/` 返回 200 或 304
+- `/assets/index-*.js` 返回 200
+- Console 提示 module script 被拒绝，原因类似 `MIME type "text/plain"` 不允许
+
+这类问题不是 Intel CPU、NPU 或 Arc 核显导致，也不是 worker 没启动。根因通常是目标 Windows 系统的 MIME 注册表把 `.js` 错误映射成 `text/plain`，导致 Starlette / Python `mimetypes` 按系统表返回错误 `Content-Type`，Firefox / Chromium 会拒绝加载 Vite 生成的 module script。
+
+当前 backend-service 在挂载前端静态资源前会显式注册前端构建产物 MIME 类型，避免依赖目标机系统 MIME 表。现场验证方式：
+
+```powershell
+curl -I http://127.0.0.1:8000/assets/index-xxxx.js
+```
+
+期望响应头包含：
+
+```text
+Content-Type: application/javascript
+```
+
+如果仍然返回 `text/plain`，说明运行的不是包含该修复的发布包，或目标目录仍在使用旧的 `app/backend/service/api/app.py`。应重新装配并部署对应 release profile。
+
+### 5. 第一次启动某个 worker 退出，第二次启动正常
+
+典型现象：
+
+- `start-amvision-full.bat` 显示 backend-service health 已就绪，并依次启动 `dataset-import`、`dataset-export`、`inference`。
+- 随后提示类似 `检测到 backend-worker:dataset-export 已退出，returncode=1；正在停止其余组件。`
+- 重新执行同一个启动脚本后又能正常启动。
+
+这类问题通常不是 dataset export 任务本身失败，而是 worker 初始化阶段失败。旧实现中多个独立 worker profile 会同时写入同一个 `data/queue/_worker_health/backend-worker.json.tmp`，Windows 下其中一个进程完成原子替换后，另一个进程再替换同名临时文件就可能失败并退出。第二次启动只是竞态没有碰上，不代表实现稳定。
+
+当前修复后的发布包应满足：
+
+- `data/queue/_worker_health/` 下每个 profile 有独立心跳文件，例如 `backend-worker-amvision-dataset-export-worker.json`。
+- 心跳临时文件带进程 id 和随机 id，不再共享 `backend-worker.json.tmp`。
+- full 一键启动器会等待每个 worker 日志出现 `backend-worker ready` 后才继续，并在失败时打印对应 `logs/full-stack/worker-<profile>.log` 的尾部。
+
+现场验证方式：
+
+```powershell
+Get-ChildItem .\data\queue\_worker_health
+Get-Content .\logs\full-stack\worker-dataset-export.log -Tail 80
+```
+
+如果仍然看到只有单个 `backend-worker.json`，说明运行的仍是旧发布包。需要用包含该修复的源码重新执行对应 release profile 的装配。
+
+### 6. API 能访问，但任务一直停在 `queued`
 
 先看：
 
@@ -138,7 +188,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-cpu --rele
 
 所以如果任务仍然不动，先不要再怀疑“是不是还没接通 non-detection worker”，优先检查日志、队列目录和配置路径。
 
-### 5. 某类 non-detection 模型部署能建出来，但推理报 backend 错误
+### 7. 某类 non-detection 模型部署能建出来，但推理报 backend 错误
 
 先看：
 
@@ -169,7 +219,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-cpu --rele
 - 发布目录资产不完整
 - 还是当前代码主线真的回归了
 
-### 6. `openvino` 或 `tensorrt` 相关任务只在现场机器失败
+### 8. `openvino` 或 `tensorrt` 相关任务只在现场机器失败
 
 先看：
 

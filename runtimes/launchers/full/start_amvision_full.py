@@ -68,6 +68,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="等待 backend-service health 可用的最长秒数；成功后再启动 worker",
     )
     parser.add_argument(
+        "--worker-ready-timeout-seconds",
+        type=float,
+        default=30.0,
+        help="等待单个 backend-worker 初始化完成的最长秒数",
+    )
+    parser.add_argument(
         "--logs-subdir",
         default="full-stack",
         help="写入 logs 目录下的子目录名",
@@ -456,6 +462,56 @@ def _wait_for_backend_service_ready(
     )
 
 
+def _read_log_tail(log_file_path: Path, *, max_bytes: int = 4096) -> str:
+    """读取日志尾部，供启动失败时输出关键线索。"""
+
+    if not log_file_path.is_file():
+        return ""
+    with log_file_path.open("rb") as log_file:
+        log_file.seek(0, os.SEEK_END)
+        file_size = log_file.tell()
+        log_file.seek(max(0, file_size - max_bytes))
+        return log_file.read().decode("utf-8", errors="replace")
+
+
+def _wait_for_worker_ready(
+    *,
+    app_root: Path,
+    component_name: str,
+    process: subprocess.Popen[bytes],
+    log_file_path: Path,
+    timeout_seconds: float,
+) -> None:
+    """等待 backend-worker 完成初始化。
+
+    说明：
+    - worker 只有打印 backend-worker ready 后才真正进入轮询循环。
+    - 如果 worker 在初始化阶段退出，立即带日志尾部报错，避免现场只看到 returncode。
+    """
+
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    ready_marker = "backend-worker ready"
+    while time.monotonic() < deadline:
+        return_code = process.poll()
+        log_tail = _read_log_tail(log_file_path)
+        if ready_marker in log_tail:
+            print(f"{component_name} 已就绪。", flush=True)
+            return
+        if return_code is not None:
+            raise RuntimeError(
+                f"{component_name} 初始化失败，returncode={return_code}，"
+                f"日志={_format_runtime_path(app_root, log_file_path)}\n"
+                f"{log_tail}"
+            )
+        time.sleep(0.2)
+
+    raise TimeoutError(
+        f"{component_name} 未在 {timeout_seconds:.0f}s 内完成初始化，"
+        f"日志={_format_runtime_path(app_root, log_file_path)}\n"
+        f"{_read_log_tail(log_file_path)}"
+    )
+
+
 def _write_stack_state(
     app_root: Path,
     *,
@@ -616,6 +672,13 @@ def main(argv: list[str] | None = None) -> int:
                     worker_log_handle,
                     worker_log_file_path,
                 )
+            )
+            _wait_for_worker_ready(
+                app_root=app_root,
+                component_name=f"backend-worker:{profile_id}",
+                process=worker_process,
+                log_file_path=worker_log_file_path,
+                timeout_seconds=args.worker_ready_timeout_seconds,
             )
 
         _write_stack_state(

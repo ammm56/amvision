@@ -10,10 +10,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
+from uuid import uuid4
 
 
 BACKEND_WORKER_HEALTH_DIRNAME = "_worker_health"
-BACKEND_WORKER_HEALTH_FILENAME = "backend-worker.json"
+BACKEND_WORKER_HEALTH_FILE_PREFIX = "backend-worker"
 DEFAULT_BACKEND_WORKER_HEARTBEAT_INTERVAL_SECONDS = 2.0
 DEFAULT_BACKEND_WORKER_STALE_AFTER_SECONDS = 15.0
 
@@ -67,7 +68,10 @@ class BackendWorkerHeartbeat:
     def heartbeat_path(self) -> Path:
         """返回当前 worker 心跳文件路径。"""
 
-        return build_backend_worker_health_path(self.info.queue_root_dir)
+        return build_backend_worker_profile_health_path(
+            self.info.queue_root_dir,
+            worker_name=self.info.app_name,
+        )
 
     def start(self) -> None:
         """启动心跳后台线程。"""
@@ -126,9 +130,129 @@ class BackendWorkerHeartbeat:
 
 
 def build_backend_worker_health_path(queue_root_dir: str | Path) -> Path:
-    """根据本地队列根目录构造 backend-worker 心跳文件路径。"""
+    """根据本地队列根目录构造默认 backend-worker 心跳文件路径。"""
 
-    return Path(queue_root_dir).resolve() / BACKEND_WORKER_HEALTH_DIRNAME / BACKEND_WORKER_HEALTH_FILENAME
+    return _build_backend_worker_health_dir(queue_root_dir) / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}.json"
+
+
+def build_backend_worker_profile_health_path(
+    queue_root_dir: str | Path,
+    *,
+    worker_name: str,
+) -> Path:
+    """根据 worker 名称构造独立心跳文件路径。
+
+    参数：
+    - queue_root_dir：backend-service 和 backend-worker 共享的本地队列根目录。
+    - worker_name：worker profile 展示名称，发布目录里每个 profile 保持唯一。
+
+    返回：
+    - Path：当前 worker 独占的心跳文件路径。
+    """
+
+    worker_key = _normalize_worker_health_key(worker_name)
+    return _build_backend_worker_health_dir(queue_root_dir) / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-{worker_key}.json"
+
+
+def _build_backend_worker_health_dir(queue_root_dir: str | Path) -> Path:
+    """返回 backend-worker 心跳目录。"""
+
+    return Path(queue_root_dir).resolve() / BACKEND_WORKER_HEALTH_DIRNAME
+
+
+def _normalize_worker_health_key(worker_name: str) -> str:
+    """把 worker 名称转换成适合文件名的稳定 key。"""
+
+    normalized_chars: list[str] = []
+    for char in worker_name.strip().lower():
+        if char.isalnum():
+            normalized_chars.append(char)
+            continue
+        if normalized_chars and normalized_chars[-1] != "-":
+            normalized_chars.append("-")
+    normalized = "".join(normalized_chars).strip("-")
+    return normalized or "worker"
+
+
+def _list_backend_worker_health_paths(health_dir: Path) -> list[Path]:
+    """列出当前队列根目录下所有 backend-worker 心跳文件。"""
+
+    if not health_dir.exists():
+        return []
+    profile_paths = sorted(
+        path
+        for path in health_dir.glob(f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-*.json")
+        if path.is_file()
+    )
+    if profile_paths:
+        return profile_paths
+    default_path = health_dir / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}.json"
+    return [default_path] if default_path.is_file() else []
+
+
+def _read_backend_worker_health_file(
+    health_path: Path,
+    *,
+    stale_after_seconds: float,
+) -> dict[str, object]:
+    """读取单个 backend-worker 心跳文件。"""
+
+    base_summary: dict[str, object] = {
+        "health_file": str(health_path),
+        "worker_key": health_path.stem.removeprefix(f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-"),
+    }
+    try:
+        payload = _read_json_dict(health_path)
+    except Exception as error:  # pragma: no cover - 文件损坏时用于诊断页面暴露
+        return {
+            **base_summary,
+            "health": "unknown",
+            "reason": "heartbeat_unreadable",
+            "error": str(error),
+        }
+
+    heartbeat_at = _read_optional_str(payload, "heartbeat_at")
+    age_seconds = _calculate_age_seconds(heartbeat_at)
+    reported_health = (
+        _read_optional_str(payload, "health")
+        or _read_optional_str(payload, "status")
+        or "unknown"
+    )
+    health = _resolve_worker_health(
+        reported_health=reported_health,
+        age_seconds=age_seconds,
+        stale_after_seconds=stale_after_seconds,
+    )
+    return {
+        **base_summary,
+        **payload,
+        "health": health,
+        "reported_health": reported_health,
+        "heartbeat_age_seconds": age_seconds,
+        "stale_after_seconds": stale_after_seconds,
+    }
+
+
+def _resolve_backend_worker_group_health(workers: list[dict[str, object]]) -> str:
+    """根据多个 worker 心跳聚合 backend-worker 总健康状态。"""
+
+    if not workers:
+        return "offline"
+    worker_healths = {
+        str(worker.get("health") or "unknown").strip().lower()
+        for worker in workers
+    }
+    if worker_healths == {"running"}:
+        return "running"
+    if "running" in worker_healths:
+        return "degraded"
+    if worker_healths == {"stopped"}:
+        return "stopped"
+    if "stale" in worker_healths:
+        return "stale"
+    if "unknown" in worker_healths:
+        return "unknown"
+    return sorted(worker_healths)[0] if worker_healths else "unknown"
 
 
 def read_backend_worker_health_summary(
@@ -146,44 +270,53 @@ def read_backend_worker_health_summary(
     - dict[str, object]：backend-worker 诊断摘要。
     """
 
-    health_path = build_backend_worker_health_path(queue_root_dir)
+    health_dir = _build_backend_worker_health_dir(queue_root_dir)
     base_summary: dict[str, object] = {
         "status": "external",
         "entrypoint": "python -m backend.workers.main",
-        "health_file": str(health_path),
+        "health_dir": str(health_dir),
     }
-    if not health_path.exists():
+    heartbeat_paths = _list_backend_worker_health_paths(health_dir)
+    if not heartbeat_paths:
         return {
             **base_summary,
             "health": "offline",
             "reason": "heartbeat_missing",
+            "worker_count": 0,
+            "workers": [],
         }
 
-    try:
-        payload = _read_json_dict(health_path)
-    except Exception as error:  # pragma: no cover - 文件损坏时用于诊断页面暴露
-        return {
-            **base_summary,
-            "health": "unknown",
-            "reason": "heartbeat_unreadable",
-            "error": str(error),
-        }
-
-    heartbeat_at = _read_optional_str(payload, "heartbeat_at")
-    age_seconds = _calculate_age_seconds(heartbeat_at)
-    reported_health = _read_optional_str(payload, "health") or _read_optional_str(payload, "status") or "unknown"
-    health = _resolve_worker_health(
-        reported_health=reported_health,
-        age_seconds=age_seconds,
-        stale_after_seconds=stale_after_seconds,
-    )
+    workers = [
+        _read_backend_worker_health_file(
+            health_path,
+            stale_after_seconds=stale_after_seconds,
+        )
+        for health_path in heartbeat_paths
+    ]
+    health = _resolve_backend_worker_group_health(workers)
+    running_workers = [worker for worker in workers if worker.get("health") == "running"]
+    stale_workers = [worker for worker in workers if worker.get("health") == "stale"]
+    stopped_workers = [worker for worker in workers if worker.get("health") == "stopped"]
+    unreadable_workers = [
+        worker for worker in workers if worker.get("reason") == "heartbeat_unreadable"
+    ]
+    primary_worker = running_workers[0] if running_workers else workers[0]
     return {
         **base_summary,
-        **payload,
+        **{
+            key: value
+            for key, value in primary_worker.items()
+            if key not in {"health", "health_file"}
+        },
         "health": health,
-        "reported_health": reported_health,
-        "heartbeat_age_seconds": age_seconds,
         "stale_after_seconds": stale_after_seconds,
+        "worker_count": len(workers),
+        "running_count": len(running_workers),
+        "stale_count": len(stale_workers),
+        "stopped_count": len(stopped_workers),
+        "unreadable_count": len(unreadable_workers),
+        "health_files": [str(path) for path in heartbeat_paths],
+        "workers": workers,
     }
 
 
@@ -234,7 +367,7 @@ def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
     """原子写入 JSON 文件，避免诊断接口读到半截内容。"""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(f"{path.suffix}.tmp")
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
     temp_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",

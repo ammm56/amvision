@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from backend.workers.health import (
     BackendWorkerHeartbeat,
     BackendWorkerHeartbeatInfo,
-    build_backend_worker_health_path,
+    build_backend_worker_profile_health_path,
     read_backend_worker_health_summary,
 )
 
@@ -42,14 +42,64 @@ def test_worker_health_summary_reads_running_heartbeat(tmp_path) -> None:
         heartbeat.stop()
 
     assert summary["health"] == "running"
+    assert summary["worker_count"] == 1
+    assert summary["running_count"] == 1
     assert summary["app_name"] == "amvision worker"
     assert summary["enabled_consumer_count"] == 2
+    assert summary["workers"][0]["app_name"] == "amvision worker"
+
+
+def test_worker_health_summary_reads_multiple_profile_heartbeats(tmp_path) -> None:
+    """多个独立 worker profile 应分别写心跳并聚合为 running。"""
+
+    import_workers = BackendWorkerHeartbeat(
+        info=BackendWorkerHeartbeatInfo(
+            app_name="amvision dataset import worker",
+            app_version="0.1.1",
+            workspace_dir=tmp_path / "worker" / "dataset-import",
+            queue_root_dir=tmp_path,
+            enabled_consumer_kinds=("dataset-import",),
+            max_concurrent_tasks=1,
+            poll_interval_seconds=1.0,
+        )
+    )
+    export_workers = BackendWorkerHeartbeat(
+        info=BackendWorkerHeartbeatInfo(
+            app_name="amvision dataset export worker",
+            app_version="0.1.1",
+            workspace_dir=tmp_path / "worker" / "dataset-export",
+            queue_root_dir=tmp_path,
+            enabled_consumer_kinds=("dataset-export",),
+            max_concurrent_tasks=1,
+            poll_interval_seconds=1.0,
+        )
+    )
+
+    import_workers.start()
+    export_workers.start()
+    try:
+        summary = read_backend_worker_health_summary(queue_root_dir=tmp_path)
+    finally:
+        export_workers.stop()
+        import_workers.stop()
+
+    assert summary["health"] == "running"
+    assert summary["worker_count"] == 2
+    assert summary["running_count"] == 2
+    worker_names = {worker["app_name"] for worker in summary["workers"]}
+    assert worker_names == {
+        "amvision dataset import worker",
+        "amvision dataset export worker",
+    }
 
 
 def test_worker_health_summary_marks_old_heartbeat_stale(tmp_path) -> None:
     """心跳过期时，诊断应显示 stale，而不是继续显示 running。"""
 
-    health_path = build_backend_worker_health_path(tmp_path)
+    health_path = build_backend_worker_profile_health_path(
+        tmp_path,
+        worker_name="amvision stale worker",
+    )
     health_path.parent.mkdir(parents=True)
     health_path.write_text(
         json.dumps(
