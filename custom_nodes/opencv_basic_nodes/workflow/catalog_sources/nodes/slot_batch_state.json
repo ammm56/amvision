@@ -1,0 +1,90 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.slot-batch-state",
+  "display_name": "Slot Batch State",
+  "category": "opencv.analysis",
+  "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "槽位批量状态",
+        "en-US": "Slot Batch State"
+      },
+      "description": {
+        "zh-CN": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
+        "en-US": "Merge batch empty-check and occupied-check summaries, then classify the slot batch as empty-tray, full-tray, or partial-or-abnormal by ratio thresholds."
+      }
+    }
+  },
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "empty_check",
+      "display_name": "Empty Check",
+      "payload_type_id": "value.v1",
+      "description": "Image Refs Empty Check.summary 输出。"
+    },
+    {
+      "name": "occupied_check",
+      "display_name": "Occupied Check",
+      "payload_type_id": "value.v1",
+      "description": "Image Refs Occupied Check.summary 输出。"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "description": "整批槽位数量、空槽比例、有料比例和综合状态。"
+    },
+    {
+      "name": "body",
+      "display_name": "Body",
+      "payload_type_id": "response-body.v1",
+      "description": "可作为 workflow HTTP 输出的槽位批量状态 body。"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "expected_count": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Expected Count",
+        "description": "期望槽位数量；留空时只要求两个输入的 count 一致。"
+      },
+      "empty_min_empty_ratio": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 1.0,
+        "title": "Empty Min Empty Ratio",
+        "description": "判定 empty-tray 所需的最小空槽比例。"
+      },
+      "full_min_occupied_ratio": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.94,
+        "title": "Full Min Occupied Ratio",
+        "description": "判定 full-tray 所需的最小有料比例；默认允许少量边界槽位受定位或光照影响。"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.statistics",
+    "inspection.batch",
+    "inspection.slot",
+    "inspection.state"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

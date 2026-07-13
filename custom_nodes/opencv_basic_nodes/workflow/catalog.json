@@ -2590,6 +2590,364 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-refs-empty-check",
+      "display_name": "Image Refs Empty Check",
+      "category": "opencv.analysis",
+      "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "待检查的图片集合，通常来自 Crop Export.crops。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "每张图片的指标、规则判断、empty / non-empty 结果和整批摘要。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "可作为 workflow HTTP 输出的批量空槽检查结果 body。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_items": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Max Items",
+            "description": "最多检查多少张图片；留空时检查全部。"
+          },
+          "expected_count": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Expected Count",
+            "description": "期望图片数量；配置后数量不一致会让整批状态为 failed。"
+          },
+          "dark_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 64,
+            "title": "Dark Threshold",
+            "description": "低于或等于该灰度值的像素计入 dark_ratio 和暗连通域。"
+          },
+          "bright_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 192,
+            "title": "Bright Threshold",
+            "description": "高于或等于该灰度值的像素计入 bright_ratio。"
+          },
+          "canny_low_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 50,
+            "title": "Canny Low Threshold",
+            "description": "计算 edge_density 时使用的 Canny 低阈值。"
+          },
+          "canny_high_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 150,
+            "title": "Canny High Threshold",
+            "description": "计算 edge_density 时使用的 Canny 高阈值。"
+          },
+          "dark_morph_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3,
+            "title": "Dark Morph Kernel",
+            "description": "暗像素 mask 做 open 时使用的奇数 kernel size；1 表示不做形态学清理。"
+          },
+          "dark_component_min_area": {
+            "type": "number",
+            "minimum": 0,
+            "default": 20,
+            "title": "Dark Component Min Area",
+            "description": "暗连通域最小面积；用于过滤高光纹理和噪声产生的小暗点。"
+          },
+          "std_gray_empty_max": {
+            "type": "number",
+            "minimum": 0,
+            "default": 56,
+            "title": "Std Gray Empty Max",
+            "description": "空槽允许的最大灰度标准差；用于容忍空槽纹理，同时拦截有料区域的强变化。"
+          },
+          "dark_ratio_empty_max": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.02,
+            "title": "Dark Ratio Empty Max",
+            "description": "空槽允许的最大暗像素比例；用于发现黑色、深色或遮挡物料。"
+          },
+          "bright_ratio_empty_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "title": "Bright Ratio Empty Min",
+            "description": "空槽要求的最小亮像素比例；留空时不启用该规则。"
+          },
+          "edge_density_empty_max": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.18,
+            "title": "Edge Density Empty Max",
+            "description": "空槽允许的最大边缘密度；用于发现插槽内额外结构、物料边缘或错位遮挡。"
+          },
+          "dark_component_area_ratio_empty_max": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.02,
+            "title": "Dark Component Area Ratio Empty Max",
+            "description": "空槽允许的最大暗连通域总面积比例；用于判断物料暗区域总体占比。"
+          },
+          "largest_dark_component_area_ratio_empty_max": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.012,
+            "title": "Largest Dark Component Ratio Empty Max",
+            "description": "空槽允许的最大单个暗连通域面积比例；用于拦截单个大块物料或遮挡。"
+          },
+          "empty_when_all_rules_pass": {
+            "type": "boolean",
+            "default": true,
+            "title": "All Rules Required",
+            "description": "为 true 时所有启用规则都通过才判 empty；为 false 时任一规则通过即判 empty。"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.statistics",
+        "inspection.batch",
+        "inspection.empty-check",
+        "inspection.slot"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "图片集合空槽检查",
+            "en-US": "Image Refs Empty Check"
+          },
+          "description": {
+            "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
+            "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for each image in image-refs.v1, then classify each item as empty or non-empty with multi-metric rules."
+          }
+        }
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-refs-occupied-check",
+      "display_name": "Image Refs Occupied Check",
+      "category": "opencv.analysis",
+      "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "待检查的图片集合，通常来自 Crop Export.crops。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "每张图片的指标、规则判断、occupied / empty 结果和整批摘要。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "可作为 workflow HTTP 输出的批量有料检查结果 body。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_items": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Max Items",
+            "description": "最多检查多少张图片；留空时检查全部。"
+          },
+          "expected_count": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Expected Count",
+            "description": "期望图片数量；配置后数量不一致会让整批状态为 failed。"
+          },
+          "dark_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 64,
+            "title": "Dark Threshold",
+            "description": "低于或等于该灰度值的像素计入 dark_ratio 和暗连通域。"
+          },
+          "bright_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 192,
+            "title": "Bright Threshold",
+            "description": "高于或等于该灰度值的像素计入 bright_ratio。"
+          },
+          "canny_low_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 50,
+            "title": "Canny Low Threshold",
+            "description": "计算 edge_density 时使用的 Canny 低阈值。"
+          },
+          "canny_high_threshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 150,
+            "title": "Canny High Threshold",
+            "description": "计算 edge_density 时使用的 Canny 高阈值。"
+          },
+          "dark_morph_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3,
+            "title": "Dark Morph Kernel",
+            "description": "暗像素 mask 做 open 时使用的奇数 kernel size；1 表示不做形态学清理。"
+          },
+          "dark_component_min_area": {
+            "type": "number",
+            "minimum": 0,
+            "default": 20,
+            "title": "Dark Component Min Area",
+            "description": "暗连通域最小面积；用于过滤高光纹理和噪声产生的小暗点。"
+          },
+          "std_gray_occupied_min": {
+            "type": "number",
+            "minimum": 0,
+            "default": 42,
+            "title": "Std Gray Occupied Min",
+            "description": "有料槽位要求的最小灰度标准差；用于发现物料纹理、阴影或结构变化。"
+          },
+          "dark_ratio_occupied_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.018,
+            "title": "Dark Ratio Occupied Min",
+            "description": "有料槽位要求的最小暗像素比例。"
+          },
+          "edge_density_occupied_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.16,
+            "title": "Edge Density Occupied Min",
+            "description": "有料槽位要求的最小边缘密度。"
+          },
+          "dark_component_area_ratio_occupied_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.015,
+            "title": "Dark Component Area Ratio Occupied Min",
+            "description": "有料槽位要求的最小暗连通域总面积比例。"
+          },
+          "largest_dark_component_area_ratio_occupied_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.008,
+            "title": "Largest Dark Component Ratio Occupied Min",
+            "description": "有料槽位要求的最小单个暗连通域面积比例。"
+          },
+          "occupied_min_pass_count": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2,
+            "title": "Min Passed Rules",
+            "description": "至少有多少条启用规则通过才判 occupied；用于避免单一指标被光照或纹理误导。"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.statistics",
+        "inspection.batch",
+        "inspection.occupied-check",
+        "inspection.slot"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "图片集合有料检查",
+            "en-US": "Image Refs Occupied Check"
+          },
+          "description": {
+            "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
+            "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for each image in image-refs.v1, then classify each item as occupied or empty with multi-metric rules."
+          }
+        }
+      }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-statistics",
       "display_name": "Image Refs Statistics",
       "category": "opencv.analysis",
@@ -3457,6 +3815,109 @@
       "node_pack_id": "opencv.basic-nodes",
       "node_pack_version": "0.1.0",
       "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.slot-batch-state",
+      "display_name": "Slot Batch State",
+      "category": "opencv.analysis",
+      "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "input_ports": [
+        {
+          "name": "empty_check",
+          "display_name": "Empty Check",
+          "payload_type_id": "value.v1",
+          "description": "Image Refs Empty Check.summary 输出。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "occupied_check",
+          "display_name": "Occupied Check",
+          "payload_type_id": "value.v1",
+          "description": "Image Refs Occupied Check.summary 输出。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "整批槽位数量、空槽比例、有料比例和综合状态。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "body",
+          "display_name": "Body",
+          "payload_type_id": "response-body.v1",
+          "description": "可作为 workflow HTTP 输出的槽位批量状态 body。",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "expected_count": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Expected Count",
+            "description": "期望槽位数量；留空时只要求两个输入的 count 一致。"
+          },
+          "empty_min_empty_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1.0,
+            "title": "Empty Min Empty Ratio",
+            "description": "判定 empty-tray 所需的最小空槽比例。"
+          },
+          "full_min_occupied_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.94,
+            "title": "Full Min Occupied Ratio",
+            "description": "判定 full-tray 所需的最小有料比例；默认允许少量边界槽位受定位或光照影响。"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.statistics",
+        "inspection.batch",
+        "inspection.slot",
+        "inspection.state"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.basic-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {
+        "i18n": {
+          "display_name": {
+            "zh-CN": "槽位批量状态",
+            "en-US": "Slot Batch State"
+          },
+          "description": {
+            "zh-CN": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
+            "en-US": "Merge batch empty-check and occupied-check summaries, then classify the slot batch as empty-tray, full-tray, or partial-or-abnormal by ratio thresholds."
+          }
+        }
+      }
     },
     {
       "format_id": "amvision.node-definition.v1",

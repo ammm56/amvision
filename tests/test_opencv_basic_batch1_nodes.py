@@ -221,6 +221,16 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
                 },
             ),
             WorkflowGraphNode(
+                node_id="rect_roi",
+                node_type_id="core.vision.roi-from-rotated-rect",
+                parameters={
+                    "roi_kind": "polygon",
+                    "roi_id_prefix": "rect-roi",
+                    "display_name_prefix": "Rect ROI",
+                    "debug_image_panel_enabled": True,
+                },
+            ),
+            WorkflowGraphNode(
                 node_id="regions",
                 node_type_id="custom.opencv.contours-to-regions",
                 parameters={
@@ -292,6 +302,20 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
                 target_node_id="value",
                 target_port="rotated_rects",
             ),
+            WorkflowGraphEdge(
+                edge_id="edge-rect-roi",
+                source_node_id="rect",
+                source_port="rotated_rects",
+                target_node_id="rect_roi",
+                target_port="rotated_rects",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-rect-roi-image",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="rect_roi",
+                target_port="image",
+            ),
         ),
         template_inputs=(
             WorkflowGraphInput(
@@ -336,6 +360,20 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
                 display_name="Rect Summary",
                 payload_type_id="value.v1",
                 source_node_id="rect",
+                source_port="summary",
+            ),
+            WorkflowGraphOutput(
+                output_id="rect_roi",
+                display_name="Rect ROI",
+                payload_type_id="roi.v1",
+                source_node_id="rect_roi",
+                source_port="roi",
+            ),
+            WorkflowGraphOutput(
+                output_id="rect_roi_summary",
+                display_name="Rect ROI Summary",
+                payload_type_id="value.v1",
+                source_node_id="rect_roi",
                 source_port="summary",
             ),
             WorkflowGraphOutput(
@@ -385,12 +423,15 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     measurements = execution_result.outputs["measurements"]
     rotated_rects = execution_result.outputs["rotated_rects"]
     rect_summary = execution_result.outputs["rect_summary"]
+    rect_roi = execution_result.outputs["rect_roi"]
+    rect_roi_summary = execution_result.outputs["rect_roi_summary"]
     regions = execution_result.outputs["regions"]
     regions_summary = execution_result.outputs["regions_summary"]
     rotated_rects_value = execution_result.outputs["rotated_rects_value"]
     contour_debug_preview = _read_record_output(execution_result, node_id="contour", output_name="debug_preview")
     filter_debug_preview = _read_record_output(execution_result, node_id="filter", output_name="debug_preview")
     rect_debug_preview = _read_record_output(execution_result, node_id="rect", output_name="debug_preview")
+    rect_roi_debug_preview = _read_record_output(execution_result, node_id="rect_roi", output_name="debug_preview")
 
     assert filtered_contours["count"] == 2
     assert contour_summary["value"]["filtered_count"] == 2
@@ -401,6 +442,10 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert len(rotated_rects["items"][0]["box_points"]) == 4
     assert rotated_rects["items"][0]["rect_area"] >= rotated_rects["items"][0]["contour_area"]
     assert rect_summary["value"]["count"] == 2
+    assert rect_roi["roi_kind"] == "polygon"
+    assert len(rect_roi["polygon_xy"]) == 4
+    assert rect_roi["roi_id"].startswith("rect-roi-")
+    assert rect_roi_summary["value"]["selected_contour_index"] == rotated_rects["items"][0]["contour_index"]
     assert regions["count"] == 2
     assert regions["source_image"]["object_key"] == "inputs/contours.png"
     assert regions["items"][0]["region_id"].startswith("ctr-")
@@ -434,6 +479,11 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     rect_pick_overlay = next(
         overlay
         for overlay in rect_debug_preview["overlays"]
+        if "selected_contour_index" in overlay.get("target_parameters", [])
+    )
+    rect_roi_pick_overlay = next(
+        overlay
+        for overlay in rect_roi_debug_preview["overlays"]
         if "selected_contour_index" in overlay.get("target_parameters", [])
     )
     filter_pick_overlay = next(
@@ -482,6 +532,8 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert rect_controls_by_name["sort_by"]["control"] == "select"
     assert rect_controls_by_name["descending"]["control"] == "checkbox"
     assert isinstance(rect_pick_overlay["parameters"]["selected_contour_index"], int)
+    assert rect_roi_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert isinstance(rect_roi_pick_overlay["parameters"]["selected_contour_index"], int)
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:

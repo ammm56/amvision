@@ -10,6 +10,7 @@ from backend.contracts.workflows.workflow_graph import validate_node_definition_
 from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from custom_nodes._opencv_shared.workflow.payload_contracts import (
     load_shared_opencv_payload_contracts_payload,
+    merge_payload_contracts_for_validation,
 )
 
 
@@ -78,7 +79,10 @@ def build_custom_node_catalog_document(*, workflow_dir: Path | None = None) -> C
             "node_definitions": node_definitions_payload,
         }
     )
-    validation_payload_contracts = get_core_workflow_payload_contracts() + catalog_document.payload_contracts
+    validation_payload_contracts = merge_payload_contracts_for_validation(
+        core_payload_contracts=get_core_workflow_payload_contracts(),
+        custom_payload_contracts=catalog_document.payload_contracts,
+    )
     validate_node_definition_catalog(
         node_definitions=catalog_document.node_definitions,
         payload_contracts=validation_payload_contracts,

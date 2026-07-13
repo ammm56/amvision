@@ -28,6 +28,7 @@ from backend.nodes.core_nodes.support.roi import (
     polygon_bbox_xyxy,
 )
 from backend.nodes.debug_image_panel import (
+    build_bbox_overlay,
     build_debug_image_preview_output,
     build_debug_panel_interaction,
     build_debug_panel_parameter_schema,
@@ -68,7 +69,7 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
         bbox_xyxy=contour_item.get("bbox_xyxy"),
         polygon_mode=polygon_mode,
     )
-    if require_quad and len(points) != 4:
+    if roi_kind == "polygon" and require_quad and len(points) != 4:
         raise InvalidRequestError(
             "roi-from-contour 节点当前要求 contour.points 必须是四点轮廓",
             details={
@@ -111,8 +112,10 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
                 "roi_kind": roi_kind,
                 "selected_contour_index": resolved_contour_index,
                 "source_point_count": len(source_points),
-                "point_count": len(points),
+                "point_count": len(polygon_xy),
+                "candidate_polygon_point_count": len(points),
                 "polygon_mode": polygon_mode,
+                "effective_geometry": "bbox" if roi_kind == "bbox" else polygon_mode,
                 "bbox_xyxy": roi_payload["bbox_xyxy"],
                 "area": area,
                 "source_image_attached": source_image is not None,
@@ -126,8 +129,9 @@ def _roi_from_contour_handler(request: WorkflowNodeExecutionRequest) -> dict[str
                 image_payload=source_image,
                 title="ROI From Contour",
                 artifact_name="roi-from-contour-debug-preview",
-                overlays=_build_contour_overlays(
+                overlays=_build_roi_from_contour_overlays(
                     contour_items,
+                    roi_payload=roi_payload,
                     selected_contour_index=resolved_contour_index,
                 ),
                 interaction=build_debug_panel_interaction(
@@ -273,12 +277,18 @@ def _build_polygon_points(
     return [[round(float(point[0]), 4), round(float(point[1]), 4)] for point in box_points]
 
 
-def _build_contour_overlays(
+def _build_roi_from_contour_overlays(
     contour_items: list[dict[str, object]],
     *,
+    roi_payload: dict[str, object],
     selected_contour_index: int,
 ) -> list[dict[str, object]]:
-    """把 contours.v1 转成 ImageViewer 可点选 overlay。"""
+    """构造 ROI From Contour 的 ImageViewer overlay。
+
+    交互面板要优先显示节点最终输出的 ROI 形状，避免用户明明选择 bbox
+    或 min-area-rect，却仍看到原始 contour 多边形的误导体验。未选中的
+    contour 仍保留为可点选候选，方便切换 selected_contour_index。
+    """
 
     overlays: list[dict[str, object]] = []
     for contour_item in contour_items[:120]:
@@ -286,18 +296,48 @@ def _build_contour_overlays(
         if not isinstance(raw_points, list) or len(raw_points) < 3:
             continue
         contour_index = int(contour_item.get("contour_index", len(overlays)))
+        if contour_index == selected_contour_index:
+            continue
         polygon_xy = _decimate_overlay_points(raw_points)
         overlays.append(
             build_polygon_overlay(
                 overlay_id=f"contour-{contour_index}",
                 label=f"contour {contour_index}",
                 polygon_xy=polygon_xy,
-                kind="selected-contour" if contour_index == selected_contour_index else "contour",
+                kind="contour",
                 target_parameters=["selected_contour_index"],
                 parameters={"selected_contour_index": contour_index},
             )
         )
+    overlays.append(_build_selected_roi_overlay(roi_payload, selected_contour_index=selected_contour_index))
     return overlays
+
+
+def _build_selected_roi_overlay(
+    roi_payload: dict[str, object],
+    *,
+    selected_contour_index: int,
+) -> dict[str, object]:
+    """按最终输出 ROI 构造选中 overlay。"""
+
+    roi_id = str(roi_payload.get("roi_id") or f"contour-{selected_contour_index}")
+    label = str(roi_payload.get("display_name") or f"contour {selected_contour_index}")
+    common_kwargs = {
+        "overlay_id": roi_id,
+        "label": label,
+        "kind": "selected-contour",
+        "target_parameters": ["selected_contour_index"],
+        "parameters": {"selected_contour_index": selected_contour_index},
+    }
+    if str(roi_payload.get("roi_kind") or "").lower() == "bbox":
+        return build_bbox_overlay(
+            bbox_xyxy=roi_payload["bbox_xyxy"],
+            **common_kwargs,
+        )
+    return build_polygon_overlay(
+        polygon_xy=roi_payload["polygon_xy"],
+        **common_kwargs,
+    )
 
 
 def _decimate_overlay_points(raw_points: list[object]) -> list[list[float]]:

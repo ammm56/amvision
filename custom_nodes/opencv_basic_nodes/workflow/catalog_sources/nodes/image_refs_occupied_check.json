@@ -1,0 +1,166 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.image-refs-occupied-check",
+  "display_name": "Image Refs Occupied Check",
+  "category": "opencv.analysis",
+  "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
+  "metadata": {
+    "i18n": {
+      "display_name": {
+        "zh-CN": "图片集合有料检查",
+        "en-US": "Image Refs Occupied Check"
+      },
+      "description": {
+        "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
+        "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for each image in image-refs.v1, then classify each item as occupied or empty with multi-metric rules."
+      }
+    }
+  },
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "images",
+      "display_name": "Images",
+      "payload_type_id": "image-refs.v1",
+      "description": "待检查的图片集合，通常来自 Crop Export.crops。"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1",
+      "description": "每张图片的指标、规则判断、occupied / empty 结果和整批摘要。"
+    },
+    {
+      "name": "body",
+      "display_name": "Body",
+      "payload_type_id": "response-body.v1",
+      "description": "可作为 workflow HTTP 输出的批量有料检查结果 body。"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "max_items": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Max Items",
+        "description": "最多检查多少张图片；留空时检查全部。"
+      },
+      "expected_count": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Expected Count",
+        "description": "期望图片数量；配置后数量不一致会让整批状态为 failed。"
+      },
+      "dark_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 64,
+        "title": "Dark Threshold",
+        "description": "低于或等于该灰度值的像素计入 dark_ratio 和暗连通域。"
+      },
+      "bright_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 192,
+        "title": "Bright Threshold",
+        "description": "高于或等于该灰度值的像素计入 bright_ratio。"
+      },
+      "canny_low_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 50,
+        "title": "Canny Low Threshold",
+        "description": "计算 edge_density 时使用的 Canny 低阈值。"
+      },
+      "canny_high_threshold": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 150,
+        "title": "Canny High Threshold",
+        "description": "计算 edge_density 时使用的 Canny 高阈值。"
+      },
+      "dark_morph_kernel_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 3,
+        "title": "Dark Morph Kernel",
+        "description": "暗像素 mask 做 open 时使用的奇数 kernel size；1 表示不做形态学清理。"
+      },
+      "dark_component_min_area": {
+        "type": "number",
+        "minimum": 0,
+        "default": 20,
+        "title": "Dark Component Min Area",
+        "description": "暗连通域最小面积；用于过滤高光纹理和噪声产生的小暗点。"
+      },
+      "std_gray_occupied_min": {
+        "type": "number",
+        "minimum": 0,
+        "default": 42,
+        "title": "Std Gray Occupied Min",
+        "description": "有料槽位要求的最小灰度标准差；用于发现物料纹理、阴影或结构变化。"
+      },
+      "dark_ratio_occupied_min": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.018,
+        "title": "Dark Ratio Occupied Min",
+        "description": "有料槽位要求的最小暗像素比例。"
+      },
+      "edge_density_occupied_min": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.16,
+        "title": "Edge Density Occupied Min",
+        "description": "有料槽位要求的最小边缘密度。"
+      },
+      "dark_component_area_ratio_occupied_min": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.015,
+        "title": "Dark Component Area Ratio Occupied Min",
+        "description": "有料槽位要求的最小暗连通域总面积比例。"
+      },
+      "largest_dark_component_area_ratio_occupied_min": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.008,
+        "title": "Largest Dark Component Ratio Occupied Min",
+        "description": "有料槽位要求的最小单个暗连通域面积比例。"
+      },
+      "occupied_min_pass_count": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2,
+        "title": "Min Passed Rules",
+        "description": "至少有多少条启用规则通过才判 occupied；用于避免单一指标被光照或纹理误导。"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.statistics",
+    "inspection.batch",
+    "inspection.occupied-check",
+    "inspection.slot"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_version": "0.1.0"
+}

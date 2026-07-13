@@ -46,6 +46,14 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_statistics import 
     NODE_TYPE_ID as IMAGE_REFS_STATISTICS_NODE_TYPE_ID,
     handle_node as image_refs_statistics_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_empty_check import (
+    NODE_TYPE_ID as IMAGE_REFS_EMPTY_CHECK_NODE_TYPE_ID,
+    handle_node as image_refs_empty_check_handler,
+)
+from custom_nodes.opencv_basic_nodes.backend.nodes.image_refs_occupied_check import (
+    NODE_TYPE_ID as IMAGE_REFS_OCCUPIED_CHECK_NODE_TYPE_ID,
+    handle_node as image_refs_occupied_check_handler,
+)
 from custom_nodes.opencv_basic_nodes.backend.nodes.invert import (
     NODE_TYPE_ID as INVERT_NODE_TYPE_ID,
     handle_node as invert_handler,
@@ -82,6 +90,10 @@ from custom_nodes.opencv_basic_nodes.backend.nodes.sobel import (
     NODE_TYPE_ID as SOBEL_NODE_TYPE_ID,
     handle_node as sobel_handler,
 )
+from custom_nodes.opencv_basic_nodes.backend.nodes.slot_batch_state import (
+    NODE_TYPE_ID as SLOT_BATCH_STATE_NODE_TYPE_ID,
+    handle_node as slot_batch_state_handler,
+)
 
 
 NODE_HANDLERS = (
@@ -95,7 +107,10 @@ NODE_HANDLERS = (
     (PAYLOAD_TO_VALUE_NODE_TYPE_ID, payload_to_value_handler),
     (CROP_EXPORT_NODE_TYPE_ID, crop_export_handler),
     (GALLERY_PREVIEW_NODE_TYPE_ID, gallery_preview_handler),
+    (IMAGE_REFS_EMPTY_CHECK_NODE_TYPE_ID, image_refs_empty_check_handler),
+    (IMAGE_REFS_OCCUPIED_CHECK_NODE_TYPE_ID, image_refs_occupied_check_handler),
     (IMAGE_REFS_STATISTICS_NODE_TYPE_ID, image_refs_statistics_handler),
+    (SLOT_BATCH_STATE_NODE_TYPE_ID, slot_batch_state_handler),
     (GRAYSCALE_NODE_TYPE_ID, grayscale_handler),
     (LAPLACIAN_NODE_TYPE_ID, laplacian_handler),
     (RESIZE_NODE_TYPE_ID, resize_handler),

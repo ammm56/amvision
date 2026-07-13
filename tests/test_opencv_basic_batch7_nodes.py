@@ -477,6 +477,312 @@ def test_opencv_basic_batch7_image_refs_statistics_execute(tmp_path: Path) -> No
     assert statistics["items"][1]["is_empty"] is False
 
 
+def test_opencv_basic_batch7_image_refs_empty_check_execute(tmp_path: Path) -> None:
+    """验证 image-refs-empty-check 可用多指标规则判断批量槽位是否为空。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/roi-empty-check.png", _build_image_refs_empty_check_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch7-image-refs-empty-check",
+        template_version="1.0.0",
+        display_name="OpenCV Batch7 Image Refs Empty Check",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi_grid",
+                node_type_id="core.vision.roi-grid-create",
+                parameters={
+                    "rows": 1,
+                    "columns": 2,
+                    "origin_x": 0,
+                    "origin_y": 0,
+                    "roi_width": 72,
+                    "roi_height": 72,
+                    "step_x": 72,
+                    "step_y": 72,
+                    "roi_id_prefix": "slot",
+                },
+            ),
+            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="empty_check",
+                node_type_id="custom.opencv.image-refs-empty-check",
+                parameters={
+                    "expected_count": 2,
+                    "std_gray_empty_max": 18,
+                    "dark_ratio_empty_max": 0.02,
+                    "edge_density_empty_max": 0.08,
+                    "dark_component_area_ratio_empty_max": 0.02,
+                    "dark_component_min_area": 12,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-grid-b7-empty",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_grid",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-crop-export-b7-empty",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="crop_export",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-grid-crop-export-b7-empty",
+                source_node_id="roi_grid",
+                source_port="rois",
+                target_node_id="crop_export",
+                target_port="rois",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-crop-export-empty-check-b7",
+                source_node_id="crop_export",
+                source_port="crops",
+                target_node_id="empty_check",
+                target_port="images",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="empty_check",
+                display_name="Empty Check",
+                payload_type_id="value.v1",
+                source_node_id="empty_check",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/roi-empty-check.png",
+                "width": 144,
+                "height": 72,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch7-image-refs-empty-check",
+        },
+    )
+
+    empty_check = execution_result.outputs["empty_check"]["value"]
+
+    assert empty_check["count"] == 2
+    assert empty_check["expected_count_matched"] is True
+    assert empty_check["empty_count"] == 1
+    assert empty_check["non_empty_count"] == 1
+    assert empty_check["state"] == "ng"
+    assert empty_check["items"][0]["roi_id"] == "slot-01-01"
+    assert empty_check["items"][0]["is_empty"] is True
+    assert empty_check["items"][1]["roi_id"] == "slot-01-02"
+    assert empty_check["items"][1]["is_empty"] is False
+    assert "std_gray" in empty_check["items"][0]["metrics"]
+
+
+def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -> None:
+    """验证空槽检查、有料检查和批量状态节点可组合判断整批槽位状态。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/roi-slot-state.png", _build_image_refs_empty_check_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-batch7-slot-state",
+        template_version="1.0.0",
+        display_name="OpenCV Batch7 Slot State",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="roi_grid",
+                node_type_id="core.vision.roi-grid-create",
+                parameters={
+                    "rows": 1,
+                    "columns": 2,
+                    "origin_x": 0,
+                    "origin_y": 0,
+                    "roi_width": 72,
+                    "roi_height": 72,
+                    "step_x": 72,
+                    "step_y": 72,
+                    "roi_id_prefix": "slot",
+                },
+            ),
+            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="empty_check",
+                node_type_id="custom.opencv.image-refs-empty-check",
+                parameters={
+                    "expected_count": 2,
+                    "std_gray_empty_max": 18,
+                    "dark_ratio_empty_max": 0.02,
+                    "edge_density_empty_max": 0.08,
+                    "dark_component_area_ratio_empty_max": 0.02,
+                    "dark_component_min_area": 12,
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="occupied_check",
+                node_type_id="custom.opencv.image-refs-occupied-check",
+                parameters={
+                    "expected_count": 2,
+                    "std_gray_occupied_min": 18,
+                    "dark_ratio_occupied_min": 0.02,
+                    "edge_density_occupied_min": 0.02,
+                    "dark_component_area_ratio_occupied_min": 0.02,
+                    "dark_component_min_area": 12,
+                    "occupied_min_pass_count": 1,
+                },
+            ),
+            WorkflowGraphNode(
+                node_id="slot_state",
+                node_type_id="custom.opencv.slot-batch-state",
+                parameters={
+                    "expected_count": 2,
+                    "empty_min_empty_ratio": 1.0,
+                    "full_min_occupied_ratio": 1.0,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-grid-b7-state",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="roi_grid",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-input-crop-export-b7-state",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="crop_export",
+                target_port="image",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-grid-crop-export-b7-state",
+                source_node_id="roi_grid",
+                source_port="rois",
+                target_node_id="crop_export",
+                target_port="rois",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-crop-export-empty-check-b7-state",
+                source_node_id="crop_export",
+                source_port="crops",
+                target_node_id="empty_check",
+                target_port="images",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-crop-export-occupied-check-b7-state",
+                source_node_id="crop_export",
+                source_port="crops",
+                target_node_id="occupied_check",
+                target_port="images",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-empty-check-slot-state-b7",
+                source_node_id="empty_check",
+                source_port="summary",
+                target_node_id="slot_state",
+                target_port="empty_check",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-occupied-check-slot-state-b7",
+                source_node_id="occupied_check",
+                source_port="summary",
+                target_node_id="slot_state",
+                target_port="occupied_check",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="empty_check",
+                display_name="Empty Check",
+                payload_type_id="value.v1",
+                source_node_id="empty_check",
+                source_port="summary",
+            ),
+            WorkflowGraphOutput(
+                output_id="occupied_check",
+                display_name="Occupied Check",
+                payload_type_id="value.v1",
+                source_node_id="occupied_check",
+                source_port="summary",
+            ),
+            WorkflowGraphOutput(
+                output_id="slot_state",
+                display_name="Slot State",
+                payload_type_id="value.v1",
+                source_node_id="slot_state",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/roi-slot-state.png",
+                "width": 144,
+                "height": 72,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-batch7-slot-state",
+        },
+    )
+
+    empty_check = execution_result.outputs["empty_check"]["value"]
+    occupied_check = execution_result.outputs["occupied_check"]["value"]
+    slot_state = execution_result.outputs["slot_state"]["value"]
+
+    assert empty_check["empty_count"] == 1
+    assert empty_check["non_empty_count"] == 1
+    assert occupied_check["occupied_count"] == 1
+    assert occupied_check["empty_count"] == 1
+    assert occupied_check["items"][0]["is_occupied"] is False
+    assert occupied_check["items"][1]["is_occupied"] is True
+    assert slot_state["tray_state"] == "partial-or-abnormal"
+    assert slot_state["is_empty_tray"] is False
+    assert slot_state["is_full_tray"] is False
+
+
 def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
     """验证 connected-components 与 draw-regions 可接成分割覆盖层调试链。"""
 
@@ -651,6 +957,20 @@ def _build_image_refs_statistics_test_png_bytes() -> bytes:
         cv2.line(image, (x, 4), (x, 60), (255, 255, 255), thickness=2)
     for y in range(8, 60, 8):
         cv2.line(image, (68, y), (124, y), (0, 0, 0), thickness=2)
+    success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _build_image_refs_empty_check_test_png_bytes() -> bytes:
+    """构造左侧空槽、右侧有暗色物料的批量空槽检查测试图片。"""
+
+    import cv2
+    import numpy as np
+
+    image = np.full((72, 144, 3), 186, dtype=np.uint8)
+    cv2.rectangle(image, (82, 14), (132, 58), (32, 32, 32), thickness=-1)
+    cv2.line(image, (82, 14), (132, 58), (88, 88, 88), thickness=2)
     success, encoded = cv2.imencode(".png", image)
     assert success is True
     return encoded.tobytes()

@@ -265,6 +265,116 @@ def test_workflow_graph_executor_reports_failed_node_details() -> None:
     assert caught_error.value.details["error_message"] == "boom"
 
 
+def test_workflow_graph_executor_ignores_edges_from_disabled_nodes() -> None:
+    """验证禁用节点的输出连线不会让下游可选端口误报缺失。"""
+
+    disabled_source_node = NodeDefinition(
+        node_type_id="core.test.disabled-source",
+        display_name="Disabled Source",
+        category="test.execution",
+        description="用于验证禁用节点输出不会参与输入解析。",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(),
+        output_ports=(
+            NodePortDefinition(
+                name="value",
+                display_name="Value",
+                payload_type_id="value.v1",
+            ),
+        ),
+        parameter_schema={"type": "object", "properties": {}},
+    )
+    target_node = NodeDefinition(
+        node_type_id="core.test.optional-input-target",
+        display_name="Optional Input Target",
+        category="test.execution",
+        description="用于验证可选端口在禁用上游时收到 None。",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="required_value",
+                display_name="Required Value",
+                payload_type_id="value.v1",
+            ),
+            NodePortDefinition(
+                name="optional_value",
+                display_name="Optional Value",
+                payload_type_id="value.v1",
+                required=False,
+            ),
+        ),
+        output_ports=(
+            NodePortDefinition(
+                name="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+            ),
+        ),
+        parameter_schema={"type": "object", "properties": {}},
+    )
+    template = WorkflowGraphTemplate(
+        template_id="disabled-edge-template",
+        template_version="1.0.0",
+        display_name="Disabled Edge Template",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="disabled_source",
+                node_type_id="core.test.disabled-source",
+                enabled=False,
+            ),
+            WorkflowGraphNode(
+                node_id="target",
+                node_type_id="core.test.optional-input-target",
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-disabled-source-target",
+                source_node_id="disabled_source",
+                source_port="value",
+                target_node_id="target",
+                target_port="optional_value",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="required_value",
+                display_name="Required Value",
+                payload_type_id="value.v1",
+                target_node_id="target",
+                target_port="required_value",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+                source_node_id="target",
+                source_port="result",
+            ),
+        ),
+    )
+
+    registry = WorkflowNodeRuntimeRegistry()
+    registry.register_python_callable(disabled_source_node, _raise_assertion_handler)
+    registry.register_python_callable(target_node, _optional_input_target_handler)
+    executor = WorkflowGraphExecutor(registry=registry)
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={"required_value": {"value": "ok"}},
+    )
+
+    assert execution_result.outputs["result"] == {
+        "value": "ok",
+        "optional_was_none": True,
+    }
+    assert [record.node_id for record in execution_result.node_records] == ["target"]
+
+
 def _normalize_text_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """去除输入文本两端空白。"""
 
@@ -285,3 +395,16 @@ def _raise_assertion_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
     """用于验证节点失败定位的测试处理函数。"""
 
     raise AssertionError("boom")
+
+
+def _optional_input_target_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """返回必填输入值，并标记可选输入是否为空。"""
+
+    required_payload = request.input_values["required_value"]
+    required_value = required_payload.get("value") if isinstance(required_payload, dict) else required_payload
+    return {
+        "result": {
+            "value": required_value,
+            "optional_was_none": request.input_values["optional_value"] is None,
+        }
+    }

@@ -50,8 +50,15 @@ def build_edge_bindings(
 ) -> dict[tuple[str, str], list[tuple[str, str]]]:
     """构建节点输出到节点输入端口的连接索引。"""
 
+    enabled_node_ids = {
+        node.node_id
+        for node in template.nodes
+        if node.enabled is not False
+    }
     bindings: dict[tuple[str, str], list[tuple[str, str]]] = {}
     for edge in template.edges:
+        if edge.source_node_id not in enabled_node_ids or edge.target_node_id not in enabled_node_ids:
+            continue
         bindings.setdefault((edge.target_node_id, edge.target_port), []).append(
             (edge.source_node_id, edge.source_port)
         )

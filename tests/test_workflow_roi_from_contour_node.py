@@ -34,6 +34,20 @@ def _build_contours_payload() -> dict[str, object]:
     }
 
 
+def _build_debug_contours_payload() -> dict[str, object]:
+    """构造不需要读取图片内容的 storage-ref 调试 payload。"""
+
+    contours_payload = _build_contours_payload()
+    contours_payload["source_image"] = {
+        "transport_kind": "storage",
+        "object_key": "project/files/tray.jpg",
+        "media_type": "image/jpeg",
+        "width": 160,
+        "height": 120,
+    }
+    return contours_payload
+
+
 def test_roi_from_contour_outputs_polygon_roi_for_quad_contour() -> None:
     """验证四点 contour 可以转换为 polygon roi.v1。"""
 
@@ -116,6 +130,85 @@ def test_roi_from_contour_outputs_min_area_rect_for_dense_contour() -> None:
     assert output["summary"]["value"]["source_point_count"] == 8
     assert output["summary"]["value"]["point_count"] == 4
     assert output["summary"]["value"]["polygon_mode"] == "min-area-rect"
+
+
+def test_roi_from_contour_debug_overlay_uses_final_bbox_roi() -> None:
+    """验证 bbox 输出时调试图突出显示最终 bbox，而不是原始 contour 多边形。"""
+
+    contours_payload = _build_debug_contours_payload()
+    contours_payload["items"][0]["points"] = [
+        [10, 30],
+        [25, 20],
+        [95, 20],
+        [110, 30],
+        [110, 70],
+        [95, 80],
+        [25, 80],
+        [10, 70],
+    ]
+
+    output = _roi_from_contour_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-from-contour",
+            node_definition=object(),
+            parameters={
+                "roi_kind": "bbox",
+                "polygon_mode": "min-area-rect",
+                "require_quad": True,
+                "debug_image_panel_enabled": True,
+            },
+            input_values={"contours": contours_payload},
+            execution_metadata={"debug_image_panels_enabled": True},
+        )
+    )
+
+    selected_overlay = output["debug_preview"]["overlays"][-1]
+    assert output["roi"]["roi_kind"] == "bbox"
+    assert output["summary"]["value"]["point_count"] == 4
+    assert output["summary"]["value"]["candidate_polygon_point_count"] == 4
+    assert output["summary"]["value"]["effective_geometry"] == "bbox"
+    assert selected_overlay["kind"] == "selected-contour"
+    assert selected_overlay["bbox_xyxy"] == [10.0, 20.0, 110.0, 80.0]
+    assert "points_xy" not in selected_overlay
+
+
+def test_roi_from_contour_debug_overlay_uses_min_area_rect_polygon() -> None:
+    """验证 min-area-rect polygon 输出时调试图显示四点旋转矩形。"""
+
+    contours_payload = _build_debug_contours_payload()
+    contours_payload["items"][0]["points"] = [
+        [10, 30],
+        [25, 20],
+        [95, 20],
+        [110, 30],
+        [110, 70],
+        [95, 80],
+        [25, 80],
+        [10, 70],
+    ]
+
+    output = _roi_from_contour_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="roi-from-contour",
+            node_definition=object(),
+            parameters={
+                "roi_kind": "polygon",
+                "polygon_mode": "min-area-rect",
+                "require_quad": True,
+                "debug_image_panel_enabled": True,
+            },
+            input_values={"contours": contours_payload},
+            execution_metadata={"debug_image_panels_enabled": True},
+        )
+    )
+
+    selected_overlay = output["debug_preview"]["overlays"][-1]
+    assert output["roi"]["roi_kind"] == "polygon"
+    assert output["summary"]["value"]["point_count"] == 4
+    assert output["summary"]["value"]["effective_geometry"] == "min-area-rect"
+    assert selected_overlay["kind"] == "selected-contour"
+    assert len(selected_overlay["points_xy"]) == 4
+    assert "bbox_xyxy" not in selected_overlay
 
 
 def test_roi_from_contour_selects_by_contour_payload_index() -> None:
