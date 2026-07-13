@@ -7,6 +7,7 @@
     <LangVersion>14.0</LangVersion>
     <AssemblyName>Amvision.Workflows.Console</AssemblyName>
     <RootNamespace>Amvision.Workflows.Console</RootNamespace>
+    <Version>0.1.2</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net461' or '$(TargetFramework)' == 'net472'">

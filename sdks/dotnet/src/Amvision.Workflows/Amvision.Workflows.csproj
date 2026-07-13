@@ -7,7 +7,7 @@
     <AssemblyName>Amvision.Workflows</AssemblyName>
     <RootNamespace>Amvision.Workflows</RootNamespace>
     <PackageId>Amvision.Workflows</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.2</Version>
     <Authors>Amvision</Authors>
     <Description>Amvision WorkflowAppRuntime, WorkflowRun, and TriggerSource .NET SDK.</Description>
     <RepositoryType>git</RepositoryType>

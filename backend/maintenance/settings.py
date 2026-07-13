@@ -25,7 +25,7 @@ class BackendMaintenanceAppSettings(BaseModel):
     """
 
     app_name: str = "amvision maintenance"
-    app_version: str = "0.1.0"
+    app_version: str = "0.1.2"
 
 
 class BackendMaintenanceWorkspaceConfig(BaseModel):

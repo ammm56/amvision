@@ -26,7 +26,7 @@ def test_worker_health_summary_reads_running_heartbeat(tmp_path) -> None:
     heartbeat = BackendWorkerHeartbeat(
         info=BackendWorkerHeartbeatInfo(
             app_name="amvision worker",
-            app_version="0.1.1",
+            app_version="0.1.2",
             workspace_dir=tmp_path / "worker",
             queue_root_dir=tmp_path,
             enabled_consumer_kinds=("dataset-import", "dataset-export"),
@@ -55,7 +55,7 @@ def test_worker_health_summary_reads_multiple_profile_heartbeats(tmp_path) -> No
     import_workers = BackendWorkerHeartbeat(
         info=BackendWorkerHeartbeatInfo(
             app_name="amvision dataset import worker",
-            app_version="0.1.1",
+            app_version="0.1.2",
             workspace_dir=tmp_path / "worker" / "dataset-import",
             queue_root_dir=tmp_path,
             enabled_consumer_kinds=("dataset-import",),
@@ -66,7 +66,7 @@ def test_worker_health_summary_reads_multiple_profile_heartbeats(tmp_path) -> No
     export_workers = BackendWorkerHeartbeat(
         info=BackendWorkerHeartbeatInfo(
             app_name="amvision dataset export worker",
-            app_version="0.1.1",
+            app_version="0.1.2",
             workspace_dir=tmp_path / "worker" / "dataset-export",
             queue_root_dir=tmp_path,
             enabled_consumer_kinds=("dataset-export",),

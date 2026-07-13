@@ -60,7 +60,7 @@
 {
   "app": {
     "app_name": "amvision backend-service",
-    "app_version": "0.1.0"
+    "app_version": "0.1.2"
   },
   "database": {
     "url": "sqlite:///./data/amvision.db",
@@ -132,7 +132,7 @@
 ```
 
 - AMVISION_APP__APP_NAME=amvision backend-service
-- AMVISION_APP__APP_VERSION=0.1.0
+- AMVISION_APP__APP_VERSION=0.1.2
 - AMVISION_DATABASE__URL=sqlite:///./data/amvision.db
 - AMVISION_DATABASE__ECHO=false
 - AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
