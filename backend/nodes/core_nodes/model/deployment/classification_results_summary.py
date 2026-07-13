@@ -1,4 +1,4 @@
-"""classification 逐图结果汇总节点。"""
+"""槽位 classification 结果汇总节点。"""
 
 from __future__ import annotations
 
@@ -16,27 +16,10 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 
 
 NODE_NAME = "classification-results-summary"
-DEFAULT_POSITIVE_LABELS = (
-    "empty",
-    "empty_slot",
-    "slot_empty",
-    "no_part",
-    "empty-tray-slot",
-    "空槽",
-    "空",
-)
-DEFAULT_NEGATIVE_LABELS = (
-    "occupied",
-    "occupied_slot",
-    "slot_occupied",
-    "full",
-    "filled",
-    "part",
-    "ng",
-    "有料",
-    "满槽",
-    "满",
-)
+FORMAT_ID = "amvision.slot-classification-summary.v1"
+DEFAULT_EMPTY_LABELS = ("slotempty",)
+DEFAULT_FULL_LABELS = ("slotfull",)
+DEFAULT_ABNORMAL_LABELS = ("slotabnormal",)
 DEFAULT_LABEL_PATHS = (
     "top_item.class_name",
     "top_item.label",
@@ -53,10 +36,26 @@ DEFAULT_SCORE_PATHS = (
     "items.0.confidence",
     "items.0.probability",
 )
+DEFAULT_CLASS_ID_PATHS = (
+    "top_item.class_id",
+    "top_item.id",
+    "items.0.class_id",
+    "items.0.id",
+)
+DEFAULT_ITEM_META_PATHS = {
+    "crop_index": "source_image.crop_index",
+    "roi_id": "source_image.roi_id",
+    "roi_kind": "source_image.roi_kind",
+    "bbox_xyxy": "source_image.bbox_xyxy",
+    "image_width": "image_width",
+    "image_height": "image_height",
+    "latency_ms": "latency_ms",
+}
+SUPPORTED_TARGET_STATES = {"empty", "full", "none"}
 
 
 def _classification_results_summary_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """汇总 for-each 逐图 classification 结果。"""
+    """汇总逐槽 classification 结果，并收敛为整盘状态。"""
 
     result_items = require_list_value(
         request.input_values.get("results"),
@@ -64,16 +63,23 @@ def _classification_results_summary_handler(request: WorkflowNodeExecutionReques
         node_id=request.node_id,
     )
     expected_count = _read_optional_positive_int(request.parameters.get("expected_count"))
+    target_state = _read_target_state(request.parameters.get("target_state"))
     min_score = _read_optional_float(request.parameters.get("min_score"), default=0.0)
-    positive_labels = _read_label_set(request.parameters.get("positive_labels"), default=DEFAULT_POSITIVE_LABELS)
-    negative_labels = _read_label_set(request.parameters.get("negative_labels"), default=DEFAULT_NEGATIVE_LABELS)
-    label_paths = _read_paths(request.parameters.get("label_paths"), default=DEFAULT_LABEL_PATHS)
-    score_paths = _read_paths(request.parameters.get("score_paths"), default=DEFAULT_SCORE_PATHS)
-    require_known_label = _read_bool(request.parameters.get("require_known_label"), default=False)
+    empty_labels = _read_label_set(request.parameters.get("empty_labels"), default=DEFAULT_EMPTY_LABELS)
+    full_labels = _read_label_set(request.parameters.get("full_labels"), default=DEFAULT_FULL_LABELS)
+    abnormal_labels = _read_label_set(request.parameters.get("abnormal_labels"), default=DEFAULT_ABNORMAL_LABELS)
+    include_items = _read_bool(request.parameters.get("include_items"), default=False, parameter_name="include_items")
+    include_raw_categories = _read_bool(
+        request.parameters.get("include_raw_categories"),
+        default=False,
+        parameter_name="include_raw_categories",
+    )
 
     normalized_items: list[dict[str, object]] = []
-    positive_count = 0
-    negative_count = 0
+    problem_items: list[dict[str, object]] = []
+    empty_count = 0
+    full_count = 0
+    abnormal_count = 0
     unknown_count = 0
     low_score_count = 0
     for item_index, raw_item in enumerate(result_items, start=1):
@@ -82,71 +88,189 @@ def _classification_results_summary_handler(request: WorkflowNodeExecutionReques
                 f"{NODE_NAME} 节点要求 results 数组项必须是对象",
                 details={"node_id": request.node_id, "item_index": item_index},
             )
-        label = _extract_first_text(raw_item, paths=label_paths)
-        score = _extract_first_number(raw_item, paths=score_paths)
-        normalized_label = _normalize_label(label)
-        score_passed = score is None or score >= min_score
-        decision = "unknown"
-        if score_passed and normalized_label in positive_labels:
-            decision = "positive"
-            positive_count += 1
-        elif score_passed and normalized_label in negative_labels:
-            decision = "negative"
-            negative_count += 1
+        item = _summarize_classification_item(
+            item_index=item_index,
+            raw_item=raw_item,
+            min_score=min_score,
+            empty_labels=empty_labels,
+            full_labels=full_labels,
+            abnormal_labels=abnormal_labels,
+            include_raw_categories=include_raw_categories,
+        )
+        slot_state = item["slot_state"]
+        if slot_state == "empty":
+            empty_count += 1
+        elif slot_state == "full":
+            full_count += 1
+        elif slot_state == "abnormal":
+            abnormal_count += 1
         else:
             unknown_count += 1
-            if score is not None and score < min_score:
-                low_score_count += 1
+        if item["score_passed"] is False:
+            low_score_count += 1
+        normalized_items.append(item)
+        if _is_problem_item(item=item, target_state=target_state):
+            problem_items.append(item)
 
-        normalized_items.append(
-            {
-                "index": item_index,
-                "label": label,
-                "normalized_label": normalized_label,
-                "score": score,
-                "score_passed": score_passed,
-                "decision": decision,
-                "is_positive": decision == "positive",
-                "is_negative": decision == "negative",
-                "is_unknown": decision == "unknown",
-                "categories": dict(raw_item),
-            }
-        )
-
-    expected_count_matched = expected_count is None or expected_count == len(result_items)
-    all_positive = bool(result_items) and positive_count == len(result_items) and unknown_count == 0 and negative_count == 0
-    if require_known_label and unknown_count > 0:
-        state = "unknown"
-    elif all_positive and expected_count_matched:
-        state = "ok"
-    else:
-        state = "ng"
-    summary = {
-        "format_id": "amvision.classification-results-summary.v1",
-        "count": len(result_items),
+    total_count = len(result_items)
+    expected_count_matched = expected_count is None or expected_count == total_count
+    all_empty = total_count > 0 and empty_count == total_count and full_count == 0 and abnormal_count == 0 and unknown_count == 0
+    all_full = total_count > 0 and full_count == total_count and empty_count == 0 and abnormal_count == 0 and unknown_count == 0
+    has_abnormal = abnormal_count > 0
+    tray_state = _decide_tray_state(
+        total_count=total_count,
+        empty_count=empty_count,
+        full_count=full_count,
+        abnormal_count=abnormal_count,
+        unknown_count=unknown_count,
+    )
+    passed = _decide_passed(
+        expected_count_matched=expected_count_matched,
+        target_state=target_state,
+        all_empty=all_empty,
+        all_full=all_full,
+        has_abnormal=has_abnormal,
+        unknown_count=unknown_count,
+    )
+    summary: dict[str, object] = {
+        "format_id": FORMAT_ID,
+        "count": total_count,
         "expected_count": expected_count,
         "expected_count_matched": expected_count_matched,
-        "positive_count": positive_count,
-        "negative_count": negative_count,
+        "target_state": target_state,
+        "tray_state": tray_state,
+        "state": "ok" if passed else "ng",
+        "passed": passed,
+        "empty_count": empty_count,
+        "full_count": full_count,
+        "abnormal_count": abnormal_count,
         "unknown_count": unknown_count,
         "low_score_count": low_score_count,
-        "all_positive": all_positive,
-        "any_negative": negative_count > 0,
-        "state": state,
+        "all_empty": all_empty,
+        "all_full": all_full,
+        "has_abnormal": has_abnormal,
+        "problem_count": len(problem_items),
+        "problem_items": problem_items,
         "rules": {
-            "positive_labels": sorted(positive_labels),
-            "negative_labels": sorted(negative_labels),
+            "empty_labels": sorted(empty_labels),
+            "full_labels": sorted(full_labels),
+            "abnormal_labels": sorted(abnormal_labels),
             "min_score": min_score,
-            "require_known_label": require_known_label,
-            "label_paths": list(label_paths),
-            "score_paths": list(score_paths),
+            "include_items": include_items,
+            "include_raw_categories": include_raw_categories,
         },
-        "items": normalized_items,
     }
+    if include_items:
+        summary["items"] = normalized_items
     return {
         "summary": build_value_payload(summary),
-        "all_positive": build_boolean_payload(all_positive),
+        "passed": build_boolean_payload(passed),
+        "all_empty": build_boolean_payload(all_empty),
+        "all_full": build_boolean_payload(all_full),
+        "has_abnormal": build_boolean_payload(has_abnormal),
     }
+
+
+def _summarize_classification_item(
+    *,
+    item_index: int,
+    raw_item: dict[str, object],
+    min_score: float,
+    empty_labels: set[str],
+    full_labels: set[str],
+    abnormal_labels: set[str],
+    include_raw_categories: bool,
+) -> dict[str, object]:
+    """把单个分类结果压缩为适合整盘判断的槽位状态。"""
+
+    label = _extract_first_text(raw_item, paths=DEFAULT_LABEL_PATHS)
+    normalized_label = _normalize_label(label)
+    score = _extract_first_number(raw_item, paths=DEFAULT_SCORE_PATHS)
+    class_id = _extract_first_number(raw_item, paths=DEFAULT_CLASS_ID_PATHS)
+    score_passed = score is None or score >= min_score
+    slot_state = "unknown"
+    if score_passed and normalized_label in empty_labels:
+        slot_state = "empty"
+    elif score_passed and normalized_label in full_labels:
+        slot_state = "full"
+    elif score_passed and normalized_label in abnormal_labels:
+        slot_state = "abnormal"
+    item: dict[str, object] = {
+        "index": item_index,
+        "label": label,
+        "normalized_label": normalized_label,
+        "class_id": int(class_id) if class_id is not None and class_id.is_integer() else class_id,
+        "score": score,
+        "score_passed": score_passed,
+        "slot_state": slot_state,
+        "is_empty": slot_state == "empty",
+        "is_full": slot_state == "full",
+        "is_abnormal": slot_state == "abnormal",
+        "is_unknown": slot_state == "unknown",
+    }
+    for field_name, path in DEFAULT_ITEM_META_PATHS.items():
+        exists, value = try_extract_value_by_path(root=raw_item, path=path)
+        if exists:
+            item[field_name] = value
+    if include_raw_categories:
+        item["categories"] = dict(raw_item)
+    return item
+
+
+def _decide_tray_state(
+    *,
+    total_count: int,
+    empty_count: int,
+    full_count: int,
+    abnormal_count: int,
+    unknown_count: int,
+) -> str:
+    """根据各槽位状态决定整盘状态。"""
+
+    if total_count <= 0:
+        return "empty-list"
+    if unknown_count > 0:
+        return "unknown"
+    if abnormal_count > 0:
+        return "abnormal"
+    if empty_count == total_count:
+        return "empty"
+    if full_count == total_count:
+        return "full"
+    return "mixed"
+
+
+def _decide_passed(
+    *,
+    expected_count_matched: bool,
+    target_state: str,
+    all_empty: bool,
+    all_full: bool,
+    has_abnormal: bool,
+    unknown_count: int,
+) -> bool:
+    """根据目标状态决定整盘是否通过。"""
+
+    if not expected_count_matched or has_abnormal or unknown_count > 0:
+        return False
+    if target_state == "empty":
+        return all_empty
+    if target_state == "full":
+        return all_full
+    return True
+
+
+def _is_problem_item(*, item: dict[str, object], target_state: str) -> bool:
+    """判断当前槽位是否需要进入问题列表。"""
+
+    slot_state = item.get("slot_state")
+    if item.get("score_passed") is False or slot_state in {"unknown", "abnormal"}:
+        return True
+    if target_state == "empty":
+        return slot_state != "empty"
+    if target_state == "full":
+        return slot_state != "full"
+    return False
 
 
 def _read_optional_positive_int(raw_value: object) -> int | None:
@@ -172,14 +296,30 @@ def _read_optional_float(raw_value: object, *, default: float) -> float:
     return value
 
 
-def _read_bool(raw_value: object, *, default: bool) -> bool:
+def _read_bool(raw_value: object, *, default: bool, parameter_name: str) -> bool:
     """读取布尔参数。"""
 
     if raw_value is None:
         return default
     if isinstance(raw_value, bool):
         return raw_value
-    raise InvalidRequestError(f"{NODE_NAME} 节点的 require_known_label 必须是 boolean")
+    raise InvalidRequestError(f"{NODE_NAME} 节点的 {parameter_name} 必须是 boolean")
+
+
+def _read_target_state(raw_value: object) -> str:
+    """读取目标整盘状态。"""
+
+    if raw_value in (None, ""):
+        return "empty"
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError(f"{NODE_NAME} 节点的 target_state 必须是字符串")
+    normalized_value = raw_value.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized_value not in SUPPORTED_TARGET_STATES:
+        raise InvalidRequestError(
+            f"{NODE_NAME} 节点的 target_state 只支持 empty、full、none",
+            details={"target_state": raw_value},
+        )
+    return normalized_value
 
 
 def _read_label_set(raw_value: object, *, default: tuple[str, ...]) -> set[str]:
@@ -197,23 +337,6 @@ def _read_label_set(raw_value: object, *, default: tuple[str, ...]) -> set[str]:
     if not normalized_values:
         raise InvalidRequestError(f"{NODE_NAME} 节点的标签参数不能为空")
     return normalized_values
-
-
-def _read_paths(raw_value: object, *, default: tuple[str, ...]) -> tuple[str, ...]:
-    """读取候选路径列表。"""
-
-    if raw_value in (None, ""):
-        return default
-    if isinstance(raw_value, str):
-        paths = [item.strip() for item in raw_value.split(",")]
-    elif isinstance(raw_value, list):
-        paths = [item.strip() for item in raw_value if isinstance(item, str)]
-    else:
-        raise InvalidRequestError(f"{NODE_NAME} 节点的路径参数必须是字符串或字符串数组")
-    normalized_paths = tuple(path for path in paths if path)
-    if not normalized_paths:
-        raise InvalidRequestError(f"{NODE_NAME} 节点的路径参数不能为空")
-    return normalized_paths
 
 
 def _extract_first_text(root: dict[str, object], *, paths: tuple[str, ...]) -> str | None:
@@ -247,9 +370,9 @@ def _normalize_label(label: object) -> str:
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.model.classification-results-summary",
-        display_name="Classification Results Summary",
+        display_name="Slot Classification Summary",
         category="model.postprocess",
-        description="汇总 for-each 逐图 classification 结果，按可配置标签判断正类/负类/未知项，适合逐槽分类后收敛为整盘判断。",
+        description="汇总 for-each 逐槽 classification 结果，按 slotempty、slotfull、slotabnormal 判断整盘状态。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -266,8 +389,23 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 payload_type_id="value.v1",
             ),
             NodePortDefinition(
-                name="all_positive",
-                display_name="All Positive",
+                name="passed",
+                display_name="Passed",
+                payload_type_id="boolean.v1",
+            ),
+            NodePortDefinition(
+                name="all_empty",
+                display_name="All Empty",
+                payload_type_id="boolean.v1",
+            ),
+            NodePortDefinition(
+                name="all_full",
+                display_name="All Full",
+                payload_type_id="boolean.v1",
+            ),
+            NodePortDefinition(
+                name="has_abnormal",
+                display_name="Has Abnormal",
                 payload_type_id="boolean.v1",
             ),
         ),
@@ -277,22 +415,37 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "expected_count": {
                     "type": "integer",
                     "minimum": 1,
+                    "default": 36,
                     "title": "Expected Count",
-                    "description": "期望分类结果数量；为空时不校验数量。",
+                    "description": "期望槽位数量；为空时不校验数量。",
                 },
-                "positive_labels": {
+                "target_state": {
+                    "type": "string",
+                    "enum": ["empty", "full", "none"],
+                    "default": "empty",
+                    "title": "Target State",
+                    "description": "整盘目标状态。空盘检测使用 empty，满盘检测使用 full，只统计不判定使用 none。",
+                },
+                "empty_labels": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "default": list(DEFAULT_POSITIVE_LABELS),
-                    "title": "Positive Labels",
-                    "description": "判为目标状态的分类标签，例如空槽模型中的 empty。",
+                    "default": list(DEFAULT_EMPTY_LABELS),
+                    "title": "Empty Labels",
+                    "description": "模型输出为空槽的标签，默认 slotempty。",
                 },
-                "negative_labels": {
+                "full_labels": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "default": list(DEFAULT_NEGATIVE_LABELS),
-                    "title": "Negative Labels",
-                    "description": "判为反向状态的分类标签，例如 occupied 或 full。",
+                    "default": list(DEFAULT_FULL_LABELS),
+                    "title": "Full Labels",
+                    "description": "模型输出为有料且放置正确的标签，默认 slotfull。",
+                },
+                "abnormal_labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": list(DEFAULT_ABNORMAL_LABELS),
+                    "title": "Abnormal Labels",
+                    "description": "模型输出为槽位异常的标签，默认 slotabnormal。",
                 },
                 "min_score": {
                     "type": "number",
@@ -302,27 +455,21 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "title": "Min Score",
                     "description": "低于该置信度时归为 unknown。",
                 },
-                "require_known_label": {
+                "include_items": {
                     "type": "boolean",
                     "default": False,
-                    "title": "Require Known Label",
-                    "description": "为 true 时只要存在 unknown，整体 state 就返回 unknown。",
+                    "title": "Include Items",
+                    "description": "是否在 summary 中返回所有槽位明细；生产默认关闭，只返回问题槽位。",
                 },
-                "label_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": list(DEFAULT_LABEL_PATHS),
-                    "title": "Label Paths",
-                },
-                "score_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": list(DEFAULT_SCORE_PATHS),
-                    "title": "Score Paths",
+                "include_raw_categories": {
+                    "type": "boolean",
+                    "default": False,
+                    "title": "Include Raw Categories",
+                    "description": "是否在每个槽位明细中保留原始 classification 输出；只建议调试时打开。",
                 },
             },
         },
-        capability_tags=("model.postprocess", "classification", "logic.aggregate"),
+        capability_tags=("model.postprocess", "classification", "slot.inspect", "logic.aggregate"),
     ),
     handler=_classification_results_summary_handler,
 )

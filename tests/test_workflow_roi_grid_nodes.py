@@ -465,8 +465,8 @@ def test_image_refs_to_value_list_and_value_to_image_ref_keep_refs_without_copyi
     assert image_output["summary"]["value"]["media_type"] == "image/bgr24"
 
 
-def test_classification_results_summary_counts_positive_negative_and_unknown() -> None:
-    """验证 classification 逐图结果可汇总为空槽/有料/未知计数。"""
+def test_classification_results_summary_counts_slot_states() -> None:
+    """验证 classification 逐图结果可汇总为槽位状态和整盘状态。"""
 
     output = _classification_results_summary_handler(
         WorkflowNodeExecutionRequest(
@@ -474,17 +474,19 @@ def test_classification_results_summary_counts_positive_negative_and_unknown() -
             node_definition=object(),
             parameters={
                 "expected_count": 3,
-                "positive_labels": ["empty"],
-                "negative_labels": ["occupied"],
+                "target_state": "empty",
+                "empty_labels": ["slotempty"],
+                "full_labels": ["slotfull"],
+                "abnormal_labels": ["slotabnormal"],
                 "min_score": 0.5,
-                "require_known_label": True,
+                "include_items": True,
             },
             input_values={
                 "results": {
                     "value": [
-                        {"top_item": {"class_name": "empty", "score": 0.91}},
-                        {"top_item": {"class_name": "occupied", "score": 0.88}},
-                        {"top_item": {"class_name": "empty", "score": 0.31}},
+                        {"top_item": {"class_name": "slotempty", "probability": 0.91}},
+                        {"top_item": {"class_name": "slotfull", "probability": 0.88}},
+                        {"top_item": {"class_name": "slotabnormal", "probability": 0.31}},
                     ]
                 }
             },
@@ -495,10 +497,16 @@ def test_classification_results_summary_counts_positive_negative_and_unknown() -
     summary = output["summary"]["value"]
     assert summary["count"] == 3
     assert summary["expected_count_matched"] is True
-    assert summary["positive_count"] == 1
-    assert summary["negative_count"] == 1
+    assert summary["empty_count"] == 1
+    assert summary["full_count"] == 1
+    assert summary["abnormal_count"] == 0
     assert summary["unknown_count"] == 1
     assert summary["low_score_count"] == 1
-    assert summary["all_positive"] is False
-    assert summary["state"] == "unknown"
-    assert output["all_positive"]["value"] is False
+    assert summary["all_empty"] is False
+    assert summary["tray_state"] == "unknown"
+    assert summary["state"] == "ng"
+    assert summary["passed"] is False
+    assert len(summary["problem_items"]) == 2
+    assert output["passed"]["value"] is False
+    assert output["all_empty"]["value"] is False
+    assert output["has_abnormal"]["value"] is False
