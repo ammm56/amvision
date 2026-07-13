@@ -5,8 +5,13 @@ from __future__ import annotations
 from backend.nodes.core_catalog import get_core_workflow_node_definitions
 from backend.nodes.core_nodes.logic.collections.array_summary import _array_summary_handler
 from backend.nodes.core_nodes.logic.value.payload_to_value import _payload_to_value_handler
+from backend.nodes.core_nodes.logic.value.value_to_image_ref import _value_to_image_ref_handler
 from backend.nodes.core_nodes.logic.value.value_to_roi import _value_to_roi_handler
+from backend.nodes.core_nodes.io.image.image_refs_to_value_list import _image_refs_to_value_list_handler
 from backend.nodes.core_nodes.io.preview.value_preview import _value_preview_handler
+from backend.nodes.core_nodes.model.deployment.classification_results_summary import (
+    _classification_results_summary_handler,
+)
 from backend.nodes.core_nodes.vision.roi.roi_grid_create import (
     _build_roi_grid_overlays,
     _roi_grid_create_handler,
@@ -25,6 +30,9 @@ def test_core_catalog_contains_roi_grid_nodes() -> None:
     assert "core.vision.roi-list-create" in node_type_ids
     assert "core.vision.roi-list-item-get" in node_type_ids
     assert "core.logic.value-to-roi" in node_type_ids
+    assert "core.logic.value-to-image-ref" in node_type_ids
+    assert "core.io.image-refs-to-value-list" in node_type_ids
+    assert "core.model.classification-results-summary" in node_type_ids
     assert "core.logic.array-summary" in node_type_ids
 
 
@@ -411,3 +419,86 @@ def test_payload_to_value_wraps_roi_list_items_for_for_each() -> None:
     )
 
     assert output["value"]["value"][0]["roi_id"] == "slot-loop"
+
+
+def test_image_refs_to_value_list_and_value_to_image_ref_keep_refs_without_copying() -> None:
+    """验证 image-refs 可转成 for-each 数组，并在循环体中恢复 image-ref。"""
+
+    image_payload = {
+        "transport_kind": "memory",
+        "image_handle": "slot-image-01",
+        "media_type": "image/bgr24",
+        "width": 64,
+        "height": 32,
+    }
+    list_output = _image_refs_to_value_list_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="image-refs-to-value-list",
+            node_definition=object(),
+            parameters={},
+            input_values={
+                "images": {
+                    "format_id": "amvision.image-refs.v1",
+                    "items": [image_payload],
+                    "count": 1,
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    assert list_output["items"]["value"][0]["image_handle"] == "slot-image-01"
+    assert list_output["summary"]["value"]["count"] == 1
+
+    image_output = _value_to_image_ref_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="value-to-image-ref",
+            node_definition=object(),
+            parameters={},
+            input_values={"value": {"value": list_output["items"]["value"][0]}},
+            execution_metadata={},
+        )
+    )
+
+    assert image_output["image"]["transport_kind"] == "memory"
+    assert image_output["image"]["image_handle"] == "slot-image-01"
+    assert image_output["summary"]["value"]["media_type"] == "image/bgr24"
+
+
+def test_classification_results_summary_counts_positive_negative_and_unknown() -> None:
+    """验证 classification 逐图结果可汇总为空槽/有料/未知计数。"""
+
+    output = _classification_results_summary_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="classification-results-summary",
+            node_definition=object(),
+            parameters={
+                "expected_count": 3,
+                "positive_labels": ["empty"],
+                "negative_labels": ["occupied"],
+                "min_score": 0.5,
+                "require_known_label": True,
+            },
+            input_values={
+                "results": {
+                    "value": [
+                        {"top_item": {"class_name": "empty", "score": 0.91}},
+                        {"top_item": {"class_name": "occupied", "score": 0.88}},
+                        {"top_item": {"class_name": "empty", "score": 0.31}},
+                    ]
+                }
+            },
+            execution_metadata={},
+        )
+    )
+
+    summary = output["summary"]["value"]
+    assert summary["count"] == 3
+    assert summary["expected_count_matched"] is True
+    assert summary["positive_count"] == 1
+    assert summary["negative_count"] == 1
+    assert summary["unknown_count"] == 1
+    assert summary["low_score_count"] == 1
+    assert summary["all_positive"] is False
+    assert summary["state"] == "unknown"
+    assert output["all_positive"]["value"] is False

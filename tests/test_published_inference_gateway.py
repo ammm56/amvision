@@ -16,6 +16,7 @@ from backend.service.application.deployments import (
     PublishedInferenceGatewayDispatcher,
     PublishedInferenceGatewayEventChannel,
     PublishedInferenceRequest,
+    PublishedInferenceResult,
 )
 from backend.service.application.models.inference.detection_inference_task_service import (
     run_detection_inference_task,
@@ -145,8 +146,8 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
     assert fake_gateway.last_request.score_threshold == 0.52
 
 
-def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
-    """验证 detection 节点写入 LocalBufferBroker 后会登记 lease cleanup。"""
+def test_yolox_detection_node_releases_local_buffer_lease_after_gateway_call() -> None:
+    """验证 detection 节点完成同步推理后会立即释放临时 LocalBufferBroker lease。"""
 
     source_bytes = build_test_jpeg_bytes()
     image_registry = ExecutionImageRegistry()
@@ -188,7 +189,56 @@ def test_yolox_detection_node_registers_local_buffer_lease_cleanup() -> None:
         )
     )
 
+    assert fake_writer.release_calls == [("lease-memory", "image-test")]
+    assert not list_registered_execution_cleanups(execution_metadata)
+
+
+def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails() -> None:
+    """验证临时 LocalBufferBroker lease 立即释放失败时会登记 workflow cleanup 兜底。"""
+
+    source_bytes = build_test_jpeg_bytes()
+    image_registry = ExecutionImageRegistry()
+    registered_image = image_registry.register_image_bytes(
+        content=source_bytes,
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+    fake_writer = _FakeLocalBufferWriter()
+    fake_writer.fail_release = True
+    fake_gateway = _FakePublishedInferenceGateway()
+    execution_metadata = {
+        "execution_image_registry": image_registry,
+        "local_buffer_reader": fake_writer,
+        "workflow_run_id": "run-1",
+    }
+
+    _deployment_detection_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="detect",
+            node_definition=object(),
+            parameters={"deployment_instance_id": "deployment-1"},
+            input_values={
+                "image": build_memory_image_payload(
+                    image_handle=registered_image.image_handle,
+                    media_type="image/jpeg",
+                    width=64,
+                    height=64,
+                )
+            },
+            execution_metadata=execution_metadata,
+            runtime_context=WorkflowServiceNodeRuntimeContext(
+                session_factory=object(),
+                dataset_storage=object(),
+                local_buffer_reader=fake_writer,
+                published_inference_gateway=fake_gateway,
+            ),
+        )
+    )
+
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
+    assert fake_writer.release_calls == [("lease-memory", "image-test")]
     assert len(cleanup_items) == 1
     assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
     assert cleanup_items[0].resource_id == "lease-memory"
@@ -295,18 +345,37 @@ class _FakeLocalBufferWriter:
 
         self.last_content: bytes | None = None
         self.last_owner_id: str | None = None
+        self.release_calls: list[tuple[str, str | None]] = []
+        self.fail_release = False
 
-    def write_bytes(self, *, content: bytes, owner_kind: str, owner_id: str, media_type: str, trace_id: str | None = None):
+    def write_bytes(
+        self,
+        *,
+        content: bytes,
+        owner_kind: str,
+        owner_id: str,
+        media_type: str,
+        trace_id: str | None = None,
+        **kwargs: object,
+    ):
         """记录写入参数并返回固定 BufferRef。"""
 
         del owner_kind
         del trace_id
+        del kwargs
         self.last_content = content
         self.last_owner_id = owner_id
         return SimpleNamespace(
             lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-test"),
             buffer_ref=_build_buffer_ref(lease_id="lease-memory", media_type=media_type),
         )
+
+    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+        """记录 lease 释放参数。"""
+
+        self.release_calls.append((lease_id, pool_name))
+        if self.fail_release:
+            raise RuntimeError("release failed")
 
 
 class _FakePublishedInferenceGateway:
@@ -321,7 +390,12 @@ class _FakePublishedInferenceGateway:
         """记录请求并返回固定结果。"""
 
         self.last_request = request
-        return SimpleNamespace(
+        return PublishedInferenceResult(
+            task_type="detection",
+            deployment_instance_id=request.deployment_instance_id,
+            latency_ms=7.5,
+            image_width=64,
+            image_height=64,
             detections=(
                 {
                     "bbox_xyxy": [4.0, 4.0, 24.0, 24.0],
@@ -330,7 +404,6 @@ class _FakePublishedInferenceGateway:
                     "class_name": "defect",
                 },
             ),
-            task_type="detection",
         )
 
 
