@@ -1,84 +1,23 @@
-"""workflow for-each 节点解析和结果归一化辅助函数。"""
+"""workflow for-each 边界解析和结果归一化辅助函数。"""
 
 from __future__ import annotations
 
 from backend.contracts.workflows.workflow_graph import WorkflowGraphNode
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 
-
-def read_for_each_body_node_ids(
-    *,
-    node: WorkflowGraphNode,
-    node_instances: dict[str, WorkflowGraphNode],
-) -> tuple[str, ...]:
-    """读取并校验单个 for-each 的循环体节点列表。"""
-
-    raw_body_node_ids = node.parameters.get("body_node_ids")
-    if not isinstance(raw_body_node_ids, list) or not raw_body_node_ids:
-        raise InvalidRequestError(
-            "for-each 节点要求 body_node_ids 必须是非空数组",
-            details={"node_id": node.node_id},
-        )
-    body_node_ids: list[str] = []
-    for raw_node_id in raw_body_node_ids:
-        if not isinstance(raw_node_id, str) or not raw_node_id.strip():
-            raise InvalidRequestError(
-                "for-each 的 body_node_ids 每一项都必须是非空字符串",
-                details={"node_id": node.node_id},
-            )
-        node_id = raw_node_id.strip()
-        if node_id == node.node_id:
-            raise InvalidRequestError(
-                "for-each 不能把自身声明为循环体节点",
-                details={"node_id": node.node_id},
-            )
-        if node_id not in node_instances:
-            raise InvalidRequestError(
-                "for-each 的 body_node_ids 引用了不存在的节点",
-                details={"node_id": node.node_id, "body_node_id": node_id},
-            )
-        if node_id in body_node_ids:
-            raise InvalidRequestError(
-                "for-each 的 body_node_ids 不能包含重复节点",
-                details={"node_id": node.node_id, "body_node_id": node_id},
-            )
-        body_node_ids.append(node_id)
-    return tuple(body_node_ids)
+FOR_EACH_START_NODE_TYPE_ID = "core.logic.for-each-start"
+FOR_EACH_END_NODE_TYPE_ID = "core.logic.for-each-end"
+FOR_EACH_RESULT_INPUT_PORT = "result"
+FOR_EACH_ITEM_OUTPUT_PORT = "item"
+FOR_EACH_INDEX_OUTPUT_PORT = "index"
+DEFAULT_FOR_EACH_ITEM_VARIABLE_NAME = "item"
+DEFAULT_FOR_EACH_INDEX_VARIABLE_NAME = "index"
 
 
-def read_for_each_text_parameter(
-    *,
-    node: WorkflowGraphNode,
-    parameter_name: str,
-) -> str:
-    """读取 for-each 必填字符串参数。"""
+def is_for_each_boundary_node(node: WorkflowGraphNode) -> bool:
+    """判断节点是否是 for-each 控制边界节点。"""
 
-    raw_value = node.parameters.get(parameter_name)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        raise InvalidRequestError(
-            f"for-each 节点要求 {parameter_name} 必须是非空字符串",
-            details={"node_id": node.node_id, "parameter_name": parameter_name},
-        )
-    return raw_value.strip()
-
-
-def read_optional_for_each_text_parameter(
-    *,
-    node: WorkflowGraphNode,
-    parameter_name: str,
-    default: str,
-) -> str:
-    """读取 for-each 可选字符串参数。"""
-
-    raw_value = node.parameters.get(parameter_name)
-    if raw_value is None:
-        return default
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        raise InvalidRequestError(
-            f"for-each 节点要求 {parameter_name} 必须是非空字符串",
-            details={"node_id": node.node_id, "parameter_name": parameter_name},
-        )
-    return raw_value.strip()
+    return node.node_type_id in {FOR_EACH_START_NODE_TYPE_ID, FOR_EACH_END_NODE_TYPE_ID}
 
 
 def require_for_each_items_value(
@@ -86,17 +25,17 @@ def require_for_each_items_value(
     node_id: str,
     items_payload: object,
 ) -> list[object]:
-    """校验 for-each 的 items 输入必须是 value payload 且内部值为数组。"""
+    """校验 for-each start 的 items 输入必须是 value payload 且内部值为数组。"""
 
     if not isinstance(items_payload, dict) or "value" not in items_payload:
         raise InvalidRequestError(
-            "for-each 节点要求 items 必须是 value payload",
+            "for-each start 节点要求 items 必须是 value payload",
             details={"node_id": node_id},
         )
     items_value = items_payload.get("value")
     if not isinstance(items_value, list):
         raise InvalidRequestError(
-            "for-each 节点要求 items.value 必须是数组",
+            "for-each start 节点要求 items.value 必须是数组",
             details={"node_id": node_id},
         )
     return list(items_value)

@@ -7,6 +7,7 @@ from typing import Callable
 
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
+    NodePortDefinition,
     WorkflowGraphNode,
     WorkflowGraphTemplate,
     validate_workflow_graph_template,
@@ -25,11 +26,16 @@ from backend.service.application.workflows.execution.events import (
     emit_node_event,
 )
 from backend.service.application.workflows.execution.foreach import (
+    DEFAULT_FOR_EACH_INDEX_VARIABLE_NAME,
+    DEFAULT_FOR_EACH_ITEM_VARIABLE_NAME,
+    FOR_EACH_END_NODE_TYPE_ID,
+    FOR_EACH_INDEX_OUTPUT_PORT,
+    FOR_EACH_ITEM_OUTPUT_PORT,
+    FOR_EACH_RESULT_INPUT_PORT,
+    FOR_EACH_START_NODE_TYPE_ID,
+    is_for_each_boundary_node,
     normalize_for_each_collected_result,
-    read_for_each_body_node_ids,
     read_for_each_loop_control_action,
-    read_for_each_text_parameter,
-    read_optional_for_each_text_parameter,
     require_for_each_items_value,
 )
 from backend.service.application.workflows.execution.inputs import (
@@ -83,28 +89,40 @@ class WorkflowGraphExecutor:
             template=template,
             topological_order=topological_order,
         )
-        managed_loop_body_node_ids = {
-            body_node_id
-            for plan in for_each_plans.values()
-            for body_node_id in plan.body_node_ids
-        }
+        managed_loop_internal_node_ids: set[str] = set()
+        for plan in for_each_plans.values():
+            managed_loop_internal_node_ids.add(plan.start_node_id)
+            managed_loop_internal_node_ids.update(plan.body_node_order)
         execution_metadata_payload = execution_metadata if execution_metadata is not None else {}
 
         for node_id in topological_order:
             node = node_instances[node_id]
             if not _is_workflow_node_enabled(node):
                 continue
-            if node_id in managed_loop_body_node_ids:
+            if node_id in managed_loop_internal_node_ids:
                 continue
             node_definition = self.registry.get_node_definition(node.node_type_id)
-            resolved_inputs = resolve_node_inputs(
-                node_id=node_id,
-                node_definition=node_definition,
-                input_values=input_values,
-                template_input_bindings=template_input_bindings,
-                edge_bindings=edge_bindings,
-                node_output_values=node_output_values,
-            )
+            if node_id in for_each_plans:
+                plan = for_each_plans[node_id]
+                start_node = node_instances[plan.start_node_id]
+                start_node_definition = self.registry.get_node_definition(start_node.node_type_id)
+                resolved_inputs = resolve_node_inputs(
+                    node_id=plan.start_node_id,
+                    node_definition=start_node_definition,
+                    input_values=input_values,
+                    template_input_bindings=template_input_bindings,
+                    edge_bindings=edge_bindings,
+                    node_output_values=node_output_values,
+                )
+            else:
+                resolved_inputs = resolve_node_inputs(
+                    node_id=node_id,
+                    node_definition=node_definition,
+                    input_values=input_values,
+                    template_input_bindings=template_input_bindings,
+                    edge_bindings=edge_bindings,
+                    node_output_values=node_output_values,
+                )
             execution_index = len(node_records) + 1
             emit_node_event(
                 event_callback=event_callback,
@@ -117,7 +135,7 @@ class WorkflowGraphExecutor:
                 inputs=resolved_inputs,
             )
             node_started_at = perf_counter()
-            if node_definition.node_type_id == "core.logic.for-each":
+            if node_id in for_each_plans:
                 try:
                     raw_outputs = self._execute_for_each_node(
                         template=template,
@@ -271,125 +289,175 @@ class WorkflowGraphExecutor:
         template: WorkflowGraphTemplate,
         topological_order: tuple[str, ...],
     ) -> dict[str, WorkflowForEachExecutionPlan]:
-        """为模板中的全部 for-each 节点构造并校验循环执行计划。"""
+        """为模板中的全部 for-each start/end 边界构造并校验循环执行计划。"""
 
         node_instances = {node.node_id: node for node in template.nodes}
+        enabled_node_instances = {
+            node_id: node
+            for node_id, node in node_instances.items()
+            if _is_workflow_node_enabled(node)
+        }
         topological_index = {node_id: index for index, node_id in enumerate(topological_order)}
+        adjacency, reverse_adjacency = _build_enabled_adjacency(
+            template=template,
+            enabled_node_instances=enabled_node_instances,
+        )
         plans: dict[str, WorkflowForEachExecutionPlan] = {}
-        managed_body_node_ids: set[str] = set()
+        managed_loop_node_ids: set[str] = set()
+        start_nodes = [
+            node
+            for node in template.nodes
+            if _is_workflow_node_enabled(node) and node.node_type_id == FOR_EACH_START_NODE_TYPE_ID
+        ]
+        end_node_ids = {
+            node.node_id
+            for node in template.nodes
+            if _is_workflow_node_enabled(node) and node.node_type_id == FOR_EACH_END_NODE_TYPE_ID
+        }
+        paired_end_node_ids: set[str] = set()
 
-        for node in template.nodes:
-            if node.node_type_id != "core.logic.for-each":
-                continue
-            if not _is_workflow_node_enabled(node):
-                continue
-            raw_body_node_ids = read_for_each_body_node_ids(node=node, node_instances=node_instances)
-            body_node_ids = tuple(
-                body_node_id
-                for body_node_id in raw_body_node_ids
-                if _is_workflow_node_enabled(node_instances[body_node_id])
+        for start_node in start_nodes:
+            reachable_from_start = _collect_reachable_node_ids(
+                start_node_id=start_node.node_id,
+                adjacency=adjacency,
             )
-            overlapping_node_ids = sorted(body_node_id for body_node_id in body_node_ids if body_node_id in managed_body_node_ids)
+            raw_candidate_end_node_ids = sorted(end_node_id for end_node_id in end_node_ids if end_node_id in reachable_from_start)
+            candidate_end_node_ids = [
+                end_node_id
+                for end_node_id in raw_candidate_end_node_ids
+                if not any(
+                    other_end_node_id != end_node_id
+                    and end_node_id
+                    in _collect_reachable_node_ids(
+                        start_node_id=other_end_node_id,
+                        adjacency=adjacency,
+                    )
+                    for other_end_node_id in raw_candidate_end_node_ids
+                )
+            ]
+            if not candidate_end_node_ids:
+                raise InvalidRequestError(
+                    "for-each start 必须通过连线连接到一个 for-each end",
+                    details={"node_id": start_node.node_id},
+                )
+            if len(candidate_end_node_ids) > 1:
+                raise InvalidRequestError(
+                    "for-each start 只能连接到一个 for-each end，避免循环边界不明确",
+                    details={"node_id": start_node.node_id, "end_node_ids": candidate_end_node_ids},
+                )
+            end_node_id = candidate_end_node_ids[0]
+            end_node = node_instances[end_node_id]
+            paired_end_node_ids.add(end_node_id)
+            body_node_id_set = _collect_reachable_until_node_ids(
+                start_node_id=start_node.node_id,
+                stop_node_id=end_node_id,
+                adjacency=adjacency,
+            ) - {start_node.node_id, end_node_id}
+            nested_boundary_node_ids = sorted(
+                node_id
+                for node_id in body_node_id_set
+                if is_for_each_boundary_node(enabled_node_instances[node_id])
+            )
+            if nested_boundary_node_ids:
+                raise InvalidRequestError(
+                    "当前 for-each 不支持嵌套循环边界",
+                    details={"node_id": start_node.node_id, "nested_boundary_node_ids": nested_boundary_node_ids},
+                )
+            loop_node_ids = body_node_id_set | {start_node.node_id, end_node_id}
+            overlapping_node_ids = sorted(loop_node_ids & managed_loop_node_ids)
             if overlapping_node_ids:
                 raise InvalidRequestError(
-                    "for-each 循环体节点不能被多个 for-each 共同管理",
-                    details={"node_id": node.node_id, "body_node_ids": overlapping_node_ids},
+                    "for-each 循环边界和循环体不能被多个 for-each 共同管理",
+                    details={"node_id": start_node.node_id, "node_ids": overlapping_node_ids},
                 )
-            managed_body_node_ids.update(body_node_ids)
+            managed_loop_node_ids.update(loop_node_ids)
 
-            result_node_id = read_for_each_text_parameter(node=node, parameter_name="result_node_id")
-            if result_node_id not in body_node_ids:
-                raise InvalidRequestError(
-                    "for-each 的 result_node_id 必须属于 body_node_ids",
-                    details={"node_id": node.node_id, "result_node_id": result_node_id},
-                )
-            result_port = read_for_each_text_parameter(node=node, parameter_name="result_port")
-            item_variable_name = read_optional_for_each_text_parameter(
-                node=node,
-                parameter_name="item_variable_name",
-                default="item",
-            )
-            index_variable_name = read_optional_for_each_text_parameter(
-                node=node,
-                parameter_name="index_variable_name",
-                default="index",
-            )
-            if item_variable_name == index_variable_name:
-                raise InvalidRequestError(
-                    "for-each 的 item_variable_name 与 index_variable_name 不能相同",
-                    details={"node_id": node.node_id, "variable_name": item_variable_name},
-                )
-
-            result_node_definition = self.registry.get_node_definition(node_instances[result_node_id].node_type_id)
-            result_port_definition = next(
-                (port for port in result_node_definition.output_ports if port.name == result_port),
-                None,
+            end_node_definition = self.registry.get_node_definition(end_node.node_type_id)
+            result_port_definition = _get_input_port_definition(
+                node_definition=end_node_definition,
+                port_name=FOR_EACH_RESULT_INPUT_PORT,
             )
             if result_port_definition is None:
                 raise InvalidRequestError(
-                    "for-each 的 result_port 在 result_node_id 上不存在",
-                    details={"node_id": node.node_id, "result_node_id": result_node_id, "result_port": result_port},
+                    "for-each end 缺少 result 输入端口",
+                    details={"node_id": end_node_id, "input_port": FOR_EACH_RESULT_INPUT_PORT},
                 )
 
-            body_node_id_set = set(body_node_ids)
-            for body_node_id in body_node_ids:
-                body_node_definition = self.registry.get_node_definition(node_instances[body_node_id].node_type_id)
-                if body_node_definition.node_type_id == "core.logic.for-each":
-                    raise InvalidRequestError(
-                        "当前最小 for-each 不支持嵌套循环体",
-                        details={"node_id": node.node_id, "body_node_id": body_node_id},
-                    )
-
+            has_result_edge = False
             for edge in template.edges:
-                if edge.source_node_id in body_node_id_set and edge.target_node_id not in body_node_id_set:
-                    raise InvalidRequestError(
-                        "for-each 循环体节点不能直接向循环体外部输出",
-                        details={
-                            "node_id": node.node_id,
-                            "source_node_id": edge.source_node_id,
-                            "target_node_id": edge.target_node_id,
-                        },
-                    )
-                if edge.target_node_id in body_node_id_set:
-                    if edge.source_node_id == node.node_id:
+                if edge.source_node_id not in enabled_node_instances or edge.target_node_id not in enabled_node_instances:
+                    continue
+                if edge.target_node_id == end_node_id and edge.target_port == FOR_EACH_RESULT_INPUT_PORT:
+                    has_result_edge = True
+                    if edge.source_node_id not in body_node_id_set and edge.source_node_id != start_node.node_id:
                         raise InvalidRequestError(
-                            "for-each 循环体节点不能直接依赖 for-each 节点输出",
-                            details={"node_id": node.node_id, "target_node_id": edge.target_node_id},
+                            "for-each end 的 result 输入必须来自当前循环体",
+                            details={
+                                "node_id": start_node.node_id,
+                                "end_node_id": end_node_id,
+                                "source_node_id": edge.source_node_id,
+                            },
                         )
-                    if edge.source_node_id in managed_body_node_ids and edge.source_node_id not in body_node_id_set:
+                if edge.source_node_id in body_node_id_set or edge.source_node_id == start_node.node_id:
+                    if edge.target_node_id not in loop_node_ids:
+                        raise InvalidRequestError(
+                            "for-each 循环体节点不能直接向循环边界外部输出",
+                            details={
+                                "node_id": start_node.node_id,
+                                "source_node_id": edge.source_node_id,
+                                "target_node_id": edge.target_node_id,
+                            },
+                        )
+                if edge.target_node_id in body_node_id_set:
+                    if edge.source_node_id in managed_loop_node_ids and edge.source_node_id not in loop_node_ids:
                         raise InvalidRequestError(
                             "for-each 循环体不能依赖其他循环体节点输出",
                             details={
-                                "node_id": node.node_id,
+                                "node_id": start_node.node_id,
                                 "source_node_id": edge.source_node_id,
                                 "target_node_id": edge.target_node_id,
                             },
                         )
-                    if edge.source_node_id not in body_node_id_set and topological_index[edge.source_node_id] > topological_index[node.node_id]:
-                        raise InvalidRequestError(
-                            "for-each 循环体依赖的外部节点必须在 for-each 执行前完成",
-                            details={
-                                "node_id": node.node_id,
-                                "source_node_id": edge.source_node_id,
-                                "target_node_id": edge.target_node_id,
-                            },
-                        )
+                    if edge.source_node_id not in body_node_id_set and edge.source_node_id != start_node.node_id:
+                        if topological_index[edge.source_node_id] > topological_index[start_node.node_id]:
+                            raise InvalidRequestError(
+                                "for-each 循环体依赖的外部节点必须在 for-each start 执行前完成",
+                                details={
+                                    "node_id": start_node.node_id,
+                                    "source_node_id": edge.source_node_id,
+                                    "target_node_id": edge.target_node_id,
+                                },
+                            )
+            if not has_result_edge:
+                raise InvalidRequestError(
+                    "for-each end 必须连接一个 result 输入作为每轮循环收集结果",
+                    details={"node_id": start_node.node_id, "end_node_id": end_node_id},
+                )
 
             for template_output in template.template_outputs:
-                if template_output.source_node_id in body_node_id_set:
+                if template_output.source_node_id in body_node_id_set or template_output.source_node_id == start_node.node_id:
                     raise InvalidRequestError(
-                        "for-each 循环体节点不能直接作为模板输出源",
-                        details={"node_id": node.node_id, "output_id": template_output.output_id},
+                        "for-each 循环体节点不能直接作为模板输出源，请从 for-each end 输出收集结果",
+                        details={"node_id": start_node.node_id, "output_id": template_output.output_id},
                     )
 
-            ordered_body_node_ids = tuple(node_id for node_id in topological_order if node_id in body_node_id_set)
-            plans[node.node_id] = WorkflowForEachExecutionPlan(
-                body_node_ids=ordered_body_node_ids,
-                result_node_id=result_node_id,
-                result_port=result_port,
+            body_node_order = tuple(node_id for node_id in topological_order if node_id in body_node_id_set)
+            plans[end_node_id] = WorkflowForEachExecutionPlan(
+                start_node_id=start_node.node_id,
+                end_node_id=end_node_id,
+                body_node_order=body_node_order,
+                result_node_id=end_node_id,
+                result_port=FOR_EACH_RESULT_INPUT_PORT,
                 result_payload_type_id=result_port_definition.payload_type_id,
-                item_variable_name=item_variable_name,
-                index_variable_name=index_variable_name,
+                item_variable_name=DEFAULT_FOR_EACH_ITEM_VARIABLE_NAME,
+                index_variable_name=DEFAULT_FOR_EACH_INDEX_VARIABLE_NAME,
+            )
+
+        unpaired_end_node_ids = sorted(end_node_ids - paired_end_node_ids)
+        if unpaired_end_node_ids:
+            raise InvalidRequestError(
+                "for-each end 必须由一个 for-each start 通过循环体连接",
+                details={"node_ids": unpaired_end_node_ids},
             )
 
         return plans
@@ -417,7 +485,7 @@ class WorkflowGraphExecutor:
 
         try:
             items_value = require_for_each_items_value(
-                node_id=for_each_node.node_id,
+                node_id=plan.start_node_id,
                 items_payload=resolved_inputs.get("items"),
             )
             collected_results: list[object] = []
@@ -449,6 +517,7 @@ class WorkflowGraphExecutor:
                         for_each_node=for_each_node,
                         plan=plan,
                         iteration_index=iteration_index,
+                        item_value=item_value,
                         input_values=input_values,
                         execution_metadata=execution_metadata,
                         runtime_context=runtime_context,
@@ -528,6 +597,7 @@ class WorkflowGraphExecutor:
         for_each_node: WorkflowGraphNode,
         plan: WorkflowForEachExecutionPlan,
         iteration_index: int,
+        item_value: object,
         input_values: dict[str, object],
         execution_metadata: dict[str, object],
         runtime_context: object | None,
@@ -540,8 +610,11 @@ class WorkflowGraphExecutor:
     ) -> WorkflowForEachIterationResult:
         """执行单轮 for-each 循环体。"""
 
-        local_output_values: dict[tuple[str, str], object] = {}
-        for body_node_id in plan.body_node_ids:
+        local_output_values: dict[tuple[str, str], object] = {
+            (plan.start_node_id, FOR_EACH_ITEM_OUTPUT_PORT): {"value": item_value},
+            (plan.start_node_id, FOR_EACH_INDEX_OUTPUT_PORT): {"value": iteration_index},
+        }
+        for body_node_id in plan.body_node_order:
             body_node = node_instances[body_node_id]
             if not _is_workflow_node_enabled(body_node):
                 continue
@@ -691,6 +764,21 @@ class WorkflowGraphExecutor:
                     output_values=local_output_values,
                     control_action=control_action,
                 )
+        end_node = node_instances[plan.end_node_id]
+        end_node_definition = self.registry.get_node_definition(end_node.node_type_id)
+        visible_output_values = dict(node_output_values)
+        visible_output_values.update(local_output_values)
+        resolved_end_inputs = resolve_node_inputs(
+            node_id=plan.end_node_id,
+            node_definition=end_node_definition,
+            input_values=input_values,
+            template_input_bindings=template_input_bindings,
+            edge_bindings=edge_bindings,
+            node_output_values=visible_output_values,
+        )
+        local_output_values[(plan.end_node_id, FOR_EACH_RESULT_INPUT_PORT)] = resolved_end_inputs[
+            FOR_EACH_RESULT_INPUT_PORT
+        ]
         return WorkflowForEachIterationResult(output_values=local_output_values)
 
 
@@ -698,6 +786,72 @@ def _is_workflow_node_enabled(node: WorkflowGraphNode) -> bool:
     """判断节点是否参与本次图执行。"""
 
     return node.enabled is not False
+
+
+def _build_enabled_adjacency(
+    *,
+    template: WorkflowGraphTemplate,
+    enabled_node_instances: dict[str, WorkflowGraphNode],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """构造只包含启用节点的正向和反向邻接表。"""
+
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in enabled_node_instances}
+    reverse_adjacency: dict[str, set[str]] = {node_id: set() for node_id in enabled_node_instances}
+    for edge in template.edges:
+        if edge.source_node_id not in enabled_node_instances or edge.target_node_id not in enabled_node_instances:
+            continue
+        adjacency[edge.source_node_id].add(edge.target_node_id)
+        reverse_adjacency[edge.target_node_id].add(edge.source_node_id)
+    return adjacency, reverse_adjacency
+
+
+def _collect_reachable_node_ids(
+    *,
+    start_node_id: str,
+    adjacency: dict[str, set[str]],
+) -> set[str]:
+    """从指定节点出发收集所有可达节点 id。"""
+
+    visited: set[str] = set()
+    pending = list(adjacency.get(start_node_id, set()))
+    while pending:
+        node_id = pending.pop()
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+        pending.extend(adjacency.get(node_id, set()) - visited)
+    return visited
+
+
+def _collect_reachable_until_node_ids(
+    *,
+    start_node_id: str,
+    stop_node_id: str,
+    adjacency: dict[str, set[str]],
+) -> set[str]:
+    """收集 start 到 stop 之间的可达节点，遇到 stop 后不再继续向后扩展。"""
+
+    visited: set[str] = {start_node_id}
+    pending = list(adjacency.get(start_node_id, set()))
+    while pending:
+        node_id = pending.pop()
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+        if node_id == stop_node_id:
+            continue
+        pending.extend(adjacency.get(node_id, set()) - visited)
+    return visited
+
+
+def _get_input_port_definition(
+    *,
+    node_definition: NodeDefinition,
+    port_name: str,
+) -> NodePortDefinition | None:
+    """按名称读取节点输入端口定义。"""
+
+    return next((port for port in node_definition.input_ports if port.name == port_name), None)
 
 
 def _elapsed_ms(started_at: float) -> float:

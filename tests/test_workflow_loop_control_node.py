@@ -10,10 +10,10 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
 )
 from backend.nodes.core_nodes.logic.boolean.compare import CORE_NODE_SPEC as COMPARE_NODE_SPEC
-from backend.nodes.core_nodes.logic.control.for_each import CORE_NODE_SPEC as FOR_EACH_NODE_SPEC
+from backend.nodes.core_nodes.logic.control.for_each_end import CORE_NODE_SPEC as FOR_EACH_END_NODE_SPEC
+from backend.nodes.core_nodes.logic.control.for_each_start import CORE_NODE_SPEC as FOR_EACH_START_NODE_SPEC
 from backend.nodes.core_nodes.logic.control.if_else import CORE_NODE_SPEC as IF_ELSE_NODE_SPEC
 from backend.nodes.core_nodes.logic.control.loop_control import CORE_NODE_SPEC as LOOP_CONTROL_NODE_SPEC
-from backend.nodes.core_nodes.logic.state.variable_get import CORE_NODE_SPEC as VARIABLE_GET_NODE_SPEC
 from backend.nodes.core_nodes.logic.state.variable_set import CORE_NODE_SPEC as VARIABLE_SET_NODE_SPEC
 from backend.service.application.workflows.graph_executor import WorkflowGraphExecutor, WorkflowNodeRuntimeRegistry
 
@@ -24,11 +24,11 @@ def test_workflow_graph_executor_honors_loop_control_break_and_continue() -> Non
     registry = WorkflowNodeRuntimeRegistry()
     for core_node_spec in (
         VARIABLE_SET_NODE_SPEC,
-        VARIABLE_GET_NODE_SPEC,
         COMPARE_NODE_SPEC,
         IF_ELSE_NODE_SPEC,
         LOOP_CONTROL_NODE_SPEC,
-        FOR_EACH_NODE_SPEC,
+        FOR_EACH_START_NODE_SPEC,
+        FOR_EACH_END_NODE_SPEC,
     ):
         registry.register_python_callable(core_node_spec.node_definition, core_node_spec.handler)
     executor = WorkflowGraphExecutor(registry=registry)
@@ -43,27 +43,8 @@ def test_workflow_graph_executor_honors_loop_control_break_and_continue() -> Non
                 parameters={"name": "items"},
             ),
             WorkflowGraphNode(
-                node_id="iterate_items",
-                node_type_id="core.logic.for-each",
-                parameters={
-                    "body_node_ids": [
-                        "get_item_for_compare",
-                        "compare_skip",
-                        "continue_loop",
-                        "compare_break",
-                        "break_loop",
-                        "select_item_result",
-                    ],
-                    "result_node_id": "select_item_result",
-                    "result_port": "value",
-                    "item_variable_name": "item",
-                    "index_variable_name": "index",
-                },
-            ),
-            WorkflowGraphNode(
-                node_id="get_item_for_compare",
-                node_type_id="core.logic.variable.get",
-                parameters={"name": "item"},
+                node_id="iterate_start",
+                node_type_id="core.logic.for-each-start",
             ),
             WorkflowGraphNode(
                 node_id="compare_skip",
@@ -89,19 +70,23 @@ def test_workflow_graph_executor_honors_loop_control_break_and_continue() -> Non
                 node_id="select_item_result",
                 node_type_id="core.logic.if-else",
             ),
+            WorkflowGraphNode(
+                node_id="iterate_items",
+                node_type_id="core.logic.for-each-end",
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
                 edge_id="edge-set-items-iterate",
                 source_node_id="set_items",
                 source_port="value",
-                target_node_id="iterate_items",
+                target_node_id="iterate_start",
                 target_port="items",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-get-item-compare-skip",
-                source_node_id="get_item_for_compare",
-                source_port="value",
+                source_node_id="iterate_start",
+                source_port="item",
                 target_node_id="compare_skip",
                 target_port="left",
             ),
@@ -114,8 +99,8 @@ def test_workflow_graph_executor_honors_loop_control_break_and_continue() -> Non
             ),
             WorkflowGraphEdge(
                 edge_id="edge-get-item-compare-break",
-                source_node_id="get_item_for_compare",
-                source_port="value",
+                source_node_id="iterate_start",
+                source_port="item",
                 target_node_id="compare_break",
                 target_port="left",
             ),
@@ -135,17 +120,24 @@ def test_workflow_graph_executor_honors_loop_control_break_and_continue() -> Non
             ),
             WorkflowGraphEdge(
                 edge_id="edge-get-item-select-if-true",
-                source_node_id="get_item_for_compare",
-                source_port="value",
+                source_node_id="iterate_start",
+                source_port="item",
                 target_node_id="select_item_result",
                 target_port="if_true",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-get-item-select-if-false",
-                source_node_id="get_item_for_compare",
-                source_port="value",
+                source_node_id="iterate_start",
+                source_port="item",
                 target_node_id="select_item_result",
                 target_port="if_false",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-select-result-iterate-result",
+                source_node_id="select_item_result",
+                source_port="value",
+                target_node_id="iterate_items",
+                target_port="result",
             ),
         ),
         template_inputs=(

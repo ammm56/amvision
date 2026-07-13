@@ -68,18 +68,22 @@ class WorkflowGraphExecutionResult:
 
 @dataclass(frozen=True)
 class WorkflowForEachExecutionPlan:
-    """描述单个 for-each 节点在当前模板中的循环执行计划。
+    """描述单个 for-each 边界在当前模板中的循环执行计划。
 
     字段：
-    - body_node_ids：循环体节点 id 列表，按拓扑顺序稳定执行。
-    - result_node_id：每轮循环用于收集结果的节点 id。
-    - result_port：每轮循环用于收集结果的输出端口。
+    - start_node_id：for-each start 边界节点 id。
+    - end_node_id：for-each end 边界节点 id，也是整段循环的输出节点。
+    - body_node_order：start 与 end 之间的循环体节点 id 列表，按拓扑顺序稳定执行。
+    - result_node_id：每轮循环用于收集结果的逻辑节点 id，当前固定为 end_node_id。
+    - result_port：每轮循环用于收集结果的逻辑端口，当前固定为 end 节点的 result 输入。
     - result_payload_type_id：结果端口对应的 payload 类型 id。
     - item_variable_name：当前项变量名称。
     - index_variable_name：当前索引变量名称。
     """
 
-    body_node_ids: tuple[str, ...]
+    start_node_id: str
+    end_node_id: str
+    body_node_order: tuple[str, ...]
     result_node_id: str
     result_port: str
     result_payload_type_id: str

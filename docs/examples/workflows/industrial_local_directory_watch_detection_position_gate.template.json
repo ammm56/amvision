@@ -6,6 +6,11 @@
   "description": "面向工业现场本地目录事件触发的检测到规则闭环样例。输入 directory-watch TriggerSource 标准化后的 payload 与 event、已发布 deployment 请求，以及可选运行时 ROI；按触发批次逐图执行检测，桥接为 regions.v1 后完成存在性、落位和偏移判定，并把单图结果持续追加到 CSV，再把整个批次收成统一 batch-record、JSON 归档和 HTTP 回传。",
   "nodes": [
     {
+      "node_id": "iterate_batch_start",
+      "node_type_id": "core.logic.for-each-start",
+      "parameters": {}
+    },
+    {
       "node_id": "wrap_trigger_payload",
       "node_type_id": "core.logic.payload-to-value",
       "parameters": {}
@@ -65,44 +70,8 @@
     },
     {
       "node_id": "iterate_batch",
-      "node_type_id": "core.logic.for-each",
-      "parameters": {
-        "body_node_ids": [
-          "get_current_file_record",
-          "get_current_file_index",
-          "extract_current_file_path",
-          "load_image",
-          "detect",
-          "detections_to_regions",
-          "filter_regions",
-          "select_best_region",
-          "inside_check",
-          "offset_check",
-          "presence_check",
-          "item_metadata_object",
-          "item_metrics_object",
-          "process_decision",
-          "append_result_csv"
-        ],
-        "result_node_id": "process_decision",
-        "result_port": "result",
-        "item_variable_name": "file_record",
-        "index_variable_name": "file_index"
-      }
-    },
-    {
-      "node_id": "get_current_file_record",
-      "node_type_id": "core.logic.variable.get",
-      "parameters": {
-        "name": "file_record"
-      }
-    },
-    {
-      "node_id": "get_current_file_index",
-      "node_type_id": "core.logic.variable.get",
-      "parameters": {
-        "name": "file_index"
-      }
+      "node_type_id": "core.logic.for-each-end",
+      "parameters": {}
     },
     {
       "node_id": "extract_current_file_path",
@@ -315,13 +284,13 @@
       "edge_id": "edge-extract-batch-files-iterate-batch",
       "source_node_id": "extract_batch_files",
       "source_port": "value",
-      "target_node_id": "iterate_batch",
+      "target_node_id": "iterate_batch_start",
       "target_port": "items"
     },
     {
       "edge_id": "edge-current-file-record-path",
-      "source_node_id": "get_current_file_record",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "item",
       "target_node_id": "extract_current_file_path",
       "target_port": "value"
     },
@@ -411,15 +380,15 @@
     },
     {
       "edge_id": "edge-current-file-record-item-metadata",
-      "source_node_id": "get_current_file_record",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "item",
       "target_node_id": "item_metadata_object",
       "target_port": "values"
     },
     {
       "edge_id": "edge-current-file-index-item-metadata",
-      "source_node_id": "get_current_file_index",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "index",
       "target_node_id": "item_metadata_object",
       "target_port": "values"
     },
@@ -611,6 +580,13 @@
       "source_port": "record",
       "target_node_id": "callback_result",
       "target_port": "value"
+    },
+    {
+      "edge_id": "edge-process_decision-iterate_batch-result",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "iterate_batch",
+      "target_port": "result"
     }
   ],
   "template_inputs": [
@@ -731,8 +707,6 @@
         "create_roi"
       ],
       "loop_body": [
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "detect",
@@ -748,6 +722,7 @@
         "append_result_csv"
       ],
       "batch_output": [
+        "iterate_batch_start",
         "iterate_batch",
         "batch_metadata_object",
         "batch_record",
@@ -758,4 +733,3 @@
     }
   }
 }
-

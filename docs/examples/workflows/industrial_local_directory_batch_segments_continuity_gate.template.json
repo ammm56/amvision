@@ -6,6 +6,11 @@
   "description": "面向工业现场本地目录批处理的分割到规则闭环样例。输入目录路径、可选批次窗口、批次 cursor，以及按当前批次顺序对齐的 segments.v1 数组；逐图把 segments 统一桥接为 regions.v1，再执行面积占比、连续性和断裂规则，并把单图结果持续追加到 CSV，最后输出批次 JSON 汇总。",
   "nodes": [
     {
+      "node_id": "iterate_batch_start",
+      "node_type_id": "core.logic.for-each-start",
+      "parameters": {}
+    },
+    {
       "node_id": "request_directory_path_input",
       "node_type_id": "core.io.template-input.value",
       "parameters": {}
@@ -38,46 +43,8 @@
     },
     {
       "node_id": "iterate_batch",
-      "node_type_id": "core.logic.for-each",
-      "parameters": {
-        "body_node_ids": [
-          "get_current_file_record",
-          "get_current_file_index",
-          "extract_current_file_path",
-          "load_image",
-          "get_current_segments_value",
-          "value_to_segments",
-          "segments_to_regions",
-          "filter_regions",
-          "area_ratio",
-          "continuity_score",
-          "gap_check",
-          "presence_check",
-          "area_ratio_check",
-          "metadata_object",
-          "metrics_object",
-          "process_decision",
-          "append_result_csv"
-        ],
-        "result_node_id": "process_decision",
-        "result_port": "result",
-        "item_variable_name": "file_record",
-        "index_variable_name": "file_index"
-      }
-    },
-    {
-      "node_id": "get_current_file_record",
-      "node_type_id": "core.logic.variable.get",
-      "parameters": {
-        "name": "file_record"
-      }
-    },
-    {
-      "node_id": "get_current_file_index",
-      "node_type_id": "core.logic.variable.get",
-      "parameters": {
-        "name": "file_index"
-      }
+      "node_type_id": "core.logic.for-each-end",
+      "parameters": {}
     },
     {
       "node_id": "extract_current_file_path",
@@ -257,13 +224,13 @@
       "edge_id": "edge-batch-window-iterate-batch",
       "source_node_id": "batch_window",
       "source_port": "files",
-      "target_node_id": "iterate_batch",
+      "target_node_id": "iterate_batch_start",
       "target_port": "items"
     },
     {
       "edge_id": "edge-current-file-record-path",
-      "source_node_id": "get_current_file_record",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "item",
       "target_node_id": "extract_current_file_path",
       "target_port": "value"
     },
@@ -276,8 +243,8 @@
     },
     {
       "edge_id": "edge-current-file-index-get-segments",
-      "source_node_id": "get_current_file_index",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "index",
       "target_node_id": "get_current_segments_value",
       "target_port": "index"
     },
@@ -360,15 +327,15 @@
     },
     {
       "edge_id": "edge-current-file-record-metadata",
-      "source_node_id": "get_current_file_record",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "item",
       "target_node_id": "metadata_object",
       "target_port": "values"
     },
     {
       "edge_id": "edge-current-file-index-metadata",
-      "source_node_id": "get_current_file_index",
-      "source_port": "value",
+      "source_node_id": "iterate_batch_start",
+      "source_port": "index",
       "target_node_id": "metadata_object",
       "target_port": "values"
     },
@@ -511,6 +478,13 @@
       "source_port": "value",
       "target_node_id": "save_batch_json",
       "target_port": "value"
+    },
+    {
+      "edge_id": "edge-process_decision-iterate_batch-result",
+      "source_node_id": "process_decision",
+      "source_port": "result",
+      "target_node_id": "iterate_batch",
+      "target_port": "result"
     }
   ],
   "template_inputs": [
@@ -641,8 +615,6 @@
         "batch_window"
       ],
       "loop_body": [
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "get_current_segments_value",
@@ -660,6 +632,7 @@
         "append_result_csv"
       ],
       "batch_output": [
+        "iterate_batch_start",
         "iterate_batch",
         "batch_summary_object",
         "save_batch_json"
