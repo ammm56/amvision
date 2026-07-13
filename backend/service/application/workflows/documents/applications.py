@@ -6,6 +6,7 @@ from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     FlowTemplateReference,
     WorkflowGraphTemplate,
+    synchronize_flow_application_bindings,
     validate_flow_application_bindings,
 )
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
@@ -63,8 +64,23 @@ class WorkflowApplicationDocumentStore:
                 template_id=application.template_ref.template_id,
                 template_version=application.template_ref.template_version,
             ).template
-        validate_flow_application_bindings(template=template, application=application)
-        return summarize_workflow_application(application)
+        synchronized_application = synchronize_flow_application_bindings(
+            template=template,
+            application=application,
+        )
+        try:
+            validate_flow_application_bindings(template=template, application=synchronized_application)
+        except ValueError as exc:
+            raise InvalidRequestError(
+                "workflow application 绑定校验失败",
+                details={
+                    "application_id": application.application_id,
+                    "template_id": application.template_ref.template_id,
+                    "template_version": application.template_ref.template_version,
+                    "reason": str(exc),
+                },
+            ) from exc
+        return summarize_workflow_application(synchronized_application)
 
     def list_applications(self, *, project_id: str) -> tuple[WorkflowApplicationSummary, ...]:
         """列出指定 Project 下全部流程应用摘要。"""
@@ -148,6 +164,10 @@ class WorkflowApplicationDocumentStore:
                 )
             }
         )
+        normalized_application = synchronize_flow_application_bindings(
+            template=template_document.template,
+            application=normalized_application,
+        )
         validation_summary = self.validate_application(
             project_id=normalized_project_id,
             application=normalized_application,
@@ -201,7 +221,10 @@ class WorkflowApplicationDocumentStore:
                     "application_id": normalized_application_id,
                 },
             )
-        application = FlowApplication.model_validate(self.dataset_storage.read_json(object_key))
+        application = self.get_application(
+            project_id=normalized_project_id,
+            application_id=normalized_application_id,
+        ).application
         updates: dict[str, object] = {}
         if display_name is not None:
             normalized_display_name = normalize_optional_non_empty_text(display_name, "display_name")
@@ -215,10 +238,19 @@ class WorkflowApplicationDocumentStore:
                 project_id=normalized_project_id,
                 application_id=normalized_application_id,
             )
-        updated_application = application.model_copy(update=updates)
+        template_document = self.template_documents.get_template(
+            project_id=normalized_project_id,
+            template_id=application.template_ref.template_id,
+            template_version=application.template_ref.template_version,
+        )
+        updated_application = synchronize_flow_application_bindings(
+            template=template_document.template,
+            application=application.model_copy(update=updates),
+        )
         validation_summary = self.validate_application(
             project_id=normalized_project_id,
             application=updated_application,
+            template_override=template_document.template,
         )
         resource_summary = build_resource_summary_for_save(
             dataset_storage=self.dataset_storage,
@@ -292,13 +324,23 @@ class WorkflowApplicationDocumentStore:
                 },
             )
         application = FlowApplication.model_validate(self.dataset_storage.read_json(object_key))
+        template_document = self.template_documents.get_template(
+            project_id=normalized_project_id,
+            template_id=application.template_ref.template_id,
+            template_version=application.template_ref.template_version,
+        )
+        synchronized_application = synchronize_flow_application_bindings(
+            template=template_document.template,
+            application=application,
+        )
         return WorkflowApplicationDocument(
             project_id=normalized_project_id,
             object_key=object_key,
-            application=application,
+            application=synchronized_application,
             validation_summary=self.validate_application(
                 project_id=normalized_project_id,
-                application=application,
+                application=synchronized_application,
+                template_override=template_document.template,
             ),
             resource_summary=read_resource_summary(
                 dataset_storage=self.dataset_storage,

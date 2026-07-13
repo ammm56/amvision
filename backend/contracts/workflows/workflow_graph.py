@@ -24,6 +24,8 @@ NODE_RUNTIME_SERVICE_CALL = "service-call"
 FLOW_APPLICATION_RUNTIME_PYTHON_JSON = "python-json-workflow"
 FLOW_BINDING_DIRECTION_INPUT = "input"
 FLOW_BINDING_DIRECTION_OUTPUT = "output"
+FLOW_BINDING_KIND_API_REQUEST = "api-request"
+FLOW_BINDING_KIND_HTTP_RESPONSE = "http-response"
 
 
 def _require_stripped_text(value: str, field_name: str) -> str:
@@ -832,6 +834,157 @@ def validate_flow_application_bindings(
     if missing_outputs:
         missing_outputs_text = ", ".join(sorted(missing_outputs))
         raise ValueError(f"流程应用缺少模板输出绑定: {missing_outputs_text}")
+
+
+def synchronize_flow_application_bindings(
+    *,
+    template: WorkflowGraphTemplate,
+    application: FlowApplication,
+) -> FlowApplication:
+    """按当前图模板同步流程应用绑定。
+
+    参数：
+    - template：当前图模板，作为公开输入输出的唯一来源。
+    - application：需要同步的流程应用。
+
+    返回：
+    - FlowApplication：移除失效绑定并补齐缺失绑定后的流程应用。
+    """
+
+    template_input_index = {item.input_id: item for item in template.template_inputs}
+    template_output_index = {item.output_id: item for item in template.template_outputs}
+    synchronized_bindings: list[FlowApplicationBinding] = []
+    seen_binding_ids: set[str] = set()
+    seen_input_port_ids: set[str] = set()
+    seen_output_port_ids: set[str] = set()
+
+    for binding in application.bindings:
+        if binding.direction == FLOW_BINDING_DIRECTION_INPUT:
+            template_input = template_input_index.get(binding.template_port_id)
+            if template_input is None or binding.template_port_id in seen_input_port_ids:
+                continue
+            next_binding = _normalize_flow_application_binding(
+                binding=binding,
+                payload_type_id=template_input.payload_type_id,
+                display_name=template_input.display_name,
+                required=template_input.required,
+            )
+            synchronized_bindings.append(next_binding)
+            seen_binding_ids.add(next_binding.binding_id)
+            seen_input_port_ids.add(next_binding.template_port_id)
+            continue
+
+        if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT:
+            template_output = template_output_index.get(binding.template_port_id)
+            if template_output is None or binding.template_port_id in seen_output_port_ids:
+                continue
+            next_binding = _normalize_flow_application_binding(
+                binding=binding,
+                payload_type_id=template_output.payload_type_id,
+                display_name=template_output.display_name,
+                required=True,
+            )
+            synchronized_bindings.append(next_binding)
+            seen_binding_ids.add(next_binding.binding_id)
+            seen_output_port_ids.add(next_binding.template_port_id)
+
+    for template_input in template.template_inputs:
+        if template_input.input_id in seen_input_port_ids:
+            continue
+        binding = _build_default_flow_application_binding(
+            binding_id=_build_unique_binding_id(template_input.input_id, seen_binding_ids),
+            direction=FLOW_BINDING_DIRECTION_INPUT,
+            template_port_id=template_input.input_id,
+            binding_kind=FLOW_BINDING_KIND_API_REQUEST,
+            payload_type_id=template_input.payload_type_id,
+            display_name=template_input.display_name,
+            required=template_input.required,
+        )
+        synchronized_bindings.append(binding)
+        seen_binding_ids.add(binding.binding_id)
+        seen_input_port_ids.add(binding.template_port_id)
+
+    for template_output in template.template_outputs:
+        if template_output.output_id in seen_output_port_ids:
+            continue
+        binding = _build_default_flow_application_binding(
+            binding_id=_build_unique_binding_id(template_output.output_id, seen_binding_ids),
+            direction=FLOW_BINDING_DIRECTION_OUTPUT,
+            template_port_id=template_output.output_id,
+            binding_kind=FLOW_BINDING_KIND_HTTP_RESPONSE,
+            payload_type_id=template_output.payload_type_id,
+            display_name=template_output.display_name,
+            required=True,
+        )
+        synchronized_bindings.append(binding)
+        seen_binding_ids.add(binding.binding_id)
+        seen_output_port_ids.add(binding.template_port_id)
+
+    synchronized_bindings_tuple = tuple(synchronized_bindings)
+    if synchronized_bindings_tuple == application.bindings:
+        return application
+    return application.model_copy(update={"bindings": synchronized_bindings_tuple})
+
+
+def _normalize_flow_application_binding(
+    *,
+    binding: FlowApplicationBinding,
+    payload_type_id: str,
+    display_name: str,
+    required: bool,
+) -> FlowApplicationBinding:
+    """同步单条绑定的 payload 元数据。"""
+
+    next_config = dict(binding.config)
+    next_config["payload_type_id"] = payload_type_id
+    next_metadata = dict(binding.metadata)
+    next_metadata["payload_type_id"] = payload_type_id
+    next_metadata.setdefault("display_name", display_name)
+    return binding.model_copy(
+        update={
+            "required": required,
+            "config": next_config,
+            "metadata": next_metadata,
+        }
+    )
+
+
+def _build_default_flow_application_binding(
+    *,
+    binding_id: str,
+    direction: Literal[FLOW_BINDING_DIRECTION_INPUT, FLOW_BINDING_DIRECTION_OUTPUT],
+    template_port_id: str,
+    binding_kind: str,
+    payload_type_id: str,
+    display_name: str,
+    required: bool,
+) -> FlowApplicationBinding:
+    """构建模板新增输入输出时使用的默认应用绑定。"""
+
+    return FlowApplicationBinding(
+        binding_id=binding_id,
+        direction=direction,
+        template_port_id=template_port_id,
+        binding_kind=binding_kind,
+        required=required,
+        config={"payload_type_id": payload_type_id},
+        metadata={
+            "payload_type_id": payload_type_id,
+            "display_name": display_name,
+            "source": "workflow-template-sync",
+        },
+    )
+
+
+def _build_unique_binding_id(candidate_id: str, used_ids: set[str]) -> str:
+    """生成不会与现有应用绑定冲突的 binding id。"""
+
+    if candidate_id not in used_ids:
+        return candidate_id
+    suffix = 2
+    while f"{candidate_id}_{suffix}" in used_ids:
+        suffix += 1
+    return f"{candidate_id}_{suffix}"
 
 
 def _validate_template_dag(*, adjacency: dict[str, list[str]], indegree: dict[str, int]) -> None:

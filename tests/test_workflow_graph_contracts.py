@@ -21,6 +21,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
     WorkflowPayloadContract,
+    synchronize_flow_application_bindings,
     validate_flow_application_bindings,
     validate_node_definition_catalog,
     validate_workflow_graph_template,
@@ -313,6 +314,56 @@ def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
     assert restored_definition.runtime_requirements["python_packages"] == ["opencv-python", "numpy"]
     assert restored_template.nodes[1].parameters["score_threshold"] == 0.3
     assert restored_application.bindings[0].binding_kind == "api-request"
+
+
+def test_flow_application_bindings_sync_with_current_template_ports() -> None:
+    """验证模板公开端口变化后应用绑定会被同步到最新合同。"""
+
+    graph_template = _build_graph_template()
+    stale_application = FlowApplication(
+        application_id="inspection-api-app",
+        display_name="Inspection API App",
+        template_ref=FlowTemplateReference(
+            template_id="inspection-demo",
+            template_version="1.0.0",
+            source_kind="json-file",
+            source_uri="workflows/inspection-demo.template.json",
+        ),
+        runtime_mode=FLOW_APPLICATION_RUNTIME_PYTHON_JSON,
+        bindings=(
+            FlowApplicationBinding(
+                binding_id="request_image_base64",
+                direction="input",
+                template_port_id="request_image_base64",
+                binding_kind="api-request",
+                required=True,
+            ),
+            FlowApplicationBinding(
+                binding_id="legacy_response",
+                direction="output",
+                template_port_id="legacy_response",
+                binding_kind="http-response",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="不存在的模板输出"):
+        validate_flow_application_bindings(template=graph_template, application=stale_application)
+
+    synchronized_application = synchronize_flow_application_bindings(
+        template=graph_template,
+        application=stale_application,
+    )
+
+    validate_flow_application_bindings(template=graph_template, application=synchronized_application)
+    assert [binding.binding_id for binding in synchronized_application.bindings] == [
+        "request_image_base64",
+        "inspection_response",
+    ]
+    output_binding = synchronized_application.bindings[1]
+    assert output_binding.template_port_id == "inspection_response"
+    assert output_binding.binding_kind == "http-response"
+    assert output_binding.config["payload_type_id"] == "http-response.v1"
 
 
 def test_workflow_graph_template_rejects_cycles() -> None:
