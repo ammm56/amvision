@@ -1,7 +1,7 @@
 {
-  "profile_id": "full",
-  "display_name": "amvision full NVIDIA",
-  "description": "NVIDIA GPU 工作站完整发布目录，包含训练、转换、评估、异步推理 worker，并复制 TensorRT 与 cuDNN 运行时资产。",
+  "profile_id": "full-cpu",
+  "display_name": "amvision full Intel CPU",
+  "description": "Intel CPU 工作站发布目录，保留前端、backend-service、数据集导入导出和异步推理 worker，不复制 NVIDIA TensorRT/cuDNN 运行时资产。",
   "service": {
     "python_launcher": "runtimes/launchers/service/start_backend_service.py",
     "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
@@ -15,9 +15,6 @@
     "worker_profile_ids": [
       "dataset-import",
       "dataset-export",
-      "training",
-      "conversion",
-      "evaluation",
       "inference"
     ]
   },
@@ -29,8 +26,11 @@
   },
   "artifacts": {
     "include_frontend": true,
-    "include_tensorrt_runtime": true,
-    "include_cudnn_runtime": true,
-    "requirements_exclude_packages": []
+    "include_tensorrt_runtime": false,
+    "include_cudnn_runtime": false,
+    "requirements_exclude_packages": [
+      "tensorrt-cu12",
+      "cuda-python"
+    ]
   }
 }

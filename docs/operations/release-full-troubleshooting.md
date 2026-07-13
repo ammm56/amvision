@@ -83,7 +83,39 @@
 
 如果 `validate-layout` 先不过，不要继续看 worker。
 
-### 3. API 能访问，但任务一直停在 `queued`
+### 3. CPU-only 机器启动后前端无内容或一直 checking
+
+先看：
+
+- `logs/full-stack/service.log`
+- `logs/full-stack/worker-*.log`
+- `logs/full-stack/runtime-state.json`
+
+典型根因：
+
+- CPU-only 机器误用了 `full` 或 `full-nvidia` 发布包
+- NVIDIA 完整包启动了训练、转换、评估、推理等全部 worker
+- 某个 worker 因 TensorRT、CUDA、NVIDIA driver 或 GPU-only Python 依赖不可用而退出
+- `start-amvision-full` 发现子组件退出后，会停止整个 stack，backend-service 也随之退出
+- 前端无法再获取 bootstrap/session 状态，所以界面停在 checking 或空白
+
+正确处理：
+
+```powershell
+conda activate amvision
+python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root .\release --force --output text
+```
+
+然后在 `release/full-cpu/` 中部署和启动。CPU profile 的验收点：
+
+- 不存在 `tools/tensorrt/`
+- 不存在 `tools/cudnn/`
+- `app/requirements.txt` 不包含 `tensorrt-cu12`、`cuda-python`
+- 默认只启动 `dataset-import`、`dataset-export`、`inference` 三类 worker
+
+如果必须在 CPU 机器上跑模型推理，应使用 ONNX Runtime / OpenVINO CPU 路线构建和部署模型，不应使用 TensorRT 构建。
+
+### 4. API 能访问，但任务一直停在 `queued`
 
 先看：
 
@@ -106,7 +138,7 @@
 
 所以如果任务仍然不动，先不要再怀疑“是不是还没接通 non-detection worker”，优先检查日志、队列目录和配置路径。
 
-### 4. 某类 non-detection 模型部署能建出来，但推理报 backend 错误
+### 5. 某类 non-detection 模型部署能建出来，但推理报 backend 错误
 
 先看：
 
@@ -137,7 +169,7 @@
 - 发布目录资产不完整
 - 还是当前代码主线真的回归了
 
-### 5. `openvino` 或 `tensorrt` 相关任务只在现场机器失败
+### 6. `openvino` 或 `tensorrt` 相关任务只在现场机器失败
 
 先看：
 
@@ -156,7 +188,7 @@
 - 目标客户机默认安装 NVIDIA driver 和现场要求的系统 CUDA；如果报 DLL 缺失，优先检查发布目录 `tools/tensorrt/bin/`、`tools/cudnn/bin/12.9/x64/` 和启动脚本 PATH，而不是把整套 CUDA Toolkit 复制进项目
 - 如果三条 backend 都不能跑，再回头查模型构建、labels、部署绑定和 API 入参
 
-### 6. `release/full/python` 看起来存在，但一 `import torch` 就直接崩
+### 7. `release/full/python` 看起来存在，但一 `import torch` 就直接崩
 
 这是 bundled Python 漂移的典型信号，先不要直接怀疑业务代码。
 
@@ -182,7 +214,7 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 - 如果重建后 `release/full/python/python.exe -c "import torch"` 正常，说明是旧 bundle 漂移，不是当前仓库源码主链坏了
 - 如果重建后仍然异常，再继续查 Python 来源目录本身和系统级 DLL 干扰
 
-### 7. stop 脚本执行后还有进程残留
+### 8. stop 脚本执行后还有进程残留
 
 先看：
 

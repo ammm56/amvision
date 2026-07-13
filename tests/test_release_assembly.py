@@ -111,6 +111,60 @@ def test_assemble_release_materializes_full_layout(
     assert release_manifest["workers"][0]["python_launcher"] == "launchers/worker/start_backend_worker.py"
 
 
+def test_assemble_release_cpu_profile_excludes_nvidia_runtime_assets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 CPU-only profile 不复制 NVIDIA 运行时，也不会携带 CUDA/TensorRT requirements。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-cpu",
+            output_root=tmp_path,
+        )
+    )
+
+    release_dir = tmp_path / "full-cpu"
+    assert result.release_dir == release_dir.resolve()
+    assert (release_dir / "app" / "backend").is_dir()
+    assert (release_dir / "frontend" / "index.html").is_file()
+    assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
+    assert not (release_dir / "tools" / "tensorrt").exists()
+    assert not (release_dir / "tools" / "cudnn").exists()
+
+    requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
+    assert "tensorrt-cu12==" not in requirements_text
+    assert "cuda-python==" not in requirements_text
+    assert "onnxruntime>=1.22,<2" in requirements_text
+    assert "openvino>=2026.1.0" in requirements_text
+    assert "当前 release profile 已排除这些 GPU-only 依赖" in requirements_text
+
+    assert result.worker_profile_ids == ("dataset-import", "dataset-export", "inference")
+    assert (release_dir / "manifests" / "worker-profiles" / "dataset-import.json").is_file()
+    assert (release_dir / "manifests" / "worker-profiles" / "dataset-export.json").is_file()
+    assert (release_dir / "manifests" / "worker-profiles" / "inference.json").is_file()
+    assert not (release_dir / "manifests" / "worker-profiles" / "training.json").exists()
+    assert not (release_dir / "launchers" / "worker" / "start-training-worker.bat").exists()
+
+    release_manifest = json.loads(
+        (release_dir / "manifests" / "release-profiles" / "full-cpu.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert release_manifest["artifacts"]["include_tensorrt_runtime"] is False
+    assert release_manifest["artifacts"]["include_cudnn_runtime"] is False
+    assert release_manifest["artifacts"]["requirements_exclude_packages"] == [
+        "tensorrt-cu12",
+        "cuda-python",
+    ]
+    assert [worker["profile_id"] for worker in release_manifest["workers"]] == [
+        "dataset-import",
+        "dataset-export",
+        "inference",
+    ]
+
+
 def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -13,21 +14,6 @@ from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo11_conversion_queue_worker import Yolo11ConversionQueueWorker
-from backend.workers.conversion.yolo26_conversion_queue_worker import Yolo26ConversionQueueWorker
-from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
-from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
-from backend.workers.conversion.rfdetr_conversion_queue_worker import RfdetrConversionQueueWorker
-from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
-from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
-from backend.workers.evaluation.model_evaluation_queue_worker import (
-    ClassificationEvaluationQueueWorker,
-    SegmentationEvaluationQueueWorker,
-    DetectionEvaluationQueueWorker,
-    PoseEvaluationQueueWorker,
-    ObbEvaluationQueueWorker,
-)
-from backend.workers.inference.inference_queue_worker import InferenceQueueWorker
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
@@ -57,17 +43,6 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
 from backend.workers.task_manager import BackgroundTaskConsumer
-from backend.workers.training.yolo11_training_queue_worker import Yolo11TrainingQueueWorker
-from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
-from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
-from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
-from backend.workers.training.yolo_training_queue_worker import (
-    ClassificationTrainingQueueWorker,
-    SegmentationTrainingQueueWorker,
-    PoseTrainingQueueWorker,
-    ObbTrainingQueueWorker,
-)
-from backend.workers.training.rfdetr_training_queue_worker import RfdetrTrainingQueueWorker
 
 
 @dataclass(frozen=True)
@@ -94,10 +69,36 @@ class BackgroundTaskConsumerResources:
 _ConsumerFactory = Callable[[BackgroundTaskConsumerResources], BackgroundTaskConsumer]
 
 
-def _std_factory(worker_cls: type, suffix: str) -> _ConsumerFactory:
+def _load_worker_class(module_name: str, class_name: str) -> type:
+    """按需导入后台 worker 类。
+
+    参数：
+    - module_name：worker 类所在模块。
+    - class_name：worker 类名。
+
+    返回：
+    - type：已导入的 worker 类。
+
+    说明：
+    - worker 注册表不能在模块加载时导入全部模型 worker，否则 CPU-only 发布目录启动
+      dataset worker 时也会触碰训练、转换和 TensorRT 相关依赖。
+    """
+
+    worker_module = importlib.import_module(module_name)
+    worker_cls = getattr(worker_module, class_name)
+    if not isinstance(worker_cls, type):
+        raise ServiceConfigurationError(
+            "后台任务消费者类导入结果无效",
+            details={"module_name": module_name, "class_name": class_name},
+        )
+    return worker_cls
+
+
+def _std_factory(module_name: str, class_name: str, suffix: str) -> _ConsumerFactory:
     """构建标准 worker 工厂：session_factory + dataset_storage + queue_backend + worker_id。"""
 
     def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
+        worker_cls = _load_worker_class(module_name, class_name)
         return worker_cls(
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
@@ -112,7 +113,11 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
     """构建推理 worker 工厂：额外传递 async_inference_request_timeout_seconds。"""
 
     def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
-        return InferenceQueueWorker(
+        inference_worker_cls = _load_worker_class(
+            "backend.workers.inference.inference_queue_worker",
+            "InferenceQueueWorker",
+        )
+        return inference_worker_cls(
             consumer_kind=BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
@@ -126,7 +131,11 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
 
 def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consumer_kind: str) -> BackgroundTaskConsumer:
     """构建动态推理 worker 工厂：worker_id 使用 consumer_kind。"""
-    return InferenceQueueWorker(
+    inference_worker_cls = _load_worker_class(
+        "backend.workers.inference.inference_queue_worker",
+        "InferenceQueueWorker",
+    )
+    return inference_worker_cls(
         consumer_kind=consumer_kind,
         session_factory=resources.session_factory,
         dataset_storage=resources.dataset_storage,
@@ -140,35 +149,119 @@ def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consu
 
 _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
     # 数据集
-    BACKEND_WORKER_CONSUMER_DATASET_IMPORT: _std_factory(DatasetImportQueueWorker, "dataset-import"),
-    BACKEND_WORKER_CONSUMER_DATASET_EXPORT: _std_factory(DatasetExportQueueWorker, "dataset-export"),
+    BACKEND_WORKER_CONSUMER_DATASET_IMPORT: _std_factory(
+        "backend.workers.datasets.dataset_import_queue_worker",
+        "DatasetImportQueueWorker",
+        "dataset-import",
+    ),
+    BACKEND_WORKER_CONSUMER_DATASET_EXPORT: _std_factory(
+        "backend.workers.datasets.dataset_export_queue_worker",
+        "DatasetExportQueueWorker",
+        "dataset-export",
+    ),
     # YOLOX
-    BACKEND_WORKER_CONSUMER_YOLOX_TRAINING: _std_factory(YoloXTrainingQueueWorker, "yolox-training"),
-    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(YoloXConversionQueueWorker, "yolox-conversion"),
+    BACKEND_WORKER_CONSUMER_YOLOX_TRAINING: _std_factory(
+        "backend.workers.training.yolox_training_queue_worker",
+        "YoloXTrainingQueueWorker",
+        "yolox-training",
+    ),
+    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(
+        "backend.workers.conversion.yolox_conversion_queue_worker",
+        "YoloXConversionQueueWorker",
+        "yolox-conversion",
+    ),
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: _inference_factory("detection-inference"),
     # YOLOv8
-    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(YoloV8TrainingQueueWorker, "yolov8-training"),
-    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _std_factory(YoloV8ConversionQueueWorker, "yolov8-conversion"),
+    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING: _std_factory(
+        "backend.workers.training.yolov8_training_queue_worker",
+        "YoloV8TrainingQueueWorker",
+        "yolov8-training",
+    ),
+    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _std_factory(
+        "backend.workers.conversion.yolov8_conversion_queue_worker",
+        "YoloV8ConversionQueueWorker",
+        "yolov8-conversion",
+    ),
     # YOLO11
-    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING: _std_factory(Yolo11TrainingQueueWorker, "yolo11-training"),
-    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION: _std_factory(Yolo11ConversionQueueWorker, "yolo11-conversion"),
+    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING: _std_factory(
+        "backend.workers.training.yolo11_training_queue_worker",
+        "Yolo11TrainingQueueWorker",
+        "yolo11-training",
+    ),
+    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION: _std_factory(
+        "backend.workers.conversion.yolo11_conversion_queue_worker",
+        "Yolo11ConversionQueueWorker",
+        "yolo11-conversion",
+    ),
     # YOLO26
-    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING: _std_factory(Yolo26TrainingQueueWorker, "yolo26-training"),
-    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION: _std_factory(Yolo26ConversionQueueWorker, "yolo26-conversion"),
+    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING: _std_factory(
+        "backend.workers.training.yolo26_training_queue_worker",
+        "Yolo26TrainingQueueWorker",
+        "yolo26-training",
+    ),
+    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION: _std_factory(
+        "backend.workers.conversion.yolo26_conversion_queue_worker",
+        "Yolo26ConversionQueueWorker",
+        "yolo26-conversion",
+    ),
     # RF-DETR
-    BACKEND_WORKER_CONSUMER_RFDETR_TRAINING: _std_factory(RfdetrTrainingQueueWorker, "rfdetr-training"),
-    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION: _std_factory(RfdetrConversionQueueWorker, "rfdetr-conversion"),
+    BACKEND_WORKER_CONSUMER_RFDETR_TRAINING: _std_factory(
+        "backend.workers.training.rfdetr_training_queue_worker",
+        "RfdetrTrainingQueueWorker",
+        "rfdetr-training",
+    ),
+    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION: _std_factory(
+        "backend.workers.conversion.rfdetr_conversion_queue_worker",
+        "RfdetrConversionQueueWorker",
+        "rfdetr-conversion",
+    ),
     # 非 Detection 训练
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING: _std_factory(ClassificationTrainingQueueWorker, "classification-training"),
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING: _std_factory(SegmentationTrainingQueueWorker, "segmentation-training"),
-    BACKEND_WORKER_CONSUMER_POSE_TRAINING: _std_factory(PoseTrainingQueueWorker, "pose-training"),
-    BACKEND_WORKER_CONSUMER_OBB_TRAINING: _std_factory(ObbTrainingQueueWorker, "obb-training"),
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING: _std_factory(
+        "backend.workers.training.yolo_training_queue_worker",
+        "ClassificationTrainingQueueWorker",
+        "classification-training",
+    ),
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING: _std_factory(
+        "backend.workers.training.yolo_training_queue_worker",
+        "SegmentationTrainingQueueWorker",
+        "segmentation-training",
+    ),
+    BACKEND_WORKER_CONSUMER_POSE_TRAINING: _std_factory(
+        "backend.workers.training.yolo_training_queue_worker",
+        "PoseTrainingQueueWorker",
+        "pose-training",
+    ),
+    BACKEND_WORKER_CONSUMER_OBB_TRAINING: _std_factory(
+        "backend.workers.training.yolo_training_queue_worker",
+        "ObbTrainingQueueWorker",
+        "obb-training",
+    ),
     # 非 Detection 评估
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION: _std_factory(ClassificationEvaluationQueueWorker, "classification-evaluation"),
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION: _std_factory(SegmentationEvaluationQueueWorker, "segmentation-evaluation"),
-    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION: _std_factory(DetectionEvaluationQueueWorker, "detection-evaluation"),
-    BACKEND_WORKER_CONSUMER_POSE_EVALUATION: _std_factory(PoseEvaluationQueueWorker, "pose-evaluation"),
-    BACKEND_WORKER_CONSUMER_OBB_EVALUATION: _std_factory(ObbEvaluationQueueWorker, "obb-evaluation"),
+    BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION: _std_factory(
+        "backend.workers.evaluation.model_evaluation_queue_worker",
+        "ClassificationEvaluationQueueWorker",
+        "classification-evaluation",
+    ),
+    BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION: _std_factory(
+        "backend.workers.evaluation.model_evaluation_queue_worker",
+        "SegmentationEvaluationQueueWorker",
+        "segmentation-evaluation",
+    ),
+    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION: _std_factory(
+        "backend.workers.evaluation.model_evaluation_queue_worker",
+        "DetectionEvaluationQueueWorker",
+        "detection-evaluation",
+    ),
+    BACKEND_WORKER_CONSUMER_POSE_EVALUATION: _std_factory(
+        "backend.workers.evaluation.model_evaluation_queue_worker",
+        "PoseEvaluationQueueWorker",
+        "pose-evaluation",
+    ),
+    BACKEND_WORKER_CONSUMER_OBB_EVALUATION: _std_factory(
+        "backend.workers.evaluation.model_evaluation_queue_worker",
+        "ObbEvaluationQueueWorker",
+        "obb-evaluation",
+    ),
 }
 
 # 动态推理 worker（多个 consumer_kind 共享同一 worker 类，但 worker_id 不同）

@@ -122,8 +122,9 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 ## full 发布中的 worker 角色
 
 - 当前 `runtimes/manifests/release-profiles/full.json` 会生成 `dataset-import`、`dataset-export`、`training`、`conversion`、`evaluation`、`inference` 六个独立 worker profile
+- `runtimes/manifests/release-profiles/full-cpu.json` 面向 Intel CPU 工作站，默认只生成并启动 `dataset-import`、`dataset-export`、`inference` 三个 worker profile
 - 如果只需要单进程联调，也可以继续使用 `config/backend-worker.json` 里的全量 `enabled_consumer_kinds`
-- 如果后续要做推理专用发布，可复制 `release/full/` 后只保留需要的 worker launcher 与对应依赖，不需要改项目源码
+- 不同硬件环境和 worker 集合应通过 release profile 表达，不再复制 `release/full/` 后手工删除 worker launcher 或依赖
 
 ## 当前最小验收建议
 

@@ -35,6 +35,36 @@ from backend.service.infrastructure.object_store.object_key_layout import RUNTIM
 from backend.service.settings import BackendServiceSettings, get_backend_service_settings
 
 
+def _load_release_manifest_artifacts_for_layout(app_root: Path) -> dict[str, object]:
+    """读取发布目录中的 release manifest artifacts，用于布局校验分支判断。
+
+    参数：
+    - app_root：当前 maintenance 工作目录。
+
+    返回：
+    - dict[str, object]：当前发布 profile 的 artifacts 字典；找不到或格式异常时返回空字典。
+    """
+
+    release_profile_dir = app_root / "manifests" / "release-profiles"
+    if not release_profile_dir.is_dir():
+        return {}
+    preferred_manifest_path = release_profile_dir / "full.json"
+    manifest_paths = sorted(release_profile_dir.glob("*.json"))
+    manifest_path = (
+        preferred_manifest_path
+        if preferred_manifest_path.is_file()
+        else (manifest_paths[0] if len(manifest_paths) == 1 else None)
+    )
+    if manifest_path is None:
+        return {}
+    try:
+        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    artifacts = manifest_payload.get("artifacts")
+    return artifacts if isinstance(artifacts, dict) else {}
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """构造 backend-maintenance 命令行参数解析器。
 
@@ -154,6 +184,7 @@ def run_command(
             ),
         }
         if layout_kind == "release":
+            release_artifacts = _load_release_manifest_artifacts_for_layout(app_root)
             expected_paths.update(
                 {
                     "app_backend": (app_root / "app" / "backend",),
@@ -161,9 +192,6 @@ def run_command(
                     "custom_nodes": (app_root / "custom_nodes",),
                     "ffmpeg_tools": (
                         app_root / "tools" / "ffmpeg",
-                    ),
-                    "cudnn_tools": (
-                        app_root / "tools" / "cudnn",
                     ),
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (
@@ -176,6 +204,10 @@ def run_command(
                     ),
                 }
             )
+            if bool(release_artifacts.get("include_tensorrt_runtime", False)):
+                expected_paths["tensorrt_tools"] = (app_root / "tools" / "tensorrt",)
+            if bool(release_artifacts.get("include_cudnn_runtime", False)):
+                expected_paths["cudnn_tools"] = (app_root / "tools" / "cudnn",)
         return {
             "command": command,
             "app_root": str(app_root),

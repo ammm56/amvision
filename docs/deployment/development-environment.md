@@ -78,6 +78,7 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 ```powershell
 python -m backend.maintenance.main validate-layout --output json
 python -m backend.maintenance.main assemble-release --profile-id full --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root ./release --force --output text
 ```
 
 ### 当前最小回归入口

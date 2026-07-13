@@ -37,9 +37,11 @@
 ### assemble-release
 
 - 按指定 `release profile` 组装 `release/<profile_id>/` 发行目录；当前默认使用 `full`
+- `full` 和 `full-nvidia` 面向 NVIDIA GPU 工作站，会复制 TensorRT / cuDNN 运行时资产
+- `full-cpu` 面向 Intel CPU 工作站，不复制 TensorRT / cuDNN，并从发行目录 `app/requirements.txt` 中排除 `tensorrt-cu12`、`cuda-python`
 - 自动复制 backend 源码、配置模板、Python launcher 和 bat/sh wrapper
 - 自动复制当前 profile 需要的 worker profile manifest，并生成 `start-<profile_id>-worker.bat/sh`
-- 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`
+- 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`，并按 profile 过滤不适用依赖
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
 - 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
 - 只有在显式提供 bundled Python 来源目录时，才会重建发行目录里的 `python/`
@@ -57,6 +59,8 @@ python -m backend.maintenance.main version --output text
 python -m backend.maintenance.main show-config --output json
 python -m backend.maintenance.main validate-layout --output json
 python -m backend.maintenance.main assemble-release --profile-id full --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-nvidia --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root ./release --force --output text
 ```
 
 ## 同目录 Python 运行时调用

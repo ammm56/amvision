@@ -20,7 +20,7 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import is_pid_alive, load_json_file, resolve_app_root, resolve_path  # noqa: E402
+from common import is_pid_alive, resolve_app_root, resolve_path  # noqa: E402
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -182,20 +182,46 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
     )
 
 
-def _load_release_manifest(
-    app_root: Path, release_manifest_file: str
-) -> dict[str, object]:
-    """读取 release manifest。
+def _resolve_release_manifest_path(app_root: Path, release_manifest_file: str) -> Path:
+    """解析一键启动应使用的 release manifest 文件。
 
     参数：
     - app_root：当前应用根目录。
     - release_manifest_file：release manifest 路径。
 
     返回：
+    - Path：真实存在的 release manifest 文件路径。
+    """
+
+    manifest_path = resolve_path(app_root, release_manifest_file)
+    if manifest_path.is_file():
+        return manifest_path
+
+    default_manifest_path = app_root / "manifests" / "release-profiles" / "full.json"
+    if manifest_path == default_manifest_path.resolve():
+        profile_manifest_paths = sorted(
+            (app_root / "manifests" / "release-profiles").glob("*.json")
+        )
+        if len(profile_manifest_paths) == 1:
+            return profile_manifest_paths[0]
+
+    return manifest_path
+
+
+def _load_release_manifest(app_root: Path, manifest_path: Path) -> dict[str, object]:
+    """读取 release manifest。
+
+    参数：
+    - app_root：当前应用根目录。
+    - manifest_path：真实存在的 release manifest 文件路径。
+
+    返回：
     - dict[str, object]：release manifest 内容。
     """
 
-    return load_json_file(app_root, release_manifest_file)
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"文件不存在: {_format_runtime_path(app_root, manifest_path)}")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
 def _select_worker_entries(
@@ -526,7 +552,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ensure_stack_not_running(state_file_path)
 
-    release_manifest = _load_release_manifest(app_root, args.release_manifest_file)
+    release_manifest_path = _resolve_release_manifest_path(app_root, args.release_manifest_file)
+    release_manifest = _load_release_manifest(app_root, release_manifest_path)
     worker_entries = _select_worker_entries(release_manifest, args.worker_profile_id)
     _validate_required_files(app_root, release_manifest, worker_entries)
 
@@ -594,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         _write_stack_state(
             app_root,
             state_file_path=state_file_path,
-            release_manifest_file=args.release_manifest_file,
+            release_manifest_file=_format_runtime_path(app_root, release_manifest_path),
             python_executable=python_executable,
             logs_dir=logs_dir,
             components=components,

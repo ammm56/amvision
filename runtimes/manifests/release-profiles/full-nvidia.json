@@ -1,5 +1,5 @@
 {
-  "profile_id": "full",
+  "profile_id": "full-nvidia",
   "display_name": "amvision full NVIDIA",
   "description": "NVIDIA GPU 工作站完整发布目录，包含训练、转换、评估、异步推理 worker，并复制 TensorRT 与 cuDNN 运行时资产。",
   "service": {

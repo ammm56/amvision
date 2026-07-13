@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Callable
 
 
@@ -290,19 +291,99 @@ def _build_worker_linux_wrapper(profile_id: str) -> str:
     )
 
 
-def _copy_application_sources(release_dir: Path) -> None:
+def _normalize_requirement_name(requirement_line: str) -> str | None:
+    """从 requirements 行中提取可比较的包名。
+
+    参数：
+    - requirement_line：requirements.txt 中的一行文本。
+
+    返回：
+    - str | None：归一化后的包名；空行、注释或无法识别时返回 None。
+    """
+
+    stripped_line = requirement_line.strip()
+    if not stripped_line or stripped_line.startswith("#"):
+        return None
+    requirement_head = stripped_line.split(";", 1)[0].strip()
+    requirement_head = requirement_head.split("[", 1)[0].strip()
+    match = re.match(r"^([A-Za-z0-9_.-]+)", requirement_head)
+    if match is None:
+        return None
+    return match.group(1).replace("_", "-").lower()
+
+
+def _copy_requirements_file(
+    target_path: Path,
+    *,
+    excluded_packages: set[str],
+) -> None:
+    """按 release profile 过滤并复制 requirements.txt。
+
+    参数：
+    - target_path：发行目录中的 requirements.txt 路径。
+    - excluded_packages：当前 profile 明确排除的包名集合。
+    """
+
+    if not excluded_packages:
+        _copy_file(SOURCE_REQUIREMENTS_FILE, target_path)
+        return
+
+    filtered_lines: list[str] = []
+    skipped_packages: list[str] = []
+    for line in SOURCE_REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines():
+        package_name = _normalize_requirement_name(line)
+        if package_name is not None and package_name in excluded_packages:
+            skipped_packages.append(package_name)
+            continue
+        filtered_lines.append(line)
+
+    filtered_lines.append("")
+    filtered_lines.append(
+        "# 当前 release profile 已排除这些 GPU-only 依赖: "
+        + ", ".join(sorted(set(skipped_packages)))
+    )
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text("\n".join(filtered_lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _extract_excluded_requirement_packages(artifacts_section: dict[str, object]) -> set[str]:
+    """读取当前 release profile 要排除的 requirements 包名。"""
+
+    excluded_packages_raw = artifacts_section.get("requirements_exclude_packages", [])
+    if not isinstance(excluded_packages_raw, list):
+        raise ValueError("artifacts.requirements_exclude_packages 必须是数组")
+    return {
+        str(package_name).replace("_", "-").lower()
+        for package_name in excluded_packages_raw
+        if str(package_name).strip()
+    }
+
+
+def _copy_application_sources(
+    release_dir: Path,
+    *,
+    artifacts_section: dict[str, object],
+) -> None:
     """复制后端源码和基础配置到发行目录。"""
 
     shutil.copytree(SOURCE_BACKEND_DIR, release_dir / "app" / "backend", dirs_exist_ok=True)
     shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True)
-    _copy_file(SOURCE_REQUIREMENTS_FILE, release_dir / "app" / "requirements.txt")
+    _copy_requirements_file(
+        release_dir / "app" / "requirements.txt",
+        excluded_packages=_extract_excluded_requirement_packages(artifacts_section),
+    )
 
 
-def _copy_runtime_assets(release_dir: Path) -> None:
+def _copy_runtime_assets(
+    release_dir: Path,
+    *,
+    artifacts_section: dict[str, object],
+) -> None:
     """复制 release 运行期需要的静态资产。
 
     参数：
     - release_dir：当前发行目录。
+    - artifacts_section：当前 release profile 的 artifacts 配置。
 
     说明：
     - custom_nodes 作为 workflow app 运行期代码资产随包发布。
@@ -319,8 +400,10 @@ def _copy_runtime_assets(release_dir: Path) -> None:
         release_dir / "tools" / "ffmpeg",
         ignore=_ignore_custom_nodes_copy,
     )
-    _copy_tensorrt_runtime_assets(release_dir)
-    _copy_cudnn_runtime_assets(release_dir)
+    if bool(artifacts_section.get("include_tensorrt_runtime", False)):
+        _copy_tensorrt_runtime_assets(release_dir)
+    if bool(artifacts_section.get("include_cudnn_runtime", False)):
+        _copy_cudnn_runtime_assets(release_dir)
 
 
 def _copy_tensorrt_runtime_assets(release_dir: Path) -> None:
@@ -598,6 +681,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         raise FileNotFoundError(f"release profile 不存在: {source_release_profile_path}")
 
     source_release_profile = _load_json_file(source_release_profile_path)
+    artifacts_section = source_release_profile["artifacts"]
+    assert isinstance(artifacts_section, dict)
     release_dir = request.resolve_release_dir()
     preserved_python_temp_dir: Path | None = None
     if release_dir.exists():
@@ -608,8 +693,8 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        _copy_application_sources(release_dir)
-        _copy_runtime_assets(release_dir)
+        _copy_application_sources(release_dir, artifacts_section=artifacts_section)
+        _copy_runtime_assets(release_dir, artifacts_section=artifacts_section)
         requirements_path = release_dir / "app" / "requirements.txt"
         _copy_launcher_tree(release_dir)
         generated_root_launchers = _copy_full_root_launchers(release_dir)
@@ -664,8 +749,6 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                 }
             )
 
-        artifacts_section = source_release_profile["artifacts"]
-        assert isinstance(artifacts_section, dict)
         if bool(artifacts_section.get("include_frontend", False)):
             _copy_frontend_assets(release_dir, request=request)
 

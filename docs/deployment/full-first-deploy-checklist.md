@@ -1,17 +1,17 @@
-# release/full/ 首次部署检查清单
+# release 首次部署检查清单
 
 ## 文档目的
 
-本文档用于把 `release/full/` 的首次部署验收步骤收敛到一页，按顺序覆盖 layout、service、worker、health、OpenAPI 文档和最小任务 smoke test。
+本文档用于把 `release/<profile_id>/` 的首次部署验收步骤收敛到一页，按顺序覆盖 layout、service、worker、health、OpenAPI 文档和最小任务 smoke test。
 
 ## 适用范围
 
-- 已通过 `assemble-release` 生成 `release/full/`
+- 已通过 `assemble-release` 生成 `release/full-nvidia/`、`release/full-cpu/` 或兼容入口 `release/full/`
 - 需要在一台新机器或新目录上完成首次可运行验证
 
 ## 执行前提
 
-- 当前工作目录切到 `release/full/`
+- 当前工作目录切到实际发行目录，例如 `release/full-nvidia/` 或 `release/full-cpu/`
 - `python/` 下已经存在可执行 Python，并已安装 `app/requirements.txt` 中的依赖
 - `config/backend-service.json`、`config/backend-worker.json` 已按现场路径和端口要求检查过一遍
 - 准备一个体积较小的 zip 数据集样本，用于 DatasetImport smoke test
@@ -31,11 +31,18 @@
 - `start_amvision_full.py`
 - `stop-amvision-full.bat`
 - `stop_amvision_full.py`
-- `manifests/release-profiles/full.json`
+- `manifests/release-profiles/<profile_id>.json`
 - `manifests/worker-profiles/dataset-import.json`
 - `python/python.exe`
 - `frontend/index.html`
 - `frontend/runtime-config.json`
+
+如果当前是 `full-nvidia`，还应存在：
+
+- `tools/tensorrt`
+- `tools/cudnn`
+
+如果当前是 `full-cpu`，则不应存在 `tools/tensorrt` 和 `tools/cudnn`，`app/requirements.txt` 中也不应包含 `tensorrt-cu12`、`cuda-python`。
 
 如果目录结构不完整，先停止后续步骤，回到 release 组装阶段排查。
 
@@ -52,7 +59,7 @@
 
 如果这一步失败，优先检查：
 
-- 当前终端工作目录是否就是 `release/full/`
+- 当前终端工作目录是否就是实际发行目录
 - `python/` 是否已经放到正确位置
 - `launchers/`、`manifests/` 是否来自同一次 `assemble-release`
 
@@ -72,7 +79,7 @@
 - 控制台先输出 backend-service 和多个 worker 的 pid 与日志路径
 - `logs/full-stack/` 下出现 `service.log` 和各 worker log
 
-当前 service 只承担控制面，不消费任务队列；一键启动脚本会把 full profile 里的 worker 一起拉起。
+当前 service 只承担控制面，不消费任务队列；一键启动脚本会把当前 release profile 里的 worker 一起拉起。
 
 ## 3. 检查 health
 
@@ -116,12 +123,12 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 ## 5. 确认 worker 已经被一键启动脚本拉起
 
-当前 full 根目录脚本会默认拉起 release manifest 中声明的全部 worker。
+当前根目录脚本会默认拉起 release manifest 中声明的全部 worker。
 
 通过标准：
 
 - `logs/full-stack/worker-dataset-import.log` 已经生成
-- `logs/full-stack/worker-inference.log` 等其他目标 worker log 已经生成
+- `logs/full-stack/worker-inference.log` 等当前 profile 需要的目标 worker log 已经生成
 - 根启动脚本控制台没有出现 worker profile 缺失、队列目录不可写或配置解析错误
 
 如果需要定位某一个 worker 的问题，再临时拆回独立启动方式，例如：
@@ -192,12 +199,12 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
 
 ## 8. 首次验收通过标准
 
-下面五项同时满足时，可认为 `release/full/` 首次部署通过最小验收：
+下面五项同时满足时，可认为当前 release 首次部署通过最小验收：
 
 1. `validate-layout` 通过
 2. `start-amvision-full.bat` 常驻运行且 health 返回 `status=ok`
 3. `/docs` 和 `/openapi.json` 正常可访问
-4. full profile 中需要的目标 worker 已由根启动脚本拉起
+4. 当前 release profile 中需要的目标 worker 已由根启动脚本拉起
 5. 至少一个 DatasetImport 任务成功经历提交、入队、消费和状态推进
 
 ## 9. 停止整套进程
