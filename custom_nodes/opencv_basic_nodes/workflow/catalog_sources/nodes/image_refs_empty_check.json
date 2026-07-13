@@ -3,7 +3,7 @@
   "node_type_id": "custom.opencv.image-refs-empty-check",
   "display_name": "Image Refs Empty Check",
   "category": "opencv.analysis",
-  "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
+  "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
   "metadata": {
     "i18n": {
       "display_name": {
@@ -11,8 +11,8 @@
         "en-US": "Image Refs Empty Check"
       },
       "description": {
-        "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
-        "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for each image in image-refs.v1, then classify each item as empty or non-empty with multi-metric rules."
+        "zh-CN": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
+        "en-US": "Consume Image Refs Slot Metrics.summary and classify each slot as empty or non-empty with multi-metric rules."
       }
     }
   },
@@ -23,15 +23,15 @@
       "name": "images",
       "display_name": "Images",
       "payload_type_id": "image-refs.v1",
-      "description": "待检查的图片集合，通常来自 Crop Export.crops；未连接 metrics 时节点会直接从 images 计算指标。",
+      "description": "可选调试图源，通常来自 Crop Export.crops；只在编辑态交互式参数图片面板和 contact sheet 中使用。",
       "required": false
     },
     {
       "name": "metrics",
       "display_name": "Metrics",
       "payload_type_id": "value.v1",
-      "description": "可选的 Image Refs Slot Metrics.summary。连接后按已有指标判定；images 可只用于编辑态调试图。",
-      "required": false
+      "description": "必填的 Image Refs Slot Metrics.summary。空槽检查只按已有指标做规则判断，不重复计算图像指标。",
+      "required": true
     }
   ],
   "output_ports": [
@@ -57,63 +57,11 @@
   "parameter_schema": {
     "type": "object",
     "properties": {
-      "max_items": {
-        "type": "integer",
-        "minimum": 1,
-        "title": "Max Items",
-        "description": "最多检查多少张图片；留空时检查全部。"
-      },
       "expected_count": {
         "type": "integer",
         "minimum": 1,
         "title": "Expected Count",
         "description": "期望图片数量；配置后数量不一致会让整批状态为 failed。"
-      },
-      "dark_threshold": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 64,
-        "title": "Dark Threshold",
-        "description": "低于或等于该灰度值的像素计入 dark_ratio 和暗连通域。"
-      },
-      "bright_threshold": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 192,
-        "title": "Bright Threshold",
-        "description": "高于或等于该灰度值的像素计入 bright_ratio。"
-      },
-      "canny_low_threshold": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 50,
-        "title": "Canny Low Threshold",
-        "description": "计算 edge_density 时使用的 Canny 低阈值。"
-      },
-      "canny_high_threshold": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 255,
-        "default": 150,
-        "title": "Canny High Threshold",
-        "description": "计算 edge_density 时使用的 Canny 高阈值。"
-      },
-      "dark_morph_kernel_size": {
-        "type": "integer",
-        "minimum": 1,
-        "default": 3,
-        "title": "Dark Morph Kernel",
-        "description": "暗像素 mask 做 open 时使用的奇数 kernel size；1 表示不做形态学清理。"
-      },
-      "dark_component_min_area": {
-        "type": "number",
-        "minimum": 0,
-        "default": 20,
-        "title": "Dark Component Min Area",
-        "description": "暗连通域最小面积；用于过滤高光纹理和噪声产生的小暗点。"
       },
       "std_gray_empty_max": {
         "type": "number",

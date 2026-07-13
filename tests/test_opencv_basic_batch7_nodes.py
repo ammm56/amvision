@@ -655,6 +655,13 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
             ),
             WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
             WorkflowGraphNode(
+                node_id="slot_metrics",
+                node_type_id="custom.opencv.image-refs-slot-metrics",
+                parameters={
+                    "dark_component_min_area": 12,
+                },
+            ),
+            WorkflowGraphNode(
                 node_id="empty_check",
                 node_type_id="custom.opencv.image-refs-empty-check",
                 parameters={
@@ -663,7 +670,6 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
                     "dark_ratio_empty_max": 0.02,
                     "edge_density_empty_max": 0.08,
                     "dark_component_area_ratio_empty_max": 0.02,
-                    "dark_component_min_area": 12,
                 },
             ),
             WorkflowGraphNode(
@@ -675,7 +681,6 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
                     "dark_ratio_occupied_min": 0.02,
                     "edge_density_occupied_min": 0.02,
                     "dark_component_area_ratio_occupied_min": 0.02,
-                    "dark_component_min_area": 12,
                     "occupied_min_pass_count": 1,
                 },
             ),
@@ -710,6 +715,27 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
                 source_port="rois",
                 target_node_id="crop_export",
                 target_port="rois",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-crop-export-slot-metrics-b7-state",
+                source_node_id="crop_export",
+                source_port="crops",
+                target_node_id="slot_metrics",
+                target_port="images",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-slot-metrics-empty-check-b7-state",
+                source_node_id="slot_metrics",
+                source_port="summary",
+                target_node_id="empty_check",
+                target_port="metrics",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-slot-metrics-occupied-check-b7-state",
+                source_node_id="slot_metrics",
+                source_port="summary",
+                target_node_id="occupied_check",
+                target_port="metrics",
             ),
             WorkflowGraphEdge(
                 edge_id="edge-crop-export-empty-check-b7-state",

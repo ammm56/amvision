@@ -99,7 +99,7 @@ Perspective Transform
 
 `custom.opencv.image-refs-slot-metrics` 消费 `crop-export` 输出的 `image-refs.v1`，统一计算每个槽位的基础图像指标。该节点是槽位空/有料判断的基础层，负责把灰度、亮暗比例、边缘密度和暗连通域指标结构化输出为 `amvision.image-refs-slot-metrics.v1`。调试时可打开节点的 `debug_preview`，用 contact sheet 直接观察每个槽位的指标；生产 runtime 默认不生成调试图。
 
-`custom.opencv.image-refs-empty-check` 优先消费 `image-refs-slot-metrics` 输出的 metrics，并按以下多指标组合判断每个槽位是否为空：
+`custom.opencv.image-refs-empty-check` 必须消费 `image-refs-slot-metrics` 输出的 metrics，并按以下多指标组合判断每个槽位是否为空：
 
 - `std_gray`：灰度标准差，拦截槽位内强纹理或物料变化。
 - `dark_ratio`：暗像素比例，拦截黑色、深色或遮挡物料。
@@ -109,7 +109,7 @@ Perspective Transform
 
 当前默认规则是所有启用规则都通过才判 `empty`。该策略对空盘更保守，避免单一指标被光照、高光或插槽纹理误导；现场如需适配不同托盘材质，应优先调整这些基础阈值，而不是新增业务专用节点。
 
-`custom.opencv.image-refs-occupied-check` 同样优先消费同一份 metrics，按有料方向的规则判断每个槽位是否为 `occupied`：
+`custom.opencv.image-refs-occupied-check` 同样必须消费同一份 metrics，按有料方向的规则判断每个槽位是否为 `occupied`：
 
 - `std_gray_occupied_min`：有料槽位要求的最小灰度标准差。
 - `dark_ratio_occupied_min`：有料槽位要求的最小暗像素比例。
@@ -127,7 +127,7 @@ Perspective Transform
 
 该统计节点只判断批量状态，不关心托盘、料盘或零件的具体业务语义，因此后续也可被其它阵列 ROI 检测 app 复用。
 
-空槽/有料判断节点仍保留可选 `images` 输入，主要用于编辑 Preview Run 的交互式参数图片面板和调试 contact sheet。推荐链路中 `images` 只作为调试图来源，判断计算复用 `metrics`，避免同一批槽位图片在多个规则节点里重复计算基础指标。
+空槽/有料判断节点仍保留可选 `images` 输入，但它只用于编辑 Preview Run 的交互式参数图片面板和调试 contact sheet。判断计算必须复用 `metrics`，不能在规则节点里重新计算基础指标。这样节点边界更清楚：`Slot Metrics` 是指标层，`Empty Check` / `Occupied Check` 是规则层，后续新增其它规则也可以复用同一份指标。
 
 ## 明确不做
 

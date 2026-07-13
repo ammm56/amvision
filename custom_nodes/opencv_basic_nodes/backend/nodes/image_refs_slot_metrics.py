@@ -356,7 +356,7 @@ def _build_slot_metric_contact_sheet(
     rows = int(math.ceil(count / columns))
     tile_width = 220
     tile_height = 140
-    label_height = 64
+    label_height = 78
     gap = 8
     canvas_width = columns * tile_width + (columns + 1) * gap
     canvas_height = rows * (tile_height + label_height) + (rows + 1) * gap
@@ -393,6 +393,7 @@ def _build_slot_metric_contact_sheet(
             item=item,
             origin_x=origin_x + 8,
             origin_y=origin_y + tile_height + 18,
+            max_width=tile_width - 16,
             color=border_color,
         )
     return canvas
@@ -454,6 +455,7 @@ def _draw_slot_metric_labels(
     item: dict[str, object],
     origin_x: int,
     origin_y: int,
+    max_width: int,
     color: tuple[int, int, int],
 ) -> None:
     """把槽位序号、判断和关键指标写到 contact sheet。"""
@@ -462,30 +464,75 @@ def _draw_slot_metric_labels(
     roi_id = str(item.get("roi_id") or f"#{item.get('index')}")
     decision = str(item.get("decision") or "metrics")
     failed_rules = item.get("failed_rules") if isinstance(item.get("failed_rules"), list) else []
+    title = f"{int(item.get('index') or 0):02d} {roi_id}"
+    if decision and decision != "metrics":
+        title = f"{title} {decision}"
     lines = [
-        f"{item.get('index')}. {roi_id} {decision}",
-        "std={:.1f} dark={:.3f} edge={:.3f}".format(
+        title,
+        "std {:.1f} | dark {:.3f}".format(
             float(metrics.get("std_gray", 0) or 0),
             float(metrics.get("dark_ratio", 0) or 0),
-            float(metrics.get("edge_density", 0) or 0),
         ),
-        "comp={:.3f} max={:.3f}{}".format(
+        "edge {:.3f} | comp {:.3f}".format(
+            float(metrics.get("edge_density", 0) or 0),
             float(metrics.get("dark_component_area_ratio", 0) or 0),
+        ),
+        "max {:.3f}{}".format(
             float(metrics.get("largest_dark_component_area_ratio", 0) or 0),
             f" fail={len(failed_rules)}" if failed_rules else "",
         ),
     ]
+    font_scale = 0.36
+    thickness = 1
     for line_index, line in enumerate(lines):
+        display_line = _truncate_text_to_pixel_width(
+            cv2_module=cv2_module,
+            text=line,
+            max_width=max_width,
+            font_scale=font_scale,
+            thickness=thickness,
+        )
         cv2_module.putText(
             canvas,
-            line[:34],
-            (origin_x, origin_y + line_index * 18),
+            display_line,
+            (origin_x, origin_y + line_index * 16),
             cv2_module.FONT_HERSHEY_SIMPLEX,
-            0.42,
+            font_scale,
             color if line_index == 0 else (225, 225, 225),
-            1,
+            thickness,
             cv2_module.LINE_AA,
         )
+
+
+def _truncate_text_to_pixel_width(
+    *,
+    cv2_module: Any,
+    text: str,
+    max_width: int,
+    font_scale: float,
+    thickness: int,
+) -> str:
+    """按 OpenCV 实际绘制宽度截断文本，避免 contact sheet 字符串溢出到相邻 tile。"""
+
+    if max_width <= 0:
+        return ""
+    font_face = cv2_module.FONT_HERSHEY_SIMPLEX
+    text_width = cv2_module.getTextSize(text, font_face, font_scale, thickness)[0][0]
+    if text_width <= max_width:
+        return text
+
+    suffix = "..."
+    suffix_width = cv2_module.getTextSize(suffix, font_face, font_scale, thickness)[0][0]
+    if suffix_width >= max_width:
+        return ""
+    result = text
+    while result:
+        candidate = result + suffix
+        candidate_width = cv2_module.getTextSize(candidate, font_face, font_scale, thickness)[0][0]
+        if candidate_width <= max_width:
+            return candidate
+        result = result[:-1]
+    return suffix
 
 
 def measure_dark_components(
