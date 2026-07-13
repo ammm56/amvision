@@ -204,6 +204,8 @@ def test_diagnostics_route_requires_auth_read_and_returns_system_summary(tmp_pat
     payload = allowed_response.json()
     assert payload["request_id"]
     assert payload["about"]["app_name"]
+    assert payload["about"]["license"] == "PolyForm Noncommercial License 1.0.0"
+    assert payload["about"]["license_spdx"] == "PolyForm-Noncommercial-1.0.0"
     assert payload["system"]["working_directory"]
     assert payload["python_runtime"]["executable"]
     assert payload["services"]["database"]["status"] == "ok"

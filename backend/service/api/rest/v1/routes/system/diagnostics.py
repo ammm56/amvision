@@ -31,6 +31,9 @@ from backend.workers.health import read_backend_worker_health_summary
 
 system_diagnostics_router = APIRouter()
 
+AMVISION_LICENSE_NAME = "PolyForm Noncommercial License 1.0.0"
+AMVISION_LICENSE_SPDX = "PolyForm-Noncommercial-1.0.0"
+
 
 @system_diagnostics_router.get("/diagnostics", response_model=SystemDiagnosticsResponse)
 def get_system_diagnostics(
@@ -82,7 +85,8 @@ def _build_about_diagnostics(settings: BackendServiceSettings) -> dict[str, obje
         "backend_version": settings.app.app_version,
         "git_commit": _read_first_env("AMVISION_GIT_COMMIT", "GIT_COMMIT") or _read_git_commit(),
         "build_time": _read_first_env("AMVISION_BUILD_TIME", "BUILD_TIME"),
-        "license": "AGPL-3.0",
+        "license": AMVISION_LICENSE_NAME,
+        "license_spdx": AMVISION_LICENSE_SPDX,
         "run_mode": _read_first_env("AMVISION_RUN_MODE", "AMVISION_PROFILE") or "local",
     }
 
