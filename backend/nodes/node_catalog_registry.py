@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from threading import RLock
+
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.contracts.workflows.workflow_graph import NodeDefinition, WorkflowPayloadContract
 from backend.nodes.core_catalog import (
@@ -22,9 +24,40 @@ class NodeCatalogRegistry:
         """
 
         self.node_pack_loader = node_pack_loader
+        self._catalog_snapshot: NodeCatalogSnapshot | None = None
+        self._catalog_snapshot_lock = RLock()
 
     def get_catalog_snapshot(self) -> NodeCatalogSnapshot:
         """返回合并内建 core nodes 与自定义节点后的目录快照。"""
+
+        if self._catalog_snapshot is not None:
+            return self._catalog_snapshot
+
+        with self._catalog_snapshot_lock:
+            if self._catalog_snapshot is None:
+                self._catalog_snapshot = self._build_catalog_snapshot()
+            return self._catalog_snapshot
+
+    def invalidate_cache(self) -> None:
+        """清空已合并的节点目录快照缓存。
+
+        说明：
+        - node pack reload、enable、disable 后必须调用该方法。
+        - 业务请求只读取稳定快照，不重复扫描和合并节点目录。
+        """
+
+        with self._catalog_snapshot_lock:
+            self._catalog_snapshot = None
+
+    def refresh(self) -> None:
+        """刷新下层 node pack loader 并清空合并目录快照。"""
+
+        if self.node_pack_loader is not None:
+            self.node_pack_loader.refresh()
+        self.invalidate_cache()
+
+    def _build_catalog_snapshot(self) -> NodeCatalogSnapshot:
+        """构建一次合并后的节点目录快照。"""
 
         custom_node_catalog = (
             self.node_pack_loader.get_catalog_snapshot()

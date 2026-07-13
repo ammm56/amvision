@@ -431,6 +431,7 @@ const {
 })
 
 onMounted(async () => {
+  void sessionStore.ensureDeviceBootstrap()
   if (projectStore.projects.length === 0) {
     await projectStore.loadProjects()
   }

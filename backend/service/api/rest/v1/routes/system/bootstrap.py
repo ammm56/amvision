@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from backend.contracts.datasets.exports.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
@@ -49,6 +49,10 @@ system_bootstrap_router = APIRouter()
 def get_system_bootstrap(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal | None, Depends(get_optional_principal)],
+    include_devices: Annotated[
+        bool,
+        Query(description="是否返回设备与推理运行时摘要；首屏会话检查默认可关闭，避免硬件探测拖慢启动。"),
+    ] = True,
 ) -> SystemBootstrapResponse:
     """返回前端首屏初始化需要的聚合响应。"""
 
@@ -101,5 +105,5 @@ def get_system_bootstrap(
                 for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
             },
         ),
-        devices=build_device_diagnostics(),
+        devices=build_device_diagnostics() if include_devices else {},
     )

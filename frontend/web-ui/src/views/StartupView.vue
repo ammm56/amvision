@@ -37,7 +37,7 @@ async function start(): Promise<void> {
   starting.value = true
   await sessionStore.initializeSession()
   if (sessionStore.isAuthenticated) {
-    await projectStore.loadProjects()
+    await projectStore.loadProjects({ includeSummary: false })
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/projects'
     await router.replace(redirect)
   } else if (sessionStore.loginState === 'offline') {

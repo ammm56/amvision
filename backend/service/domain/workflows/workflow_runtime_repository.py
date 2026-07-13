@@ -45,6 +45,11 @@ class WorkflowRuntimeRepository(Protocol):
 
         ...
 
+    def count_preview_run_states_by_project(self, project_id: str) -> dict[str, int]:
+        """按 Project id 聚合 WorkflowPreviewRun 状态数量。"""
+
+        ...
+
     def delete_preview_run(self, preview_run_id: str) -> None:
         """按 id 删除一个 WorkflowPreviewRun。"""
 
@@ -82,5 +87,10 @@ class WorkflowRuntimeRepository(Protocol):
 
     def list_workflow_runs(self, project_id: str) -> tuple[WorkflowRun, ...]:
         """按 Project id 列出 WorkflowRun。"""
+
+        ...
+
+    def count_workflow_run_states_by_project(self, project_id: str) -> dict[str, int]:
+        """按 Project id 聚合 WorkflowRun 状态数量。"""
 
         ...

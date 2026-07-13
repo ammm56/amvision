@@ -1445,11 +1445,13 @@ def _build_socket_project_summary_service(socket: WebSocket) -> ProjectSummarySe
 
     session_factory = _get_socket_session_factory(socket)
     dataset_storage = _get_socket_dataset_storage(socket)
+    node_catalog_registry = _get_socket_node_catalog_registry(socket)
     if session_factory is None or dataset_storage is None:
         return None
     return ProjectSummaryService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
     )
 
 

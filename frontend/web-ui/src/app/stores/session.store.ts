@@ -86,15 +86,36 @@ export const useSessionStore = defineStore('session', {
     displayName: (state) => state.currentUser?.display_name || state.currentUser?.username || '',
   },
   actions: {
-    async loadBootstrap(options: { skipAuth?: boolean } = {}): Promise<SystemBootstrapResponse> {
+    async loadBootstrap(options: { skipAuth?: boolean; includeDevices?: boolean } = {}): Promise<SystemBootstrapResponse> {
       const bootstrap = await apiRequest<SystemBootstrapResponse>('/system/bootstrap', {
+        query: options.includeDevices === undefined ? undefined : { include_devices: options.includeDevices },
         skipAuth: options.skipAuth ?? false,
       })
+      if (
+        options.includeDevices === false
+        && this.bootstrap?.devices
+        && Object.keys(this.bootstrap.devices).length > 0
+        && Object.keys(bootstrap.devices ?? {}).length === 0
+      ) {
+        bootstrap.devices = this.bootstrap.devices
+      }
       this.bootstrap = bootstrap
       this.authMode = bootstrap.auth_mode
       this.bearerAuthEnabled = bootstrap.bearer_auth_enabled
       this.websocketQueryTokenEnabled = bootstrap.websocket_query_token_enabled
       return bootstrap
+    },
+    async ensureDeviceBootstrap(): Promise<SystemBootstrapResponse | null> {
+      const devices = this.bootstrap?.devices
+      if (devices && Object.keys(devices).length > 0) {
+        return this.bootstrap
+      }
+      try {
+        return await this.loadBootstrap({ includeDevices: true })
+      } catch {
+        // 设备摘要只影响前端可选设备列表，失败时保持已有 bootstrap，页面主流程继续可用。
+        return this.bootstrap
+      }
     },
     hasScopes(requiredScopes: string[]): boolean {
       const grantedScopes = this.currentUser?.scopes ?? []
@@ -113,7 +134,7 @@ export const useSessionStore = defineStore('session', {
       this.manualLoginRequired = getManualLoginRequired()
 
       try {
-        await this.loadBootstrap({ skipAuth: true })
+        await this.loadBootstrap({ skipAuth: true, includeDevices: false })
         useAppStore().setBackendConnectionState('online')
       } catch (error) {
         this.isInitialized = true
@@ -135,7 +156,7 @@ export const useSessionStore = defineStore('session', {
         this.accessToken = restoredSessionToken
         this.refreshToken = restoredRefreshToken
         this.credentialKind = 'session'
-        const validated = await this.loadCurrentUser('authenticated')
+        const validated = await this.loadCurrentUser('authenticated', { includeDevices: false })
         if (validated) {
           this.isInitialized = true
           return
@@ -151,7 +172,7 @@ export const useSessionStore = defineStore('session', {
         this.accessToken = candidateUserToken
         this.refreshToken = null
         this.credentialKind = 'user-token'
-        const validated = await this.loadCurrentUser('auto-authenticated')
+        const validated = await this.loadCurrentUser('auto-authenticated', { includeDevices: false })
         if (validated) {
           this.isInitialized = true
           return
@@ -161,13 +182,13 @@ export const useSessionStore = defineStore('session', {
       this.isInitialized = true
       this.loginState = 'manual-login-required'
     },
-    async loadCurrentUser(successState: LoginState): Promise<boolean> {
+    async loadCurrentUser(successState: LoginState, options: { includeDevices?: boolean } = {}): Promise<boolean> {
       try {
         const currentUser = await apiRequest<CurrentUser>('/system/me')
         this.currentUser = currentUser
         this.credentialKind = (currentUser.auth_credential_kind ?? this.credentialKind) as CredentialKind
         try {
-          await this.loadBootstrap()
+          await this.loadBootstrap({ includeDevices: options.includeDevices ?? true })
         } catch {
           // 当前用户已完成鉴权，bootstrap 刷新失败时保留现有主体状态。
         }

@@ -10,7 +10,7 @@
           <PackageCheck :size="16" />
           {{ t('projects.generateSdkConfigPackage') }}
         </Button>
-        <Button variant="secondary" @click="projectStore.loadProjects()">
+        <Button variant="secondary" @click="loadProjectsWithSummary">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -193,10 +193,14 @@ const defaultProjectExists = computed(() =>
 )
 
 onMounted(() => {
-  if (projectStore.projects.length === 0) {
-    void projectStore.loadProjects()
+  if (projectStore.projects.length === 0 || projectStore.projects.some((project) => !project.summary)) {
+    void loadProjectsWithSummary()
   }
 })
+
+async function loadProjectsWithSummary(): Promise<void> {
+  await projectStore.loadProjects({ includeSummary: true })
+}
 
 function formatCount(value: unknown): string {
   return typeof value === 'number' ? String(value) : '0'

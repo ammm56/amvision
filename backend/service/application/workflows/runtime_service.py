@@ -1771,6 +1771,7 @@ class WorkflowRuntimeService:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
                 service_event_bus=self.service_event_bus,
+                node_catalog_registry=self.node_catalog_registry,
                 project_id=workflow_run.project_id,
                 topic=PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS,
                 source_stream="workflows.runs.events",

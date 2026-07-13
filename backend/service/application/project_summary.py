@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.events import InMemoryServiceEventBus, ServiceEvent
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
@@ -175,16 +176,24 @@ class ProjectSummarySnapshot:
 class ProjectSummaryService:
     """按 Project 读取当前工作台可用的最小聚合摘要。"""
 
-    def __init__(self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage) -> None:
+    def __init__(
+        self,
+        *,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
+        node_catalog_registry: NodeCatalogRegistry | None = None,
+    ) -> None:
         """初始化 ProjectSummaryService。
 
         参数：
         - session_factory：数据库会话工厂。
         - dataset_storage：本地文件存储。
+        - node_catalog_registry：应用启动时已经合并好的节点目录注册表。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
+        self.node_catalog_registry = node_catalog_registry
 
     def get_project_summary(self, project_id: str) -> ProjectSummarySnapshot:
         """读取一个 Project 的当前聚合摘要。
@@ -200,7 +209,10 @@ class ProjectSummaryService:
         if not normalized_project_id:
             raise InvalidRequestError("project_id 不能为空")
 
-        workflow_service = LocalWorkflowJsonService(dataset_storage=self.dataset_storage)
+        workflow_service = LocalWorkflowJsonService(
+            dataset_storage=self.dataset_storage,
+            node_catalog_registry=self.node_catalog_registry,
+        )
         templates = workflow_service.list_templates(project_id=normalized_project_id)
         applications = workflow_service.list_applications(project_id=normalized_project_id)
 
@@ -209,8 +221,12 @@ class ProjectSummaryService:
             dataset_imports = unit_of_work.dataset_imports.list_dataset_imports_by_project(normalized_project_id)
             dataset_exports = unit_of_work.dataset_exports.list_dataset_exports_by_project(normalized_project_id)
             tasks = unit_of_work.tasks.list_tasks(normalized_project_id)
-            preview_runs = unit_of_work.workflow_runtime.list_preview_runs(normalized_project_id)
-            workflow_runs = unit_of_work.workflow_runtime.list_workflow_runs(normalized_project_id)
+            preview_run_state_counts = unit_of_work.workflow_runtime.count_preview_run_states_by_project(
+                normalized_project_id,
+            )
+            workflow_run_state_counts = unit_of_work.workflow_runtime.count_workflow_run_states_by_project(
+                normalized_project_id,
+            )
             app_runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes(normalized_project_id)
             deployments = unit_of_work.deployments.list_deployment_instances(normalized_project_id)
         finally:
@@ -248,10 +264,10 @@ class ProjectSummaryService:
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),
-                preview_run_total=len(preview_runs),
-                preview_run_state_counts=_build_counter(item.state for item in preview_runs),
-                workflow_run_total=len(workflow_runs),
-                workflow_run_state_counts=_build_counter(item.state for item in workflow_runs),
+                preview_run_total=sum(preview_run_state_counts.values()),
+                preview_run_state_counts=preview_run_state_counts,
+                workflow_run_total=sum(workflow_run_state_counts.values()),
+                workflow_run_state_counts=workflow_run_state_counts,
                 app_runtime_total=len(app_runtimes),
                 app_runtime_observed_state_counts=_build_counter(item.observed_state for item in app_runtimes),
             ),
@@ -386,6 +402,7 @@ def publish_project_summary_event(
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
     service_event_bus: InMemoryServiceEventBus | None,
+    node_catalog_registry: NodeCatalogRegistry | None = None,
     project_id: str,
     topic: str,
     source_stream: str,
@@ -399,6 +416,7 @@ def publish_project_summary_event(
     summary = ProjectSummaryService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
     ).get_project_summary(project_id)
     service_event_bus.publish(
         ServiceEvent(

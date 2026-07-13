@@ -33,6 +33,10 @@ def _require_local_node_pack_loader(node_catalog_registry: NodeCatalogRegistry) 
 def _refresh_workflow_runtime_registry(request: Request) -> None:
     """刷新当前应用状态中的 workflow node runtime registry。"""
 
+    node_catalog_registry = getattr(request.app.state, "node_catalog_registry", None)
+    if isinstance(node_catalog_registry, NodeCatalogRegistry):
+        node_catalog_registry.invalidate_cache()
+
     runtime_registry_loader = getattr(request.app.state, "workflow_node_runtime_registry_loader", None)
     if not isinstance(runtime_registry_loader, WorkflowNodeRuntimeRegistryLoader):
         raise ServiceConfigurationError(

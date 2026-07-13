@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import (
     PermissionDeniedError,
@@ -34,6 +35,7 @@ def build_project_summary_service(request: Request) -> ProjectSummaryService:
     return ProjectSummaryService(
         session_factory=require_session_factory(request),
         dataset_storage=require_dataset_storage(request),
+        node_catalog_registry=require_node_catalog_registry(request),
     )
 
 
@@ -68,6 +70,15 @@ def require_dataset_storage(request: Request) -> LocalDatasetStorage:
     if not isinstance(dataset_storage, LocalDatasetStorage):
         raise ServiceConfigurationError("当前服务尚未完成 dataset_storage 装配")
     return dataset_storage
+
+
+def require_node_catalog_registry(request: Request) -> NodeCatalogRegistry:
+    """从 application.state 中读取 NodeCatalogRegistry。"""
+
+    node_catalog_registry = getattr(request.app.state, "node_catalog_registry", None)
+    if not isinstance(node_catalog_registry, NodeCatalogRegistry):
+        raise ServiceConfigurationError("当前服务尚未完成 node_catalog_registry 装配")
+    return node_catalog_registry
 
 
 def ensure_project_visible(
@@ -192,4 +203,3 @@ def resolve_project_storage_path(
     """把 ObjectStore object key 解析成本地文件路径。"""
 
     return require_dataset_storage(request).resolve(object_key)
-

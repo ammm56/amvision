@@ -6,6 +6,11 @@ import type { ProjectCatalogItem, ProjectSummary } from '@/shared/contracts'
 import { bootstrapProject, getProjectSummary, listProjects, type ProjectBootstrapInput } from '@/modules/projects/services/project.service'
 import { translate } from '@/platform/i18n'
 
+interface LoadProjectsOptions {
+  includeSummary?: boolean
+  loadSelectedSummary?: boolean
+}
+
 export const useProjectStore = defineStore('project', {
   state: () => ({
     projects: [] as ProjectCatalogItem[],
@@ -18,16 +23,20 @@ export const useProjectStore = defineStore('project', {
     selectedProject: (state) => state.projects.find((project) => project.project_id === state.selectedProjectId) ?? null,
   },
   actions: {
-    async loadProjects(): Promise<void> {
+    async loadProjects(options: LoadProjectsOptions = {}): Promise<void> {
       this.loading = true
       this.error = null
       try {
-        const response = await listProjects({ includeSummary: true })
+        const includeSummary = options.includeSummary ?? false
+        const loadSelectedSummary = options.loadSelectedSummary ?? false
+        const response = await listProjects({ includeSummary })
         this.projects = response.items
         if (!this.projects.some((project) => project.project_id === this.selectedProjectId)) {
           this.selectedProjectId = this.projects[0]?.project_id ?? getRuntimeConfig().defaultProjectId
         }
-        if (this.selectedProjectId) {
+        if (includeSummary) {
+          this.selectedSummary = this.projects.find((project) => project.project_id === this.selectedProjectId)?.summary ?? null
+        } else if (loadSelectedSummary && this.selectedProjectId) {
           await this.loadSummary(this.selectedProjectId)
         }
       } catch (error) {
@@ -46,12 +55,12 @@ export const useProjectStore = defineStore('project', {
     async bootstrapDefaultProject(): Promise<void> {
       await bootstrapProject({ project_id: getRuntimeConfig().defaultProjectId, display_name: translate('projects.defaultDisplayName') })
       await this.loadProjects()
-      await useSessionStore().loadBootstrap().catch(() => undefined)
+      await useSessionStore().loadBootstrap({ includeDevices: false }).catch(() => undefined)
     },
     async createProject(input: ProjectBootstrapInput): Promise<void> {
       const project = await bootstrapProject(input)
       await this.loadProjects()
-      await useSessionStore().loadBootstrap().catch(() => undefined)
+      await useSessionStore().loadBootstrap({ includeDevices: false }).catch(() => undefined)
       await this.selectProject(project.project_id)
     },
   },

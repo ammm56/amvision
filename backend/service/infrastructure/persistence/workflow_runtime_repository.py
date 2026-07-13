@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -166,6 +166,27 @@ class SqlAlchemyWorkflowRuntimeRepository:
                 details={"error_type": error.__class__.__name__},
             ) from error
         return tuple(self._preview_to_domain(record) for record in records)
+
+    def count_preview_run_states_by_project(self, project_id: str) -> dict[str, int]:
+        """按 Project id 聚合 WorkflowPreviewRun 状态数量。
+
+        这个查询只读取 state 和 count，避免项目首页 summary 为了计数加载
+        outputs_json、node_records_json 等大字段。
+        """
+
+        statement = (
+            select(WorkflowPreviewRunRecord.state, func.count(WorkflowPreviewRunRecord.preview_run_id))
+            .where(WorkflowPreviewRunRecord.project_id == project_id)
+            .group_by(WorkflowPreviewRunRecord.state)
+        )
+        try:
+            rows = self.session.execute(statement).all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "聚合 WorkflowPreviewRun 状态失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return {str(state): int(count) for state, count in rows}
 
     def delete_preview_run(self, preview_run_id: str) -> None:
         """按 id 删除一个 WorkflowPreviewRun。
@@ -366,6 +387,27 @@ class SqlAlchemyWorkflowRuntimeRepository:
                 details={"error_type": error.__class__.__name__},
             ) from error
         return tuple(self._run_to_domain(record) for record in records)
+
+    def count_workflow_run_states_by_project(self, project_id: str) -> dict[str, int]:
+        """按 Project id 聚合 WorkflowRun 状态数量。
+
+        这个查询只读取 state 和 count，避免 summary 路径加载每条 run 的
+        input_payload_json、outputs_json 和 node_records_json。
+        """
+
+        statement = (
+            select(WorkflowRunRecord.state, func.count(WorkflowRunRecord.workflow_run_id))
+            .where(WorkflowRunRecord.project_id == project_id)
+            .group_by(WorkflowRunRecord.state)
+        )
+        try:
+            rows = self.session.execute(statement).all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "聚合 WorkflowRun 状态失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return {str(state): int(count) for state, count in rows}
 
     @staticmethod
     def _preview_to_record(preview_run: WorkflowPreviewRun) -> WorkflowPreviewRunRecord:
