@@ -28,9 +28,7 @@
     "include_frontend": true,
     "include_tensorrt_runtime": false,
     "include_cudnn_runtime": false,
-    "requirements_exclude_packages": [
-      "tensorrt-cu12",
-      "cuda-python"
-    ]
+    "requirements_file": "requirements_cpu.txt",
+    "requirements_exclude_packages": []
   }
 }

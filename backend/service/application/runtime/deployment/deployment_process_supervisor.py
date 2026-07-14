@@ -37,6 +37,9 @@ from backend.service.application.runtime.support.safe_counter import (
 from backend.service.application.runtime.deployment.deployment_process_worker import (
     run_deployment_process_worker,
 )
+from backend.service.application.runtime.device_capabilities import (
+    validate_runtime_target_available,
+)
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionExecutionResult,
     PredictionRequest,
@@ -675,11 +678,21 @@ class DeploymentProcessSupervisor:
     def _start_process_with_capacity_locked(self, state: _DeploymentProcessState) -> None:
         """在进程级运行数量上限内启动 deployment 子进程。"""
 
+        self._validate_process_start_supported_locked(state)
         _DEPLOYMENT_PROCESS_FLEET_LIMITER.start_with_capacity(
             state=state,
             max_running_process_count=self.settings.max_running_process_count,
             starter=lambda: self._start_process_locked(state),
         )
+
+    def _validate_process_start_supported_locked(self, state: _DeploymentProcessState) -> None:
+        """在持有状态锁时校验当前 deployment 是否允许启动。"""
+
+        try:
+            validate_runtime_target_available(state.config.runtime_target)
+        except InvalidRequestError as error:
+            state.last_error = error.message
+            raise
 
     def _stop_process_locked(self, state: _DeploymentProcessState) -> None:
         """在持有状态锁时停止 deployment 子进程。"""

@@ -181,9 +181,10 @@ def build_device_diagnostics() -> dict[str, object]:
             "probe": _select_gpu_probe(nvidia_smi_devices, torch_cuda_devices),
         },
         "cuda": {
-            "available": bool(gpu_devices or os.environ.get("CUDA_PATH")),
+            "available": bool(gpu_devices),
             "device_count": len(gpu_devices),
             "cuda_path": os.environ.get("CUDA_PATH"),
+            "toolkit_configured": bool(os.environ.get("CUDA_PATH")),
             "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         },
         "openvino": _build_openvino_summary(),

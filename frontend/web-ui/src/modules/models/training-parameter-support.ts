@@ -38,10 +38,8 @@ export function buildTrainingDeviceOptions(
     { label: '自动选择（默认）', value: '' },
     { label: 'cpu', value: 'cpu' },
   ]
-  const cuda = readRecord(devices, 'cuda')
   const gpuCount = readGpuDeviceCount(devices)
-  const cudaAvailable = cuda?.available === true || gpuCount > 0
-  if (!cudaAvailable) return options
+  if (gpuCount <= 0) return options
   options.push({ label: 'cuda', value: 'cuda' })
   for (let index = 0; index < gpuCount; index += 1) {
     options.push({ label: `cuda:${index}`, value: `cuda:${index}` })

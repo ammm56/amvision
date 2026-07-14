@@ -23,6 +23,7 @@ SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE = (
     REPOSITORY_ROOT / "frontend" / "web-ui" / "public" / "runtime-config.template.json"
 )
 SOURCE_REQUIREMENTS_FILE = REPOSITORY_ROOT / "requirements.txt"
+SOURCE_REQUIREMENTS_CPU_FILE = REPOSITORY_ROOT / "requirements_cpu.txt"
 SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
 SOURCE_RELEASE_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
@@ -30,6 +31,11 @@ SOURCE_WORKER_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "worke
 SOURCE_FFMPEG_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "third_party" / "ffmpeg"
 SOURCE_TENSORRT_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "tensorrt_bin"
 SOURCE_CUDNN_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "cudnn_dll"
+
+_SUPPORTED_REQUIREMENTS_FILES = {
+    "requirements.txt": SOURCE_REQUIREMENTS_FILE,
+    "requirements_cpu.txt": SOURCE_REQUIREMENTS_CPU_FILE,
+}
 
 
 @dataclass(frozen=True)
@@ -312,25 +318,53 @@ def _normalize_requirement_name(requirement_line: str) -> str | None:
     return match.group(1).replace("_", "-").lower()
 
 
+def _resolve_requirements_source_file(artifacts_section: dict[str, object]) -> Path:
+    """解析当前 release profile 使用的 requirements 源文件。
+
+    参数：
+    - artifacts_section：release profile 中的 artifacts 配置。
+
+    返回：
+    - Path：仓库根目录下受支持的 requirements 文件路径。
+    """
+
+    raw_requirements_file = artifacts_section.get("requirements_file", "requirements.txt")
+    requirements_file = str(raw_requirements_file).strip() or "requirements.txt"
+    requirements_file = requirements_file.replace("\\", "/")
+    if "/" in requirements_file or requirements_file not in _SUPPORTED_REQUIREMENTS_FILES:
+        supported_files = ", ".join(sorted(_SUPPORTED_REQUIREMENTS_FILES))
+        raise ValueError(
+            "artifacts.requirements_file 只允许使用仓库根目录中的已知文件: "
+            f"{supported_files}"
+        )
+
+    source_path = _SUPPORTED_REQUIREMENTS_FILES[requirements_file]
+    if not source_path.is_file():
+        raise FileNotFoundError(f"requirements 源文件不存在: {source_path}")
+    return source_path
+
+
 def _copy_requirements_file(
     target_path: Path,
     *,
+    source_path: Path,
     excluded_packages: set[str],
 ) -> None:
-    """按 release profile 过滤并复制 requirements.txt。
+    """按 release profile 复制或过滤 requirements 文件。
 
     参数：
     - target_path：发行目录中的 requirements.txt 路径。
+    - source_path：当前 profile 选择的 requirements 源文件。
     - excluded_packages：当前 profile 明确排除的包名集合。
     """
 
     if not excluded_packages:
-        _copy_file(SOURCE_REQUIREMENTS_FILE, target_path)
+        _copy_file(source_path, target_path)
         return
 
     filtered_lines: list[str] = []
     skipped_packages: list[str] = []
-    for line in SOURCE_REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines():
+    for line in source_path.read_text(encoding="utf-8").splitlines():
         package_name = _normalize_requirement_name(line)
         if package_name is not None and package_name in excluded_packages:
             skipped_packages.append(package_name)
@@ -368,8 +402,10 @@ def _copy_application_sources(
 
     shutil.copytree(SOURCE_BACKEND_DIR, release_dir / "app" / "backend", dirs_exist_ok=True)
     shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True)
+    requirements_source_file = _resolve_requirements_source_file(artifacts_section)
     _copy_requirements_file(
         release_dir / "app" / "requirements.txt",
+        source_path=requirements_source_file,
         excluded_packages=_extract_excluded_requirement_packages(artifacts_section),
     )
 

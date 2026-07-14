@@ -28,7 +28,6 @@ describe('deployment device support', () => {
   it('does not expose fake indexed CUDA devices for TensorRT', () => {
     expect(buildDeploymentDeviceOptions({ cuda: { available: true } }, 'tensorrt')).toEqual([
       { label: '自动选择（默认）', value: '' },
-      { label: 'cuda', value: 'cuda' },
     ])
   })
 

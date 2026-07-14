@@ -69,15 +69,17 @@ function buildOpenVinoDeviceOptions(devices: Record<string, unknown> | null | un
 }
 
 function buildCudaDeviceOptions(devices: Record<string, unknown> | null | undefined): DeploymentDeviceOption[] {
-  const cuda = readRecord(devices, 'cuda')
   const gpuCount = readGpuDeviceCount(devices)
-  const cudaAvailable = cuda?.available === true || gpuCount > 0
-  if (!cudaAvailable) return []
+  if (gpuCount <= 0) return []
   const options: DeploymentDeviceOption[] = [{ label: 'cuda', value: 'cuda' }]
   for (let index = 0; index < gpuCount; index += 1) {
     options.push({ label: `cuda:${index}`, value: `cuda:${index}` })
   }
   return options
+}
+
+export function hasCudaDevice(devices: Record<string, unknown> | null | undefined): boolean {
+  return readGpuDeviceCount(devices) > 0
 }
 
 function normalizeRuntimeBackend(runtimeBackend: string | null | undefined): string {

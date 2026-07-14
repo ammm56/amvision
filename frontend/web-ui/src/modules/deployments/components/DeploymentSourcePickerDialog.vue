@@ -113,7 +113,10 @@
                   v-for="build in selectedModelDetail.builds"
                   :key="build.model_build_id"
                   class="compact-list__item"
-                  :class="{ 'is-active': build.model_build_id === selectedBuildId }"
+                  :class="{
+                    'is-active': build.model_build_id === selectedBuildId,
+                    'is-disabled': !isBuildSelectable(build),
+                  }"
                 >
                   <div class="deployment-source-build-meta">
                     <strong>{{ build.model_build_id }}</strong>
@@ -121,10 +124,22 @@
                       {{ build.build_format }} · {{ build.runtime_backend }} ·
                       {{ build.runtime_precision.toUpperCase() }}
                     </span>
+                    <span
+                      v-if="buildRuntimeUnavailableReason(build)"
+                      class="deployment-source-pill deployment-source-pill--warning"
+                    >
+                      {{ buildRuntimeUnavailableReason(build) }}
+                    </span>
                   </div>
                   <div class="table-actions">
-                    <Button size="sm" variant="secondary" @click.stop="$emit('apply-source', buildSelection(build))">
-                      使用构建
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!isBuildSelectable(build)"
+                      :title="buildRuntimeUnavailableReason(build) || '使用构建'"
+                      @click.stop="applyBuildSelection(build)"
+                    >
+                      {{ isBuildSelectable(build) ? '使用构建' : '当前环境不可用' }}
                     </Button>
                   </div>
                 </div>
@@ -189,6 +204,7 @@ import type {
 } from '@/modules/models/services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import { hasCudaDevice } from '../deployment-device-support'
 import type { ModelTaskType } from '../services/deployment.service'
 import type { DeploymentSourceSelection } from './deployment-source.types'
 
@@ -207,9 +223,10 @@ const props = defineProps<{
   selectedModelDetail: DeploymentSourceModelDetail | null
   selectedVersionId: string
   selectedBuildId: string
+  devices: Record<string, unknown> | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
   'change-task-type': [taskType: ModelTaskType]
   'select-model': [modelId: string]
@@ -235,6 +252,42 @@ function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSele
     runtimeBackend: build.runtime_backend,
     runtimePrecision: build.runtime_precision,
   }
+}
+
+function applyBuildSelection(build: DeploymentSourceModelBuild): void {
+  if (!isBuildSelectable(build)) {
+    return
+  }
+  emit('apply-source', buildSelection(build))
+}
+
+function isBuildSelectable(build: DeploymentSourceModelBuild): boolean {
+  return buildRuntimeUnavailableReason(build) === ''
+}
+
+function buildRuntimeUnavailableReason(build: DeploymentSourceModelBuild): string {
+  const runtimeBackend = String(build.runtime_backend ?? '').trim().toLowerCase()
+  if (runtimeBackend !== 'tensorrt') {
+    return ''
+  }
+  if (!hasCudaDevice(props.devices)) {
+    return '当前环境未检测到 NVIDIA CUDA 设备'
+  }
+  const tensorrt = readRecord(props.devices, 'tensorrt')
+  if (tensorrt?.installed !== true) {
+    return '当前环境未安装 TensorRT 运行时'
+  }
+  return ''
+}
+
+function readRecord(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+): Record<string, unknown> | null {
+  const value = record?.[key]
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function versionSelection(version: DeploymentSourceModelVersionDetail): DeploymentSourceSelection {
@@ -416,6 +469,10 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   background: var(--selected-row-bg);
 }
 
+.deployment-source-picker .compact-list__item.is-disabled {
+  opacity: 0.72;
+}
+
 .deployment-source-card__identity,
 .deployment-source-detail__identity,
 .deployment-source-build-meta,
@@ -488,6 +545,12 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   background: var(--badge-neutral-bg);
   font-size: 12px;
   font-weight: 700;
+}
+
+.deployment-source-pill--warning {
+  color: #8a4b00;
+  border-color: #f2c66d;
+  background: #fff4d6;
 }
 
 .deployment-source-detail__summary {

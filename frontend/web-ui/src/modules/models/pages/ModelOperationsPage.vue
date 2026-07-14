@@ -207,6 +207,7 @@ import { useModelTrainingState } from '../composables/useModelTrainingState'
 import { usePlatformBaseModelSelection } from '../composables/usePlatformBaseModelSelection'
 import { useTrainingDatasetExportSelection } from '../composables/useTrainingDatasetExportSelection'
 import { useTrainingParameters } from '../composables/useTrainingParameters'
+import { hasCudaDevice } from '@/modules/deployments/deployment-device-support'
 import { buildTrainingDeviceOptions } from '../training-parameter-support'
 
 type SelectValue = string | number | boolean | null
@@ -228,7 +229,7 @@ const defaultTaskTypeOptions: Array<{ label: ModelTaskType; value: ModelTaskType
   { label: 'obb', value: 'obb' },
 ]
 
-const conversionTargetOptions = [
+const baseConversionTargetOptions: Array<{ label: string; value: ConversionTargetKey }> = [
   { label: 'ONNX', value: 'onnx' },
   { label: 'ONNX optimized', value: 'onnx-optimized' },
   { label: 'OpenVINO IR FP32', value: 'openvino-ir-fp32' },
@@ -249,6 +250,12 @@ const conversionDisplayName = ref('')
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const trainingDeviceOptions = computed(() => buildTrainingDeviceOptions(sessionStore.bootstrap?.devices ?? null))
+const conversionTargetOptions = computed(() => {
+  if (hasCudaDevice(sessionStore.bootstrap?.devices ?? null)) {
+    return baseConversionTargetOptions
+  }
+  return baseConversionTargetOptions.filter((option) => !option.value.startsWith('tensorrt-engine'))
+})
 const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   const rawValue = sessionStore.bootstrap?.capabilities.platform_model_types_by_task_type
   if (!rawValue || typeof rawValue !== 'object') {
@@ -264,6 +271,11 @@ const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   ])
   return Object.fromEntries(normalizedEntries)
 })
+watch(conversionTargetOptions, (options) => {
+  if (!options.some((option) => option.value === conversionTarget.value)) {
+    conversionTarget.value = 'onnx'
+  }
+}, { immediate: true })
 const taskTypeOptions = computed(() => {
   const supportedOptions = defaultTaskTypeOptions.filter((option) => {
     const supportedModelTypes = platformModelTypesByTaskType.value[option.value] ?? []

@@ -50,7 +50,6 @@ describe('training parameter augmentation support', () => {
     expect(buildTrainingDeviceOptions({ cuda: { available: true } })).toEqual([
       { label: '自动选择（默认）', value: '' },
       { label: 'cpu', value: 'cpu' },
-      { label: 'cuda', value: 'cuda' },
     ])
   })
 

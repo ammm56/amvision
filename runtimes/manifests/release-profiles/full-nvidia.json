@@ -31,6 +31,7 @@
     "include_frontend": true,
     "include_tensorrt_runtime": true,
     "include_cudnn_runtime": true,
+    "requirements_file": "requirements.txt",
     "requirements_exclude_packages": []
   }
 }

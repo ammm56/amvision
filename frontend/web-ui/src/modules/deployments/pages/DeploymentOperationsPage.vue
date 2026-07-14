@@ -186,6 +186,7 @@
       :selected-model-detail="selectedSourceModelDetail"
       :selected-version-id="modelVersionId"
       :selected-build-id="modelBuildId"
+      :devices="sessionStore.bootstrap?.devices ?? null"
       @close="deploymentSourcePickerOpen = false"
       @change-task-type="setTaskType"
       @select-model="selectDeploymentSourceModel"
@@ -280,7 +281,7 @@ import {
 } from '../services/deployment.service'
 import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDialog.vue'
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
-import { buildDeploymentDeviceOptions } from '../deployment-device-support'
+import { buildDeploymentDeviceOptions, hasCudaDevice } from '../deployment-device-support'
 import {
   getDeploymentSourceModelDetail,
   listDeploymentSourceModels,
@@ -474,6 +475,32 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
     displayName.value = `${selection.modelName} ${sourceLabel}`
   }
   deploymentSourcePickerOpen.value = false
+}
+
+function deploymentSourceUnavailableReason(selection: DeploymentSourceSelection): string {
+  const runtimeBackend = selection.runtimeBackend.trim().toLowerCase()
+  if (runtimeBackend !== 'tensorrt') {
+    return ''
+  }
+  const devices = sessionStore.bootstrap?.devices ?? null
+  if (!hasCudaDevice(devices)) {
+    return '当前环境未检测到 NVIDIA CUDA 设备，不能创建 TensorRT deployment'
+  }
+  const tensorrt = readDeviceRecord(devices, 'tensorrt')
+  if (tensorrt?.installed !== true) {
+    return '当前环境未安装 TensorRT 运行时，不能创建 TensorRT deployment'
+  }
+  return ''
+}
+
+function readDeviceRecord(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+): Record<string, unknown> | null {
+  const value = record?.[key]
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -684,6 +711,11 @@ async function refreshSelectedRuntime(): Promise<void> {
 async function submitDeployment(): Promise<void> {
   if (!selectedDeploymentSource.value || !modelType.value.trim()) {
     errorMessage.value = '请选择部署来源模型'
+    return
+  }
+  const unavailableReason = deploymentSourceUnavailableReason(selectedDeploymentSource.value)
+  if (unavailableReason) {
+    errorMessage.value = unavailableReason
     return
   }
   creating.value = true
