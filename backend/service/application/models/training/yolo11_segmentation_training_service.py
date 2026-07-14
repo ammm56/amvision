@@ -174,6 +174,7 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
                 build_yolo11_segmentation_training_queue_failed_event(
                     task_id=created_task.task_id,
                     error_message=str(exc),
+                    error=exc,
                     finished_at=self._now_iso(),
                     dataset_export_id=dataset_export.dataset_export_id,
                     dataset_export_manifest_key=dataset_export.manifest_object_key,
@@ -411,6 +412,7 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
                     error_message=str(exc),
+                    error=exc,
                     result=failed_result,
                 )
             )
@@ -876,3 +878,4 @@ __all__ = [
     "SqlAlchemyYolo11SegmentationTrainingTaskService",
     "Yolo11SegmentationTrainingTaskRequest",
 ]
+

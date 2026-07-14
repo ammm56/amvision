@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.models.training.yolo26_obb_task_control import (
     YOLO26_OBB_TRAINING_CONTROL_METADATA_KEY,
 )
@@ -16,6 +17,7 @@ def build_yolo26_obb_training_queue_failed_event(
     finished_at: str,
     dataset_export_id: str,
     dataset_export_manifest_key: str | None,
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构建 YOLO26 OBB 训练入队失败事件。"""
 
@@ -23,16 +25,16 @@ def build_yolo26_obb_training_queue_failed_event(
         task_id=task_id,
         event_type="status",
         message="YOLO26 OBB training queue submission failed",
-        payload={
-            "state": "failed",
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "finished_at": finished_at,
-            "result": {
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed"},
+            result={
                 "dataset_export_id": dataset_export_id,
                 "dataset_export_manifest_key": dataset_export_manifest_key,
             },
-        },
+        ),
     )
 
 
@@ -130,6 +132,7 @@ def build_yolo26_obb_training_failed_event(
     finished_at: str,
     error_message: str,
     result: dict[str, object],
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构建 YOLO26 OBB 训练失败事件。"""
 
@@ -137,13 +140,13 @@ def build_yolo26_obb_training_failed_event(
         task_id=task_id,
         event_type="status",
         message="YOLO26 OBB training failed",
-        payload={
-            "state": "failed",
-            "finished_at": finished_at,
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "result": result,
-        },
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed"},
+            result=result,
+        ),
     )
 
 
@@ -178,3 +181,8 @@ __all__ = [
     "build_yolo26_obb_training_started_event",
     "build_yolo26_obb_training_succeeded_event",
 ]
+
+
+
+
+

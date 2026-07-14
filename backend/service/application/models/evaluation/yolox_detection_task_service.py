@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.models.evaluation.yolox_detection import (
     YoloXEvaluator,
     YoloXDetectionEvaluationRequest,
@@ -135,16 +136,15 @@ class SqlAlchemyYoloXEvaluationTaskService(
                     task_id=created_task.task_id,
                     event_type="result",
                     message="yolox evaluation queue submission failed",
-                    payload={
-                        "state": "failed",
-                        "error_message": str(error),
-                        "progress": {"stage": "failed"},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        error,
+                        progress={"stage": "failed"},
+                        result={
                             "dataset_export_id": dataset_export.dataset_export_id,
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                             "model_version_id": request.model_version_id,
                         },
-                    },
+                    ),
                 )
             )
             raise
@@ -269,13 +269,12 @@ class SqlAlchemyYoloXEvaluationTaskService(
                     task_id=task_id,
                     event_type="result",
                     message="yolox evaluation failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": self._now_iso(),
-                        "attempt_no": attempt_no,
-                        "error_message": str(error),
-                        "progress": {"stage": "failed", "percent": 100.0},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        error,
+                        finished_at=self._now_iso(),
+                        attempt_no=attempt_no,
+                        progress={"stage": "failed", "percent": 100.0},
+                        result={
                             "dataset_export_id": dataset_export.dataset_export_id,
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                             "dataset_version_id": dataset_export.dataset_version_id,
@@ -286,7 +285,7 @@ class SqlAlchemyYoloXEvaluationTaskService(
                             "detections_object_key": detections_object_key,
                             "result_package_object_key": result_package_object_key,
                         },
-                    },
+                    ),
                 )
             )
             raise

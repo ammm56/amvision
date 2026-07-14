@@ -89,3 +89,4 @@ def resolve_detection_training_service(model_type: str):
     service_cls, request_cls = entry
     task_kind = _TRAINING_TASK_KIND_BY_MODEL_TYPE.get(normalized, "yolox-detection")
     return service_cls, request_cls, task_kind
+

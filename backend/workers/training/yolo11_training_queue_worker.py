@@ -8,6 +8,7 @@ from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.models.training.yolo11_training_service import YOLO11_TRAINING_QUEUE_NAME
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.yolo11_trainer_runner import SqlAlchemyYolo11TrainerRunner
 
 
@@ -59,21 +60,22 @@ class Yolo11TrainingQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "dataset_export_id": queue_task.metadata.get("dataset_export_id"),
-                },
+                metadata=build_queue_failure_metadata(
+                    queue_task,
+                    error,
+                    include_metadata_keys=("dataset_export_id",),
+                ),
             )
             return True
         except Exception as error:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "dataset_export_id": queue_task.metadata.get("dataset_export_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_queue_failure_metadata(
+                    queue_task,
+                    error,
+                    include_metadata_keys=("dataset_export_id",),
+                ),
             )
             return True
 

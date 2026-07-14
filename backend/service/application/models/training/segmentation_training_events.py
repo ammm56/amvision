@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 
@@ -13,6 +14,7 @@ def build_segmentation_training_queue_failed_event(
     finished_at: str,
     dataset_export_id: str,
     dataset_export_manifest_key: str | None,
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构建 segmentation 训练入队失败事件。"""
 
@@ -20,16 +22,16 @@ def build_segmentation_training_queue_failed_event(
         task_id=task_id,
         event_type="status",
         message="segmentation training queue submission failed",
-        payload={
-            "state": "failed",
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "finished_at": finished_at,
-            "result": {
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed"},
+            result={
                 "dataset_export_id": dataset_export_id,
                 "dataset_export_manifest_key": dataset_export_manifest_key,
             },
-        },
+        ),
     )
 
 
@@ -129,6 +131,7 @@ def build_segmentation_training_failed_event(
     finished_at: str,
     error_message: str,
     result: dict[str, object],
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构建 segmentation 训练失败事件。"""
 
@@ -136,13 +139,13 @@ def build_segmentation_training_failed_event(
         task_id=task_id,
         event_type="status",
         message="segmentation training failed",
-        payload={
-            "state": "failed",
-            "finished_at": finished_at,
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "result": result,
-        },
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed"},
+            result=result,
+        ),
     )
 
 
@@ -167,3 +170,6 @@ def build_segmentation_training_succeeded_event(
             "result": result,
         },
     )
+
+
+

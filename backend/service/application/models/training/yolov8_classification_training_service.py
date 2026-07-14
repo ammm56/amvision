@@ -176,6 +176,7 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
                 build_yolov8_classification_training_queue_failed_event(
                     task_id=created_task.task_id,
                     error_message=str(exc),
+                    error=exc,
                     finished_at=self._now_iso(),
                     dataset_export_id=dataset_export.dataset_export_id,
                     dataset_export_manifest_key=dataset_export.manifest_object_key,
@@ -449,6 +450,7 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
                     error_message=str(exc),
+                    error=exc,
                     result=failed_result,
                 )
             )
@@ -916,3 +918,4 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+

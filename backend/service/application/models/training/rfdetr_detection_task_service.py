@@ -12,6 +12,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.models.catalog.rfdetr import (
     RfdetrTrainingOutputRegistration,
     SqlAlchemyRfdetrModelService,
@@ -169,15 +170,14 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     task_id=created_task.task_id,
                     event_type="status",
                     message="rfdetr training queue submission failed",
-                    payload={
-                        "state": "failed",
-                        "error_message": str(exc),
-                        "progress": {"stage": "failed"},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        exc,
+                        progress={"stage": "failed"},
+                        result={
                             "dataset_export_id": dataset_export.dataset_export_id,
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                         },
-                    },
+                    ),
                 )
             )
             raise
@@ -316,13 +316,12 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     task_id=task_id,
                     event_type="result",
                     message="rfdetr training failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": self._now_iso(),
-                        "error_message": str(exc),
-                        "result": failed_result,
-                        "progress": {"stage": "failed", "percent": 100},
-                    },
+                    payload=build_task_failure_payload(
+                        exc,
+                        finished_at=self._now_iso(),
+                        progress={"stage": "failed", "percent": 100},
+                        result=failed_result,
+                    ),
                 )
             )
             raise
@@ -1070,3 +1069,4 @@ class SqlAlchemyRfdetrTrainingTaskService:
         """返回当前 UTC ISO 时间。"""
 
         return datetime.now(timezone.utc).isoformat()
+

@@ -57,3 +57,4 @@ __all__ = [
     "YoloV8TrainingTaskResult",
     "SqlAlchemyYoloV8TrainingTaskService",
 ]
+

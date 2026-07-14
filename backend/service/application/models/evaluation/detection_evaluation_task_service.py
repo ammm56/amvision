@@ -43,6 +43,7 @@ from backend.service.application.models.yolov8_core.evaluation import (
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -361,13 +362,12 @@ class SqlAlchemyDetectionEvaluationTaskService:
                     task_id=task_id,
                     event_type="result",
                     message="detection evaluation failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": datetime.now(timezone.utc).isoformat(),
-                        "attempt_no": attempt_no,
-                        "error_message": str(error),
-                        "progress": {"stage": "failed", "percent": 100.0},
-                    },
+                    payload=build_task_failure_payload(
+                        error,
+                        finished_at=datetime.now(timezone.utc).isoformat(),
+                        attempt_no=attempt_no,
+                        progress={"stage": "failed", "percent": 100.0},
+                    ),
                 )
             )
             raise

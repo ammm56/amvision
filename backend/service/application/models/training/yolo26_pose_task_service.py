@@ -151,3 +151,4 @@ __all__ = [
     "resolve_yolo26_pose_service_implementation_mode",
     "run_yolo26_pose_service_training_execution",
 ]
+

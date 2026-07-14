@@ -12,9 +12,11 @@ import pytest
 from backend.queue import QueueMessage
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.workers.conversion.conversion_queue_failures import (
     build_conversion_queue_failure_metadata,
 )
+from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
@@ -207,6 +209,55 @@ def test_conversion_queue_failure_metadata_contains_error_details() -> None:
     error_details = metadata["error_details"]
     assert isinstance(error_details, dict)
     assert error_details["stderr"] == "subprocess stderr"
+
+
+def test_queue_failure_metadata_contains_service_error_details() -> None:
+    """验证通用 worker 失败队列元数据保留 ServiceError details。"""
+
+    queue_task = QueueMessage(
+        queue_name="model-training",
+        task_id="queue-task-2",
+        payload={"task_id": "task-2"},
+        metadata={"dataset_export_id": "dataset-export-1"},
+    )
+    metadata = build_queue_failure_metadata(
+        queue_task,
+        ServiceConfigurationError(
+            "训练子进程失败",
+            details={"stderr": "training stderr"},
+        ),
+        include_metadata_keys=("dataset_export_id",),
+    )
+
+    assert metadata["task_id"] == "task-2"
+    assert metadata["dataset_export_id"] == "dataset-export-1"
+    assert metadata["error_type"] == "ServiceConfigurationError"
+    error_details = metadata["error_details"]
+    assert isinstance(error_details, dict)
+    assert error_details["stderr"] == "training stderr"
+
+
+def test_task_failure_payload_contains_error_details() -> None:
+    """验证 task failed event payload 保留 ServiceError details。"""
+
+    payload = build_task_failure_payload(
+        ServiceConfigurationError(
+            "推理子进程失败",
+            details={"stderr": "inference stderr"},
+        ),
+        finished_at="2026-07-14T10:00:00Z",
+        result={"status": "failed"},
+    )
+
+    assert payload["state"] == "failed"
+    assert payload["finished_at"] == "2026-07-14T10:00:00Z"
+    assert payload["error_message"] == "推理子进程失败"
+    error_details = payload["error_details"]
+    assert isinstance(error_details, dict)
+    assert error_details["stderr"] == "inference stderr"
+    result = payload["result"]
+    assert isinstance(result, dict)
+    assert result["error_details"] == error_details
 
 
 class _FakeOnnxModule:

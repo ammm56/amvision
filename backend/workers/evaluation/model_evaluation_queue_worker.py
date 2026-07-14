@@ -25,6 +25,7 @@ from backend.service.application.models.evaluation.obb_evaluation_task_service i
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 
 
 class ClassificationEvaluationQueueWorker:
@@ -66,10 +67,11 @@ class ClassificationEvaluationQueueWorker:
                 "report_object_key": result.report_object_key,
             })
         except Exception as error:
-            self.queue_backend.fail(queue_task, error_message=str(error), metadata={
-                "task_id": queue_task.payload.get("task_id"),
-                "error_type": error.__class__.__name__,
-            })
+            self.queue_backend.fail(
+                queue_task,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(queue_task, error),
+            )
         return True
 
 
@@ -112,10 +114,11 @@ class SegmentationEvaluationQueueWorker:
                 "report_object_key": result.report_object_key,
             })
         except Exception as error:
-            self.queue_backend.fail(queue_task, error_message=str(error), metadata={
-                "task_id": queue_task.payload.get("task_id"),
-                "error_type": error.__class__.__name__,
-            })
+            self.queue_backend.fail(
+                queue_task,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(queue_task, error),
+            )
         return True
 
 
@@ -165,10 +168,7 @@ class DetectionEvaluationQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_queue_failure_metadata(queue_task, error),
             )
         return True
 
@@ -219,10 +219,7 @@ class PoseEvaluationQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_queue_failure_metadata(queue_task, error),
             )
         return True
 
@@ -273,9 +270,6 @@ class ObbEvaluationQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_queue_failure_metadata(queue_task, error),
             )
         return True

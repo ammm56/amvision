@@ -336,6 +336,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     task_id=created_task.task_id,
                     model_type=self.model_type,
                     error_message=str(error),
+                    error=error,
                     dataset_export_id=dataset_export.dataset_export_id,
                     dataset_export_manifest_key=dataset_export.manifest_object_key,
                 )
@@ -974,6 +975,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     model_type=self.model_type,
                     finished_at=self._now_iso(),
                     error_message=str(error),
+                    error=error,
                 )
             )
             raise
@@ -1576,3 +1578,4 @@ def _require_hook_value(hook_name: str, value: object, *, model_label: str) -> A
             details={"hook_name": hook_name, "model_label": model_label},
         )
     return value
+

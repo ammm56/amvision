@@ -386,6 +386,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
                     error_message=str(exc),
+                    error=exc,
                     result=failed_result,
                 )
             )
@@ -845,4 +846,5 @@ class SqlAlchemyYoloV8ObbTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+
 

@@ -182,6 +182,7 @@ class SqlAlchemySegmentationTrainingService:
                 build_segmentation_training_queue_failed_event(
                     task_id=created_task.task_id,
                     error_message=str(exc),
+                    error=exc,
                     finished_at=self._now_iso(),
                     dataset_export_id=dataset_export.dataset_export_id,
                     dataset_export_manifest_key=dataset_export.manifest_object_key,
@@ -461,6 +462,7 @@ class SqlAlchemySegmentationTrainingService:
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
                     error_message=str(exc),
+                    error=exc,
                     result=failed_result,
                 )
             )
@@ -953,3 +955,4 @@ class SqlAlchemySegmentationTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+

@@ -176,6 +176,7 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
                 build_yolo11_classification_training_queue_failed_event(
                     task_id=created_task.task_id,
                     error_message=str(exc),
+                    error=exc,
                     finished_at=self._now_iso(),
                     dataset_export_id=dataset_export.dataset_export_id,
                     dataset_export_manifest_key=dataset_export.manifest_object_key,
@@ -442,6 +443,7 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
                     error_message=str(exc),
+                    error=exc,
                     result=failed_result,
                 )
             )
@@ -900,3 +902,4 @@ __all__ = [
     "SqlAlchemyYolo11ClassificationTrainingTaskService",
     "Yolo11ClassificationTrainingTaskRequest",
 ]
+

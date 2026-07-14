@@ -9,6 +9,7 @@ from backend.service.application.models.training.yolo_detection_training_control
     YoloDetectionTrainingBatchProgress,
     YoloDetectionTrainingEpochProgress,
 )
+from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
 
 
@@ -19,6 +20,7 @@ def build_yolo_detection_training_queue_failed_event(
     error_message: str,
     dataset_export_id: str,
     dataset_export_manifest_key: str | None,
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构造训练任务入队失败事件。
 
@@ -33,15 +35,15 @@ def build_yolo_detection_training_queue_failed_event(
         task_id=task_id,
         event_type="result",
         message=f"{model_type} training queue submission failed",
-        payload={
-            "state": "failed",
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "result": {
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            progress={"stage": "failed"},
+            result={
                 "dataset_export_id": dataset_export_id,
                 "dataset_export_manifest_key": dataset_export_manifest_key,
             },
-        },
+        ),
     )
 
 
@@ -364,6 +366,7 @@ def build_yolo_detection_training_failed_event(
     model_type: str,
     finished_at: str,
     error_message: str,
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构造训练失败事件。
 
@@ -377,12 +380,12 @@ def build_yolo_detection_training_failed_event(
         task_id=task_id,
         event_type="result",
         message=f"{model_type} training failed",
-        payload={
-            "state": "failed",
-            "finished_at": finished_at,
-            "progress": {"stage": "failed", "percent": 100.0},
-            "error_message": error_message,
-        },
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed", "percent": 100.0},
+        ),
     )
 
 
@@ -558,3 +561,7 @@ def _build_output_file_result(
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
     }
+
+
+
+

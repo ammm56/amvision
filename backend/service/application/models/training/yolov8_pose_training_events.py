@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 
@@ -80,6 +81,7 @@ def build_yolov8_pose_training_failed_event(
     finished_at: str,
     error_message: str,
     result: dict[str, object],
+    error: BaseException | None = None,
 ) -> AppendTaskEventRequest:
     """构建 pose 训练失败事件。"""
 
@@ -87,13 +89,13 @@ def build_yolov8_pose_training_failed_event(
         task_id=task_id,
         event_type="status",
         message="pose training failed",
-        payload={
-            "state": "failed",
-            "finished_at": finished_at,
-            "error_message": error_message,
-            "progress": {"stage": "failed"},
-            "result": result,
-        },
+        payload=build_task_failure_payload_from_message(
+            error_message=error_message,
+            error=error,
+            finished_at=finished_at,
+            progress={"stage": "failed"},
+            result=result,
+        ),
     )
 
 
@@ -118,4 +120,7 @@ def build_yolov8_pose_training_succeeded_event(
             "result": result,
         },
     )
+
+
+
 

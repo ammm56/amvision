@@ -14,6 +14,7 @@ from backend.service.application.models.inference.detection_inference_task_servi
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -251,13 +252,12 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                     task_id=task_id,
                     event_type="result",
                     message=f"{self.task_label} inference failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": _now_isoformat(),
-                        "attempt_no": attempt_no,
-                        "error_message": str(error),
-                        "progress": {"stage": "failed", "percent": 100.0},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        error,
+                        finished_at=_now_isoformat(),
+                        attempt_no=attempt_no,
+                        progress={"stage": "failed", "percent": 100.0},
+                        result={
                             "deployment_instance_id": request.deployment_instance_id,
                             "model_version_id": runtime_target.model_version_id,
                             "model_build_id": runtime_target.model_build_id,
@@ -265,7 +265,7 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                             "result_object_key": result_object_key,
                             "preview_image_object_key": preview_image_object_key,
                         },
-                    },
+                    ),
                 )
             )
             raise

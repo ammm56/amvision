@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
+from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
 from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
 from backend.service.application.models.training.yolov8_classification_training_service import (
@@ -46,6 +47,7 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner
 
 
@@ -102,17 +104,25 @@ class ClassificationTrainingQueueWorker:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=error.message,
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
+            self.queue_backend.fail(
+                qt,
+                error_message=error.message,
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
         except Exception as error:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=str(error),
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
+            self.queue_backend.fail(
+                qt,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
 
         self.queue_backend.complete(qt, metadata={
@@ -195,17 +205,25 @@ class SegmentationTrainingQueueWorker:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=error.message,
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
+            self.queue_backend.fail(
+                qt,
+                error_message=error.message,
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
         except Exception as error:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=str(error),
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
+            self.queue_backend.fail(
+                qt,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
 
         self.queue_backend.complete(qt, metadata={
@@ -270,17 +288,25 @@ class PoseTrainingQueueWorker:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=error.message,
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
+            self.queue_backend.fail(
+                qt,
+                error_message=error.message,
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
         except Exception as error:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=str(error),
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
+            self.queue_backend.fail(
+                qt,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
 
         self.queue_backend.complete(qt, metadata={
@@ -345,17 +371,25 @@ class ObbTrainingQueueWorker:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=error.message,
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=error.message, metadata={"task_id": qt.payload.get("task_id")})
+            self.queue_backend.fail(
+                qt,
+                error_message=error.message,
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
         except Exception as error:
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
-                error_message=str(error),
+                error=error,
             )
-            self.queue_backend.fail(qt, error_message=str(error), metadata={"task_id": qt.payload.get("task_id"), "error_type": error.__class__.__name__})
+            self.queue_backend.fail(
+                qt,
+                error_message=str(error),
+                metadata=build_queue_failure_metadata(qt, error),
+            )
             return True
 
         self.queue_backend.complete(qt, metadata={
@@ -393,7 +427,7 @@ def _mark_training_task_failed(
     *,
     session_factory: SessionFactory,
     payload: dict | str,
-    error_message: str,
+    error: BaseException,
 ) -> None:
     """在 worker 早期异常时把平台 TaskRecord 同步为 failed。
 
@@ -404,6 +438,7 @@ def _mark_training_task_failed(
     task_id = _read_optional_task_id(payload)
     if task_id is None:
         return
+    error_payload = serialize_error(error)
     task_service = SqlAlchemyTaskService(session_factory=session_factory)
     try:
         task_record = task_service.get_task(task_id).task
@@ -416,7 +451,9 @@ def _mark_training_task_failed(
                 message="training failed",
                 payload={
                     "state": "failed",
-                    "error_message": error_message,
+                    "error_message": error_payload.get("error_message", str(error)),
+                    "error": error_payload,
+                    "error_details": error_payload.get("details", {}),
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                 },
             )

@@ -110,3 +110,4 @@ class SqlAlchemyYolo11TrainingTaskService(SqlAlchemyYoloDetectionTrainingTaskSer
             queue_backend=queue_backend,
             spec=spec,
         )
+

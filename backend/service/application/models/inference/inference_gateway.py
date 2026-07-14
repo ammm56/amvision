@@ -9,6 +9,7 @@ from typing import Callable, Protocol
 from uuid import uuid4
 
 from backend.queue import QueueBackend, QueueMessage
+from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceError
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -259,7 +260,7 @@ class AsyncInferenceGatewayDispatcher:
             self.queue_backend.fail(
                 queue_message,
                 error_message=str(error),
-                metadata={"error_type": error.__class__.__name__},
+                metadata=_build_gateway_failure_metadata(queue_message, error),
             )
             return
 
@@ -290,11 +291,12 @@ class AsyncInferenceGatewayDispatcher:
             self.queue_backend.fail(
                 queue_message,
                 error_message=str(error),
-                metadata={
-                    "request_id": request_id,
-                    "response_queue_name": response_queue_name,
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=_build_gateway_failure_metadata(
+                    queue_message,
+                    error,
+                    request_id=request_id,
+                    response_queue_name=response_queue_name,
+                ),
             )
             return
 
@@ -690,21 +692,49 @@ def _deserialize_runtime_behavior(payload: object) -> DeploymentProcessRuntimeBe
 def _serialize_error(error: Exception) -> dict[str, object]:
     """把异常对象转换为可通过队列回传的错误载荷。"""
 
+    serialized = serialize_error(error)
     if isinstance(error, ServiceError):
         return {
-            "code": error.code,
-            "message": error.message,
-            "status_code": error.status_code,
-            "details": dict(error.details),
-            "error_type": error.__class__.__name__,
+            "code": serialized.get("error_code", error.code),
+            "message": serialized.get("error_message", error.message),
+            "status_code": serialized.get("status_code", error.status_code),
+            "details": serialized.get("details", {}),
+            "error_type": serialized.get("error_type", error.__class__.__name__),
         }
     return {
         "code": "service_error",
-        "message": str(error),
+        "message": serialized.get("error_message", str(error)),
         "status_code": 500,
-        "details": {"error_type": error.__class__.__name__},
-        "error_type": error.__class__.__name__,
+        "details": {"error_type": serialized.get("error_type", error.__class__.__name__)},
+        "error_type": serialized.get("error_type", error.__class__.__name__),
     }
+
+
+def _build_gateway_failure_metadata(
+    queue_message: QueueMessage,
+    error: BaseException,
+    **extra_metadata: object,
+) -> dict[str, object]:
+    """构造 async inference gateway 队列失败诊断元数据。"""
+
+    error_payload = serialize_error(error)
+    metadata: dict[str, object] = {
+        "queue_task_id": queue_message.task_id,
+        "error": error_payload,
+        "error_type": error_payload.get("error_type", error.__class__.__name__),
+        "error_message": error_payload.get("error_message", str(error)),
+    }
+    request_id = queue_message.payload.get("request_id")
+    if isinstance(request_id, str) and request_id.strip():
+        metadata["request_id"] = request_id.strip()
+    if "error_code" in error_payload:
+        metadata["error_code"] = error_payload["error_code"]
+    if "status_code" in error_payload:
+        metadata["status_code"] = error_payload["status_code"]
+    if "details" in error_payload:
+        metadata["error_details"] = error_payload["details"]
+    metadata.update({key: value for key, value in extra_metadata.items() if value is not None})
+    return metadata
 
 
 def _deserialize_error(payload: object, *, fallback_message: str) -> ServiceError:

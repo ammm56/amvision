@@ -11,6 +11,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
 )
@@ -155,15 +156,14 @@ class SqlAlchemyYoloXTrainingTaskService(
                     task_id=created_task.task_id,
                     event_type="result",
                     message="yolox training queue submission failed",
-                    payload={
-                        "state": "failed",
-                        "error_message": str(error),
-                        "progress": {"stage": "failed"},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        error,
+                        progress={"stage": "failed"},
+                        result={
                             "dataset_export_id": dataset_export.dataset_export_id,
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                         },
-                    },
+                    ),
                 )
             )
             raise
@@ -830,13 +830,12 @@ class SqlAlchemyYoloXTrainingTaskService(
                     task_id=task_id,
                     event_type="result",
                     message="yolox training failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": self._now_iso(),
-                        "attempt_no": attempt_no,
-                        "error_message": str(error),
-                        "progress": {"stage": "failed"},
-                        "result": {
+                    payload=build_task_failure_payload(
+                        error,
+                        finished_at=self._now_iso(),
+                        attempt_no=attempt_no,
+                        progress={"stage": "failed"},
+                        result={
                             "dataset_export_id": dataset_export.dataset_export_id,
                             "dataset_export_manifest_key": dataset_export.manifest_object_key,
                             "dataset_version_id": dataset_export.dataset_version_id,
@@ -850,7 +849,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                             "model_version_id": None,
                             "latest_checkpoint_model_version_id": None,
                         },
-                    },
+                    ),
                 )
             )
             raise
@@ -1556,3 +1555,4 @@ class SqlAlchemyYoloXTrainingTaskService(
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
+
