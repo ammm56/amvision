@@ -157,5 +157,6 @@ export interface TaskRecord {
   error_message?: string | null
   events?: TaskEvent[]
   metadata?: Record<string, unknown>
+  result?: Record<string, unknown> | null
   [key: string]: unknown
 }

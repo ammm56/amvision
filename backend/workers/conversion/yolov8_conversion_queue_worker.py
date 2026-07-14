@@ -14,6 +14,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 from backend.workers.conversion.yolov8_conversion_runner import (
     LocalYoloV8ConversionRunner,
 )
+from backend.workers.conversion.conversion_queue_failures import (
+    build_conversion_queue_failure_metadata,
+)
 
 
 class YoloV8ConversionQueueWorker:
@@ -59,21 +62,14 @@ class YoloV8ConversionQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "source_model_version_id": queue_task.metadata.get("source_model_version_id"),
-                },
+                metadata=build_conversion_queue_failure_metadata(queue_task, error),
             )
             return True
         except Exception as error:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "source_model_version_id": queue_task.metadata.get("source_model_version_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_conversion_queue_failure_metadata(queue_task, error),
             )
             return True
 

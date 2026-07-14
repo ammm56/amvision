@@ -9,7 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.queue import QueueMessage
+from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.workers.conversion.conversion_queue_failures import (
+    build_conversion_queue_failure_metadata,
+)
 from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
@@ -154,6 +159,54 @@ def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pyt
     python_path_parts = env["PYTHONPATH"].split(os.pathsep)
     assert python_path_parts[0] == str(project_root)
     assert "existing-path" in python_path_parts
+
+
+def test_conversion_error_serialization_preserves_service_error_details() -> None:
+    """验证转换失败时子进程 stdout/stderr 等 details 不再被吞掉。"""
+
+    payload = serialize_error(
+        ServiceConfigurationError(
+            "OpenVINO IR 构建失败",
+            details={
+                "stdout": "conversion started",
+                "stderr": "openvino convert_model failed",
+                "output_object_uri": Path("runs/model.xml"),
+            },
+        )
+    )
+
+    assert payload["error_type"] == "ServiceConfigurationError"
+    assert payload["error_code"] == "service_configuration_error"
+    details = payload["details"]
+    assert isinstance(details, dict)
+    assert details["stdout"] == "conversion started"
+    assert details["stderr"] == "openvino convert_model failed"
+    assert details["output_object_uri"] in {"runs\\model.xml", "runs/model.xml"}
+
+
+def test_conversion_queue_failure_metadata_contains_error_details() -> None:
+    """验证 conversion worker 失败队列元数据保留详细错误。"""
+
+    queue_task = QueueMessage(
+        queue_name="yolox-conversions",
+        task_id="queue-task-1",
+        payload={"task_id": "task-1"},
+        metadata={"source_model_version_id": "model-version-1"},
+    )
+    metadata = build_conversion_queue_failure_metadata(
+        queue_task,
+        ServiceConfigurationError(
+            "OpenVINO IR 构建失败",
+            details={"stderr": "subprocess stderr"},
+        ),
+    )
+
+    assert metadata["task_id"] == "task-1"
+    assert metadata["source_model_version_id"] == "model-version-1"
+    assert metadata["error_type"] == "ServiceConfigurationError"
+    error_details = metadata["error_details"]
+    assert isinstance(error_details, dict)
+    assert error_details["stderr"] == "subprocess stderr"
 
 
 class _FakeOnnxModule:

@@ -83,6 +83,12 @@
             <dt>{{ t('tasks.error') }}</dt>
             <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
           </div>
+          <div v-if="taskDiagnosticErrorText">
+            <dt>{{ t('tasks.errorDetails') }}</dt>
+            <dd>
+              <pre class="task-diagnostics-panel__error-json">{{ taskDiagnosticErrorText }}</pre>
+            </dd>
+          </div>
         </dl>
       </aside>
     </div>
@@ -102,6 +108,9 @@ import { useTaskEvents } from '../composables/useTaskEvents'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
+import type { TaskEvent } from '@/shared/contracts'
+
+type JsonRecord = Record<string, unknown>
 
 const route = useRoute()
 const taskStore = useTaskStore()
@@ -122,6 +131,97 @@ const canCancel = computed(() => {
   const state = normalizeTaskState(taskStore.selectedTask)
   return state === 'queued' || state === 'running'
 })
+
+const taskDiagnosticErrorText = computed(() => {
+  const errorPayload = resolveTaskDiagnosticError()
+  return errorPayload === null ? '' : stringifyDiagnosticValue(errorPayload)
+})
+
+function asRecord(value: unknown): JsonRecord | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as JsonRecord
+}
+
+function resolveTaskDiagnosticError(): unknown | null {
+  const task = taskStore.selectedTask
+  if (!task) {
+    return null
+  }
+
+  const taskResult = asRecord(task.result)
+  const resultError = asRecord(taskResult?.error)
+  if (resultError) {
+    return resultError
+  }
+  if (taskResult?.error_details !== undefined && taskResult.error_details !== null) {
+    return {
+      error_message: taskResult.error_message ?? task.error_message ?? null,
+      details: taskResult.error_details,
+    }
+  }
+
+  const metadataError = asRecord(task.metadata?.error)
+  if (metadataError) {
+    return metadataError
+  }
+
+  return resolveLatestEventDiagnosticError(taskStore.selectedTaskEvents)
+}
+
+function resolveLatestEventDiagnosticError(events: TaskEvent[]): unknown | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const errorPayload = resolveEventDiagnosticError(events[index])
+    if (errorPayload !== null) {
+      return errorPayload
+    }
+  }
+  return null
+}
+
+function resolveEventDiagnosticError(event: TaskEvent): unknown | null {
+  const payload = asRecord(event.payload)
+  if (!payload) {
+    return null
+  }
+
+  const directError = asRecord(payload.error)
+  if (directError) {
+    return directError
+  }
+
+  const result = asRecord(payload.result)
+  const resultError = asRecord(result?.error)
+  if (resultError) {
+    return resultError
+  }
+
+  const metadata = asRecord(payload.metadata)
+  const metadataError = asRecord(metadata?.error)
+  if (metadataError) {
+    return metadataError
+  }
+
+  if (payload.error_details !== undefined && payload.error_details !== null) {
+    return {
+      error_message: payload.error_message ?? event.message ?? null,
+      details: payload.error_details,
+    }
+  }
+  return null
+}
+
+function stringifyDiagnosticValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? ''
+  } catch {
+    return String(value)
+  }
+}
 
 function clearEventLoadingTimer(): void {
   if (eventLoadingTimer !== null) {
@@ -214,6 +314,21 @@ onBeforeUnmount(() => {
   margin: 0;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.task-diagnostics-panel__error-json {
+  max-height: 360px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 900px) {

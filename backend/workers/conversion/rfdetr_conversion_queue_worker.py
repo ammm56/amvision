@@ -12,6 +12,9 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.workers.conversion.conversion_queue_failures import (
+    build_conversion_queue_failure_metadata,
+)
 from backend.workers.conversion.rfdetr_conversion_runner import LocalRfdetrConversionRunner
 
 
@@ -71,21 +74,14 @@ class RfdetrConversionQueueWorker:
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "source_model_version_id": queue_task.metadata.get("source_model_version_id"),
-                },
+                metadata=build_conversion_queue_failure_metadata(queue_task, error),
             )
             return True
         except Exception as error:
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
-                metadata={
-                    "task_id": queue_task.payload.get("task_id"),
-                    "source_model_version_id": queue_task.metadata.get("source_model_version_id"),
-                    "error_type": error.__class__.__name__,
-                },
+                metadata=build_conversion_queue_failure_metadata(queue_task, error),
             )
             return True
 

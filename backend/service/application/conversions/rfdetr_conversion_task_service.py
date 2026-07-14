@@ -27,6 +27,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.error_serialization import serialize_error
 from backend.service.application.models.postprocess.detection_operation_rules import (
     DetectionConversionOutputFiles,
     build_detection_conversion_report_summary,
@@ -195,6 +196,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                 },
             )
         except Exception as exc:
+            error_payload = serialize_error(exc)
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
                     task_id=created_task.task_id,
@@ -203,11 +205,18 @@ class SqlAlchemyRfdetrConversionTaskService:
                     payload={
                         "state": "failed",
                         "error_message": str(exc),
+                        "error": error_payload,
+                        "error_details": error_payload.get("details", {}),
                         "progress": {"stage": "failed"},
+                        "metadata": {
+                            "error": error_payload,
+                        },
                         "result": {
                             "source_model_version_id": source_model_version_id,
                             "target_formats": list(plan.target_formats),
                             "task_type": normalized_task_type,
+                            "error": error_payload,
+                            "error_details": error_payload.get("details", {}),
                         },
                     },
                 )
@@ -362,6 +371,7 @@ class SqlAlchemyRfdetrConversionTaskService:
             )
             dataset_storage.write_json(report_object_key, report_summary)
         except Exception as error:
+            error_payload = serialize_error(error)
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
                     task_id=task_id,
@@ -372,7 +382,12 @@ class SqlAlchemyRfdetrConversionTaskService:
                         "finished_at": self._now_iso(),
                         "attempt_no": attempt_no,
                         "error_message": str(error),
+                        "error": error_payload,
+                        "error_details": error_payload.get("details", {}),
                         "progress": {"stage": "failed", "percent": 100.0},
+                        "metadata": {
+                            "error": error_payload,
+                        },
                         "result": {
                             "source_model_version_id": request.source_model_version_id,
                             "output_object_prefix": output_object_prefix,
@@ -381,6 +396,8 @@ class SqlAlchemyRfdetrConversionTaskService:
                             "requested_target_formats": list(request.target_formats),
                             "task_type": request.task_type,
                             "model_build_id": None,
+                            "error": error_payload,
+                            "error_details": error_payload.get("details", {}),
                         },
                     },
                 )
