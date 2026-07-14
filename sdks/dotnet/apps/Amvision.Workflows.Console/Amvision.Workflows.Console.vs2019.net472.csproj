@@ -1,14 +1,15 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.CSharp.props')" />
+
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{E0ED3206-50D5-4600-BA98-4418A496ABF4}</ProjectGuid>
+    <ProjectGuid>{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>Amvision.Workflows.Console</RootNamespace>
     <AssemblyName>Amvision.Workflows.Console</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
@@ -16,32 +17,33 @@
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <TargetFrameworkProfile />
   </PropertyGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\vs2019-net461\</OutputPath>
+    <OutputPath>bin\Debug\vs2019-net472\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\Release\vs2019-net461\</OutputPath>
+    <OutputPath>bin\Release\vs2019-net472\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup>
-    <StartupObject>Amvision.Workflows.Console.Program</StartupObject>
-  </PropertyGroup>
+
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Net.Http" />
   </ItemGroup>
+
   <ItemGroup>
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="Model\BackendConfig.cs" />
@@ -121,18 +123,21 @@
     <Compile Include="WorkflowOperationRunner.ModelDeployment.cs" />
     <Compile Include="WorkflowOperationRunner.System.cs" />
   </ItemGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Amvision.Workflows\Amvision.Workflows.vs2019.net461.csproj">
-      <Project>{9E1D83B4-836C-47E3-B23C-F1D35CC4B461}</Project>
-      <Name>Amvision.Workflows.vs2019.net461</Name>
+    <ProjectReference Include="..\..\src\Amvision.Workflows\Amvision.Workflows.vs2019.net472.csproj">
+      <Project>{354610A8-2452-4E52-AF62-0480CDAB5898}</Project>
+      <Name>Amvision.Workflows.vs2019.net472</Name>
     </ProjectReference>
   </ItemGroup>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="1.0.3">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="System.Text.Json" Version="6.0.10" />
   </ItemGroup>
+
   <ItemGroup>
     <None Include="Config\config_*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -142,5 +147,6 @@
     </None>
     <None Include="README.md" />
   </ItemGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

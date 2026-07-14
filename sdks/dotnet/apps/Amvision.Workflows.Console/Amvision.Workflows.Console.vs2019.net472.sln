@@ -1,0 +1,25 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.37327.17
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.Console.vs2019.net472", "Amvision.Workflows.Console.vs2019.net472.csproj", "{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {AC7B1DED-6592-4D91-9DEC-5D9FCC528C51}
+	EndGlobalSection
+EndGlobal

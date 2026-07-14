@@ -36,13 +36,21 @@ dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflo
 
 ## Visual Studio 2019
 
-VS2019 不打开多目标框架 SDK 项目。第三方上位机项目需要 .NET Framework 4.6.1 时，直接打开单框架 solution：
+VS2019 不打开多目标框架 SDK 项目。第三方上位机项目使用 VS2019 时，直接打开固定目标框架的单框架 solution：
 
 ```text
 sdks/dotnet/amvision-vs2019-net461.sln
+sdks/dotnet/amvision-vs2019-net472.sln
 ```
 
-该 solution 只包含 `Amvision.Workflows.vs2019.net461`，目标框架固定为 `.NET Framework 4.6.1`，源码按 VS2019 可识别的 C# 8 写法组织，程序集名仍为 `Amvision.Workflows`。后续 `.NET Framework 4.7.2` 和 `.NET 10` 会按同一方式增加单框架项目。
+根目录 solution 同时包含对应框架的 `Amvision.Workflows` SDK 和 `Amvision.Workflows.Console` 参考实现，源码按 VS2019 可识别的 C# 8 写法组织，程序集名保持 `Amvision.Workflows` / `Amvision.Workflows.Console`。如果只需要打开单个项目，也可以使用对应目录下的 solution：
+
+```text
+sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.vs2019.net461.sln
+sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.vs2019.net472.sln
+sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.net461.sln
+sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.net472.sln
+```
 
 `sdks/dotnet/tests` 默认只运行 SDK 协议、HTTP URL/body/query、schema fixture 和 transport 逻辑测试。真实 backend-service smoke 测试通过环境变量启用：
 

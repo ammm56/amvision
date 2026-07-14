@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.33027.164
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.vs2019.net472", "src\Amvision.Workflows\Amvision.Workflows.vs2019.net472.csproj", "{354610A8-2452-4E52-AF62-0480CDAB5898}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Amvision.Workflows.Console.vs2019.net472", "apps\Amvision.Workflows.Console\Amvision.Workflows.Console.vs2019.net472.csproj", "{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{354610A8-2452-4E52-AF62-0480CDAB5898}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{354610A8-2452-4E52-AF62-0480CDAB5898}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{354610A8-2452-4E52-AF62-0480CDAB5898}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{354610A8-2452-4E52-AF62-0480CDAB5898}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CB237BE-E6F5-4915-A6F3-AD573E49ADFF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E1A6D262-6BC6-4CFC-8219-FFCE9FF2A1D6}
+	EndGlobalSection
+EndGlobal
