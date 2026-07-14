@@ -1,65 +1,67 @@
 using System;
 using System.Collections.Generic;
 
-namespace Amvision.Workflows;
-
-/// <summary>
-/// 模型任务类型常量。
-/// </summary>
-public static class ModelTaskTypes
+namespace Amvision.Workflows
 {
-    /// <summary>
-    /// Detection 模型。
-    /// </summary>
-    public const string Detection = "detection";
 
     /// <summary>
-    /// Classification 模型。
+    /// 模型任务类型常量。
     /// </summary>
-    public const string Classification = "classification";
-
-    /// <summary>
-    /// Segmentation 模型。
-    /// </summary>
-    public const string Segmentation = "segmentation";
-
-    /// <summary>
-    /// Pose 模型。
-    /// </summary>
-    public const string Pose = "pose";
-
-    /// <summary>
-    /// OBB 模型。
-    /// </summary>
-    public const string Obb = "obb";
-
-    private static readonly HashSet<string> AllowedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    public static class ModelTaskTypes
     {
-        Detection,
-        Classification,
-        Segmentation,
-        Pose,
-        Obb
-    };
+        /// <summary>
+        /// Detection 模型。
+        /// </summary>
+        public const string Detection = "detection";
 
-    /// <summary>
-    /// 校验并规范化模型任务类型。
-    /// </summary>
-    /// <param name="taskType">模型任务类型。</param>
-    /// <returns>后端 API 使用的小写任务类型。</returns>
-    public static string Normalize(string taskType)
-    {
-        if (string.IsNullOrWhiteSpace(taskType))
+        /// <summary>
+        /// Classification 模型。
+        /// </summary>
+        public const string Classification = "classification";
+
+        /// <summary>
+        /// Segmentation 模型。
+        /// </summary>
+        public const string Segmentation = "segmentation";
+
+        /// <summary>
+        /// Pose 模型。
+        /// </summary>
+        public const string Pose = "pose";
+
+        /// <summary>
+        /// OBB 模型。
+        /// </summary>
+        public const string Obb = "obb";
+
+        private static readonly HashSet<string> AllowedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            throw new ArgumentException("taskType cannot be empty.", nameof(taskType));
-        }
+            Detection,
+            Classification,
+            Segmentation,
+            Pose,
+            Obb
+        };
 
-        var normalized = taskType.Trim().ToLowerInvariant();
-        if (!AllowedValues.Contains(normalized))
+        /// <summary>
+        /// 校验并规范化模型任务类型。
+        /// </summary>
+        /// <param name="taskType">模型任务类型。</param>
+        /// <returns>后端 API 使用的小写任务类型。</returns>
+        public static string Normalize(string taskType)
         {
-            throw new ArgumentException($"Unsupported model task type: {taskType}.", nameof(taskType));
-        }
+            if (string.IsNullOrWhiteSpace(taskType))
+            {
+                throw new ArgumentException("taskType cannot be empty.", nameof(taskType));
+            }
 
-        return normalized;
+            var normalized = taskType.Trim().ToLowerInvariant();
+            if (!AllowedValues.Contains(normalized))
+            {
+                throw new ArgumentException($"Unsupported model task type: {taskType}.", nameof(taskType));
+            }
+
+            return normalized;
+        }
     }
 }

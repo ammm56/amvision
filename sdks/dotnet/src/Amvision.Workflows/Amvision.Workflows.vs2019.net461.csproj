@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.CSharp.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9E1D83B4-836C-47E3-B23C-F1D35CC4B461}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Amvision.Workflows</RootNamespace>
+    <AssemblyName>Amvision.Workflows</AssemblyName>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\net461\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\net461\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Http\AmvisionWorkflowApiException.cs" />
+    <Compile Include="Http\AmvisionWorkflowApiResponse.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.HttpCore.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.ModelDeployments.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.ModelInference.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.Runs.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.Runtime.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.System.cs" />
+    <Compile Include="Http\AmvisionWorkflowClient.TriggerSources.cs" />
+    <Compile Include="Http\AmvisionWorkflowClientOptions.cs" />
+    <Compile Include="Http\WorkflowResponseModes.cs" />
+    <Compile Include="Http\Requests\ModelDeploymentInferenceRequest.cs" />
+    <Compile Include="Http\Requests\ModelDeploymentInferenceUploadRequest.cs" />
+    <Compile Include="Http\Requests\ModelDeploymentRuntimeModes.cs" />
+    <Compile Include="Http\Requests\ModelTaskTypes.cs" />
+    <Compile Include="Http\Requests\WorkflowAppRuntimeCreateRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowRuntimeImageInvokeRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowRuntimeInvokeRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowRuntimeMultipartInvokeRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowTriggerSourceCreateRequest.cs" />
+    <Compile Include="Http\Responses\ModelDeploymentRuntimeResponse.cs" />
+    <Compile Include="Http\Responses\ModelInferenceResponse.cs" />
+    <Compile Include="Http\Responses\SystemConfigResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowAppResultResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowAppRuntimeResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowRunResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowTriggerSourceHealthResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowTriggerSourceResponse.cs" />
+    <Compile Include="Internal\Http\WorkflowHttpPath.cs" />
+    <Compile Include="Internal\Json\WorkflowJsonDefaults.cs" />
+    <Compile Include="ZeroMq\AmvisionTriggerClient.cs" />
+    <Compile Include="ZeroMq\AmvisionTriggerClientOptions.cs" />
+    <Compile Include="ZeroMq\AmvisionTriggerException.cs" />
+    <Compile Include="ZeroMq\ImageTriggerRequest.cs" />
+    <Compile Include="ZeroMq\IZeroMqRequestTransport.cs" />
+    <Compile Include="ZeroMq\NetMqRequestTransport.cs" />
+    <Compile Include="ZeroMq\TriggerEventRequest.cs" />
+    <Compile Include="ZeroMq\TriggerResult.cs" />
+    <Compile Include="ZeroMq\ZeroMqTriggerEnvelope.cs" />
+    <Compile Include="ZeroMq\ZeroMqTriggerError.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="NetMQ" Version="4.0.1.10" />
+    <PackageReference Include="System.Text.Json" Version="6.0.10" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

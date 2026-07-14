@@ -34,6 +34,16 @@ dotnet build sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.csproj
 dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
 ```
 
+## Visual Studio 2019
+
+VS2019 不打开多目标框架 SDK 项目。第三方上位机项目需要 .NET Framework 4.6.1 时，直接打开单框架 solution：
+
+```text
+sdks/dotnet/amvision-vs2019-net461.sln
+```
+
+该 solution 只包含 `Amvision.Workflows.vs2019.net461`，目标框架固定为 `.NET Framework 4.6.1`，源码按 VS2019 可识别的 C# 8 写法组织，程序集名仍为 `Amvision.Workflows`。后续 `.NET Framework 4.7.2` 和 `.NET 10` 会按同一方式增加单框架项目。
+
 `sdks/dotnet/tests` 默认只运行 SDK 协议、HTTP URL/body/query、schema fixture 和 transport 逻辑测试。真实 backend-service smoke 测试通过环境变量启用：
 
 ```powershell

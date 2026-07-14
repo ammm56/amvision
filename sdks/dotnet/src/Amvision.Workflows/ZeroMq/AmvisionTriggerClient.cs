@@ -7,375 +7,377 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows;
-
-/// <summary>
-/// 用于向 Amvision ZeroMQ TriggerSource 发送事件或图片的客户端。
-/// </summary>
-public sealed class AmvisionTriggerClient : IDisposable
+namespace Amvision.Workflows
 {
-    /// <summary>
-    /// backend-service 返回的 TriggerResult format_id。
-    /// </summary>
-    public const string TriggerResultFormatId = "amvision.workflow-trigger-result.v1";
 
     /// <summary>
-    /// ZeroMQ adapter 返回的错误 reply format_id。
+    /// 用于向 Amvision ZeroMQ TriggerSource 发送事件或图片的客户端。
     /// </summary>
-    public const string ZeroMqErrorFormatId = "amvision.zeromq-trigger-error.v1";
-
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+    public sealed class AmvisionTriggerClient : IDisposable
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = null,
-        WriteIndented = false
-    };
+        /// <summary>
+        /// backend-service 返回的 TriggerResult format_id。
+        /// </summary>
+        public const string TriggerResultFormatId = "amvision.workflow-trigger-result.v1";
 
-    /// <summary>
-    /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
-    /// </summary>
-    private readonly object syncRoot = new();
-    private readonly AmvisionTriggerClientOptions options;
-    private readonly IZeroMqRequestTransport transport;
-    private readonly bool ownsTransport;
-    private bool disposed;
+        /// <summary>
+        /// ZeroMQ adapter 返回的错误 reply format_id。
+        /// </summary>
+        public const string ZeroMqErrorFormatId = "amvision.zeromq-trigger-error.v1";
 
-    /// <summary>
-    /// 使用 NetMQ transport 初始化 TriggerSource 客户端。
-    /// </summary>
-    /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
-    public AmvisionTriggerClient(AmvisionTriggerClientOptions options)
-    {
-        this.options = options ?? throw new ArgumentNullException(nameof(options));
-        this.options.Validate(requireEndpoint: true);
-        transport = new NetMqRequestTransport(options.Endpoint);
-        ownsTransport = true;
-    }
-
-    /// <summary>
-    /// 使用自定义 ZeroMQ request transport 初始化 TriggerSource 客户端。
-    /// </summary>
-    /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
-    /// <param name="transport">用于测试或自定义通信的 transport。</param>
-    public AmvisionTriggerClient(AmvisionTriggerClientOptions options, IZeroMqRequestTransport transport)
-    {
-        this.options = options ?? throw new ArgumentNullException(nameof(options));
-        this.options.Validate(requireEndpoint: false);
-        this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
-        ownsTransport = false;
-    }
-
-    /// <summary>
-    /// 同步发送一张图片并解析 TriggerResult。
-    /// </summary>
-    /// <param name="request">单张图片触发请求。</param>
-    /// <returns>backend-service 返回的 TriggerResult。</returns>
-    public TriggerResult InvokeImage(ImageTriggerRequest request)
-    {
-        ValidateRequest(request);
-        var envelope = BuildEnvelope(request);
-        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
-        IReadOnlyList<byte[]> replyFrames;
-        lock (syncRoot)
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
-            ThrowIfDisposed();
-            replyFrames = transport.Send(
-                new[] { envelopeBytes, request.ImageBytes },
-                options.Timeout
-            );
-        }
-
-        return ParseReply(replyFrames);
-    }
-
-    /// <summary>
-    /// 在线程池中异步执行单张图片触发。
-    /// </summary>
-    /// <param name="request">单张图片触发请求。</param>
-    /// <param name="cancellationToken">调用前的取消令牌。</param>
-    /// <returns>异步 TriggerResult 任务。</returns>
-    public Task<TriggerResult> InvokeImageAsync(ImageTriggerRequest request, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.Run(() => InvokeImage(request), cancellationToken);
-    }
-
-    /// <summary>
-    /// 同步发送一条纯事件并解析 TriggerResult。
-    /// </summary>
-    /// <param name="request">纯事件触发请求。</param>
-    /// <returns>backend-service 返回的 TriggerResult。</returns>
-    public TriggerResult InvokeEvent(TriggerEventRequest request)
-    {
-        ValidateRequest(request);
-        var envelope = BuildEnvelope(request);
-        var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
-        IReadOnlyList<byte[]> replyFrames;
-        lock (syncRoot)
-        {
-            ThrowIfDisposed();
-            replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
-        }
-
-        return ParseReply(replyFrames);
-    }
-
-    /// <summary>
-    /// 在线程池中异步执行纯事件触发。
-    /// </summary>
-    /// <param name="request">纯事件触发请求。</param>
-    /// <param name="cancellationToken">调用前的取消令牌。</param>
-    /// <returns>异步 TriggerResult 任务。</returns>
-    public Task<TriggerResult> InvokeEventAsync(TriggerEventRequest request, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.Run(() => InvokeEvent(request), cancellationToken);
-    }
-
-    /// <summary>
-    /// 根据图片请求和客户端默认值构造 ZeroMQ envelope。
-    /// </summary>
-    /// <param name="request">单张图片触发请求。</param>
-    /// <returns>可序列化为 multipart 第一帧的 envelope。</returns>
-    public ZeroMqTriggerEnvelope BuildEnvelope(ImageTriggerRequest request)
-    {
-        ValidateRequest(request);
-
-        return new ZeroMqTriggerEnvelope
-        {
-            TriggerSourceId = options.TriggerSourceId,
-            EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
-            TraceId = NormalizeOptional(request.TraceId) ?? $"trace-{Guid.NewGuid():N}",
-            OccurredAt = FormatUtc(request.OccurredAt ?? DateTimeOffset.UtcNow),
-            InputBinding = NormalizeOptional(request.InputBinding) ?? options.DefaultInputBinding,
-            MediaType = NormalizeOptional(request.MediaType) ?? "image/octet-stream",
-            Shape = new List<int>(request.Shape),
-            DType = NormalizeOptional(request.DType),
-            Layout = NormalizeOptional(request.Layout),
-            PixelFormat = NormalizeOptional(request.PixelFormat),
-            Metadata = new Dictionary<string, object?>(request.Metadata),
-            Payload = BuildPayload(request.Payload, request.IdempotencyKey)
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNamingPolicy = null,
+            WriteIndented = false
         };
-    }
 
-    /// <summary>
-    /// 根据纯事件请求和客户端默认值构造 ZeroMQ envelope。
-    /// </summary>
-    /// <param name="request">纯事件触发请求。</param>
-    /// <returns>可序列化为 multipart 第一帧的 envelope。</returns>
-    public ZeroMqTriggerEnvelope BuildEnvelope(TriggerEventRequest request)
-    {
-        ValidateRequest(request);
-        return new ZeroMqTriggerEnvelope
-        {
-            TriggerSourceId = options.TriggerSourceId,
-            EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
-            TraceId = NormalizeOptional(request.TraceId) ?? $"trace-{Guid.NewGuid():N}",
-            OccurredAt = FormatUtc(request.OccurredAt ?? DateTimeOffset.UtcNow),
-            Metadata = new Dictionary<string, object?>(request.Metadata),
-            Payload = BuildPayload(request.Payload, request.IdempotencyKey)
-        };
-    }
+        /// <summary>
+        /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
+        /// </summary>
+        private readonly object syncRoot = new object();
+        private readonly AmvisionTriggerClientOptions options;
+        private readonly IZeroMqRequestTransport transport;
+        private readonly bool ownsTransport;
+        private bool disposed;
 
-    /// <summary>
-    /// 解析 ZeroMQ reply 帧并转换为 TriggerResult 或 SDK 异常。
-    /// </summary>
-    /// <param name="replyFrames">ZeroMQ REP 返回的 multipart 帧。</param>
-    /// <returns>解析后的 TriggerResult。</returns>
-    public static TriggerResult ParseReply(IReadOnlyList<byte[]> replyFrames)
-    {
-        if (replyFrames.Count == 0)
+        /// <summary>
+        /// 使用 NetMQ transport 初始化 TriggerSource 客户端。
+        /// </summary>
+        /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
+        public AmvisionTriggerClient(AmvisionTriggerClientOptions options)
         {
-            throw new AmvisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply is empty.");
+            this.options = options ?? throw new ArgumentNullException(nameof(options));
+            this.options.Validate(requireEndpoint: true);
+            transport = new NetMqRequestTransport(options.Endpoint);
+            ownsTransport = true;
         }
 
-        var json = Encoding.UTF8.GetString(replyFrames[0]);
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        var formatId = root.TryGetProperty("format_id", out var formatProperty)
-            ? formatProperty.GetString()
-            : null;
-
-        if (formatId == ZeroMqErrorFormatId || root.TryGetProperty("error_code", out _))
+        /// <summary>
+        /// 使用自定义 ZeroMQ request transport 初始化 TriggerSource 客户端。
+        /// </summary>
+        /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
+        /// <param name="transport">用于测试或自定义通信的 transport。</param>
+        public AmvisionTriggerClient(AmvisionTriggerClientOptions options, IZeroMqRequestTransport transport)
         {
-            var error = JsonSerializer.Deserialize<ZeroMqTriggerError>(json, JsonOptions);
-            throw new AmvisionTriggerException(
-                error?.ErrorCode ?? "trigger_error",
-                error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
-                error?.Details
-            );
+            this.options = options ?? throw new ArgumentNullException(nameof(options));
+            this.options.Validate(requireEndpoint: false);
+            this.transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            ownsTransport = false;
         }
 
-        var result = JsonSerializer.Deserialize<TriggerResult>(json, JsonOptions);
-        if (result is null)
+        /// <summary>
+        /// 同步发送一张图片并解析 TriggerResult。
+        /// </summary>
+        /// <param name="request">单张图片触发请求。</param>
+        /// <returns>backend-service 返回的 TriggerResult。</returns>
+        public TriggerResult InvokeImage(ImageTriggerRequest request)
         {
-            throw new AmvisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");
+            ValidateRequest(request);
+            var envelope = BuildEnvelope(request);
+            var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+            IReadOnlyList<byte[]> replyFrames;
+            lock (syncRoot)
+            {
+                ThrowIfDisposed();
+                replyFrames = transport.Send(
+                    new[] { envelopeBytes, request.ImageBytes },
+                    options.Timeout
+                );
+            }
+
+            return ParseReply(replyFrames);
         }
 
-        if (result.FormatId != TriggerResultFormatId)
+        /// <summary>
+        /// 在线程池中异步执行单张图片触发。
+        /// </summary>
+        /// <param name="request">单张图片触发请求。</param>
+        /// <param name="cancellationToken">调用前的取消令牌。</param>
+        /// <returns>异步 TriggerResult 任务。</returns>
+        public Task<TriggerResult> InvokeImageAsync(ImageTriggerRequest request, CancellationToken cancellationToken = default)
         {
-            throw new AmvisionTriggerException(
-                "invalid_reply",
-                $"Unexpected TriggerResult format_id: {result.FormatId}."
-            );
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.Run(() => InvokeImage(request), cancellationToken);
         }
 
-        return result;
-    }
+        /// <summary>
+        /// 同步发送一条纯事件并解析 TriggerResult。
+        /// </summary>
+        /// <param name="request">纯事件触发请求。</param>
+        /// <returns>backend-service 返回的 TriggerResult。</returns>
+        public TriggerResult InvokeEvent(TriggerEventRequest request)
+        {
+            ValidateRequest(request);
+            var envelope = BuildEnvelope(request);
+            var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+            IReadOnlyList<byte[]> replyFrames;
+            lock (syncRoot)
+            {
+                ThrowIfDisposed();
+                replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
+            }
 
-    /// <summary>
-    /// 释放当前客户端持有的 transport。
-    /// </summary>
-    public void Dispose()
-    {
-        lock (syncRoot)
+            return ParseReply(replyFrames);
+        }
+
+        /// <summary>
+        /// 在线程池中异步执行纯事件触发。
+        /// </summary>
+        /// <param name="request">纯事件触发请求。</param>
+        /// <param name="cancellationToken">调用前的取消令牌。</param>
+        /// <returns>异步 TriggerResult 任务。</returns>
+        public Task<TriggerResult> InvokeEventAsync(TriggerEventRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.Run(() => InvokeEvent(request), cancellationToken);
+        }
+
+        /// <summary>
+        /// 根据图片请求和客户端默认值构造 ZeroMQ envelope。
+        /// </summary>
+        /// <param name="request">单张图片触发请求。</param>
+        /// <returns>可序列化为 multipart 第一帧的 envelope。</returns>
+        public ZeroMqTriggerEnvelope BuildEnvelope(ImageTriggerRequest request)
+        {
+            ValidateRequest(request);
+
+            return new ZeroMqTriggerEnvelope
+            {
+                TriggerSourceId = options.TriggerSourceId,
+                EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
+                TraceId = NormalizeOptional(request.TraceId) ?? $"trace-{Guid.NewGuid():N}",
+                OccurredAt = FormatUtc(request.OccurredAt ?? DateTimeOffset.UtcNow),
+                InputBinding = NormalizeOptional(request.InputBinding) ?? options.DefaultInputBinding,
+                MediaType = NormalizeOptional(request.MediaType) ?? "image/octet-stream",
+                Shape = new List<int>(request.Shape),
+                DType = NormalizeOptional(request.DType),
+                Layout = NormalizeOptional(request.Layout),
+                PixelFormat = NormalizeOptional(request.PixelFormat),
+                Metadata = new Dictionary<string, object?>(request.Metadata),
+                Payload = BuildPayload(request.Payload, request.IdempotencyKey)
+            };
+        }
+
+        /// <summary>
+        /// 根据纯事件请求和客户端默认值构造 ZeroMQ envelope。
+        /// </summary>
+        /// <param name="request">纯事件触发请求。</param>
+        /// <returns>可序列化为 multipart 第一帧的 envelope。</returns>
+        public ZeroMqTriggerEnvelope BuildEnvelope(TriggerEventRequest request)
+        {
+            ValidateRequest(request);
+            return new ZeroMqTriggerEnvelope
+            {
+                TriggerSourceId = options.TriggerSourceId,
+                EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
+                TraceId = NormalizeOptional(request.TraceId) ?? $"trace-{Guid.NewGuid():N}",
+                OccurredAt = FormatUtc(request.OccurredAt ?? DateTimeOffset.UtcNow),
+                Metadata = new Dictionary<string, object?>(request.Metadata),
+                Payload = BuildPayload(request.Payload, request.IdempotencyKey)
+            };
+        }
+
+        /// <summary>
+        /// 解析 ZeroMQ reply 帧并转换为 TriggerResult 或 SDK 异常。
+        /// </summary>
+        /// <param name="replyFrames">ZeroMQ REP 返回的 multipart 帧。</param>
+        /// <returns>解析后的 TriggerResult。</returns>
+        public static TriggerResult ParseReply(IReadOnlyList<byte[]> replyFrames)
+        {
+            if (replyFrames.Count == 0)
+            {
+                throw new AmvisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply is empty.");
+            }
+
+            var json = Encoding.UTF8.GetString(replyFrames[0]);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var formatId = root.TryGetProperty("format_id", out var formatProperty)
+                ? formatProperty.GetString()
+                : null;
+
+            if (formatId == ZeroMqErrorFormatId || root.TryGetProperty("error_code", out _))
+            {
+                var error = JsonSerializer.Deserialize<ZeroMqTriggerError>(json, JsonOptions);
+                throw new AmvisionTriggerException(
+                    error?.ErrorCode ?? "trigger_error",
+                    error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
+                    error?.Details
+                );
+            }
+
+            var result = JsonSerializer.Deserialize<TriggerResult>(json, JsonOptions);
+            if (result is null)
+            {
+                throw new AmvisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");
+            }
+
+            if (result.FormatId != TriggerResultFormatId)
+            {
+                throw new AmvisionTriggerException(
+                    "invalid_reply",
+                    $"Unexpected TriggerResult format_id: {result.FormatId}."
+                );
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 释放当前客户端持有的 transport。
+        /// </summary>
+        public void Dispose()
+        {
+            lock (syncRoot)
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                if (ownsTransport)
+                {
+                    transport.Dispose();
+                }
+
+                disposed = true;
+            }
+        }
+
+        /// <summary>
+        /// 检查客户端是否已经释放。
+        /// </summary>
+        private void ThrowIfDisposed()
         {
             if (disposed)
             {
-                return;
+                throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
             }
+        }
 
-            if (ownsTransport)
+        /// <summary>
+        /// 校验图片触发请求的基础字段。
+        /// </summary>
+        /// <param name="request">待校验的请求。</param>
+        private static void ValidateRequest(ImageTriggerRequest request)
+        {
+            if (request is null)
             {
-                transport.Dispose();
+                throw new ArgumentNullException(nameof(request));
             }
 
-            disposed = true;
-        }
-    }
-
-    /// <summary>
-    /// 检查客户端是否已经释放。
-    /// </summary>
-    private void ThrowIfDisposed()
-    {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(AmvisionTriggerClient));
-        }
-    }
-
-    /// <summary>
-    /// 校验图片触发请求的基础字段。
-    /// </summary>
-    /// <param name="request">待校验的请求。</param>
-    private static void ValidateRequest(ImageTriggerRequest request)
-    {
-        if (request is null)
-        {
-            throw new ArgumentNullException(nameof(request));
-        }
-
-        if (request.ImageBytes is null || request.ImageBytes.Length == 0)
-        {
-            throw new ArgumentException("ImageBytes cannot be empty.", nameof(request));
-        }
-
-        foreach (var dimension in request.Shape)
-        {
-            if (dimension <= 0)
+            if (request.ImageBytes is null || request.ImageBytes.Length == 0)
             {
-                throw new ArgumentException("Shape dimensions must be positive.", nameof(request));
+                throw new ArgumentException("ImageBytes cannot be empty.", nameof(request));
+            }
+
+            foreach (var dimension in request.Shape)
+            {
+                if (dimension <= 0)
+                {
+                    throw new ArgumentException("Shape dimensions must be positive.", nameof(request));
+                }
+            }
+
+            if (string.Equals(request.MediaType?.Trim(), ImageTriggerRequest.RawImageMediaType, StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRawBgr24Request(request);
             }
         }
 
-        if (string.Equals(request.MediaType?.Trim(), ImageTriggerRequest.RawImageMediaType, StringComparison.OrdinalIgnoreCase))
+        /// <summary>
+        /// 校验 raw BGR24 图片触发请求。
+        /// </summary>
+        /// <param name="request">待校验的图片请求。</param>
+        private static void ValidateRawBgr24Request(ImageTriggerRequest request)
         {
-            ValidateRawBgr24Request(request);
-        }
-    }
+            if (request.Shape.Count != 3 || request.Shape[2] != 3)
+            {
+                throw new ArgumentException("Raw BGR24 image requires Shape=[height,width,3].", nameof(request));
+            }
 
-    /// <summary>
-    /// 校验 raw BGR24 图片触发请求。
-    /// </summary>
-    /// <param name="request">待校验的图片请求。</param>
-    private static void ValidateRawBgr24Request(ImageTriggerRequest request)
-    {
-        if (request.Shape.Count != 3 || request.Shape[2] != 3)
-        {
-            throw new ArgumentException("Raw BGR24 image requires Shape=[height,width,3].", nameof(request));
-        }
+            if (!string.Equals(NormalizeOptional(request.DType), "uint8", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Raw BGR24 image requires DType=uint8.", nameof(request));
+            }
 
-        if (!string.Equals(NormalizeOptional(request.DType), "uint8", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("Raw BGR24 image requires DType=uint8.", nameof(request));
-        }
+            if (!string.Equals(NormalizeOptional(request.Layout), "HWC", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Raw BGR24 image requires Layout=HWC.", nameof(request));
+            }
 
-        if (!string.Equals(NormalizeOptional(request.Layout), "HWC", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("Raw BGR24 image requires Layout=HWC.", nameof(request));
-        }
+            var pixelFormat = NormalizeOptional(request.PixelFormat)?.Replace("-", string.Empty).Replace("_", string.Empty);
+            if (!string.Equals(pixelFormat, "bgr24", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(pixelFormat, "bgr", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Raw BGR24 image requires PixelFormat=bgr24.", nameof(request));
+            }
 
-        var pixelFormat = NormalizeOptional(request.PixelFormat)?.Replace("-", string.Empty).Replace("_", string.Empty);
-        if (!string.Equals(pixelFormat, "bgr24", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(pixelFormat, "bgr", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("Raw BGR24 image requires PixelFormat=bgr24.", nameof(request));
-        }
-
-        var expectedLength = checked(request.Shape[0] * request.Shape[1] * request.Shape[2]);
-        if (request.ImageBytes.Length != expectedLength)
-        {
-            throw new ArgumentException($"Raw BGR24 ImageBytes length must be width * height * 3. Expected {expectedLength}, actual {request.ImageBytes.Length}.", nameof(request));
-        }
-    }
-
-    /// <summary>
-    /// 校验纯事件触发请求的基础字段。
-    /// </summary>
-    /// <param name="request">待校验的请求。</param>
-    private static void ValidateRequest(TriggerEventRequest request)
-    {
-        if (request is null)
-        {
-            throw new ArgumentNullException(nameof(request));
-        }
-    }
-
-    /// <summary>
-    /// 构造 envelope payload，并按约定补充幂等键。
-    /// </summary>
-    /// <param name="sourcePayload">业务 payload。</param>
-    /// <param name="idempotencyKey">可选幂等键。</param>
-    /// <returns>最终 payload。</returns>
-    private static Dictionary<string, object?> BuildPayload(
-        IDictionary<string, object?> sourcePayload,
-        string? idempotencyKey)
-    {
-        var payload = new Dictionary<string, object?>(sourcePayload);
-        var normalizedIdempotencyKey = NormalizeOptional(idempotencyKey);
-        if (normalizedIdempotencyKey is not null
-            && !payload.ContainsKey("idempotency_key"))
-        {
-            payload["idempotency_key"] = normalizedIdempotencyKey;
+            var expectedLength = checked(request.Shape[0] * request.Shape[1] * request.Shape[2]);
+            if (request.ImageBytes.Length != expectedLength)
+            {
+                throw new ArgumentException($"Raw BGR24 ImageBytes length must be width * height * 3. Expected {expectedLength}, actual {request.ImageBytes.Length}.", nameof(request));
+            }
         }
 
-        return payload;
-    }
-
-    /// <summary>
-    /// 规范化可选字符串，空白字符串返回 null。
-    /// </summary>
-    /// <param name="value">待规范化的字符串。</param>
-    /// <returns>规范化后的字符串或 null。</returns>
-    private static string? NormalizeOptional(string? value)
-    {
-        if (value is null)
+        /// <summary>
+        /// 校验纯事件触发请求的基础字段。
+        /// </summary>
+        /// <param name="request">待校验的请求。</param>
+        private static void ValidateRequest(TriggerEventRequest request)
         {
-            return null;
+            if (request is null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
         }
 
-        var normalized = value.Trim();
-        return normalized.Length == 0 ? null : normalized;
-    }
+        /// <summary>
+        /// 构造 envelope payload，并按约定补充幂等键。
+        /// </summary>
+        /// <param name="sourcePayload">业务 payload。</param>
+        /// <param name="idempotencyKey">可选幂等键。</param>
+        /// <returns>最终 payload。</returns>
+        private static Dictionary<string, object?> BuildPayload(
+            IDictionary<string, object?> sourcePayload,
+            string? idempotencyKey)
+        {
+            var payload = new Dictionary<string, object?>(sourcePayload);
+            var normalizedIdempotencyKey = NormalizeOptional(idempotencyKey);
+            if (normalizedIdempotencyKey != null
+                && !payload.ContainsKey("idempotency_key"))
+            {
+                payload["idempotency_key"] = normalizedIdempotencyKey;
+            }
 
-    /// <summary>
-    /// 把时间转换为 UTC ISO-like 字符串。
-    /// </summary>
-    /// <param name="value">待格式化的时间。</param>
-    /// <returns>UTC 时间字符串。</returns>
-    private static string FormatUtc(DateTimeOffset value)
-    {
-        return value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+            return payload;
+        }
+
+        /// <summary>
+        /// 规范化可选字符串，空白字符串返回 null。
+        /// </summary>
+        /// <param name="value">待规范化的字符串。</param>
+        /// <returns>规范化后的字符串或 null。</returns>
+        private static string? NormalizeOptional(string? value)
+        {
+            if (value is null)
+            {
+                return null;
+            }
+
+            var normalized = value.Trim();
+            return normalized.Length == 0 ? null : normalized;
+        }
+
+        /// <summary>
+        /// 把时间转换为 UTC ISO-like 字符串。
+        /// </summary>
+        /// <param name="value">待格式化的时间。</param>
+        /// <returns>UTC 时间字符串。</returns>
+        private static string FormatUtc(DateTimeOffset value)
+        {
+            return value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+        }
     }
 }
