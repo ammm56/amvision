@@ -1,10 +1,11 @@
+using Amvision.Workflows;
 using System;
 using System.IO;
 using Amvision.Workflows.Console.Model;
 using Amvision.Workflows.Console.Tools;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// WorkflowAppRuntime 控制和调用操作集合。
 /// </summary>
@@ -60,7 +61,7 @@ internal sealed partial class WorkflowRuntimeOperations
     /// <returns>带图片路径时返回 true。</returns>
     private static bool HasImageInput(ConfiguredRuntime configuredRuntime)
     {
-        return ConfigValidation.NormalizeOptional(configuredRuntime.Invoke.ImagePath) is not null;
+        return ConfigValidation.NormalizeOptional(configuredRuntime.Invoke.ImagePath) != null;
     }
 
     /// <summary>
@@ -103,4 +104,5 @@ internal sealed partial class WorkflowRuntimeOperations
                 return "image/octet-stream";
         }
     }
+}
 }

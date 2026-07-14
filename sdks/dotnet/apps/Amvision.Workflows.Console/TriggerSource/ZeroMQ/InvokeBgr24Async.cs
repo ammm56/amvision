@@ -1,11 +1,13 @@
+using System;
+using Amvision.Workflows;
 using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows.Console.Model;
 using Amvision.Workflows.Console.Tools;
 
-namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ;
-
+namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ
+{
 /// <summary>
 /// ZeroMQ BGR24 raw 图片触发操作。
 /// </summary>
@@ -82,11 +84,12 @@ internal sealed partial class ZeroMqTriggerOperations
     {
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
-        if (imagePath is null)
+        if (imagePath == null)
         {
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
         return InvokeBgr24FromFileAsync(triggerSourceName, imagePath, cancellationToken);
     }
+}
 }

@@ -1,3 +1,4 @@
+using Amvision.Workflows;
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -5,8 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace Amvision.Workflows.Console.Tools;
-
+namespace Amvision.Workflows.Console.Tools
+{
 /// <summary>
 /// 图片文件和 Windows 原生 Bitmap 的转换目标格式。
 /// </summary>
@@ -238,7 +239,7 @@ public static class ImageConversionTools
         ImageFileFormat targetFormat,
         long jpegQuality = DefaultJpegQuality)
     {
-        if (bitmap is null)
+        if (bitmap == null)
         {
             throw new ArgumentNullException(nameof(bitmap));
         }
@@ -279,7 +280,7 @@ public static class ImageConversionTools
     /// <returns>连续 B/G/R 像素 bytes。</returns>
     public static byte[] BitmapToBgr24Bytes(Bitmap bitmap, out int width, out int height)
     {
-        if (bitmap is null)
+        if (bitmap == null)
         {
             throw new ArgumentNullException(nameof(bitmap));
         }
@@ -497,7 +498,7 @@ public static class ImageConversionTools
     /// <returns>可由调用方独立释放的 Bitmap。</returns>
     public static Bitmap BytesToBitmap(byte[] imageBytes)
     {
-        if (imageBytes is null || imageBytes.Length == 0)
+        if (imageBytes == null || imageBytes.Length == 0)
         {
             throw new ArgumentException("imageBytes cannot be empty.", nameof(imageBytes));
         }
@@ -516,7 +517,7 @@ public static class ImageConversionTools
     /// <param name="parameterName">参数名。</param>
     public static void ValidateBgr24Bytes(byte[] bgr24Bytes, int width, int height, string parameterName)
     {
-        if (bgr24Bytes is null || bgr24Bytes.Length == 0)
+        if (bgr24Bytes == null || bgr24Bytes.Length == 0)
         {
             throw new ArgumentException($"{parameterName} cannot be empty.", parameterName);
         }
@@ -552,13 +553,18 @@ public static class ImageConversionTools
     {
         var normalizedPath = RequireText(path, nameof(path));
         var extension = Path.GetExtension(normalizedPath).ToLowerInvariant();
-        return extension switch
+        switch (extension)
         {
-            ".jpg" or ".jpeg" => ImageFileFormat.Jpeg,
-            ".png" => ImageFileFormat.Png,
-            ".bmp" => ImageFileFormat.Bmp,
-            _ => throw new NotSupportedException($"Unsupported image format extension: {extension}")
-        };
+            case ".jpg":
+            case ".jpeg":
+                return ImageFileFormat.Jpeg;
+            case ".png":
+                return ImageFileFormat.Png;
+            case ".bmp":
+                return ImageFileFormat.Bmp;
+            default:
+                throw new NotSupportedException($"Unsupported image format extension: {extension}");
+        }
     }
 
     /// <summary>
@@ -763,4 +769,5 @@ public static class ImageConversionTools
 
         return value.Trim();
     }
+}
 }

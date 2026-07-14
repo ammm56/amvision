@@ -1,3 +1,4 @@
+using Amvision.Workflows;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -5,8 +6,8 @@ using System.Linq;
 using System.Text.Json;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Tools;
-
+namespace Amvision.Workflows.Console.Tools
+{
 /// <summary>
 /// 从 Config/config_*.json 读取全部现场配置，并构建 runtime / TriggerSource / model deployment 配置索引。
 /// </summary>
@@ -150,7 +151,7 @@ internal static class WorkflowConfigLoader
         foreach (var file in files)
         {
             var config = LoadFile(file);
-            if (config.Runtime is not null)
+            if (config.Runtime != null)
             {
                 var invoke = config.Invoke ?? new InvokeConfig();
                 var runtime = new ConfiguredRuntime(config.Backend, config.Runtime, invoke, file);
@@ -405,10 +406,11 @@ internal static class WorkflowConfigLoader
         yield return Path.Combine(Environment.CurrentDirectory, "Config");
 
         var directory = new DirectoryInfo(baseDirectory);
-        while (directory is not null)
+        while (directory != null)
         {
             yield return Path.Combine(directory.FullName, "Config");
             directory = directory.Parent;
         }
     }
+}
 }

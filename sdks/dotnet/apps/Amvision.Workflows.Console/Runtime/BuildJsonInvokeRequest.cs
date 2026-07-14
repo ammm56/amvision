@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// 构建普通 JSON runtime invoke 请求。
 /// </summary>
@@ -29,4 +30,5 @@ internal sealed partial class WorkflowRuntimeOperations
         request.ExecutionMetadata["request_id"] = $"request-{Guid.NewGuid():N}";
         return request;
     }
+}
 }

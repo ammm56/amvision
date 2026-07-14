@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.CSharp.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{E0ED3206-50D5-4600-BA98-4418A496ABF4}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Amvision.Workflows.Console</RootNamespace>
+    <AssemblyName>Amvision.Workflows.Console</AssemblyName>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\vs2019-net461\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\vs2019-net461\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="GlobalUsings.cs" />
+    <Compile Include="Model\BackendConfig.cs" />
+    <Compile Include="Model\ConfiguredModelDeployment.cs" />
+    <Compile Include="Model\ConfiguredRuntime.cs" />
+    <Compile Include="Model\ConfiguredTriggerSource.cs" />
+    <Compile Include="Model\ConfigValidation.cs" />
+    <Compile Include="Model\InvokeConfig.cs" />
+    <Compile Include="Model\ModelDeploymentConfig.cs" />
+    <Compile Include="Model\RuntimeFlowCheckResult.cs" />
+    <Compile Include="Model\TriggerSourceConfig.cs" />
+    <Compile Include="Model\TriggerSourceZeroMqConfig.cs" />
+    <Compile Include="Model\WorkflowAppConfigFile.cs" />
+    <Compile Include="Model\WorkflowConfigurationCatalog.cs" />
+    <Compile Include="Model\WorkflowRuntimeConfig.cs" />
+    <Compile Include="ModelDeployment\BuildModelDeploymentInferenceRequest.cs" />
+    <Compile Include="ModelDeployment\GetModelDeploymentRuntimeHealthAsync.cs" />
+    <Compile Include="ModelDeployment\GetModelDeploymentRuntimeStatusAsync.cs" />
+    <Compile Include="ModelDeployment\GetModelInferenceTaskAsync.cs" />
+    <Compile Include="ModelDeployment\GetModelInferenceTaskResultAsync.cs" />
+    <Compile Include="ModelDeployment\InvokeConfiguredModelDeploymentAsync.cs" />
+    <Compile Include="ModelDeployment\InvokeModelDeploymentWithImageBase64Async.cs" />
+    <Compile Include="ModelDeployment\InvokeModelDeploymentWithImageBytesAsync.cs" />
+    <Compile Include="ModelDeployment\InvokeModelDeploymentWithImageFromFileAsync.cs" />
+    <Compile Include="ModelDeployment\InvokeModelDeploymentWithInputFileIdAsync.cs" />
+    <Compile Include="ModelDeployment\InvokeModelDeploymentWithInputUriAsync.cs" />
+    <Compile Include="ModelDeployment\ModelDeploymentOperations.cs" />
+    <Compile Include="ModelDeployment\ResetModelDeploymentRuntimeAsync.cs" />
+    <Compile Include="ModelDeployment\RunConfiguredModelDeploymentAsync.cs" />
+    <Compile Include="ModelDeployment\RunModelDeploymentWithImageBase64Async.cs" />
+    <Compile Include="ModelDeployment\RunModelDeploymentWithImageBytesAsync.cs" />
+    <Compile Include="ModelDeployment\RunModelDeploymentWithImageFromFileAsync.cs" />
+    <Compile Include="ModelDeployment\RunModelDeploymentWithInputFileIdAsync.cs" />
+    <Compile Include="ModelDeployment\RunModelDeploymentWithInputUriAsync.cs" />
+    <Compile Include="ModelDeployment\StartModelDeploymentRuntimeAsync.cs" />
+    <Compile Include="ModelDeployment\StopModelDeploymentRuntimeAsync.cs" />
+    <Compile Include="ModelDeployment\WarmupModelDeploymentRuntimeAsync.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Runtime\BuildImageInvokeRequest.cs" />
+    <Compile Include="Runtime\BuildJsonInvokeRequest.cs" />
+    <Compile Include="Runtime\BuildWorkflowRunRequest.cs" />
+    <Compile Include="Runtime\CancelWorkflowRunAsync.cs" />
+    <Compile Include="Runtime\CheckRuntimeFlowAsync.cs" />
+    <Compile Include="Runtime\GetRuntimeAsync.cs" />
+    <Compile Include="Runtime\GetRuntimeEventsAsync.cs" />
+    <Compile Include="Runtime\GetRuntimeHealthAsync.cs" />
+    <Compile Include="Runtime\GetWorkflowRunAsync.cs" />
+    <Compile Include="Runtime\GetWorkflowRunEventsAsync.cs" />
+    <Compile Include="Runtime\InvokeRuntimeAppResultAsync.cs" />
+    <Compile Include="Runtime\ListProjectRuntimesAsync.cs" />
+    <Compile Include="Runtime\ListRuntimeInstancesAsync.cs" />
+    <Compile Include="Runtime\RestartRuntimeAsync.cs" />
+    <Compile Include="Runtime\RunRuntimeAsync.cs" />
+    <Compile Include="Runtime\StartRuntimeAsync.cs" />
+    <Compile Include="Runtime\StopRuntimeAsync.cs" />
+    <Compile Include="Runtime\WorkflowRuntimeOperations.cs" />
+    <Compile Include="Tools\Bgr24ImageFrame.cs" />
+    <Compile Include="Tools\ConfiguredPathResolver.cs" />
+    <Compile Include="Tools\ImageConversionTools.cs" />
+    <Compile Include="Tools\WorkflowConfigLoader.cs" />
+    <Compile Include="Tools\WorkflowConfigStore.cs" />
+    <Compile Include="TriggerSource\DisableTriggerSourceAsync.cs" />
+    <Compile Include="TriggerSource\EnableTriggerSourceAsync.cs" />
+    <Compile Include="TriggerSource\GetTriggerSourceAsync.cs" />
+    <Compile Include="TriggerSource\GetTriggerSourceHealthAsync.cs" />
+    <Compile Include="TriggerSource\ListTriggerSourcesAsync.cs" />
+    <Compile Include="TriggerSource\WorkflowTriggerSourceOperations.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeBgr24Async.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeConfiguredImageAsync.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeEventAsync.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeImageBase64Async.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeImageBytesAsync.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\InvokeImageFromFileAsync.cs" />
+    <Compile Include="TriggerSource\ZeroMQ\ZeroMqTriggerOperations.cs" />
+    <Compile Include="WindowsPlatformSupport.cs" />
+    <Compile Include="WorkflowOperationRunner.cs" />
+    <Compile Include="WorkflowOperationRunner.ModelDeployment.cs" />
+    <Compile Include="WorkflowOperationRunner.System.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Amvision.Workflows\Amvision.Workflows.vs2019.net461.csproj">
+      <Project>{9E1D83B4-836C-47E3-B23C-F1D35CC4B461}</Project>
+      <Name>Amvision.Workflows.vs2019.net461</Name>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="System.Text.Json" Version="6.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Config\config_*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\Img\qrcode50.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="README.md" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

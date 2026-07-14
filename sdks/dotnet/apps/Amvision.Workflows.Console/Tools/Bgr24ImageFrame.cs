@@ -1,5 +1,7 @@
-namespace Amvision.Workflows.Console.Tools;
-
+using System;
+using Amvision.Workflows;
+namespace Amvision.Workflows.Console.Tools
+{
 /// <summary>
 /// 表示一帧连续 HWC BGR24 图片数据。
 /// </summary>
@@ -32,4 +34,5 @@ public sealed class Bgr24ImageFrame
     /// 图片高度。
     /// </summary>
     public int Height { get; }
+}
 }

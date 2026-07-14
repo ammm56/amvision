@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ;
-
+namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ
+{
 /// <summary>
 /// ZeroMQ 图片文件触发操作。
 /// </summary>
@@ -33,4 +35,5 @@ internal sealed partial class ZeroMqTriggerOperations
         var result = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
         return result;
     }
+}
 }

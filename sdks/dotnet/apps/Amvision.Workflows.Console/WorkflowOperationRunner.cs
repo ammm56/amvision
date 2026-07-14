@@ -11,8 +11,8 @@ using Amvision.Workflows.Console.TriggerSource;
 using Amvision.Workflows.Console.TriggerSource.ZeroMQ;
 using Amvision.Workflows.Console.Tools;
 
-namespace Amvision.Workflows.Console;
-
+namespace Amvision.Workflows.Console
+{
 /// <summary>
 /// 面向现场程序的 Workflow 调用入口，把底层 SDK 和配置读取再次封装为可直接调用的方法。
 /// </summary>
@@ -679,4 +679,5 @@ public sealed partial class WorkflowOperationRunner : IDisposable
     {
         return catalog.GetModelDeployment(modelDeploymentName);
     }
+}
 }

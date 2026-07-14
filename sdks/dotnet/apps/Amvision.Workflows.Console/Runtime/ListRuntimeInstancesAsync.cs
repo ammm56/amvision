@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// WorkflowAppRuntime worker instance 列表读取操作。
 /// </summary>
@@ -26,4 +28,5 @@ internal sealed partial class WorkflowRuntimeOperations
 
         return instances;
     }
+}
 }

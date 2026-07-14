@@ -1,7 +1,9 @@
+using System;
+using Amvision.Workflows;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// 构建异步 WorkflowRun 提交请求。
 /// </summary>
@@ -21,4 +23,5 @@ internal sealed partial class WorkflowRuntimeOperations
             ? BuildImageInvokeRequest(configuredRuntime, scenario).ToWorkflowRuntimeInvokeRequest()
             : BuildJsonInvokeRequest(configuredRuntime, scenario);
     }
+}
 }

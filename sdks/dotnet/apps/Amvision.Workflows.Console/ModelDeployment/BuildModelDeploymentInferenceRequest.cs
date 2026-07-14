@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.IO;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 构建模型 deployment 推理请求。
 /// </summary>
@@ -26,20 +28,20 @@ internal sealed partial class ModelDeploymentOperations
         var defaultInputUri = ConfigValidation.NormalizeOptional(modelDeployment.DefaultInputUri);
         var defaultInputFileId = ConfigValidation.NormalizeOptional(modelDeployment.DefaultInputFileId);
         var inputCount = 0;
-        inputCount += defaultImagePath is null ? 0 : 1;
-        inputCount += defaultInputUri is null ? 0 : 1;
-        inputCount += defaultInputFileId is null ? 0 : 1;
+        inputCount += defaultImagePath == null ? 0 : 1;
+        inputCount += defaultInputUri == null ? 0 : 1;
+        inputCount += defaultInputFileId == null ? 0 : 1;
         if (inputCount != 1)
         {
             throw new InvalidOperationException($"{modelDeployment.Name} must configure exactly one of default_image_path, default_input_uri or default_input_file_id before using configured input.");
         }
 
-        if (defaultImagePath is not null)
+        if (defaultImagePath != null)
         {
             return uploadCallback(BuildUploadRequestFromFile(configuredModelDeployment, defaultImagePath, null));
         }
 
-        var request = defaultInputUri is not null
+        var request = defaultInputUri != null
             ? BuildJsonRequestFromInputUri(configuredModelDeployment, defaultInputUri)
             : BuildJsonRequestFromInputFileId(configuredModelDeployment, defaultInputFileId!);
         return jsonCallback(request);
@@ -166,4 +168,5 @@ internal sealed partial class ModelDeploymentOperations
         request.ReturnPreviewImageBase64 = modelDeployment.ReturnPreviewImageBase64;
         return request;
     }
+}
 }

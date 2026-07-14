@@ -1,10 +1,11 @@
+using Amvision.Workflows;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 控制台程序启动后常驻内存的配置目录索引。
 /// </summary>
@@ -115,4 +116,5 @@ internal sealed class WorkflowConfigurationCatalog
         var knownKeys = keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToArray();
         return knownKeys.Length == 0 ? "<none>" : string.Join(", ", knownKeys);
     }
+}
 }

@@ -1,11 +1,12 @@
+using Amvision.Workflows;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using Amvision.Workflows.Console.Model;
 using Amvision.Workflows.Console.Tools;
 
-namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ;
-
+namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ
+{
 /// <summary>
 /// ZeroMQ TriggerSource 协议调用操作集合。
 /// </summary>
@@ -14,7 +15,7 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// <summary>
     /// ZeroMQ client 缓存锁，避免并发创建同一个 TriggerSource client。
     /// </summary>
-    private readonly object clientSyncRoot = new();
+    private readonly object clientSyncRoot = new object();
 
     /// <summary>
     /// runtime 和 TriggerSource 配置索引。
@@ -25,7 +26,7 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// 按 TriggerSource key 复用的 ZeroMQ SDK client。
     /// </summary>
     private readonly Dictionary<string, AmvisionTriggerClient> clients =
-        new(StringComparer.OrdinalIgnoreCase);
+        new Dictionary<string, AmvisionTriggerClient>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 标记当前操作对象是否已经释放。
@@ -215,6 +216,7 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// <returns>纯事件请求。</returns>
     private static TriggerEventRequest BuildEventRequest(IDictionary<string, object?>? payload)
     {
-        return payload is null ? TriggerEventRequest.Empty() : TriggerEventRequest.FromPayload(payload);
+        return payload == null ? TriggerEventRequest.Empty() : TriggerEventRequest.FromPayload(payload);
     }
+}
 }

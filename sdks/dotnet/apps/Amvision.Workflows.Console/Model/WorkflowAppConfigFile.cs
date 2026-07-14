@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 单个 config_*.json 文件的完整配置模型。
 /// </summary>
@@ -45,7 +47,7 @@ internal sealed class WorkflowAppConfigFile
     public void Validate(string sourceFile)
     {
         Backend.Validate($"{sourceFile}.backend");
-        if (Runtime is not null)
+        if (Runtime != null)
         {
             Runtime.Validate($"{sourceFile}.runtime");
             (Invoke ?? new InvokeConfig()).Validate($"{sourceFile}.invoke");
@@ -54,12 +56,12 @@ internal sealed class WorkflowAppConfigFile
         {
             throw new InvalidOperationException($"{sourceFile}.runtime is required when trigger_sources is not empty.");
         }
-        else if (Invoke is not null)
+        else if (Invoke != null)
         {
             throw new InvalidOperationException($"{sourceFile}.invoke requires runtime.");
         }
 
-        if (Runtime is null && ModelDeployments.Count == 0)
+        if (Runtime == null && ModelDeployments.Count == 0)
         {
             throw new InvalidOperationException($"{sourceFile} must contain runtime or model_deployments.");
         }
@@ -74,4 +76,5 @@ internal sealed class WorkflowAppConfigFile
             ModelDeployments[index].Validate($"{sourceFile}.model_deployments[{index}]");
         }
     }
+}
 }

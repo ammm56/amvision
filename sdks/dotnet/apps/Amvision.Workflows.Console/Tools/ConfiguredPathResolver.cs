@@ -1,9 +1,10 @@
+using Amvision.Workflows;
 using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace Amvision.Workflows.Console.Tools;
-
+namespace Amvision.Workflows.Console.Tools
+{
 /// <summary>
 /// 解析 config_*.json 和代码入参中的本地文件路径，统一处理开发态和 bin 输出目录。
 /// </summary>
@@ -92,7 +93,7 @@ internal static class ConfiguredPathResolver
             if (!string.IsNullOrWhiteSpace(sourceDirectory))
             {
                 var parentDirectory = Directory.GetParent(sourceDirectory);
-                if (parentDirectory is not null)
+                if (parentDirectory != null)
                 {
                     yield return parentDirectory.FullName;
                 }
@@ -117,4 +118,5 @@ internal static class ConfiguredPathResolver
 
         return value.Trim();
     }
+}
 }

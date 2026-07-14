@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 后端 HTTP API 连接配置，对应每个 config_*.json 中的 backend 节点。
 /// </summary>
@@ -46,4 +47,5 @@ internal sealed class BackendConfig
             throw new InvalidOperationException($"{path}.http_timeout_seconds must be greater than zero.");
         }
     }
+}
 }

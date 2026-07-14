@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 使用磁盘图片执行模型同步推理。
 /// </summary>
@@ -30,4 +32,5 @@ internal sealed partial class ModelDeploymentOperations
             BuildUploadRequestFromFile(configuredModelDeployment, imagePath, mediaType),
             cancellationToken);
     }
+}
 }

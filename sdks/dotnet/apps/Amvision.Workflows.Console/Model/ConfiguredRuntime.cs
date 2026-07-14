@@ -1,5 +1,7 @@
-namespace Amvision.Workflows.Console.Model;
-
+using System;
+using Amvision.Workflows;
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 已展开后的 runtime 配置项，合并 backend、runtime 和 invoke 信息。
 /// </summary>
@@ -38,4 +40,5 @@ internal sealed class ConfiguredRuntime
     /// 当前配置来源文件，用于解析相对路径和定位配置错误。
     /// </summary>
     public string SourceFile { get; }
+}
 }

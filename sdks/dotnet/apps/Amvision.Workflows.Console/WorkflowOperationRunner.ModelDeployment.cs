@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console;
-
+namespace Amvision.Workflows.Console
+{
 /// <summary>
 /// WorkflowOperationRunner 中面向模型 DeploymentInstance 的调用入口。
 /// </summary>
@@ -368,4 +370,5 @@ public sealed partial class WorkflowOperationRunner
             inferenceTaskId,
             cancellationToken);
     }
+}
 }

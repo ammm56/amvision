@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 使用配置默认输入执行模型同步推理。
 /// </summary>
@@ -34,4 +36,5 @@ internal sealed partial class ModelDeploymentOperations
                 uploadRequest,
                 cancellationToken));
     }
+}
 }

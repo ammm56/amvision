@@ -1,7 +1,9 @@
+using System;
+using Amvision.Workflows;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 已存在模型 DeploymentInstance 的调用配置，对应 model_deployments[] 节点。
 /// </summary>
@@ -119,7 +121,7 @@ internal sealed class ModelDeploymentConfig
         ValidateThreshold(ScoreThreshold, $"{path}.score_threshold");
         ValidateThreshold(MaskThreshold, $"{path}.mask_threshold");
         ValidateThreshold(KeypointConfidenceThreshold, $"{path}.keypoint_confidence_threshold");
-        if (TopK is not null && TopK.Value <= 0)
+        if (TopK != null && TopK.Value <= 0)
         {
             throw new InvalidOperationException($"{path}.top_k must be greater than zero.");
         }
@@ -132,9 +134,10 @@ internal sealed class ModelDeploymentConfig
     /// <param name="path">配置字段路径。</param>
     private static void ValidateThreshold(double? value, string path)
     {
-        if (value is not null && (value.Value < 0 || value.Value > 1))
+        if (value != null && (value.Value < 0 || value.Value > 1))
         {
             throw new InvalidOperationException($"{path} must be between 0 and 1.");
         }
     }
+}
 }

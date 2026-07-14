@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// WorkflowAppRuntime invoke 和 WorkflowRun 提交时使用的请求配置。
 /// </summary>
@@ -87,4 +88,5 @@ internal sealed class InvokeConfig
             throw new InvalidOperationException($"{path}.event_preview_count must be greater than zero.");
         }
     }
+}
 }

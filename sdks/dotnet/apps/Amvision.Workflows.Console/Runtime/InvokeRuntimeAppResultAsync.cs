@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// WorkflowAppRuntime 同步调用操作。
 /// </summary>
@@ -107,4 +109,5 @@ internal sealed partial class WorkflowRuntimeOperations
                 configuredRuntime.Invoke.SyncScenario),
             cancellationToken).ConfigureAwait(false);
     }
+}
 }

@@ -1,11 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// WorkflowRun 事件读取操作。
 /// </summary>
@@ -29,4 +30,5 @@ internal sealed partial class WorkflowRuntimeOperations
             limit: configuredRuntime.Invoke.EventLimit,
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
+}
 }

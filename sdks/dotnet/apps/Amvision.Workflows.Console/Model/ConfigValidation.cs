@@ -1,7 +1,8 @@
+using Amvision.Workflows;
 using System;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 配置模型共用的校验和字符串归一化工具。
 /// </summary>
@@ -30,7 +31,7 @@ internal static class ConfigValidation
     /// <returns>空白字符串返回 null，否则返回去除首尾空白后的值。</returns>
     public static string? NormalizeOptional(string? value)
     {
-        if (value is null)
+        if (value == null)
         {
             return null;
         }
@@ -38,4 +39,5 @@ internal static class ConfigValidation
         var normalized = value.Trim();
         return normalized.Length == 0 ? null : normalized;
     }
+}
 }

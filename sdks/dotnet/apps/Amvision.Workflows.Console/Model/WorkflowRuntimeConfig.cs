@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 已存在 WorkflowAppRuntime 的调用和生命周期控制配置。
 /// </summary>
@@ -29,4 +30,5 @@ internal sealed class WorkflowRuntimeConfig
         Name = ConfigValidation.RequireText(Name, $"{path}.name");
         WorkflowRuntimeId = ConfigValidation.RequireText(WorkflowRuntimeId, $"{path}.workflow_runtime_id");
     }
+}
 }

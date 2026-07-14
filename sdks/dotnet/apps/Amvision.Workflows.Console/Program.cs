@@ -1,11 +1,12 @@
+using Amvision.Workflows;
 using Amvision.Workflows.Console.Tools;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console;
-
+namespace Amvision.Workflows.Console
+{
 /// <summary>
 /// 控制台程序入口，负责加载配置并执行代码中手动指定的调用方法。
 /// </summary>
@@ -196,4 +197,5 @@ internal static class Program
     {
         return ImageConversionTools.ImageFileToBgr24(ImagePath);
     }
+}
 }

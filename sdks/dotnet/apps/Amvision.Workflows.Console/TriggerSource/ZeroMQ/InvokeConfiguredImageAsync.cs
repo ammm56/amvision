@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ;
-
+namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ
+{
 /// <summary>
 /// 使用配置中的图片路径执行 ZeroMQ 图片触发。
 /// </summary>
@@ -21,11 +23,12 @@ internal sealed partial class ZeroMqTriggerOperations
     {
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
-        if (imagePath is null)
+        if (imagePath == null)
         {
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
         return InvokeImageFromFileAsync(triggerSourceName, imagePath, mediaType: null, cancellationToken);
     }
+}
 }

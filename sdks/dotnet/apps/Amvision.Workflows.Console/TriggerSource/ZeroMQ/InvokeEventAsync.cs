@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ;
-
+namespace Amvision.Workflows.Console.TriggerSource.ZeroMQ
+{
 /// <summary>
 /// ZeroMQ 纯事件触发操作。
 /// </summary>
@@ -28,4 +30,5 @@ internal sealed partial class ZeroMqTriggerOperations
         var result = await client.InvokeEventAsync(request, cancellationToken).ConfigureAwait(false);
         return result;
     }
+}
 }

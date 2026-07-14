@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console;
-
+namespace Amvision.Workflows.Console
+{
 /// <summary>
 /// WorkflowOperationRunner 中面向后端统一配置的调用入口。
 /// </summary>
@@ -18,4 +20,5 @@ public sealed partial class WorkflowOperationRunner
     {
         return workflowClient.GetSystemConfigResponseAsync(cancellationToken);
     }
+}
 }

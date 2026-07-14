@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// WorkflowAppRuntime 常用调用链检查流程。
 /// </summary>
@@ -39,4 +41,5 @@ internal sealed partial class WorkflowRuntimeOperations
             RuntimeEvents = runtimeEvents
         };
     }
+}
 }

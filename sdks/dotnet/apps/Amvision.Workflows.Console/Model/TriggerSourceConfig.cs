@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 已存在 TriggerSource 的控制和协议调用配置，对应 trigger_sources[] 节点。
 /// </summary>
@@ -36,4 +37,5 @@ internal sealed class TriggerSourceConfig
         TriggerSourceId = ConfigValidation.RequireText(TriggerSourceId, $"{path}.trigger_source_id");
         ZeroMq.Validate($"{path}.zero_mq");
     }
+}
 }

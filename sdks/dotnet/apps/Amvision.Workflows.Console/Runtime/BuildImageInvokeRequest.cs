@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.IO;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.Runtime;
-
+namespace Amvision.Workflows.Console.Runtime
+{
 /// <summary>
 /// 构建 HTTP image-base64 runtime invoke 请求。
 /// </summary>
@@ -115,4 +117,5 @@ internal sealed partial class WorkflowRuntimeOperations
         request.ExecutionMetadata["request_id"] = $"request-{System.Guid.NewGuid():N}";
         return request;
     }
+}
 }

@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 使用 base64 图片创建模型异步推理任务。
 /// </summary>
@@ -27,4 +29,5 @@ internal sealed partial class ModelDeploymentOperations
             BuildJsonRequestFromBase64(configuredModelDeployment, imageBase64),
             cancellationToken);
     }
+}
 }

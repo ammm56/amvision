@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using Amvision.Workflows.Console.Model;
 
-namespace Amvision.Workflows.Console.TriggerSource;
-
+namespace Amvision.Workflows.Console.TriggerSource
+{
 /// <summary>
 /// TriggerSource HTTP 管理操作集合。
 /// </summary>
@@ -38,4 +39,5 @@ internal sealed partial class WorkflowTriggerSourceOperations
     {
         return catalog.GetTriggerSource(triggerSourceName);
     }
+}
 }

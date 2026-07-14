@@ -1,8 +1,9 @@
+using Amvision.Workflows;
 using System;
 using System.Text.Json.Serialization;
 
-namespace Amvision.Workflows.Console.Model;
-
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// ZeroMQ TriggerSource 的 transport 和客户端调用配置。
 /// </summary>
@@ -50,4 +51,5 @@ internal sealed class TriggerSourceZeroMqConfig
             throw new InvalidOperationException($"{path}.max_image_bytes must be greater than zero.");
         }
     }
+}
 }

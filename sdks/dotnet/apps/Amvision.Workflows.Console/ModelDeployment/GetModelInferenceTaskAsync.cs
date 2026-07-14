@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 模型异步推理任务详情读取操作。
 /// </summary>
@@ -29,4 +31,5 @@ internal sealed partial class ModelDeploymentOperations
             includeEvents,
             cancellationToken);
     }
+}
 }

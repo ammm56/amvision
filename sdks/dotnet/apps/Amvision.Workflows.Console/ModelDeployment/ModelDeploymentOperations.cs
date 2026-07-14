@@ -1,9 +1,11 @@
+using System;
+using Amvision.Workflows;
 using System.IO;
 using Amvision.Workflows.Console.Model;
 using Amvision.Workflows.Console.Tools;
 
-namespace Amvision.Workflows.Console.ModelDeployment;
-
+namespace Amvision.Workflows.Console.ModelDeployment
+{
 /// <summary>
 /// 模型 DeploymentInstance 控制和推理调用操作集合。
 /// </summary>
@@ -92,4 +94,5 @@ internal sealed partial class ModelDeploymentOperations
                 return "image/octet-stream";
         }
     }
+}
 }

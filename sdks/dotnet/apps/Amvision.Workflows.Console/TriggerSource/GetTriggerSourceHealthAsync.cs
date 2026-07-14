@@ -1,8 +1,10 @@
+using System;
+using Amvision.Workflows;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Amvision.Workflows.Console.TriggerSource;
-
+namespace Amvision.Workflows.Console.TriggerSource
+{
 /// <summary>
 /// TriggerSource health 查询操作。
 /// </summary>
@@ -25,4 +27,5 @@ internal sealed partial class WorkflowTriggerSourceOperations
 
         return response;
     }
+}
 }

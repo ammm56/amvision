@@ -1,5 +1,7 @@
-namespace Amvision.Workflows.Console.Model;
-
+using System;
+using Amvision.Workflows;
+namespace Amvision.Workflows.Console.Model
+{
 /// <summary>
 /// 已展开后的 TriggerSource 配置项，绑定对应 backend、runtime 和 TriggerSource。
 /// </summary>
@@ -39,4 +41,5 @@ internal sealed class ConfiguredTriggerSource
     /// 当前配置来源文件，用于解析相对路径和定位配置错误。
     /// </summary>
     public string SourceFile { get; }
+}
 }
