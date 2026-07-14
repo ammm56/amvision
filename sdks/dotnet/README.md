@@ -52,6 +52,10 @@ sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.ne
 sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.net472.sln
 ```
 
+VS2019 单框架项目不使用 NuGet `PackageReference` 拉取运行依赖，而是引用 `sdks/dotnet/libs/{net461|net472}` 中随 SDK 提供的 DLL。`Microsoft.NETFramework.ReferenceAssemblies.net461/net472` 也不再作为 NuGet 依赖；开发机需要安装对应 .NET Framework Developer Pack / Targeting Pack。这样第三方在离线工控机或隔离开发网中打开 solution 时，不会因为 NuGet 源、NU1900 漏洞数据源访问或 .NET SDK 10/MSBuild 版本不匹配而失败。
+
+`System.Text.Json` 在 VS2019 项目中固定为本地 DLL 6.0.10。当前 SDK 公开 API 已使用 `JsonElement` 等类型，暂不切换到 `Newtonsoft.Json`，避免第三方调用代码产生破坏性变化。
+
 `sdks/dotnet/tests` 默认只运行 SDK 协议、HTTP URL/body/query、schema fixture 和 transport 逻辑测试。真实 backend-service smoke 测试通过环境变量启用：
 
 ```powershell

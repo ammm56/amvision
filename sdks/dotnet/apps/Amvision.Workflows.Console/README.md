@@ -101,6 +101,8 @@ sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.ne
 
 这两个 solution 会引用对应框架的 `Amvision.Workflows.vs2019.net461` 或 `Amvision.Workflows.vs2019.net472` SDK 项目，适合 VS2019、老上位机项目和只使用 .NET Framework 的现场环境。VS2022/VS2026 可以继续使用多目标框架项目或这些固定框架 solution。
 
+VS2019 单框架项目引用 `sdks/dotnet/libs/{net461|net472}` 中的本地 DLL，不依赖 NuGet restore。开发机仍需要安装 .NET Framework 4.6.1 或 4.7.2 Developer Pack / Targeting Pack；项目不会再通过 `Microsoft.NETFramework.ReferenceAssemblies.*` 包下载 targeting assemblies。
+
 ## 运行和调用
 
 ```powershell

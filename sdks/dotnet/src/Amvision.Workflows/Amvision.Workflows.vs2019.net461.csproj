@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <ResolveNuGetPackages>false</ResolveNuGetPackages>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.CSharp.props')" />
 
   <PropertyGroup>
@@ -41,6 +47,66 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="AsyncIO">
+      <HintPath>..\..\libs\net461\AsyncIO.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="Microsoft.Bcl.AsyncInterfaces">
+      <HintPath>..\..\libs\net461\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="NaCl">
+      <HintPath>..\..\libs\net461\NaCl.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="NetMQ">
+      <HintPath>..\..\libs\net461\NetMQ.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Buffers">
+      <HintPath>..\..\libs\net461\System.Buffers.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>..\..\libs\net461\System.Memory.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Numerics.Vectors">
+      <HintPath>..\..\libs\net461\System.Numerics.Vectors.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe">
+      <HintPath>..\..\libs\net461\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Text.Encodings.Web">
+      <HintPath>..\..\libs\net461\System.Text.Encodings.Web.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Text.Json">
+      <HintPath>..\..\libs\net461\System.Text.Json.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Threading.Tasks.Extensions">
+      <HintPath>..\..\libs\net461\System.Threading.Tasks.Extensions.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.ValueTuple">
+      <HintPath>..\..\libs\net461\System.ValueTuple.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -85,14 +151,6 @@
     <Compile Include="ZeroMq\TriggerResult.cs" />
     <Compile Include="ZeroMq\ZeroMqTriggerEnvelope.cs" />
     <Compile Include="ZeroMq\ZeroMqTriggerError.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net461" Version="1.0.3">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="NetMQ" Version="4.0.1.10" />
-    <PackageReference Include="System.Text.Json" Version="6.0.10" />
   </ItemGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
