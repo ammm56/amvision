@@ -133,6 +133,31 @@ class SqlAlchemyWorkflowTriggerSourceRepository:
             ) from error
         return tuple(self._trigger_source_to_domain(record) for record in records)
 
+    def list_trigger_sources_by_kind(
+        self, trigger_kind: str
+    ) -> tuple[WorkflowTriggerSource, ...]:
+        """按 TriggerSource 类型列出资源。"""
+
+        statement = (
+            select(WorkflowTriggerSourceRecord)
+            .where(WorkflowTriggerSourceRecord.trigger_kind == trigger_kind)
+            .order_by(
+                WorkflowTriggerSourceRecord.created_at.asc(),
+                WorkflowTriggerSourceRecord.trigger_source_id.asc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按类型列出 WorkflowTriggerSource 失败",
+                details={
+                    "trigger_kind": trigger_kind,
+                    "error_type": error.__class__.__name__,
+                },
+            ) from error
+        return tuple(self._trigger_source_to_domain(record) for record in records)
+
     def delete_trigger_source(self, trigger_source_id: str) -> bool:
         """按 id 删除一条 WorkflowTriggerSource。
 

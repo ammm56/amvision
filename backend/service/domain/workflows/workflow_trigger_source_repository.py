@@ -36,6 +36,13 @@ class WorkflowTriggerSourceRepository(Protocol):
 
         ...
 
+    def list_trigger_sources_by_kind(
+        self, trigger_kind: str
+    ) -> tuple[WorkflowTriggerSource, ...]:
+        """按 TriggerSource 类型列出资源。"""
+
+        ...
+
     def delete_trigger_source(self, trigger_source_id: str) -> bool:
         """按 id 删除一条 WorkflowTriggerSource。
 

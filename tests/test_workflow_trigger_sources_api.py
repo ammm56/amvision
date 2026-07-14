@@ -222,6 +222,26 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                     },
                 },
             )
+            create_duplicate_endpoint_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "zeromq-trigger-source-2",
+                    "project_id": "project-1",
+                    "display_name": "ZeroMQ Trigger Duplicate Endpoint",
+                    "trigger_kind": "zeromq-topic",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "submit_mode": "async",
+                    "transport_config": {"bind_endpoint": bind_endpoint},
+                    "input_binding_mapping": {
+                        "request_image_ref": {"source": "payload.buffer_ref"},
+                    },
+                    "result_mapping": {
+                        "result_binding": "zeromq_reply",
+                        "result_mode": "accepted-then-query",
+                    },
+                },
+            )
             enable_response = context.client.post(
                 "/api/v1/workflows/trigger-sources/zeromq-trigger-source-1/enable",
                 headers=headers,
@@ -263,6 +283,17 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
         context.session_factory.engine.dispose()
 
     assert create_response.status_code == 201
+    assert create_duplicate_endpoint_response.status_code == 400
+    duplicate_endpoint_payload = create_duplicate_endpoint_response.json()
+    assert duplicate_endpoint_payload["error"]["code"] == "invalid_request"
+    assert (
+        duplicate_endpoint_payload["error"]["details"]["bind_endpoint"]
+        == bind_endpoint
+    )
+    assert (
+        duplicate_endpoint_payload["error"]["details"]["conflict_trigger_source_id"]
+        == "zeromq-trigger-source-1"
+    )
 
     assert enable_response.status_code == 200
     enable_payload = enable_response.json()
@@ -341,6 +372,56 @@ def test_workflow_trigger_source_api_defaults_to_sync_reply(
     assert payload["result_mode"] == "sync-reply"
     assert payload["input_binding_mapping"]["request_image_base64"]["required"] is False
     assert payload["input_binding_mapping"]["request_image_ref"]["required"] is False
+
+
+def test_workflow_trigger_source_api_starts_enabled_zeromq_on_create(
+    tmp_path: Path,
+) -> None:
+    """验证创建时启用 ZeroMQ TriggerSource 会同步启动 adapter。"""
+
+    context = create_api_test_context(
+        tmp_path,
+        database_name="workflow-trigger-source-create-enabled.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    bind_endpoint = f"inproc://workflow-trigger-create-enabled-{uuid4().hex}"
+    try:
+        with context.client:
+            _save_runtime(context.session_factory, observed_state="running")
+            create_response = context.client.post(
+                "/api/v1/workflows/trigger-sources",
+                headers=headers,
+                json={
+                    "trigger_source_id": "zeromq-trigger-source-create-enabled",
+                    "project_id": "project-1",
+                    "display_name": "ZeroMQ Trigger Create Enabled",
+                    "trigger_kind": "zeromq-topic",
+                    "workflow_runtime_id": "workflow-runtime-1",
+                    "enabled": True,
+                    "transport_config": {
+                        "bind_endpoint": bind_endpoint,
+                        "default_input_binding": "request_image_ref",
+                    },
+                    "input_binding_mapping": {
+                        "request_image_ref": {
+                            "source": "payload.request_image_ref",
+                            "required": False,
+                        },
+                    },
+                    "result_mapping": {"result_binding": "http_response"},
+                },
+            )
+    finally:
+        context.session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    payload = create_response.json()
+    assert payload["enabled"] is True
+    assert payload["desired_state"] == "running"
+    assert payload["observed_state"] == "running"
+    assert payload["health_summary"]["adapter_configured"] is True
+    assert payload["health_summary"]["adapter_running"] is True
 
 
 def test_workflow_trigger_source_api_controls_plc_register_adapter(

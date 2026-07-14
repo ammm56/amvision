@@ -743,6 +743,59 @@ function defaultSourcePath(binding: FlowApplicationBinding): string {
   return `payload.${binding.binding_id}`
 }
 
+function buildDefaultEndpoint(template: ProtocolTemplateOption): string {
+  const baseEndpoint = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
+  if (template.templateId !== 'zeromq-image-trigger') return baseEndpoint
+  return allocateZeroMqTcpEndpoint(baseEndpoint, collectUsedZeroMqBindEndpoints())
+}
+
+function collectUsedZeroMqBindEndpoints(): string[] {
+  return triggerSources.value
+    .filter((source) => source.trigger_kind === 'zeromq-topic')
+    .map((source) => source.transport_config?.bind_endpoint)
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+}
+
+function allocateZeroMqTcpEndpoint(baseEndpoint: string, usedEndpoints: string[]): string {
+  const parsedBase = parseZeroMqTcpEndpoint(baseEndpoint)
+  if (!parsedBase) return baseEndpoint
+  const usedPorts = new Set<number>()
+  for (const usedEndpoint of usedEndpoints) {
+    const parsedUsed = parseZeroMqTcpEndpoint(usedEndpoint)
+    if (!parsedUsed) continue
+    if (!zeroMqTcpHostsCanConflict(parsedBase.host, parsedUsed.host)) continue
+    usedPorts.add(parsedUsed.port)
+  }
+  let candidatePort = parsedBase.port
+  while (usedPorts.has(candidatePort) && candidatePort < 65535) {
+    candidatePort += 1
+  }
+  return `${parsedBase.prefix}${candidatePort}`
+}
+
+function parseZeroMqTcpEndpoint(endpoint: string): { prefix: string; host: string; port: number } | null {
+  const trimmedEndpoint = endpoint.trim()
+  const match = /^tcp:\/\/(.+):(\d+)$/i.exec(trimmedEndpoint)
+  if (!match) return null
+  const port = Number.parseInt(match[2], 10)
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null
+  const host = match[1].trim().toLowerCase()
+  if (!host) return null
+  return {
+    prefix: trimmedEndpoint.slice(0, trimmedEndpoint.length - match[2].length),
+    host,
+    port,
+  }
+}
+
+function zeroMqTcpHostsCanConflict(leftHost: string, rightHost: string): boolean {
+  return leftHost === rightHost || isZeroMqTcpWildcardHost(leftHost) || isZeroMqTcpWildcardHost(rightHost)
+}
+
+function isZeroMqTcpWildcardHost(host: string): boolean {
+  return host === '*' || host === '0.0.0.0' || host === '::' || host === '[::]'
+}
+
 function buildMappingRows(): void {
   mappingRows.value = appInputBindings.value.map((binding) => {
     const inferred = inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id) || binding.binding_id === inferredRequestBinding.value?.binding_id
@@ -769,7 +822,7 @@ function applyProtocolTemplateDefaults(): void {
   const templatePrefix = template.templateId === 'webhook-json' ? 'webhook' : 'zeromq'
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${template.displayName} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
-  endpoint.value = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
+  endpoint.value = buildDefaultEndpoint(template)
   syncLocalBufferPoolSelection()
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)

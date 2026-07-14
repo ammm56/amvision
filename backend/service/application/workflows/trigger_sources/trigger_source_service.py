@@ -46,6 +46,8 @@ _ACK_POLICIES = {
     "ack-after-run-finished",
 }
 _RESULT_MODES = {"sync-reply", "accepted-then-query", "async-report", "event-only"}
+_ZEROMQ_TRIGGER_KIND = "zeromq-topic"
+_ZEROMQ_BIND_ENDPOINT_KEY = "bind_endpoint"
 
 
 @dataclass(frozen=True)
@@ -150,6 +152,11 @@ class WorkflowTriggerSourceService:
                         "workflow_runtime_project_id": workflow_runtime.project_id,
                     },
                 )
+            self._validate_trigger_source_resource_binding(
+                unit_of_work=unit_of_work,
+                request=normalized_request,
+                existing_trigger_source_id=None,
+            )
 
             now = _now_isoformat()
             desired_state = "running" if normalized_request.enabled else "stopped"
@@ -188,6 +195,11 @@ class WorkflowTriggerSourceService:
             )
             unit_of_work.workflow_trigger_sources.save_trigger_source(trigger_source)
             unit_of_work.commit()
+        if normalized_request.enabled:
+            return self._start_trigger_source_if_supported(
+                trigger_source,
+                raise_on_error=True,
+            )
         return trigger_source
 
     def list_trigger_sources(
@@ -255,6 +267,32 @@ class WorkflowTriggerSourceService:
                         "observed_state": workflow_runtime.observed_state,
                     },
                 )
+            self._validate_trigger_source_resource_binding(
+                unit_of_work=unit_of_work,
+                request=WorkflowTriggerSourceCreateRequest(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    project_id=trigger_source.project_id,
+                    display_name=trigger_source.display_name,
+                    trigger_kind=trigger_source.trigger_kind,
+                    workflow_runtime_id=trigger_source.workflow_runtime_id,
+                    submit_mode=trigger_source.submit_mode,
+                    enabled=True,
+                    transport_config=dict(trigger_source.transport_config),
+                    match_rule=dict(trigger_source.match_rule),
+                    input_binding_mapping=dict(trigger_source.input_binding_mapping),
+                    result_mapping=dict(trigger_source.result_mapping),
+                    default_execution_metadata=dict(
+                        trigger_source.default_execution_metadata
+                    ),
+                    ack_policy=trigger_source.ack_policy,
+                    result_mode=trigger_source.result_mode,
+                    reply_timeout_seconds=trigger_source.reply_timeout_seconds,
+                    debounce_window_ms=trigger_source.debounce_window_ms,
+                    idempotency_key_path=trigger_source.idempotency_key_path,
+                    metadata=dict(trigger_source.metadata),
+                ),
+                existing_trigger_source_id=trigger_source.trigger_source_id,
+            )
             updated_source = replace(
                 trigger_source,
                 enabled=True,
@@ -427,6 +465,10 @@ class WorkflowTriggerSourceService:
         idempotency_key_path = _normalize_optional_str(request.idempotency_key_path)
         if not isinstance(request.transport_config or {}, dict):
             raise InvalidRequestError("transport_config 必须是对象")
+        transport_config = _normalize_transport_config_for_kind(
+            trigger_kind,
+            dict(request.transport_config or {}),
+        )
         if not isinstance(request.match_rule or {}, dict):
             raise InvalidRequestError("match_rule 必须是对象")
         if not isinstance(request.input_binding_mapping or {}, dict):
@@ -445,7 +487,7 @@ class WorkflowTriggerSourceService:
             workflow_runtime_id=workflow_runtime_id,
             submit_mode=submit_mode,
             enabled=bool(request.enabled),
-            transport_config=dict(request.transport_config or {}),
+            transport_config=transport_config,
             match_rule=dict(request.match_rule or {}),
             input_binding_mapping=dict(request.input_binding_mapping or {}),
             result_mapping=dict(request.result_mapping or {}),
@@ -639,6 +681,45 @@ class WorkflowTriggerSourceService:
         finally:
             unit_of_work.close()
 
+    def _validate_trigger_source_resource_binding(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        request: WorkflowTriggerSourceCreateRequest,
+        existing_trigger_source_id: str | None,
+    ) -> None:
+        """校验 TriggerSource 协议监听资源是否可安全占用。"""
+
+        if request.trigger_kind != _ZEROMQ_TRIGGER_KIND:
+            return
+        bind_endpoint = _read_zeromq_bind_endpoint(request.transport_config)
+        for trigger_source in (
+            unit_of_work.workflow_trigger_sources.list_trigger_sources_by_kind(
+                _ZEROMQ_TRIGGER_KIND
+            )
+        ):
+            if trigger_source.trigger_source_id == existing_trigger_source_id:
+                continue
+            existing_bind_endpoint = _read_zeromq_bind_endpoint(
+                trigger_source.transport_config
+            )
+            if not _zeromq_bind_endpoints_conflict(
+                existing_bind_endpoint,
+                bind_endpoint,
+            ):
+                continue
+            raise InvalidRequestError(
+                "ZeroMQ bind_endpoint 已被其他 TriggerSource 使用",
+                details={
+                    "bind_endpoint": bind_endpoint,
+                    "trigger_source_id": request.trigger_source_id,
+                    "conflict_trigger_source_id": trigger_source.trigger_source_id,
+                    "conflict_workflow_runtime_id": trigger_source.workflow_runtime_id,
+                    "conflict_enabled": trigger_source.enabled,
+                    "conflict_observed_state": trigger_source.observed_state,
+                },
+            )
+
 
 def _build_adapter_pending_health_summary() -> dict[str, object]:
     """构造 adapter 尚未接入时的健康摘要。"""
@@ -765,6 +846,116 @@ def _normalize_optional_str(value: str | None) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _normalize_transport_config_for_kind(
+    trigger_kind: str,
+    transport_config: dict[str, object],
+) -> dict[str, object]:
+    """按 TriggerSource 类型规范化协议配置。"""
+
+    normalized_config = dict(transport_config)
+    if trigger_kind != _ZEROMQ_TRIGGER_KIND:
+        return normalized_config
+    normalized_config[_ZEROMQ_BIND_ENDPOINT_KEY] = _read_zeromq_bind_endpoint(
+        normalized_config
+    )
+    return normalized_config
+
+
+def _read_zeromq_bind_endpoint(transport_config: dict[str, object] | None) -> str:
+    """读取并校验 ZeroMQ bind endpoint。"""
+
+    if not isinstance(transport_config, dict):
+        raise InvalidRequestError(
+            "ZeroMQ transport_config 必须是对象",
+            details={"field": "transport_config"},
+        )
+    endpoint = transport_config.get(_ZEROMQ_BIND_ENDPOINT_KEY)
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        raise InvalidRequestError(
+            "ZeroMQ bind_endpoint 不能为空",
+            details={"field": f"transport_config.{_ZEROMQ_BIND_ENDPOINT_KEY}"},
+        )
+    normalized_endpoint = endpoint.strip()
+    if "://" not in normalized_endpoint:
+        raise InvalidRequestError(
+            "ZeroMQ bind_endpoint 必须包含协议前缀",
+            details={"bind_endpoint": normalized_endpoint},
+        )
+    _validate_zeromq_bind_endpoint(normalized_endpoint)
+    return normalized_endpoint
+
+
+def _validate_zeromq_bind_endpoint(endpoint: str) -> None:
+    """校验 ZeroMQ bind endpoint 的基本格式。"""
+
+    scheme = endpoint.split("://", 1)[0].lower()
+    if scheme != "tcp":
+        return
+    parsed_endpoint = _parse_zeromq_tcp_bind_endpoint(endpoint)
+    if parsed_endpoint is None:
+        raise InvalidRequestError(
+            "ZeroMQ tcp bind_endpoint 格式必须是 tcp://host:port",
+            details={"bind_endpoint": endpoint},
+        )
+
+
+def _zeromq_bind_endpoints_conflict(left_endpoint: str, right_endpoint: str) -> bool:
+    """判断两个 ZeroMQ bind endpoint 是否会占用同一监听资源。"""
+
+    left_tcp = _parse_zeromq_tcp_bind_endpoint(left_endpoint)
+    right_tcp = _parse_zeromq_tcp_bind_endpoint(right_endpoint)
+    if left_tcp is None or right_tcp is None:
+        return left_endpoint == right_endpoint
+    left_host, left_port = left_tcp
+    right_host, right_port = right_tcp
+    if left_port != right_port:
+        return False
+    return (
+        left_host == right_host
+        or _is_zeromq_tcp_wildcard_host(left_host)
+        or _is_zeromq_tcp_wildcard_host(right_host)
+    )
+
+
+def _parse_zeromq_tcp_bind_endpoint(endpoint: str) -> tuple[str, int] | None:
+    """解析 tcp://host:port 形式的 ZeroMQ endpoint。"""
+
+    if not endpoint.lower().startswith("tcp://"):
+        return None
+    address = endpoint[6:]
+    if not address:
+        return None
+    if address.startswith("["):
+        closing_index = address.find("]")
+        if closing_index <= 1:
+            return None
+        host = address[1:closing_index].strip().lower()
+        port_text = address[closing_index + 1 :]
+        if not port_text.startswith(":"):
+            return None
+        port_text = port_text[1:]
+    else:
+        if ":" not in address:
+            return None
+        host, port_text = address.rsplit(":", 1)
+        host = host.strip().lower()
+    if not host or not port_text:
+        return None
+    try:
+        port = int(port_text)
+    except ValueError:
+        return None
+    if port <= 0 or port > 65535:
+        return None
+    return host, port
+
+
+def _is_zeromq_tcp_wildcard_host(host: str) -> bool:
+    """判断 ZeroMQ tcp bind host 是否是通配监听。"""
+
+    return host in {"*", "0.0.0.0", "::"}
 
 
 def _with_resource_updated_by(
