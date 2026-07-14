@@ -12,6 +12,11 @@ from backend.maintenance.extension_pretrained_manifests import (
     sync_extension_pretrained_manifests,
 )
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.maintenance.pycache_maintenance import (
+    REBUILD_PYCACHE_COMMAND,
+    build_pycache_request,
+    rebuild_pycache,
+)
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
     WORKFLOW_PREVIEW_RUN_STORAGE_ROOT,
@@ -22,17 +27,7 @@ from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_RUNTIME_STORAGE_ROOT,
     build_workflow_preview_run_storage_dir,
 )
-from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
-from backend.service.application.workflows.preview_run_cleanup import (
-    finalize_staged_preview_run_storage,
-    restore_staged_preview_run_storage,
-    stage_preview_run_storage_for_cleanup,
-)
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.infrastructure.object_store.object_key_layout import RUNTIME_INPUTS_STORAGE_ROOT
-from backend.service.settings import BackendServiceSettings, get_backend_service_settings
 
 
 def _load_release_manifest_artifacts_for_layout(app_root: Path) -> dict[str, object]:
@@ -80,6 +75,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "show-config",
             "validate-layout",
             "assemble-release",
+            REBUILD_PYCACHE_COMMAND,
             "sync-extension-pretrained-manifests",
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
@@ -123,6 +119,31 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
         help="cleanup-runtime-storage 使用的保留小时数",
     )
+    parser.add_argument(
+        "--pycache-root",
+        action="append",
+        default=None,
+        help=(
+            "rebuild-pycache 要处理的仓库内源码目录，可重复传入；"
+            "不传时默认处理 backend、custom_nodes、tests、scripts"
+        ),
+    )
+    parser.add_argument(
+        "--python-package",
+        action="append",
+        default=None,
+        help="rebuild-pycache 要额外处理的当前解释器依赖包名，例如 sqlalchemy；可重复传入",
+    )
+    parser.add_argument(
+        "--clean-only",
+        action="store_true",
+        help="rebuild-pycache 只删除 __pycache__，不重新编译",
+    )
+    parser.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="rebuild-pycache 只重新编译，不删除已有 __pycache__",
+    )
     return parser
 
 
@@ -136,7 +157,11 @@ def run_command(
     bundled_python_source_dir: str | None = None,
     now_iso: str | None = None,
     retention_hours: int = WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
-    backend_service_settings: BackendServiceSettings | None = None,
+    pycache_roots: list[str] | None = None,
+    python_packages: list[str] | None = None,
+    clean_only: bool = False,
+    compile_only: bool = False,
+    backend_service_settings: object | None = None,
 ) -> dict[str, object]:
     """执行指定 maintenance 命令。
 
@@ -147,6 +172,10 @@ def run_command(
     - release_root：assemble-release 输出根目录。
     - force：assemble-release 时是否允许覆盖已存在目录。
     - bundled_python_source_dir：可选的 bundled Python 来源目录，仅在需要重建时使用。
+    - pycache_roots：rebuild-pycache 要处理的源码目录。
+    - python_packages：rebuild-pycache 要处理的当前解释器依赖包名。
+    - clean_only：rebuild-pycache 是否只删除缓存。
+    - compile_only：rebuild-pycache 是否只编译缓存。
 
     返回：
     - dict[str, object]：命令执行结果。
@@ -262,6 +291,19 @@ def run_command(
             "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
+    if command == REBUILD_PYCACHE_COMMAND:
+        return rebuild_pycache(
+            build_pycache_request(
+                project_source_roots=(
+                    tuple(pycache_roots)
+                    if pycache_roots is not None and len(pycache_roots) > 0
+                    else None
+                ),
+                python_package_names=tuple(python_packages or ()),
+                clean_only=clean_only,
+                compile_only=compile_only,
+            )
+        )
     if command == "sync-extension-pretrained-manifests":
         result = sync_extension_pretrained_manifests()
         return {
@@ -286,10 +328,22 @@ def run_command(
 
 def cleanup_expired_preview_runs(
     *,
-    backend_service_settings: BackendServiceSettings | None = None,
+    backend_service_settings: object | None = None,
     now_iso: str | None = None,
 ) -> dict[str, object]:
     """按 retention_until 清理已过期的 preview run 记录和 snapshot 目录。"""
+
+    from backend.service.application.workflows.preview_run_cleanup import (
+        finalize_staged_preview_run_storage,
+        restore_staged_preview_run_storage,
+        stage_preview_run_storage_for_cleanup,
+    )
+    from backend.service.infrastructure.db.session import SessionFactory
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        LocalDatasetStorage,
+    )
+    from backend.service.settings import get_backend_service_settings
 
     service_settings = backend_service_settings or get_backend_service_settings()
     cutoff_time = _normalize_cutoff_time(now_iso)
@@ -354,7 +408,7 @@ def cleanup_expired_preview_runs(
 
 def cleanup_runtime_storage(
     *,
-    backend_service_settings: BackendServiceSettings | None = None,
+    backend_service_settings: object | None = None,
     now_iso: str | None = None,
     retention_hours: int = WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
 ) -> dict[str, object]:
@@ -371,6 +425,13 @@ def cleanup_runtime_storage(
 
     if retention_hours <= 0:
         raise ValueError("retention_hours 必须大于 0")
+
+    from backend.service.infrastructure.db.session import SessionFactory
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        LocalDatasetStorage,
+    )
+    from backend.service.settings import get_backend_service_settings
 
     preview_cleanup_payload = cleanup_expired_preview_runs(
         backend_service_settings=backend_service_settings,
@@ -471,6 +532,10 @@ def main(argv: list[str] | None = None) -> int:
         bundled_python_source_dir=args.bundled_python_source_dir,
         now_iso=args.now_iso,
         retention_hours=args.retention_hours,
+        pycache_roots=args.pycache_root,
+        python_packages=args.python_package,
+        clean_only=args.clean_only,
+        compile_only=args.compile_only,
     )
     if args.output == "text":
         print(format_text_output(payload))
