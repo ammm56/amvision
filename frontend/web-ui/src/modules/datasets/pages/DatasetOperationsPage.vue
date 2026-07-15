@@ -80,10 +80,7 @@
     <DatasetImportRecords
       :imports="imports"
       :loading="loading"
-      :can-write-datasets="canWriteDatasets"
-      :deleting-import-id="deletingImportId"
       :status-tone="statusTone"
-      @delete="openImportDeleteConfirm"
     />
 
     <DatasetExportRecords
@@ -91,24 +88,9 @@
       :loading="loading"
       :can-write-datasets="canWriteDatasets"
       :packaging-export-id="packagingExportId"
-      :deleting-export-id="deletingExportId"
       :status-tone="statusTone"
       @package="packageExport"
       @download="downloadExport"
-      @delete="openExportDeleteConfirm"
-    />
-
-    <ConfirmDialog
-      v-if="pendingDatasetDelete"
-      :kicker="t('datasetOps.deleteDialog.kicker')"
-      :title="datasetDeleteDialogTitle"
-      :message="datasetDeleteDialogMessage"
-      :confirm-label="t('datasetOps.actions.delete')"
-      :cancel-label="t('common.cancel')"
-      :busy="datasetDeleteBusy"
-      confirm-variant="danger"
-      @cancel="pendingDatasetDelete = null"
-      @confirm="confirmDatasetDelete"
     />
   </section>
 </template>
@@ -131,7 +113,6 @@ import type { DatasetExportSummary, DatasetImportSummary } from '../services/dat
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
-import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 
 const projectStore = useProjectStore()
@@ -152,10 +133,6 @@ const imports = ref<DatasetImportSummary[]>([])
 const exports = ref<DatasetExportSummary[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
-type PendingDatasetDelete =
-  | { kind: 'import'; item: DatasetImportSummary }
-  | { kind: 'export'; item: DatasetExportSummary }
-const pendingDatasetDelete = ref<PendingDatasetDelete | null>(null)
 
 const canWriteDatasets = computed(() => sessionStore.hasScopes(['datasets:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -206,12 +183,10 @@ const {
   splitStrategy,
   classMapJson,
   submittingImport,
-  deletingImportId,
   lastImportSubmission,
   setSplitStrategy,
   refreshImportRecords,
   submitImportForm,
-  deleteImport,
 } = useDatasetImportState({
   selectedProjectId,
   importDatasetId,
@@ -231,13 +206,11 @@ const {
   includeTestSplit,
   submittingExport,
   packagingExportId,
-  deletingExportId,
   lastExportSubmission,
   loadCurrentDatasetExports,
   submitExportForm,
   packageExport,
   downloadExport,
-  deleteExport,
 } = useDatasetExportState({
   selectedProjectId,
   datasetId,
@@ -248,27 +221,6 @@ const {
   exports,
   errorMessage,
   t,
-})
-
-const datasetDeleteBusy = computed(() => Boolean(deletingImportId.value || deletingExportId.value))
-const datasetDeleteDialogTitle = computed(() => {
-  if (pendingDatasetDelete.value?.kind === 'import') return t('datasetOps.deleteDialog.importTitle')
-  if (pendingDatasetDelete.value?.kind === 'export') return t('datasetOps.deleteDialog.exportTitle')
-  return ''
-})
-const datasetDeleteDialogMessage = computed(() => {
-  const target = pendingDatasetDelete.value
-  if (target?.kind === 'import') {
-    return t('datasetOps.messages.confirmDeleteImport')
-      .replace('{datasetImportId}', target.item.dataset_import_id)
-      .replace('{datasetVersionId}', target.item.dataset_version_id || '-')
-  }
-  if (target?.kind === 'export') {
-    return t('datasetOps.messages.confirmDeleteExport')
-      .replace('{datasetExportId}', target.item.dataset_export_id)
-      .replace('{datasetVersionId}', target.item.dataset_version_id)
-  }
-  return ''
 })
 
 onMounted(async () => {
@@ -325,26 +277,6 @@ async function refreshPage(): Promise<void> {
   } finally {
     loading.value = false
   }
-}
-
-function openImportDeleteConfirm(datasetImport: DatasetImportSummary): void {
-  pendingDatasetDelete.value = { kind: 'import', item: datasetImport }
-}
-
-function openExportDeleteConfirm(datasetExport: DatasetExportSummary): void {
-  pendingDatasetDelete.value = { kind: 'export', item: datasetExport }
-}
-
-async function confirmDatasetDelete(): Promise<void> {
-  const target = pendingDatasetDelete.value
-  if (!target) return
-
-  if (target.kind === 'import') {
-    await deleteImport(target.item)
-  } else {
-    await deleteExport(target.item)
-  }
-  pendingDatasetDelete.value = null
 }
 </script>
 

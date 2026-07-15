@@ -7,8 +7,18 @@
         <p class="page-description">{{ t('conversionDetail.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/models">{{ t('conversionDetail.actions.backToModels') }}</RouterLink>
-        <RouterLink v-if="task" :to="`/tasks/${task.task_id}`">任务状态</RouterLink>
+        <RouterLink to="/models" class="ui-button ui-button--secondary ui-button--md">
+          <ArrowLeft :size="16" />
+          {{ t('conversionDetail.actions.backToModels') }}
+        </RouterLink>
+        <RouterLink
+          v-if="task"
+          :to="`/tasks/${task.task_id}`"
+          class="ui-button ui-button--secondary ui-button--md"
+        >
+          <Activity :size="16" />
+          任务状态
+        </RouterLink>
         <Button
           v-if="task && canWriteTasks"
           variant="danger"
@@ -126,21 +136,6 @@
       </article>
     </section>
 
-    <section v-if="task" class="resource-section">
-      <div>
-        <p class="page-kicker">{{ t('conversionDetail.eventsKicker') }}</p>
-        <h2>{{ t('conversionDetail.eventsTitle') }}</h2>
-      </div>
-      <EmptyState v-if="task.events.length === 0" :title="t('conversionDetail.emptyEventsTitle')" />
-      <ol v-else class="event-timeline">
-        <li v-for="event in task.events" :key="event.event_id">
-          <time>{{ formatSystemDateTime(event.created_at) }}</time>
-          <strong>{{ event.event_type }}</strong>
-          <span>{{ event.message }}</span>
-        </li>
-      </ol>
-    </section>
-
     <ConfirmDialog
       v-if="task && deleteDialogOpen"
       :kicker="t('conversionDetail.deleteDialog.kicker')"
@@ -158,7 +153,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RefreshCw, Trash2 } from '@lucide/vue'
+import { Activity, ArrowLeft, RefreshCw, Trash2 } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 

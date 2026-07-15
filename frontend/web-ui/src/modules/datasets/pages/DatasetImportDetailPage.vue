@@ -7,8 +7,18 @@
         <p class="page-description">{{ t('datasetImportDetail.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/datasets">{{ t('datasetImportDetail.actions.backToDatasets') }}</RouterLink>
-        <RouterLink v-if="detail?.task_id" :to="`/tasks/${detail.task_id}`">任务状态</RouterLink>
+        <RouterLink to="/datasets" class="ui-button ui-button--secondary ui-button--md">
+          <ArrowLeft :size="16" />
+          {{ t('datasetImportDetail.actions.backToDatasets') }}
+        </RouterLink>
+        <RouterLink
+          v-if="detail?.task_id"
+          :to="`/tasks/${detail.task_id}`"
+          class="ui-button ui-button--secondary ui-button--md"
+        >
+          <Activity :size="16" />
+          任务状态
+        </RouterLink>
         <Button
           v-if="detail"
           variant="danger"
@@ -147,7 +157,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RefreshCw, Trash2 } from '@lucide/vue'
+import { Activity, ArrowLeft, RefreshCw, Trash2 } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 

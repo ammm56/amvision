@@ -7,8 +7,18 @@
         <p class="page-description">{{ t('trainingDetail.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/models">{{ t('trainingDetail.actions.backToModels') }}</RouterLink>
-        <RouterLink v-if="task" :to="`/tasks/${task.task_id}`">任务状态</RouterLink>
+        <RouterLink to="/models" class="ui-button ui-button--secondary ui-button--md">
+          <ArrowLeft :size="16" />
+          {{ t('trainingDetail.actions.backToModels') }}
+        </RouterLink>
+        <RouterLink
+          v-if="task"
+          :to="`/tasks/${task.task_id}`"
+          class="ui-button ui-button--secondary ui-button--md"
+        >
+          <Activity :size="16" />
+          任务状态
+        </RouterLink>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -159,21 +169,6 @@
       </div>
     </section>
 
-    <section v-if="task" class="resource-section">
-      <div>
-        <p class="page-kicker">{{ t('trainingDetail.eventsKicker') }}</p>
-        <h2>{{ t('trainingDetail.eventsTitle') }}</h2>
-      </div>
-      <EmptyState v-if="task.events.length === 0" :title="t('trainingDetail.emptyEventsTitle')" />
-      <ol v-else class="event-timeline">
-        <li v-for="event in task.events" :key="event.event_id">
-          <time>{{ formatSystemDateTime(event.created_at) }}</time>
-          <strong>{{ event.event_type }}</strong>
-          <span>{{ event.message }}</span>
-        </li>
-      </ol>
-    </section>
-
     <ConfirmDialog
       v-if="deleteDialogOpen"
       :kicker="t('trainingDetail.deleteDialog.kicker')"
@@ -191,7 +186,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
+import { Activity, ArrowLeft, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 

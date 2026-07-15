@@ -7,8 +7,18 @@
         <p class="page-description">查看数据集导出格式、下载包、运行磁盘数据和附加元数据。</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/datasets">返回数据集页</RouterLink>
-        <RouterLink v-if="detail?.task_id" :to="`/tasks/${detail.task_id}`">任务状态</RouterLink>
+        <RouterLink to="/datasets" class="ui-button ui-button--secondary ui-button--md">
+          <ArrowLeft :size="16" />
+          返回数据集页
+        </RouterLink>
+        <RouterLink
+          v-if="detail?.task_id"
+          :to="`/tasks/${detail.task_id}`"
+          class="ui-button ui-button--secondary ui-button--md"
+        >
+          <Activity :size="16" />
+          任务状态
+        </RouterLink>
         <Button
           v-if="detail"
           variant="secondary"
@@ -186,7 +196,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Download, PackageCheck, RefreshCw, Trash2 } from '@lucide/vue'
+import { Activity, ArrowLeft, Download, PackageCheck, RefreshCw, Trash2 } from '@lucide/vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 

@@ -386,9 +386,7 @@ export async function listModelTrainingTasks(
 }
 
 export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingTaskDetail> {
-  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
-    query: { include_events: true },
-  })
+  return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`))
 }
 
 export async function requestModelTrainingTaskAction(
@@ -462,9 +460,7 @@ export async function listModelConversionTasks(
 }
 
 export async function getModelConversionTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelConversionTaskDetail> {
-  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
-    query: { include_events: true },
-  })
+  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`))
 }
 
 export async function deleteModelConversionTask(taskType: ModelTaskType, taskId: string): Promise<void> {

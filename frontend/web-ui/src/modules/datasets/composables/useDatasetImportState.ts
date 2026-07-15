@@ -1,7 +1,6 @@
 import { ref, type Ref } from 'vue'
 
 import {
-  deleteDatasetImport,
   listProjectDatasetImports,
   submitDatasetImport,
   type DatasetImportSubmissionResponse,
@@ -27,7 +26,6 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
   const splitStrategy = ref('auto')
   const classMapJson = ref('')
   const submittingImport = ref(false)
-  const deletingImportId = ref<string | null>(null)
   const lastImportSubmission = ref<DatasetImportSubmissionResponse | null>(null)
 
   function setSplitStrategy(value: DatasetSelectValue): void {
@@ -80,30 +78,15 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
     }
   }
 
-  async function deleteImport(datasetImport: DatasetImportSummary): Promise<void> {
-    deletingImportId.value = datasetImport.dataset_import_id
-    options.errorMessage.value = null
-    try {
-      await deleteDatasetImport(datasetImport.dataset_import_id)
-      await refreshImportRecords()
-    } catch (error) {
-      options.errorMessage.value = error instanceof Error ? error.message : options.t('datasetOps.messages.deleteImportFailed')
-    } finally {
-      deletingImportId.value = null
-    }
-  }
-
   return {
     importFile,
     splitStrategy,
     classMapJson,
     imports: options.imports,
     submittingImport,
-    deletingImportId,
     lastImportSubmission,
     setSplitStrategy,
     refreshImportRecords,
     submitImportForm,
-    deleteImport,
   }
 }

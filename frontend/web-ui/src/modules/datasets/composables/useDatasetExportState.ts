@@ -2,7 +2,6 @@ import { computed, ref, watch, type Ref } from 'vue'
 
 import {
   createDatasetExport,
-  deleteDatasetExport,
   downloadDatasetExport,
   listDatasetExports,
   packageDatasetExport,
@@ -28,7 +27,6 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
   const includeTestSplit = ref(true)
   const submittingExport = ref(false)
   const packagingExportId = ref<string | null>(null)
-  const deletingExportId = ref<string | null>(null)
   const lastExportSubmission = ref<DatasetExportSubmissionResponse | null>(null)
   let datasetExportsRequestId = 0
 
@@ -115,19 +113,6 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
     }
   }
 
-  async function deleteExport(datasetExport: DatasetExportSummary): Promise<void> {
-    deletingExportId.value = datasetExport.dataset_export_id
-    options.errorMessage.value = null
-    try {
-      await deleteDatasetExport(datasetExport.dataset_export_id)
-      await loadCurrentDatasetExports()
-    } catch (error) {
-      options.errorMessage.value = error instanceof Error ? error.message : options.t('datasetOps.messages.deleteExportFailed')
-    } finally {
-      deletingExportId.value = null
-    }
-  }
-
   watch(
     [options.resolvedDatasetVersionId, options.resolvedDatasetId],
     ([nextDatasetVersionId, nextDatasetId]) => {
@@ -143,7 +128,6 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
     includeTestSplit,
     submittingExport,
     packagingExportId,
-    deletingExportId,
     lastExportSubmission,
     categoryNameList,
     loadDatasetExports,
@@ -151,6 +135,5 @@ export function useDatasetExportState(options: UseDatasetExportStateOptions) {
     submitExportForm,
     packageExport,
     downloadExport,
-    deleteExport,
   }
 }
