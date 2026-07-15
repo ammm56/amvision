@@ -150,7 +150,8 @@ namespace Amvision.Workflows
         /// </summary>
         internal MultipartFormDataContent ToDirectInferenceContent()
         {
-            return ToMultipartContent(includeTaskFields: false);
+            var content = ToMultipartContent(includeTaskFields: false);
+            return content;
         }
 
         /// <summary>
@@ -158,7 +159,8 @@ namespace Amvision.Workflows
         /// </summary>
         internal MultipartFormDataContent ToInferenceTaskContent()
         {
-            return ToMultipartContent(includeTaskFields: true);
+            var content = ToMultipartContent(includeTaskFields: true);
+            return content;
         }
 
         private MultipartFormDataContent ToMultipartContent(bool includeTaskFields)

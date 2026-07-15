@@ -23,11 +23,15 @@ namespace Amvision.Workflows
             }
 
             request.ValidateForDirectInference();
-            return SendAsync(
+            var requestPath = BuildModelDeploymentInferencePath(taskType, deploymentInstanceId);
+            var requestJson = SerializeJson(request);
+            var responseTask = SendAsync(
                 HttpMethod.Post,
-                BuildModelDeploymentInferencePath(taskType, deploymentInstanceId),
-                SerializeJson(request),
+                requestPath,
+                requestJson,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -39,8 +43,14 @@ namespace Amvision.Workflows
             ModelDeploymentInferenceRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentInferenceResponse>(
-                await InferModelDeploymentAsync(taskType, deploymentInstanceId, request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await InferModelDeploymentAsync(
+                taskType,
+                deploymentInstanceId,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentInferenceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -52,11 +62,14 @@ namespace Amvision.Workflows
             string imageBase64,
             CancellationToken cancellationToken = default)
         {
-            return InferModelDeploymentAsync(
+            var request = ModelDeploymentInferenceRequest.FromBase64(imageBase64);
+            var responseTask = InferModelDeploymentAsync(
                 taskType,
                 deploymentInstanceId,
-                ModelDeploymentInferenceRequest.FromBase64(imageBase64),
+                request,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -68,8 +81,14 @@ namespace Amvision.Workflows
             string imageBase64,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentInferenceResponse>(
-                await InferModelDeploymentWithImageBase64Async(taskType, deploymentInstanceId, imageBase64, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await InferModelDeploymentWithImageBase64Async(
+                taskType,
+                deploymentInstanceId,
+                imageBase64,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentInferenceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -86,11 +105,15 @@ namespace Amvision.Workflows
                 throw new ArgumentNullException(nameof(request));
             }
 
-            return SendAsync(
+            var requestPath = BuildModelDeploymentInferencePath(taskType, deploymentInstanceId);
+            var multipartContent = request.ToDirectInferenceContent();
+            var responseTask = SendAsync(
                 HttpMethod.Post,
-                BuildModelDeploymentInferencePath(taskType, deploymentInstanceId),
-                request.ToDirectInferenceContent(),
+                requestPath,
+                multipartContent,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -102,8 +125,14 @@ namespace Amvision.Workflows
             ModelDeploymentInferenceUploadRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentInferenceResponse>(
-                await InferModelDeploymentUploadAsync(taskType, deploymentInstanceId, request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await InferModelDeploymentUploadAsync(
+                taskType,
+                deploymentInstanceId,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentInferenceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -117,11 +146,14 @@ namespace Amvision.Workflows
             string mediaType = "application/octet-stream",
             CancellationToken cancellationToken = default)
         {
-            return InferModelDeploymentUploadAsync(
+            var uploadRequest = ModelDeploymentInferenceUploadRequest.FromBytes(imageBytes, fileName, mediaType);
+            var responseTask = InferModelDeploymentUploadAsync(
                 taskType,
                 deploymentInstanceId,
-                ModelDeploymentInferenceUploadRequest.FromBytes(imageBytes, fileName, mediaType),
+                uploadRequest,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -135,14 +167,16 @@ namespace Amvision.Workflows
             string mediaType = "application/octet-stream",
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentInferenceResponse>(
-                await InferModelDeploymentWithImageBytesAsync(
-                    taskType,
-                    deploymentInstanceId,
-                    imageBytes,
-                    fileName,
-                    mediaType,
-                    cancellationToken).ConfigureAwait(false));
+            var apiResponse = await InferModelDeploymentWithImageBytesAsync(
+                taskType,
+                deploymentInstanceId,
+                imageBytes,
+                fileName,
+                mediaType,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentInferenceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -155,11 +189,14 @@ namespace Amvision.Workflows
             string? mediaType = null,
             CancellationToken cancellationToken = default)
         {
-            return InferModelDeploymentUploadAsync(
+            var uploadRequest = ModelDeploymentInferenceUploadRequest.FromFile(filePath, mediaType);
+            var responseTask = InferModelDeploymentUploadAsync(
                 taskType,
                 deploymentInstanceId,
-                ModelDeploymentInferenceUploadRequest.FromFile(filePath, mediaType),
+                uploadRequest,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -172,13 +209,15 @@ namespace Amvision.Workflows
             string? mediaType = null,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentInferenceResponse>(
-                await InferModelDeploymentWithImageFileAsync(
-                    taskType,
-                    deploymentInstanceId,
-                    filePath,
-                    mediaType,
-                    cancellationToken).ConfigureAwait(false));
+            var apiResponse = await InferModelDeploymentWithImageFileAsync(
+                taskType,
+                deploymentInstanceId,
+                filePath,
+                mediaType,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentInferenceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -195,11 +234,15 @@ namespace Amvision.Workflows
             }
 
             request.ValidateForInferenceTask();
-            return SendAsync(
+            var requestPath = BuildModelInferenceTasksPath(taskType);
+            var requestJson = SerializeJson(request);
+            var responseTask = SendAsync(
                 HttpMethod.Post,
-                BuildModelInferenceTasksPath(taskType),
-                SerializeJson(request),
+                requestPath,
+                requestJson,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -210,8 +253,13 @@ namespace Amvision.Workflows
             ModelDeploymentInferenceRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskSubmissionResponse>(
-                await CreateModelInferenceTaskAsync(taskType, request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateModelInferenceTaskAsync(
+                taskType,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskSubmissionResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -227,11 +275,15 @@ namespace Amvision.Workflows
                 throw new ArgumentNullException(nameof(request));
             }
 
-            return SendAsync(
+            var requestPath = BuildModelInferenceTasksPath(taskType);
+            var multipartContent = request.ToInferenceTaskContent();
+            var responseTask = SendAsync(
                 HttpMethod.Post,
-                BuildModelInferenceTasksPath(taskType),
-                request.ToInferenceTaskContent(),
+                requestPath,
+                multipartContent,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -242,8 +294,13 @@ namespace Amvision.Workflows
             ModelDeploymentInferenceUploadRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskSubmissionResponse>(
-                await CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateModelInferenceTaskUploadAsync(
+                taskType,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskSubmissionResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -259,7 +316,8 @@ namespace Amvision.Workflows
             var request = ModelDeploymentInferenceRequest.FromBase64(imageBase64);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            return CreateModelInferenceTaskAsync(taskType, request, cancellationToken);
+            var responseTask = CreateModelInferenceTaskAsync(taskType, request, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -272,13 +330,15 @@ namespace Amvision.Workflows
             string imageBase64,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskSubmissionResponse>(
-                await CreateModelInferenceTaskWithImageBase64Async(
-                    taskType,
-                    projectId,
-                    deploymentInstanceId,
-                    imageBase64,
-                    cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateModelInferenceTaskWithImageBase64Async(
+                taskType,
+                projectId,
+                deploymentInstanceId,
+                imageBase64,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskSubmissionResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -296,7 +356,8 @@ namespace Amvision.Workflows
             var request = ModelDeploymentInferenceUploadRequest.FromBytes(imageBytes, fileName, mediaType);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            return CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
+            var responseTask = CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -311,15 +372,17 @@ namespace Amvision.Workflows
             string mediaType = "application/octet-stream",
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskSubmissionResponse>(
-                await CreateModelInferenceTaskWithImageBytesAsync(
-                    taskType,
-                    projectId,
-                    deploymentInstanceId,
-                    imageBytes,
-                    fileName,
-                    mediaType,
-                    cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateModelInferenceTaskWithImageBytesAsync(
+                taskType,
+                projectId,
+                deploymentInstanceId,
+                imageBytes,
+                fileName,
+                mediaType,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskSubmissionResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -336,7 +399,8 @@ namespace Amvision.Workflows
             var request = ModelDeploymentInferenceUploadRequest.FromFile(filePath, mediaType);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            return CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
+            var responseTask = CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -350,14 +414,16 @@ namespace Amvision.Workflows
             string? mediaType = null,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskSubmissionResponse>(
-                await CreateModelInferenceTaskWithImageFileAsync(
-                    taskType,
-                    projectId,
-                    deploymentInstanceId,
-                    filePath,
-                    mediaType,
-                    cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateModelInferenceTaskWithImageFileAsync(
+                taskType,
+                projectId,
+                deploymentInstanceId,
+                filePath,
+                mediaType,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskSubmissionResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -372,7 +438,8 @@ namespace Amvision.Workflows
             var path = WithQuery(
                 $"{BuildModelInferenceTasksPath(taskType)}/{EncodePathSegment(RequireId(inferenceTaskId, nameof(inferenceTaskId)))}",
                 ("include_events", includeEvents));
-            return SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            var apiResponseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            return apiResponseTask;
         }
 
         /// <summary>
@@ -384,8 +451,14 @@ namespace Amvision.Workflows
             bool includeEvents = false,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskDetailResponse>(
-                await GetModelInferenceTaskAsync(taskType, inferenceTaskId, includeEvents, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetModelInferenceTaskAsync(
+                taskType,
+                inferenceTaskId,
+                includeEvents,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskDetailResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -396,11 +469,14 @@ namespace Amvision.Workflows
             string inferenceTaskId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
+            var requestPath = $"{BuildModelInferenceTasksPath(taskType)}/{EncodePathSegment(RequireId(inferenceTaskId, nameof(inferenceTaskId)))}/result";
+            var responseTask = SendAsync(
                 HttpMethod.Get,
-                $"{BuildModelInferenceTasksPath(taskType)}/{EncodePathSegment(RequireId(inferenceTaskId, nameof(inferenceTaskId)))}/result",
+                requestPath,
                 content: null,
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -411,8 +487,13 @@ namespace Amvision.Workflows
             string inferenceTaskId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelInferenceTaskResultResponse>(
-                await GetModelInferenceTaskResultAsync(taskType, inferenceTaskId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetModelInferenceTaskResultAsync(
+                taskType,
+                inferenceTaskId,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelInferenceTaskResultResponse>(apiResponse);
+            return typedResponse;
         }
 
         private static string BuildModelDeploymentInferencePath(string taskType, string deploymentInstanceId)

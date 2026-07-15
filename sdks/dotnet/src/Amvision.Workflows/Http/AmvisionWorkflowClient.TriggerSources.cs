@@ -23,7 +23,8 @@ namespace Amvision.Workflows
                 ("project_id", RequireId(projectId, nameof(projectId))),
                 ("offset", offset),
                 ("limit", limit));
-            return SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -35,8 +36,9 @@ namespace Amvision.Workflows
             int limit = 100,
             CancellationToken cancellationToken = default)
         {
-            return ReadJsonList<WorkflowTriggerSourceResponse>(
-                await ListTriggerSourcesAsync(projectId, offset, limit, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await ListTriggerSourcesAsync(projectId, offset, limit, cancellationToken).ConfigureAwait(false);
+            var typedResponses = ReadJsonList<WorkflowTriggerSourceResponse>(apiResponse);
+            return typedResponses;
         }
 
         /// <summary>
@@ -46,11 +48,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Get,
-                $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -60,8 +60,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowTriggerSourceResponse>(
-                await GetTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowTriggerSourceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -71,7 +72,10 @@ namespace Amvision.Workflows
             WorkflowTriggerSourceCreateRequest request,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(HttpMethod.Post, $"{WorkflowApiPrefix}/trigger-sources", SerializeJson(request), cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources";
+            var requestBody = SerializeJson(request);
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, requestBody, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -81,8 +85,9 @@ namespace Amvision.Workflows
             WorkflowTriggerSourceCreateRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowTriggerSourceResponse>(
-                await CreateTriggerSourceAsync(request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateTriggerSourceAsync(request, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowTriggerSourceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -92,11 +97,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Post,
-                $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/enable",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/enable";
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -106,8 +109,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowTriggerSourceResponse>(
-                await EnableTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await EnableTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowTriggerSourceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -117,11 +121,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Post,
-                $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/disable",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/disable";
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -131,8 +133,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowTriggerSourceResponse>(
-                await DisableTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await DisableTriggerSourceAsync(triggerSourceId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowTriggerSourceResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -142,11 +145,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Delete,
-                $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}";
+            var responseTask = SendAsync(HttpMethod.Delete, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -156,11 +157,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Get,
-                $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/health",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/health";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -170,8 +169,9 @@ namespace Amvision.Workflows
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowTriggerSourceHealthResponse>(
-                await GetTriggerSourceHealthAsync(triggerSourceId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetTriggerSourceHealthAsync(triggerSourceId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowTriggerSourceHealthResponse>(apiResponse);
+            return typedResponse;
         }
     }
 }

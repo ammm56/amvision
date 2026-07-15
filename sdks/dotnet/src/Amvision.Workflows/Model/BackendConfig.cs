@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 namespace Amvision.Workflows.Configuration
 {
 /// <summary>
-/// 后端 HTTP API 连接配置，对应每个 config_*.json 中的 backend 节点。
+/// 后端 HTTP API 连接配置，对应每个 config*.json 中的 backend 节点。
 /// </summary>
 internal sealed class BackendConfig
 {

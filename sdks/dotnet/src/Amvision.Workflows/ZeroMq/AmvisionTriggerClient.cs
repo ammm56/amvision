@@ -69,17 +69,31 @@ namespace Amvision.Workflows
             ValidateRequest(request);
             var envelope = BuildEnvelope(request);
             var envelopeBytes = WorkflowJsonDefaults.SerializeToUtf8Bytes(envelope);
+            var requestFrames = new[] { envelopeBytes, request.ImageBytes };
             IReadOnlyList<byte[]> replyFrames;
-            lock (syncRoot)
+            try
             {
-                ThrowIfDisposed();
-                replyFrames = transport.Send(
-                    new[] { envelopeBytes, request.ImageBytes },
-                    options.Timeout
-                );
+                lock (syncRoot)
+                {
+                    ThrowIfDisposed();
+                    replyFrames = transport.Send(requestFrames, options.Timeout);
+                }
+            }
+            catch (AmvisionTriggerException)
+            {
+                throw;
+            }
+            catch (ObjectDisposedException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw CreateTransportException("image", exception);
             }
 
-            return ParseReply(replyFrames);
+            var result = ParseReply(replyFrames);
+            return result;
         }
 
         /// <summary>
@@ -91,7 +105,14 @@ namespace Amvision.Workflows
         public Task<TriggerResult> InvokeImageAsync(ImageTriggerRequest request, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.Run(() => InvokeImage(request), cancellationToken);
+            var task = Task.Run(
+                () =>
+                {
+                    var result = InvokeImage(request);
+                    return result;
+                },
+                cancellationToken);
+            return task;
         }
 
         /// <summary>
@@ -104,14 +125,31 @@ namespace Amvision.Workflows
             ValidateRequest(request);
             var envelope = BuildEnvelope(request);
             var envelopeBytes = WorkflowJsonDefaults.SerializeToUtf8Bytes(envelope);
+            var requestFrames = new[] { envelopeBytes };
             IReadOnlyList<byte[]> replyFrames;
-            lock (syncRoot)
+            try
             {
-                ThrowIfDisposed();
-                replyFrames = transport.Send(new[] { envelopeBytes }, options.Timeout);
+                lock (syncRoot)
+                {
+                    ThrowIfDisposed();
+                    replyFrames = transport.Send(requestFrames, options.Timeout);
+                }
+            }
+            catch (AmvisionTriggerException)
+            {
+                throw;
+            }
+            catch (ObjectDisposedException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw CreateTransportException("event", exception);
             }
 
-            return ParseReply(replyFrames);
+            var result = ParseReply(replyFrames);
+            return result;
         }
 
         /// <summary>
@@ -123,7 +161,14 @@ namespace Amvision.Workflows
         public Task<TriggerResult> InvokeEventAsync(TriggerEventRequest request, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.Run(() => InvokeEvent(request), cancellationToken);
+            var task = Task.Run(
+                () =>
+                {
+                    var result = InvokeEvent(request);
+                    return result;
+                },
+                cancellationToken);
+            return task;
         }
 
         /// <summary>
@@ -135,7 +180,7 @@ namespace Amvision.Workflows
         {
             ValidateRequest(request);
 
-            return new ZeroMqTriggerEnvelope
+            var envelope = new ZeroMqTriggerEnvelope
             {
                 TriggerSourceId = options.TriggerSourceId,
                 EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
@@ -150,6 +195,7 @@ namespace Amvision.Workflows
                 Metadata = new Dictionary<string, object?>(request.Metadata),
                 Payload = BuildPayload(request.Payload, request.IdempotencyKey)
             };
+            return envelope;
         }
 
         /// <summary>
@@ -160,7 +206,7 @@ namespace Amvision.Workflows
         public ZeroMqTriggerEnvelope BuildEnvelope(TriggerEventRequest request)
         {
             ValidateRequest(request);
-            return new ZeroMqTriggerEnvelope
+            var envelope = new ZeroMqTriggerEnvelope
             {
                 TriggerSourceId = options.TriggerSourceId,
                 EventId = NormalizeOptional(request.EventId) ?? $"trigger-event-{Guid.NewGuid():N}",
@@ -169,6 +215,7 @@ namespace Amvision.Workflows
                 Metadata = new Dictionary<string, object?>(request.Metadata),
                 Payload = BuildPayload(request.Payload, request.IdempotencyKey)
             };
+            return envelope;
         }
 
         /// <summary>
@@ -370,7 +417,12 @@ namespace Amvision.Workflows
             }
 
             var normalized = value.Trim();
-            return normalized.Length == 0 ? null : normalized;
+            if (normalized.Length == 0)
+            {
+                return null;
+            }
+
+            return normalized;
         }
 
         /// <summary>
@@ -380,7 +432,33 @@ namespace Amvision.Workflows
         /// <returns>UTC 时间字符串。</returns>
         private static string FormatUtc(DateTimeOffset value)
         {
-            return value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+            var utcValue = value.ToUniversalTime();
+            var formatted = utcValue.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+            return formatted;
+        }
+
+        /// <summary>
+        /// 把底层 ZeroMQ transport 异常包装成 SDK 可识别的异常。
+        /// </summary>
+        /// <param name="payloadKind">触发 payload 类型。</param>
+        /// <param name="exception">底层异常。</param>
+        /// <returns>包含调用上下文的 TriggerSource 异常。</returns>
+        private AmvisionTriggerException CreateTransportException(string payloadKind, Exception exception)
+        {
+            var details = new Dictionary<string, JToken>
+            {
+                ["endpoint"] = JToken.FromObject(options.Endpoint ?? string.Empty),
+                ["trigger_source_id"] = JToken.FromObject(options.TriggerSourceId ?? string.Empty),
+                ["payload_kind"] = JToken.FromObject(payloadKind),
+                ["exception_type"] = JToken.FromObject(exception.GetType().FullName ?? exception.GetType().Name)
+            };
+
+            var triggerException = new AmvisionTriggerException(
+                "transport_error",
+                "ZeroMQ TriggerSource 调用失败。",
+                details,
+                exception);
+            return triggerException;
         }
     }
 }

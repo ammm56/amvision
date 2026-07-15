@@ -16,7 +16,10 @@ namespace Amvision.Workflows
             WorkflowAppRuntimeCreateRequest request,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(HttpMethod.Post, $"{WorkflowApiPrefix}/app-runtimes", SerializeJson(request), cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes";
+            var requestBody = SerializeJson(request);
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, requestBody, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -26,7 +29,9 @@ namespace Amvision.Workflows
             WorkflowAppRuntimeCreateRequest request,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(await CreateWorkflowAppRuntimeAsync(request, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await CreateWorkflowAppRuntimeAsync(request, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -43,7 +48,8 @@ namespace Amvision.Workflows
                 ("project_id", RequireId(projectId, nameof(projectId))),
                 ("offset", offset),
                 ("limit", limit));
-            return SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -55,8 +61,9 @@ namespace Amvision.Workflows
             int limit = 100,
             CancellationToken cancellationToken = default)
         {
-            return ReadJsonList<WorkflowAppRuntimeResponse>(
-                await ListWorkflowAppRuntimesAsync(projectId, offset, limit, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await ListWorkflowAppRuntimesAsync(projectId, offset, limit, cancellationToken).ConfigureAwait(false);
+            var typedResponses = ReadJsonList<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponses;
         }
 
         /// <summary>
@@ -66,11 +73,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Get,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -80,8 +85,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(
-                await GetWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -97,7 +103,8 @@ namespace Amvision.Workflows
                 $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/events",
                 ("after_sequence", afterSequence),
                 ("limit", limit));
-            return SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -109,8 +116,9 @@ namespace Amvision.Workflows
             int? limit = null,
             CancellationToken cancellationToken = default)
         {
-            return ReadJsonList<WorkflowAppRuntimeEventResponse>(
-                await GetWorkflowAppRuntimeEventsAsync(workflowRuntimeId, afterSequence, limit, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetWorkflowAppRuntimeEventsAsync(workflowRuntimeId, afterSequence, limit, cancellationToken).ConfigureAwait(false);
+            var typedResponses = ReadJsonList<WorkflowAppRuntimeEventResponse>(apiResponse);
+            return typedResponses;
         }
 
         /// <summary>
@@ -120,11 +128,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Post,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/start",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/start";
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -134,8 +140,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(
-                await StartWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await StartWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -145,11 +152,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Post,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/stop",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/stop";
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -159,8 +164,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(
-                await StopWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await StopWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -170,11 +176,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Post,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/restart",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/restart";
+            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -184,8 +188,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(
-                await RestartWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await RestartWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -195,11 +200,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Get,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/health",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/health";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -209,8 +212,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<WorkflowAppRuntimeResponse>(
-                await GetWorkflowAppRuntimeHealthAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetWorkflowAppRuntimeHealthAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -220,11 +224,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Get,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/instances",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/instances";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -234,8 +236,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return ReadJsonList<WorkflowAppRuntimeInstanceResponse>(
-                await ListWorkflowAppRuntimeInstancesAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await ListWorkflowAppRuntimeInstancesAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
+            var typedResponses = ReadJsonList<WorkflowAppRuntimeInstanceResponse>(apiResponse);
+            return typedResponses;
         }
 
         /// <summary>
@@ -245,11 +248,9 @@ namespace Amvision.Workflows
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(
-                HttpMethod.Delete,
-                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}",
-                content: null,
-                cancellationToken);
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}";
+            var responseTask = SendAsync(HttpMethod.Delete, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
     }
 }

@@ -12,7 +12,7 @@ internal sealed class ConfiguredModelDeployment
     /// </summary>
     /// <param name="backend">HTTP API 连接配置。</param>
     /// <param name="modelDeployment">模型 DeploymentInstance 调用配置。</param>
-    /// <param name="sourceFile">来源 config_*.json 文件路径。</param>
+    /// <param name="sourceFile">来源 config*.json 文件路径。</param>
     public ConfiguredModelDeployment(BackendConfig backend, ModelDeploymentConfig modelDeployment, string sourceFile)
     {
         Backend = backend;

@@ -17,17 +17,19 @@ internal sealed partial class ModelDeploymentOperations
     /// <param name="imageBase64">图片 base64 或 data URL。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>异步推理任务提交响应。</returns>
-    public Task<ModelInferenceTaskSubmissionResponse> RunModelDeploymentWithImageBase64Async(
+    public async Task<ModelInferenceTaskSubmissionResponse> RunModelDeploymentWithImageBase64Async(
         string modelDeploymentName,
         string imageBase64,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return client.CreateModelInferenceTaskResponseAsync(
+        var request = BuildJsonRequestFromBase64(configuredModelDeployment, imageBase64);
+        var response = await client.CreateModelInferenceTaskResponseAsync(
             modelDeployment.TaskType,
-            BuildJsonRequestFromBase64(configuredModelDeployment, imageBase64),
-            cancellationToken);
+            request,
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

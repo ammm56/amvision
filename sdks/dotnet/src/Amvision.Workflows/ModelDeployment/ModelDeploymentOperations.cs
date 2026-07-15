@@ -43,7 +43,7 @@ internal sealed partial class ModelDeploymentOperations
     }
 
     /// <summary>
-    /// 获取后端 DeploymentInstance id；为空说明前端配置未同步到 config_*.json。
+    /// 获取后端 DeploymentInstance id；为空说明前端配置未同步到 config*.json。
     /// </summary>
     /// <param name="configuredModelDeployment">模型 deployment 配置。</param>
     /// <returns>deployment_instance_id。</returns>

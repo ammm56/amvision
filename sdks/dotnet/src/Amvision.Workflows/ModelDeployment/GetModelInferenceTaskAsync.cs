@@ -18,18 +18,20 @@ internal sealed partial class ModelDeploymentOperations
     /// <param name="includeEvents">是否带回任务事件。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>异步推理任务详情。</returns>
-    public Task<ModelInferenceTaskDetailResponse> GetModelInferenceTaskAsync(
+    public async Task<ModelInferenceTaskDetailResponse> GetModelInferenceTaskAsync(
         string modelDeploymentName,
         string inferenceTaskId,
         bool includeEvents = false,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
-        return client.GetModelInferenceTaskResponseAsync(
-            configuredModelDeployment.ModelDeployment.TaskType,
+        var taskType = configuredModelDeployment.ModelDeployment.TaskType;
+        var response = await client.GetModelInferenceTaskResponseAsync(
+            taskType,
             inferenceTaskId,
             includeEvents,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

@@ -17,18 +17,21 @@ internal sealed partial class ModelDeploymentOperations
     /// <param name="inputFileId">后端对象存储或文件表中的 input file id。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>同步推理响应。</returns>
-    public Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithInputFileIdAsync(
+    public async Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithInputFileIdAsync(
         string modelDeploymentName,
         string inputFileId,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return client.InferModelDeploymentResponseAsync(
+        var deploymentInstanceId = RequireDeploymentInstanceId(configuredModelDeployment);
+        var request = BuildJsonRequestFromInputFileId(configuredModelDeployment, inputFileId);
+        var response = await client.InferModelDeploymentResponseAsync(
             modelDeployment.TaskType,
-            RequireDeploymentInstanceId(configuredModelDeployment),
-            BuildJsonRequestFromInputFileId(configuredModelDeployment, inputFileId),
-            cancellationToken);
+            deploymentInstanceId,
+            request,
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

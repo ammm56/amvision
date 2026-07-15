@@ -17,7 +17,7 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="triggerSourceName">TriggerSource key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public Task<TriggerResult> InvokeConfiguredImageAsync(
+    public async Task<TriggerResult> InvokeConfiguredImageAsync(
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
@@ -28,7 +28,12 @@ internal sealed partial class ZeroMqTriggerOperations
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
-        return InvokeImageFromFileAsync(triggerSourceName, imagePath, mediaType: null, cancellationToken);
+        var result = await InvokeImageFromFileAsync(
+            triggerSourceName,
+            imagePath,
+            mediaType: null,
+            cancellationToken).ConfigureAwait(false);
+        return result;
     }
 }
 }

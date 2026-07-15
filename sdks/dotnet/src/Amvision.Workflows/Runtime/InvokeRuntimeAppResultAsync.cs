@@ -50,14 +50,17 @@ internal sealed partial class WorkflowRuntimeOperations
         CancellationToken cancellationToken = default)
     {
         var configuredRuntime = GetConfiguredRuntime(runtimeName);
-        return await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
-            RequireRuntimeId(configuredRuntime),
-            BuildImageInvokeRequestFromBase64(
-                configuredRuntime,
-                imageBase64,
-                mediaType,
-                configuredRuntime.Invoke.SyncScenario),
+        var workflowRuntimeId = RequireRuntimeId(configuredRuntime);
+        var request = BuildImageInvokeRequestFromBase64(
+            configuredRuntime,
+            imageBase64,
+            mediaType,
+            configuredRuntime.Invoke.SyncScenario);
+        var appResult = await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
+            workflowRuntimeId,
+            request,
             cancellationToken).ConfigureAwait(false);
+        return appResult;
     }
 
     /// <summary>
@@ -75,14 +78,17 @@ internal sealed partial class WorkflowRuntimeOperations
         CancellationToken cancellationToken = default)
     {
         var configuredRuntime = GetConfiguredRuntime(runtimeName);
-        return await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
-            RequireRuntimeId(configuredRuntime),
-            BuildImageInvokeRequestFromBytes(
-                configuredRuntime,
-                imageBytes,
-                mediaType,
-                configuredRuntime.Invoke.SyncScenario),
+        var workflowRuntimeId = RequireRuntimeId(configuredRuntime);
+        var request = BuildImageInvokeRequestFromBytes(
+            configuredRuntime,
+            imageBytes,
+            mediaType,
+            configuredRuntime.Invoke.SyncScenario);
+        var appResult = await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
+            workflowRuntimeId,
+            request,
             cancellationToken).ConfigureAwait(false);
+        return appResult;
     }
 
     /// <summary>
@@ -100,14 +106,17 @@ internal sealed partial class WorkflowRuntimeOperations
         CancellationToken cancellationToken = default)
     {
         var configuredRuntime = GetConfiguredRuntime(runtimeName);
-        return await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
-            RequireRuntimeId(configuredRuntime),
-            BuildImageInvokeRequestFromFile(
-                configuredRuntime,
-                imagePath,
-                mediaType,
-                configuredRuntime.Invoke.SyncScenario),
+        var workflowRuntimeId = RequireRuntimeId(configuredRuntime);
+        var request = BuildImageInvokeRequestFromFile(
+            configuredRuntime,
+            imagePath,
+            mediaType,
+            configuredRuntime.Invoke.SyncScenario);
+        var appResult = await client.InvokeWorkflowAppRuntimeWithImageBase64AppResultResponseAsync(
+            workflowRuntimeId,
+            request,
             cancellationToken).ConfigureAwait(false);
+        return appResult;
     }
 }
 }

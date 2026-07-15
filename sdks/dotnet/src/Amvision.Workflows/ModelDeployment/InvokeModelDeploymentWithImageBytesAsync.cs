@@ -15,11 +15,11 @@ internal sealed partial class ModelDeploymentOperations
     /// </summary>
     /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
     /// <param name="imageBytes">图片编码 bytes，通常来自工业相机 SDK 或内存缓存。</param>
-    /// <param name="fileName">可选文件名；为空时使用 config_*.json 中的 default_file_name。</param>
-    /// <param name="mediaType">可选 media type；为空时使用 config_*.json 中的 default_media_type。</param>
+    /// <param name="fileName">可选文件名；为空时使用 config*.json 中的 default_file_name。</param>
+    /// <param name="mediaType">可选 media type；为空时使用 config*.json 中的 default_media_type。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>同步推理响应。</returns>
-    public Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithImageBytesAsync(
+    public async Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithImageBytesAsync(
         string modelDeploymentName,
         byte[] imageBytes,
         string? fileName = null,
@@ -28,11 +28,14 @@ internal sealed partial class ModelDeploymentOperations
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return client.InferModelDeploymentUploadResponseAsync(
+        var deploymentInstanceId = RequireDeploymentInstanceId(configuredModelDeployment);
+        var request = BuildUploadRequestFromBytes(configuredModelDeployment, imageBytes, fileName, mediaType);
+        var response = await client.InferModelDeploymentUploadResponseAsync(
             modelDeployment.TaskType,
-            RequireDeploymentInstanceId(configuredModelDeployment),
-            BuildUploadRequestFromBytes(configuredModelDeployment, imageBytes, fileName, mediaType),
-            cancellationToken);
+            deploymentInstanceId,
+            request,
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

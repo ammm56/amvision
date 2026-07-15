@@ -11,27 +11,41 @@ namespace Amvision.Workflows.ModelDeployment
 internal sealed partial class ModelDeploymentOperations
 {
     /// <summary>
-    /// 按 deployment key 使用 config_*.json 中的默认输入创建异步推理任务。
+    /// 按 deployment key 使用 config*.json 中的默认输入创建异步推理任务。
     /// </summary>
     /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>异步推理任务提交响应。</returns>
-    public Task<ModelInferenceTaskSubmissionResponse> RunConfiguredModelDeploymentAsync(
+    public async Task<ModelInferenceTaskSubmissionResponse> RunConfiguredModelDeploymentAsync(
         string modelDeploymentName,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return BuildConfiguredInput(
-            configuredModelDeployment,
-            request => client.CreateModelInferenceTaskResponseAsync(
+
+        async Task<ModelInferenceTaskSubmissionResponse> RunJsonRequestAsync(ModelDeploymentInferenceRequest request)
+        {
+            var response = await client.CreateModelInferenceTaskResponseAsync(
                 modelDeployment.TaskType,
                 request,
-                cancellationToken),
-            uploadRequest => client.CreateModelInferenceTaskUploadResponseAsync(
+                cancellationToken).ConfigureAwait(false);
+            return response;
+        }
+
+        async Task<ModelInferenceTaskSubmissionResponse> RunUploadRequestAsync(ModelDeploymentInferenceUploadRequest uploadRequest)
+        {
+            var response = await client.CreateModelInferenceTaskUploadResponseAsync(
                 modelDeployment.TaskType,
                 uploadRequest,
-                cancellationToken));
+                cancellationToken).ConfigureAwait(false);
+            return response;
+        }
+
+        var taskSubmission = await BuildConfiguredInput(
+            configuredModelDeployment,
+            RunJsonRequestAsync,
+            RunUploadRequestAsync).ConfigureAwait(false);
+        return taskSubmission;
     }
 }
 }

@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 
 namespace Amvision.Workflows
 {
-
+    /// <summary>
+    /// AMVISION Workflow HTTP SDK 客户端，负责封装后端 REST API 调用、认证、响应解析和传输异常处理。
+    /// </summary>
     public sealed partial class AmvisionWorkflowClient
     {
         /// <summary>
@@ -20,11 +22,14 @@ namespace Amvision.Workflows
             string? content,
             CancellationToken cancellationToken)
         {
-            return await SendAsync(
-                method,
-                relativePath,
-                content is null ? null : new StringContent(content, Encoding.UTF8, "application/json"),
-                cancellationToken).ConfigureAwait(false);
+            HttpContent? httpContent = null;
+            if (content != null)
+            {
+                httpContent = new StringContent(content, Encoding.UTF8, "application/json");
+            }
+
+            var response = await SendAsync(method, relativePath, httpContent, cancellationToken).ConfigureAwait(false);
+            return response;
         }
 
         /// <summary>
@@ -36,10 +41,8 @@ namespace Amvision.Workflows
             HttpContent? httpContent,
             CancellationToken cancellationToken)
         {
-            if (disposed)
-            {
-                throw new ObjectDisposedException(nameof(AmvisionWorkflowClient));
-            }
+            EnsureClientNotDisposed();
+            ValidateHttpRequest(method, relativePath);
 
             using var request = new HttpRequestMessage(method, relativePath);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.AccessToken.Trim());
@@ -48,11 +51,41 @@ namespace Amvision.Workflows
                 request.Content = httpContent;
             }
 
-            using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            var responseText = response.Content is null
-                ? string.Empty
-                : await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            return AmvisionWorkflowApiResponse.Create(response.StatusCode, responseText);
+            try
+            {
+                using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var responseText = await ReadResponseTextAsync(response).ConfigureAwait(false);
+                var apiResponse = AmvisionWorkflowApiResponse.Create(
+                    response.StatusCode,
+                    responseText,
+                    method.Method,
+                    relativePath);
+                return apiResponse;
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new AmvisionWorkflowTransportException(
+                    "AMVISION HTTP 请求超时。",
+                    method,
+                    relativePath,
+                    ex);
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new AmvisionWorkflowTransportException(
+                    "AMVISION HTTP 请求失败。",
+                    method,
+                    relativePath,
+                    ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new AmvisionWorkflowTransportException(
+                    "AMVISION HTTP 请求配置无效。",
+                    method,
+                    relativePath,
+                    ex);
+            }
         }
 
         /// <summary>
@@ -72,7 +105,13 @@ namespace Amvision.Workflows
         /// </summary>
         private static T ReadJson<T>(AmvisionWorkflowApiResponse response)
         {
-            return response.ReadJson<T>(JsonSettings);
+            if (response is null)
+            {
+                throw new ArgumentNullException(nameof(response));
+            }
+
+            var value = response.ReadJson<T>(JsonSettings);
+            return value;
         }
 
         /// <summary>
@@ -80,7 +119,13 @@ namespace Amvision.Workflows
         /// </summary>
         private static IReadOnlyList<T> ReadJsonList<T>(AmvisionWorkflowApiResponse response)
         {
-            return response.ReadJson<List<T>>(JsonSettings);
+            if (response is null)
+            {
+                throw new ArgumentNullException(nameof(response));
+            }
+
+            var values = response.ReadJson<List<T>>(JsonSettings);
+            return values;
         }
 
         /// <summary>
@@ -113,6 +158,51 @@ namespace Amvision.Workflows
         private static string EncodePathSegment(string value)
         {
             return WorkflowHttpPath.EncodePathSegment(value);
+        }
+
+        /// <summary>
+        /// 确认 client 尚未释放。
+        /// </summary>
+        private void EnsureClientNotDisposed()
+        {
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(AmvisionWorkflowClient));
+            }
+        }
+
+        /// <summary>
+        /// 校验 HTTP 请求基础参数，避免空 path 或空 method 在底层抛出不直观异常。
+        /// </summary>
+        /// <param name="method">HTTP method。</param>
+        /// <param name="relativePath">请求相对路径。</param>
+        private static void ValidateHttpRequest(HttpMethod method, string relativePath)
+        {
+            if (method is null)
+            {
+                throw new ArgumentNullException(nameof(method));
+            }
+
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                throw new ArgumentException("HTTP request path cannot be empty.", nameof(relativePath));
+            }
+        }
+
+        /// <summary>
+        /// 读取 HTTP 响应文本。
+        /// </summary>
+        /// <param name="response">HTTP 响应对象。</param>
+        /// <returns>响应文本；没有响应体时返回空字符串。</returns>
+        private static async Task<string> ReadResponseTextAsync(HttpResponseMessage response)
+        {
+            if (response.Content is null)
+            {
+                return string.Empty;
+            }
+
+            var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return responseText;
         }
     }
 }

@@ -13,7 +13,7 @@ internal sealed class ConfiguredRuntime
     /// <param name="backend">HTTP API 连接配置。</param>
     /// <param name="runtime">WorkflowAppRuntime 配置。</param>
     /// <param name="invoke">runtime 调用配置。</param>
-    /// <param name="sourceFile">来源 config_*.json 文件路径。</param>
+    /// <param name="sourceFile">来源 config*.json 文件路径。</param>
     public ConfiguredRuntime(BackendConfig backend, WorkflowRuntimeConfig runtime, InvokeConfig invoke, string sourceFile)
     {
         Backend = backend;

@@ -16,21 +16,21 @@ public enum ImageFileFormat
     /// <summary>
     /// JPEG 编码，适合工业现场大图压缩传输。
     /// </summary>
-    Jpeg,
+    JPEG,
 
     /// <summary>
     /// PNG 编码，适合需要无损压缩或保留透明通道的图片。
     /// </summary>
-    Png,
+    PNG,
 
     /// <summary>
     /// BMP 编码，适合 Windows 原始位图交换，但文件体积通常较大。
     /// </summary>
-    Bmp
+    BMP
 }
 
 /// <summary>
-/// 使用 .NET Framework 原生 System.Drawing 实现 jpeg / png / bmp / base64 / Bitmap 互转。
+/// 使用 .NET Framework 原生 System.Drawing 实现 JPEG / PNG / BMP / base64 / Bitmap 互转。
 /// </summary>
 public static class ImageConversionTools
 {
@@ -40,17 +40,19 @@ public static class ImageConversionTools
     private const long DefaultJpegQuality = 80L;
 
     /// <summary>
-    /// 从磁盘读取 jpeg / png / bmp 图片，并按文件扩展名编码为纯 base64。
+    /// 从磁盘读取 JPEG / PNG / BMP 图片，并按文件扩展名编码为纯 base64。
     /// </summary>
     /// <param name="imagePath">图片文件路径。</param>
     /// <returns>不带 data URL 前缀的 base64 字符串。</returns>
     public static string ImageFileToBase64(string imagePath)
     {
-        return ImageFileToBase64(imagePath, InferFormatFromPath(imagePath), DefaultJpegQuality);
+        var targetFormat = InferFormatFromPath(imagePath);
+        var base64 = ImageFileToBase64(imagePath, targetFormat, DefaultJpegQuality);
+        return base64;
     }
 
     /// <summary>
-    /// 从磁盘读取 jpeg / png / bmp 图片，并转换为指定格式的纯 base64。
+    /// 从磁盘读取 JPEG / PNG / BMP 图片，并转换为指定格式的纯 base64。
     /// </summary>
     /// <param name="imagePath">图片文件路径。</param>
     /// <param name="targetFormat">目标图片格式。</param>
@@ -61,21 +63,25 @@ public static class ImageConversionTools
         ImageFileFormat targetFormat,
         long jpegQuality = DefaultJpegQuality)
     {
-        return Convert.ToBase64String(ConvertImageFileToBytes(imagePath, targetFormat, jpegQuality));
+        var imageBytes = ConvertImageFileToBytes(imagePath, targetFormat, jpegQuality);
+        var base64 = Convert.ToBase64String(imageBytes);
+        return base64;
     }
 
     /// <summary>
-    /// 从磁盘读取 jpeg / png / bmp 图片，并按文件扩展名编码为 data URL。
+    /// 从磁盘读取 JPEG / PNG / BMP 图片，并按文件扩展名编码为 data URL。
     /// </summary>
     /// <param name="imagePath">图片文件路径。</param>
     /// <returns>包含 media type 的 data URL。</returns>
     public static string ImageFileToDataUrl(string imagePath)
     {
-        return ImageFileToDataUrl(imagePath, InferFormatFromPath(imagePath), DefaultJpegQuality);
+        var targetFormat = InferFormatFromPath(imagePath);
+        var dataUrl = ImageFileToDataUrl(imagePath, targetFormat, DefaultJpegQuality);
+        return dataUrl;
     }
 
     /// <summary>
-    /// 从磁盘读取 jpeg / png / bmp 图片，并转换为指定格式的 data URL。
+    /// 从磁盘读取 JPEG / PNG / BMP 图片，并转换为指定格式的 data URL。
     /// </summary>
     /// <param name="imagePath">图片文件路径。</param>
     /// <param name="targetFormat">目标图片格式。</param>
@@ -86,7 +92,10 @@ public static class ImageConversionTools
         ImageFileFormat targetFormat,
         long jpegQuality = DefaultJpegQuality)
     {
-        return $"data:{GetMediaType(targetFormat)};base64,{ImageFileToBase64(imagePath, targetFormat, jpegQuality)}";
+        var mediaType = GetMediaType(targetFormat);
+        var base64 = ImageFileToBase64(imagePath, targetFormat, jpegQuality);
+        var dataUrl = $"data:{mediaType};base64,{base64}";
+        return dataUrl;
     }
 
     /// <summary>
@@ -143,8 +152,8 @@ public static class ImageConversionTools
     /// <param name="targetPngPath">PNG 目标文件路径。</param>
     public static void ConvertBmpToPngFile(string bmpPath, string targetPngPath)
     {
-        RequireSourceFormat(bmpPath, ImageFileFormat.Bmp, nameof(bmpPath));
-        ConvertImageFile(bmpPath, targetPngPath, ImageFileFormat.Png);
+        RequireSourceFormat(bmpPath, ImageFileFormat.BMP, nameof(bmpPath));
+        ConvertImageFile(bmpPath, targetPngPath, ImageFileFormat.PNG);
     }
 
     /// <summary>
@@ -158,8 +167,8 @@ public static class ImageConversionTools
         string targetJpegPath,
         long jpegQuality = DefaultJpegQuality)
     {
-        RequireSourceFormat(bmpPath, ImageFileFormat.Bmp, nameof(bmpPath));
-        ConvertImageFile(bmpPath, targetJpegPath, ImageFileFormat.Jpeg, jpegQuality);
+        RequireSourceFormat(bmpPath, ImageFileFormat.BMP, nameof(bmpPath));
+        ConvertImageFile(bmpPath, targetJpegPath, ImageFileFormat.JPEG, jpegQuality);
     }
 
     /// <summary>
@@ -169,8 +178,9 @@ public static class ImageConversionTools
     /// <returns>PNG 编码的纯 base64 字符串。</returns>
     public static string ConvertBmpToPngBase64(string bmpPath)
     {
-        RequireSourceFormat(bmpPath, ImageFileFormat.Bmp, nameof(bmpPath));
-        return ImageFileToBase64(bmpPath, ImageFileFormat.Png);
+        RequireSourceFormat(bmpPath, ImageFileFormat.BMP, nameof(bmpPath));
+        var base64 = ImageFileToBase64(bmpPath, ImageFileFormat.PNG);
+        return base64;
     }
 
     /// <summary>
@@ -181,8 +191,9 @@ public static class ImageConversionTools
     /// <returns>JPEG 编码的纯 base64 字符串。</returns>
     public static string ConvertBmpToJpegBase64(string bmpPath, long jpegQuality = DefaultJpegQuality)
     {
-        RequireSourceFormat(bmpPath, ImageFileFormat.Bmp, nameof(bmpPath));
-        return ImageFileToBase64(bmpPath, ImageFileFormat.Jpeg, jpegQuality);
+        RequireSourceFormat(bmpPath, ImageFileFormat.BMP, nameof(bmpPath));
+        var base64 = ImageFileToBase64(bmpPath, ImageFileFormat.JPEG, jpegQuality);
+        return base64;
     }
 
     /// <summary>
@@ -557,11 +568,11 @@ public static class ImageConversionTools
         {
             case ".jpg":
             case ".jpeg":
-                return ImageFileFormat.Jpeg;
+                return ImageFileFormat.JPEG;
             case ".png":
-                return ImageFileFormat.Png;
+                return ImageFileFormat.PNG;
             case ".bmp":
-                return ImageFileFormat.Bmp;
+                return ImageFileFormat.BMP;
             default:
                 throw new NotSupportedException($"Unsupported image format extension: {extension}");
         }
@@ -576,9 +587,9 @@ public static class ImageConversionTools
     {
         return format switch
         {
-            ImageFileFormat.Jpeg => "image/jpeg",
-            ImageFileFormat.Png => "image/png",
-            ImageFileFormat.Bmp => "image/bmp",
+            ImageFileFormat.JPEG => "image/jpeg",
+            ImageFileFormat.PNG => "image/png",
+            ImageFileFormat.BMP => "image/bmp",
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported image file format.")
         };
     }
@@ -598,13 +609,13 @@ public static class ImageConversionTools
     {
         switch (targetFormat)
         {
-            case ImageFileFormat.Jpeg:
+            case ImageFileFormat.JPEG:
                 SaveJpeg(bitmap, stream, jpegQuality);
                 break;
-            case ImageFileFormat.Png:
+            case ImageFileFormat.PNG:
                 bitmap.Save(stream, ImageFormat.Png);
                 break;
-            case ImageFileFormat.Bmp:
+            case ImageFileFormat.BMP:
                 bitmap.Save(stream, ImageFormat.Bmp);
                 break;
             default:

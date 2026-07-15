@@ -9,7 +9,7 @@ using System.Linq;
 namespace Amvision.Workflows.Tools
 {
     /// <summary>
-    /// 从 Config/config_*.json 读取现场配置，并构建 Runtime、TriggerSource 和 ModelDeployment 配置索引。
+    /// 从 Config/config*.json 读取现场配置，并构建 Runtime、TriggerSource 和 ModelDeployment 配置索引。
     /// </summary>
     internal static class WorkflowConfigLoader
     {
@@ -106,16 +106,18 @@ namespace Amvision.Workflows.Tools
         };
 
         /// <summary>
-        /// 从默认 Config 目录加载全部 config_*.json。
+        /// 从默认 Config 目录加载全部 config*.json。
         /// </summary>
         /// <returns>按 runtime key、TriggerSource key 和 model deployment key 索引好的配置 catalog。</returns>
         public static WorkflowConfigurationCatalog LoadDefault()
         {
-            return LoadDirectory(FindConfigDirectory());
+            var configDirectory = FindConfigDirectory();
+            var catalog = LoadDirectory(configDirectory);
+            return catalog;
         }
 
         /// <summary>
-        /// 从指定目录加载所有 config_*.json，并校验 key 唯一性和配置字段。
+        /// 从指定目录加载所有 config*.json，并校验 key 唯一性和配置字段。
         /// </summary>
         /// <param name="configDirectory">Config 目录路径。</param>
         /// <returns>按 key 查询的配置 catalog。</returns>
@@ -127,12 +129,12 @@ namespace Amvision.Workflows.Tools
                 throw new DirectoryNotFoundException($"Config directory does not exist: {normalizedDirectory}");
             }
 
-            var files = Directory.GetFiles(normalizedDirectory, "config_*.json")
+            var files = Directory.GetFiles(normalizedDirectory, "config*.json")
                 .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (files.Length == 0)
             {
-                throw new FileNotFoundException("No config_*.json files were found in Config directory.", normalizedDirectory);
+                throw new FileNotFoundException("No config*.json files were found in Config directory.", normalizedDirectory);
             }
 
             var runtimes = new Dictionary<string, ConfiguredRuntime>(StringComparer.OrdinalIgnoreCase);
@@ -371,7 +373,7 @@ namespace Amvision.Workflows.Tools
         }
 
         /// <summary>
-        /// 查找包含 config_*.json 的 Config 目录，兼容开发态和发布态路径。
+        /// 查找包含 config*.json 的 Config 目录，兼容开发态和发布态路径。
         /// </summary>
         /// <returns>可用的 Config 目录路径。</returns>
         private static string FindConfigDirectory()
@@ -379,13 +381,13 @@ namespace Amvision.Workflows.Tools
             foreach (var candidate in EnumerateCandidateDirectories())
             {
                 if (Directory.Exists(candidate)
-                    && Directory.GetFiles(candidate, "config_*.json").Length > 0)
+                    && Directory.GetFiles(candidate, "config*.json").Length > 0)
                 {
                     return candidate;
                 }
             }
 
-            throw new DirectoryNotFoundException("Cannot find Config directory with config_*.json files.");
+            throw new DirectoryNotFoundException("Cannot find Config directory with config*.json files.");
         }
 
         /// <summary>

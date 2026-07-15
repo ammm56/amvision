@@ -22,10 +22,13 @@ internal sealed partial class WorkflowRuntimeOperations
         CancellationToken cancellationToken = default)
     {
         var configuredRuntime = GetConfiguredRuntime(runtimeName);
-        return await client.GetWorkflowAppRuntimeEventResponsesAsync(
-            RequireRuntimeId(configuredRuntime),
-            limit: configuredRuntime.Invoke.EventLimit,
+        var workflowRuntimeId = RequireRuntimeId(configuredRuntime);
+        var eventLimit = configuredRuntime.Invoke.EventLimit;
+        var events = await client.GetWorkflowAppRuntimeEventResponsesAsync(
+            workflowRuntimeId,
+            limit: eventLimit,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        return events;
     }
 }
 }

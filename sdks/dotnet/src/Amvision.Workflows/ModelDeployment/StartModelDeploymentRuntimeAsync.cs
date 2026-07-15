@@ -16,17 +16,19 @@ internal sealed partial class ModelDeploymentOperations
     /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>runtime 状态响应。</returns>
-    public Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeAsync(
+    public async Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeAsync(
         string modelDeploymentName,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return client.StartModelDeploymentRuntimeResponseAsync(
+        var deploymentInstanceId = RequireDeploymentInstanceId(configuredModelDeployment);
+        var response = await client.StartModelDeploymentRuntimeResponseAsync(
             modelDeployment.TaskType,
-            RequireDeploymentInstanceId(configuredModelDeployment),
+            deploymentInstanceId,
             modelDeployment.RuntimeMode,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

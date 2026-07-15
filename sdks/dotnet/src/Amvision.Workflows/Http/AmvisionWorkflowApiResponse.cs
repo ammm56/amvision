@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Net;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+
 namespace Amvision.Workflows
 {
 
@@ -16,7 +17,9 @@ namespace Amvision.Workflows
             JToken? bodyJson,
             string? errorCode,
             string? errorMessage,
-            IReadOnlyDictionary<string, JToken> errorDetails)
+            IReadOnlyDictionary<string, JToken> errorDetails,
+            string? httpMethod,
+            string? requestPath)
         {
             StatusCode = statusCode;
             Content = content;
@@ -24,6 +27,8 @@ namespace Amvision.Workflows
             ErrorCode = errorCode;
             ErrorMessage = errorMessage;
             ErrorDetails = errorDetails;
+            HttpMethod = httpMethod;
+            RequestPath = requestPath;
         }
 
         /// <summary>
@@ -62,6 +67,16 @@ namespace Amvision.Workflows
         public IReadOnlyDictionary<string, JToken> ErrorDetails { get; }
 
         /// <summary>
+        /// 产生该响应的 HTTP method；非 SDK HTTP 调用构造时为空。
+        /// </summary>
+        public string? HttpMethod { get; }
+
+        /// <summary>
+        /// 产生该响应的 HTTP 相对路径；非 SDK HTTP 调用构造时为空。
+        /// </summary>
+        public string? RequestPath { get; }
+
+        /// <summary>
         /// 非 2xx 响应时抛出 <see cref="AmvisionWorkflowApiException" />。
         /// </summary>
         public void EnsureSuccessStatusCode()
@@ -75,7 +90,11 @@ namespace Amvision.Workflows
                 StatusCode,
                 ErrorCode,
                 ErrorMessage ?? Content,
-                ErrorDetails);
+                ErrorDetails,
+                HttpMethod,
+                RequestPath,
+                Content,
+                innerException: null);
         }
 
         /// <summary>
@@ -89,14 +108,24 @@ namespace Amvision.Workflows
             EnsureSuccessStatusCode();
             if (!(BodyJson is JToken bodyJson))
             {
-                throw new JsonException("HTTP response body is not JSON.");
+                throw new JsonException(BuildJsonReadErrorMessage("HTTP response body is not JSON."));
             }
 
             var serializer = JsonSerializer.Create(settings ?? WorkflowJsonDefaults.SerializerSettings);
-            var value = bodyJson.ToObject<T>(serializer);
-            return value is null
-                ? throw new JsonException("HTTP response body cannot be deserialized as " + typeof(T).Name + ".")
-                : value;
+            try
+            {
+                var value = bodyJson.ToObject<T>(serializer);
+                if (value is null)
+                {
+                    throw new JsonException("HTTP response body cannot be deserialized as " + typeof(T).Name + ".");
+                }
+
+                return value;
+            }
+            catch (JsonException ex)
+            {
+                throw new JsonException(BuildJsonReadErrorMessage(ex.Message), ex);
+            }
         }
 
         /// <summary>
@@ -106,6 +135,23 @@ namespace Amvision.Workflows
         /// <param name="content">响应文本。</param>
         /// <returns>解析后的 SDK 响应。</returns>
         internal static AmvisionWorkflowApiResponse Create(HttpStatusCode statusCode, string content)
+        {
+            return Create(statusCode, content, httpMethod: null, requestPath: null);
+        }
+
+        /// <summary>
+        /// 按 HTTP 响应状态、文本和请求上下文构造 SDK 响应对象。
+        /// </summary>
+        /// <param name="statusCode">HTTP 状态码。</param>
+        /// <param name="content">响应文本。</param>
+        /// <param name="httpMethod">HTTP method。</param>
+        /// <param name="requestPath">请求相对路径。</param>
+        /// <returns>解析后的 SDK 响应。</returns>
+        internal static AmvisionWorkflowApiResponse Create(
+            HttpStatusCode statusCode,
+            string content,
+            string? httpMethod,
+            string? requestPath)
         {
             JToken? bodyJson = null;
             string? errorCode = null;
@@ -149,8 +195,25 @@ namespace Amvision.Workflows
                 bodyJson,
                 errorCode,
                 errorMessage,
-                errorDetails
+                errorDetails,
+                httpMethod,
+                requestPath
             );
+        }
+
+        /// <summary>
+        /// 构造带请求上下文的 JSON 读取错误消息。
+        /// </summary>
+        /// <param name="message">原始 JSON 错误消息。</param>
+        /// <returns>带请求上下文的错误消息。</returns>
+        private string BuildJsonReadErrorMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(HttpMethod) || string.IsNullOrWhiteSpace(RequestPath))
+            {
+                return message;
+            }
+
+            return $"{message} ({HttpMethod} {RequestPath})";
         }
 
         /// <summary>

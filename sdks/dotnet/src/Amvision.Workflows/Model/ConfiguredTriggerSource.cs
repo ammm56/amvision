@@ -13,7 +13,7 @@ internal sealed class ConfiguredTriggerSource
     /// <param name="backend">HTTP API 连接配置。</param>
     /// <param name="runtime">TriggerSource 关联的 WorkflowAppRuntime 配置。</param>
     /// <param name="triggerSource">TriggerSource 配置。</param>
-    /// <param name="sourceFile">来源 config_*.json 文件路径。</param>
+    /// <param name="sourceFile">来源 config*.json 文件路径。</param>
     public ConfiguredTriggerSource(BackendConfig backend, WorkflowRuntimeConfig runtime, TriggerSourceConfig triggerSource, string sourceFile)
     {
         Backend = backend;

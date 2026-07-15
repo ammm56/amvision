@@ -38,13 +38,26 @@ internal sealed partial class ModelDeploymentOperations
 
         if (defaultImagePath != null)
         {
-            return uploadCallback(BuildUploadRequestFromFile(configuredModelDeployment, defaultImagePath, null));
+            var uploadRequest = BuildUploadRequestFromFile(configuredModelDeployment, defaultImagePath, null);
+            var uploadResult = uploadCallback(uploadRequest);
+            return uploadResult;
         }
 
-        var request = defaultInputUri != null
-            ? BuildJsonRequestFromInputUri(configuredModelDeployment, defaultInputUri)
-            : BuildJsonRequestFromInputFileId(configuredModelDeployment, defaultInputFileId!);
-        return jsonCallback(request);
+        if (defaultInputUri != null)
+        {
+            var inputUriRequest = BuildJsonRequestFromInputUri(configuredModelDeployment, defaultInputUri);
+            var inputUriResult = jsonCallback(inputUriRequest);
+            return inputUriResult;
+        }
+
+        if (defaultInputFileId == null)
+        {
+            throw new InvalidOperationException($"{modelDeployment.Name} default_input_file_id is empty.");
+        }
+
+        var inputFileRequest = BuildJsonRequestFromInputFileId(configuredModelDeployment, defaultInputFileId);
+        var inputFileResult = jsonCallback(inputFileRequest);
+        return inputFileResult;
     }
 
     /// <summary>

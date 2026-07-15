@@ -6,7 +6,7 @@ using Newtonsoft.Json;
 namespace Amvision.Workflows.Configuration
 {
 /// <summary>
-/// 单个 config_*.json 文件的完整配置模型。
+/// 单个 config*.json 文件的完整配置模型。
 /// </summary>
 internal sealed class WorkflowAppConfigFile
 {

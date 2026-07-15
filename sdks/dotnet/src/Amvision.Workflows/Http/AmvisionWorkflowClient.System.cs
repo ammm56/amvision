@@ -15,7 +15,9 @@ namespace Amvision.Workflows
         public Task<AmvisionWorkflowApiResponse> GetSystemConfigAsync(
             CancellationToken cancellationToken = default)
         {
-            return SendAsync(HttpMethod.Get, $"{SystemApiPrefix}/config", content: null, cancellationToken);
+            var requestPath = $"{SystemApiPrefix}/config";
+            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
+            return responseTask;
         }
 
         /// <summary>
@@ -24,8 +26,9 @@ namespace Amvision.Workflows
         public async Task<SystemConfigResponse> GetSystemConfigResponseAsync(
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<SystemConfigResponse>(
-                await GetSystemConfigAsync(cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetSystemConfigAsync(cancellationToken).ConfigureAwait(false);
+            var typedResponse = ReadJson<SystemConfigResponse>(apiResponse);
+            return typedResponse;
         }
     }
 }

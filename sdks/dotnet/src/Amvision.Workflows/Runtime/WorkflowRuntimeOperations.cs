@@ -43,7 +43,7 @@ internal sealed partial class WorkflowRuntimeOperations
     }
 
     /// <summary>
-    /// 获取后端 runtime id；为空说明前端配置未同步到 config_*.json。
+    /// 获取后端 runtime id；为空说明前端配置未同步到 config*.json。
     /// </summary>
     /// <param name="configuredRuntime">runtime 配置。</param>
     /// <returns>workflow_runtime_id。</returns>

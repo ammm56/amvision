@@ -17,18 +17,21 @@ internal sealed partial class ModelDeploymentOperations
     /// <param name="inputUri">后端可读取的图片 URI。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>同步推理响应。</returns>
-    public Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithInputUriAsync(
+    public async Task<ModelDeploymentInferenceResponse> InvokeModelDeploymentWithInputUriAsync(
         string modelDeploymentName,
         string inputUri,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
-        return client.InferModelDeploymentResponseAsync(
+        var deploymentInstanceId = RequireDeploymentInstanceId(configuredModelDeployment);
+        var request = BuildJsonRequestFromInputUri(configuredModelDeployment, inputUri);
+        var response = await client.InferModelDeploymentResponseAsync(
             modelDeployment.TaskType,
-            RequireDeploymentInstanceId(configuredModelDeployment),
-            BuildJsonRequestFromInputUri(configuredModelDeployment, inputUri),
-            cancellationToken);
+            deploymentInstanceId,
+            request,
+            cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }
 }

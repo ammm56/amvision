@@ -35,7 +35,8 @@ internal sealed partial class ZeroMqTriggerOperations
         var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width, height);
         ApplyImageDefaults(request, configuredTriggerSource);
         var client = GetClient(configuredTriggerSource);
-        return await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
+        var triggerResult = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
+        return triggerResult;
     }
 
     /// <summary>
@@ -45,13 +46,19 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public Task<TriggerResult> InvokeBgr24FromBitmapAsync(
+    public async Task<TriggerResult> InvokeBgr24FromBitmapAsync(
         string triggerSourceName,
         Bitmap bitmap,
         CancellationToken cancellationToken = default)
     {
         var frame = ImageConversionTools.BitmapToBgr24(bitmap);
-        return InvokeBgr24Async(triggerSourceName, frame.Bytes, frame.Width, frame.Height, cancellationToken);
+        var triggerResult = await InvokeBgr24Async(
+            triggerSourceName,
+            frame.Bytes,
+            frame.Width,
+            frame.Height,
+            cancellationToken).ConfigureAwait(false);
+        return triggerResult;
     }
 
     /// <summary>
@@ -61,7 +68,7 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="imagePath">图片路径，可为相对配置文件目录的路径。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public Task<TriggerResult> InvokeBgr24FromFileAsync(
+    public async Task<TriggerResult> InvokeBgr24FromFileAsync(
         string triggerSourceName,
         string imagePath,
         CancellationToken cancellationToken = default)
@@ -69,7 +76,13 @@ internal sealed partial class ZeroMqTriggerOperations
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var resolvedImagePath = ResolveConfiguredPath(configuredTriggerSource, imagePath);
         var frame = ImageConversionTools.ImageFileToBgr24(resolvedImagePath);
-        return InvokeBgr24Async(triggerSourceName, frame.Bytes, frame.Width, frame.Height, cancellationToken);
+        var triggerResult = await InvokeBgr24Async(
+            triggerSourceName,
+            frame.Bytes,
+            frame.Width,
+            frame.Height,
+            cancellationToken).ConfigureAwait(false);
+        return triggerResult;
     }
 
     /// <summary>
@@ -78,7 +91,7 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="triggerSourceName">TriggerSource key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public Task<TriggerResult> InvokeConfiguredBgr24ImageAsync(
+    public async Task<TriggerResult> InvokeConfiguredBgr24ImageAsync(
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
@@ -89,7 +102,11 @@ internal sealed partial class ZeroMqTriggerOperations
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
-        return InvokeBgr24FromFileAsync(triggerSourceName, imagePath, cancellationToken);
+        var triggerResult = await InvokeBgr24FromFileAsync(
+            triggerSourceName,
+            imagePath,
+            cancellationToken).ConfigureAwait(false);
+        return triggerResult;
     }
 }
 }

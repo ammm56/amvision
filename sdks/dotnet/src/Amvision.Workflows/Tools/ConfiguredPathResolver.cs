@@ -6,7 +6,7 @@ using System.IO;
 namespace Amvision.Workflows.Tools
 {
 /// <summary>
-/// 解析 config_*.json 和代码入参中的本地文件路径，统一处理开发态和 bin 输出目录。
+/// 解析 config*.json 和代码入参中的本地文件路径，统一处理开发态和 bin 输出目录。
 /// </summary>
 internal static class ConfiguredPathResolver
 {

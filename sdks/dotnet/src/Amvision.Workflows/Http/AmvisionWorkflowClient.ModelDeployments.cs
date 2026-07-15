@@ -18,13 +18,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "start",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -36,8 +38,14 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeStatusResponse>(
-                await StartModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await StartModelDeploymentRuntimeAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeStatusResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -49,13 +57,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "stop",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -67,8 +77,14 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeStatusResponse>(
-                await StopModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await StopModelDeploymentRuntimeAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeStatusResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -80,13 +96,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "reset",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -98,8 +116,14 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeStatusResponse>(
-                await ResetModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await ResetModelDeploymentRuntimeAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeStatusResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -111,13 +135,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "warmup",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -129,8 +155,14 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeWarmupResponse>(
-                await WarmupModelDeploymentRuntimeAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await WarmupModelDeploymentRuntimeAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeWarmupResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -142,13 +174,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Get,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "status",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -160,8 +194,14 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeStatusResponse>(
-                await GetModelDeploymentRuntimeStatusAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetModelDeploymentRuntimeStatusAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeStatusResponse>(apiResponse);
+            return typedResponse;
         }
 
         /// <summary>
@@ -173,13 +213,15 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return SendModelDeploymentRuntimeCommandAsync(
+            var responseTask = SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Get,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "health",
                 cancellationToken);
+
+            return responseTask;
         }
 
         /// <summary>
@@ -191,11 +233,17 @@ namespace Amvision.Workflows
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            return ReadJson<ModelDeploymentRuntimeHealthResponse>(
-                await GetModelDeploymentRuntimeHealthAsync(taskType, deploymentInstanceId, runtimeMode, cancellationToken).ConfigureAwait(false));
+            var apiResponse = await GetModelDeploymentRuntimeHealthAsync(
+                taskType,
+                deploymentInstanceId,
+                runtimeMode,
+                cancellationToken).ConfigureAwait(false);
+
+            var typedResponse = ReadJson<ModelDeploymentRuntimeHealthResponse>(apiResponse);
+            return typedResponse;
         }
 
-        private Task<AmvisionWorkflowApiResponse> SendModelDeploymentRuntimeCommandAsync(
+        private async Task<AmvisionWorkflowApiResponse> SendModelDeploymentRuntimeCommandAsync(
             HttpMethod method,
             string taskType,
             string deploymentInstanceId,
@@ -203,8 +251,9 @@ namespace Amvision.Workflows
             string action,
             CancellationToken cancellationToken)
         {
-            var path = BuildModelDeploymentRuntimePath(taskType, deploymentInstanceId, runtimeMode, action);
-            return SendAsync(method, path, content: null, cancellationToken);
+            var requestPath = BuildModelDeploymentRuntimePath(taskType, deploymentInstanceId, runtimeMode, action);
+            var apiResponse = await SendAsync(method, requestPath, content: null, cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         private static string BuildModelDeploymentRuntimePath(
