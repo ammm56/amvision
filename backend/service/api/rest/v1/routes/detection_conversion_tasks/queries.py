@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.responses import (
     DetectionConversionTaskDetailResponse,
     DetectionConversionTaskSummaryResponse,
@@ -23,8 +24,10 @@ from backend.service.api.rest.v1.routes.detection_conversion_tasks.visibility im
     require_visible_detection_conversion_task,
     resolve_visible_project_ids,
 )
+from backend.service.api.rest.v1.routes.task_conversion.deletion import delete_conversion_task_outputs
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 detection_conversion_query_router = APIRouter()
@@ -97,3 +100,29 @@ def get_detection_conversion_task_detail(
         include_events=include_events,
     )
     return build_detection_conversion_task_detail(task_detail.task, tuple(task_detail.events))
+
+
+@detection_conversion_query_router.delete(
+    "/detection/conversion-tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_detection_conversion_task(
+    task_id: str,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:write", "tasks:write"))],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> Response:
+    """删除 detection conversion 任务运行数据和未被部署使用的输出。"""
+
+    task_detail = require_visible_detection_conversion_task(
+        principal=principal,
+        task_id=task_id,
+        session_factory=session_factory,
+        include_events=False,
+    )
+    delete_conversion_task_outputs(
+        task=task_detail.task,
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

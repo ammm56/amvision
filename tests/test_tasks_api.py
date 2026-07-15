@@ -117,6 +117,64 @@ def test_cancel_task_updates_state_and_events(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
+    """验证通用 tasks API 不再暴露语义含混的删除入口。"""
+
+    context = create_api_test_context(
+        tmp_path,
+        database_name="tasks-api.db",
+        enable_local_buffer_broker=False,
+    )
+    client = context.client
+    session_factory = context.session_factory
+    dataset_storage = context.dataset_storage
+    service = SqlAlchemyTaskService(session_factory)
+    task_id = "task-delete-failed"
+    try:
+        with client:
+            service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="yolox-conversion",
+                    display_name="failed conversion",
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                    task_id=task_id,
+                    state="running",
+                )
+            )
+            service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="result",
+                    message="conversion failed",
+                    payload={
+                        "state": "failed",
+                        "result": {
+                            "report_path": f"task-runs/conversion/{task_id}/artifacts/report.json",
+                        },
+                    },
+                )
+            )
+            dataset_storage.write_text(f"task-runs/conversion/{task_id}/artifacts/report.json", "{}")
+            dataset_storage.write_text(f"task-runs/{task_id}/legacy-marker.txt", "legacy")
+
+            delete_response = client.delete(
+                f"/api/v1/tasks/{task_id}",
+                headers=_build_task_write_headers(),
+            )
+            detail_response = client.get(
+                f"/api/v1/tasks/{task_id}",
+                headers=_build_task_read_headers(),
+            )
+
+        assert delete_response.status_code == 405
+        assert detail_response.status_code == 200
+        assert dataset_storage.resolve(f"task-runs/conversion/{task_id}").is_dir()
+        assert dataset_storage.resolve(f"task-runs/{task_id}").is_dir()
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_list_tasks_returns_pagination_headers_and_offset_window(tmp_path: Path) -> None:
     """验证 tasks 列表接口按统一分页响应头返回结果窗口。"""
 

@@ -243,6 +243,21 @@ class SqlAlchemyModelRepository:
 
         return self._to_model_build_domain(record)
 
+    def delete_model_build(self, model_build_id: str) -> bool:
+        """按 id 删除一个 ModelBuild。"""
+
+        try:
+            record = self.session.get(ModelBuildRecord, model_build_id)
+            if record is None:
+                return False
+            self.session.delete(record)
+            return True
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 ModelBuild 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def list_model_builds(self, model_id: str) -> tuple[ModelBuild, ...]:
         """按 Model id 列出所有 ModelBuild。"""
 

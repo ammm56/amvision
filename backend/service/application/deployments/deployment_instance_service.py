@@ -6,11 +6,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from uuid import uuid4
 
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.models.postprocess.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
+)
+from backend.service.application.runtime.deployment.deployment_events import (
+    build_deployment_events_object_key,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -233,6 +237,9 @@ class SqlAlchemyDeploymentInstanceService:
             )
             if deleted:
                 unit_of_work.commit()
+        if deleted:
+            events_object_key = build_deployment_events_object_key(normalized_deployment_instance_id)
+            self.dataset_storage.delete_tree(str(PurePosixPath(events_object_key).parent))
         return deleted
 
     def resolve_inference_target(self, deployment_instance_id: str) -> RuntimeTargetSnapshot:

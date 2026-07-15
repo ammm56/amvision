@@ -24,7 +24,7 @@
         <tbody>
           <tr v-for="task in conversionTasks" :key="task.task_id">
             <td>
-              <RouterLink :to="`/tasks/${task.task_id}`">
+              <RouterLink :to="`/models/${task.task_type || selectedTaskType}/conversion-tasks/${task.task_id}`">
                 <strong>{{ task.display_name || task.task_id }}</strong>
               </RouterLink>
               <span>{{ task.task_id }}</span>
@@ -45,13 +45,14 @@
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
-import type { ModelConversionTaskSummary } from '../services/model.service'
+import type { ModelConversionTaskSummary, ModelTaskType } from '../services/model.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 defineProps<{
   loading: boolean
+  selectedTaskType: ModelTaskType
   conversionTasks: ModelConversionTaskSummary[]
 }>()
 

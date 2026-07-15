@@ -51,7 +51,7 @@
           size="sm"
           :variant="action === 'terminate' || action === 'delete' ? 'danger' : 'secondary'"
           :disabled="actionRunning !== null"
-          @click="runAction(action)"
+          @click="action === 'delete' ? openDeleteDialog() : runAction(action)"
         >
           <component :is="actionIcon(action)" :size="14" />
           {{ t(`trainingDetail.actions.${action}`) }}
@@ -172,6 +172,19 @@
         </li>
       </ol>
     </section>
+
+    <ConfirmDialog
+      v-if="deleteDialogOpen"
+      :kicker="t('trainingDetail.deleteDialog.kicker')"
+      :title="t('trainingDetail.deleteDialog.title')"
+      :message="t('trainingDetail.messages.confirmDelete').replace('{taskId}', taskId)"
+      :confirm-label="t('trainingDetail.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="actionRunning === 'delete'"
+      confirm-variant="danger"
+      @cancel="deleteDialogOpen = false"
+      @confirm="deleteCurrentTask"
+    />
   </section>
 </template>
 
@@ -195,6 +208,7 @@ import {
   type ModelTaskType,
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -209,6 +223,7 @@ const outputFiles = ref<ModelTrainingOutputFileSummary[]>([])
 const selectedOutputFile = ref<ModelTrainingOutputFileDetail | null>(null)
 const loading = ref(false)
 const actionRunning = ref<string | null>(null)
+const deleteDialogOpen = ref(false)
 const errorMessage = ref<string | null>(null)
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
@@ -309,22 +324,43 @@ async function runAction(action: ModelTrainingTaskActionName): Promise<void> {
     errorMessage.value = 'task_type 不能为空'
     return
   }
+  if (action === 'delete') {
+    openDeleteDialog()
+    return
+  }
   const currentTaskType = taskType.value
-  if (action === 'delete' && !window.confirm(t('trainingDetail.messages.confirmDelete'))) return
   actionRunning.value = action
   errorMessage.value = null
   try {
-    if (action === 'delete') {
-      await deleteModelTrainingTask(currentTaskType, taskId.value)
-      await router.push('/models')
-      return
-    }
     await requestModelTrainingTaskAction(currentTaskType, taskId.value, action)
     await refreshPage()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
   } finally {
     actionRunning.value = null
+  }
+}
+
+function openDeleteDialog(): void {
+  deleteDialogOpen.value = true
+}
+
+async function deleteCurrentTask(): Promise<void> {
+  if (!taskType.value) {
+    errorMessage.value = 'task_type 不能为空'
+    return
+  }
+  const currentTaskType = taskType.value
+  actionRunning.value = 'delete'
+  errorMessage.value = null
+  try {
+    await deleteModelTrainingTask(currentTaskType, taskId.value)
+    await router.push('/models')
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.actionFailed')
+  } finally {
+    actionRunning.value = null
+    deleteDialogOpen.value = false
   }
 }
 

@@ -166,6 +166,25 @@ class OperationCancelledError(ServiceError):
         super().__init__(message, code="operation_cancelled", status_code=409, details=details)
 
 
+class ResourceInUseError(ServiceError):
+    """表示请求删除或修改的资源仍被其他业务资源引用。"""
+
+    def __init__(
+        self,
+        message: str = "资源仍在使用中",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化资源占用错误。
+
+        参数：
+        - message：错误消息。
+        - details：附加错误细节。
+        """
+
+        super().__init__(message, code="resource_in_use", status_code=409, details=details)
+
+
 class UnsupportedDatasetFormatError(ServiceError):
     """表示当前数据集格式暂不支持。"""
 

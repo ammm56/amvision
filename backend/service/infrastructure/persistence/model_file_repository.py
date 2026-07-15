@@ -66,6 +66,21 @@ class SqlAlchemyModelFileRepository:
 
         return self._to_domain(record)
 
+    def delete_model_file(self, file_id: str) -> bool:
+        """按 id 删除一个 ModelFile。"""
+
+        try:
+            record = self.session.get(ModelFileRecord, file_id)
+            if record is None:
+                return False
+            self.session.delete(record)
+            return True
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 ModelFile 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def list_model_files(
         self,
         *,

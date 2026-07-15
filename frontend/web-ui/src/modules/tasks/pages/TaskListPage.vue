@@ -33,7 +33,7 @@
         <tbody>
           <tr v-for="task in taskStore.tasks" :key="task.task_id">
             <td>
-              <RouterLink :to="`/tasks/${task.task_id}`">{{ task.task_id }}</RouterLink>
+              <RouterLink :to="taskDetailPath(task)">{{ task.task_id }}</RouterLink>
             </td>
             <td>{{ task.task_kind || task.kind || '-' }}</td>
             <td><TaskStatusBadge :task="task" /></td>
@@ -68,6 +68,7 @@ import { useI18n } from 'vue-i18n'
 
 import TaskStatusBadge from '../components/TaskStatusBadge.vue'
 import { DEFAULT_TASK_PAGE_SIZE, getTaskProgressPercent, useTaskStore } from '../stores/task.store'
+import type { TaskRecord } from '@/shared/contracts'
 import { useProjectStore } from '@/app/stores/project.store'
 import Button from '@/shared/ui/components/Button.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
@@ -120,6 +121,36 @@ function parsePositiveInteger(value: unknown, fallback: number): number {
   const normalizedValue = Array.isArray(value) ? value[0] : value
   const parsedValue = Number(normalizedValue)
   return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : fallback
+}
+
+function taskDetailPath(task: TaskRecord): string {
+  const taskKind = String(task.task_kind || task.kind || '').toLowerCase()
+  if (taskKind.includes('training')) {
+    return `/models/${inferModelTaskType(task)}/training-tasks/${task.task_id}`
+  }
+  if (taskKind.includes('conversion')) {
+    return `/models/${inferModelTaskType(task)}/conversion-tasks/${task.task_id}`
+  }
+  return `/tasks/${task.task_id}`
+}
+
+function inferModelTaskType(task: TaskRecord): string {
+  const candidates = [
+    task.metadata?.task_type,
+    task.metadata?.model_task_type,
+    task.metadata?.source_task_type,
+    task.result?.task_type,
+    task.task_kind,
+    task.kind,
+  ]
+    .map((value) => String(value ?? '').toLowerCase())
+    .filter(Boolean)
+
+  if (candidates.some((value) => value.includes('classification'))) return 'classification'
+  if (candidates.some((value) => value.includes('segmentation') || value.includes('segment'))) return 'segmentation'
+  if (candidates.some((value) => value.includes('pose'))) return 'pose'
+  if (candidates.some((value) => value.includes('obb'))) return 'obb'
+  return 'detection'
 }
 
 async function updatePageQuery(page: number): Promise<void> {

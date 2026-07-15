@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
+from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
+    delete_stopped_deployment_instance,
+)
 from backend.service.api.rest.v1.routes.detection_deployments.schemas import (
     DetectionDeploymentInstanceCreateRequestBody,
 )
@@ -12,6 +15,9 @@ from backend.service.application.deployments.detection_deployment_service import
     SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -108,16 +114,22 @@ def delete_visible_detection_deployment_instance(
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
     deployment_instance_id: str,
+    sync_supervisor: DeploymentProcessSupervisor,
+    async_supervisor: DeploymentProcessSupervisor,
 ) -> None:
-    """删除当前主体可见的 detection DeploymentInstance。"""
+    """删除当前主体可见且已经停止的 detection DeploymentInstance。"""
 
     service = build_detection_deployment_service(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    view = service.get_deployment_instance(deployment_instance_id)
-    ensure_detection_deployment_visible(principal=principal, view=view)
-    service.delete_deployment_instance(deployment_instance_id)
+    delete_stopped_deployment_instance(
+        deployment_instance_id=deployment_instance_id,
+        principal=principal,
+        deployment_service=service,
+        sync_supervisor=sync_supervisor,
+        async_supervisor=async_supervisor,
+    )
 
 
 def ensure_detection_deployment_visible(

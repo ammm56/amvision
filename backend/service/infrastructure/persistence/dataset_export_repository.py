@@ -144,6 +144,23 @@ class SqlAlchemyDatasetExportRepository:
 
         return tuple(self._to_domain(record) for record in records)
 
+    def delete_dataset_export(self, dataset_export_id: str) -> None:
+        """删除一个 DatasetExport。
+
+        参数：
+        - dataset_export_id：要删除的 DatasetExport id。
+        """
+
+        try:
+            record = self.session.get(DatasetExportRecord, dataset_export_id)
+            if record is not None:
+                self.session.delete(record)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "删除 DatasetExport 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
     def _to_record(self, dataset_export: DatasetExport) -> DatasetExportRecord:
         """把领域对象转换为 ORM 实体。"""
 

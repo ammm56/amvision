@@ -241,6 +241,21 @@ export interface ModelConversionTaskSummary {
   report_summary: Record<string, unknown>
 }
 
+export interface ModelConversionTaskEvent {
+  event_id: string
+  task_id: string
+  attempt_id?: string | null
+  event_type: string
+  created_at: string
+  message: string
+  payload: Record<string, unknown>
+}
+
+export interface ModelConversionTaskDetail extends ModelConversionTaskSummary {
+  task_spec: Record<string, unknown>
+  events: ModelConversionTaskEvent[]
+}
+
 export type ConversionTargetKey =
   | 'onnx'
   | 'onnx-optimized'
@@ -443,6 +458,19 @@ export async function listModelConversionTasks(
 ): Promise<ModelConversionTaskSummary[]> {
   return apiRequest<ModelConversionTaskSummary[]>(buildConversionTaskPath(taskType), {
     query: { project_id: projectId, model_type: modelType || undefined, limit: 100 },
+  })
+}
+
+export async function getModelConversionTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelConversionTaskDetail> {
+  return apiRequest<ModelConversionTaskDetail>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
+    query: { include_events: true },
+  })
+}
+
+export async function deleteModelConversionTask(taskType: ModelTaskType, taskId: string): Promise<void> {
+  return apiRequest<void>(buildConversionTaskPath(taskType, `/${encodeURIComponent(taskId)}`), {
+    method: 'DELETE',
+    responseType: 'void',
   })
 }
 

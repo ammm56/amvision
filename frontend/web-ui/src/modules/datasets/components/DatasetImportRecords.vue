@@ -17,6 +17,7 @@
             <th>{{ t('datasetOps.columns.format') }}</th>
             <th>{{ t('datasetOps.columns.createdAt') }}</th>
             <th>{{ t('datasetOps.columns.task') }}</th>
+            <th>{{ t('datasetOps.columns.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -33,6 +34,19 @@
               <RouterLink v-if="item.task_id" :to="`/tasks/${item.task_id}`">{{ item.task_id }}</RouterLink>
               <span v-else>-</span>
             </td>
+            <td>
+              <div class="table-actions">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  :disabled="!canWriteDatasets || deletingImportId === item.dataset_import_id || !canDeleteImport(item)"
+                  @click="$emit('delete', item)"
+                >
+                  <Trash2 :size="14" />
+                  {{ t('datasetOps.actions.delete') }}
+                </Button>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -42,18 +56,31 @@
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import { Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetImportSummary } from '../services/dataset.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import Button from '@/shared/ui/components/Button.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   imports: DatasetImportSummary[]
   loading: boolean
+  canWriteDatasets: boolean
+  deletingImportId: string | null
   statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 
+defineEmits<{
+  delete: [datasetImport: DatasetImportSummary]
+}>()
+
 const { t } = useI18n()
+
+function canDeleteImport(datasetImport: DatasetImportSummary): boolean {
+  const normalized = (datasetImport.processing_state || datasetImport.status || '').toLowerCase()
+  return normalized === 'completed' || normalized === 'failed'
+}
 </script>

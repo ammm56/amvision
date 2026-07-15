@@ -15,7 +15,7 @@ from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.datasets.exports import DatasetExportRequest
 from backend.service.application.datasets.exports.delivery import SqlAlchemyDatasetExportDeliveryService
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
-from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
@@ -25,6 +25,7 @@ from .responses import (
 	_build_dataset_export_format_catalog_response,
 	_build_dataset_export_package_response,
 	_build_dataset_export_response,
+	_read_optional_str,
 )
 from .schemas import (
 	DatasetExportCreateRequestBody,
@@ -163,6 +164,42 @@ def get_dataset_export_detail(
 	return _build_dataset_export_response(dataset_export)
 
 
+@dataset_exports_router.delete(
+	"/exports/{dataset_export_id}",
+	status_code=204,
+)
+def delete_dataset_export(
+	dataset_export_id: str,
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+) -> None:
+	"""删除一个已结束的 DatasetExport 记录和它的本地运行磁盘数据。"""
+
+	dataset_export = _require_visible_dataset_export(
+		unit_of_work=unit_of_work,
+		principal=principal,
+		dataset_export_id=dataset_export_id,
+	)
+	if dataset_export.status not in ("completed", "failed"):
+		raise InvalidRequestError(
+			"只能删除已完成或已失败的导出记录",
+			details={"dataset_export_id": dataset_export_id, "status": dataset_export.status},
+		)
+
+	if dataset_export.export_path is not None and dataset_export.export_path.strip():
+		dataset_storage.delete_tree(dataset_export.export_path)
+
+	for package_object_key in _collect_dataset_export_package_object_keys(dataset_export):
+		dataset_storage.delete_tree(package_object_key)
+
+	if dataset_export.task_id is not None and dataset_export.task_id.strip():
+		unit_of_work.tasks.delete_task(dataset_export.task_id)
+
+	unit_of_work.dataset_exports.delete_dataset_export(dataset_export_id)
+	unit_of_work.commit()
+
+
 @dataset_exports_router.get(
 	"/{dataset_id}/versions/{dataset_version_id}/exports",
 	response_model=list[DatasetExportSummaryResponse],
@@ -299,4 +336,21 @@ def _require_visible_dataset_export(
 		)
 
 	return dataset_export
+
+
+def _collect_dataset_export_package_object_keys(dataset_export: DatasetExport) -> tuple[str, ...]:
+	"""收集 DatasetExport 可能生成的下载包 object key。"""
+
+	package_object_keys = {
+		_read_optional_str(dataset_export.metadata, "package_object_key"),
+		(
+			f"projects/{dataset_export.project_id}/datasets/{dataset_export.dataset_id}/downloads/"
+			f"dataset-exports/{dataset_export.dataset_export_id}.zip"
+		),
+	}
+	return tuple(
+		package_object_key
+		for package_object_key in package_object_keys
+		if package_object_key is not None and package_object_key.strip()
+	)
 

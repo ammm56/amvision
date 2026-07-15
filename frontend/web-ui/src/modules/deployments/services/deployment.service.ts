@@ -109,6 +109,16 @@ export async function createTaskDeployment(input: TaskDeploymentCreateInput): Pr
   })
 }
 
+export async function deleteTaskDeployment(
+  taskType: ModelTaskType,
+  deploymentInstanceId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    buildDeploymentPath(taskType, `/${encodeURIComponent(deploymentInstanceId)}`),
+    { method: 'DELETE', responseType: 'void' },
+  )
+}
+
 export async function runTaskDeploymentStatusAction(
   taskType: ModelTaskType,
   deploymentInstanceId: string,

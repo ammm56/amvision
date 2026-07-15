@@ -168,6 +168,12 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
         )
         assert deleted_import is None
         assert preserved_version is not None
+
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            assert unit_of_work.tasks.get_task(payload["task_id"]) is None
+        finally:
+            unit_of_work.close()
     finally:
         session_factory.engine.dispose()
 
@@ -1453,6 +1459,7 @@ def _create_test_client(
         tmp_path,
         database_name="amvision-test.db",
         enable_task_manager=enable_task_manager,
+        enable_local_buffer_broker=False,
     )
 
     return context.client, context.session_factory, context.dataset_storage, context.queue_backend

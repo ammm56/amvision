@@ -98,6 +98,7 @@
 
     <ConversionTaskList
       :loading="loading"
+      :selected-task-type="selectedTaskType"
       :conversion-tasks="conversionTasks"
     />
 

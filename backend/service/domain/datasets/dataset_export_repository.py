@@ -69,3 +69,12 @@ class DatasetExportRepository(Protocol):
         """
 
         ...
+
+    def delete_dataset_export(self, dataset_export_id: str) -> None:
+        """删除一个 DatasetExport。
+
+        参数：
+        - dataset_export_id：要删除的 DatasetExport id。
+        """
+
+        ...

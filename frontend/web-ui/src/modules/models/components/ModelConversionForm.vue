@@ -95,7 +95,9 @@
     </div>
     <p v-if="lastConversionSubmission" class="result-note">
       {{ t('modelOps.messages.conversionSubmitted') }}
-      <RouterLink :to="`/tasks/${lastConversionSubmission.task_id}`">{{ lastConversionSubmission.task_id }}</RouterLink>
+      <RouterLink :to="`/models/${selectedTaskType}/conversion-tasks/${lastConversionSubmission.task_id}`">
+        {{ lastConversionSubmission.task_id }}
+      </RouterLink>
     </p>
   </form>
 </template>

@@ -140,6 +140,57 @@ def require_running_deployment_process(
     )
 
 
+def delete_stopped_deployment_instance(
+    *,
+    deployment_instance_id: str,
+    principal: AuthenticatedPrincipal,
+    deployment_service: Any,
+    sync_supervisor: DeploymentProcessSupervisor,
+    async_supervisor: DeploymentProcessSupervisor,
+) -> None:
+    """删除已经完全停止的 DeploymentInstance。
+
+    删除 deployment instance 只移除部署配置和部署事件，不删除 ModelVersion、
+    ModelBuild 或模型产物。这样可以避免误删仍被其他部署、训练记录或模型管理页
+    使用的长期资产。
+    """
+
+    view = deployment_service.get_deployment_instance(deployment_instance_id)
+    ensure_deployment_visible(
+        principal=principal,
+        project_id=getattr(view, "project_id"),
+        deployment_instance_id=deployment_instance_id,
+    )
+    process_config = deployment_service.resolve_process_config(deployment_instance_id)
+    runtime_states = {
+        "sync": sync_supervisor.get_status(process_config),
+        "async": async_supervisor.get_status(process_config),
+    }
+    running_states = {
+        runtime_mode: {
+            "desired_state": status.desired_state,
+            "process_state": status.process_state,
+            "process_id": status.process_id,
+        }
+        for runtime_mode, status in runtime_states.items()
+        if status.desired_state != "stopped" or status.process_state != "stopped"
+    }
+    if running_states:
+        raise InvalidRequestError(
+            "DeploymentInstance 仍有运行中的 runtime，请先停止 sync 和 async 后再删除",
+            details={
+                "deployment_instance_id": deployment_instance_id,
+                "runtime_states": running_states,
+                "required_state": {"desired_state": "stopped", "process_state": "stopped"},
+            },
+        )
+    if not deployment_service.delete_deployment_instance(deployment_instance_id):
+        raise ResourceNotFoundError(
+            "找不到指定的 DeploymentInstance",
+            details={"deployment_instance_id": deployment_instance_id},
+        )
+
+
 def read_async_inference_service_id(
     request: Request,
     *,

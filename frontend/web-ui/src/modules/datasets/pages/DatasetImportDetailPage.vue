@@ -8,6 +8,15 @@
       </div>
       <div class="page-actions">
         <RouterLink to="/datasets">{{ t('datasetImportDetail.actions.backToDatasets') }}</RouterLink>
+        <Button
+          v-if="detail"
+          variant="danger"
+          :disabled="!canDeleteCurrentImport || deleting"
+          @click="deleteDialogOpen = true"
+        >
+          <Trash2 :size="16" />
+          {{ t('datasetImportDetail.actions.delete') }}
+        </Button>
         <Button variant="secondary" :disabled="loading" @click="loadDetail">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -119,29 +128,60 @@
         </div>
       </div>
     </section>
+
+    <ConfirmDialog
+      v-if="detail && deleteDialogOpen"
+      :kicker="t('datasetImportDetail.deleteDialog.kicker')"
+      :title="t('datasetImportDetail.deleteDialog.title')"
+      :message="deleteDialogMessage"
+      :confirm-label="t('datasetImportDetail.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="deleting"
+      confirm-variant="danger"
+      @cancel="deleteDialogOpen = false"
+      @confirm="deleteCurrentImport"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RefreshCw } from '@lucide/vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RefreshCw, Trash2 } from '@lucide/vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
-import { getDatasetImportDetail, type DatasetImportDetail } from '../services/dataset.service'
+import { deleteDatasetImport, getDatasetImportDetail, type DatasetImportDetail } from '../services/dataset.service'
+import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()
+const router = useRouter()
+const sessionStore = useSessionStore()
 const { t } = useI18n()
 
 const detail = ref<DatasetImportDetail | null>(null)
 const loading = ref(false)
+const deleting = ref(false)
+const deleteDialogOpen = ref(false)
 const errorMessage = ref<string | null>(null)
 
 const datasetImportId = computed(() => String(route.params.datasetImportId ?? ''))
+const canWriteDatasets = computed(() => sessionStore.hasScopes(['datasets:write']))
+const canDeleteCurrentImport = computed(() => {
+  if (!detail.value || !canWriteDatasets.value) return false
+  const normalized = String(detail.value.processing_state || detail.value.status || '').toLowerCase()
+  return normalized === 'completed' || normalized === 'failed'
+})
+const deleteDialogMessage = computed(() => {
+  if (!detail.value) return ''
+  return t('datasetImportDetail.messages.confirmDelete')
+    .replace('{datasetImportId}', detail.value.dataset_import_id)
+    .replace('{datasetVersionId}', detail.value.dataset_version_id || '-')
+})
 const validationReportJson = computed(() => JSON.stringify(detail.value?.validation_report ?? {}, null, 2))
 const detectedProfileJson = computed(() => JSON.stringify(detail.value?.detected_profile ?? {}, null, 2))
 const classMapJson = computed(() => JSON.stringify(detail.value?.class_map ?? {}, null, 2))
@@ -169,6 +209,22 @@ async function loadDetail(): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : t('datasetImportDetail.messages.loadFailed')
   } finally {
     loading.value = false
+  }
+}
+
+async function deleteCurrentImport(): Promise<void> {
+  if (!detail.value || !canDeleteCurrentImport.value) return
+
+  deleting.value = true
+  errorMessage.value = null
+  try {
+    await deleteDatasetImport(detail.value.dataset_import_id)
+    await router.push('/datasets')
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('datasetImportDetail.messages.deleteFailed')
+  } finally {
+    deleting.value = false
+    deleteDialogOpen.value = false
   }
 }
 </script>

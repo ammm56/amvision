@@ -170,6 +170,17 @@
                 <Square :size="14" />
                 {{ t('deploymentOps.actions.stop') }}
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                :disabled="!canDeleteDeployment(item)"
+                :title="deleteButtonTitle(item)"
+                @click="openDeleteDeploymentDialog(item.deployment_instance_id)"
+              >
+                <Trash2 :size="14" />
+                {{ t('deploymentOps.actions.delete') }}
+              </Button>
             </div>
           </article>
         </div>
@@ -191,6 +202,18 @@
       @change-task-type="setTaskType"
       @select-model="selectDeploymentSourceModel"
       @apply-source="applyDeploymentSource"
+    />
+
+    <ConfirmDialog
+      v-if="pendingDeleteDeployment"
+      :title="t('deploymentOps.actions.delete')"
+      :message="deleteDeploymentDialogMessage"
+      :confirm-label="t('deploymentOps.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="runningAction === `${pendingDeleteDeployment.deployment_instance_id}:delete`"
+      confirm-variant="danger"
+      @cancel="closeDeleteDeploymentDialog"
+      @confirm="confirmDeleteDeployment"
     />
 
     <div v-if="selectedDeployment" class="operation-grid deployment-runtime-grid">
@@ -261,11 +284,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Play, RefreshCw, RotateCcw, Square, Zap } from '@lucide/vue'
+import { Play, RefreshCw, RotateCcw, Square, Trash2, Zap } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import {
   createTaskDeployment,
+  deleteTaskDeployment,
   listTaskDeploymentEvents,
   listTaskDeployments,
   runTaskDeploymentHealthAction,
@@ -292,6 +316,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -334,6 +359,7 @@ const sourceModels = ref<DeploymentSourceModelSummary[]>([])
 const selectedSourceModelId = ref('')
 const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
 const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
+const pendingDeleteDeploymentId = ref<string | null>(null)
 
 const modelType = ref('')
 const modelVersionId = ref('')
@@ -349,6 +375,18 @@ const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => runtimeStatusByDeployment.value[selectedDeploymentId.value] ?? null)
 const selectedRuntimeHealth = computed(() => runtimeHealthByDeployment.value[selectedDeploymentId.value] ?? null)
+const pendingDeleteDeployment = computed(() => {
+  const deploymentId = pendingDeleteDeploymentId.value
+  return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
+})
+const deleteDeploymentDialogMessage = computed(() => {
+  const deployment = pendingDeleteDeployment.value
+  if (!deployment) return ''
+  return t('deploymentOps.messages.deleteConfirm', {
+    deploymentId: deployment.deployment_instance_id,
+    displayName: deployment.display_name || deployment.deployment_instance_id,
+  })
+})
 const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
   sessionStore.bootstrap?.devices ?? null,
   selectedDeploymentSource.value?.runtimeBackend ?? '',
@@ -549,6 +587,23 @@ function canStopDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || runningAction.value !== null) return false
   const processState = String(runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state ?? item.status ?? '').toLowerCase()
   return processState.includes('running') || processState.includes('starting') || processState.includes('ready')
+}
+
+function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
+  if (!canWriteModels.value || runningAction.value !== null) return false
+  const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
+  if (!status) return true
+  return status.desired_state === 'stopped' && status.process_state === 'stopped'
+}
+
+function deleteButtonTitle(item: TaskDeploymentInstance): string {
+  if (!canWriteModels.value) return '当前账号没有部署写权限'
+  if (runningAction.value !== null) return '已有部署操作正在执行'
+  const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
+  if (status && (status.desired_state !== 'stopped' || status.process_state !== 'stopped')) {
+    return t('deploymentOps.messages.deleteRequiresStopped')
+  }
+  return t('deploymentOps.actions.delete')
 }
 
 function canWarmupDeployment(item: TaskDeploymentInstance): boolean {
@@ -799,6 +854,46 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
   } finally {
     runningAction.value = null
+  }
+}
+
+function openDeleteDeploymentDialog(deploymentId: string): void {
+  const deployment = deployments.value.find((item) => item.deployment_instance_id === deploymentId)
+  if (!deployment || !canDeleteDeployment(deployment)) return
+  pendingDeleteDeploymentId.value = deploymentId
+}
+
+function closeDeleteDeploymentDialog(): void {
+  if (runningAction.value !== null) return
+  pendingDeleteDeploymentId.value = null
+}
+
+async function confirmDeleteDeployment(): Promise<void> {
+  const deployment = pendingDeleteDeployment.value
+  if (!deployment || !canDeleteDeployment(deployment)) return
+  const deploymentId = deployment.deployment_instance_id
+  const taskType = taskTypeForDeployment(deployment)
+  selectedDeploymentId.value = deploymentId
+  runningAction.value = `${deploymentId}:delete`
+  errorMessage.value = null
+  try {
+    await deleteTaskDeployment(taskType, deploymentId)
+    const remainingStatuses = { ...runtimeStatusByDeployment.value }
+    const remainingHealth = { ...runtimeHealthByDeployment.value }
+    delete remainingStatuses[deploymentId]
+    delete remainingHealth[deploymentId]
+    runtimeStatusByDeployment.value = remainingStatuses
+    runtimeHealthByDeployment.value = remainingHealth
+    deploymentEvents.value = []
+    lastCreatedDeployment.value = lastCreatedDeployment.value?.deployment_instance_id === deploymentId
+      ? null
+      : lastCreatedDeployment.value
+    await refreshPage()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.deleteFailed')
+  } finally {
+    runningAction.value = null
+    pendingDeleteDeploymentId.value = null
   }
 }
 

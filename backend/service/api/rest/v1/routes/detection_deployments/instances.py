@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, Query, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
+from backend.service.api.deps.detection_deployment_process_supervisor import (
+    get_detection_async_deployment_process_supervisor,
+    get_detection_sync_deployment_process_supervisor,
+)
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.detection_deployments.responses import (
     DetectionDeploymentInstanceResponse,
@@ -21,6 +25,9 @@ from backend.service.api.rest.v1.routes.detection_deployments.services import (
     delete_visible_detection_deployment_instance,
     get_visible_detection_deployment_view,
     list_visible_detection_deployment_views,
+)
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -112,12 +119,16 @@ def delete_detection_deployment_instance(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    sync_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_sync_deployment_process_supervisor)],
+    async_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_detection_async_deployment_process_supervisor)],
 ) -> None:
-    """删除一个 detection DeploymentInstance。"""
+    """删除一个已经完全停止的 detection DeploymentInstance。"""
 
     delete_visible_detection_deployment_instance(
         principal=principal,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         deployment_instance_id=deployment_instance_id,
+        sync_supervisor=sync_supervisor,
+        async_supervisor=async_supervisor,
     )

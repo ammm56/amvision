@@ -133,6 +133,18 @@ class ModelRepository(Protocol):
 
         ...
 
+    def delete_model_build(self, model_build_id: str) -> bool:
+        """按 id 删除一个 ModelBuild。
+
+        参数：
+        - model_build_id：ModelBuild id。
+
+        返回：
+        - 当 ModelBuild 存在且已删除时返回 True；否则返回 False。
+        """
+
+        ...
+
     def list_model_builds(self, model_id: str) -> tuple[ModelBuild, ...]:
         """按 Model id 列出所有 ModelBuild。
 

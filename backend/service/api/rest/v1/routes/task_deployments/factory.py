@@ -13,6 +13,7 @@ from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import
     DeploymentProcessStatusResponse,
     DeploymentRuntimeHealthResponse,
     build_deployment_process_event_response,
+    delete_stopped_deployment_instance,
     run_deployment_process_health_action,
     run_deployment_process_status_action,
 )
@@ -152,6 +153,28 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
         view = service.get_deployment_instance(deployment_instance_id)
         check_project_visible(principal, view.project_id)
         return config.response_builder(view)
+
+    @router.delete(
+        f"/{config.route_segment}/deployment-instances/{{deployment_instance_id}}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def delete_deployment_instance(
+        deployment_instance_id: str,
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "models:write"))],
+        session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+        dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+        sync_supervisor: Annotated[DeploymentProcessSupervisor, Depends(config.sync_supervisor_dependency)],
+        async_supervisor: Annotated[DeploymentProcessSupervisor, Depends(config.async_supervisor_dependency)],
+    ) -> None:
+        """删除已经停止的当前 task DeploymentInstance。"""
+
+        delete_stopped_deployment_instance(
+            deployment_instance_id=deployment_instance_id,
+            principal=principal,
+            deployment_service=build_current_service(session_factory, dataset_storage),
+            sync_supervisor=sync_supervisor,
+            async_supervisor=async_supervisor,
+        )
 
     @router.get(
         f"/{config.route_segment}/deployment-instances/{{deployment_instance_id}}/events",

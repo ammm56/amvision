@@ -321,6 +321,10 @@ def delete_dataset_import(
 	if import_root is not None:
 		dataset_storage.delete_tree(import_root)
 
+	import_task_id = _read_optional_str(dataset_import.metadata, "task_id")
+	if import_task_id is not None and import_task_id.strip():
+		unit_of_work.tasks.delete_task(import_task_id)
+
 	unit_of_work.dataset_imports.delete_dataset_import(dataset_import_id)
 	unit_of_work.commit()
 

@@ -352,6 +352,89 @@ def test_package_and_download_dataset_export_archive(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_delete_completed_dataset_export_removes_export_files_package_and_task(
+    tmp_path: Path,
+) -> None:
+    """验证删除已完成导出时清理导出磁盘数据、下载包、导出记录和关联任务记录。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_version = _build_dataset_version(dataset_version_id="dataset-version-api-delete")
+    _seed_dataset_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_version=dataset_version,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/datasets/exports",
+                headers=_build_dataset_write_headers(),
+                json={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-1",
+                    "dataset_version_id": "dataset-version-api-delete",
+                    "format_id": COCO_DETECTION_DATASET_FORMAT,
+                },
+            )
+            assert create_response.status_code == 202
+            create_payload = create_response.json()
+            assert _run_export_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            ) is True
+
+            package_response = client.post(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}/package",
+                headers=_build_dataset_write_headers(),
+            )
+            detail_response = client.get(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}",
+                headers=_build_dataset_read_headers(),
+            )
+            assert package_response.status_code == 200
+            assert detail_response.status_code == 200
+            package_object_key = package_response.json()["package_object_key"]
+            export_path = detail_response.json()["export_path"]
+            task_id = detail_response.json()["task_id"]
+            assert export_path
+            assert task_id
+
+            export_root = dataset_storage.resolve(export_path)
+            package_path = dataset_storage.resolve(package_object_key)
+            version_image_path = dataset_storage.resolve(
+                "projects/project-1/datasets/dataset-1/versions/"
+                "dataset-version-api-delete/images/train/train-1.jpg"
+            )
+            assert export_root.is_dir()
+            assert package_path.is_file()
+            assert version_image_path.is_file()
+
+            delete_response = client.delete(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}",
+                headers=_build_dataset_write_headers(),
+            )
+            deleted_detail_response = client.get(
+                f"/api/v1/datasets/exports/{create_payload['dataset_export_id']}",
+                headers=_build_dataset_read_headers(),
+            )
+
+        assert delete_response.status_code == 204
+        assert deleted_detail_response.status_code == 404
+        assert not export_root.exists()
+        assert not package_path.exists()
+        assert version_image_path.is_file()
+
+        unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+        try:
+            assert unit_of_work.dataset_exports.get_dataset_export(create_payload["dataset_export_id"]) is None
+            assert unit_of_work.tasks.get_task(task_id) is None
+        finally:
+            unit_of_work.close()
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
@@ -360,6 +443,7 @@ def _create_test_client(
     context = create_api_test_context(
         tmp_path,
         database_name="amvision-export-api.db",
+        enable_local_buffer_broker=False,
     )
     return context.client, context.session_factory, context.dataset_storage, context.queue_backend
 

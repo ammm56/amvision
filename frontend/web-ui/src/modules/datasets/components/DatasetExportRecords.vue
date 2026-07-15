@@ -22,7 +22,7 @@
         <tbody>
           <tr v-for="item in exports" :key="item.dataset_export_id">
             <td>
-              <strong>{{ item.dataset_export_id }}</strong>
+              <RouterLink :to="`/datasets/exports/${item.dataset_export_id}`"><strong>{{ item.dataset_export_id }}</strong></RouterLink>
               <span>{{ item.dataset_version_id }}</span>
             </td>
             <td><StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge></td>
@@ -44,6 +44,15 @@
                   <Download :size="14" />
                   {{ t('datasetOps.actions.download') }}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  :disabled="!canWriteDatasets || deletingExportId === item.dataset_export_id || !canDeleteExport(item)"
+                  @click="$emit('delete', item)"
+                >
+                  <Trash2 :size="14" />
+                  {{ t('datasetOps.actions.delete') }}
+                </Button>
               </div>
             </td>
           </tr>
@@ -54,7 +63,8 @@
 </template>
 
 <script setup lang="ts">
-import { Download, PackageCheck } from '@lucide/vue'
+import { RouterLink } from 'vue-router'
+import { Download, PackageCheck, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetExportSummary } from '../services/dataset.service'
@@ -67,13 +77,20 @@ defineProps<{
   loading: boolean
   canWriteDatasets: boolean
   packagingExportId: string | null
+  deletingExportId: string | null
   statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 
 defineEmits<{
   package: [datasetExportId: string]
   download: [datasetExport: DatasetExportSummary]
+  delete: [datasetExport: DatasetExportSummary]
 }>()
 
 const { t } = useI18n()
+
+function canDeleteExport(datasetExport: DatasetExportSummary): boolean {
+  const normalized = datasetExport.status.toLowerCase()
+  return normalized === 'completed' || normalized === 'failed'
+}
 </script>

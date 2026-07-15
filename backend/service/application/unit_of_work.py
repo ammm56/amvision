@@ -10,6 +10,7 @@ from backend.service.domain.datasets.dataset_export_repository import DatasetExp
 from backend.service.domain.datasets.dataset_import_repository import DatasetImportRepository
 from backend.service.domain.datasets.dataset_version_repository import DatasetVersionRepository
 from backend.service.domain.files.model_file_repository import ModelFileRepository
+from backend.service.domain.deployments.deployment_repository import DeploymentInstanceRepository
 from backend.service.domain.models.model_repository import ModelRepository
 from backend.service.domain.tasks.resource_profile_repository import ResourceProfileRepository
 from backend.service.domain.tasks.task_repository import TaskRepository
@@ -23,6 +24,7 @@ class UnitOfWork(Protocol):
     - dataset_exports：DatasetExport 仓储。
     - dataset_imports：DatasetImport 仓储。
     - datasets：DatasetVersion 聚合仓储。
+    - deployments：DeploymentInstance 仓储。
     - models：Model 聚合仓储。
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
@@ -33,6 +35,7 @@ class UnitOfWork(Protocol):
     dataset_exports: DatasetExportRepository
     dataset_imports: DatasetImportRepository
     datasets: DatasetVersionRepository
+    deployments: DeploymentInstanceRepository
     models: ModelRepository
     model_files: ModelFileRepository
     tasks: TaskRepository

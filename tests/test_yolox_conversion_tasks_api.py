@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
+from backend.service.application.errors import ResourceNotFoundError
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -18,6 +19,8 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
+from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
 from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
 from backend.workers.conversion.yolox_conversion_runner import (
     YoloXConversionOutput,
@@ -216,6 +219,145 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
         session_factory.engine.dispose()
 
 
+def test_delete_yolox_conversion_task_removes_task_run_builds_and_files(tmp_path: Path) -> None:
+    """验证删除 conversion 记录会同步删除运行磁盘数据、ModelBuild、ModelFile 和任务记录。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    source_model_version_id = _seed_placeholder_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    worker = YoloXConversionQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_FakeYoloXConversionRunner(dataset_storage=dataset_storage),
+        worker_id="test-yolox-conversion-delete-worker",
+    )
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/conversion-tasks/openvino-ir-fp32",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "source_model_version_id": source_model_version_id,
+                    "runtime_profile_id": None,
+                    "extra_options": {},
+                    "display_name": "conversion delete test",
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+            assert worker.run_once() is True
+
+            detail_response = client.get(
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
+                headers=_build_headers(),
+            )
+            assert detail_response.status_code == 200
+            detail_payload = detail_response.json()
+            output_prefix = detail_payload["output_object_prefix"]
+            builds = detail_payload["builds"]
+            assert dataset_storage.resolve(output_prefix).is_dir() is True
+
+            delete_response = client.delete(
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
+                headers=_build_headers(),
+            )
+            assert delete_response.status_code == 204
+
+        assert dataset_storage.resolve(output_prefix).exists() is False
+        with pytest.raises(ResourceNotFoundError):
+            SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
+
+        session = session_factory.create_session()
+        try:
+            model_repository = SqlAlchemyModelRepository(session)
+            model_file_repository = SqlAlchemyModelFileRepository(session)
+            for build_item in builds:
+                assert model_repository.get_model_build(build_item["model_build_id"]) is None
+                assert model_file_repository.get_model_file(build_item["build_file_id"]) is None
+        finally:
+            session.close()
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_delete_yolox_conversion_task_rejects_deployed_model_build(tmp_path: Path) -> None:
+    """验证 conversion 输出已被 DeploymentInstance 引用时不能删除。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    source_model_version_id = _seed_placeholder_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    worker = YoloXConversionQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_FakeYoloXConversionRunner(dataset_storage=dataset_storage),
+        worker_id="test-yolox-conversion-protected-delete-worker",
+    )
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/conversion-tasks/onnx",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "source_model_version_id": source_model_version_id,
+                    "runtime_profile_id": None,
+                    "extra_options": {},
+                    "display_name": "conversion protected delete test",
+                },
+            )
+            assert create_response.status_code == 202
+            task_id = create_response.json()["task_id"]
+            assert worker.run_once() is True
+
+            detail_response = client.get(
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
+                headers=_build_headers(),
+            )
+            assert detail_response.status_code == 200
+            detail_payload = detail_response.json()
+            model_build_id = detail_payload["builds"][0]["model_build_id"]
+
+            deployment_response = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "model_build_id": model_build_id,
+                    "display_name": "protected conversion build",
+                },
+            )
+            assert deployment_response.status_code == 201
+
+            delete_response = client.delete(
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
+                headers=_build_headers(),
+            )
+            assert delete_response.status_code == 409
+            delete_payload = delete_response.json()
+            assert delete_payload["error"]["code"] == "resource_in_use"
+            assert delete_payload["error"]["details"]["protected_builds"][0]["model_build_id"] == model_build_id
+
+            kept_detail_response = client.get(
+                f"/api/v1/models/detection/conversion-tasks/{task_id}",
+                headers=_build_headers(),
+            )
+            assert kept_detail_response.status_code == 200
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
@@ -250,7 +392,7 @@ def _seed_placeholder_model_version(
 def _build_headers() -> dict[str, str]:
     """构建 conversion API 所需请求头。"""
 
-    return build_test_headers(scopes="models:read,tasks:read,tasks:write")
+    return build_test_headers(scopes="models:read,models:write,tasks:read,tasks:write")
 
 
 class _FakeYoloXConversionRunner:

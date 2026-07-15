@@ -267,6 +267,7 @@ watch(taskId, async (nextTaskId) => {
 
 onBeforeUnmount(() => {
   clearEventLoadingTimer()
+  taskEvents.stop()
 })
 </script>
 

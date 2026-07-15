@@ -99,6 +99,8 @@ export interface DatasetExportSummary {
   metadata: Record<string, unknown>
 }
 
+export interface DatasetExportDetail extends DatasetExportSummary {}
+
 export interface DatasetExportSubmissionResponse {
   dataset_export_id: string
   task_id: string
@@ -153,6 +155,10 @@ export async function getDatasetImportDetail(datasetImportId: string): Promise<D
   return apiRequest<DatasetImportDetail>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`)
 }
 
+export async function deleteDatasetImport(datasetImportId: string): Promise<void> {
+  await apiRequest<void>(`/datasets/imports/${encodeURIComponent(datasetImportId)}`, { method: 'DELETE' })
+}
+
 export async function getDatasetVersionRelation(datasetId: string, datasetVersionId: string): Promise<DatasetVersionRelation> {
   return apiRequest<DatasetVersionRelation>(
     `/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(datasetVersionId)}`,
@@ -199,6 +205,10 @@ export async function listProjectDatasetExports(
   })
 }
 
+export async function getDatasetExportDetail(datasetExportId: string): Promise<DatasetExportDetail> {
+  return apiRequest<DatasetExportDetail>(`/datasets/exports/${encodeURIComponent(datasetExportId)}`)
+}
+
 export async function packageDatasetExport(datasetExportId: string): Promise<DatasetExportPackageResponse> {
   return apiRequest<DatasetExportPackageResponse>(`/datasets/exports/${encodeURIComponent(datasetExportId)}/package`, {
     method: 'POST',
@@ -207,4 +217,8 @@ export async function packageDatasetExport(datasetExportId: string): Promise<Dat
 
 export async function downloadDatasetExport(datasetExportId: string): Promise<Blob> {
   return apiRequest<Blob>(`/datasets/exports/${encodeURIComponent(datasetExportId)}/download`, { responseType: 'blob' })
+}
+
+export async function deleteDatasetExport(datasetExportId: string): Promise<void> {
+  await apiRequest<void>(`/datasets/exports/${encodeURIComponent(datasetExportId)}`, { method: 'DELETE' })
 }

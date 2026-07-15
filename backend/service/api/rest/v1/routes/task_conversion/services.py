@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
@@ -22,6 +22,7 @@ from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
+from .deletion import delete_conversion_task_outputs
 from .outputs import read_task_conversion_result_response
 from .responses import (
     build_task_conversion_task_detail_response,
@@ -186,6 +187,34 @@ def create_task_conversion_router(
             task_type=task_type,
             model_type=model_type,
         )
+
+    @router.delete(
+        f"/{route_segment}/conversion-tasks/{{task_id}}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        operation_id=f"delete_{task_type}_conversion_task",
+    )
+    def delete_conversion_task(
+        task_id: str,
+        principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:write", "tasks:write"))],
+        session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+        dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
+    ) -> Response:
+        """删除当前 task_type 的 conversion 任务运行数据和未被部署使用的输出。"""
+
+        task_detail = require_visible_task_conversion_task(
+            principal=principal,
+            task_id=task_id,
+            task_type=task_type,
+            service_entries=service_entries,
+            session_factory=session_factory,
+            include_events=False,
+        )
+        delete_conversion_task_outputs(
+            task=task_detail.task,
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get(
         f"/{route_segment}/conversion-tasks/{{task_id}}/result",

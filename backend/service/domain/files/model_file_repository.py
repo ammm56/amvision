@@ -31,6 +31,18 @@ class ModelFileRepository(Protocol):
 
         ...
 
+    def delete_model_file(self, file_id: str) -> bool:
+        """按 id 删除一个 ModelFile。
+
+        参数：
+        - file_id：ModelFile id。
+
+        返回：
+        - 当 ModelFile 存在且已删除时返回 True；否则返回 False。
+        """
+
+        ...
+
     def list_model_files(
         self,
         *,
