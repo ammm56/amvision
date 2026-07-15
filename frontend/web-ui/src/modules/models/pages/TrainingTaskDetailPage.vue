@@ -18,6 +18,15 @@
           <Activity :size="16" />
           任务状态
         </ButtonLink>
+        <Button
+          v-if="task && canDeleteTask"
+          variant="danger"
+          :disabled="actionRunning !== null"
+          @click="openDeleteDialog"
+        >
+          <Trash2 :size="16" />
+          {{ t('trainingDetail.actions.delete') }}
+        </Button>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -56,17 +65,23 @@
       <InlineError v-if="task.error_message" :message="task.error_message" />
       <div class="table-actions table-actions--wrap">
         <Button
-          v-for="action in task.available_actions"
+          v-for="action in visibleControlActions"
           :key="action"
           size="sm"
-          :variant="action === 'terminate' || action === 'delete' ? 'danger' : 'secondary'"
+          :variant="action === 'terminate' ? 'danger' : 'secondary'"
           :disabled="actionRunning !== null"
-          @click="action === 'delete' ? openDeleteDialog() : runAction(action)"
+          @click="runAction(action)"
         >
           <component :is="actionIcon(action)" :size="14" />
           {{ t(`trainingDetail.actions.${action}`) }}
         </Button>
-        <Button v-if="taskType === 'detection'" size="sm" variant="ghost" :disabled="!canRegisterCheckpoint || actionRunning !== null" @click="registerCheckpoint">
+        <Button
+          v-if="taskType === 'detection'"
+          size="sm"
+          variant="secondary"
+          :disabled="!canRegisterCheckpoint || actionRunning !== null"
+          @click="registerCheckpoint"
+        >
           <UploadCloud :size="14" />
           {{ t('trainingDetail.actions.registerModelVersion') }}
         </Button>
@@ -229,6 +244,8 @@ const taskType = computed<ModelTaskType | null>(() => {
     ? value as ModelTaskType
     : null
 })
+const visibleControlActions = computed(() => task.value?.available_actions.filter((action) => action !== 'delete') ?? [])
+const canDeleteTask = computed(() => task.value?.available_actions.includes('delete') ?? false)
 const canRegisterCheckpoint = computed(() => Boolean(task.value?.latest_checkpoint_object_key || task.value?.control_status.resume_checkpoint_object_key))
 const progressSnapshot = computed(() => task.value?.progress ?? {})
 const progressPercent = computed(() => readNumber(progressSnapshot.value.percent))
