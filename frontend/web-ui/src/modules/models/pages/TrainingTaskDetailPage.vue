@@ -8,6 +8,7 @@
       </div>
       <div class="page-actions">
         <RouterLink to="/models">{{ t('trainingDetail.actions.backToModels') }}</RouterLink>
+        <RouterLink v-if="task" :to="`/tasks/${task.task_id}`">任务诊断</RouterLink>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}

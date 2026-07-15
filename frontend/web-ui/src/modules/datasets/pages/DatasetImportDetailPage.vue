@@ -8,6 +8,7 @@
       </div>
       <div class="page-actions">
         <RouterLink to="/datasets">{{ t('datasetImportDetail.actions.backToDatasets') }}</RouterLink>
+        <RouterLink v-if="detail?.task_id" :to="`/tasks/${detail.task_id}`">任务诊断</RouterLink>
         <Button
           v-if="detail"
           variant="danger"

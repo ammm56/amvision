@@ -275,6 +275,52 @@ tasks 事件流是当前统一 WebSocket 架构里第一个落地的资源流；
 
 当前 WebSocket 订阅已经按“service_event_bus 实时分发 + `task_events` 表历史回放”的结构收口。
 
+## 任务索引、业务详情与诊断页边界
+
+`TaskRecord` 是后台任务的统一状态和事件资源，不是数据集导入、数据集导出、模型训练或模型转换的业务详情资源。前端和 API 设计必须区分以下三类入口：
+
+- `/tasks`：全局任务索引页，只负责列出所有后台任务、显示状态摘要，并把用户带到正确的业务详情或诊断页面。
+- `/tasks/{task_id}`：通用任务诊断页，只读展示 TaskRecord、TaskEvent、WebSocket 连接状态、错误详情和底层执行状态；不承载业务删除、下载、登记、部署等管理动作。
+- 业务详情页：展示对应业务对象的完整信息、业务结果、文件、清理入口和底部任务事件，例如 DatasetImport、DatasetExport、TrainingTask、ConversionTask 等详情页。
+
+全局任务列表的主链接应优先进入业务详情页，而不是默认进入 `/tasks/{task_id}`。只有当任务没有可识别业务归属，或用户明确点击“事件/诊断”入口时，才进入 `/tasks/{task_id}`。
+
+推荐跳转关系如下：
+
+| 任务类型 | 主链接目标 | 诊断链接 |
+| --- | --- | --- |
+| `dataset-import` | `/datasets/imports/{dataset_import_id}` | `/tasks/{task_id}` |
+| `dataset-export` | `/datasets/exports/{dataset_export_id}` | `/tasks/{task_id}` |
+| `*-training` | `/models/{task_type}/training-tasks/{task_id}` | `/tasks/{task_id}` |
+| `*-conversion` | `/models/{task_type}/conversion-tasks/{task_id}` | `/tasks/{task_id}` |
+| 未识别任务 | `/tasks/{task_id}` | `/tasks/{task_id}` |
+
+业务详情页底部可以内嵌任务事件摘要，并提供“查看任务诊断”入口跳转到 `/tasks/{task_id}`。这样现场用户默认看到业务结果，排查问题时仍能进入统一诊断页。
+
+删除和清理入口必须放在业务详情页，而不是通用任务诊断页。删除文案应按业务对象命名，例如“删除导入记录”“删除导出记录”“删除训练任务”“删除转换任务”。删除时应按业务占用关系做防呆：
+
+- 删除导出记录：删除 DatasetExport、关联 TaskRecord、TaskEvent 和 task-runs 运行磁盘数据；不删除 DatasetVersion。
+- 删除导入记录：如生成的 DatasetVersion 已被训练、导出、模型或其他业务对象使用，应阻止删除或只允许删除可安全清理的导入包记录。
+- 删除训练任务：如输出 ModelVersion 已被转换、部署或 workflow 使用，应阻止删除模型产物。
+- 删除转换任务：如输出 ModelBuild 已部署或被 runtime/workflow 使用，应阻止删除转换产物。
+
+后端任务列表后续应优先返回结构化跳转目标，避免前端只靠字符串猜测任务类型。例如：
+
+```json
+{
+  "task_id": "task-ee6b340450b9",
+  "task_kind": "dataset-import",
+  "detail_target": {
+    "resource_kind": "dataset-import",
+    "resource_id": "dataset-import-ee7b2ee83784",
+    "path": "/datasets/imports/dataset-import-ee7b2ee83784"
+  },
+  "diagnostic_path": "/tasks/task-ee6b340450b9"
+}
+```
+
+`detail_target` 是 UI 导航辅助信息，不改变 TaskRecord 的领域职责；真实业务详情仍由对应资源接口返回。
+
 ## 当前筛选字段
 
 ### 任务列表筛选字段

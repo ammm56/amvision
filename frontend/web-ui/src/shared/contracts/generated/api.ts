@@ -143,6 +143,13 @@ export interface TaskEvent {
   [key: string]: unknown
 }
 
+export interface TaskDetailTarget {
+  resource_kind: string
+  resource_id: string
+  path: string
+  label?: string | null
+}
+
 export interface TaskRecord {
   task_id: string
   task_kind?: string | null
@@ -156,7 +163,10 @@ export interface TaskRecord {
   updated_at?: string | null
   error_message?: string | null
   events?: TaskEvent[]
+  task_spec?: Record<string, unknown>
   metadata?: Record<string, unknown>
   result?: Record<string, unknown> | null
+  detail_target?: TaskDetailTarget | null
+  diagnostic_path?: string | null
   [key: string]: unknown
 }

@@ -124,6 +124,21 @@ function parsePositiveInteger(value: unknown, fallback: number): number {
 }
 
 function taskDetailPath(task: TaskRecord): string {
+  const detailTargetPath = normalizeTaskTargetPath(task.detail_target?.path)
+  if (detailTargetPath) {
+    return detailTargetPath
+  }
+
+  const datasetImportId = readStringField(task, ['dataset_import_id', 'source_import_id'])
+  if (datasetImportId) {
+    return `/datasets/imports/${encodeURIComponent(datasetImportId)}`
+  }
+
+  const datasetExportId = readStringField(task, ['dataset_export_id', 'source_export_id'])
+  if (datasetExportId) {
+    return `/datasets/exports/${encodeURIComponent(datasetExportId)}`
+  }
+
   const taskKind = String(task.task_kind || task.kind || '').toLowerCase()
   if (taskKind.includes('training')) {
     return `/models/${inferModelTaskType(task)}/training-tasks/${task.task_id}`
@@ -134,8 +149,30 @@ function taskDetailPath(task: TaskRecord): string {
   return `/tasks/${task.task_id}`
 }
 
+function normalizeTaskTargetPath(path: unknown): string | null {
+  if (typeof path !== 'string') return null
+  const normalizedPath = path.trim()
+  return normalizedPath.startsWith('/') ? normalizedPath : null
+}
+
+function readStringField(task: TaskRecord, keys: string[]): string | null {
+  const sources = [task.task_spec, task.metadata, task.result]
+  for (const key of keys) {
+    for (const source of sources) {
+      const value = source?.[key]
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim()
+      }
+    }
+  }
+  return null
+}
+
 function inferModelTaskType(task: TaskRecord): string {
   const candidates = [
+    task.task_spec?.task_type,
+    task.task_spec?.model_task_type,
+    task.task_spec?.source_task_type,
     task.metadata?.task_type,
     task.metadata?.model_task_type,
     task.metadata?.source_task_type,

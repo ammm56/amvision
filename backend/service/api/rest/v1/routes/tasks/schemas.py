@@ -30,6 +30,22 @@ class TaskEventResponse(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict, description="事件负载")
 
 
+class TaskDetailTargetResponse(BaseModel):
+    """描述任务对应的业务详情入口。
+
+    字段：
+    - resource_kind：业务资源类型，例如 dataset-import、model-conversion-task。
+    - resource_id：业务资源 id。
+    - path：前端业务详情路径；通用诊断页不使用该字段推断业务含义。
+    - label：界面可选显示文本。
+    """
+
+    resource_kind: str = Field(description="业务资源类型")
+    resource_id: str = Field(description="业务资源 id")
+    path: str = Field(description="前端详情路径")
+    label: str | None = Field(default=None, description="可选展示文本")
+
+
 class TaskSummaryResponse(BaseModel):
     """描述任务摘要响应。"""
 
@@ -50,6 +66,11 @@ class TaskSummaryResponse(BaseModel):
     result: dict[str, object] = Field(default_factory=dict, description="结果摘要")
     error_message: str | None = Field(default=None, description="错误消息")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
+    detail_target: TaskDetailTargetResponse | None = Field(
+        default=None,
+        description="业务详情入口；无法确定业务资源时为空",
+    )
+    diagnostic_path: str = Field(description="通用任务诊断页路径")
 
 
 class TaskDetailResponse(TaskSummaryResponse):
