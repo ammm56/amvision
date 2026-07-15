@@ -117,6 +117,7 @@
             :key="item.deployment_instance_id"
             class="deployment-instance-card"
             :class="{ 'deployment-instance-card--selected': item.deployment_instance_id === selectedDeploymentId }"
+            :data-deployment-id="item.deployment_instance_id"
             @click="selectDeployment(item.deployment_instance_id)"
           >
             <header class="deployment-instance-card__header">
@@ -127,6 +128,7 @@
               <div class="deployment-instance-card__states">
                 <StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge>
                 <StatusBadge :tone="runtimeProcessTone(item)">{{ runtimeProcessLabel(item) }}</StatusBadge>
+                <StatusBadge v-if="isDeploymentRuntimeRefreshing(item)" tone="info">刷新中</StatusBadge>
               </div>
             </header>
             <div class="deployment-instance-card__details">
@@ -147,7 +149,14 @@
               </div>
             </div>
             <div class="deployment-instance-card__actions" @click.stop>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canStartDeployment(item)" @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'start')">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                :disabled="!canStartDeployment(item)"
+                data-deployment-action="start"
+                @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'start')"
+              >
                 <Play :size="14" />
                 {{ t('deploymentOps.actions.start') }}
               </Button>
@@ -157,16 +166,31 @@
                 variant="secondary"
                 :disabled="!canWarmupDeployment(item)"
                 :title="warmupButtonTitle(item)"
+                data-deployment-action="warmup"
                 @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'warmup')"
               >
                 <Zap :size="14" />
                 {{ t('deploymentOps.actions.warmup') }}
               </Button>
-              <Button type="button" size="sm" variant="secondary" :disabled="!canResetDeployment(item)" @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'reset')">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                :disabled="!canResetDeployment(item)"
+                data-deployment-action="reset"
+                @click="runHealthAction(item.deployment_instance_id, runtimeMode, 'reset')"
+              >
                 <RotateCcw :size="14" />
                 {{ t('deploymentOps.actions.reset') }}
               </Button>
-              <Button type="button" size="sm" variant="danger" :disabled="!canStopDeployment(item)" @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'stop')">
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                :disabled="!canStopDeployment(item)"
+                data-deployment-action="stop"
+                @click="runStatusAction(item.deployment_instance_id, runtimeMode, 'stop')"
+              >
                 <Square :size="14" />
                 {{ t('deploymentOps.actions.stop') }}
               </Button>
@@ -176,6 +200,7 @@
                 variant="danger"
                 :disabled="!canDeleteDeployment(item)"
                 :title="deleteButtonTitle(item)"
+                data-deployment-action="delete"
                 @click="openDeleteDeploymentDialog(item.deployment_instance_id)"
               >
                 <Trash2 :size="14" />
@@ -210,7 +235,7 @@
       :message="deleteDeploymentDialogMessage"
       :confirm-label="t('deploymentOps.actions.delete')"
       :cancel-label="t('common.cancel')"
-      :busy="runningAction === `${pendingDeleteDeployment.deployment_instance_id}:delete`"
+      :busy="isDeleteActionBusy(pendingDeleteDeployment.deployment_instance_id)"
       confirm-variant="danger"
       @cancel="closeDeleteDeploymentDialog"
       @confirm="confirmDeleteDeployment"
@@ -339,6 +364,8 @@ const runtimeModeOptions = [
   { label: 'async', value: 'async' },
 ]
 
+const RUNTIME_REFRESH_CONCURRENCY = 8
+
 const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
 
 const deployments = ref<TaskDeploymentInstance[]>([])
@@ -346,11 +373,12 @@ const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
-const runningAction = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 const lastCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
 const runtimeStatusByDeployment = ref<Record<string, TaskDeploymentProcessStatus>>({})
 const runtimeHealthByDeployment = ref<Record<string, TaskDeploymentRuntimeHealth>>({})
+const runtimeRefreshingByDeployment = ref<Record<string, boolean>>({})
+const runningActionByDeployment = ref<Record<string, string>>({})
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const deploymentSourcePickerOpen = ref(false)
@@ -409,7 +437,7 @@ watch(runtimeMode, () => {
   }
   runtimeStatusByDeployment.value = {}
   runtimeHealthByDeployment.value = {}
-  void refreshRuntimeAndEvents()
+  void refreshRuntimeSnapshotsAndEvents()
 })
 
 watch(selectedTaskType, () => {
@@ -450,6 +478,7 @@ function setDeviceName(value: SelectValue): void {
 function clearRuntimeSnapshots(): void {
   runtimeStatusByDeployment.value = {}
   runtimeHealthByDeployment.value = {}
+  runtimeRefreshingByDeployment.value = {}
 }
 
 function setRuntimeModeWithoutRefresh(mode: DeploymentRuntimeMode): void {
@@ -572,25 +601,56 @@ function runtimeProcessLabel(item: TaskDeploymentInstance): string {
   return runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state || '未探测'
 }
 
+function setDeploymentRunningAction(deploymentId: string, action: string | null): void {
+  const nextActions = { ...runningActionByDeployment.value }
+  if (action) {
+    nextActions[deploymentId] = action
+  } else {
+    delete nextActions[deploymentId]
+  }
+  runningActionByDeployment.value = nextActions
+}
+
+function deploymentRunningAction(deploymentId: string): string | null {
+  return runningActionByDeployment.value[deploymentId] ?? null
+}
+
+function isDeleteActionBusy(deploymentId: string): boolean {
+  return deploymentRunningAction(deploymentId) === 'delete'
+}
+
+function setDeploymentRuntimeRefreshing(deploymentId: string, refreshing: boolean): void {
+  const nextRefreshing = { ...runtimeRefreshingByDeployment.value }
+  if (refreshing) {
+    nextRefreshing[deploymentId] = true
+  } else {
+    delete nextRefreshing[deploymentId]
+  }
+  runtimeRefreshingByDeployment.value = nextRefreshing
+}
+
+function isDeploymentRuntimeRefreshing(item: TaskDeploymentInstance): boolean {
+  return runtimeRefreshingByDeployment.value[item.deployment_instance_id] === true
+}
+
 function isRuntimeActionBusy(item: TaskDeploymentInstance): boolean {
-  const prefix = `${item.deployment_instance_id}:`
-  return runningAction.value !== null && runningAction.value.startsWith(prefix)
+  return deploymentRunningAction(item.deployment_instance_id) !== null || isDeploymentRuntimeRefreshing(item)
 }
 
 function canStartDeployment(item: TaskDeploymentInstance): boolean {
-  if (!canWriteModels.value || runningAction.value !== null) return false
+  if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
   const processState = String(runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state ?? '').toLowerCase()
   return processState !== 'running'
 }
 
 function canStopDeployment(item: TaskDeploymentInstance): boolean {
-  if (!canWriteModels.value || runningAction.value !== null) return false
+  if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
   const processState = String(runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state ?? item.status ?? '').toLowerCase()
   return processState.includes('running') || processState.includes('starting') || processState.includes('ready')
 }
 
 function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
-  if (!canWriteModels.value || runningAction.value !== null) return false
+  if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
   const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
   if (!status) return true
   return status.desired_state === 'stopped' && status.process_state === 'stopped'
@@ -598,7 +658,8 @@ function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
 
 function deleteButtonTitle(item: TaskDeploymentInstance): string {
   if (!canWriteModels.value) return '当前账号没有部署写权限'
-  if (runningAction.value !== null) return '已有部署操作正在执行'
+  if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
+  if (isDeploymentRuntimeRefreshing(item)) return '正在刷新当前部署实例状态'
   const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
   if (status && (status.desired_state !== 'stopped' || status.process_state !== 'stopped')) {
     return t('deploymentOps.messages.deleteRequiresStopped')
@@ -607,7 +668,7 @@ function deleteButtonTitle(item: TaskDeploymentInstance): string {
 }
 
 function canWarmupDeployment(item: TaskDeploymentInstance): boolean {
-  return canWriteModels.value && !isRuntimeActionBusy(item) && runningAction.value === null && !isDeploymentWarmupComplete(item)
+  return canWriteModels.value && !isRuntimeActionBusy(item) && !isDeploymentWarmupComplete(item)
 }
 
 function isDeploymentWarmupComplete(item: TaskDeploymentInstance): boolean {
@@ -624,12 +685,13 @@ function isRuntimeHealthWarmupComplete(health: TaskDeploymentRuntimeHealth, fall
 function warmupButtonTitle(item: TaskDeploymentInstance): string {
   if (isDeploymentWarmupComplete(item)) return '已预热完成'
   if (!canWriteModels.value) return '当前账号没有部署写权限'
-  if (runningAction.value !== null) return '已有部署操作正在执行'
+  if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
+  if (isDeploymentRuntimeRefreshing(item)) return '正在刷新当前部署实例状态'
   return '预热部署实例'
 }
 
 function canResetDeployment(item: TaskDeploymentInstance): boolean {
-  return canWriteModels.value && !isRuntimeActionBusy(item) && runningAction.value === null
+  return canWriteModels.value && !isRuntimeActionBusy(item)
 }
 
 function formatRuntimeLabel(item: TaskDeploymentInstance): string {
@@ -652,7 +714,7 @@ async function refreshPage(): Promise<void> {
     if (!deployments.value.some((item) => item.deployment_instance_id === selectedDeploymentId.value)) {
       selectedDeploymentId.value = deployments.value[0]?.deployment_instance_id ?? ''
     }
-    await refreshRuntimeAndEvents()
+    await refreshRuntimeSnapshotsAndEvents()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.loadFailed')
   } finally {
@@ -701,7 +763,11 @@ function shouldPreferDeploymentCandidate(next: DeploymentListCandidate, current:
 
 async function selectDeployment(deploymentId: string): Promise<void> {
   selectedDeploymentId.value = deploymentId
-  await refreshRuntimeAndEvents()
+  const deployment = selectedDeployment.value
+  await Promise.all([
+    deployment ? refreshDeploymentRuntimeSnapshot(deployment, { showError: true }) : Promise.resolve(null),
+    loadDeploymentEvents(),
+  ])
 }
 
 async function loadDeploymentEvents(): Promise<void> {
@@ -725,18 +791,40 @@ async function loadDeploymentEvents(): Promise<void> {
   }
 }
 
-async function refreshRuntimeAndEvents(): Promise<void> {
+async function refreshRuntimeSnapshotsAndEvents(): Promise<void> {
   await Promise.all([
-    refreshSelectedRuntime(),
+    refreshRuntimeSnapshotsForDeployments(deployments.value),
     loadDeploymentEvents(),
   ])
 }
 
-async function refreshSelectedRuntime(): Promise<void> {
-  const deployment = selectedDeployment.value
-  if (!deployment) return
+async function refreshRuntimeSnapshotsForDeployments(items: TaskDeploymentInstance[]): Promise<void> {
+  const failures: string[] = []
+  let cursor = 0
+  const workerCount = Math.min(RUNTIME_REFRESH_CONCURRENCY, items.length)
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor]
+      cursor += 1
+      const message = await refreshDeploymentRuntimeSnapshot(item)
+      if (message) failures.push(message)
+    }
+  }))
+  const failed = failures[0]
+  if (failed) {
+    errorMessage.value = failed
+  }
+}
+
+async function refreshDeploymentRuntimeSnapshot(
+  deployment: TaskDeploymentInstance,
+  options: { showError?: boolean } = {},
+): Promise<string | null> {
   const deploymentId = deployment.deployment_instance_id
-  errorMessage.value = null
+  setDeploymentRuntimeRefreshing(deploymentId, true)
+  if (options.showError) {
+    errorMessage.value = null
+  }
   try {
     const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
     runtimeStatusByDeployment.value = {
@@ -758,8 +846,15 @@ async function refreshSelectedRuntime(): Promise<void> {
       delete nextHealthByDeployment[deploymentId]
       runtimeHealthByDeployment.value = nextHealthByDeployment
     }
+    return null
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
+    const message = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
+    if (options.showError) {
+      errorMessage.value = message
+    }
+    return message
+  } finally {
+    setDeploymentRuntimeRefreshing(deploymentId, false)
   }
 }
 
@@ -804,7 +899,7 @@ async function runStatusAction(deploymentId: string, modeValue: string, action: 
   const taskType = deployment ? taskTypeForDeployment(deployment) : selectedTaskType.value
   selectedDeploymentId.value = deploymentId
   setRuntimeModeWithoutRefresh(mode)
-  runningAction.value = `${deploymentId}:${mode}:${action}`
+  setDeploymentRunningAction(deploymentId, `${mode}:${action}`)
   errorMessage.value = null
   try {
     const status = await runTaskDeploymentStatusAction(taskType, deploymentId, mode, action)
@@ -813,14 +908,15 @@ async function runStatusAction(deploymentId: string, modeValue: string, action: 
       [deploymentId]: status,
     }
     if (action !== 'status') {
-      await refreshPage()
-      return
+      if (deployment) {
+        await refreshDeploymentRuntimeSnapshot(deployment, { showError: true })
+      }
     }
     await loadDeploymentEvents()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
   } finally {
-    runningAction.value = null
+    setDeploymentRunningAction(deploymentId, null)
   }
 }
 
@@ -830,7 +926,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   const taskType = deployment ? taskTypeForDeployment(deployment) : selectedTaskType.value
   selectedDeploymentId.value = deploymentId
   setRuntimeModeWithoutRefresh(mode)
-  runningAction.value = `${deploymentId}:${mode}:${action}`
+  setDeploymentRunningAction(deploymentId, `${mode}:${action}`)
   errorMessage.value = null
   try {
     if (action === 'warmup') {
@@ -853,7 +949,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
   } finally {
-    runningAction.value = null
+    setDeploymentRunningAction(deploymentId, null)
   }
 }
 
@@ -864,7 +960,8 @@ function openDeleteDeploymentDialog(deploymentId: string): void {
 }
 
 function closeDeleteDeploymentDialog(): void {
-  if (runningAction.value !== null) return
+  const deploymentId = pendingDeleteDeployment.value?.deployment_instance_id
+  if (deploymentId && isDeleteActionBusy(deploymentId)) return
   pendingDeleteDeploymentId.value = null
 }
 
@@ -874,7 +971,7 @@ async function confirmDeleteDeployment(): Promise<void> {
   const deploymentId = deployment.deployment_instance_id
   const taskType = taskTypeForDeployment(deployment)
   selectedDeploymentId.value = deploymentId
-  runningAction.value = `${deploymentId}:delete`
+  setDeploymentRunningAction(deploymentId, 'delete')
   errorMessage.value = null
   try {
     await deleteTaskDeployment(taskType, deploymentId)
@@ -892,7 +989,7 @@ async function confirmDeleteDeployment(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.deleteFailed')
   } finally {
-    runningAction.value = null
+    setDeploymentRunningAction(deploymentId, null)
     pendingDeleteDeploymentId.value = null
   }
 }

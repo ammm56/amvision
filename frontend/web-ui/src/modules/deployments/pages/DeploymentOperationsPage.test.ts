@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, type Pinia } from 'pinia'
+import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -56,6 +57,20 @@ const deployment: TaskDeploymentInstance = {
   created_at: '2026-07-10T01:00:00Z',
   updated_at: '2026-07-10T01:00:00Z',
   metadata: {},
+}
+
+const secondDeployment: TaskDeploymentInstance = {
+  ...deployment,
+  deployment_instance_id: 'deployment-2',
+  display_name: 'Barcode cpu deployment',
+  model_build_id: 'model-build-2',
+  runtime_profile_id: 'runtime-profile-2',
+  runtime_backend: 'openvino',
+  device_name: 'cpu',
+  runtime_precision: 'fp32',
+  instance_count: 1,
+  created_at: '2026-07-10T02:00:00Z',
+  updated_at: '2026-07-10T02:00:00Z',
 }
 
 const status: TaskDeploymentProcessStatus = {
@@ -143,6 +158,8 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(runTaskDeploymentStatusAction).mockImplementation(
       async (_taskType: ModelTaskType, _deploymentId: string, mode: string, action: DeploymentStatusAction) => ({
         ...status,
+        deployment_instance_id: _deploymentId,
+        display_name: _deploymentId,
         runtime_mode: mode,
         process_state: action === 'stop' ? 'stopped' : 'running',
       }),
@@ -150,6 +167,8 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(runTaskDeploymentHealthAction).mockImplementation(
       async (_taskType: ModelTaskType, _deploymentId: string, mode: string, action: DeploymentHealthAction) => ({
         ...(action === 'warmup' ? warmHealth : coldHealth),
+        deployment_instance_id: _deploymentId,
+        display_name: _deploymentId,
         runtime_mode: mode,
       }),
     )
@@ -187,10 +206,72 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
   })
+
+  it('refreshes all runtime states and scopes busy buttons to the operated deployment', async () => {
+    vi.mocked(listTaskDeployments).mockImplementation(async (taskType: ModelTaskType) => (
+      taskType === 'detection' ? [deployment, secondDeployment] : []
+    ))
+
+    let resolveStop!: (value: TaskDeploymentProcessStatus) => void
+    const stopPromise = new Promise<TaskDeploymentProcessStatus>((resolve) => {
+      resolveStop = resolve
+    })
+
+    vi.mocked(runTaskDeploymentStatusAction).mockImplementation(
+      async (_taskType: ModelTaskType, deploymentId: string, mode: string, action: DeploymentStatusAction) => {
+        if (deploymentId === 'deployment-1' && action === 'stop') {
+          return stopPromise
+        }
+        return {
+          ...status,
+          deployment_instance_id: deploymentId,
+          display_name: deploymentId,
+          runtime_mode: mode,
+          process_state: action === 'stop' ? 'stopped' : 'running',
+        }
+      },
+    )
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'status')
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'status')
+    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeUndefined()
+    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+
+    await findDeploymentActionButton(wrapper, 'deployment-1', 'stop').trigger('click')
+    await nextTick()
+
+    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeDefined()
+    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+
+    resolveStop({
+      ...status,
+      deployment_instance_id: 'deployment-1',
+      display_name: 'deployment-1',
+      runtime_mode: 'sync',
+      desired_state: 'stopped',
+      process_state: 'stopped',
+    })
+    await flushPromises()
+
+    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+  })
 })
 
 async function clickButtonByText(wrapper: VueWrapper, text: string): Promise<void> {
   const button = wrapper.findAll('button').find((item) => item.text().includes(text))
   expect(button, `button ${text} exists`).toBeTruthy()
   await button!.trigger('click')
+}
+
+function findDeploymentActionButton(wrapper: VueWrapper, deploymentId: string, action: string) {
+  const button = wrapper.find(`[data-deployment-id="${deploymentId}"] [data-deployment-action="${action}"]`)
+  expect(button.exists(), `${deploymentId} ${action} button exists`).toBe(true)
+  return button
 }
