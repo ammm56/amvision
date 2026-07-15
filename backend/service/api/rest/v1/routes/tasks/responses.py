@@ -38,7 +38,7 @@ def build_task_summary_response(task: object) -> TaskSummaryResponse:
         error_message=task.error_message,
         metadata=dict(task.metadata),
         detail_target=detail_target,
-        diagnostic_path=_build_diagnostic_path(task.task_id),
+        status_path=_build_task_status_path(task.task_id),
     )
 
 
@@ -88,7 +88,7 @@ def _resolve_task_detail_target(task: object) -> TaskDetailTargetResponse | None
     """根据任务快照解析业务详情入口。
 
     通用任务层只做路由归属判断，不承担业务删除和资源生命周期控制。
-    无法稳定判断业务资源时返回 None，由前端展示通用诊断入口。
+    无法稳定判断业务资源时返回 None，由前端展示通用任务状态入口。
     """
 
     task_kind = _normalize_text(getattr(task, "task_kind", ""))
@@ -158,8 +158,8 @@ def _resolve_task_detail_target(task: object) -> TaskDetailTargetResponse | None
     return None
 
 
-def _build_diagnostic_path(task_id: str) -> str:
-    """构造通用任务诊断页路径。"""
+def _build_task_status_path(task_id: str) -> str:
+    """构造通用任务状态页路径。"""
 
     return f"/tasks/{task_id}"
 

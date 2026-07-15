@@ -8,7 +8,7 @@
       </div>
       <div class="page-actions">
         <RouterLink to="/models">{{ t('conversionDetail.actions.backToModels') }}</RouterLink>
-        <RouterLink v-if="task" :to="`/tasks/${task.task_id}`">任务诊断</RouterLink>
+        <RouterLink v-if="task" :to="`/tasks/${task.task_id}`">任务状态</RouterLink>
         <Button
           v-if="task && canWriteTasks"
           variant="danger"

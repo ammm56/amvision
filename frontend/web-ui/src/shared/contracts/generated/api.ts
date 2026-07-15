@@ -167,6 +167,6 @@ export interface TaskRecord {
   metadata?: Record<string, unknown>
   result?: Record<string, unknown> | null
   detail_target?: TaskDetailTarget | null
-  diagnostic_path?: string | null
+  status_path?: string | null
   [key: string]: unknown
 }

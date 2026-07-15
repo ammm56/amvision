@@ -8,7 +8,7 @@
       </div>
       <div class="page-actions">
         <RouterLink to="/datasets">返回数据集页</RouterLink>
-        <RouterLink v-if="detail?.task_id" :to="`/tasks/${detail.task_id}`">任务诊断</RouterLink>
+        <RouterLink v-if="detail?.task_id" :to="`/tasks/${detail.task_id}`">任务状态</RouterLink>
         <Button
           v-if="detail"
           variant="secondary"

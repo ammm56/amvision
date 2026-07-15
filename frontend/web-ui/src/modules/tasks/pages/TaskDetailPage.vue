@@ -59,11 +59,11 @@
         </section>
       </section>
 
-      <aside class="detail-side task-diagnostics-panel">
-        <div class="task-diagnostics-panel__header">
-          <h2>{{ t('tasks.diagnostics') }}</h2>
+      <aside class="detail-side task-status-panel">
+        <div class="task-status-panel__header">
+          <h2>{{ t('tasks.statusInfo') }}</h2>
         </div>
-        <dl class="task-diagnostics-panel__list">
+        <dl class="task-status-panel__list">
           <div>
             <dt>{{ t('common.websocket') }}</dt>
             <dd>
@@ -83,10 +83,10 @@
             <dt>{{ t('tasks.error') }}</dt>
             <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
           </div>
-          <div v-if="taskDiagnosticErrorText">
+          <div v-if="taskStatusErrorText">
             <dt>{{ t('tasks.errorDetails') }}</dt>
             <dd>
-              <pre class="task-diagnostics-panel__error-json">{{ taskDiagnosticErrorText }}</pre>
+              <pre class="task-status-panel__error-json">{{ taskStatusErrorText }}</pre>
             </dd>
           </div>
         </dl>
@@ -132,9 +132,9 @@ const canCancel = computed(() => {
   return state === 'queued' || state === 'running'
 })
 
-const taskDiagnosticErrorText = computed(() => {
-  const errorPayload = resolveTaskDiagnosticError()
-  return errorPayload === null ? '' : stringifyDiagnosticValue(errorPayload)
+const taskStatusErrorText = computed(() => {
+  const errorPayload = resolveTaskStatusError()
+  return errorPayload === null ? '' : stringifyStatusValue(errorPayload)
 })
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -144,7 +144,7 @@ function asRecord(value: unknown): JsonRecord | null {
   return value as JsonRecord
 }
 
-function resolveTaskDiagnosticError(): unknown | null {
+function resolveTaskStatusError(): unknown | null {
   const task = taskStore.selectedTask
   if (!task) {
     return null
@@ -167,12 +167,12 @@ function resolveTaskDiagnosticError(): unknown | null {
     return metadataError
   }
 
-  return resolveLatestEventDiagnosticError(taskStore.selectedTaskEvents)
+  return resolveLatestEventStatusError(taskStore.selectedTaskEvents)
 }
 
-function resolveLatestEventDiagnosticError(events: TaskEvent[]): unknown | null {
+function resolveLatestEventStatusError(events: TaskEvent[]): unknown | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const errorPayload = resolveEventDiagnosticError(events[index])
+    const errorPayload = resolveEventStatusError(events[index])
     if (errorPayload !== null) {
       return errorPayload
     }
@@ -180,7 +180,7 @@ function resolveLatestEventDiagnosticError(events: TaskEvent[]): unknown | null 
   return null
 }
 
-function resolveEventDiagnosticError(event: TaskEvent): unknown | null {
+function resolveEventStatusError(event: TaskEvent): unknown | null {
   const payload = asRecord(event.payload)
   if (!payload) {
     return null
@@ -212,7 +212,7 @@ function resolveEventDiagnosticError(event: TaskEvent): unknown | null {
   return null
 }
 
-function stringifyDiagnosticValue(value: unknown): string {
+function stringifyStatusValue(value: unknown): string {
   if (typeof value === 'string') {
     return value
   }
@@ -281,43 +281,43 @@ onBeforeUnmount(() => {
   margin: 12px 0 16px;
 }
 
-.task-diagnostics-panel {
+.task-status-panel {
   align-self: start;
   padding: 16px;
 }
 
-.task-diagnostics-panel__header h2 {
+.task-status-panel__header h2 {
   margin: 0;
   margin-bottom: 14px;
 }
 
-.task-diagnostics-panel__list {
+.task-status-panel__list {
   display: grid;
   gap: 10px;
   margin: 0;
 }
 
-.task-diagnostics-panel__list > div {
+.task-status-panel__list > div {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--summary-bg);
 }
 
-.task-diagnostics-panel__list dt {
+.task-status-panel__list dt {
   display: block;
   margin-bottom: 4px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.task-diagnostics-panel__list dd {
+.task-status-panel__list dd {
   margin: 0;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.task-diagnostics-panel__error-json {
+.task-status-panel__error-json {
   max-height: 360px;
   margin: 0;
   padding: 10px;

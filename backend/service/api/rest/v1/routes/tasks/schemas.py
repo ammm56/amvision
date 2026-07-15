@@ -36,7 +36,7 @@ class TaskDetailTargetResponse(BaseModel):
     字段：
     - resource_kind：业务资源类型，例如 dataset-import、model-conversion-task。
     - resource_id：业务资源 id。
-    - path：前端业务详情路径；通用诊断页不使用该字段推断业务含义。
+    - path：前端业务详情路径；通用任务状态页不使用该字段推断业务含义。
     - label：界面可选显示文本。
     """
 
@@ -70,7 +70,7 @@ class TaskSummaryResponse(BaseModel):
         default=None,
         description="业务详情入口；无法确定业务资源时为空",
     )
-    diagnostic_path: str = Field(description="通用任务诊断页路径")
+    status_path: str = Field(description="通用任务状态页路径")
 
 
 class TaskDetailResponse(TaskSummaryResponse):
