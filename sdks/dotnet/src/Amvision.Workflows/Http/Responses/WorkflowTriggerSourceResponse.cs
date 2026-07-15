@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -10,61 +10,61 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class WorkflowTriggerSourceResponse
     {
-        [JsonPropertyName("format_id")]
+        [JsonProperty("format_id")]
         public string FormatId { get; set; } = string.Empty;
 
-        [JsonPropertyName("trigger_source_id")]
+        [JsonProperty("trigger_source_id")]
         public string TriggerSourceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("project_id")]
+        [JsonProperty("project_id")]
         public string ProjectId { get; set; } = string.Empty;
 
-        [JsonPropertyName("display_name")]
+        [JsonProperty("display_name")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [JsonPropertyName("trigger_kind")]
+        [JsonProperty("trigger_kind")]
         public string TriggerKind { get; set; } = string.Empty;
 
-        [JsonPropertyName("workflow_runtime_id")]
+        [JsonProperty("workflow_runtime_id")]
         public string WorkflowRuntimeId { get; set; } = string.Empty;
 
-        [JsonPropertyName("submit_mode")]
+        [JsonProperty("submit_mode")]
         public string SubmitMode { get; set; } = string.Empty;
 
-        [JsonPropertyName("enabled")]
+        [JsonProperty("enabled")]
         public bool Enabled { get; set; }
 
-        [JsonPropertyName("desired_state")]
+        [JsonProperty("desired_state")]
         public string DesiredState { get; set; } = string.Empty;
 
-        [JsonPropertyName("observed_state")]
+        [JsonProperty("observed_state")]
         public string ObservedState { get; set; } = string.Empty;
 
-        [JsonPropertyName("transport_config")]
-        public IDictionary<string, JsonElement> TransportConfig { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("transport_config")]
+        public IDictionary<string, JToken> TransportConfig { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("input_binding_mapping")]
-        public IDictionary<string, JsonElement> InputBindingMapping { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("input_binding_mapping")]
+        public IDictionary<string, JToken> InputBindingMapping { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("result_mapping")]
-        public JsonElement? ResultMapping { get; set; }
+        [JsonProperty("result_mapping")]
+        public JToken? ResultMapping { get; set; }
 
-        [JsonPropertyName("health_summary")]
-        public IDictionary<string, JsonElement> HealthSummary { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("health_summary")]
+        public IDictionary<string, JToken> HealthSummary { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("last_triggered_at")]
+        [JsonProperty("last_triggered_at")]
         public string? LastTriggeredAt { get; set; }
 
-        [JsonPropertyName("last_error")]
-        public JsonElement? LastError { get; set; }
+        [JsonProperty("last_error")]
+        public JToken? LastError { get; set; }
 
-        [JsonPropertyName("metadata")]
-        public IDictionary<string, JsonElement> Metadata { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("metadata")]
+        public IDictionary<string, JToken> Metadata { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("created_at")]
+        [JsonProperty("created_at")]
         public string CreatedAt { get; set; } = string.Empty;
 
-        [JsonPropertyName("updated_at")]
+        [JsonProperty("updated_at")]
         public string UpdatedAt { get; set; } = string.Empty;
     }
 }

@@ -4,7 +4,6 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 
 namespace Amvision.Workflows
 {
@@ -45,14 +44,14 @@ namespace Amvision.Workflows
             if (InputBindings.Count > 0)
             {
                 content.Add(
-                    new StringContent(JsonSerializer.Serialize(InputBindings, WorkflowJsonDefaults.SerializerOptions), Encoding.UTF8, "application/json"),
+                    new StringContent(WorkflowJsonDefaults.Serialize(InputBindings), Encoding.UTF8, "application/json"),
                     "input_bindings_json");
             }
 
             if (ExecutionMetadata.Count > 0)
             {
                 content.Add(
-                    new StringContent(JsonSerializer.Serialize(ExecutionMetadata, WorkflowJsonDefaults.SerializerOptions), Encoding.UTF8, "application/json"),
+                    new StringContent(WorkflowJsonDefaults.Serialize(ExecutionMetadata), Encoding.UTF8, "application/json"),
                     "execution_metadata_json");
             }
 

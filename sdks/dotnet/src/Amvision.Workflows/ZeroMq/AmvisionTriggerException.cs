@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
-
+using Newtonsoft.Json.Linq;
 namespace Amvision.Workflows
 {
 
@@ -16,11 +15,15 @@ namespace Amvision.Workflows
         /// <param name="errorCode">TriggerSource 错误码。</param>
         /// <param name="message">错误消息。</param>
         /// <param name="details">错误详情。</param>
-        public AmvisionTriggerException(string errorCode, string message, IReadOnlyDictionary<string, JsonElement>? details = null)
-            : base(message)
+        public AmvisionTriggerException(
+            string errorCode,
+            string message,
+            IReadOnlyDictionary<string, JToken>? details = null,
+            Exception? innerException = null)
+            : base(message, innerException)
         {
             ErrorCode = errorCode;
-            Details = details ?? new Dictionary<string, JsonElement>();
+            Details = details ?? new Dictionary<string, JToken>();
         }
 
         /// <summary>
@@ -31,7 +34,7 @@ namespace Amvision.Workflows
         /// <summary>
         /// TriggerSource 错误详情。
         /// </summary>
-        public IReadOnlyDictionary<string, JsonElement> Details { get; }
+        public IReadOnlyDictionary<string, JToken> Details { get; }
     }
 
     /// <summary>

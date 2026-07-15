@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -10,92 +10,92 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelDeploymentInferenceResponse
     {
-        [JsonPropertyName("request_id")]
+        [JsonProperty("request_id")]
         public string? RequestId { get; set; }
 
-        [JsonPropertyName("inference_task_id")]
+        [JsonProperty("inference_task_id")]
         public string? InferenceTaskId { get; set; }
 
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string? DeploymentInstanceId { get; set; }
 
-        [JsonPropertyName("instance_id")]
+        [JsonProperty("instance_id")]
         public string? InstanceId { get; set; }
 
-        [JsonPropertyName("model_version_id")]
+        [JsonProperty("model_version_id")]
         public string? ModelVersionId { get; set; }
 
-        [JsonPropertyName("model_build_id")]
+        [JsonProperty("model_build_id")]
         public string? ModelBuildId { get; set; }
 
-        [JsonPropertyName("input_uri")]
+        [JsonProperty("input_uri")]
         public string? InputUri { get; set; }
 
-        [JsonPropertyName("input_source_kind")]
+        [JsonProperty("input_source_kind")]
         public string? InputSourceKind { get; set; }
 
-        [JsonPropertyName("input_file_id")]
+        [JsonProperty("input_file_id")]
         public string? InputFileId { get; set; }
 
-        [JsonPropertyName("score_threshold")]
+        [JsonProperty("score_threshold")]
         public double? ScoreThreshold { get; set; }
 
-        [JsonPropertyName("save_result_image")]
+        [JsonProperty("save_result_image")]
         public bool? SaveResultImage { get; set; }
 
-        [JsonPropertyName("return_preview_image_base64")]
+        [JsonProperty("return_preview_image_base64")]
         public bool? ReturnPreviewImageBase64 { get; set; }
 
-        [JsonPropertyName("image_width")]
+        [JsonProperty("image_width")]
         public int? ImageWidth { get; set; }
 
-        [JsonPropertyName("image_height")]
+        [JsonProperty("image_height")]
         public int? ImageHeight { get; set; }
 
-        [JsonPropertyName("item_count")]
+        [JsonProperty("item_count")]
         public int? ItemCount { get; set; }
 
-        [JsonPropertyName("detection_count")]
+        [JsonProperty("detection_count")]
         public int? DetectionCount { get; set; }
 
-        [JsonPropertyName("latency_ms")]
+        [JsonProperty("latency_ms")]
         public double? LatencyMs { get; set; }
 
-        [JsonPropertyName("decode_ms")]
+        [JsonProperty("decode_ms")]
         public double? DecodeMs { get; set; }
 
-        [JsonPropertyName("preprocess_ms")]
+        [JsonProperty("preprocess_ms")]
         public double? PreprocessMs { get; set; }
 
-        [JsonPropertyName("infer_ms")]
+        [JsonProperty("infer_ms")]
         public double? InferMs { get; set; }
 
-        [JsonPropertyName("postprocess_ms")]
+        [JsonProperty("postprocess_ms")]
         public double? PostprocessMs { get; set; }
 
-        [JsonPropertyName("serialize_ms")]
+        [JsonProperty("serialize_ms")]
         public double? SerializeMs { get; set; }
 
-        [JsonPropertyName("labels")]
+        [JsonProperty("labels")]
         public IList<string> Labels { get; set; } = new List<string>();
 
-        [JsonPropertyName("detections")]
+        [JsonProperty("detections")]
         public IList<ModelInferenceDetectionItemResponse> Detections { get; set; } = new List<ModelInferenceDetectionItemResponse>();
 
-        [JsonPropertyName("runtime_session_info")]
-        public IDictionary<string, JsonElement> RuntimeSessionInfo { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("runtime_session_info")]
+        public IDictionary<string, JToken> RuntimeSessionInfo { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("preview_image_uri")]
+        [JsonProperty("preview_image_uri")]
         public string? PreviewImageUri { get; set; }
 
-        [JsonPropertyName("preview_image_base64")]
+        [JsonProperty("preview_image_base64")]
         public string? PreviewImageBase64 { get; set; }
 
-        [JsonPropertyName("result_object_key")]
+        [JsonProperty("result_object_key")]
         public string? ResultObjectKey { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -103,20 +103,20 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelInferenceDetectionItemResponse
     {
-        [JsonPropertyName("bbox_xyxy")]
+        [JsonProperty("bbox_xyxy")]
         public IList<double> BboxXyxy { get; set; } = new List<double>();
 
-        [JsonPropertyName("score")]
+        [JsonProperty("score")]
         public double? Score { get; set; }
 
-        [JsonPropertyName("class_id")]
+        [JsonProperty("class_id")]
         public int? ClassId { get; set; }
 
-        [JsonPropertyName("class_name")]
+        [JsonProperty("class_name")]
         public string? ClassName { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -124,29 +124,29 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelInferenceTaskSubmissionResponse
     {
-        [JsonPropertyName("inference_task_id")]
+        [JsonProperty("inference_task_id")]
         public string InferenceTaskId { get; set; } = string.Empty;
 
-        [JsonPropertyName("status")]
+        [JsonProperty("status")]
         public string Status { get; set; } = string.Empty;
 
-        [JsonPropertyName("queue_name")]
+        [JsonProperty("queue_name")]
         public string? QueueName { get; set; }
 
-        [JsonPropertyName("queue_task_id")]
+        [JsonProperty("queue_task_id")]
         public string? QueueTaskId { get; set; }
 
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string? DeploymentInstanceId { get; set; }
 
-        [JsonPropertyName("input_uri")]
+        [JsonProperty("input_uri")]
         public string? InputUri { get; set; }
 
-        [JsonPropertyName("input_source_kind")]
+        [JsonProperty("input_source_kind")]
         public string? InputSourceKind { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -154,35 +154,35 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelInferenceTaskDetailResponse
     {
-        [JsonPropertyName("inference_task_id")]
+        [JsonProperty("inference_task_id")]
         public string InferenceTaskId { get; set; } = string.Empty;
 
-        [JsonPropertyName("project_id")]
+        [JsonProperty("project_id")]
         public string ProjectId { get; set; } = string.Empty;
 
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string DeploymentInstanceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("status")]
+        [JsonProperty("status")]
         public string Status { get; set; } = string.Empty;
 
-        [JsonPropertyName("display_name")]
+        [JsonProperty("display_name")]
         public string? DisplayName { get; set; }
 
-        [JsonPropertyName("result_object_key")]
+        [JsonProperty("result_object_key")]
         public string? ResultObjectKey { get; set; }
 
-        [JsonPropertyName("error_message")]
+        [JsonProperty("error_message")]
         public string? ErrorMessage { get; set; }
 
-        [JsonPropertyName("task_spec")]
-        public IDictionary<string, JsonElement> TaskSpec { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("task_spec")]
+        public IDictionary<string, JToken> TaskSpec { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("events")]
-        public IList<JsonElement> Events { get; set; } = new List<JsonElement>();
+        [JsonProperty("events")]
+        public IList<JToken> Events { get; set; } = new List<JToken>();
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -190,22 +190,22 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelInferenceTaskResultResponse
     {
-        [JsonPropertyName("inference_task_id")]
+        [JsonProperty("inference_task_id")]
         public string InferenceTaskId { get; set; } = string.Empty;
 
-        [JsonPropertyName("task_state")]
+        [JsonProperty("task_state")]
         public string? TaskState { get; set; }
 
-        [JsonPropertyName("file_status")]
+        [JsonProperty("file_status")]
         public string? FileStatus { get; set; }
 
-        [JsonPropertyName("object_key")]
+        [JsonProperty("object_key")]
         public string? ObjectKey { get; set; }
 
-        [JsonPropertyName("payload")]
-        public IDictionary<string, JsonElement> Payload { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("payload")]
+        public IDictionary<string, JToken> Payload { get; set; } = new Dictionary<string, JToken>();
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 }

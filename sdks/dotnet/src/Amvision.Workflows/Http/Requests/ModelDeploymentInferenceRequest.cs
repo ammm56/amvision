@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -13,91 +13,91 @@ namespace Amvision.Workflows
         /// <summary>
         /// 异步推理任务所属 Project id。
         /// </summary>
-        [JsonPropertyName("project_id")]
+        [JsonProperty("project_id")]
         public string? ProjectId { get; set; }
 
         /// <summary>
         /// 异步推理任务使用的 DeploymentInstance id。
         /// </summary>
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string? DeploymentInstanceId { get; set; }
 
         /// <summary>
         /// 模型类型；通常不需要设置，后端可从 DeploymentInstance 解析。
         /// </summary>
-        [JsonPropertyName("model_type")]
+        [JsonProperty("model_type")]
         public string? ModelType { get; set; }
 
         /// <summary>
         /// 本地对象存储中的文件 id。
         /// </summary>
-        [JsonPropertyName("input_file_id")]
+        [JsonProperty("input_file_id")]
         public string? InputFileId { get; set; }
 
         /// <summary>
         /// 输入图片 URI。
         /// </summary>
-        [JsonPropertyName("input_uri")]
+        [JsonProperty("input_uri")]
         public string? InputUri { get; set; }
 
         /// <summary>
         /// 输入图片 base64。
         /// </summary>
-        [JsonPropertyName("image_base64")]
+        [JsonProperty("image_base64")]
         public string? ImageBase64 { get; set; }
 
         /// <summary>
         /// 输入传输模式，例如 storage 或 memory。
         /// </summary>
-        [JsonPropertyName("input_transport_mode")]
+        [JsonProperty("input_transport_mode")]
         public string InputTransportMode { get; set; } = "storage";
 
         /// <summary>
         /// detection/segmentation/pose/obb 常用 score threshold。
         /// </summary>
-        [JsonPropertyName("score_threshold")]
+        [JsonProperty("score_threshold")]
         public double? ScoreThreshold { get; set; }
 
         /// <summary>
         /// classification top-k。
         /// </summary>
-        [JsonPropertyName("top_k")]
+        [JsonProperty("top_k")]
         public int? TopK { get; set; }
 
         /// <summary>
         /// segmentation mask threshold。
         /// </summary>
-        [JsonPropertyName("mask_threshold")]
+        [JsonProperty("mask_threshold")]
         public double? MaskThreshold { get; set; }
 
         /// <summary>
         /// pose keypoint confidence threshold。
         /// </summary>
-        [JsonPropertyName("keypoint_confidence_threshold")]
+        [JsonProperty("keypoint_confidence_threshold")]
         public double? KeypointConfidenceThreshold { get; set; }
 
         /// <summary>
         /// 是否保存结果预览图。
         /// </summary>
-        [JsonPropertyName("save_result_image")]
+        [JsonProperty("save_result_image")]
         public bool? SaveResultImage { get; set; }
 
         /// <summary>
         /// 是否返回预览图 base64。
         /// </summary>
-        [JsonPropertyName("return_preview_image_base64")]
+        [JsonProperty("return_preview_image_base64")]
         public bool? ReturnPreviewImageBase64 { get; set; }
 
         /// <summary>
         /// 异步推理任务显示名称。
         /// </summary>
-        [JsonPropertyName("display_name")]
+        [JsonProperty("display_name")]
         public string? DisplayName { get; set; }
 
         /// <summary>
         /// 任务特定的扩展选项。
         /// </summary>
-        [JsonPropertyName("extra_options")]
+        [JsonProperty("extra_options")]
         public IDictionary<string, object?> ExtraOptions { get; } = new Dictionary<string, object?>();
 
         /// <summary>

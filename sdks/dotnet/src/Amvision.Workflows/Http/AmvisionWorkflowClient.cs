@@ -1,6 +1,6 @@
 using System;
 using System.Net.Http;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -12,7 +12,7 @@ namespace Amvision.Workflows
     {
         private const string WorkflowApiPrefix = "api/v1/workflows";
 
-        private static readonly JsonSerializerOptions JsonOptions = WorkflowJsonDefaults.SerializerOptions;
+        private static readonly JsonSerializerSettings JsonSettings = WorkflowJsonDefaults.SerializerSettings;
 
         private readonly AmvisionWorkflowClientOptions options;
         private readonly HttpClient httpClient;

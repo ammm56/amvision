@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,7 +64,7 @@ namespace Amvision.Workflows
             {
                 throw new ArgumentNullException(nameof(payload));
             }
-            return JsonSerializer.Serialize(payload, JsonOptions);
+            return WorkflowJsonDefaults.Serialize(payload);
         }
 
         /// <summary>
@@ -73,7 +72,7 @@ namespace Amvision.Workflows
         /// </summary>
         private static T ReadJson<T>(AmvisionWorkflowApiResponse response)
         {
-            return response.ReadJson<T>(JsonOptions);
+            return response.ReadJson<T>(JsonSettings);
         }
 
         /// <summary>
@@ -81,7 +80,7 @@ namespace Amvision.Workflows
         /// </summary>
         private static IReadOnlyList<T> ReadJsonList<T>(AmvisionWorkflowApiResponse response)
         {
-            return response.ReadJson<List<T>>(JsonOptions);
+            return response.ReadJson<List<T>>(JsonSettings);
         }
 
         /// <summary>

@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Net;
-using System.Text.Json;
-
+using Newtonsoft.Json.Linq;
 namespace Amvision.Workflows
 {
 
@@ -21,12 +20,12 @@ namespace Amvision.Workflows
             HttpStatusCode statusCode,
             string? errorCode,
             string message,
-            IReadOnlyDictionary<string, JsonElement> details)
+            IReadOnlyDictionary<string, JToken>? details)
             : base(message)
         {
             StatusCode = statusCode;
             ErrorCode = errorCode;
-            Details = details;
+            Details = details ?? new Dictionary<string, JToken>();
         }
 
         /// <summary>
@@ -42,6 +41,6 @@ namespace Amvision.Workflows
         /// <summary>
         /// 后端错误详情。
         /// </summary>
-        public IReadOnlyDictionary<string, JsonElement> Details { get; }
+        public IReadOnlyDictionary<string, JToken> Details { get; }
     }
 }

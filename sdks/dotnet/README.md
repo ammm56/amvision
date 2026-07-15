@@ -1,215 +1,75 @@
-# Amvision.Workflows
+# Amvision .NET SDK
 
-C# / .NET SDK 用于设备上位机、MES、采集程序和调试工具管理 WorkflowAppRuntime、发起 WorkflowRun，并通过 ZeroMQ TriggerSource 调用 backend-service。
+`sdks/dotnet` 当前默认面向现场上位机和工业软件集成，优先支持 `VS2019 + .NET Framework 4.7.2`。SDK 代码集中在 `src/Amvision.Workflows`，第三方项目只需要引用这个库和同目录依赖 DLL。
 
-## 当前实现
+## 当前默认项目
 
-- SDK 项目：`src/Amvision.Workflows`
-- 源码结构：`Http/` 放 Workflow 管理 API client、请求和响应模型，`ZeroMq/` 放 TriggerSource REQ/REP 调用，`Internal/` 放 SDK 内部 JSON/HTTP helper
-- 目标框架：`net461;net472;netstandard2.1;net10.0`
-- ZeroMQ 依赖：NetMQ
-- 支持 ZeroMQ 图片 REQ/REP 调用和纯事件 REQ/REP 调用
-- 支持 TriggerResult 和 ZeroMQ error reply 解析
-- 支持 Workflow 管理 API HTTP client：WorkflowAppRuntime create/list/get/events/start/stop/restart/health/instances/delete，WorkflowRun create/invoke/upload/get/events/cancel，TriggerSource list/get/create/enable/disable/delete/health，SystemConfig get
-- HTTP client 保留 raw `AmvisionWorkflowApiResponse` API，同时提供 runtime、run、app-result、trigger-source、system config 的 typed response 方法
-- `invoke app runtime` 和 `get workflow run` 默认按平台页面使用 `response_mode=run`；现场同步调用只取公开结果时使用 `InvokeWorkflowAppRuntimeAppResultResponseAsync`、`InvokeWorkflowAppRuntimeAppResultAsync<T>`、`GetWorkflowRunAppResultResponseAsync` 或 `GetWorkflowRunAppResultAsync<T>`
-- 支持已有模型 DeploymentInstance 的 `sync/async` runtime start、warmup、reset、stop、status、health，以及同步推理和异步 inference task 调用
-- 模型推理支持 JSON `input_file_id/input_uri/image_base64`、multipart 图片 bytes/file 上传，并提供 raw API 和 typed response 方法
-- ZeroMQ envelope 已支持 shape、dtype、layout、pixel_format 等图片元数据；现场高帧率路径下一步按 [docs/architecture/high-performance-image-data-plane.md](../../docs/architecture/high-performance-image-data-plane.md) 收口到 BGR24 raw image-ref
+- Solution：`sdks/dotnet/amvision-vs2019-net472.sln`
+- SDK 项目：`sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.vs2019.net472.csproj`
+- Target framework：`.NET Framework 4.7.2`
+- Language version：`C# 8.0`
+- Assembly：`Amvision.Workflows.dll`
 
-SDK 只负责第三方程序对已有 WorkflowAppRuntime、WorkflowRun 和 TriggerSource 的使用与控制；`Save Template`、`Save Application` 仍属于平台准备动作。
+`apps` 和 `tests` 目录不承载 SDK 核心逻辑。后续如果恢复 console 示例，也只放调用样例和调试入口；HTTP、ZeroMQ、配置加载、Workflow runtime、Model deployment 等封装全部放在 `src/Amvision.Workflows`。
 
-模型 DeploymentInstance 的 SDK 调用按 [docs/api/model-deployment-sdks.md](../../docs/api/model-deployment-sdks.md) 的边界实现：不提供 DeploymentInstance 的 list/create/get/delete 管理操作，只使用已有 deployment 的运行控制和推理调用接口。
+## 依赖策略
 
-`apps/Amvision.Workflows.Console` 的模型部署调用沿用 `Config/config_*.json + key + 方法` 的模式。每个 `config_*.json` 可以包含多个 `model_deployments`，启动时统一合并为 `ModelDeployments` catalog；重复 key 不允许静默覆盖，应在配置加载阶段排除并报错。
+VS2019 项目不依赖 NuGet 还原，不要求第三方使用者联网安装包。项目直接引用 `libs/net472` 下的 DLL：
 
-现场使用的 `Config/config_*.json` 可由后端统一生成，前端只在“项目工作台”右上角提供“生成 SDK 配置包”入口。配置包生成规则、zip 结构和不做事项见 [docs/api/sdk-config-packages.md](../../docs/api/sdk-config-packages.md)。
+- `Newtonsoft.Json.dll`
+- `NetMQ.dll`
+- `AsyncIO.dll`
+- `NaCl.dll`
 
-`net461` 和 `net472` 用于 .NET Framework 上位机程序，`netstandard2.1` 用于 .NET Core 3.0+，`net10.0` 用于现代运行时。仓库根目录 `global.json` 固定 .NET SDK 基线为 10.0，语言版本固定为 C# 14。`net461` 目标使用 NetMQ 4.0.1.10 和 System.Text.Json 6.0.10，其余目标使用当前较新的 NetMQ/System.Text.Json 组合。
+JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件只保留上述直接引用，不使用 `PackageReference`，也不通过 NuGet 恢复依赖。
 
-## 构建
+当前 `NetMQ.dll` 版本在 .NET Framework 4.7.2 下还会带出少量运行时传递依赖。使用 ZeroMQ Trigger 调用时，发布目录需要随 `Amvision.Workflows.dll` 一起放置 `libs/net472` 中的 DLL。仅使用 HTTP workflow/model/runtime API 时，第三方项目可以只携带 `Amvision.Workflows.dll`、`Newtonsoft.Json.dll` 和 .NET Framework 自带程序集；如现场项目已有同名依赖，应以最终程序输出目录中的同一版本为准，避免同目录放置多份不同版本 DLL。
 
-```powershell
-dotnet build sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.csproj
-dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
-```
+## 功能边界
 
-## Visual Studio 2019
+`Amvision.Workflows` SDK 负责封装 AMVISION 后端的外部调用能力：
 
-VS2019 不打开多目标框架 SDK 项目。第三方上位机项目使用 VS2019 时，直接打开固定目标框架的单框架 solution：
+- Workflow App Runtime 查询、启动、停止、重启、健康检查
+- Workflow App Runtime 同步 invoke、异步 run、run/event 查询
+- Model Deployment runtime 查询、启动、停止、预热、重置和推理调用
+- TriggerSource 查询、启用、禁用、健康检查
+- ZeroMQ TriggerSource 图片、BGR24、Base64、事件触发调用
+- 本地配置文件加载和按 key 调用已配置 runtime / deployment / trigger
 
-```text
-sdks/dotnet/amvision-vs2019-net461.sln
-sdks/dotnet/amvision-vs2019-net472.sln
-```
+Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。
 
-根目录 solution 同时包含对应框架的 `Amvision.Workflows` SDK 和 `Amvision.Workflows.Console` 参考实现，源码按 VS2019 可识别的 C# 8 写法组织，程序集名保持 `Amvision.Workflows` / `Amvision.Workflows.Console`。如果只需要打开单个项目，也可以使用对应目录下的 solution：
+## VS2019 使用方式
 
-```text
-sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.vs2019.net461.sln
-sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.vs2019.net472.sln
-sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.net461.sln
-sdks/dotnet/apps/Amvision.Workflows.Console/Amvision.Workflows.Console.vs2019.net472.sln
-```
+1. 打开 `sdks/dotnet/amvision-vs2019-net472.sln`。
+2. 编译 `Amvision.Workflows.vs2019.net472`。
+3. 第三方项目引用输出的 `Amvision.Workflows.dll`。
+4. 将 `libs/net472` 中需要的 DLL 与第三方程序放在同一输出目录。
 
-VS2019 单框架项目不使用 NuGet `PackageReference` 拉取运行依赖，而是引用 `sdks/dotnet/libs/{net461|net472}` 中随 SDK 提供的 DLL。`Microsoft.NETFramework.ReferenceAssemblies.net461/net472` 也不再作为 NuGet 依赖；开发机需要安装对应 .NET Framework Developer Pack / Targeting Pack。这样第三方在离线工控机或隔离开发网中打开 solution 时，不会因为 NuGet 源、NU1900 漏洞数据源访问或 .NET SDK 10/MSBuild 版本不匹配而失败。
-
-`System.Text.Json` 在 VS2019 项目中固定为本地 DLL 6.0.10。当前 SDK 公开 API 已使用 `JsonElement` 等类型，暂不切换到 `Newtonsoft.Json`，避免第三方调用代码产生破坏性变化。
-
-`sdks/dotnet/tests` 默认只运行 SDK 协议、HTTP URL/body/query、schema fixture 和 transport 逻辑测试。真实 backend-service smoke 测试通过环境变量启用：
-
-```powershell
-$env:AMVISION_DOTNET_SDK_SMOKE_BASE_URL = "http://127.0.0.1:8000"
-$env:AMVISION_DOTNET_SDK_SMOKE_TOKEN = "amvision-default-user-token"
-$env:AMVISION_DOTNET_SDK_SMOKE_PROJECT_ID = "project-1"
-dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
-```
-
-## 真实 backend-service 调试
-
-06/07 的 ZeroMQ 调试应使用 `docs/examples/workflows/*_zeromq.*.json` 中的双入口 workflow app。原始 04/05 JSON 仍保留给 HTTP base64 invoke 调试。
-
-服务侧准备顺序：保存 06/07 的 template 和 application，创建并启动 WorkflowAppRuntime，按 `docs/api/examples/workflows/06-detection-deployment-infer-opencv-health-zeromq-image-ref/trigger-source.create.request.json` 或 `docs/api/examples/workflows/07-opencv-process-save-image-zeromq-image-ref/trigger-source.create.request.json` 创建 TriggerSource，调用 enable，并确认 health 中 `adapter_running=true`。如果 06 的 template 已升级到返回 `detections + annotated_image + health`，需要重新执行 Save Template、Save Application，并重新创建或重建对应的 WorkflowAppRuntime；旧 runtime 继续运行时，返回结果仍会停留在旧图接口模型。
-
-创建 ZeroMQ TriggerSource 前可通过 HTTP client 读取当前后端实际配置，选择与 `config/backend-service.json` 一致的 LocalBufferBroker pool：
+示例代码：
 
 ```csharp
-using var workflowClient = new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
-{
-    BaseApiUrl = "http://127.0.0.1:8000",
-    AccessToken = "amvision-default-user-token"
-});
-
-var systemConfig = await workflowClient.GetSystemConfigResponseAsync();
-var broker = systemConfig.LocalBufferBroker;
-var poolName = broker?.DefaultPoolName ?? "image-4k";
-```
-
-创建 TriggerSource 时把 `poolName` 写入 `WorkflowTriggerSourceCreateRequest.TransportConfig["pool_name"]`。SDK 不维护独立默认 pool 列表，现场如果新增 8K 或相机专用 pool，应以 `/api/v1/system/config` 返回为准。
-
-上面这组 `Save Template`、`Save Application`、`Create TriggerSource`、`Create WorkflowAppRuntime` 仍然属于项目管理 API 或前端准备动作，不属于 SDK 对外提供的能力范围。
-
-常见管理 API 错误：
-
-- `trigger_source_id 已存在`：`POST /api/v1/workflows/trigger-sources` 是创建接口，不会覆盖已有资源。应先调用 `GET /api/v1/workflows/trigger-sources/{trigger_source_id}` 或 `.../health` 检查现有 TriggerSource 是否可直接复用。
-- 如果现有 TriggerSource 已经绑定到正确的 `workflow_runtime_id`，直接对这个 runtime 执行 start，再调用 enable 即可，不需要重复 create TriggerSource。
-- 如果因为重新创建 WorkflowAppRuntime 导致 `workflow_runtime_id` 已变化，先调用 disable，再调用 `DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}` 删除旧 TriggerSource，然后重新 create；也可以直接换一个新的 `trigger_source_id`。
-- `启用 TriggerSource 前必须先启动绑定的 WorkflowAppRuntime`：先调用 `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/start`，再调用 `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health` 确认 runtime 已进入 running，最后再调用 `POST /api/v1/workflows/trigger-sources/{trigger_source_id}/enable`。
-
-`apps/Amvision.Workflows.Console` 提供 `net461;net472;net10.0` console 官方参考实现，面向前端已经创建好的 WorkflowAppRuntime 和 TriggerSource，按方法封装 list/get/start/stop/restart/health/instances、sync invoke、async run、run/event 查询，以及 TriggerSource/ZeroMQ 调用。真实联调也可以继续使用 SDK 测试工程的 smoke 测试，或按下面的最小调用代码嵌入现场上位机、MES、采集程序和调试工具。
-
-## 最小调用
-
-```csharp
+using System;
+using System.Threading.Tasks;
 using Amvision.Workflows;
 
-using var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+public static class Example
 {
-    Endpoint = "tcp://127.0.0.1:5555",
-    TriggerSourceId = "zeromq-trigger-source-06",
-    DefaultInputBinding = "request_image_ref",
-    Timeout = TimeSpan.FromSeconds(5)
-});
-
-var request = new ImageTriggerRequest
-{
-    ImageBytes = File.ReadAllBytes("sample.jpg"),
-    MediaType = "image/jpeg",
-    Metadata =
+    public static async Task Main()
     {
-        ["line_id"] = "line-a",
-        ["station_id"] = "station-1"
+        var options = new AmvisionWorkflowClientOptions
+        {
+            BaseUrl = new Uri("http://127.0.0.1:8000")
+        };
+
+        using (var client = new AmvisionWorkflowClient(options))
+        {
+            var config = await client.GetSystemConfigResponseAsync().ConfigureAwait(false);
+            Console.WriteLine(config.FormatId);
+        }
     }
-};
-
-request
-    .WithDeploymentInstance("deployment-instance-1")
-    .WithIdempotencyKey("line-a-20260702-0001");
-
-var result = client.InvokeImage(request);
-
-Console.WriteLine($"{result.State}: {result.WorkflowRunId}");
+}
 ```
 
-也可以使用 helper 明确表达输入来源，但最终都会转成 ZeroMQ multipart 第二帧 bytes：
+## 后续框架版本
 
-```csharp
-var fromFile = ImageTriggerRequest.FromFile("sample.jpg");
-var fromBase64 = ImageTriggerRequest.FromBase64("data:image/png;base64,...");
-var fromCameraBytes = ImageTriggerRequest.FromBytes(cameraFrameJpegBytes, "image/jpeg");
-```
-
-上面这些 helper 适合低频调试、文件输入或旧系统桥接。工业相机高帧率调用的目标方式是相机取图后在上位机侧得到连续 BGR24 bytes，再通过 ZeroMQ 第二帧发送，并把 envelope metadata 写成 `media_type=image/raw`、`pixel_format=bgr24`、`dtype=uint8`、`layout=HWC`、`shape=[height,width,3]`。该路径的完整 SDK、后端、节点和默认 workflow 图要求见 [docs/architecture/high-performance-image-data-plane.md](../../docs/architecture/high-performance-image-data-plane.md)。
-
-这里的 `DefaultInputBinding = "request_image_ref"` 表示 ZeroMQ envelope 第一层事件 payload 中保存 LocalBuffer 图片引用的字段名。06/07 的 TriggerSource 会通过 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 把这份图片输入映射到 workflow app 的 `request_image_ref` binding。`request_image_base64` 入口只用于 HTTP/JSON 调试，不作为 ZeroMQ TriggerSource 的默认图片输入。
-
-## HTTP app-result
-
-同步调用如果只需要 workflow app 公开结果，使用 app-result 方法，SDK 会自动带上 `response_mode=app-result`：
-
-```csharp
-using var workflowClient = new AmvisionWorkflowClient(new AmvisionWorkflowClientOptions
-{
-    BaseApiUrl = "http://127.0.0.1:8000",
-    AccessToken = "amvision-default-user-token"
-});
-
-var invokeRequest = new WorkflowRuntimeInvokeRequest();
-invokeRequest.InputBindings["request_image_base64"] = new Dictionary<string, object?>
-{
-    ["image_base64"] = "...",
-    ["media_type"] = "image/jpeg"
-};
-
-var appResult = await workflowClient.InvokeWorkflowAppRuntimeAppResultResponseAsync(
-    "workflow-runtime-xxx",
-    invokeRequest);
-
-Console.WriteLine(appResult.BodyJson.ToString());
-```
-
-如果业务侧已有固定 DTO，可直接使用 `InvokeWorkflowAppRuntimeAppResultAsync<T>` 或 `GetWorkflowRunAppResultAsync<T>`。
-
-## HTTP multipart upload
-
-后端当前 multipart runtime 接口用于 `dataset-package.v1` 这类文件输入绑定，不作为现场大图高速推理主路径。大图本机高速输入仍优先使用 ZeroMQ 第二帧写入 LocalBufferBroker。
-
-```csharp
-var uploadRequest = new WorkflowRuntimeMultipartInvokeRequest
-{
-    TimeoutSeconds = 30
-};
-uploadRequest.InputBindings["job_id"] = "job-1";
-uploadRequest.ExecutionMetadata["source"] = "dotnet-sdk";
-uploadRequest.Files.Add(WorkflowRuntimeMultipartFile.FromFile(
-    "dataset_package",
-    "dataset.zip",
-    "application/zip"));
-
-var run = await workflowClient.CreateWorkflowRunUploadResponseAsync(
-    "workflow-runtime-xxx",
-    uploadRequest);
-```
-
-同步上传入口使用 `InvokeWorkflowAppRuntimeUploadAsync`、`InvokeWorkflowAppRuntimeUploadResponseAsync` 或 `InvokeWorkflowAppRuntimeUploadAppResultResponseAsync`。
-
-## ZeroMQ 纯事件触发
-
-ZeroMQ TriggerSource 的第二帧图片 bytes 是高性能图片输入，不是所有 TriggerSource 的硬性要求。PLC、传感器、空参数 HTTP 桥接等场景可以只发 envelope，让 workflow app 按图内节点读取磁盘、相机或执行无输入动作。
-
-```csharp
-using var triggerClient = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
-{
-    Endpoint = "tcp://127.0.0.1:5555",
-    TriggerSourceId = "zeromq-trigger-source-event",
-    Timeout = TimeSpan.FromSeconds(5)
-});
-
-var eventResult = triggerClient.InvokeEvent(
-    TriggerEventRequest.Empty()
-        .WithPayload("plc_value", 1)
-        .WithMetadata("line_id", "line-a")
-        .WithIdempotencyKey("line-a-plc-0001"));
-
-Console.WriteLine($"{eventResult.State}: {eventResult.WorkflowRunId}");
-```
+`net461` 和 `.NET 10` 可以继续按单项目方式补齐，但不能重新引入多目标项目作为 VS2019 默认入口。每个框架版本都应是独立项目，第三方按自身运行环境选择对应项目或编译产物。

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -10,55 +10,55 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class WorkflowAppRuntimeResponse
     {
-        [JsonPropertyName("format_id")]
+        [JsonProperty("format_id")]
         public string FormatId { get; set; } = string.Empty;
 
-        [JsonPropertyName("workflow_runtime_id")]
+        [JsonProperty("workflow_runtime_id")]
         public string WorkflowRuntimeId { get; set; } = string.Empty;
 
-        [JsonPropertyName("project_id")]
+        [JsonProperty("project_id")]
         public string ProjectId { get; set; } = string.Empty;
 
-        [JsonPropertyName("application_id")]
+        [JsonProperty("application_id")]
         public string ApplicationId { get; set; } = string.Empty;
 
-        [JsonPropertyName("execution_policy_id")]
+        [JsonProperty("execution_policy_id")]
         public string? ExecutionPolicyId { get; set; }
 
-        [JsonPropertyName("display_name")]
+        [JsonProperty("display_name")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [JsonPropertyName("desired_state")]
+        [JsonProperty("desired_state")]
         public string DesiredState { get; set; } = string.Empty;
 
-        [JsonPropertyName("observed_state")]
+        [JsonProperty("observed_state")]
         public string ObservedState { get; set; } = string.Empty;
 
-        [JsonPropertyName("worker_process_id")]
+        [JsonProperty("worker_process_id")]
         public int? WorkerProcessId { get; set; }
 
-        [JsonPropertyName("last_started_at")]
+        [JsonProperty("last_started_at")]
         public string? LastStartedAt { get; set; }
 
-        [JsonPropertyName("last_stopped_at")]
+        [JsonProperty("last_stopped_at")]
         public string? LastStoppedAt { get; set; }
 
-        [JsonPropertyName("heartbeat_at")]
+        [JsonProperty("heartbeat_at")]
         public string? HeartbeatAt { get; set; }
 
-        [JsonPropertyName("last_error")]
-        public JsonElement? LastError { get; set; }
+        [JsonProperty("last_error")]
+        public JToken? LastError { get; set; }
 
-        [JsonPropertyName("health_summary")]
-        public IDictionary<string, JsonElement> HealthSummary { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("health_summary")]
+        public IDictionary<string, JToken> HealthSummary { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("metadata")]
-        public IDictionary<string, JsonElement> Metadata { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("metadata")]
+        public IDictionary<string, JToken> Metadata { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("created_at")]
+        [JsonProperty("created_at")]
         public string CreatedAt { get; set; } = string.Empty;
 
-        [JsonPropertyName("updated_at")]
+        [JsonProperty("updated_at")]
         public string UpdatedAt { get; set; } = string.Empty;
     }
 
@@ -67,23 +67,23 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class WorkflowAppRuntimeEventResponse
     {
-        [JsonPropertyName("format_id")]
+        [JsonProperty("format_id")]
         public string FormatId { get; set; } = string.Empty;
 
-        [JsonPropertyName("workflow_runtime_id")]
+        [JsonProperty("workflow_runtime_id")]
         public string WorkflowRuntimeId { get; set; } = string.Empty;
 
-        [JsonPropertyName("sequence")]
+        [JsonProperty("sequence")]
         public long Sequence { get; set; }
 
-        [JsonPropertyName("event_type")]
+        [JsonProperty("event_type")]
         public string EventType { get; set; } = string.Empty;
 
-        [JsonPropertyName("occurred_at")]
+        [JsonProperty("occurred_at")]
         public string OccurredAt { get; set; } = string.Empty;
 
-        [JsonPropertyName("payload")]
-        public IDictionary<string, JsonElement> Payload { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("payload")]
+        public IDictionary<string, JToken> Payload { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -91,22 +91,22 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class WorkflowAppRuntimeInstanceResponse
     {
-        [JsonPropertyName("format_id")]
+        [JsonProperty("format_id")]
         public string FormatId { get; set; } = string.Empty;
 
-        [JsonPropertyName("workflow_runtime_id")]
+        [JsonProperty("workflow_runtime_id")]
         public string WorkflowRuntimeId { get; set; } = string.Empty;
 
-        [JsonPropertyName("instance_id")]
+        [JsonProperty("instance_id")]
         public string InstanceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("state")]
+        [JsonProperty("state")]
         public string State { get; set; } = string.Empty;
 
-        [JsonPropertyName("process_id")]
+        [JsonProperty("process_id")]
         public int? ProcessId { get; set; }
 
-        [JsonPropertyName("health_summary")]
-        public IDictionary<string, JsonElement> HealthSummary { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("health_summary")]
+        public IDictionary<string, JToken> HealthSummary { get; set; } = new Dictionary<string, JToken>();
     }
 }

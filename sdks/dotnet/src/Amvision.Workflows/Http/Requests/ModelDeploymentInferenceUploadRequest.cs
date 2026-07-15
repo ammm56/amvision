@@ -5,8 +5,6 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Amvision.Workflows
 {
@@ -184,7 +182,7 @@ namespace Amvision.Workflows
             AddString(content, "return_preview_image_base64", ReturnPreviewImageBase64?.ToString().ToLowerInvariant());
             if (ExtraOptions.Count > 0)
             {
-                AddString(content, "extra_options", JsonSerializer.Serialize(ExtraOptions, WorkflowJsonDefaults.SerializerOptions));
+                AddString(content, "extra_options", WorkflowJsonDefaults.Serialize(ExtraOptions));
             }
 
             var imageContent = new ByteArrayContent(ImageBytes);

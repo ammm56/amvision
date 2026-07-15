@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,13 +24,6 @@ namespace Amvision.Workflows
         /// ZeroMQ adapter 返回的错误 reply format_id。
         /// </summary>
         public const string ZeroMqErrorFormatId = "amvision.zeromq-trigger-error.v1";
-
-        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = null,
-            WriteIndented = false
-        };
 
         /// <summary>
         /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
@@ -75,7 +68,7 @@ namespace Amvision.Workflows
         {
             ValidateRequest(request);
             var envelope = BuildEnvelope(request);
-            var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+            var envelopeBytes = WorkflowJsonDefaults.SerializeToUtf8Bytes(envelope);
             IReadOnlyList<byte[]> replyFrames;
             lock (syncRoot)
             {
@@ -110,7 +103,7 @@ namespace Amvision.Workflows
         {
             ValidateRequest(request);
             var envelope = BuildEnvelope(request);
-            var envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+            var envelopeBytes = WorkflowJsonDefaults.SerializeToUtf8Bytes(envelope);
             IReadOnlyList<byte[]> replyFrames;
             lock (syncRoot)
             {
@@ -191,15 +184,25 @@ namespace Amvision.Workflows
             }
 
             var json = Encoding.UTF8.GetString(replyFrames[0]);
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            var formatId = root.TryGetProperty("format_id", out var formatProperty)
-                ? formatProperty.GetString()
-                : null;
-
-            if (formatId == ZeroMqErrorFormatId || root.TryGetProperty("error_code", out _))
+            JObject root;
+            try
             {
-                var error = JsonSerializer.Deserialize<ZeroMqTriggerError>(json, JsonOptions);
+                root = JObject.Parse(json);
+            }
+            catch (JsonException exception)
+            {
+                throw new AmvisionTriggerException(
+                    "invalid_reply",
+                    "ZeroMQ TriggerSource reply is not valid JSON.",
+                    null,
+                    exception);
+            }
+
+            var formatId = root.Value<string>("format_id");
+
+            if (formatId == ZeroMqErrorFormatId || root["error_code"] != null)
+            {
+                var error = WorkflowJsonDefaults.Deserialize<ZeroMqTriggerError>(json);
                 throw new AmvisionTriggerException(
                     error?.ErrorCode ?? "trigger_error",
                     error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
@@ -207,7 +210,7 @@ namespace Amvision.Workflows
                 );
             }
 
-            var result = JsonSerializer.Deserialize<TriggerResult>(json, JsonOptions);
+            var result = WorkflowJsonDefaults.Deserialize<TriggerResult>(json);
             if (result is null)
             {
                 throw new AmvisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");

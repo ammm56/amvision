@@ -1,4 +1,5 @@
-using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Amvision.Workflows
 {
@@ -12,22 +13,23 @@ namespace Amvision.Workflows
         /// 初始化 app-result 响应。
         /// </summary>
         /// <param name="bodyJson">后端返回的公开结果 JSON 根节点。</param>
-        public WorkflowAppResultResponse(JsonElement bodyJson)
+        public WorkflowAppResultResponse(JToken bodyJson)
         {
-            BodyJson = bodyJson.Clone();
+            BodyJson = bodyJson.DeepClone();
         }
 
         /// <summary>
         /// 后端返回的公开结果 JSON 根节点。
         /// </summary>
-        public JsonElement BodyJson { get; }
+        public JToken BodyJson { get; }
 
         /// <summary>
         /// 把公开结果 JSON 反序列化为指定业务类型。
         /// </summary>
-        public T ReadAs<T>(JsonSerializerOptions? options = null)
+        public T ReadAs<T>(JsonSerializerSettings? settings = null)
         {
-            var value = BodyJson.Deserialize<T>(options ?? WorkflowJsonDefaults.SerializerOptions);
+            var serializer = JsonSerializer.Create(settings ?? WorkflowJsonDefaults.SerializerSettings);
+            var value = BodyJson.ToObject<T>(serializer);
             return value is null
                 ? throw new JsonException($"Workflow app result cannot be deserialized as {typeof(T).Name}.")
                 : value;
@@ -39,12 +41,12 @@ namespace Amvision.Workflows
         internal static WorkflowAppResultResponse FromApiResponse(AmvisionWorkflowApiResponse response)
         {
             response.EnsureSuccessStatusCode();
-            if (!(response.BodyJson is JsonElement bodyJson))
+            if (response.BodyJson is null)
             {
                 throw new JsonException("Workflow app result response body is not JSON.");
             }
 
-            return new WorkflowAppResultResponse(bodyJson);
+            return new WorkflowAppResultResponse(response.BodyJson);
         }
 
         /// <summary>

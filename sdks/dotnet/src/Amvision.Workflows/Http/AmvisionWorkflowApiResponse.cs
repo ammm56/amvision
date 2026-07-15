@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Net;
-using System.Text.Json;
-
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 namespace Amvision.Workflows
 {
 
@@ -13,10 +13,10 @@ namespace Amvision.Workflows
         private AmvisionWorkflowApiResponse(
             HttpStatusCode statusCode,
             string content,
-            JsonElement? bodyJson,
+            JToken? bodyJson,
             string? errorCode,
             string? errorMessage,
-            IReadOnlyDictionary<string, JsonElement> errorDetails)
+            IReadOnlyDictionary<string, JToken> errorDetails)
         {
             StatusCode = statusCode;
             Content = content;
@@ -44,7 +44,7 @@ namespace Amvision.Workflows
         /// <summary>
         /// 解析后的 JSON 根元素；非 JSON 响应时为空。
         /// </summary>
-        public JsonElement? BodyJson { get; }
+        public JToken? BodyJson { get; }
 
         /// <summary>
         /// backend-service 错误码；非错误响应或无法解析时为空。
@@ -59,7 +59,7 @@ namespace Amvision.Workflows
         /// <summary>
         /// backend-service 错误详情；非错误响应时为空字典。
         /// </summary>
-        public IReadOnlyDictionary<string, JsonElement> ErrorDetails { get; }
+        public IReadOnlyDictionary<string, JToken> ErrorDetails { get; }
 
         /// <summary>
         /// 非 2xx 响应时抛出 <see cref="AmvisionWorkflowApiException" />。
@@ -82,19 +82,20 @@ namespace Amvision.Workflows
         /// 把响应 JSON 反序列化为指定类型。
         /// </summary>
         /// <typeparam name="T">目标类型。</typeparam>
-        /// <param name="options">可选 JSON 选项。</param>
+        /// <param name="settings">可选 JSON 选项。</param>
         /// <returns>反序列化后的对象。</returns>
-        public T ReadJson<T>(JsonSerializerOptions? options = null)
+        public T ReadJson<T>(JsonSerializerSettings? settings = null)
         {
             EnsureSuccessStatusCode();
-            if (!(BodyJson is JsonElement bodyJson))
+            if (!(BodyJson is JToken bodyJson))
             {
                 throw new JsonException("HTTP response body is not JSON.");
             }
 
-            var value = bodyJson.Deserialize<T>(options);
+            var serializer = JsonSerializer.Create(settings ?? WorkflowJsonDefaults.SerializerSettings);
+            var value = bodyJson.ToObject<T>(serializer);
             return value is null
-                ? throw new JsonException($"HTTP response body cannot be deserialized as {typeof(T).Name}.")
+                ? throw new JsonException("HTTP response body cannot be deserialized as " + typeof(T).Name + ".")
                 : value;
         }
 
@@ -106,34 +107,31 @@ namespace Amvision.Workflows
         /// <returns>解析后的 SDK 响应。</returns>
         internal static AmvisionWorkflowApiResponse Create(HttpStatusCode statusCode, string content)
         {
-            JsonElement? bodyJson = null;
+            JToken? bodyJson = null;
             string? errorCode = null;
             string? errorMessage = null;
-            var errorDetails = new Dictionary<string, JsonElement>();
+            var errorDetails = new Dictionary<string, JToken>();
 
             if (!string.IsNullOrWhiteSpace(content))
             {
                 try
                 {
-                    using var document = JsonDocument.Parse(content);
-                    bodyJson = document.RootElement.Clone();
-                    if (bodyJson is JsonElement root && root.ValueKind == JsonValueKind.Object)
+                    bodyJson = JToken.Parse(content);
+                    if (bodyJson is JObject root)
                     {
-                        if (root.TryGetProperty("error", out var errorElement)
-                            && errorElement.ValueKind == JsonValueKind.Object)
+                        if (root["error"] is JObject errorElement)
                         {
                             errorCode = TryReadStringProperty(errorElement, "code");
                             errorMessage = TryReadStringProperty(errorElement, "message");
-                            if (errorElement.TryGetProperty("details", out var detailsElement)
-                                && detailsElement.ValueKind == JsonValueKind.Object)
+                            if (errorElement["details"] is JObject detailsElement)
                             {
-                                foreach (var property in detailsElement.EnumerateObject())
+                                foreach (var property in detailsElement.Properties())
                                 {
-                                    errorDetails[property.Name] = property.Value.Clone();
+                                    errorDetails[property.Name] = property.Value.DeepClone();
                                 }
                             }
                         }
-                        else if (root.TryGetProperty("error_code", out _))
+                        else if (root["error_code"] != null)
                         {
                             errorCode = TryReadStringProperty(root, "error_code");
                             errorMessage = TryReadStringProperty(root, "error_message");
@@ -161,11 +159,11 @@ namespace Amvision.Workflows
         /// <param name="root">JSON 对象。</param>
         /// <param name="propertyName">字段名。</param>
         /// <returns>字段字符串值或空。</returns>
-        private static string? TryReadStringProperty(JsonElement root, string propertyName)
+        private static string? TryReadStringProperty(JObject root, string propertyName)
         {
-            return root.TryGetProperty(propertyName, out var property)
-                && property.ValueKind == JsonValueKind.String
-                ? property.GetString()
+            var property = root[propertyName];
+            return property != null && property.Type == JTokenType.String
+                ? property.Value<string>()
                 : null;
         }
     }

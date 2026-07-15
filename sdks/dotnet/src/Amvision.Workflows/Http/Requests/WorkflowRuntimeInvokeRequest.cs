@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json.Linq;
 
 namespace Amvision.Workflows
 {
@@ -11,13 +10,6 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class WorkflowRuntimeInvokeRequest
     {
-        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = null,
-            WriteIndented = false
-        };
-
         /// <summary>
         /// input_bindings 对象。
         /// </summary>
@@ -57,7 +49,7 @@ namespace Amvision.Workflows
                 payload["timeout_seconds"] = TimeoutSeconds.Value;
             }
 
-            return JsonSerializer.Serialize(payload, JsonOptions);
+            return WorkflowJsonDefaults.Serialize(payload);
         }
 
         /// <summary>
@@ -72,68 +64,67 @@ namespace Amvision.Workflows
                 throw new ArgumentException("json cannot be empty.", nameof(json));
             }
 
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            var root = JObject.Parse(json);
+            if (root.Type != JTokenType.Object)
             {
                 throw new InvalidOperationException("Workflow runtime invoke JSON must be an object.");
             }
 
             var request = new WorkflowRuntimeInvokeRequest();
-            if (document.RootElement.TryGetProperty("input_bindings", out var inputBindingsElement))
+            if (root.TryGetValue("input_bindings", StringComparison.OrdinalIgnoreCase, out var inputBindingsElement))
             {
-                if (inputBindingsElement.ValueKind != JsonValueKind.Object)
+                if (!(inputBindingsElement is JObject inputBindingsObject))
                 {
                     throw new InvalidOperationException("input_bindings must be an object.");
                 }
 
-                foreach (var property in document.RootElement.EnumerateObject())
+                foreach (var property in root.Properties())
                 {
-                    if (property.Name != "input_bindings"
-                        && property.Name != "execution_metadata"
-                        && property.Name != "timeout_seconds")
+                    if (!string.Equals(property.Name, "input_bindings", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(property.Name, "execution_metadata", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(property.Name, "timeout_seconds", StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException(
                             "Workflow runtime invoke JSON cannot mix input_bindings and direct input fields.");
                     }
                 }
 
-                foreach (var property in inputBindingsElement.EnumerateObject())
+                foreach (var property in inputBindingsObject.Properties())
                 {
-                    request.InputBindings[property.Name] = property.Value.Clone();
+                    request.InputBindings[property.Name] = property.Value.DeepClone();
                 }
             }
             else
             {
                 request.UseDirectInputBindings = true;
-                foreach (var property in document.RootElement.EnumerateObject())
+                foreach (var property in root.Properties())
                 {
-                    if (property.Name == "execution_metadata" || property.Name == "timeout_seconds")
+                    if (string.Equals(property.Name, "execution_metadata", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(property.Name, "timeout_seconds", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
 
-                    request.InputBindings[property.Name] = property.Value.Clone();
+                    request.InputBindings[property.Name] = property.Value.DeepClone();
                 }
             }
 
-            if (document.RootElement.TryGetProperty("execution_metadata", out var executionMetadataElement))
+            if (root.TryGetValue("execution_metadata", StringComparison.OrdinalIgnoreCase, out var executionMetadataElement))
             {
-                if (executionMetadataElement.ValueKind != JsonValueKind.Object)
+                if (!(executionMetadataElement is JObject executionMetadataObject))
                 {
                     throw new InvalidOperationException("execution_metadata must be an object.");
                 }
 
-                foreach (var property in executionMetadataElement.EnumerateObject())
+                foreach (var property in executionMetadataObject.Properties())
                 {
-                    request.ExecutionMetadata[property.Name] = property.Value.Clone();
+                    request.ExecutionMetadata[property.Name] = property.Value.DeepClone();
                 }
             }
 
-            if (document.RootElement.TryGetProperty("timeout_seconds", out var timeoutElement))
+            if (root.TryGetValue("timeout_seconds", StringComparison.OrdinalIgnoreCase, out var timeoutElement))
             {
-                if (timeoutElement.ValueKind != JsonValueKind.Number
-                    || !timeoutElement.TryGetInt32(out var timeoutSeconds)
-                    || timeoutSeconds <= 0)
+                if (!TryReadPositiveInteger(timeoutElement, out var timeoutSeconds))
                 {
                     throw new InvalidOperationException("timeout_seconds must be a positive integer.");
                 }
@@ -154,6 +145,26 @@ namespace Amvision.Workflows
             {
                 throw new InvalidOperationException("TimeoutSeconds must be greater than zero.");
             }
+        }
+
+        private static bool TryReadPositiveInteger(JToken token, out int value)
+        {
+            value = 0;
+            if (token.Type != JTokenType.Integer)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = token.Value<int>();
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+
+            return value > 0;
         }
     }
 }

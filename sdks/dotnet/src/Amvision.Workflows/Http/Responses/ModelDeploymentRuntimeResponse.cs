@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace Amvision.Workflows
 {
@@ -10,44 +10,44 @@ namespace Amvision.Workflows
     /// </summary>
     public class ModelDeploymentRuntimeStatusResponse
     {
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string DeploymentInstanceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("display_name")]
+        [JsonProperty("display_name")]
         public string? DisplayName { get; set; }
 
-        [JsonPropertyName("runtime_mode")]
+        [JsonProperty("runtime_mode")]
         public string RuntimeMode { get; set; } = string.Empty;
 
-        [JsonPropertyName("desired_state")]
+        [JsonProperty("desired_state")]
         public string DesiredState { get; set; } = string.Empty;
 
-        [JsonPropertyName("process_state")]
+        [JsonProperty("process_state")]
         public string ProcessState { get; set; } = string.Empty;
 
-        [JsonPropertyName("process_id")]
+        [JsonProperty("process_id")]
         public int? ProcessId { get; set; }
 
-        [JsonPropertyName("auto_restart")]
+        [JsonProperty("auto_restart")]
         public bool? AutoRestart { get; set; }
 
-        [JsonPropertyName("restart_count")]
+        [JsonProperty("restart_count")]
         public int? RestartCount { get; set; }
 
-        [JsonPropertyName("restart_count_rollover_count")]
+        [JsonProperty("restart_count_rollover_count")]
         public int? RestartCountRolloverCount { get; set; }
 
-        [JsonPropertyName("last_exit_code")]
+        [JsonProperty("last_exit_code")]
         public int? LastExitCode { get; set; }
 
-        [JsonPropertyName("last_error")]
+        [JsonProperty("last_error")]
         public string? LastError { get; set; }
 
-        [JsonPropertyName("instance_count")]
+        [JsonProperty("instance_count")]
         public int? InstanceCount { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -55,23 +55,23 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelDeploymentRuntimeHealthResponse : ModelDeploymentRuntimeStatusResponse
     {
-        [JsonPropertyName("healthy_instance_count")]
+        [JsonProperty("healthy_instance_count")]
         public int? HealthyInstanceCount { get; set; }
 
-        [JsonPropertyName("warmed_instance_count")]
+        [JsonProperty("warmed_instance_count")]
         public int? WarmedInstanceCount { get; set; }
 
-        [JsonPropertyName("pinned_output_total_bytes")]
+        [JsonProperty("pinned_output_total_bytes")]
         public long? PinnedOutputTotalBytes { get; set; }
 
-        [JsonPropertyName("instances")]
+        [JsonProperty("instances")]
         public IList<ModelDeploymentRuntimeInstanceHealthResponse> Instances { get; set; } = new List<ModelDeploymentRuntimeInstanceHealthResponse>();
 
-        [JsonPropertyName("keep_warm")]
-        public IDictionary<string, JsonElement> KeepWarm { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("keep_warm")]
+        public IDictionary<string, JToken> KeepWarm { get; set; } = new Dictionary<string, JToken>();
 
-        [JsonPropertyName("local_buffer_broker")]
-        public IDictionary<string, JsonElement> LocalBufferBroker { get; set; } = new Dictionary<string, JsonElement>();
+        [JsonProperty("local_buffer_broker")]
+        public IDictionary<string, JToken> LocalBufferBroker { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -79,23 +79,23 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelDeploymentRuntimeInstanceHealthResponse
     {
-        [JsonPropertyName("instance_id")]
+        [JsonProperty("instance_id")]
         public string InstanceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("healthy")]
+        [JsonProperty("healthy")]
         public bool? Healthy { get; set; }
 
-        [JsonPropertyName("warmed")]
+        [JsonProperty("warmed")]
         public bool? Warmed { get; set; }
 
-        [JsonPropertyName("busy")]
+        [JsonProperty("busy")]
         public bool? Busy { get; set; }
 
-        [JsonPropertyName("last_error")]
+        [JsonProperty("last_error")]
         public string? LastError { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
     /// <summary>
@@ -103,22 +103,22 @@ namespace Amvision.Workflows
     /// </summary>
     public sealed class ModelDeploymentRuntimeWarmupResponse
     {
-        [JsonPropertyName("deployment_instance_id")]
+        [JsonProperty("deployment_instance_id")]
         public string DeploymentInstanceId { get; set; } = string.Empty;
 
-        [JsonPropertyName("runtime_mode")]
+        [JsonProperty("runtime_mode")]
         public string RuntimeMode { get; set; } = string.Empty;
 
-        [JsonPropertyName("warmed_instance_count")]
+        [JsonProperty("warmed_instance_count")]
         public int? WarmedInstanceCount { get; set; }
 
-        [JsonPropertyName("pinned_output_total_bytes")]
+        [JsonProperty("pinned_output_total_bytes")]
         public long? PinnedOutputTotalBytes { get; set; }
 
-        [JsonPropertyName("status")]
+        [JsonProperty("status")]
         public string? Status { get; set; }
 
         [JsonExtensionData]
-        public IDictionary<string, JsonElement> ExtensionData { get; set; } = new Dictionary<string, JsonElement>();
+        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 }
