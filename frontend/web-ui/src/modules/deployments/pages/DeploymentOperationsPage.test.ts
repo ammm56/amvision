@@ -262,6 +262,64 @@ describe('DeploymentOperationsPage', () => {
 
     expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
   })
+
+  it('refreshes selected deployment runtime without flashing card state or disabling actions', async () => {
+    vi.mocked(listTaskDeployments).mockImplementation(async (taskType: ModelTaskType) => (
+      taskType === 'detection' ? [deployment, secondDeployment] : []
+    ))
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    let resolveSelectedStatus!: (value: TaskDeploymentProcessStatus) => void
+    const selectedStatusPromise = new Promise<TaskDeploymentProcessStatus>((resolve) => {
+      resolveSelectedStatus = resolve
+    })
+
+    vi.mocked(runTaskDeploymentStatusAction).mockClear()
+    vi.mocked(runTaskDeploymentHealthAction).mockClear()
+    vi.mocked(runTaskDeploymentStatusAction).mockImplementation(
+      async (_taskType: ModelTaskType, deploymentId: string, mode: string, action: DeploymentStatusAction) => {
+        if (deploymentId === 'deployment-2' && action === 'status') {
+          return selectedStatusPromise
+        }
+        return {
+          ...status,
+          deployment_instance_id: deploymentId,
+          display_name: deploymentId,
+          runtime_mode: mode,
+          process_state: action === 'stop' ? 'stopped' : 'running',
+        }
+      },
+    )
+
+    const secondCard = wrapper.find('[data-deployment-id="deployment-2"]')
+    expect(secondCard.exists(), 'deployment-2 card exists').toBe(true)
+    await secondCard.trigger('click')
+    await nextTick()
+
+    expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'status')
+    expect(wrapper.text()).not.toContain('刷新中')
+    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+    expect(findDeploymentActionButton(wrapper, 'deployment-1', 'stop').attributes('disabled')).toBeUndefined()
+
+    resolveSelectedStatus({
+      ...status,
+      deployment_instance_id: 'deployment-2',
+      display_name: 'deployment-2',
+      runtime_mode: 'sync',
+      desired_state: 'running',
+      process_state: 'running',
+    })
+    await flushPromises()
+
+    expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'health')
+    expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+  })
 })
 
 async function clickButtonByText(wrapper: VueWrapper, text: string): Promise<void> {

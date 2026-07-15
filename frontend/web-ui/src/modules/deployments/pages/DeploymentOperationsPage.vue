@@ -128,7 +128,6 @@
               <div class="deployment-instance-card__states">
                 <StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge>
                 <StatusBadge :tone="runtimeProcessTone(item)">{{ runtimeProcessLabel(item) }}</StatusBadge>
-                <StatusBadge v-if="isDeploymentRuntimeRefreshing(item)" tone="info">刷新中</StatusBadge>
               </div>
             </header>
             <div class="deployment-instance-card__details">
@@ -359,6 +358,11 @@ interface DeploymentListCandidate {
   routeTaskType: ModelTaskType
 }
 
+interface DeploymentRuntimeSnapshot {
+  status: TaskDeploymentProcessStatus | null
+  health: TaskDeploymentRuntimeHealth | null
+}
+
 const runtimeModeOptions = [
   { label: 'sync', value: 'sync' },
   { label: 'async', value: 'async' },
@@ -375,9 +379,7 @@ const creating = ref(false)
 const eventsLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const lastCreatedDeployment = ref<TaskDeploymentInstance | null>(null)
-const runtimeStatusByDeployment = ref<Record<string, TaskDeploymentProcessStatus>>({})
-const runtimeHealthByDeployment = ref<Record<string, TaskDeploymentRuntimeHealth>>({})
-const runtimeRefreshingByDeployment = ref<Record<string, boolean>>({})
+const runtimeSnapshotsByDeployment = ref<Record<string, DeploymentRuntimeSnapshot>>({})
 const runningActionByDeployment = ref<Record<string, string>>({})
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
@@ -401,8 +403,8 @@ const runtimeMode = ref<DeploymentRuntimeMode>('sync')
 const canWriteModels = computed(() => sessionStore.hasScopes(['models:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
-const selectedRuntimeStatus = computed(() => runtimeStatusByDeployment.value[selectedDeploymentId.value] ?? null)
-const selectedRuntimeHealth = computed(() => runtimeHealthByDeployment.value[selectedDeploymentId.value] ?? null)
+const selectedRuntimeStatus = computed(() => deploymentRuntimeStatus(selectedDeploymentId.value))
+const selectedRuntimeHealth = computed(() => deploymentRuntimeHealth(selectedDeploymentId.value))
 const pendingDeleteDeployment = computed(() => {
   const deploymentId = pendingDeleteDeploymentId.value
   return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
@@ -421,6 +423,8 @@ const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
 ))
 
 let skipNextRuntimeModeRefresh = false
+let runtimeRefreshSequence = 0
+const runtimeRefreshTokenByDeployment = new Map<string, number>()
 
 onMounted(async () => {
   void sessionStore.ensureDeviceBootstrap()
@@ -435,8 +439,7 @@ watch(runtimeMode, () => {
     skipNextRuntimeModeRefresh = false
     return
   }
-  runtimeStatusByDeployment.value = {}
-  runtimeHealthByDeployment.value = {}
+  clearRuntimeSnapshots()
   void refreshRuntimeSnapshotsAndEvents()
 })
 
@@ -476,9 +479,12 @@ function setDeviceName(value: SelectValue): void {
 }
 
 function clearRuntimeSnapshots(): void {
-  runtimeStatusByDeployment.value = {}
-  runtimeHealthByDeployment.value = {}
-  runtimeRefreshingByDeployment.value = {}
+  if (Object.keys(runtimeSnapshotsByDeployment.value).length === 0) {
+    runtimeRefreshTokenByDeployment.clear()
+    return
+  }
+  runtimeSnapshotsByDeployment.value = {}
+  runtimeRefreshTokenByDeployment.clear()
 }
 
 function setRuntimeModeWithoutRefresh(mode: DeploymentRuntimeMode): void {
@@ -578,6 +584,103 @@ function statusTone(status: string | null | undefined): 'neutral' | 'success' | 
   return 'neutral'
 }
 
+function createEmptyRuntimeSnapshot(): DeploymentRuntimeSnapshot {
+  return {
+    status: null,
+    health: null,
+  }
+}
+
+function deploymentRuntimeSnapshot(deploymentId: string): DeploymentRuntimeSnapshot | null {
+  if (!deploymentId) return null
+  return runtimeSnapshotsByDeployment.value[deploymentId] ?? null
+}
+
+function deploymentRuntimeStatus(deploymentId: string): TaskDeploymentProcessStatus | null {
+  return deploymentRuntimeSnapshot(deploymentId)?.status ?? null
+}
+
+function deploymentRuntimeHealth(deploymentId: string): TaskDeploymentRuntimeHealth | null {
+  return deploymentRuntimeSnapshot(deploymentId)?.health ?? null
+}
+
+function runtimeSnapshotValueEquals(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function setDeploymentRuntimeSnapshot(
+  deploymentId: string,
+  patch: Partial<DeploymentRuntimeSnapshot>,
+): void {
+  if (!deploymentId) return
+  const current = runtimeSnapshotsByDeployment.value[deploymentId] ?? createEmptyRuntimeSnapshot()
+  const next: DeploymentRuntimeSnapshot = {
+    status: patch.status === undefined ? current.status : patch.status,
+    health: patch.health === undefined ? current.health : patch.health,
+  }
+  if (
+    runtimeSnapshotValueEquals(current.status, next.status)
+    && runtimeSnapshotValueEquals(current.health, next.health)
+  ) {
+    return
+  }
+  runtimeSnapshotsByDeployment.value = {
+    ...runtimeSnapshotsByDeployment.value,
+    [deploymentId]: next,
+  }
+}
+
+function commitDeploymentRuntimeStatus(
+  deploymentId: string,
+  status: TaskDeploymentProcessStatus | null,
+): void {
+  setDeploymentRuntimeSnapshot(deploymentId, { status })
+}
+
+function commitDeploymentRuntimeHealth(
+  deploymentId: string,
+  health: TaskDeploymentRuntimeHealth | null,
+): void {
+  setDeploymentRuntimeSnapshot(deploymentId, {
+    status: health,
+    health,
+  })
+}
+
+function commitDeploymentRuntimeResult(
+  deploymentId: string,
+  status: TaskDeploymentProcessStatus | null,
+  health: TaskDeploymentRuntimeHealth | null,
+): void {
+  setDeploymentRuntimeSnapshot(deploymentId, {
+    status: health ?? status,
+    health,
+  })
+}
+
+function deleteDeploymentRuntimeSnapshot(deploymentId: string): void {
+  if (!runtimeSnapshotsByDeployment.value[deploymentId]) return
+  const nextSnapshots = { ...runtimeSnapshotsByDeployment.value }
+  delete nextSnapshots[deploymentId]
+  runtimeSnapshotsByDeployment.value = nextSnapshots
+  runtimeRefreshTokenByDeployment.delete(deploymentId)
+}
+
+function beginDeploymentRuntimeRefresh(deploymentId: string): number {
+  const token = ++runtimeRefreshSequence
+  runtimeRefreshTokenByDeployment.set(deploymentId, token)
+  return token
+}
+
+function isCurrentDeploymentRuntimeRefresh(deploymentId: string, token: number): boolean {
+  return runtimeRefreshTokenByDeployment.get(deploymentId) === token
+}
+
+function finishDeploymentRuntimeRefresh(deploymentId: string, token: number): void {
+  if (!isCurrentDeploymentRuntimeRefresh(deploymentId, token)) return
+  runtimeRefreshTokenByDeployment.delete(deploymentId)
+}
+
 function normalizeDeploymentRuntimeMode(value: string | null | undefined): DeploymentRuntimeMode {
   return String(value ?? '').trim().toLowerCase() === 'async' ? 'async' : 'sync'
 }
@@ -592,13 +695,13 @@ function taskTypeForDeployment(item: TaskDeploymentInstance): ModelTaskType {
 }
 
 function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const processState = runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state
+  const processState = deploymentRuntimeStatus(item.deployment_instance_id)?.process_state
   if (!processState) return 'neutral'
   return statusTone(processState)
 }
 
 function runtimeProcessLabel(item: TaskDeploymentInstance): string {
-  return runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state || '未探测'
+  return deploymentRuntimeStatus(item.deployment_instance_id)?.process_state || '未探测'
 }
 
 function setDeploymentRunningAction(deploymentId: string, action: string | null): void {
@@ -619,39 +722,25 @@ function isDeleteActionBusy(deploymentId: string): boolean {
   return deploymentRunningAction(deploymentId) === 'delete'
 }
 
-function setDeploymentRuntimeRefreshing(deploymentId: string, refreshing: boolean): void {
-  const nextRefreshing = { ...runtimeRefreshingByDeployment.value }
-  if (refreshing) {
-    nextRefreshing[deploymentId] = true
-  } else {
-    delete nextRefreshing[deploymentId]
-  }
-  runtimeRefreshingByDeployment.value = nextRefreshing
-}
-
-function isDeploymentRuntimeRefreshing(item: TaskDeploymentInstance): boolean {
-  return runtimeRefreshingByDeployment.value[item.deployment_instance_id] === true
-}
-
 function isRuntimeActionBusy(item: TaskDeploymentInstance): boolean {
-  return deploymentRunningAction(item.deployment_instance_id) !== null || isDeploymentRuntimeRefreshing(item)
+  return deploymentRunningAction(item.deployment_instance_id) !== null
 }
 
 function canStartDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const processState = String(runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state ?? '').toLowerCase()
+  const processState = String(deploymentRuntimeStatus(item.deployment_instance_id)?.process_state ?? '').toLowerCase()
   return processState !== 'running'
 }
 
 function canStopDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const processState = String(runtimeStatusByDeployment.value[item.deployment_instance_id]?.process_state ?? item.status ?? '').toLowerCase()
+  const processState = String(deploymentRuntimeStatus(item.deployment_instance_id)?.process_state ?? item.status ?? '').toLowerCase()
   return processState.includes('running') || processState.includes('starting') || processState.includes('ready')
 }
 
 function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
+  const status = deploymentRuntimeStatus(item.deployment_instance_id)
   if (!status) return true
   return status.desired_state === 'stopped' && status.process_state === 'stopped'
 }
@@ -659,8 +748,7 @@ function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
 function deleteButtonTitle(item: TaskDeploymentInstance): string {
   if (!canWriteModels.value) return '当前账号没有部署写权限'
   if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
-  if (isDeploymentRuntimeRefreshing(item)) return '正在刷新当前部署实例状态'
-  const status = runtimeStatusByDeployment.value[item.deployment_instance_id]
+  const status = deploymentRuntimeStatus(item.deployment_instance_id)
   if (status && (status.desired_state !== 'stopped' || status.process_state !== 'stopped')) {
     return t('deploymentOps.messages.deleteRequiresStopped')
   }
@@ -672,7 +760,7 @@ function canWarmupDeployment(item: TaskDeploymentInstance): boolean {
 }
 
 function isDeploymentWarmupComplete(item: TaskDeploymentInstance): boolean {
-  const health = runtimeHealthByDeployment.value[item.deployment_instance_id]
+  const health = deploymentRuntimeHealth(item.deployment_instance_id)
   return health ? isRuntimeHealthWarmupComplete(health, item.instance_count) : false
 }
 
@@ -686,7 +774,6 @@ function warmupButtonTitle(item: TaskDeploymentInstance): string {
   if (isDeploymentWarmupComplete(item)) return '已预热完成'
   if (!canWriteModels.value) return '当前账号没有部署写权限'
   if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
-  if (isDeploymentRuntimeRefreshing(item)) return '正在刷新当前部署实例状态'
   return '预热部署实例'
 }
 
@@ -821,40 +908,30 @@ async function refreshDeploymentRuntimeSnapshot(
   options: { showError?: boolean } = {},
 ): Promise<string | null> {
   const deploymentId = deployment.deployment_instance_id
-  setDeploymentRuntimeRefreshing(deploymentId, true)
+  const refreshToken = beginDeploymentRuntimeRefresh(deploymentId)
   if (options.showError) {
     errorMessage.value = null
   }
   try {
     const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
-    runtimeStatusByDeployment.value = {
-      ...runtimeStatusByDeployment.value,
-      [deploymentId]: status,
-    }
+    let health: TaskDeploymentRuntimeHealth | null = null
     try {
-      const health = await runTaskDeploymentHealthAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'health')
-      runtimeHealthByDeployment.value = {
-        ...runtimeHealthByDeployment.value,
-        [deploymentId]: health,
-      }
-      runtimeStatusByDeployment.value = {
-        ...runtimeStatusByDeployment.value,
-        [deploymentId]: health,
-      }
+      health = await runTaskDeploymentHealthAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'health')
     } catch {
-      const nextHealthByDeployment = { ...runtimeHealthByDeployment.value }
-      delete nextHealthByDeployment[deploymentId]
-      runtimeHealthByDeployment.value = nextHealthByDeployment
+      health = null
     }
+    if (!isCurrentDeploymentRuntimeRefresh(deploymentId, refreshToken)) return null
+    commitDeploymentRuntimeResult(deploymentId, status, health)
     return null
   } catch (error) {
+    if (!isCurrentDeploymentRuntimeRefresh(deploymentId, refreshToken)) return null
     const message = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
     if (options.showError) {
       errorMessage.value = message
     }
     return message
   } finally {
-    setDeploymentRuntimeRefreshing(deploymentId, false)
+    finishDeploymentRuntimeRefresh(deploymentId, refreshToken)
   }
 }
 
@@ -903,14 +980,16 @@ async function runStatusAction(deploymentId: string, modeValue: string, action: 
   errorMessage.value = null
   try {
     const status = await runTaskDeploymentStatusAction(taskType, deploymentId, mode, action)
-    runtimeStatusByDeployment.value = {
-      ...runtimeStatusByDeployment.value,
-      [deploymentId]: status,
-    }
-    if (action !== 'status') {
-      if (deployment) {
-        await refreshDeploymentRuntimeSnapshot(deployment, { showError: true })
+    if (action === 'status') {
+      commitDeploymentRuntimeStatus(deploymentId, status)
+    } else {
+      let health: TaskDeploymentRuntimeHealth | null = null
+      try {
+        health = await runTaskDeploymentHealthAction(taskType, deploymentId, mode, 'health')
+      } catch {
+        health = null
       }
+      commitDeploymentRuntimeResult(deploymentId, status, health)
     }
     await loadDeploymentEvents()
   } catch (error) {
@@ -937,14 +1016,7 @@ async function runHealthAction(deploymentId: string, modeValue: string, action: 
       }
     }
     const health = await runTaskDeploymentHealthAction(taskType, deploymentId, mode, action)
-    runtimeHealthByDeployment.value = {
-      ...runtimeHealthByDeployment.value,
-      [deploymentId]: health,
-    }
-    runtimeStatusByDeployment.value = {
-      ...runtimeStatusByDeployment.value,
-      [deploymentId]: health,
-    }
+    commitDeploymentRuntimeHealth(deploymentId, health)
     await loadDeploymentEvents()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.actionFailed')
@@ -975,12 +1047,7 @@ async function confirmDeleteDeployment(): Promise<void> {
   errorMessage.value = null
   try {
     await deleteTaskDeployment(taskType, deploymentId)
-    const remainingStatuses = { ...runtimeStatusByDeployment.value }
-    const remainingHealth = { ...runtimeHealthByDeployment.value }
-    delete remainingStatuses[deploymentId]
-    delete remainingHealth[deploymentId]
-    runtimeStatusByDeployment.value = remainingStatuses
-    runtimeHealthByDeployment.value = remainingHealth
+    deleteDeploymentRuntimeSnapshot(deploymentId)
     deploymentEvents.value = []
     lastCreatedDeployment.value = lastCreatedDeployment.value?.deployment_instance_id === deploymentId
       ? null
@@ -1001,14 +1068,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 ): Promise<TaskDeploymentRuntimeHealth | null> {
   try {
     const health = await runTaskDeploymentHealthAction(taskType, deploymentId, mode, 'health')
-    runtimeHealthByDeployment.value = {
-      ...runtimeHealthByDeployment.value,
-      [deploymentId]: health,
-    }
-    runtimeStatusByDeployment.value = {
-      ...runtimeStatusByDeployment.value,
-      [deploymentId]: health,
-    }
+    commitDeploymentRuntimeHealth(deploymentId, health)
     return health
   } catch {
     return null
