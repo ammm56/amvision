@@ -9,10 +9,10 @@
         </div>
       </div>
       <div class="page-actions">
-        <RouterLink v-if="selectedRuntime" :to="appDetailPath" class="ui-button ui-button--secondary ui-button--md">
+        <ButtonLink v-if="selectedRuntime" :to="appDetailPath">
           <Workflow :size="16" />
           返回应用
-        </RouterLink>
+        </ButtonLink>
         <Button variant="secondary" :disabled="loading" @click="loadPage">
           <RefreshCw :size="16" />
           刷新
@@ -308,7 +308,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow } from '@lucide/vue'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -316,6 +316,7 @@ import type { PaginationMeta } from '@/shared/api/pagination'
 import { getSystemConfig } from '@/shared/api/system-config'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'

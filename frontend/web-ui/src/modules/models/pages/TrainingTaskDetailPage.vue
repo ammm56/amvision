@@ -7,18 +7,17 @@
         <p class="page-description">{{ t('trainingDetail.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/models" class="ui-button ui-button--secondary ui-button--md">
+        <ButtonLink to="/models">
           <ArrowLeft :size="16" />
           {{ t('trainingDetail.actions.backToModels') }}
-        </RouterLink>
-        <RouterLink
+        </ButtonLink>
+        <ButtonLink
           v-if="task"
           :to="`/tasks/${task.task_id}`"
-          class="ui-button ui-button--secondary ui-button--md"
         >
           <Activity :size="16" />
           任务状态
-        </RouterLink>
+        </ButtonLink>
         <Button variant="secondary" :disabled="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
@@ -187,7 +186,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Activity, ArrowLeft, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -204,6 +203,7 @@ import {
   type ModelTaskType,
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'

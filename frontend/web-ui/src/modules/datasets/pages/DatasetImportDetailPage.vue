@@ -7,18 +7,17 @@
         <p class="page-description">{{ t('datasetImportDetail.description') }}</p>
       </div>
       <div class="page-actions">
-        <RouterLink to="/datasets" class="ui-button ui-button--secondary ui-button--md">
+        <ButtonLink to="/datasets">
           <ArrowLeft :size="16" />
           {{ t('datasetImportDetail.actions.backToDatasets') }}
-        </RouterLink>
-        <RouterLink
+        </ButtonLink>
+        <ButtonLink
           v-if="detail?.task_id"
           :to="`/tasks/${detail.task_id}`"
-          class="ui-button ui-button--secondary ui-button--md"
         >
           <Activity :size="16" />
           任务状态
-        </RouterLink>
+        </ButtonLink>
         <Button
           v-if="detail"
           variant="danger"
@@ -158,12 +157,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Activity, ArrowLeft, RefreshCw, Trash2 } from '@lucide/vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { deleteDatasetImport, getDatasetImportDetail, type DatasetImportDetail } from '../services/dataset.service'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
+import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
