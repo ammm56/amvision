@@ -8,13 +8,13 @@ namespace Amvar.Vision
     /// <summary>
     /// backend-service Workflow runtime 与 TriggerSource HTTP 管理 API 的 SDK client。
     /// </summary>
-    public sealed partial class AmvisionWorkflowClient : IDisposable
+    public sealed partial class VisionClient : IDisposable
     {
         private const string WorkflowApiPrefix = "api/v1/workflows";
 
         private static readonly JsonSerializerSettings JsonSettings = WorkflowJsonDefaults.SerializerSettings;
 
-        private readonly AmvisionWorkflowClientOptions options;
+        private readonly VisionClientOptions options;
         private readonly HttpClient httpClient;
         private readonly bool ownsHttpClient;
         private bool disposed;
@@ -23,7 +23,7 @@ namespace Amvar.Vision
         /// 使用 SDK 自建 HttpClient 初始化管理 API client。
         /// </summary>
         /// <param name="options">HTTP 管理 API 参数。</param>
-        public AmvisionWorkflowClient(AmvisionWorkflowClientOptions options)
+        public VisionClient(VisionClientOptions options)
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
             this.options.Validate();
@@ -40,7 +40,7 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="options">HTTP 管理 API 参数。</param>
         /// <param name="httpClient">外部提供的 HttpClient。</param>
-        public AmvisionWorkflowClient(AmvisionWorkflowClientOptions options, HttpClient httpClient)
+        public VisionClient(VisionClientOptions options, HttpClient httpClient)
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
             this.options.Validate();

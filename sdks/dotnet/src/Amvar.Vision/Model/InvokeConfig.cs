@@ -43,7 +43,7 @@ internal sealed class InvokeConfig
     /// 写入 execution_metadata 的调用来源标识。
     /// </summary>
     [JsonProperty("source")]
-    public string Source { get; set; } = "amvision-net472-sdk";
+    public string Source { get; set; } = "amvar-vision-net472-sdk";
 
     /// <summary>
     /// 同步 invoke 场景名，写入 execution_metadata。

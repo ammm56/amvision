@@ -9,9 +9,9 @@ namespace Amvar.Vision
     /// <summary>
     /// 描述 backend-service HTTP 管理 API 调用返回的 JSON 响应。
     /// </summary>
-    public sealed class AmvisionWorkflowApiResponse
+    public sealed class VisionApiResponse
     {
-        private AmvisionWorkflowApiResponse(
+        private VisionApiResponse(
             HttpStatusCode statusCode,
             string content,
             JToken? bodyJson,
@@ -77,7 +77,7 @@ namespace Amvar.Vision
         public string? RequestPath { get; }
 
         /// <summary>
-        /// 非 2xx 响应时抛出 <see cref="AmvisionWorkflowApiException" />。
+        /// 非 2xx 响应时抛出 <see cref="VisionApiException" />。
         /// </summary>
         public void EnsureSuccessStatusCode()
         {
@@ -86,7 +86,7 @@ namespace Amvar.Vision
                 return;
             }
 
-            throw new AmvisionWorkflowApiException(
+            throw new VisionApiException(
                 StatusCode,
                 ErrorCode,
                 ErrorMessage ?? Content,
@@ -134,7 +134,7 @@ namespace Amvar.Vision
         /// <param name="statusCode">HTTP 状态码。</param>
         /// <param name="content">响应文本。</param>
         /// <returns>解析后的 SDK 响应。</returns>
-        internal static AmvisionWorkflowApiResponse Create(HttpStatusCode statusCode, string content)
+        internal static VisionApiResponse Create(HttpStatusCode statusCode, string content)
         {
             return Create(statusCode, content, httpMethod: null, requestPath: null);
         }
@@ -147,7 +147,7 @@ namespace Amvar.Vision
         /// <param name="httpMethod">HTTP method。</param>
         /// <param name="requestPath">请求相对路径。</param>
         /// <returns>解析后的 SDK 响应。</returns>
-        internal static AmvisionWorkflowApiResponse Create(
+        internal static VisionApiResponse Create(
             HttpStatusCode statusCode,
             string content,
             string? httpMethod,
@@ -189,7 +189,7 @@ namespace Amvar.Vision
                 }
             }
 
-            return new AmvisionWorkflowApiResponse(
+            return new VisionApiResponse(
                 statusCode,
                 content,
                 bodyJson,

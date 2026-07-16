@@ -38,7 +38,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 从原始 API 响应构造 app-result 响应。
         /// </summary>
-        internal static WorkflowAppResultResponse FromApiResponse(AmvisionWorkflowApiResponse response)
+        internal static WorkflowAppResultResponse FromApiResponse(VisionApiResponse response)
         {
             response.EnsureSuccessStatusCode();
             if (response.BodyJson is null)
@@ -52,7 +52,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 从原始 API 响应直接读取业务类型。
         /// </summary>
-        internal static T ReadFromApiResponse<T>(AmvisionWorkflowApiResponse response)
+        internal static T ReadFromApiResponse<T>(VisionApiResponse response)
         {
             return FromApiResponse(response).ReadAs<T>();
         }

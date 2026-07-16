@@ -4,9 +4,9 @@ namespace Amvar.Vision
 {
 
     /// <summary>
-    /// <see cref="AmvisionTriggerClient" /> 使用的连接和默认调用参数。
+    /// <see cref="VisionTriggerClient" /> 使用的连接和默认调用参数。
     /// </summary>
-    public sealed class AmvisionTriggerClientOptions
+    public sealed class VisionTriggerClientOptions
     {
         /// <summary>
         /// ZeroMQ endpoint，例如 tcp://127.0.0.1:5555。

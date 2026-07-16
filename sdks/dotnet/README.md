@@ -27,7 +27,7 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 ## 功能边界
 
-`Amvar.Vision` SDK 负责封装 AMVISION 后端的外部调用能力：
+`Amvar.Vision` SDK 负责封装 Amvar Vision 后端的外部调用能力：
 
 - Workflow App Runtime 查询、启动、停止、重启、健康检查
 - Workflow App Runtime 同步 invoke、异步 run、run/event 查询
@@ -56,12 +56,13 @@ public static class Example
 {
     public static async Task Main()
     {
-        var options = new AmvisionWorkflowClientOptions
+        var options = new VisionClientOptions
         {
-            BaseUrl = new Uri("http://127.0.0.1:8000")
+            BaseApiUrl = "http://127.0.0.1:8000",
+            AccessToken = "amvision-default-user-token"
         };
 
-        using (var client = new AmvisionWorkflowClient(options))
+        using (var client = new VisionClient(options))
         {
             var config = await client.GetSystemConfigResponseAsync().ConfigureAwait(false);
             Console.WriteLine(config.FormatId);

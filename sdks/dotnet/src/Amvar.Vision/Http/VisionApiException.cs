@@ -7,7 +7,7 @@ namespace Amvar.Vision
     /// <summary>
     /// backend-service HTTP 管理 API 返回非 2xx 状态时抛出的 SDK 异常。
     /// </summary>
-    public sealed class AmvisionWorkflowApiException : System.Exception
+    public sealed class VisionApiException : System.Exception
     {
         /// <summary>
         /// 初始化 HTTP 管理 API 异常。
@@ -16,7 +16,7 @@ namespace Amvar.Vision
         /// <param name="errorCode">后端错误码。</param>
         /// <param name="message">错误消息。</param>
         /// <param name="details">错误详情。</param>
-        public AmvisionWorkflowApiException(
+        public VisionApiException(
             HttpStatusCode statusCode,
             string? errorCode,
             string message,
@@ -44,7 +44,7 @@ namespace Amvar.Vision
         /// <param name="requestPath">请求相对路径。</param>
         /// <param name="responseBody">原始响应文本。</param>
         /// <param name="innerException">底层异常。</param>
-        internal AmvisionWorkflowApiException(
+        internal VisionApiException(
             HttpStatusCode statusCode,
             string? errorCode,
             string message,
@@ -109,7 +109,7 @@ namespace Amvar.Vision
         {
             var statusText = $"{(int)statusCode} {statusCode}";
             var baseMessage = string.IsNullOrWhiteSpace(message)
-                ? $"AMVISION HTTP API returned {statusText}."
+                ? $"Amvar Vision HTTP API returned {statusText}."
                 : message;
 
             if (string.IsNullOrWhiteSpace(httpMethod) || string.IsNullOrWhiteSpace(requestPath))

@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class AmvisionWorkflowClient
+    public sealed partial class VisionClient
     {
         /// <summary>
         /// 按 Project id 列出 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> ListTriggerSourcesAsync(
+        public Task<VisionApiResponse> ListTriggerSourcesAsync(
             string projectId,
             int offset = 0,
             int limit = 100,
@@ -44,7 +44,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> GetTriggerSourceAsync(
+        public Task<VisionApiResponse> GetTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
@@ -68,7 +68,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 创建一条 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateTriggerSourceAsync(
+        public Task<VisionApiResponse> CreateTriggerSourceAsync(
             WorkflowTriggerSourceCreateRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -93,7 +93,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 启用一条 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> EnableTriggerSourceAsync(
+        public Task<VisionApiResponse> EnableTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
@@ -117,7 +117,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 停用一条 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> DisableTriggerSourceAsync(
+        public Task<VisionApiResponse> DisableTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
@@ -141,7 +141,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 删除一条 TriggerSource。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> DeleteTriggerSourceAsync(
+        public Task<VisionApiResponse> DeleteTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
@@ -153,7 +153,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 查询一条 TriggerSource 的当前 health。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> GetTriggerSourceHealthAsync(
+        public Task<VisionApiResponse> GetTriggerSourceHealthAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {

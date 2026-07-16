@@ -4,9 +4,9 @@ namespace Amvar.Vision
 {
 
     /// <summary>
-    /// <see cref="AmvisionWorkflowClient" /> 使用的 backend-service HTTP 管理 API 参数。
+    /// <see cref="VisionClient" /> 使用的 backend-service HTTP 管理 API 参数。
     /// </summary>
-    public sealed class AmvisionWorkflowClientOptions
+    public sealed class VisionClientOptions
     {
         /// <summary>
         /// backend-service HTTP 根地址，例如 http://127.0.0.1:8000。

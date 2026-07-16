@@ -12,7 +12,7 @@ internal sealed partial class WorkflowTriggerSourceOperations
     /// <summary>
     /// 复用的 HTTP SDK client。
     /// </summary>
-    private readonly AmvisionWorkflowClient client;
+    private readonly VisionClient client;
 
     /// <summary>
     /// runtime 和 TriggerSource 配置索引。
@@ -24,7 +24,7 @@ internal sealed partial class WorkflowTriggerSourceOperations
     /// </summary>
     /// <param name="client">HTTP SDK client。</param>
     /// <param name="catalog">配置 catalog。</param>
-    public WorkflowTriggerSourceOperations(AmvisionWorkflowClient client, WorkflowConfigurationCatalog catalog)
+    public WorkflowTriggerSourceOperations(VisionClient client, WorkflowConfigurationCatalog catalog)
     {
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));

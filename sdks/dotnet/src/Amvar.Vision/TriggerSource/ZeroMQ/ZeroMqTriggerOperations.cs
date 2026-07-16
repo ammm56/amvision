@@ -25,8 +25,8 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// <summary>
     /// 按 TriggerSource key 复用的 ZeroMQ SDK client。
     /// </summary>
-    private readonly Dictionary<string, AmvisionTriggerClient> clients =
-        new Dictionary<string, AmvisionTriggerClient>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, VisionTriggerClient> clients =
+        new Dictionary<string, VisionTriggerClient>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 标记当前操作对象是否已经释放。
@@ -79,7 +79,7 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
     /// </summary>
     /// <param name="configuredTriggerSource">已展开的 TriggerSource 配置。</param>
     /// <returns>ZeroMQ TriggerSource client。</returns>
-    private AmvisionTriggerClient GetClient(ConfiguredTriggerSource configuredTriggerSource)
+    private VisionTriggerClient GetClient(ConfiguredTriggerSource configuredTriggerSource)
     {
         lock (clientSyncRoot)
         {
@@ -91,7 +91,7 @@ internal sealed partial class ZeroMqTriggerOperations : IDisposable
             var key = configuredTriggerSource.TriggerSource.Name;
             if (!clients.TryGetValue(key, out var client))
             {
-                client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
+                client = new VisionTriggerClient(new VisionTriggerClientOptions
                 {
                     Endpoint = configuredTriggerSource.TriggerSource.ZeroMq.BindEndpoint,
                     TriggerSourceId = configuredTriggerSource.TriggerSource.TriggerSourceId,

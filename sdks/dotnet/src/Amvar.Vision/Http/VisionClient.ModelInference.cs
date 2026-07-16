@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class AmvisionWorkflowClient
+    public sealed partial class VisionClient
     {
         /// <summary>
         /// 使用 JSON 请求执行模型部署同步推理。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> InferModelDeploymentAsync(
+        public Task<VisionApiResponse> InferModelDeploymentAsync(
             string taskType,
             string deploymentInstanceId,
             ModelDeploymentInferenceRequest request,
@@ -56,7 +56,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 image_base64 执行模型部署同步推理。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> InferModelDeploymentWithImageBase64Async(
+        public Task<VisionApiResponse> InferModelDeploymentWithImageBase64Async(
             string taskType,
             string deploymentInstanceId,
             string imageBase64,
@@ -94,7 +94,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 multipart/form-data 上传图片执行模型部署同步推理。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> InferModelDeploymentUploadAsync(
+        public Task<VisionApiResponse> InferModelDeploymentUploadAsync(
             string taskType,
             string deploymentInstanceId,
             ModelDeploymentInferenceUploadRequest request,
@@ -138,7 +138,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用图片 bytes 执行模型部署同步推理。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> InferModelDeploymentWithImageBytesAsync(
+        public Task<VisionApiResponse> InferModelDeploymentWithImageBytesAsync(
             string taskType,
             string deploymentInstanceId,
             byte[] imageBytes,
@@ -182,7 +182,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用本机图片文件执行模型部署同步推理。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> InferModelDeploymentWithImageFileAsync(
+        public Task<VisionApiResponse> InferModelDeploymentWithImageFileAsync(
             string taskType,
             string deploymentInstanceId,
             string filePath,
@@ -223,7 +223,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 JSON 请求创建模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateModelInferenceTaskAsync(
+        public Task<VisionApiResponse> CreateModelInferenceTaskAsync(
             string taskType,
             ModelDeploymentInferenceRequest request,
             CancellationToken cancellationToken = default)
@@ -265,7 +265,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 multipart/form-data 上传图片创建模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateModelInferenceTaskUploadAsync(
+        public Task<VisionApiResponse> CreateModelInferenceTaskUploadAsync(
             string taskType,
             ModelDeploymentInferenceUploadRequest request,
             CancellationToken cancellationToken = default)
@@ -306,7 +306,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 image_base64 创建模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateModelInferenceTaskWithImageBase64Async(
+        public Task<VisionApiResponse> CreateModelInferenceTaskWithImageBase64Async(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -344,7 +344,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用图片 bytes 创建模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateModelInferenceTaskWithImageBytesAsync(
+        public Task<VisionApiResponse> CreateModelInferenceTaskWithImageBytesAsync(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -388,7 +388,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用本机图片文件创建模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> CreateModelInferenceTaskWithImageFileAsync(
+        public Task<VisionApiResponse> CreateModelInferenceTaskWithImageFileAsync(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -429,7 +429,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条模型异步推理任务。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> GetModelInferenceTaskAsync(
+        public Task<VisionApiResponse> GetModelInferenceTaskAsync(
             string taskType,
             string inferenceTaskId,
             bool includeEvents = false,
@@ -464,7 +464,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条模型异步推理任务结果。
         /// </summary>
-        public Task<AmvisionWorkflowApiResponse> GetModelInferenceTaskResultAsync(
+        public Task<VisionApiResponse> GetModelInferenceTaskResultAsync(
             string taskType,
             string inferenceTaskId,
             CancellationToken cancellationToken = default)

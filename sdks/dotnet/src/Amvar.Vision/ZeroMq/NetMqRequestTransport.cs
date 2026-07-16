@@ -84,7 +84,7 @@ namespace Amvar.Vision
                     var incoming = new NetMQMessage();
                     if (!socket.TryReceiveMultipartMessage(timeout, ref incoming))
                     {
-                        throw new AmvisionTriggerTimeoutException("Timed out waiting for ZeroMQ TriggerSource reply.");
+                        throw new VisionTriggerTimeoutException("Timed out waiting for ZeroMQ TriggerSource reply.");
                     }
 
                     var response = new List<byte[]>(incoming.FrameCount);
