@@ -455,7 +455,7 @@ namespace Amvar.Vision
 
             var triggerException = new AMVisionTriggerException(
                 "transport_error",
-                "ZeroMQ TriggerSource 调用失败。",
+                "ZeroMQ TriggerSource call failed.",
                 details,
                 exception);
             return triggerException;

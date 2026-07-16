@@ -68,7 +68,7 @@ namespace Amvar.Vision
 
                 if (frames.Count == 0)
                 {
-                    throw new ArgumentException("At least one frame is required.", nameof(frames));
+                    throw new ArgumentException("ZeroMQ request requires at least one frame.", nameof(frames));
                 }
 
                 try

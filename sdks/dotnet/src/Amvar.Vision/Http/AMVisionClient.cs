@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using Amvar.Vision.Configuration;
 using Newtonsoft.Json;
 
 namespace Amvar.Vision
@@ -17,6 +18,7 @@ namespace Amvar.Vision
         private readonly AMVisionClientOptions options;
         private readonly HttpClient httpClient;
         private readonly bool ownsHttpClient;
+        private readonly WorkflowConfigurationCatalog? configurationCatalog;
         private bool disposed;
 
         /// <summary>
@@ -51,6 +53,19 @@ namespace Amvar.Vision
             }
 
             ownsHttpClient = false;
+        }
+
+        /// <summary>
+        /// 使用指定配置 catalog 初始化管理 API client。
+        /// </summary>
+        /// <param name="options">HTTP 管理 API 参数。</param>
+        /// <param name="configurationCatalog">由 Config/config*.json 构建的配置索引。</param>
+        private AMVisionClient(
+            AMVisionClientOptions options,
+            WorkflowConfigurationCatalog configurationCatalog)
+            : this(options)
+        {
+            this.configurationCatalog = configurationCatalog ?? throw new ArgumentNullException(nameof(configurationCatalog));
         }
 
         /// <summary>

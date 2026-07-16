@@ -47,7 +47,7 @@ namespace Amvar.Vision
                     return Debug;
                 default:
                     throw new ArgumentException(
-                    "responseMode must be app-result, run, or debug.",
+                    "responseMode must be app-result, run or debug.",
                     nameof(responseMode));
             }
         }

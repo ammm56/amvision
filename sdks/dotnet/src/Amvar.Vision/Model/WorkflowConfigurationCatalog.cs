@@ -24,7 +24,7 @@ internal sealed class WorkflowConfigurationCatalog
     {
         if (runtimes.Count == 0 && modelDeployments.Count == 0)
         {
-            throw new InvalidOperationException("At least one runtime config or model deployment config is required.");
+            throw new InvalidOperationException("At least one runtime or model deployment config is required.");
         }
 
         Runtimes = new ReadOnlyDictionary<string, ConfiguredRuntime>(

@@ -65,7 +65,7 @@ namespace Amvar.Vision
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
                 throw new AMVisionTransportException(
-                    "Amvar Vision HTTP 请求超时。",
+                    "Amvar Vision HTTP request timed out.",
                     method,
                     relativePath,
                     ex);
@@ -73,7 +73,7 @@ namespace Amvar.Vision
             catch (HttpRequestException ex)
             {
                 throw new AMVisionTransportException(
-                    "Amvar Vision HTTP 请求失败。",
+                    "Amvar Vision HTTP request failed.",
                     method,
                     relativePath,
                     ex);
@@ -81,7 +81,7 @@ namespace Amvar.Vision
             catch (InvalidOperationException ex)
             {
                 throw new AMVisionTransportException(
-                    "Amvar Vision HTTP 请求配置无效。",
+                    "Amvar Vision HTTP request configuration is invalid.",
                     method,
                     relativePath,
                     ex);

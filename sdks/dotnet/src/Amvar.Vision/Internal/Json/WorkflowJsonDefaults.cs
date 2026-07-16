@@ -34,7 +34,7 @@ namespace Amvar.Vision
         {
             if (string.IsNullOrWhiteSpace(json))
             {
-                throw new JsonException("JSON content is empty.");
+                throw new JsonException("JSON content cannot be empty.");
             }
 
             var value = JsonConvert.DeserializeObject<T>(json, SerializerSettings);

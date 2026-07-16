@@ -21,7 +21,7 @@ internal sealed partial class WorkflowRuntimeOperations
         string scenario)
     {
         var imagePath = ConfigValidation.NormalizeOptional(configuredRuntime.Invoke.ImagePath)
-            ?? throw new InvalidOperationException($"Runtime {configuredRuntime.Runtime.Name} invoke.image_path is required.");
+            ?? throw new InvalidOperationException($"Runtime {configuredRuntime.Runtime.Name} must specify invoke.image_path.");
         var resolvedImagePath = ResolveConfiguredPath(configuredRuntime, imagePath);
 
         return BuildImageInvokeRequestFromFile(configuredRuntime, resolvedImagePath, InferImageMediaType(resolvedImagePath), scenario);

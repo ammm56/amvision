@@ -85,7 +85,7 @@ namespace Amvar.Vision
                         && !string.Equals(property.Name, "timeout_seconds", StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException(
-                            "Workflow runtime invoke JSON cannot mix input_bindings and direct input fields.");
+                            "Workflow runtime invoke JSON cannot mix input_bindings with direct input fields.");
                     }
                 }
 

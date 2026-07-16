@@ -6,11 +6,12 @@
 
 - Solution：`sdks/dotnet/amvar-vision-vs2019-net472.sln`
 - SDK 项目：`sdks/dotnet/src/Amvar.Vision/Amvar.Vision.vs2019.net472.csproj`
+- Console 示例项目：`sdks/dotnet/apps/Amvar.Vision.Console/Amvar.Vision.Console.vs2019.net472.csproj`
 - Target framework：`.NET Framework 4.7.2`
 - Language version：`C# 8.0`
 - Assembly：`Amvar.Vision.dll`
 
-`apps` 和 `tests` 目录不承载 SDK 核心逻辑。后续如果恢复 console 示例，也只放调用样例和调试入口；HTTP、ZeroMQ、配置加载、Workflow runtime、Model deployment 等封装全部放在 `src/Amvar.Vision`。
+`apps` 和 `tests` 目录不承载 SDK 核心逻辑。Console 示例只保留调用样例和调试入口；HTTP、ZeroMQ、配置加载、Workflow runtime、Model deployment 等封装全部放在 `src/Amvar.Vision`。
 
 ## 依赖策略
 
@@ -38,12 +39,55 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。
 
+## Config 自动加载
+
+SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。第三方调用方只需要传对应的 key name 和必要的业务参数，不需要在外部重复拼 URL、构造 ZeroMQ envelope 或读取配置文件。
+
+默认查找顺序：
+
+- 程序输出目录下的 `Config`
+- 当前工作目录下的 `Config`
+- 程序输出目录逐级父目录下的 `Config`
+
+示例：
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using Amvar.Vision;
+
+public static class Example
+{
+    public static async Task Main()
+    {
+        using (var client = AMVisionClient.CreateFromConfig())
+        {
+            var runtimeResult = await client.InvokeConfiguredWorkflowRuntimeAsync(
+                "tray-empty-runtime").ConfigureAwait(false);
+
+            var modelResult = await client.InvokeConfiguredModelDeploymentWithImageFileAsync(
+                "slot-classifier",
+                @".\images\slot.jpg").ConfigureAwait(false);
+
+            var triggerResult = await client.InvokeConfiguredZeroMqBgr24ImageFileAsync(
+                "zeromq-tray-empty",
+                @".\images\tray.jpg").ConfigureAwait(false);
+
+            Console.WriteLine(runtimeResult.State);
+            Console.WriteLine(modelResult.RequestId);
+            Console.WriteLine(triggerResult.State);
+        }
+    }
+}
+```
+
 ## VS2019 使用方式
 
 1. 打开 `sdks/dotnet/amvar-vision-vs2019-net472.sln`。
 2. 编译 `Amvar.Vision.vs2019.net472`。
 3. 第三方项目引用输出的 `Amvar.Vision.dll`。
-4. 将 `libs/net472` 中需要的 DLL 与第三方程序放在同一输出目录。
+4. 将 `Config/config*.json` 放到第三方程序输出目录的 `Config` 子目录。
+5. 将 `libs/net472` 中需要的 DLL 与第三方程序放在同一输出目录。
 
 示例代码：
 
@@ -69,6 +113,15 @@ public static class Example
         }
     }
 }
+```
+
+Console 示例命令：
+
+```powershell
+.\Amvar.Vision.Console.exe health
+.\Amvar.Vision.Console.exe runtime-invoke tray-empty-runtime
+.\Amvar.Vision.Console.exe model-invoke-image slot-classifier .\images\slot.jpg
+.\Amvar.Vision.Console.exe trigger-bgr24-file zeromq-tray-empty .\images\tray.jpg
 ```
 
 ## 后续框架版本

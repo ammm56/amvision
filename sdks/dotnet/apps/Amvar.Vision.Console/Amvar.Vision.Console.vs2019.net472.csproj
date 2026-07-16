@@ -11,38 +11,35 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{354610A8-2452-4E52-AF62-0480CDAB5898}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <RootNamespace>Amvar.Vision</RootNamespace>
-    <AssemblyName>Amvar.Vision</AssemblyName>
+    <ProjectGuid>{9A9DDF39-0DB7-4D74-AFFB-44EF6E77EA8F}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Amvar.Vision.ConsoleApp</RootNamespace>
+    <AssemblyName>Amvar.Vision.Console</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
-    <TargetFrameworkProfile />
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
-
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\net472\</OutputPath>
+    <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\Release\net472\</OutputPath>
+    <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -51,49 +48,46 @@
     <Reference Include="AsyncIO">
       <HintPath>..\..\libs\net472\AsyncIO.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
-    </Reference>
-    <Reference Include="NaCl">
-      <HintPath>..\..\libs\net472\NaCl.dll</HintPath>
-      <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="Microsoft.Bcl.AsyncInterfaces">
       <HintPath>..\..\libs\net472\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="NaCl">
+      <HintPath>..\..\libs\net472\NaCl.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="NetMQ">
       <HintPath>..\..\libs\net472\NetMQ.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\..\libs\net472\Newtonsoft.Json.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="System.Collections.Immutable">
       <HintPath>..\..\libs\net472\System.Collections.Immutable.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="System.Threading.Tasks.Extensions">
       <HintPath>..\..\libs\net472\System.Threading.Tasks.Extensions.dll</HintPath>
       <Private>true</Private>
-      <SpecificVersion>false</SpecificVersion>
     </Reference>
   </ItemGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Amvar.Vision\Amvar.Vision.vs2019.net472.csproj">
+      <Project>{354610A8-2452-4E52-AF62-0480CDAB5898}</Project>
+      <Name>Amvar.Vision.vs2019.net472</Name>
+    </ProjectReference>
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="**\*.cs" Exclude="bin\**;obj\**" />
   </ItemGroup>
-
   <ItemGroup>
-    <Content Include="Config\config*.json">
+    <Content Include="..\..\src\Amvar.Vision\Config\config*.json">
+      <Link>Config\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

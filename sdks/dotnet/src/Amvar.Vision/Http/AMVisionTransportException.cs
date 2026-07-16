@@ -46,7 +46,7 @@ namespace Amvar.Vision
         private static string BuildMessage(string message, HttpMethod method, string requestPath)
         {
             var normalizedMessage = string.IsNullOrWhiteSpace(message)
-                ? "Amvar Vision HTTP 请求发送失败。"
+                ? "Amvar Vision HTTP request failed."
                 : message;
             var methodName = GetMethodName(method);
             var normalizedPath = NormalizeRequestPath(requestPath);
