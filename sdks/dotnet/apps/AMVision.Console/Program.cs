@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -6,9 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
 using Amvar.Vision.Tools;
-using AMVisionRunner = global::Amvar.Vision.AMVisionOperationRunner;
 
-namespace Amvar.Vision.ConsoleApp
+namespace AMVision.Console
 {
     /// <summary>
     /// 控制台程序入口，负责加载配置并执行代码中手动启用的 SDK 调用。
@@ -84,7 +83,7 @@ namespace Amvar.Vision.ConsoleApp
         /// <param name="cancellationToken">取消信号。</param>
         private static async Task MainAsync(CancellationToken cancellationToken)
         {
-            using (var runner = AMVisionRunner.CreateDefault())
+            using (var runner = AMVisionOperationRunner.CreateDefault())
             {
                 var runtimeNames = runner.RuntimeNames;
                 var triggerSourceNames = runner.TriggerSourceNames;
@@ -94,6 +93,32 @@ namespace Amvar.Vision.ConsoleApp
 
                 // 系统配置
                 //var systemConfig = await runner.GetSystemConfigResponseAsync(cancellationToken).ConfigureAwait(false);
+
+                // Model deployment 查询和管理
+                var deploymentStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentReset = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+
+                // Model deployment 同步推理
+                //var deploymentInvoke = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentInvokeByBase64 = await runner.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
+                //var deploymentInvokeByBytes = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
+                //var deploymentInvokeByFile = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
+                //var deploymentInvokeByInputFileId = await runner.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
+                //var deploymentInvokeByInputUri = await runner.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
+
+                // Model deployment 异步推理任务
+                //var deploymentRun = await runner.RunConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentRunByBase64 = await runner.RunModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
+                //var deploymentRunByBytes = await runner.RunModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
+                //var deploymentRunByFile = await runner.RunModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
+                //var deploymentRunByInputFileId = await runner.RunModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
+                //var deploymentRunByInputUri = await runner.RunModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
+                //var modelInferenceTask = await runner.GetModelInferenceTaskAsync(ModelDeploymentName, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+                //var modelInferenceTaskResult = await runner.GetModelInferenceTaskResultAsync(ModelDeploymentName, ModelInferenceTaskId, cancellationToken).ConfigureAwait(false);
 
                 // Workflow runtime 查询和管理
                 //var projectRuntimes = await runner.ListProjectRuntimesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
@@ -120,32 +145,6 @@ namespace Amvar.Vision.ConsoleApp
                 //var workflowRun = await runner.GetWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
                 //var workflowRunCancel = await runner.CancelWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
                 //var workflowRunEvents = await runner.GetWorkflowRunEventsAsync(RuntimeName, WorkflowRunId, cancellationToken).ConfigureAwait(false);
-
-                // Model deployment 查询和管理
-                //var deploymentStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentReset = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-
-                // Model deployment 同步推理
-                //var deploymentInvoke = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByBase64 = await runner.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByBytes = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByFile = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByInputFileId = await runner.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByInputUri = await runner.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
-
-                // Model deployment 异步推理任务
-                //var deploymentRun = await runner.RunConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentRunByBase64 = await runner.RunModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
-                //var deploymentRunByBytes = await runner.RunModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var deploymentRunByFile = await runner.RunModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var deploymentRunByInputFileId = await runner.RunModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
-                //var deploymentRunByInputUri = await runner.RunModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
-                //var modelInferenceTask = await runner.GetModelInferenceTaskAsync(ModelDeploymentName, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken).ConfigureAwait(false);
-                //var modelInferenceTaskResult = await runner.GetModelInferenceTaskResultAsync(ModelDeploymentName, ModelInferenceTaskId, cancellationToken).ConfigureAwait(false);
 
                 // TriggerSource 查询和管理
                 //var triggerSources = await runner.ListTriggerSourcesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
