@@ -281,7 +281,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     cases = build_default_task_cases()
     parser = argparse.ArgumentParser(description="运行 YOLO 主线真实短链路验收")
     parser.add_argument(
-        "--base-url", default="http://127.0.0.1:8000", help="已有 backend-service 地址"
+        "--base-url", default="http://127.0.0.1:5600", help="已有 backend-service 地址"
     )
     parser.add_argument(
         "--token", default=DEFAULT_TOKEN, help="调用 API 使用的 Bearer token"

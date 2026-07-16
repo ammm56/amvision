@@ -42,7 +42,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--host", default="0.0.0.0", help="backend-service 监听地址")
     parser.add_argument(
-        "--port", type=int, default=8000, help="backend-service 监听端口"
+        "--port", type=int, default=5600, help="backend-service 监听端口"
     )
     parser.add_argument(
         "--service-log-level",

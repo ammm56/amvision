@@ -14,7 +14,7 @@
 
 ## 导入后先改的变量
 
-- `baseUrl`：FastAPI 服务地址，默认是 `http://127.0.0.1:8000`
+- `baseUrl`：FastAPI 服务地址，默认是 `http://127.0.0.1:5600`
 - `projectId`：目标项目 ID
 - `accessToken`：本地用户 token
 - `deploymentInstanceId`：已经可用的 detection deployment 实例 ID

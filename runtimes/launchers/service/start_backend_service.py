@@ -21,7 +21,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-root", help="应用根目录；未传入时按 launcher 相对位置自动解析")
     parser.add_argument("--python-executable", help="用于启动 backend-service 的 Python 解释器路径")
     parser.add_argument("--host", default="0.0.0.0", help="uvicorn 监听地址")
-    parser.add_argument("--port", type=int, default=8000, help="uvicorn 监听端口")
+    parser.add_argument("--port", type=int, default=5600, help="uvicorn 监听端口")
     parser.add_argument("--log-level", default="info", help="uvicorn 日志级别")
     parser.add_argument("--reload", action="store_true", help="是否启用 uvicorn reload")
     parser.add_argument(

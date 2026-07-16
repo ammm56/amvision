@@ -1,8 +1,8 @@
 import type { RuntimeConfig } from '@/shared/contracts'
 
 const defaultRuntimeConfig: RuntimeConfig = {
-  apiBaseUrl: import.meta.env.VITE_AMVISION_API_BASE_URL || 'http://127.0.0.1:8000/api/v1',
-  wsBaseUrl: import.meta.env.VITE_AMVISION_WS_BASE_URL || 'ws://127.0.0.1:8000/ws/v1',
+  apiBaseUrl: import.meta.env.VITE_AMVISION_API_BASE_URL || 'http://127.0.0.1:5600/api/v1',
+  wsBaseUrl: import.meta.env.VITE_AMVISION_WS_BASE_URL || 'ws://127.0.0.1:5600/ws/v1',
   defaultProjectId: import.meta.env.VITE_AMVISION_DEFAULT_PROJECT_ID || 'project-1',
   auth: {
     autoLoginEnabled: true,

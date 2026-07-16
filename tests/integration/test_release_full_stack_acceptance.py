@@ -39,7 +39,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
     if not start_script.is_file() or not stop_script.is_file():
         pytest.skip("release/full 尚未组装，跳过发布目录真实启动验收")
 
-    port = int(os.environ.get("AMVISION_RELEASE_FULL_PORT", "8000"))
+    port = int(os.environ.get("AMVISION_RELEASE_FULL_PORT", "5600"))
     logs_subdir = os.environ.get(
         "AMVISION_RELEASE_FULL_LOGS_SUBDIR",
         f"integration-full-stack-{int(time.time())}",

@@ -86,7 +86,7 @@
 在第二个终端执行：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
 预期结果示例：
@@ -108,8 +108,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 在浏览器打开：
 
-- `http://127.0.0.1:8000/docs`
-- `http://127.0.0.1:8000/openapi.json`
+- `http://127.0.0.1:5600/docs`
+- `http://127.0.0.1:5600/openapi.json`
 
 通过标准：
 
@@ -145,7 +145,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 ### 方案 A：直接用 Swagger UI
 
-在 `http://127.0.0.1:8000/docs` 中调用 `POST /api/v1/datasets/imports`，至少填写：
+在 `http://127.0.0.1:5600/docs` 中调用 `POST /api/v1/datasets/imports`，至少填写：
 
 - header：`Authorization=Bearer <token>`
 - form：`project_id=project-1`
@@ -156,7 +156,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 ### 方案 B：直接用 curl
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
+curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
   -H "Authorization: Bearer <token>" \
   -F "project_id=project-1" \
   -F "dataset_id=dataset-1" \

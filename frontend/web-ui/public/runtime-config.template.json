@@ -1,6 +1,6 @@
 {
-  "apiBaseUrl": "http://127.0.0.1:8000/api/v1",
-  "wsBaseUrl": "ws://127.0.0.1:8000/ws/v1",
+  "apiBaseUrl": "http://127.0.0.1:5600/api/v1",
+  "wsBaseUrl": "ws://127.0.0.1:5600/ws/v1",
   "defaultProjectId": "project-1",
   "auth": {
     "autoLoginEnabled": true,

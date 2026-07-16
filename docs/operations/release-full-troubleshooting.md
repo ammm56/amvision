@@ -24,8 +24,8 @@
 | `logs/full-stack/service.log` | 看 backend-service 是否正常启动、端口是否绑定成功、API 是否有异常 |
 | `logs/full-stack/worker-*.log` | 看具体 worker 是否成功装配、是否在消费队列、是否有模型运行时错误 |
 | `logs/full-stack/runtime-state.json` | 看 full 根脚本当前记录的 service / worker pid 和日志路径 |
-| `http://127.0.0.1:8000/api/v1/system/health` | 看 service 是否已对外可用 |
-| `http://127.0.0.1:8000/docs` | 看 OpenAPI 和前端静态资源是否至少能正常返回 |
+| `http://127.0.0.1:5600/api/v1/system/health` | 看 service 是否已对外可用 |
+| `http://127.0.0.1:5600/docs` | 看 OpenAPI 和前端静态资源是否至少能正常返回 |
 
 ## 当前基础验收结果
 
@@ -129,7 +129,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-cpu --rele
 当前 backend-service 在挂载前端静态资源前会显式注册前端构建产物 MIME 类型，避免依赖目标机系统 MIME 表。现场验证方式：
 
 ```powershell
-curl -I http://127.0.0.1:8000/assets/index-xxxx.js
+curl -I http://127.0.0.1:5600/assets/index-xxxx.js
 ```
 
 期望响应头包含：

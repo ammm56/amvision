@@ -67,7 +67,7 @@ release/
 
 ## 当前真实状态
 
-- 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000` 这类直接启动方式为主。
+- 当前后端功能面已经可用，开发环境仍以 `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600` 这类直接启动方式为主。
 - `backend.maintenance.main assemble-release` 当前会生成 `release/full/` 目录，复制完整 backend 代码、配置、launcher、manifest，并把仓库根目录的 `requirements.txt` 复制到发行目录。
 - 当前 release 组装会保留并回迁现有发行目录里的 `python/`，也会把 `frontend/web-ui/dist/` 复制到发行目录里的 `frontend/`，补齐 `runtime-config.json`，并把 `runtimes/third_party/ffmpeg/`、`runtimes/tensorrt_bin/`、`runtimes/cudnn_dll/` 中运行需要的内容复制到发行目录里的 `tools/`。
 - 只有显式提供 bundled Python 来源目录时，当前才会重建 `python/`；如果发行目录原本没有 `python/`，则会退回空目录占位模式。

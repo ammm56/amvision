@@ -96,7 +96,7 @@ Linux 等价调用：
 ## 常用参数
 
 ```powershell
-.\start-amvision-full.bat --host 0.0.0.0 --port 8000
+.\start-amvision-full.bat --host 0.0.0.0 --port 5600
 .\start-amvision-full.bat --worker-profile-id inference
 .\start-amvision-full.bat --worker-profile-id dataset-import --worker-profile-id inference
 ```

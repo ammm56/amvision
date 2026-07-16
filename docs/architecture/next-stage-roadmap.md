@@ -94,7 +94,7 @@
 ### 当前最小开发入口
 
 - backend-service：
-  - `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload`
+  - `python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload`
 - backend-worker：
   - `python -m backend.workers.main`
 - maintenance：

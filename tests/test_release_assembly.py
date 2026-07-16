@@ -428,14 +428,14 @@ def _patch_release_runtime_asset_sources(
     (source_frontend_dist_dir / "index.html").write_text("<html>frontend</html>\n", encoding="utf-8")
     (source_frontend_dist_dir / "assets" / "app.js").write_text("console.log('app')\n", encoding="utf-8")
     (source_frontend_dist_dir / "runtime-config.template.json").write_text(
-        '{"apiBaseUrl": "http://127.0.0.1:8000/api/v1"}\n',
+        '{"apiBaseUrl": "http://127.0.0.1:5600/api/v1"}\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(release_assembly, "SOURCE_FRONTEND_DIST_DIR", source_frontend_dist_dir)
 
     source_frontend_runtime_config_template_file = tmp_path / "runtime-config.template.json"
     source_frontend_runtime_config_template_file.write_text(
-        '{"apiBaseUrl": "http://127.0.0.1:8000/api/v1", "wsBaseUrl": "ws://127.0.0.1:8000/ws/v1"}\n',
+        '{"apiBaseUrl": "http://127.0.0.1:5600/api/v1", "wsBaseUrl": "ws://127.0.0.1:5600/ws/v1"}\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(

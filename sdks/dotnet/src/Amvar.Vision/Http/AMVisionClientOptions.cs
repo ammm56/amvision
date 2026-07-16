@@ -9,7 +9,7 @@ namespace Amvar.Vision
     public sealed class AMVisionClientOptions
     {
         /// <summary>
-        /// backend-service HTTP 根地址，例如 http://127.0.0.1:8000。
+        /// backend-service HTTP 根地址，例如 http://127.0.0.1:5600。
         /// </summary>
         public string BaseApiUrl { get; set; } = string.Empty;
 

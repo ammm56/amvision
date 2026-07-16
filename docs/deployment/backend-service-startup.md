@@ -239,32 +239,32 @@ conda activate amvision
 开发调试使用：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload
 ```
 
 性能测量或稳定性压测使用：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600
 ```
 
 说明：
 
 - --reload 只用于开发阶段
 - 需要观察 TensorRT、PyTorch、OpenVINO 等 runtime 的真实延迟时，不应使用 --reload
-- 如果 8000 端口被占用，可改为其他端口，例如 8010
+- 如果 5600 端口被占用，可改为其他端口，例如 5610
 - 服务日志当前默认输出到控制台
 
 ### 3. 访问健康检查
 
 浏览器访问或直接调用：
 
-- http://127.0.0.1:8000/api/v1/system/health
+- http://127.0.0.1:5600/api/v1/system/health
 
 PowerShell 示例：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
 预期结果示例：
@@ -278,8 +278,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/system/health
 
 ### 4. 查看 OpenAPI 文档
 
-- Swagger UI：http://127.0.0.1:8000/docs
-- OpenAPI JSON：http://127.0.0.1:8000/openapi.json
+- Swagger UI：http://127.0.0.1:5600/docs
+- OpenAPI JSON：http://127.0.0.1:5600/openapi.json
 
 ### 5. 停止服务
 
@@ -306,7 +306,7 @@ release/
 则当前等价启动方式应优先通过 Python launcher 完成：
 
 ```powershell
-.\launchers\service\start-backend-service.bat --host 0.0.0.0 --port 8000
+.\launchers\service\start-backend-service.bat --host 0.0.0.0 --port 5600
 ```
 
 说明：
@@ -354,12 +354,12 @@ python -c "from backend.service.infrastructure.db.session import DatabaseSetting
 当前仓库已实际验证下面这条命令可以启动服务，并通过健康检查：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8010
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5610
 ```
 
 对应健康检查接口：
 
-- http://127.0.0.1:8010/api/v1/system/health
+- http://127.0.0.1:5610/api/v1/system/health
 
 ## 常见问题
 

@@ -161,7 +161,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="运行 RF-DETR 真实短链路验收")
     parser.add_argument(
         "--base-url",
-        default="http://127.0.0.1:8000",
+        default="http://127.0.0.1:5600",
         help="已有 backend-service 地址",
     )
     parser.add_argument(

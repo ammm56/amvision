@@ -10,10 +10,10 @@ namespace Amvar.Vision.Configuration
 internal sealed class BackendConfig
 {
     /// <summary>
-    /// backend-service REST API 根地址，例如 http://127.0.0.1:8000。
+    /// backend-service REST API 根地址，例如 http://127.0.0.1:5600。
     /// </summary>
     [JsonProperty("base_api_url")]
-    public string BaseApiUrl { get; set; } = "http://127.0.0.1:8000";
+    public string BaseApiUrl { get; set; } = "http://127.0.0.1:5600";
 
     /// <summary>
     /// 调用 REST API 使用的 access token。

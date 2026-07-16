@@ -169,7 +169,7 @@ GetModelInferenceTaskResultAsync(taskType, taskId)
 ```json
 {
   "backend": {
-    "base_api_url": "http://127.0.0.1:8000",
+    "base_api_url": "http://127.0.0.1:5600",
     "access_token": "amvision-default-user-token",
     "project_id": "project-1",
     "http_timeout_seconds": 60

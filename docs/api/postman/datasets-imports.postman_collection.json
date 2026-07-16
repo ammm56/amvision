@@ -646,7 +646,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://127.0.0.1:8000"
+      "value": "http://127.0.0.1:5600"
     },
     {
       "key": "projectId",

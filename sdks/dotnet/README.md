@@ -58,7 +58,7 @@ public static class Example
     {
         var options = new AMVisionClientOptions
         {
-            BaseApiUrl = "http://127.0.0.1:8000",
+            BaseApiUrl = "http://127.0.0.1:5600",
             AccessToken = "amvision-default-user-token"
         };
 

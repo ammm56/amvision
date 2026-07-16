@@ -142,7 +142,7 @@ Content-Disposition: attachment; filename="amvision_sdk_configs_project-1_202607
 ```json
 {
   "backend": {
-    "base_api_url": "http://127.0.0.1:8000",
+    "base_api_url": "http://127.0.0.1:5600",
     "access_token": "amvision-default-user-token",
     "project_id": "project-1",
     "http_timeout_seconds": 60
@@ -208,7 +208,7 @@ Config/config_model_deployment_{timestamp}.json
 ```json
 {
   "backend": {
-    "base_api_url": "http://127.0.0.1:8000",
+    "base_api_url": "http://127.0.0.1:5600",
     "access_token": "amvision-default-user-token",
     "project_id": "project-1",
     "http_timeout_seconds": 60
@@ -265,7 +265,7 @@ amvision_sdk_configs_project-1_20260708153000.zip
   "format_id": "amvision.sdk-config-package.v1",
   "generated_at": "2026-07-08T15:30:00+08:00",
   "project_id": "project-1",
-  "base_api_url": "http://127.0.0.1:8000",
+  "base_api_url": "http://127.0.0.1:5600",
   "contains_access_token": true,
   "files": [
     {

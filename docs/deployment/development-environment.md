@@ -37,7 +37,7 @@ python -c "import sys; print(sys.executable)"
 ### service 开发调试启动
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload
 ```
 
 VS Code 中当前推荐直接使用 Run and Debug 里的 `Python 调试程序: backend-service 热重载` 或 `Python 调试程序: backend-service 全量启动`。

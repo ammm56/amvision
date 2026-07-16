@@ -62,7 +62,7 @@
 #### curl 示例
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/datasets/imports" \
+curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
   -H "Authorization: Bearer <token>" \
   -F "project_id=project-1" \
   -F "dataset_id=dataset-1" \
