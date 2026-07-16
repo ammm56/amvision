@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Threading;
 using Amvar.Vision.Configuration;
 using Newtonsoft.Json;
 
@@ -19,7 +20,7 @@ namespace Amvar.Vision
         private readonly HttpClient httpClient;
         private readonly bool ownsHttpClient;
         private readonly WorkflowConfigurationCatalog? configurationCatalog;
-        private bool disposed;
+        private int disposed;
 
         /// <summary>
         /// 使用 SDK 自建 HttpClient 初始化管理 API client。
@@ -73,7 +74,7 @@ namespace Amvar.Vision
         /// </summary>
         public void Dispose()
         {
-            if (disposed)
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
             {
                 return;
             }
@@ -82,8 +83,6 @@ namespace Amvar.Vision
             {
                 httpClient.Dispose();
             }
-
-            disposed = true;
         }
     }
 }

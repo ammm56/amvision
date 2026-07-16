@@ -168,7 +168,7 @@ namespace Amvar.Vision
         /// </summary>
         private void EnsureClientNotDisposed()
         {
-            if (disposed)
+            if (Volatile.Read(ref disposed) != 0)
             {
                 throw new ObjectDisposedException(nameof(AMVisionClient));
             }

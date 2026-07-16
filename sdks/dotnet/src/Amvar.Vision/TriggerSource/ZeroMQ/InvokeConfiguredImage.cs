@@ -1,7 +1,6 @@
 using System;
 using Amvar.Vision;
 using System.Threading;
-using System.Threading.Tasks;
 using Amvar.Vision.Configuration;
 
 namespace Amvar.Vision.TriggerSource.ZeroMQ
@@ -17,10 +16,11 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="triggerSourceName">TriggerSource key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeConfiguredImageAsync(
+    public TriggerResult InvokeConfiguredImage(
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
         if (imagePath == null)
@@ -28,11 +28,11 @@ internal sealed partial class ZeroMqTriggerOperations
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
-        var result = await InvokeImageFromFileAsync(
+        var result = InvokeImageFromFile(
             triggerSourceName,
             imagePath,
             mediaType: null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         return result;
     }
 }

@@ -2,7 +2,6 @@ using System;
 using Amvar.Vision;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Amvar.Vision.TriggerSource.ZeroMQ
 {
@@ -18,16 +17,18 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="payload">可选事件 payload。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeEventAsync(
+    public TriggerResult InvokeEvent(
         string triggerSourceName,
         IDictionary<string, object?>? payload = null,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var request = BuildEventRequest(payload);
         ApplyEventDefaults(request, configuredTriggerSource);
         var client = GetClient(configuredTriggerSource);
-        var result = await client.InvokeEventAsync(request, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = client.InvokeEvent(request);
         return result;
     }
 }

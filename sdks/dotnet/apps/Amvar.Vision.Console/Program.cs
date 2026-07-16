@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
 using Amvar.Vision.Tools;
+using AMVisionRunner = global::Amvar.Vision.AMVisionOperationRunner;
 
 namespace Amvar.Vision.ConsoleApp
 {
@@ -83,7 +84,7 @@ namespace Amvar.Vision.ConsoleApp
         /// <param name="cancellationToken">取消信号。</param>
         private static async Task MainAsync(CancellationToken cancellationToken)
         {
-            using (var runner = AMVisionOperationRunner.CreateDefault())
+            using (var runner = AMVisionRunner.CreateDefault())
             {
                 var runtimeNames = runner.RuntimeNames;
                 var triggerSourceNames = runner.TriggerSourceNames;
@@ -154,20 +155,20 @@ namespace Amvar.Vision.ConsoleApp
                 //var triggerSourceHealth = await runner.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
 
                 // ZeroMQ 通用事件和图片触发
-                //var zeroMqEvent = await runner.InvokeZeroMqEventAsync(TriggerSourceName, new Dictionary<string, object?> { { "source", "dotnet-console" } }, cancellationToken).ConfigureAwait(false);
-                //var zeroMqConfiguredImage = await runner.InvokeConfiguredZeroMqImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
-                //var zeroMqImageByFile = await runner.InvokeZeroMqImageFromFileAsync(TriggerSourceName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var zeroMqImageByBytes = await runner.InvokeZeroMqImageBytesAsync(TriggerSourceName, LoadImageBytes(), ImageMediaType, cancellationToken).ConfigureAwait(false);
-                //var zeroMqImageByBase64 = await runner.InvokeZeroMqImageBase64Async(TriggerSourceName, LoadImageBase64(), ImageMediaType, cancellationToken).ConfigureAwait(false);
+                //var zeroMqEvent = runner.InvokeZeroMqEvent(TriggerSourceName, new Dictionary<string, object?> { { "source", "dotnet-console" } }, cancellationToken);
+                //var zeroMqConfiguredImage = runner.InvokeConfiguredZeroMqImage(TriggerSourceName, cancellationToken);
+                //var zeroMqImageByFile = runner.InvokeZeroMqImageFromFile(TriggerSourceName, ImagePath, ImageMediaType, cancellationToken);
+                //var zeroMqImageByBytes = runner.InvokeZeroMqImageBytes(TriggerSourceName, LoadImageBytes(), ImageMediaType, cancellationToken);
+                //var zeroMqImageByBase64 = runner.InvokeZeroMqImageBase64(TriggerSourceName, LoadImageBase64(), ImageMediaType, cancellationToken);
 
                 // ZeroMQ BGR24 触发
                 //var bgr24Frame = LoadBgr24ImageFrame();
-                //var zeroMqBgr24 = await runner.InvokeZeroMqBgr24Async(TriggerSourceName, bgr24Frame.Bytes, bgr24Frame.Width, bgr24Frame.Height, cancellationToken).ConfigureAwait(false);
-                //var zeroMqBgr24ByFile = await runner.InvokeZeroMqBgr24FromFileAsync(TriggerSourceName, ImagePath, cancellationToken).ConfigureAwait(false);
-                //var zeroMqConfiguredBgr24 = await runner.InvokeConfiguredZeroMqBgr24ImageAsync(TriggerSourceName, cancellationToken).ConfigureAwait(false);
+                //var zeroMqBgr24 = runner.InvokeZeroMqBgr24(TriggerSourceName, bgr24Frame.Bytes, bgr24Frame.Width, bgr24Frame.Height, cancellationToken);
+                //var zeroMqBgr24ByFile = runner.InvokeZeroMqBgr24FromFile(TriggerSourceName, ImagePath, cancellationToken);
+                //var zeroMqConfiguredBgr24 = runner.InvokeConfiguredZeroMqBgr24Image(TriggerSourceName, cancellationToken);
                 //using (var bitmap = LoadBitmap())
                 //{
-                //    var zeroMqBgr24ByBitmap = await runner.InvokeZeroMqBgr24FromBitmapAsync(TriggerSourceName, bitmap, cancellationToken).ConfigureAwait(false);
+                //    var zeroMqBgr24ByBitmap = runner.InvokeZeroMqBgr24FromBitmap(TriggerSourceName, bitmap, cancellationToken);
                 //}
 
                 // 图片转换工具

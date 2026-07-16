@@ -74,7 +74,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 标记 runner 是否已经释放。
         /// </summary>
-        private bool disposed;
+        private int disposed;
 
         /// <summary>
         /// 使用默认 Config 目录创建完整操作入口。
@@ -206,7 +206,7 @@ namespace Amvar.Vision
         /// </summary>
         public void Dispose()
         {
-            if (disposed)
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
             {
                 return;
             }
@@ -217,8 +217,6 @@ namespace Amvar.Vision
             {
                 client.Dispose();
             }
-
-            disposed = true;
         }
 
         /// <summary>
@@ -1101,16 +1099,16 @@ namespace Amvar.Vision
         /// <param name="payload">事件 payload。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqEventAsync(
+        public TriggerResult InvokeZeroMqEvent(
             string triggerSourceName,
             IDictionary<string, object?>? payload = null,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeEventAsync(
+            var response = zeroMqTriggerOperations.InvokeEvent(
                 triggerSourceName,
                 payload,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1120,14 +1118,14 @@ namespace Amvar.Vision
         /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqImageAsync(
+        public TriggerResult InvokeConfiguredZeroMqImage(
             string triggerSourceName,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeConfiguredImageAsync(
+            var response = zeroMqTriggerOperations.InvokeConfiguredImage(
                 triggerSourceName,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1139,18 +1137,18 @@ namespace Amvar.Vision
         /// <param name="mediaType">图片 media type；为空时按扩展名推断。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqImageFromFileAsync(
+        public TriggerResult InvokeZeroMqImageFromFile(
             string triggerSourceName,
             string imagePath,
             string? mediaType = null,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeImageFromFileAsync(
+            var response = zeroMqTriggerOperations.InvokeImageFromFile(
                 triggerSourceName,
                 imagePath,
                 mediaType,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1162,18 +1160,18 @@ namespace Amvar.Vision
         /// <param name="mediaType">图片 media type。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqImageBytesAsync(
+        public TriggerResult InvokeZeroMqImageBytes(
             string triggerSourceName,
             byte[] imageBytes,
             string mediaType = "image/octet-stream",
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeImageBytesAsync(
+            var response = zeroMqTriggerOperations.InvokeImageBytes(
                 triggerSourceName,
                 imageBytes,
                 mediaType,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1185,18 +1183,18 @@ namespace Amvar.Vision
         /// <param name="mediaType">图片 media type。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqImageBase64Async(
+        public TriggerResult InvokeZeroMqImageBase64(
             string triggerSourceName,
             string imageBase64,
             string? mediaType = null,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeImageBase64Async(
+            var response = zeroMqTriggerOperations.InvokeImageBase64(
                 triggerSourceName,
                 imageBase64,
                 mediaType,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1209,7 +1207,7 @@ namespace Amvar.Vision
         /// <param name="height">图片高度。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqBgr24Async(
+        public TriggerResult InvokeZeroMqBgr24(
             string triggerSourceName,
             byte[] bgr24Bytes,
             int width,
@@ -1217,12 +1215,12 @@ namespace Amvar.Vision
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeBgr24Async(
+            var response = zeroMqTriggerOperations.InvokeBgr24(
                 triggerSourceName,
                 bgr24Bytes,
                 width,
                 height,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1233,16 +1231,16 @@ namespace Amvar.Vision
         /// <param name="bitmap">待发送的 Bitmap。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqBgr24FromBitmapAsync(
+        public TriggerResult InvokeZeroMqBgr24FromBitmap(
             string triggerSourceName,
             Bitmap bitmap,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeBgr24FromBitmapAsync(
+            var response = zeroMqTriggerOperations.InvokeBgr24FromBitmap(
                 triggerSourceName,
                 bitmap,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1253,16 +1251,16 @@ namespace Amvar.Vision
         /// <param name="imagePath">图片文件路径。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeZeroMqBgr24FromFileAsync(
+        public TriggerResult InvokeZeroMqBgr24FromFile(
             string triggerSourceName,
             string imagePath,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeBgr24FromFileAsync(
+            var response = zeroMqTriggerOperations.InvokeBgr24FromFile(
                 triggerSourceName,
                 imagePath,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1272,14 +1270,14 @@ namespace Amvar.Vision
         /// <param name="triggerSourceName">TriggerSource 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqBgr24ImageAsync(
+        public TriggerResult InvokeConfiguredZeroMqBgr24Image(
             string triggerSourceName,
             CancellationToken cancellationToken = default)
         {
             EnsureNotDisposed();
-            var response = await zeroMqTriggerOperations.InvokeConfiguredBgr24ImageAsync(
+            var response = zeroMqTriggerOperations.InvokeConfiguredBgr24Image(
                 triggerSourceName,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
             return response;
         }
 
@@ -1302,7 +1300,7 @@ namespace Amvar.Vision
         /// </summary>
         private void EnsureNotDisposed()
         {
-            if (disposed)
+            if (Volatile.Read(ref disposed) != 0)
             {
                 throw new ObjectDisposedException(nameof(AMVisionOperationRunner));
             }

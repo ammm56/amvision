@@ -1,7 +1,6 @@
 using Amvar.Vision;
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Amvar.Vision.TriggerSource.ZeroMQ
 {
@@ -18,12 +17,13 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="mediaType">media type。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeImageBytesAsync(
+    public TriggerResult InvokeImageBytes(
         string triggerSourceName,
         byte[] imageBytes,
         string mediaType = "image/octet-stream",
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         if (imageBytes == null)
         {
@@ -34,7 +34,8 @@ internal sealed partial class ZeroMqTriggerOperations
         var request = ImageTriggerRequest.FromBytes(imageBytes, mediaType);
         ApplyImageDefaults(request, configuredTriggerSource);
         var client = GetClient(configuredTriggerSource);
-        var result = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = client.InvokeImage(request);
         return result;
     }
 }

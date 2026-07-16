@@ -69,9 +69,9 @@ public static class Example
                 "slot-classifier",
                 @".\images\slot.jpg").ConfigureAwait(false);
 
-            var triggerResult = await client.InvokeConfiguredZeroMqBgr24ImageFileAsync(
+            var triggerResult = client.InvokeConfiguredZeroMqBgr24ImageFile(
                 "zeromq-tray-empty",
-                @".\images\tray.jpg").ConfigureAwait(false);
+                @".\images\tray.jpg");
 
             Console.WriteLine(runtimeResult.State);
             Console.WriteLine(modelResult.RequestId);

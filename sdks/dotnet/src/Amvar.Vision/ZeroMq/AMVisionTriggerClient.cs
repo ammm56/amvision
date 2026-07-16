@@ -5,7 +5,6 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Amvar.Vision
 {
@@ -97,25 +96,6 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 在线程池中异步执行单张图片触发。
-        /// </summary>
-        /// <param name="request">单张图片触发请求。</param>
-        /// <param name="cancellationToken">调用前的取消令牌。</param>
-        /// <returns>异步 TriggerResult 任务。</returns>
-        public Task<TriggerResult> InvokeImageAsync(ImageTriggerRequest request, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var task = Task.Run(
-                () =>
-                {
-                    var result = InvokeImage(request);
-                    return result;
-                },
-                cancellationToken);
-            return task;
-        }
-
-        /// <summary>
         /// 同步发送一条纯事件并解析 TriggerResult。
         /// </summary>
         /// <param name="request">纯事件触发请求。</param>
@@ -150,25 +130,6 @@ namespace Amvar.Vision
 
             var result = ParseReply(replyFrames);
             return result;
-        }
-
-        /// <summary>
-        /// 在线程池中异步执行纯事件触发。
-        /// </summary>
-        /// <param name="request">纯事件触发请求。</param>
-        /// <param name="cancellationToken">调用前的取消令牌。</param>
-        /// <returns>异步 TriggerResult 任务。</returns>
-        public Task<TriggerResult> InvokeEventAsync(TriggerEventRequest request, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var task = Task.Run(
-                () =>
-                {
-                    var result = InvokeEvent(request);
-                    return result;
-                },
-                cancellationToken);
-            return task;
         }
 
         /// <summary>

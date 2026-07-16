@@ -223,16 +223,16 @@ namespace Amvar.Vision
         /// <param name="triggerSourceName">Config/config*.json 中 trigger_sources[].name 对应的 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqImageAsync(
+        public TriggerResult InvokeConfiguredZeroMqImage(
             string triggerSourceName,
             CancellationToken cancellationToken = default)
         {
             var catalog = RequireConfigurationCatalog();
             using (var operations = new ZeroMqTriggerOperations(catalog))
             {
-                var response = await operations.InvokeConfiguredImageAsync(
+                var response = operations.InvokeConfiguredImage(
                     triggerSourceName,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
                 return response;
             }
         }
@@ -245,7 +245,7 @@ namespace Amvar.Vision
         /// <param name="mediaType">可选 media type；为空时按文件扩展名推断。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqImageFileAsync(
+        public TriggerResult InvokeConfiguredZeroMqImageFile(
             string triggerSourceName,
             string imagePath,
             string? mediaType = null,
@@ -254,11 +254,11 @@ namespace Amvar.Vision
             var catalog = RequireConfigurationCatalog();
             using (var operations = new ZeroMqTriggerOperations(catalog))
             {
-                var response = await operations.InvokeImageFromFileAsync(
+                var response = operations.InvokeImageFromFile(
                     triggerSourceName,
                     imagePath,
                     mediaType,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
                 return response;
             }
         }
@@ -269,16 +269,16 @@ namespace Amvar.Vision
         /// <param name="triggerSourceName">Config/config*.json 中 trigger_sources[].name 对应的 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqBgr24ImageAsync(
+        public TriggerResult InvokeConfiguredZeroMqBgr24Image(
             string triggerSourceName,
             CancellationToken cancellationToken = default)
         {
             var catalog = RequireConfigurationCatalog();
             using (var operations = new ZeroMqTriggerOperations(catalog))
             {
-                var response = await operations.InvokeConfiguredBgr24ImageAsync(
+                var response = operations.InvokeConfiguredBgr24Image(
                     triggerSourceName,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
                 return response;
             }
         }
@@ -290,7 +290,7 @@ namespace Amvar.Vision
         /// <param name="imagePath">图片文件路径。</param>
         /// <param name="cancellationToken">取消信号。</param>
         /// <returns>TriggerSource 调用结果。</returns>
-        public async Task<TriggerResult> InvokeConfiguredZeroMqBgr24ImageFileAsync(
+        public TriggerResult InvokeConfiguredZeroMqBgr24ImageFile(
             string triggerSourceName,
             string imagePath,
             CancellationToken cancellationToken = default)
@@ -298,10 +298,10 @@ namespace Amvar.Vision
             var catalog = RequireConfigurationCatalog();
             using (var operations = new ZeroMqTriggerOperations(catalog))
             {
-                var response = await operations.InvokeBgr24FromFileAsync(
+                var response = operations.InvokeBgr24FromFile(
                     triggerSourceName,
                     imagePath,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken);
                 return response;
             }
         }

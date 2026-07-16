@@ -2,7 +2,6 @@ using System;
 using Amvar.Vision;
 using System.Drawing;
 using System.Threading;
-using System.Threading.Tasks;
 using Amvar.Vision.Configuration;
 using Amvar.Vision.Tools;
 
@@ -22,20 +21,22 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="height">图片高度。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeBgr24Async(
+    public TriggerResult InvokeBgr24(
         string triggerSourceName,
         byte[] bgr24Bytes,
         int width,
         int height,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         ImageConversionTools.ValidateBgr24Bytes(bgr24Bytes, width, height, nameof(bgr24Bytes));
         EnsureImageByteCount(bgr24Bytes.LongLength, configuredTriggerSource, nameof(bgr24Bytes));
         var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width, height);
         ApplyImageDefaults(request, configuredTriggerSource);
         var client = GetClient(configuredTriggerSource);
-        var triggerResult = await client.InvokeImageAsync(request, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var triggerResult = client.InvokeImage(request);
         return triggerResult;
     }
 
@@ -46,18 +47,19 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="bitmap">System.Drawing.Bitmap 对象。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeBgr24FromBitmapAsync(
+    public TriggerResult InvokeBgr24FromBitmap(
         string triggerSourceName,
         Bitmap bitmap,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var frame = ImageConversionTools.BitmapToBgr24(bitmap);
-        var triggerResult = await InvokeBgr24Async(
+        var triggerResult = InvokeBgr24(
             triggerSourceName,
             frame.Bytes,
             frame.Width,
             frame.Height,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         return triggerResult;
     }
 
@@ -68,20 +70,21 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="imagePath">图片路径，可为相对配置文件目录的路径。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeBgr24FromFileAsync(
+    public TriggerResult InvokeBgr24FromFile(
         string triggerSourceName,
         string imagePath,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var resolvedImagePath = ResolveConfiguredPath(configuredTriggerSource, imagePath);
         var frame = ImageConversionTools.ImageFileToBgr24(resolvedImagePath);
-        var triggerResult = await InvokeBgr24Async(
+        var triggerResult = InvokeBgr24(
             triggerSourceName,
             frame.Bytes,
             frame.Width,
             frame.Height,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         return triggerResult;
     }
 
@@ -91,10 +94,11 @@ internal sealed partial class ZeroMqTriggerOperations
     /// <param name="triggerSourceName">TriggerSource key。</param>
     /// <param name="cancellationToken">取消信号。</param>
     /// <returns>TriggerSource 调用结果。</returns>
-    public async Task<TriggerResult> InvokeConfiguredBgr24ImageAsync(
+    public TriggerResult InvokeConfiguredBgr24Image(
         string triggerSourceName,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var configuredTriggerSource = GetConfiguredTriggerSource(triggerSourceName);
         var imagePath = ConfigValidation.NormalizeOptional(catalog.GetRuntime(configuredTriggerSource.Runtime.Name).Invoke.ImagePath);
         if (imagePath == null)
@@ -102,10 +106,10 @@ internal sealed partial class ZeroMqTriggerOperations
             throw new InvalidOperationException($"TriggerSource {triggerSourceName} does not have a configured runtime invoke.image_path.");
         }
 
-        var triggerResult = await InvokeBgr24FromFileAsync(
+        var triggerResult = InvokeBgr24FromFile(
             triggerSourceName,
             imagePath,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
         return triggerResult;
     }
 }
