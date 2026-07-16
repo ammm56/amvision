@@ -54,7 +54,9 @@ async function fetchRuntimeConfig(path: string): Promise<Partial<RuntimeConfig> 
 }
 
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const paths = import.meta.env.DEV ? ['/runtime-config.local.json', '/runtime-config.json'] : ['/runtime-config.json']
+  const paths = import.meta.env.DEV
+    ? ['/runtime-config.local.json', '/runtime-config.json', '/runtime-config.template.json']
+    : ['/runtime-config.json', '/runtime-config.template.json']
   for (const path of paths) {
     const rawConfig = await fetchRuntimeConfig(path)
     if (rawConfig) {

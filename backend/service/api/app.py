@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import FileResponse
 
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.bootstrap import BackendServiceBootstrap
@@ -53,6 +54,10 @@ class FrontendStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):  # type: ignore[override]
         """优先返回静态文件；未命中时对无扩展名路径回退到 index.html。"""
 
+        runtime_config_response = self._resolve_runtime_config_response(path)
+        if runtime_config_response is not None:
+            return runtime_config_response
+
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
@@ -63,6 +68,29 @@ class FrontendStaticFiles(StaticFiles):
             if request_path.name and "." in request_path.name:
                 raise
             return await super().get_response("index.html", scope)
+
+    def _resolve_runtime_config_response(self, path: str) -> FileResponse | None:
+        """为开发态静态托管补齐 runtime-config.json。
+
+        前端构建产物可能只包含 `runtime-config.template.json`。直接由 backend-service
+        托管 `frontend/web-ui/dist` 时，如果 `/runtime-config.json` 返回 404，旧构建包
+        会继续使用编译期默认地址，容易在后端端口调整后出现离线页。这里仅对
+        `runtime-config.json` 做受控 fallback，不影响其它静态文件和生产运行链路。
+        """
+
+        if path.replace("\\", "/") != "runtime-config.json":
+            return None
+        for static_dir in self.all_directories:
+            static_path = Path(static_dir)
+            for config_file_name in (
+                "runtime-config.json",
+                "runtime-config.local.json",
+                "runtime-config.template.json",
+            ):
+                config_path = static_path / config_file_name
+                if config_path.is_file():
+                    return FileResponse(config_path, media_type="application/json")
+        return None
 
 
 _FRONTEND_STATIC_MIME_TYPES: dict[str, str] = {
