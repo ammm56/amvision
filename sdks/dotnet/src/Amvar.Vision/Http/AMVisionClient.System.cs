@@ -12,12 +12,16 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 backend-service 已解析的统一配置快照。
         /// </summary>
-        public Task<AMVisionApiResponse> GetSystemConfigAsync(
+        public async Task<AMVisionApiResponse> GetSystemConfigAsync(
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{SystemApiPrefix}/config";
-            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>

@@ -1,35 +1,115 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
+using Amvar.Vision.Tools;
 using Newtonsoft.Json;
 
 namespace Amvar.Vision.ConsoleApp
 {
     /// <summary>
-    /// Amvar Vision .NET SDK 调试控制台。
+    /// 控制台程序入口，用于调试和演示 Amvar.Vision SDK 的完整调用方式。
     /// </summary>
     internal static class Program
     {
         /// <summary>
-        /// 程序入口。控制台只解析命令行参数，实际 HTTP、ZeroMQ、配置加载和业务调用都交给 SDK。
+        /// 是否执行 Workflow runtime 相关样例。
         /// </summary>
-        /// <param name="args">命令行参数。</param>
+        private static readonly bool RunWorkflowRuntimeExamples = false;
+
+        /// <summary>
+        /// 是否执行 Workflow runtime 启停类样例。
+        /// </summary>
+        private static readonly bool RunWorkflowRuntimeMutationExamples = false;
+
+        /// <summary>
+        /// 是否执行 Model deployment 相关样例。
+        /// </summary>
+        private static readonly bool RunModelDeploymentExamples = false;
+
+        /// <summary>
+        /// 是否执行 Model deployment 启停类样例。
+        /// </summary>
+        private static readonly bool RunModelDeploymentMutationExamples = false;
+
+        /// <summary>
+        /// 是否执行 TriggerSource 管理相关样例。
+        /// </summary>
+        private static readonly bool RunTriggerSourceExamples = false;
+
+        /// <summary>
+        /// 是否执行 TriggerSource 启停类样例。
+        /// </summary>
+        private static readonly bool RunTriggerSourceMutationExamples = false;
+
+        /// <summary>
+        /// 是否执行 ZeroMQ 触发相关样例。
+        /// </summary>
+        private static readonly bool RunZeroMqTriggerExamples = false;
+
+        /// <summary>
+        /// 是否执行图片转换工具样例。
+        /// </summary>
+        private static readonly bool RunImageConversionExamples = false;
+
+        /// <summary>
+        /// Workflow runtime 配置 key，对应 Config/config*.json 中 runtimes[].name。
+        /// </summary>
+        private const string RuntimeName = "yolo11m_barqrcode";
+
+        /// <summary>
+        /// ZeroMQ TriggerSource 配置 key，对应 Config/config*.json 中 trigger_sources[].name。
+        /// </summary>
+        private const string TriggerSourceName = "zeromq_yolo11m_barqrcode";
+
+        /// <summary>
+        /// Model deployment 配置 key，对应 Config/config*.json 中 model_deployments[].name。
+        /// </summary>
+        private const string ModelDeploymentName = "yolo11_m_20260630190724_sync_2";
+
+        /// <summary>
+        /// 调试图片路径；相对路径会按控制台当前工作目录解析。
+        /// </summary>
+        private const string ImagePath = @"Resources\Img\qrcode50.jpg";
+
+        /// <summary>
+        /// 示例 WorkflowRun id；调试时替换为真实后端返回值。
+        /// </summary>
+        private const string WorkflowRunId = "workflow-run-id";
+
+        /// <summary>
+        /// 示例异步推理任务 id；调试时替换为真实后端返回值。
+        /// </summary>
+        private const string InferenceTaskId = "inference-task-id";
+
+        /// <summary>
+        /// 示例后端文件 id；调试时替换为真实文件 id。
+        /// </summary>
+        private const string InputFileId = "input-file-id";
+
+        /// <summary>
+        /// 示例后端可读取的 input_uri；调试时替换为真实 URI。
+        /// </summary>
+        private const string InputUri = "memory://runtime/inputs/inference/input.jpg";
+
+        /// <summary>
+        /// 默认图片 media type。
+        /// </summary>
+        private const string ImageMediaType = "image/jpeg";
+
+        /// <summary>
+        /// 程序入口。异常输出保持英文，避免 Windows 控制台编码差异导致乱码。
+        /// </summary>
         /// <returns>进程退出码；0 表示成功。</returns>
-        private static async Task<int> Main(string[] args)
+        private static int Main()
         {
             try
             {
-                var options = ConsoleOptions.Parse(args);
-                if (options.Command == "help")
-                {
-                    PrintUsage();
-                    return 0;
-                }
-
-                var exitCode = await ExecuteCommandAsync(options, CancellationToken.None).ConfigureAwait(false);
-                return exitCode;
+                MainAsync(CancellationToken.None).GetAwaiter().GetResult();
+                return 0;
             }
             catch (AMVisionApiException exception)
             {
@@ -56,173 +136,553 @@ namespace Amvar.Vision.ConsoleApp
                 WriteKnownException("Invalid operation", exception);
                 return 6;
             }
+            catch (IOException exception)
+            {
+                WriteKnownException("File IO failed", exception);
+                return 7;
+            }
             catch (Exception exception)
             {
                 System.Console.Error.WriteLine("Unhandled exception:");
                 System.Console.Error.WriteLine(exception);
                 return 1;
             }
+            finally
+            {
+                WaitForKeyIfInteractive();
+            }
         }
 
         /// <summary>
-        /// 执行已经解析完成的控制台命令。
+        /// 执行控制台调试调用。默认只执行系统配置检查，其余调用通过顶部开关启用。
         /// </summary>
-        /// <param name="options">控制台命令参数。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>进程退出码。</returns>
-        private static async Task<int> ExecuteCommandAsync(
-            ConsoleOptions options,
+        private static async Task MainAsync(CancellationToken cancellationToken)
+        {
+            using (var runner = AMVisionOperationRunner.CreateDefault())
+            {
+                PrintLoadedConfigurations(runner);
+
+                var systemConfig = await runner.GetSystemConfigResponseAsync(cancellationToken).ConfigureAwait(false);
+                PrintHealthSummary(systemConfig);
+
+                if (RunWorkflowRuntimeExamples)
+                {
+                    await RunWorkflowRuntimeExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunWorkflowRuntimeMutationExamples)
+                {
+                    await RunWorkflowRuntimeMutationExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunModelDeploymentExamples)
+                {
+                    await RunModelDeploymentExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunModelDeploymentMutationExamples)
+                {
+                    await RunModelDeploymentMutationExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunTriggerSourceExamples)
+                {
+                    await RunTriggerSourceExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunTriggerSourceMutationExamples)
+                {
+                    await RunTriggerSourceMutationExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunZeroMqTriggerExamples)
+                {
+                    await RunZeroMqTriggerExamplesAsync(runner, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (RunImageConversionExamples)
+                {
+                    RunImageConversionToolExamples();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 输出已加载配置 key，确认 SDK 已自动加载 Config/config*.json。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        private static void PrintLoadedConfigurations(AMVisionOperationRunner runner)
+        {
+            PrintSection("Loaded configuration keys");
+            System.Console.WriteLine("Runtimes: " + JoinNames(runner.RuntimeNames));
+            System.Console.WriteLine("TriggerSources: " + JoinNames(runner.TriggerSourceNames));
+            System.Console.WriteLine("ModelDeployments: " + JoinNames(runner.ModelDeploymentNames));
+        }
+
+        /// <summary>
+        /// 执行 Workflow runtime 只读和调用类样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunWorkflowRuntimeExamplesAsync(
+            AMVisionOperationRunner runner,
             CancellationToken cancellationToken)
         {
-            using (var client = CreateClient(options.ConfigDirectory))
-            {
-                if (options.Command == "health")
-                {
-                    var response = await client.GetSystemConfigResponseAsync(cancellationToken).ConfigureAwait(false);
-                    PrintHealthSummary(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime list");
+            var runtimes = await runner.ListProjectRuntimesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(runtimes);
 
-                if (options.Command == "runtime-invoke")
-                {
-                    var runtimeName = options.RequireArgument(0, "runtime-key");
-                    var response = await client.InvokeConfiguredWorkflowRuntimeAsync(
-                        runtimeName,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime status");
+            var runtime = await runner.GetRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(runtime);
 
-                if (options.Command == "runtime-invoke-image")
-                {
-                    var runtimeName = options.RequireArgument(0, "runtime-key");
-                    var imagePath = options.RequireArgument(1, "image-path");
-                    var response = await client.InvokeConfiguredWorkflowRuntimeWithImageFileAsync(
-                        runtimeName,
-                        imagePath,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime health");
+            var health = await runner.GetRuntimeHealthAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(health);
 
-                if (options.Command == "model-invoke")
-                {
-                    var deploymentName = options.RequireArgument(0, "deployment-key");
-                    var response = await client.InvokeConfiguredModelDeploymentAsync(
-                        deploymentName,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime instances");
+            var instances = await runner.ListRuntimeInstancesAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(instances);
 
-                if (options.Command == "model-invoke-image")
-                {
-                    var deploymentName = options.RequireArgument(0, "deployment-key");
-                    var imagePath = options.RequireArgument(1, "image-path");
-                    var response = await client.InvokeConfiguredModelDeploymentWithImageFileAsync(
-                        deploymentName,
-                        imagePath,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime events");
+            var runtimeEvents = await runner.GetRuntimeEventsAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(runtimeEvents);
 
-                if (options.Command == "model-run")
-                {
-                    var deploymentName = options.RequireArgument(0, "deployment-key");
-                    var response = await client.RunConfiguredModelDeploymentAsync(
-                        deploymentName,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime flow check");
+            var flowCheck = await runner.CheckRuntimeFlowAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(flowCheck);
 
-                if (options.Command == "model-run-image")
-                {
-                    var deploymentName = options.RequireArgument(0, "deployment-key");
-                    var imagePath = options.RequireArgument(1, "image-path");
-                    var response = await client.RunConfiguredModelDeploymentWithImageFileAsync(
-                        deploymentName,
-                        imagePath,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime invoke with configured input");
+            var configuredInvoke = await runner.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredInvoke);
 
-                if (options.Command == "trigger-image")
-                {
-                    var triggerSourceName = options.RequireArgument(0, "trigger-key");
-                    var response = await client.InvokeConfiguredZeroMqImageAsync(
-                        triggerSourceName,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime invoke with image file");
+            var fileInvoke = await runner.InvokeRuntimeAppResultWithImageFromFileAsync(
+                RuntimeName,
+                ResolveImagePath(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileInvoke);
 
-                if (options.Command == "trigger-image-file")
-                {
-                    var triggerSourceName = options.RequireArgument(0, "trigger-key");
-                    var imagePath = options.RequireArgument(1, "image-path");
-                    var response = await client.InvokeConfiguredZeroMqImageFileAsync(
-                        triggerSourceName,
-                        imagePath,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime invoke with image bytes");
+            var imageBytes = ReadImageBytes(ImagePath);
+            var bytesInvoke = await runner.InvokeRuntimeAppResultWithImageBytesAsync(
+                RuntimeName,
+                imageBytes,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(bytesInvoke);
 
-                if (options.Command == "trigger-bgr24")
-                {
-                    var triggerSourceName = options.RequireArgument(0, "trigger-key");
-                    var response = await client.InvokeConfiguredZeroMqBgr24ImageAsync(
-                        triggerSourceName,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
+            PrintSection("Workflow runtime invoke with image base64");
+            var imageBase64 = Convert.ToBase64String(imageBytes);
+            var base64Invoke = await runner.InvokeRuntimeAppResultWithImageBase64Async(
+                RuntimeName,
+                imageBase64,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(base64Invoke);
 
-                if (options.Command == "trigger-bgr24-file")
-                {
-                    var triggerSourceName = options.RequireArgument(0, "trigger-key");
-                    var imagePath = options.RequireArgument(1, "image-path");
-                    var response = await client.InvokeConfiguredZeroMqBgr24ImageFileAsync(
-                        triggerSourceName,
-                        imagePath,
-                        cancellationToken).ConfigureAwait(false);
-                    PrintJson(response);
-                    return 0;
-                }
-            }
+            PrintSection("Workflow runtime async run with configured input");
+            var configuredRun = await runner.RunRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredRun);
 
-            throw new ArgumentException($"Unknown command: {options.Command}. Use help to view available commands.");
+            PrintSection("Workflow runtime async run with image file");
+            var fileRun = await runner.RunRuntimeWithImageFromFileAsync(
+                RuntimeName,
+                ResolveImagePath(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileRun);
+
+            PrintSection("Workflow runtime async run with image bytes");
+            var bytesRun = await runner.RunRuntimeWithImageBytesAsync(
+                RuntimeName,
+                imageBytes,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(bytesRun);
+
+            PrintSection("Workflow runtime async run with image base64");
+            var base64Run = await runner.RunRuntimeWithImageBase64Async(
+                RuntimeName,
+                imageBase64,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(base64Run);
+
+            PrintSection("Workflow run detail");
+            var workflowRun = await runner.GetWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
+            PrintJson(workflowRun);
+
+            PrintSection("Workflow run events");
+            var workflowRunEvents = await runner.GetWorkflowRunEventsAsync(
+                RuntimeName,
+                WorkflowRunId,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(workflowRunEvents);
         }
 
         /// <summary>
-        /// 按命令行参数创建 SDK client。
+        /// 执行 Workflow runtime 启停类样例。
         /// </summary>
-        /// <param name="configDirectory">可选 Config 目录。</param>
-        /// <returns>已经加载配置的 SDK client。</returns>
-        private static AMVisionClient CreateClient(string? configDirectory)
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunWorkflowRuntimeMutationExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
         {
-            if (configDirectory == null)
-            {
-                var client = AMVisionClient.CreateFromConfig();
-                return client;
-            }
+            PrintSection("Workflow runtime start");
+            var started = await runner.StartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(started);
 
-            var trimmedConfigDirectory = configDirectory.Trim();
-            if (trimmedConfigDirectory.Length == 0)
-            {
-                var client = AMVisionClient.CreateFromConfig();
-                return client;
-            }
+            PrintSection("Workflow runtime restart");
+            var restarted = await runner.RestartRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(restarted);
 
-            var configuredClient = AMVisionClient.CreateFromConfigDirectory(trimmedConfigDirectory);
-            return configuredClient;
+            PrintSection("Workflow run cancel");
+            var canceledRun = await runner.CancelWorkflowRunAsync(WorkflowRunId, cancellationToken).ConfigureAwait(false);
+            PrintJson(canceledRun);
+
+            PrintSection("Workflow runtime stop");
+            var stopped = await runner.StopRuntimeAsync(RuntimeName, cancellationToken).ConfigureAwait(false);
+            PrintJson(stopped);
         }
 
         /// <summary>
-        /// 输出 JSON 响应，便于现场复制和排查。
+        /// 执行模型部署只读、同步推理和异步推理样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunModelDeploymentExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
+        {
+            PrintSection("Model deployment runtime status");
+            var status = await runner.GetModelDeploymentRuntimeStatusAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(status);
+
+            PrintSection("Model deployment runtime health");
+            var health = await runner.GetModelDeploymentRuntimeHealthAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(health);
+
+            PrintSection("Model deployment invoke with configured input");
+            var configuredInvoke = await runner.InvokeConfiguredModelDeploymentAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredInvoke);
+
+            PrintSection("Model deployment invoke with image file");
+            var fileInvoke = await runner.InvokeModelDeploymentWithImageFromFileAsync(
+                ModelDeploymentName,
+                ResolveImagePath(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileInvoke);
+
+            PrintSection("Model deployment invoke with image bytes");
+            var imageBytes = ReadImageBytes(ImagePath);
+            var bytesInvoke = await runner.InvokeModelDeploymentWithImageBytesAsync(
+                ModelDeploymentName,
+                imageBytes,
+                Path.GetFileName(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(bytesInvoke);
+
+            PrintSection("Model deployment invoke with image base64");
+            var imageBase64 = Convert.ToBase64String(imageBytes);
+            var base64Invoke = await runner.InvokeModelDeploymentWithImageBase64Async(
+                ModelDeploymentName,
+                imageBase64,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(base64Invoke);
+
+            PrintSection("Model deployment invoke with input file id");
+            var fileIdInvoke = await runner.InvokeModelDeploymentWithInputFileIdAsync(
+                ModelDeploymentName,
+                InputFileId,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileIdInvoke);
+
+            PrintSection("Model deployment invoke with input uri");
+            var uriInvoke = await runner.InvokeModelDeploymentWithInputUriAsync(
+                ModelDeploymentName,
+                InputUri,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(uriInvoke);
+
+            PrintSection("Model deployment async run with configured input");
+            var configuredRun = await runner.RunConfiguredModelDeploymentAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredRun);
+
+            PrintSection("Model deployment async run with image file");
+            var fileRun = await runner.RunModelDeploymentWithImageFromFileAsync(
+                ModelDeploymentName,
+                ResolveImagePath(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileRun);
+
+            PrintSection("Model deployment async run with image bytes");
+            var bytesRun = await runner.RunModelDeploymentWithImageBytesAsync(
+                ModelDeploymentName,
+                imageBytes,
+                Path.GetFileName(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(bytesRun);
+
+            PrintSection("Model deployment async run with image base64");
+            var base64Run = await runner.RunModelDeploymentWithImageBase64Async(
+                ModelDeploymentName,
+                imageBase64,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(base64Run);
+
+            PrintSection("Model deployment async run with input file id");
+            var fileIdRun = await runner.RunModelDeploymentWithInputFileIdAsync(
+                ModelDeploymentName,
+                InputFileId,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileIdRun);
+
+            PrintSection("Model deployment async run with input uri");
+            var uriRun = await runner.RunModelDeploymentWithInputUriAsync(
+                ModelDeploymentName,
+                InputUri,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(uriRun);
+
+            PrintSection("Model inference task detail");
+            var taskDetail = await runner.GetModelInferenceTaskAsync(
+                ModelDeploymentName,
+                InferenceTaskId,
+                includeEvents: true,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            PrintJson(taskDetail);
+
+            PrintSection("Model inference task result");
+            var taskResult = await runner.GetModelInferenceTaskResultAsync(
+                ModelDeploymentName,
+                InferenceTaskId,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(taskResult);
+        }
+
+        /// <summary>
+        /// 执行模型部署启停类样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunModelDeploymentMutationExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
+        {
+            PrintSection("Model deployment start");
+            var started = await runner.StartModelDeploymentRuntimeAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(started);
+
+            PrintSection("Model deployment warmup");
+            var warmup = await runner.WarmupModelDeploymentRuntimeAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(warmup);
+
+            PrintSection("Model deployment reset");
+            var reset = await runner.ResetModelDeploymentRuntimeAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(reset);
+
+            PrintSection("Model deployment stop");
+            var stopped = await runner.StopModelDeploymentRuntimeAsync(
+                ModelDeploymentName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(stopped);
+        }
+
+        /// <summary>
+        /// 执行 TriggerSource 管理只读样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunTriggerSourceExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
+        {
+            PrintSection("TriggerSource list");
+            var triggerSources = await runner.ListTriggerSourcesAsync(
+                RuntimeName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(triggerSources);
+
+            PrintSection("TriggerSource detail");
+            var triggerSource = await runner.GetTriggerSourceAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(triggerSource);
+
+            PrintSection("TriggerSource health");
+            var health = await runner.GetTriggerSourceHealthAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(health);
+        }
+
+        /// <summary>
+        /// 执行 TriggerSource 启停样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunTriggerSourceMutationExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
+        {
+            PrintSection("TriggerSource enable");
+            var enabled = await runner.EnableTriggerSourceAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(enabled);
+
+            PrintSection("TriggerSource disable");
+            var disabled = await runner.DisableTriggerSourceAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(disabled);
+        }
+
+        /// <summary>
+        /// 执行 ZeroMQ TriggerSource 调用样例。
+        /// </summary>
+        /// <param name="runner">SDK 高层操作入口。</param>
+        /// <param name="cancellationToken">取消信号。</param>
+        private static async Task RunZeroMqTriggerExamplesAsync(
+            AMVisionOperationRunner runner,
+            CancellationToken cancellationToken)
+        {
+            PrintSection("ZeroMQ event trigger");
+            var payload = new Dictionary<string, object?>
+            {
+                ["source"] = "dotnet-console",
+                ["message"] = "hello"
+            };
+            var eventResult = await runner.InvokeZeroMqEventAsync(
+                TriggerSourceName,
+                payload,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(eventResult);
+
+            PrintSection("ZeroMQ image trigger with configured image");
+            var configuredImageResult = await runner.InvokeConfiguredZeroMqImageAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredImageResult);
+
+            PrintSection("ZeroMQ image trigger with image file");
+            var fileImageResult = await runner.InvokeZeroMqImageFromFileAsync(
+                TriggerSourceName,
+                ResolveImagePath(ImagePath),
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileImageResult);
+
+            PrintSection("ZeroMQ image trigger with image bytes");
+            var imageBytes = ReadImageBytes(ImagePath);
+            var bytesImageResult = await runner.InvokeZeroMqImageBytesAsync(
+                TriggerSourceName,
+                imageBytes,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(bytesImageResult);
+
+            PrintSection("ZeroMQ image trigger with image base64");
+            var imageBase64 = Convert.ToBase64String(imageBytes);
+            var base64ImageResult = await runner.InvokeZeroMqImageBase64Async(
+                TriggerSourceName,
+                imageBase64,
+                ImageMediaType,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(base64ImageResult);
+
+            PrintSection("ZeroMQ BGR24 trigger with configured image");
+            var configuredBgr24Result = await runner.InvokeConfiguredZeroMqBgr24ImageAsync(
+                TriggerSourceName,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(configuredBgr24Result);
+
+            PrintSection("ZeroMQ BGR24 trigger with image file");
+            var fileBgr24Result = await runner.InvokeZeroMqBgr24FromFileAsync(
+                TriggerSourceName,
+                ResolveImagePath(ImagePath),
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(fileBgr24Result);
+
+            PrintSection("ZeroMQ BGR24 trigger with Bitmap");
+            using (var bitmap = new Bitmap(ResolveImagePath(ImagePath)))
+            {
+                var bitmapBgr24Result = await runner.InvokeZeroMqBgr24FromBitmapAsync(
+                    TriggerSourceName,
+                    bitmap,
+                    cancellationToken).ConfigureAwait(false);
+                PrintJson(bitmapBgr24Result);
+            }
+
+            PrintSection("ZeroMQ BGR24 trigger with raw bytes");
+            var frame = ImageConversionTools.ImageFileToBgr24(ResolveImagePath(ImagePath));
+            var rawBgr24Result = await runner.InvokeZeroMqBgr24Async(
+                TriggerSourceName,
+                frame.Bytes,
+                frame.Width,
+                frame.Height,
+                cancellationToken).ConfigureAwait(false);
+            PrintJson(rawBgr24Result);
+        }
+
+        /// <summary>
+        /// 执行 SDK 图片转换工具样例。
+        /// </summary>
+        private static void RunImageConversionToolExamples()
+        {
+            PrintSection("Image conversion tools");
+
+            var imagePath = ResolveImagePath(ImagePath);
+            var inferredFormat = ImageConversionTools.InferFormatFromPath(imagePath);
+            var mediaType = ImageConversionTools.GetMediaType(inferredFormat);
+            var base64 = ImageConversionTools.ImageFileToBase64(imagePath, inferredFormat);
+
+            var frame = ImageConversionTools.ImageFileToBgr24(imagePath);
+            var previewBytes = ImageConversionTools.Bgr24ToImageBytes(
+                frame.Bytes,
+                frame.Width,
+                frame.Height,
+                ImageFileFormat.JPEG,
+                jpegQuality: 85L);
+
+            var summary = new Dictionary<string, object?>
+            {
+                ["image_path"] = imagePath,
+                ["format"] = inferredFormat.ToString(),
+                ["media_type"] = mediaType,
+                ["base64_length"] = base64.Length,
+                ["bgr24_width"] = frame.Width,
+                ["bgr24_height"] = frame.Height,
+                ["preview_jpeg_bytes"] = previewBytes.Length
+            };
+
+            PrintJson(summary);
+        }
+
+        /// <summary>
+        /// 输出 JSON，便于现场复制和排查。
         /// </summary>
         /// <param name="value">待输出对象。</param>
         private static void PrintJson(object value)
@@ -232,7 +692,17 @@ namespace Amvar.Vision.ConsoleApp
         }
 
         /// <summary>
-        /// 输出后端连接检查摘要，避免 health 命令打印过大的系统配置。
+        /// 输出分段标题。
+        /// </summary>
+        /// <param name="title">标题。</param>
+        private static void PrintSection(string title)
+        {
+            System.Console.WriteLine();
+            System.Console.WriteLine("==== " + title + " ====");
+        }
+
+        /// <summary>
+        /// 输出后端连接检查摘要，避免默认调试调用打印过大的系统配置。
         /// </summary>
         /// <param name="response">系统配置响应。</param>
         private static void PrintHealthSummary(SystemConfigResponse response)
@@ -241,6 +711,8 @@ namespace Amvar.Vision.ConsoleApp
             {
                 throw new ArgumentNullException(nameof(response));
             }
+
+            PrintSection("Backend health");
 
             var localBufferBroker = response.LocalBufferBroker;
             var summary = new Dictionary<string, object?>
@@ -255,6 +727,64 @@ namespace Amvar.Vision.ConsoleApp
         }
 
         /// <summary>
+        /// 读取图片文件 bytes。
+        /// </summary>
+        /// <param name="imagePath">图片文件路径。</param>
+        /// <returns>图片 bytes。</returns>
+        private static byte[] ReadImageBytes(string imagePath)
+        {
+            var resolvedPath = ResolveImagePath(imagePath);
+            var bytes = File.ReadAllBytes(resolvedPath);
+            return bytes;
+        }
+
+        /// <summary>
+        /// 解析图片路径，并确认文件存在。
+        /// </summary>
+        /// <param name="imagePath">图片路径。</param>
+        /// <returns>绝对图片路径。</returns>
+        private static string ResolveImagePath(string imagePath)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                throw new ArgumentException("Image path is required.", nameof(imagePath));
+            }
+
+            var resolvedPath = Path.IsPathRooted(imagePath)
+                ? imagePath
+                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, imagePath));
+
+            if (!File.Exists(resolvedPath))
+            {
+                resolvedPath = Path.IsPathRooted(imagePath)
+                    ? imagePath
+                    : Path.GetFullPath(imagePath);
+            }
+
+            if (!File.Exists(resolvedPath))
+            {
+                throw new FileNotFoundException("Image file was not found.", resolvedPath);
+            }
+
+            return resolvedPath;
+        }
+
+        /// <summary>
+        /// 拼接配置 key 列表。
+        /// </summary>
+        /// <param name="names">配置 key 列表。</param>
+        /// <returns>显示用文本。</returns>
+        private static string JoinNames(IReadOnlyList<string> names)
+        {
+            if (names == null || names.Count == 0)
+            {
+                return "(none)";
+            }
+
+            return string.Join(", ", names);
+        }
+
+        /// <summary>
         /// 输出 HTTP API 异常详情。
         /// </summary>
         /// <param name="exception">SDK HTTP API 异常。</param>
@@ -262,11 +792,11 @@ namespace Amvar.Vision.ConsoleApp
         {
             System.Console.Error.WriteLine("HTTP API call failed:");
             System.Console.Error.WriteLine(exception.Message);
-            System.Console.Error.WriteLine($"StatusCode: {(int)exception.StatusCode}");
+            System.Console.Error.WriteLine("StatusCode: " + (int)exception.StatusCode);
 
             if (!string.IsNullOrWhiteSpace(exception.ErrorCode))
             {
-                System.Console.Error.WriteLine($"ErrorCode: {exception.ErrorCode}");
+                System.Console.Error.WriteLine("ErrorCode: " + exception.ErrorCode);
             }
 
             if (exception.Details.Count > 0)
@@ -290,7 +820,7 @@ namespace Amvar.Vision.ConsoleApp
         {
             System.Console.Error.WriteLine("ZeroMQ TriggerSource call failed:");
             System.Console.Error.WriteLine(exception.Message);
-            System.Console.Error.WriteLine($"ErrorCode: {exception.ErrorCode}");
+            System.Console.Error.WriteLine("ErrorCode: " + exception.ErrorCode);
 
             if (exception.Details.Count > 0)
             {
@@ -306,7 +836,7 @@ namespace Amvar.Vision.ConsoleApp
         /// <param name="exception">异常对象。</param>
         private static void WriteKnownException(string title, Exception exception)
         {
-            System.Console.Error.WriteLine($"{title}:");
+            System.Console.Error.WriteLine(title + ":");
             System.Console.Error.WriteLine(exception.Message);
 
             if (exception.InnerException != null)
@@ -317,124 +847,18 @@ namespace Amvar.Vision.ConsoleApp
         }
 
         /// <summary>
-        /// 输出控制台使用说明。
+        /// 在人工启动控制台时等待按键，避免窗口立即关闭。
         /// </summary>
-        private static void PrintUsage()
+        private static void WaitForKeyIfInteractive()
         {
-            System.Console.WriteLine("Amvar Vision .NET SDK Console");
-            System.Console.WriteLine();
-            System.Console.WriteLine("Config loading: the SDK automatically loads Config/config*.json. Commands only need config key names and required arguments.");
-            System.Console.WriteLine();
-            System.Console.WriteLine("Global options:");
-            System.Console.WriteLine("  --config-dir <path>                 Use the specified Config directory; omitted means SDK default discovery.");
-            System.Console.WriteLine();
-            System.Console.WriteLine("Commands:");
-            System.Console.WriteLine("  help                                Show help.");
-            System.Console.WriteLine("  health                              Call the backend-service system config API.");
-            System.Console.WriteLine("  runtime-invoke <runtime-key>         Invoke Workflow App Runtime with configured default input.");
-            System.Console.WriteLine("  runtime-invoke-image <runtime-key> <image-path>");
-            System.Console.WriteLine("                                      Invoke Workflow App Runtime with an image file.");
-            System.Console.WriteLine("  model-invoke <deployment-key>        Invoke model deployment with configured default input.");
-            System.Console.WriteLine("  model-invoke-image <deployment-key> <image-path>");
-            System.Console.WriteLine("                                      Invoke model deployment with an image file.");
-            System.Console.WriteLine("  model-run <deployment-key>           Create an async model inference task with configured default input.");
-            System.Console.WriteLine("  model-run-image <deployment-key> <image-path>");
-            System.Console.WriteLine("                                      Create an async model inference task with an image file.");
-            System.Console.WriteLine("  trigger-image <trigger-key>          Trigger ZeroMQ image bytes with configured default image.");
-            System.Console.WriteLine("  trigger-image-file <trigger-key> <image-path>");
-            System.Console.WriteLine("                                      Trigger ZeroMQ image bytes with an image file.");
-            System.Console.WriteLine("  trigger-bgr24 <trigger-key>          Trigger ZeroMQ BGR24 with configured default image.");
-            System.Console.WriteLine("  trigger-bgr24-file <trigger-key> <image-path>");
-            System.Console.WriteLine("                                      Trigger ZeroMQ BGR24 with an image file.");
-            System.Console.WriteLine();
-            System.Console.WriteLine("Examples:");
-            System.Console.WriteLine("  Amvar.Vision.Console.exe health");
-            System.Console.WriteLine("  Amvar.Vision.Console.exe runtime-invoke tray-empty-runtime");
-            System.Console.WriteLine("  Amvar.Vision.Console.exe model-invoke-image slot-classifier .\\images\\slot.jpg");
-            System.Console.WriteLine("  Amvar.Vision.Console.exe trigger-bgr24-file zeromq-tray-empty .\\images\\tray.jpg");
-        }
-
-        /// <summary>
-        /// 控制台命令参数。
-        /// </summary>
-        private sealed class ConsoleOptions
-        {
-            /// <summary>
-            /// 命令名称。
-            /// </summary>
-            public string Command { get; private set; } = "help";
-
-            /// <summary>
-            /// 命令参数。
-            /// </summary>
-            public IReadOnlyList<string> Arguments { get; private set; } = Array.Empty<string>();
-
-            /// <summary>
-            /// 可选 Config 目录。
-            /// </summary>
-            public string? ConfigDirectory { get; private set; }
-
-            /// <summary>
-            /// 解析命令行参数。
-            /// </summary>
-            /// <param name="args">原始命令行参数。</param>
-            /// <returns>解析完成的控制台参数。</returns>
-            public static ConsoleOptions Parse(string[] args)
+            if (System.Console.IsInputRedirected)
             {
-                var values = new List<string>();
-                string? configDirectory = null;
-
-                for (var index = 0; index < args.Length; index++)
-                {
-                    var value = args[index];
-                    if (string.Equals(value, "--config-dir", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (index + 1 >= args.Length)
-                        {
-                            throw new ArgumentException("--config-dir requires a directory path.");
-                        }
-
-                        configDirectory = args[index + 1];
-                        index++;
-                        continue;
-                    }
-
-                    values.Add(value);
-                }
-
-                var options = new ConsoleOptions
-                {
-                    ConfigDirectory = configDirectory
-                };
-
-                if (values.Count == 0)
-                {
-                    options.Command = "help";
-                    options.Arguments = Array.Empty<string>();
-                    return options;
-                }
-
-                options.Command = values[0].Trim().ToLowerInvariant();
-                values.RemoveAt(0);
-                options.Arguments = values.ToArray();
-                return options;
+                return;
             }
 
-            /// <summary>
-            /// 读取必填命令参数。
-            /// </summary>
-            /// <param name="index">参数索引。</param>
-            /// <param name="name">参数名称，用于错误提示。</param>
-            /// <returns>非空参数文本。</returns>
-            public string RequireArgument(int index, string name)
-            {
-                if (index >= Arguments.Count || string.IsNullOrWhiteSpace(Arguments[index]))
-                {
-                    throw new ArgumentException($"Command {Command} requires argument: {name}.");
-                }
-
-                return Arguments[index];
-            }
+            System.Console.WriteLine();
+            System.Console.WriteLine("Press any key to exit.");
+            System.Console.ReadKey(intercept: true);
         }
     }
 }

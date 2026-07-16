@@ -12,21 +12,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 启动模型部署 runtime。
         /// </summary>
-        public Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
+        public async Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "start",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -51,21 +51,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 停止模型部署 runtime。
         /// </summary>
-        public Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
+        public async Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "stop",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -90,21 +90,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 重置模型部署 runtime。
         /// </summary>
-        public Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
+        public async Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "reset",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -129,21 +129,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 预热模型部署 runtime。
         /// </summary>
-        public Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
+        public async Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Post,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "warmup",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -168,21 +168,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取模型部署 runtime 状态。
         /// </summary>
-        public Task<AMVisionApiResponse> GetModelDeploymentRuntimeStatusAsync(
+        public async Task<AMVisionApiResponse> GetModelDeploymentRuntimeStatusAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Get,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "status",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -207,21 +207,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取模型部署 runtime health。
         /// </summary>
-        public Task<AMVisionApiResponse> GetModelDeploymentRuntimeHealthAsync(
+        public async Task<AMVisionApiResponse> GetModelDeploymentRuntimeHealthAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = SendModelDeploymentRuntimeCommandAsync(
+            var apiResponse = await SendModelDeploymentRuntimeCommandAsync(
                 HttpMethod.Get,
                 taskType,
                 deploymentInstanceId,
                 runtimeMode,
                 "health",
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>

@@ -12,7 +12,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateWorkflowRunAsync(
+        public async Task<AMVisionApiResponse> CreateWorkflowRunAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -23,8 +23,12 @@ namespace Amvar.Vision
             }
             var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/runs";
             var requestBody = request.ToJson();
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, requestBody, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                requestBody,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -43,7 +47,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 image-base64.v1 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateWorkflowRunWithImageBase64Async(
+        public async Task<AMVisionApiResponse> CreateWorkflowRunWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -53,11 +57,11 @@ namespace Amvar.Vision
                 throw new ArgumentNullException(nameof(request));
             }
 
-            var responseTask = CreateWorkflowRunAsync(
+            var apiResponse = await CreateWorkflowRunAsync(
                 workflowRuntimeId,
                 request.ToWorkflowRuntimeInvokeRequest(),
-                cancellationToken);
-            return responseTask;
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -76,7 +80,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 multipart/form-data 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateWorkflowRunUploadAsync(
+        public async Task<AMVisionApiResponse> CreateWorkflowRunUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -88,8 +92,12 @@ namespace Amvar.Vision
 
             var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/runs/upload";
             var multipartContent = request.ToMultipartContent();
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, multipartContent, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                multipartContent,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -108,19 +116,23 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过通用 JSON 请求调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = InvokeWorkflowAppRuntimeAsync(workflowRuntimeId, request, WorkflowResponseModes.Run, cancellationToken);
-            return responseTask;
+            var apiResponse = await InvokeWorkflowAppRuntimeAsync(
+                workflowRuntimeId,
+                request,
+                WorkflowResponseModes.Run,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
         /// 通过通用 JSON 请求调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             string responseMode,
@@ -134,8 +146,12 @@ namespace Amvar.Vision
                 $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/invoke",
                 ("response_mode", WorkflowResponseModes.Normalize(responseMode)));
             var requestBody = request.ToJson();
-            var responseTask = SendAsync(HttpMethod.Post, path, requestBody, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                path,
+                requestBody,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -181,19 +197,23 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 image-base64.v1 方式调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = InvokeWorkflowAppRuntimeWithImageBase64Async(workflowRuntimeId, request, WorkflowResponseModes.Run, cancellationToken);
-            return responseTask;
+            var apiResponse = await InvokeWorkflowAppRuntimeWithImageBase64Async(
+                workflowRuntimeId,
+                request,
+                WorkflowResponseModes.Run,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
         /// 通过 image-base64.v1 方式调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             string responseMode,
@@ -203,12 +223,12 @@ namespace Amvar.Vision
             {
                 throw new ArgumentNullException(nameof(request));
             }
-            var responseTask = InvokeWorkflowAppRuntimeAsync(
+            var apiResponse = await InvokeWorkflowAppRuntimeAsync(
                 workflowRuntimeId,
                 request.ToWorkflowRuntimeInvokeRequest(),
                 responseMode,
-                cancellationToken);
-            return responseTask;
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -254,19 +274,23 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = InvokeWorkflowAppRuntimeUploadAsync(workflowRuntimeId, request, WorkflowResponseModes.Run, cancellationToken);
-            return responseTask;
+            var apiResponse = await InvokeWorkflowAppRuntimeUploadAsync(
+                workflowRuntimeId,
+                request,
+                WorkflowResponseModes.Run,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
         /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        public async Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             string responseMode,
@@ -281,8 +305,12 @@ namespace Amvar.Vision
                 $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/invoke/upload",
                 ("response_mode", WorkflowResponseModes.Normalize(responseMode)));
             var multipartContent = request.ToMultipartContent();
-            var responseTask = SendAsync(HttpMethod.Post, path, multipartContent, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                path,
+                multipartContent,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -328,18 +356,21 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 WorkflowRun，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<AMVisionApiResponse> GetWorkflowRunAsync(
+        public async Task<AMVisionApiResponse> GetWorkflowRunAsync(
             string workflowRunId,
             CancellationToken cancellationToken = default)
         {
-            var responseTask = GetWorkflowRunAsync(workflowRunId, WorkflowResponseModes.Run, cancellationToken);
-            return responseTask;
+            var apiResponse = await GetWorkflowRunAsync(
+                workflowRunId,
+                WorkflowResponseModes.Run,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
         /// 读取一条 WorkflowRun。
         /// </summary>
-        public Task<AMVisionApiResponse> GetWorkflowRunAsync(
+        public async Task<AMVisionApiResponse> GetWorkflowRunAsync(
             string workflowRunId,
             string responseMode,
             CancellationToken cancellationToken = default)
@@ -347,8 +378,12 @@ namespace Amvar.Vision
             var path = WithQuery(
                 $"{WorkflowApiPrefix}/runs/{EncodePathSegment(RequireId(workflowRunId, nameof(workflowRunId)))}",
                 ("response_mode", WorkflowResponseModes.Normalize(responseMode)));
-            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                path,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -391,7 +426,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 WorkflowRun 事件。
         /// </summary>
-        public Task<AMVisionApiResponse> GetWorkflowRunEventsAsync(
+        public async Task<AMVisionApiResponse> GetWorkflowRunEventsAsync(
             string workflowRunId,
             long? afterSequence = null,
             int? limit = null,
@@ -401,8 +436,12 @@ namespace Amvar.Vision
                 $"{WorkflowApiPrefix}/runs/{EncodePathSegment(RequireId(workflowRunId, nameof(workflowRunId)))}/events",
                 ("after_sequence", afterSequence),
                 ("limit", limit));
-            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                path,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -422,13 +461,17 @@ namespace Amvar.Vision
         /// <summary>
         /// 取消一条异步 WorkflowRun。
         /// </summary>
-        public Task<AMVisionApiResponse> CancelWorkflowRunAsync(
+        public async Task<AMVisionApiResponse> CancelWorkflowRunAsync(
             string workflowRunId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/runs/{EncodePathSegment(RequireId(workflowRunId, nameof(workflowRunId)))}/cancel";
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>

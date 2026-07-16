@@ -42,7 +42,7 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="catalog">配置索引。</param>
         /// <returns>已经绑定配置索引的 SDK client。</returns>
-        private static AMVisionClient CreateFromCatalog(WorkflowConfigurationCatalog catalog)
+        internal static AMVisionClient CreateFromCatalog(WorkflowConfigurationCatalog catalog)
         {
             if (catalog == null)
             {
@@ -80,7 +80,7 @@ namespace Amvar.Vision
         /// 获取当前 client 持有的配置索引。
         /// </summary>
         /// <returns>配置索引。</returns>
-        private WorkflowConfigurationCatalog RequireConfigurationCatalog()
+        internal WorkflowConfigurationCatalog RequireConfigurationCatalog()
         {
             if (configurationCatalog == null)
             {

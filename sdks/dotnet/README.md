@@ -115,14 +115,9 @@ public static class Example
 }
 ```
 
-Console 示例命令：
+Console 示例项目采用代码内手动调试方式，不再要求记忆命令行参数。打开 `apps/Amvar.Vision.Console/Program.cs` 后，只需要修改顶部的 `RuntimeName`、`TriggerSourceName`、`ModelDeploymentName`、`ImagePath` 等常量，并在 `MainAsync` 中保留一个实际调用块即可。
 
-```powershell
-.\Amvar.Vision.Console.exe health
-.\Amvar.Vision.Console.exe runtime-invoke tray-empty-runtime
-.\Amvar.Vision.Console.exe model-invoke-image slot-classifier .\images\slot.jpg
-.\Amvar.Vision.Console.exe trigger-bgr24-file zeromq-tray-empty .\images\tray.jpg
-```
+默认运行只执行 `GetSystemConfigResponseAsync`，用于确认 `Config/config*.json` 和 backend-service 连接正常。Workflow runtime、Model deployment、ZeroMQ image bytes、ZeroMQ BGR24 等调用都在同一个方法中以示例代码块保留，第三方开发者可以直接按自己的业务选择对应方法复制到项目中。
 
 ## 后续框架版本
 

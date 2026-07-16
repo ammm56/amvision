@@ -11,7 +11,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 JSON 请求执行模型部署同步推理。
         /// </summary>
-        public Task<AMVisionApiResponse> InferModelDeploymentAsync(
+        public async Task<AMVisionApiResponse> InferModelDeploymentAsync(
             string taskType,
             string deploymentInstanceId,
             ModelDeploymentInferenceRequest request,
@@ -25,13 +25,13 @@ namespace Amvar.Vision
             request.ValidateForDirectInference();
             var requestPath = BuildModelDeploymentInferencePath(taskType, deploymentInstanceId);
             var requestJson = SerializeJson(request);
-            var responseTask = SendAsync(
+            var apiResponse = await SendAsync(
                 HttpMethod.Post,
                 requestPath,
                 requestJson,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -56,20 +56,20 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 image_base64 执行模型部署同步推理。
         /// </summary>
-        public Task<AMVisionApiResponse> InferModelDeploymentWithImageBase64Async(
+        public async Task<AMVisionApiResponse> InferModelDeploymentWithImageBase64Async(
             string taskType,
             string deploymentInstanceId,
             string imageBase64,
             CancellationToken cancellationToken = default)
         {
             var request = ModelDeploymentInferenceRequest.FromBase64(imageBase64);
-            var responseTask = InferModelDeploymentAsync(
+            var apiResponse = await InferModelDeploymentAsync(
                 taskType,
                 deploymentInstanceId,
                 request,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 multipart/form-data 上传图片执行模型部署同步推理。
         /// </summary>
-        public Task<AMVisionApiResponse> InferModelDeploymentUploadAsync(
+        public async Task<AMVisionApiResponse> InferModelDeploymentUploadAsync(
             string taskType,
             string deploymentInstanceId,
             ModelDeploymentInferenceUploadRequest request,
@@ -107,13 +107,13 @@ namespace Amvar.Vision
 
             var requestPath = BuildModelDeploymentInferencePath(taskType, deploymentInstanceId);
             var multipartContent = request.ToDirectInferenceContent();
-            var responseTask = SendAsync(
+            var apiResponse = await SendAsync(
                 HttpMethod.Post,
                 requestPath,
                 multipartContent,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -138,7 +138,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用图片 bytes 执行模型部署同步推理。
         /// </summary>
-        public Task<AMVisionApiResponse> InferModelDeploymentWithImageBytesAsync(
+        public async Task<AMVisionApiResponse> InferModelDeploymentWithImageBytesAsync(
             string taskType,
             string deploymentInstanceId,
             byte[] imageBytes,
@@ -147,13 +147,13 @@ namespace Amvar.Vision
             CancellationToken cancellationToken = default)
         {
             var uploadRequest = ModelDeploymentInferenceUploadRequest.FromBytes(imageBytes, fileName, mediaType);
-            var responseTask = InferModelDeploymentUploadAsync(
+            var apiResponse = await InferModelDeploymentUploadAsync(
                 taskType,
                 deploymentInstanceId,
                 uploadRequest,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用本机图片文件执行模型部署同步推理。
         /// </summary>
-        public Task<AMVisionApiResponse> InferModelDeploymentWithImageFileAsync(
+        public async Task<AMVisionApiResponse> InferModelDeploymentWithImageFileAsync(
             string taskType,
             string deploymentInstanceId,
             string filePath,
@@ -190,13 +190,13 @@ namespace Amvar.Vision
             CancellationToken cancellationToken = default)
         {
             var uploadRequest = ModelDeploymentInferenceUploadRequest.FromFile(filePath, mediaType);
-            var responseTask = InferModelDeploymentUploadAsync(
+            var apiResponse = await InferModelDeploymentUploadAsync(
                 taskType,
                 deploymentInstanceId,
                 uploadRequest,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -223,7 +223,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 JSON 请求创建模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateModelInferenceTaskAsync(
+        public async Task<AMVisionApiResponse> CreateModelInferenceTaskAsync(
             string taskType,
             ModelDeploymentInferenceRequest request,
             CancellationToken cancellationToken = default)
@@ -236,13 +236,13 @@ namespace Amvar.Vision
             request.ValidateForInferenceTask();
             var requestPath = BuildModelInferenceTasksPath(taskType);
             var requestJson = SerializeJson(request);
-            var responseTask = SendAsync(
+            var apiResponse = await SendAsync(
                 HttpMethod.Post,
                 requestPath,
                 requestJson,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -265,7 +265,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 multipart/form-data 上传图片创建模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateModelInferenceTaskUploadAsync(
+        public async Task<AMVisionApiResponse> CreateModelInferenceTaskUploadAsync(
             string taskType,
             ModelDeploymentInferenceUploadRequest request,
             CancellationToken cancellationToken = default)
@@ -277,13 +277,13 @@ namespace Amvar.Vision
 
             var requestPath = BuildModelInferenceTasksPath(taskType);
             var multipartContent = request.ToInferenceTaskContent();
-            var responseTask = SendAsync(
+            var apiResponse = await SendAsync(
                 HttpMethod.Post,
                 requestPath,
                 multipartContent,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>
@@ -306,7 +306,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用 image_base64 创建模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageBase64Async(
+        public async Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageBase64Async(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -316,8 +316,11 @@ namespace Amvar.Vision
             var request = ModelDeploymentInferenceRequest.FromBase64(imageBase64);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            var responseTask = CreateModelInferenceTaskAsync(taskType, request, cancellationToken);
-            return responseTask;
+            var apiResponse = await CreateModelInferenceTaskAsync(
+                taskType,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -344,7 +347,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用图片 bytes 创建模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageBytesAsync(
+        public async Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageBytesAsync(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -356,8 +359,11 @@ namespace Amvar.Vision
             var request = ModelDeploymentInferenceUploadRequest.FromBytes(imageBytes, fileName, mediaType);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            var responseTask = CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
-            return responseTask;
+            var apiResponse = await CreateModelInferenceTaskUploadAsync(
+                taskType,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -388,7 +394,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 使用本机图片文件创建模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageFileAsync(
+        public async Task<AMVisionApiResponse> CreateModelInferenceTaskWithImageFileAsync(
             string taskType,
             string projectId,
             string deploymentInstanceId,
@@ -399,8 +405,11 @@ namespace Amvar.Vision
             var request = ModelDeploymentInferenceUploadRequest.FromFile(filePath, mediaType);
             request.ProjectId = projectId;
             request.DeploymentInstanceId = deploymentInstanceId;
-            var responseTask = CreateModelInferenceTaskUploadAsync(taskType, request, cancellationToken);
-            return responseTask;
+            var apiResponse = await CreateModelInferenceTaskUploadAsync(
+                taskType,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -429,7 +438,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条模型异步推理任务。
         /// </summary>
-        public Task<AMVisionApiResponse> GetModelInferenceTaskAsync(
+        public async Task<AMVisionApiResponse> GetModelInferenceTaskAsync(
             string taskType,
             string inferenceTaskId,
             bool includeEvents = false,
@@ -438,8 +447,12 @@ namespace Amvar.Vision
             var path = WithQuery(
                 $"{BuildModelInferenceTasksPath(taskType)}/{EncodePathSegment(RequireId(inferenceTaskId, nameof(inferenceTaskId)))}",
                 ("include_events", includeEvents));
-            var apiResponseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
-            return apiResponseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                path,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -464,19 +477,19 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条模型异步推理任务结果。
         /// </summary>
-        public Task<AMVisionApiResponse> GetModelInferenceTaskResultAsync(
+        public async Task<AMVisionApiResponse> GetModelInferenceTaskResultAsync(
             string taskType,
             string inferenceTaskId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{BuildModelInferenceTasksPath(taskType)}/{EncodePathSegment(RequireId(inferenceTaskId, nameof(inferenceTaskId)))}/result";
-            var responseTask = SendAsync(
+            var apiResponse = await SendAsync(
                 HttpMethod.Get,
                 requestPath,
                 content: null,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
-            return responseTask;
+            return apiResponse;
         }
 
         /// <summary>

@@ -12,7 +12,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 按 Project id 列出 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> ListTriggerSourcesAsync(
+        public async Task<AMVisionApiResponse> ListTriggerSourcesAsync(
             string projectId,
             int offset = 0,
             int limit = 100,
@@ -23,8 +23,12 @@ namespace Amvar.Vision
                 ("project_id", RequireId(projectId, nameof(projectId))),
                 ("offset", offset),
                 ("limit", limit));
-            var responseTask = SendAsync(HttpMethod.Get, path, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                path,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -44,13 +48,17 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> GetTriggerSourceAsync(
+        public async Task<AMVisionApiResponse> GetTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}";
-            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -68,14 +76,18 @@ namespace Amvar.Vision
         /// <summary>
         /// 创建一条 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> CreateTriggerSourceAsync(
+        public async Task<AMVisionApiResponse> CreateTriggerSourceAsync(
             WorkflowTriggerSourceCreateRequest request,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources";
             var requestBody = SerializeJson(request);
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, requestBody, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                requestBody,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -93,13 +105,17 @@ namespace Amvar.Vision
         /// <summary>
         /// 启用一条 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> EnableTriggerSourceAsync(
+        public async Task<AMVisionApiResponse> EnableTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/enable";
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -117,13 +133,17 @@ namespace Amvar.Vision
         /// <summary>
         /// 停用一条 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> DisableTriggerSourceAsync(
+        public async Task<AMVisionApiResponse> DisableTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/disable";
-            var responseTask = SendAsync(HttpMethod.Post, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
@@ -141,25 +161,33 @@ namespace Amvar.Vision
         /// <summary>
         /// 删除一条 TriggerSource。
         /// </summary>
-        public Task<AMVisionApiResponse> DeleteTriggerSourceAsync(
+        public async Task<AMVisionApiResponse> DeleteTriggerSourceAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}";
-            var responseTask = SendAsync(HttpMethod.Delete, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Delete,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
         /// 查询一条 TriggerSource 的当前 health。
         /// </summary>
-        public Task<AMVisionApiResponse> GetTriggerSourceHealthAsync(
+        public async Task<AMVisionApiResponse> GetTriggerSourceHealthAsync(
             string triggerSourceId,
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{WorkflowApiPrefix}/trigger-sources/{EncodePathSegment(RequireId(triggerSourceId, nameof(triggerSourceId)))}/health";
-            var responseTask = SendAsync(HttpMethod.Get, requestPath, content: null, cancellationToken);
-            return responseTask;
+            var apiResponse = await SendAsync(
+                HttpMethod.Get,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+            return apiResponse;
         }
 
         /// <summary>
