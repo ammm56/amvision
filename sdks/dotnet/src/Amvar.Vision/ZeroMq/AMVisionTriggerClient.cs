@@ -13,7 +13,7 @@ namespace Amvar.Vision
     /// <summary>
     /// 用于向 Amvar Vision ZeroMQ TriggerSource 发送事件或图片的客户端。
     /// </summary>
-    public sealed class VisionTriggerClient : IDisposable
+    public sealed class AMVisionTriggerClient : IDisposable
     {
         /// <summary>
         /// backend-service 返回的 TriggerResult format_id。
@@ -29,7 +29,7 @@ namespace Amvar.Vision
         /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
         /// </summary>
         private readonly object syncRoot = new object();
-        private readonly VisionTriggerClientOptions options;
+        private readonly AMVisionTriggerClientOptions options;
         private readonly IZeroMqRequestTransport transport;
         private readonly bool ownsTransport;
         private bool disposed;
@@ -38,7 +38,7 @@ namespace Amvar.Vision
         /// 使用 NetMQ transport 初始化 TriggerSource 客户端。
         /// </summary>
         /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
-        public VisionTriggerClient(VisionTriggerClientOptions options)
+        public AMVisionTriggerClient(AMVisionTriggerClientOptions options)
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
             this.options.Validate(requireEndpoint: true);
@@ -51,7 +51,7 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="options">客户端连接和默认 TriggerSource 参数。</param>
         /// <param name="transport">用于测试或自定义通信的 transport。</param>
-        public VisionTriggerClient(VisionTriggerClientOptions options, IZeroMqRequestTransport transport)
+        public AMVisionTriggerClient(AMVisionTriggerClientOptions options, IZeroMqRequestTransport transport)
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
             this.options.Validate(requireEndpoint: false);
@@ -79,7 +79,7 @@ namespace Amvar.Vision
                     replyFrames = transport.Send(requestFrames, options.Timeout);
                 }
             }
-            catch (VisionTriggerException)
+            catch (AMVisionTriggerException)
             {
                 throw;
             }
@@ -135,7 +135,7 @@ namespace Amvar.Vision
                     replyFrames = transport.Send(requestFrames, options.Timeout);
                 }
             }
-            catch (VisionTriggerException)
+            catch (AMVisionTriggerException)
             {
                 throw;
             }
@@ -227,7 +227,7 @@ namespace Amvar.Vision
         {
             if (replyFrames.Count == 0)
             {
-                throw new VisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply is empty.");
+                throw new AMVisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply is empty.");
             }
 
             var json = Encoding.UTF8.GetString(replyFrames[0]);
@@ -238,7 +238,7 @@ namespace Amvar.Vision
             }
             catch (JsonException exception)
             {
-                throw new VisionTriggerException(
+                throw new AMVisionTriggerException(
                     "invalid_reply",
                     "ZeroMQ TriggerSource reply is not valid JSON.",
                     null,
@@ -250,7 +250,7 @@ namespace Amvar.Vision
             if (formatId == ZeroMqErrorFormatId || root["error_code"] != null)
             {
                 var error = WorkflowJsonDefaults.Deserialize<ZeroMqTriggerError>(json);
-                throw new VisionTriggerException(
+                throw new AMVisionTriggerException(
                     error?.ErrorCode ?? "trigger_error",
                     error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
                     error?.Details
@@ -260,12 +260,12 @@ namespace Amvar.Vision
             var result = WorkflowJsonDefaults.Deserialize<TriggerResult>(json);
             if (result is null)
             {
-                throw new VisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");
+                throw new AMVisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");
             }
 
             if (result.FormatId != TriggerResultFormatId)
             {
-                throw new VisionTriggerException(
+                throw new AMVisionTriggerException(
                     "invalid_reply",
                     $"Unexpected TriggerResult format_id: {result.FormatId}."
                 );
@@ -302,7 +302,7 @@ namespace Amvar.Vision
         {
             if (disposed)
             {
-                throw new ObjectDisposedException(nameof(VisionTriggerClient));
+                throw new ObjectDisposedException(nameof(AMVisionTriggerClient));
             }
         }
 
@@ -443,7 +443,7 @@ namespace Amvar.Vision
         /// <param name="payloadKind">触发 payload 类型。</param>
         /// <param name="exception">底层异常。</param>
         /// <returns>包含调用上下文的 TriggerSource 异常。</returns>
-        private VisionTriggerException CreateTransportException(string payloadKind, Exception exception)
+        private AMVisionTriggerException CreateTransportException(string payloadKind, Exception exception)
         {
             var details = new Dictionary<string, JToken>
             {
@@ -453,7 +453,7 @@ namespace Amvar.Vision
                 ["exception_type"] = JToken.FromObject(exception.GetType().FullName ?? exception.GetType().Name)
             };
 
-            var triggerException = new VisionTriggerException(
+            var triggerException = new AMVisionTriggerException(
                 "transport_error",
                 "ZeroMQ TriggerSource 调用失败。",
                 details,

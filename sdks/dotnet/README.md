@@ -56,13 +56,13 @@ public static class Example
 {
     public static async Task Main()
     {
-        var options = new VisionClientOptions
+        var options = new AMVisionClientOptions
         {
             BaseApiUrl = "http://127.0.0.1:8000",
             AccessToken = "amvision-default-user-token"
         };
 
-        using (var client = new VisionClient(options))
+        using (var client = new AMVisionClient(options))
         {
             var config = await client.GetSystemConfigResponseAsync().ConfigureAwait(false);
             Console.WriteLine(config.FormatId);

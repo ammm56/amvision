@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class VisionClient
+    public sealed partial class AMVisionClient
     {
         /// <summary>
         /// 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<VisionApiResponse> CreateWorkflowRunAsync(
+        public Task<AMVisionApiResponse> CreateWorkflowRunAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -43,7 +43,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 image-base64.v1 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<VisionApiResponse> CreateWorkflowRunWithImageBase64Async(
+        public Task<AMVisionApiResponse> CreateWorkflowRunWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -76,7 +76,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 multipart/form-data 创建一条异步 WorkflowRun。
         /// </summary>
-        public Task<VisionApiResponse> CreateWorkflowRunUploadAsync(
+        public Task<AMVisionApiResponse> CreateWorkflowRunUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -108,7 +108,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过通用 JSON 请求调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -120,7 +120,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过通用 JSON 请求调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             WorkflowRuntimeInvokeRequest request,
             string responseMode,
@@ -181,7 +181,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 image-base64.v1 方式调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -193,7 +193,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 image-base64.v1 方式调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeWithImageBase64Async(
             string workflowRuntimeId,
             WorkflowRuntimeImageInvokeRequest request,
             string responseMode,
@@ -254,7 +254,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             CancellationToken cancellationToken = default)
@@ -266,7 +266,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 通过 multipart/form-data 同步调用 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
+        public Task<AMVisionApiResponse> InvokeWorkflowAppRuntimeUploadAsync(
             string workflowRuntimeId,
             WorkflowRuntimeMultipartInvokeRequest request,
             string responseMode,
@@ -328,7 +328,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 WorkflowRun，默认返回 WorkflowRun 运行回执。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowRunAsync(
+        public Task<AMVisionApiResponse> GetWorkflowRunAsync(
             string workflowRunId,
             CancellationToken cancellationToken = default)
         {
@@ -339,7 +339,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 WorkflowRun。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowRunAsync(
+        public Task<AMVisionApiResponse> GetWorkflowRunAsync(
             string workflowRunId,
             string responseMode,
             CancellationToken cancellationToken = default)
@@ -391,7 +391,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 WorkflowRun 事件。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowRunEventsAsync(
+        public Task<AMVisionApiResponse> GetWorkflowRunEventsAsync(
             string workflowRunId,
             long? afterSequence = null,
             int? limit = null,
@@ -422,7 +422,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 取消一条异步 WorkflowRun。
         /// </summary>
-        public Task<VisionApiResponse> CancelWorkflowRunAsync(
+        public Task<AMVisionApiResponse> CancelWorkflowRunAsync(
             string workflowRunId,
             CancellationToken cancellationToken = default)
         {

@@ -6,7 +6,7 @@ namespace Amvar.Vision
     /// <summary>
     /// backend-service HTTP 请求在网络、超时或客户端发送阶段失败时抛出的 SDK 异常。
     /// </summary>
-    public sealed class VisionTransportException : Exception
+    public sealed class AMVisionTransportException : Exception
     {
         /// <summary>
         /// 初始化传输层异常。
@@ -15,7 +15,7 @@ namespace Amvar.Vision
         /// <param name="method">HTTP method。</param>
         /// <param name="requestPath">请求相对路径。</param>
         /// <param name="innerException">底层异常。</param>
-        public VisionTransportException(
+        public AMVisionTransportException(
             string message,
             HttpMethod method,
             string requestPath,

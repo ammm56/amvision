@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class VisionClient
+    public sealed partial class AMVisionClient
     {
         /// <summary>
         /// 创建 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> CreateWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> CreateWorkflowAppRuntimeAsync(
             WorkflowAppRuntimeCreateRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -37,7 +37,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 按 Project id 列出 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> ListWorkflowAppRuntimesAsync(
+        public Task<AMVisionApiResponse> ListWorkflowAppRuntimesAsync(
             string projectId,
             int offset = 0,
             int limit = 100,
@@ -69,7 +69,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取一条 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> GetWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -93,7 +93,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 WorkflowAppRuntime 事件。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowAppRuntimeEventsAsync(
+        public Task<AMVisionApiResponse> GetWorkflowAppRuntimeEventsAsync(
             string workflowRuntimeId,
             long? afterSequence = null,
             int? limit = null,
@@ -124,7 +124,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 启动一个 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> StartWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> StartWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -148,7 +148,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 停止一个 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> StopWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> StopWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -172,7 +172,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 重启一个 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> RestartWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> RestartWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -196,7 +196,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 查询一个 WorkflowAppRuntime 的当前 health。
         /// </summary>
-        public Task<VisionApiResponse> GetWorkflowAppRuntimeHealthAsync(
+        public Task<AMVisionApiResponse> GetWorkflowAppRuntimeHealthAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -220,7 +220,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 列出一个 WorkflowAppRuntime 的 worker instances。
         /// </summary>
-        public Task<VisionApiResponse> ListWorkflowAppRuntimeInstancesAsync(
+        public Task<AMVisionApiResponse> ListWorkflowAppRuntimeInstancesAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {
@@ -244,7 +244,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 删除一条 WorkflowAppRuntime。
         /// </summary>
-        public Task<VisionApiResponse> DeleteWorkflowAppRuntimeAsync(
+        public Task<AMVisionApiResponse> DeleteWorkflowAppRuntimeAsync(
             string workflowRuntimeId,
             CancellationToken cancellationToken = default)
         {

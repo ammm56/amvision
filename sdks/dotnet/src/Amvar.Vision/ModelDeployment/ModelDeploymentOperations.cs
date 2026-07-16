@@ -14,7 +14,7 @@ internal sealed partial class ModelDeploymentOperations
     /// <summary>
     /// 复用的 HTTP SDK client。
     /// </summary>
-    private readonly VisionClient client;
+    private readonly AMVisionClient client;
 
     /// <summary>
     /// runtime、TriggerSource 和模型 deployment 配置索引。
@@ -26,7 +26,7 @@ internal sealed partial class ModelDeploymentOperations
     /// </summary>
     /// <param name="client">HTTP SDK client。</param>
     /// <param name="catalog">配置 catalog。</param>
-    public ModelDeploymentOperations(VisionClient client, WorkflowConfigurationCatalog catalog)
+    public ModelDeploymentOperations(AMVisionClient client, WorkflowConfigurationCatalog catalog)
     {
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));

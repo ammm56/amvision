@@ -5,14 +5,14 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class VisionClient
+    public sealed partial class AMVisionClient
     {
         private const string SystemApiPrefix = "api/v1/system";
 
         /// <summary>
         /// 读取 backend-service 已解析的统一配置快照。
         /// </summary>
-        public Task<VisionApiResponse> GetSystemConfigAsync(
+        public Task<AMVisionApiResponse> GetSystemConfigAsync(
             CancellationToken cancellationToken = default)
         {
             var requestPath = $"{SystemApiPrefix}/config";

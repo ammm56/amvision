@@ -11,12 +11,12 @@ namespace Amvar.Vision
     /// <summary>
     /// Amvar Vision HTTP SDK 客户端，负责封装后端 REST API 调用、认证、响应解析和传输异常处理。
     /// </summary>
-    public sealed partial class VisionClient
+    public sealed partial class AMVisionClient
     {
         /// <summary>
         /// 发送一条 HTTP 管理 API 请求。
         /// </summary>
-        private async Task<VisionApiResponse> SendAsync(
+        private async Task<AMVisionApiResponse> SendAsync(
             HttpMethod method,
             string relativePath,
             string? content,
@@ -35,7 +35,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 发送一条带自定义 HTTP content 的管理 API 请求。
         /// </summary>
-        private async Task<VisionApiResponse> SendAsync(
+        private async Task<AMVisionApiResponse> SendAsync(
             HttpMethod method,
             string relativePath,
             HttpContent? httpContent,
@@ -55,7 +55,7 @@ namespace Amvar.Vision
             {
                 using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 var responseText = await ReadResponseTextAsync(response).ConfigureAwait(false);
-                var apiResponse = VisionApiResponse.Create(
+                var apiResponse = AMVisionApiResponse.Create(
                     response.StatusCode,
                     responseText,
                     method.Method,
@@ -64,7 +64,7 @@ namespace Amvar.Vision
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new VisionTransportException(
+                throw new AMVisionTransportException(
                     "Amvar Vision HTTP 请求超时。",
                     method,
                     relativePath,
@@ -72,7 +72,7 @@ namespace Amvar.Vision
             }
             catch (HttpRequestException ex)
             {
-                throw new VisionTransportException(
+                throw new AMVisionTransportException(
                     "Amvar Vision HTTP 请求失败。",
                     method,
                     relativePath,
@@ -80,7 +80,7 @@ namespace Amvar.Vision
             }
             catch (InvalidOperationException ex)
             {
-                throw new VisionTransportException(
+                throw new AMVisionTransportException(
                     "Amvar Vision HTTP 请求配置无效。",
                     method,
                     relativePath,
@@ -103,7 +103,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 typed JSON 响应。
         /// </summary>
-        private static T ReadJson<T>(VisionApiResponse response)
+        private static T ReadJson<T>(AMVisionApiResponse response)
         {
             if (response is null)
             {
@@ -117,7 +117,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取 typed JSON 数组响应。
         /// </summary>
-        private static IReadOnlyList<T> ReadJsonList<T>(VisionApiResponse response)
+        private static IReadOnlyList<T> ReadJsonList<T>(AMVisionApiResponse response)
         {
             if (response is null)
             {
@@ -167,7 +167,7 @@ namespace Amvar.Vision
         {
             if (disposed)
             {
-                throw new ObjectDisposedException(nameof(VisionClient));
+                throw new ObjectDisposedException(nameof(AMVisionClient));
             }
         }
 

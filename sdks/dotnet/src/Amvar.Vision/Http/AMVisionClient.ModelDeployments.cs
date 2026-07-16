@@ -5,14 +5,14 @@ using System.Threading.Tasks;
 namespace Amvar.Vision
 {
 
-    public sealed partial class VisionClient
+    public sealed partial class AMVisionClient
     {
         private const string ModelApiPrefix = "api/v1/models";
 
         /// <summary>
         /// 启动模型部署 runtime。
         /// </summary>
-        public Task<VisionApiResponse> StartModelDeploymentRuntimeAsync(
+        public Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -51,7 +51,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 停止模型部署 runtime。
         /// </summary>
-        public Task<VisionApiResponse> StopModelDeploymentRuntimeAsync(
+        public Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -90,7 +90,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 重置模型部署 runtime。
         /// </summary>
-        public Task<VisionApiResponse> ResetModelDeploymentRuntimeAsync(
+        public Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -129,7 +129,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 预热模型部署 runtime。
         /// </summary>
-        public Task<VisionApiResponse> WarmupModelDeploymentRuntimeAsync(
+        public Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -168,7 +168,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取模型部署 runtime 状态。
         /// </summary>
-        public Task<VisionApiResponse> GetModelDeploymentRuntimeStatusAsync(
+        public Task<AMVisionApiResponse> GetModelDeploymentRuntimeStatusAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -207,7 +207,7 @@ namespace Amvar.Vision
         /// <summary>
         /// 读取模型部署 runtime health。
         /// </summary>
-        public Task<VisionApiResponse> GetModelDeploymentRuntimeHealthAsync(
+        public Task<AMVisionApiResponse> GetModelDeploymentRuntimeHealthAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -243,7 +243,7 @@ namespace Amvar.Vision
             return typedResponse;
         }
 
-        private async Task<VisionApiResponse> SendModelDeploymentRuntimeCommandAsync(
+        private async Task<AMVisionApiResponse> SendModelDeploymentRuntimeCommandAsync(
             HttpMethod method,
             string taskType,
             string deploymentInstanceId,
