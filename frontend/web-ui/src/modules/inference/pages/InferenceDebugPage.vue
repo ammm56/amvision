@@ -291,7 +291,7 @@ const imageFile = ref<File | null>(null)
 const inputTransportMode = ref<'storage' | 'memory'>('memory')
 const scoreThreshold = ref(0.3)
 const saveResultImage = ref(false)
-const returnPreviewBase64 = ref(false)
+const returnPreviewBase64 = ref(true)
 const displayName = ref('')
 
 const directInferenceResult = ref<TaskInferencePayload | null>(null)

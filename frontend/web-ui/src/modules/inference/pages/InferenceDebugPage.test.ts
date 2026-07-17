@@ -74,7 +74,7 @@ describe('InferenceDebugPage', () => {
     vi.mocked(inferTaskDeployment).mockResolvedValue({} as never)
   })
 
-  it('submits memory transport without saving or returning a preview by default', async () => {
+  it('submits memory transport without saving and returns a preview by default', async () => {
     const wrapper = mount(InferenceDebugPage, {
       global: {
         plugins: [pinia, i18n],
@@ -83,7 +83,7 @@ describe('InferenceDebugPage', () => {
     })
     await flushPromises()
 
-    expect(wrapper.findAll('input[type="checkbox"]').map((checkbox) => (checkbox.element as HTMLInputElement).checked)).toEqual([false, false])
+    expect(wrapper.findAll('input[type="checkbox"]').map((checkbox) => (checkbox.element as HTMLInputElement).checked)).toEqual([false, true])
     expect(wrapper.findAll('.ui-select__value').some((value) => value.text() === 'memory')).toBe(true)
 
     await wrapper.find('input[placeholder="project/files/image.jpg"]').setValue('project/files/input.jpg')
@@ -93,7 +93,7 @@ describe('InferenceDebugPage', () => {
     expect(inferTaskDeployment).toHaveBeenCalledWith(expect.objectContaining({
       inputTransportMode: 'memory',
       saveResultImage: false,
-      returnPreviewImageBase64: false,
+      returnPreviewImageBase64: true,
     }))
   })
 })
