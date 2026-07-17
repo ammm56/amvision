@@ -32,9 +32,9 @@ namespace AMVision.Console
         /// <summary>
         /// 直接按后端资源 id 调用时使用；与 name 调用入口严格分开。
         /// </summary>
+        private const string DeploymentInstanceId = "deployment-instance-8a186ddbab564e86a1649c16965ffa0f";
         private const string WorkflowRuntimeId = "workflow-runtime-768e3187953642e9a5a85353ffd96881";
         private const string TriggerSourceId = "zeromq-workflow-runtime-768e3187953642e9a5a85353ffd96881";
-        private const string DeploymentInstanceId = "deployment-instance-8a186ddbab564e86a1649c16965ffa0f";
         private const string SyncRuntimeMode = "sync";
 
         /// <summary>
@@ -107,18 +107,18 @@ namespace AMVision.Console
                 //var systemConfig = await runner.GetSystemConfigResponseAsync(cancellationToken).ConfigureAwait(false);
 
                 // Model deployment 查询和管理。
+                var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
                 var deploymentStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
                 var deploymentHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentStartSucceeded = deploymentStart.IsSuccessStatusCode;
-                //var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                //var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
                 //var deploymentReset = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+
 
                 // Model deployment 同步推理
                 //var deploymentInvoke = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
                 //var deploymentInvokeByBase64 = await runner.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken).ConfigureAwait(false);
-                //var deploymentInvokeByBytes = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
+                var deploymentInvokeByBytes = await runner.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken).ConfigureAwait(false);
                 //var deploymentInvokeByFile = await runner.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken).ConfigureAwait(false);
                 //var deploymentInvokeByInputFileId = await runner.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken).ConfigureAwait(false);
                 //var deploymentInvokeByInputUri = await runner.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken).ConfigureAwait(false);
@@ -134,7 +134,7 @@ namespace AMVision.Console
                 //var modelInferenceTaskResult = await runner.GetModelInferenceTaskResultAsync(ModelDeploymentName, ModelInferenceTaskId, cancellationToken).ConfigureAwait(false);
 
                 // Model deployment 直接按 deployment_instance_id 调用；同步、异步配置不会互相猜测。
-                //var deploymentStatusById = await runner.GetModelDeploymentRuntimeStatusByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken).ConfigureAwait(false);
+                var deploymentStatusById = await runner.GetModelDeploymentRuntimeStatusByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken).ConfigureAwait(false);
                 //var deploymentHealthById = await runner.GetModelDeploymentRuntimeHealthByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken).ConfigureAwait(false);
                 //var deploymentStartById = await runner.StartModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken).ConfigureAwait(false);
                 //var deploymentStopById = await runner.StopModelDeploymentRuntimeByIdAsync(DeploymentInstanceId, SyncRuntimeMode, cancellationToken).ConfigureAwait(false);
