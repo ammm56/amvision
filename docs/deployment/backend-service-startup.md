@@ -96,19 +96,19 @@
       {
         "pool_name": "image-4k",
         "slot_size_bytes": 134217728,
-        "slot_count": 32,
+        "slot_count": 16,
         "flush_on_write": false
       },
       {
         "pool_name": "image-1080p",
         "slot_size_bytes": 16777216,
-        "slot_count": 32,
+        "slot_count": 16,
         "flush_on_write": false
       },
       {
         "pool_name": "image-640x640",
         "slot_size_bytes": 4194304,
-        "slot_count": 32,
+        "slot_count": 16,
         "flush_on_write": false
       }
     ]
@@ -169,7 +169,8 @@
 - `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-4k`
 - `local_buffer_broker.pools` 应按现场相机分辨率、图像编码方式和并发量显式配置；`slot_size_bytes` 必须大于单帧最大 bytes，`slot_count` 是可同时占用的槽位数量
 - 仓库默认创建 `image-4k`、`image-1080p` 和 `image-640x640` 三个 pool；`image-4k` 单槽 128MB 用于 5000x4000 级 20MP 工业相机 raw RGB/RGBA 输入；mmap 文件名按 `pool_name` 自动生成，总容量按 `slot_size_bytes * slot_count` 自动计算
-- `image-8k` 单槽 256MB、32 个槽位，仅作为现场可选大图 pool；需要更高分辨率、更多通道或相机专用大图输入时，手动把 `{"pool_name":"image-8k","slot_size_bytes":268435456,"slot_count":32,"flush_on_write":false}` 加到 `local_buffer_broker.pools`
+- 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件
+- `image-8k` 单槽 256MB、默认 16 个槽位，仅作为现场可选大图 pool；需要更高分辨率、更多通道或相机专用大图输入时，手动把 `{"pool_name":"image-8k","slot_size_bytes":268435456,"slot_count":16,"flush_on_write":false}` 加到 `local_buffer_broker.pools`
 - `local_buffer_broker.startup_timeout_seconds` 默认 60 秒；大 pool 首次创建和 mmap 可能超过原 5 秒，尤其是 Windows 和机械硬盘环境
 - `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`，仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略
 - ZeroMQ TriggerSource 可以通过 `transport_config.pool_name` 选择目标 pool；不配置时使用 `local_buffer_broker.default_pool_name`

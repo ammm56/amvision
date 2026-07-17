@@ -105,32 +105,30 @@ def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
     assert settings.default_pool_name == "image-4k"
     assert default_pool.slot_size_bytes >= 128 * 1024 * 1024
     assert default_pool.slot_size_bytes > raw_20mp_rgba_bytes
-    assert default_pool.slot_count >= 32
+    assert default_pool.slot_count == 16
     assert default_pool.file_size_bytes == default_pool.slot_size_bytes * default_pool.slot_count
     assert default_pool.flush_on_write is False
     assert set(pools) == {"image-4k"}
 
 
 @pytest.mark.parametrize(
-    ("pool_name", "minimum_slot_size_bytes", "minimum_slot_count"),
+    ("pool_name", "minimum_slot_size_bytes"),
     (
-        ("image-640x640", 4 * 1024 * 1024, 32),
-        ("image-1080p", 16 * 1024 * 1024, 32),
-        ("image-4k", 128 * 1024 * 1024, 32),
-        ("image-8k", 256 * 1024 * 1024, 32),
+        ("image-640x640", 4 * 1024 * 1024),
+        ("image-1080p", 16 * 1024 * 1024),
+        ("image-4k", 128 * 1024 * 1024),
+        ("image-8k", 256 * 1024 * 1024),
     ),
 )
 def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     pool_name: str,
     minimum_slot_size_bytes: int,
-    minimum_slot_count: int,
 ) -> None:
     """验证配置 default_pool_name 可以选择内置 pool preset。
 
     参数：
     - pool_name：待选择的内置 pool 名称。
     - minimum_slot_size_bytes：预期最小单槽字节数。
-    - minimum_slot_count：预期最小槽位数量。
     """
 
     settings = LocalBufferBrokerSettings(default_pool_name=pool_name)
@@ -140,9 +138,29 @@ def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     assert settings.default_pool_name == pool_name
     assert set(pools) == {pool_name}
     assert selected_pool.slot_size_bytes >= minimum_slot_size_bytes
-    assert selected_pool.slot_count >= minimum_slot_count
+    assert selected_pool.slot_count == 16
     assert selected_pool.file_size_bytes == selected_pool.slot_size_bytes * selected_pool.slot_count
     assert selected_pool.flush_on_write is False
+
+
+@pytest.mark.parametrize("slot_count", (16, 8, 4))
+def test_local_buffer_broker_pool_settings_support_low_memory_slot_counts(slot_count: int) -> None:
+    """验证现场配置可以把 pool 调整为 16、8 或 4 个槽位。"""
+
+    settings = LocalBufferBrokerSettings(
+        default_pool_name="image-4k",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-4k",
+                slot_size_bytes=128 * 1024 * 1024,
+                slot_count=slot_count,
+            ),
+        ),
+    )
+    pool = settings.pools[0]
+
+    assert pool.slot_count == slot_count
+    assert pool.file_size_bytes == pool.slot_size_bytes * slot_count
 
 
 def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
@@ -161,18 +179,18 @@ def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
     low_res_pool = pools["image-640x640"]
     assert default_pool.file_name == "image-4k-001.dat"
     assert default_pool.slot_size_bytes == 128 * 1024 * 1024
-    assert default_pool.slot_count == 32
-    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * 32
+    assert default_pool.slot_count == 16
+    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * 16
     assert default_pool.flush_on_write is False
     assert mid_res_pool.file_name == "image-1080p-001.dat"
     assert mid_res_pool.slot_size_bytes == 16 * 1024 * 1024
-    assert mid_res_pool.slot_count == 32
-    assert mid_res_pool.file_size_bytes == mid_res_pool.slot_size_bytes * 32
+    assert mid_res_pool.slot_count == 16
+    assert mid_res_pool.file_size_bytes == mid_res_pool.slot_size_bytes * 16
     assert mid_res_pool.flush_on_write is False
     assert low_res_pool.file_name == "image-640x640-001.dat"
     assert low_res_pool.slot_size_bytes == 4 * 1024 * 1024
-    assert low_res_pool.slot_count == 32
-    assert low_res_pool.file_size_bytes == low_res_pool.slot_size_bytes * 32
+    assert low_res_pool.slot_count == 16
+    assert low_res_pool.file_size_bytes == low_res_pool.slot_size_bytes * 16
     assert low_res_pool.flush_on_write is False
 
 
@@ -185,7 +203,7 @@ def test_local_buffer_broker_rejects_legacy_default_pool_config() -> None:
                 "default_pool": {
                     "pool_name": "image-1080p",
                     "slot_size_bytes": 16 * 1024 * 1024,
-                    "slot_count": 32,
+                    "slot_count": 16,
                 }
             }
         )

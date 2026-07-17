@@ -300,6 +300,37 @@ def test_load_image_bytes_requires_local_buffer_reader_for_buffer_ref(tmp_path: 
             load_image_bytes(request)
 
 
+@pytest.mark.parametrize("slot_count", (16, 8, 4))
+def test_mmap_buffer_pool_uses_configured_low_memory_slot_count(tmp_path: Path, slot_count: int) -> None:
+    """验证 mmap pool 按 16、8、4 个槽位分配，并在容量耗尽时稳定返回错误。"""
+
+    with MmapBufferPool(
+        MmapBufferPoolConfig(
+            pool_name=f"image-test-{slot_count}",
+            root_dir=tmp_path / f"buffers-{slot_count}",
+            file_size_bytes=64 * slot_count,
+            slot_size_bytes=64,
+            broker_epoch="epoch-test",
+        )
+    ) as pool:
+        leases = [
+            pool.allocate(size=1, owner_kind="test", owner_id=f"owner-{index}")
+            for index in range(slot_count)
+        ]
+
+        status = pool.build_status()
+        assert pool.slot_count == slot_count
+        assert status["used_count"] == slot_count
+        assert status["free_count"] == 0
+        assert leases[-1].offset == (slot_count - 1) * 64
+        with pytest.raises(InvalidRequestError, match="pool 已满"):
+            pool.allocate(size=1, owner_kind="test", owner_id="overflow")
+
+        for lease in leases:
+            pool.release(lease.lease_id)
+        assert pool.build_status()["free_count"] == slot_count
+
+
 def _build_pool(tmp_path: Path) -> MmapBufferPool:
     """构造测试用 mmap pool。"""
 

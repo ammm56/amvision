@@ -7,13 +7,10 @@ from pydantic import BaseModel, Field, model_validator
 
 _MIB = 1024 * 1024
 _DEFAULT_8K_SLOT_SIZE_BYTES = 256 * _MIB
-_DEFAULT_8K_SLOT_COUNT = 32
 _DEFAULT_4K_SLOT_SIZE_BYTES = 128 * _MIB
-_DEFAULT_4K_SLOT_COUNT = 32
 _DEFAULT_1080P_SLOT_SIZE_BYTES = 16 * _MIB
-_DEFAULT_1080P_SLOT_COUNT = 32
 _DEFAULT_640X640_SLOT_SIZE_BYTES = 4 * _MIB
-_DEFAULT_640X640_SLOT_COUNT = 32
+_DEFAULT_SLOT_COUNT = 16
 
 
 class LocalBufferBrokerPoolSettings(BaseModel):
@@ -30,7 +27,7 @@ class LocalBufferBrokerPoolSettings(BaseModel):
 
     pool_name: str = "image-4k"
     slot_size_bytes: int = _DEFAULT_4K_SLOT_SIZE_BYTES
-    slot_count: int = _DEFAULT_4K_SLOT_COUNT
+    slot_count: int = _DEFAULT_SLOT_COUNT
     flush_on_write: bool = False
     file_name: str = ""
     file_size_bytes: int = 0
@@ -130,13 +127,13 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
         return LocalBufferBrokerPoolSettings(
             pool_name="image-640x640",
             slot_size_bytes=_DEFAULT_640X640_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_640X640_SLOT_COUNT,
+            slot_count=_DEFAULT_SLOT_COUNT,
         )
     if pool_name == "image-1080p":
         return LocalBufferBrokerPoolSettings(
             pool_name="image-1080p",
             slot_size_bytes=_DEFAULT_1080P_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_1080P_SLOT_COUNT,
+            slot_count=_DEFAULT_SLOT_COUNT,
         )
     if pool_name == "image-4k":
         return LocalBufferBrokerPoolSettings()
@@ -144,6 +141,6 @@ def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
         return LocalBufferBrokerPoolSettings(
             pool_name="image-8k",
             slot_size_bytes=_DEFAULT_8K_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_8K_SLOT_COUNT,
+            slot_count=_DEFAULT_SLOT_COUNT,
         )
     raise ValueError("LocalBufferBroker default_pool_name 只支持 image-640x640、image-1080p、image-4k 或 image-8k")
