@@ -54,7 +54,7 @@ SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、Trigger
 - 重复 runtime id、TriggerSource id 或模型复合 id 会在启动时直接报错
 - 一个 Runner 加载的所有配置必须使用相同的 HTTP 地址、token 和 HTTP 超时；`project_id` 仍按每个资源独立保存
 
-`AMVisionOperationRunner` 适合长期复用：内部只创建一个 HTTP client，并按 TriggerSource 缓存 ZeroMQ client；释放 Runner 时会释放其持有的 socket 和 HTTP 资源。模型管理、查询和推理的高层方法统一返回强类型响应，非 2xx 响应统一抛出 `AMVisionApiException`。需要查看原始状态码和响应正文时，仍可通过 `runner.Client` 使用底层 `AMVisionApiResponse` 方法。
+`AMVisionOperationRunner` 适合长期复用：内部只创建一个 HTTP client，并按 TriggerSource 缓存 ZeroMQ client；释放 Runner 时会释放其持有的 socket 和 HTTP 资源。Console 和现场常驻程序应通过 `runner.CallAsync(...)` 或 `runner.Call(...)` 执行具体操作。返回的 `AMVisionCallResult<T>` 不替调用方判断业务结果：`Data` 保留后端正常数据，`HttpResponse` 保留后端非 2xx 的原始状态码、正文和 JSON，`Exception` 保留没有后端响应时的配置、超时、网络或协议异常。调用方根据三个属性自行决定后续处理，单次错误不会中断整个程序。
 
 完整的调用清单分别见 `apps/AMVision.Console/KeyNameSdkCalls.cs` 和 `apps/AMVision.Console/ResourceIdSdkCalls.cs`。
 

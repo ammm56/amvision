@@ -203,7 +203,8 @@ namespace Amvar.Vision
                     "invalid_reply",
                     "ZeroMQ TriggerSource reply is not valid JSON.",
                     null,
-                    exception);
+                    exception,
+                    json);
             }
 
             var formatId = root.Value<string>("format_id");
@@ -214,21 +215,26 @@ namespace Amvar.Vision
                 throw new AMVisionTriggerException(
                     error?.ErrorCode ?? "trigger_error",
                     error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
-                    error?.Details
+                    error?.Details,
+                    rawReplyJson: json
                 );
             }
 
             var result = WorkflowJsonDefaults.Deserialize<TriggerResult>(json);
             if (result is null)
             {
-                throw new AMVisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply cannot be parsed.");
+                throw new AMVisionTriggerException(
+                    "invalid_reply",
+                    "ZeroMQ TriggerSource reply cannot be parsed.",
+                    rawReplyJson: json);
             }
 
             if (result.FormatId != TriggerResultFormatId)
             {
                 throw new AMVisionTriggerException(
                     "invalid_reply",
-                    $"Unexpected TriggerResult format_id: {result.FormatId}."
+                    $"Unexpected TriggerResult format_id: {result.FormatId}.",
+                    rawReplyJson: json
                 );
             }
 

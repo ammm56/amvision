@@ -130,7 +130,7 @@ def test_config_loader_rejects_mixed_http_backends() -> None:
 
 
 def test_runner_model_runtime_commands_return_typed_responses() -> None:
-    """高层模型管理接口应与查询、推理保持相同的强类型异常语义。"""
+    """模型管理的后端正常数据仍应保持明确的强类型。"""
 
     runner_text = (SDK_ROOT / "AMVisionOperationRunner.cs").read_text(encoding="utf-8")
     id_text = (SDK_ROOT / "AMVisionOperationRunner.ModelId.cs").read_text(encoding="utf-8")
@@ -152,6 +152,43 @@ def test_runner_model_runtime_commands_return_typed_responses() -> None:
             f"Task<ModelDeploymentRuntimeHealthResponse> {method_name}ModelDeploymentRuntimeByIdAsync"
             in id_text
         )
+
+
+def test_console_uses_non_throwing_call_boundary_and_real_config_key() -> None:
+    """Console 的每次调用都应返回结果对象，示例 deployment key 必须来自 Config。"""
+
+    name_calls = CONSOLE_NAME_CALLS.read_text(encoding="utf-8")
+    id_calls = CONSOLE_ID_CALLS.read_text(encoding="utf-8")
+    assert "runner.CallAsync(api =>" in name_calls
+    assert "runner.Call(api =>" in name_calls
+    assert "runner.CallAsync(api =>" in id_calls
+    assert "runner.Call(api =>" in id_calls
+
+    match = re.search(r'ModelDeploymentName = "([^"]+)"', name_calls)
+    assert match is not None
+    configured_names: set[str] = set()
+    for config_path in (SDK_ROOT / "Config").glob("config*.json"):
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+        configured_names.update(
+            item["name"] for item in payload.get("model_deployments", [])
+        )
+    assert match.group(1) in configured_names
+
+
+def test_call_result_preserves_data_http_response_or_exception() -> None:
+    """调用边界只保留原始事实，不替第三方判断成功或失败。"""
+
+    result_text = (SDK_ROOT / "Http" / "AMVisionCallResult.cs").read_text(
+        encoding="utf-8"
+    )
+    boundary_text = (
+        SDK_ROOT / "AMVisionOperationRunner.CallResults.cs"
+    ).read_text(encoding="utf-8")
+    assert "public T Data" in result_text
+    assert "public AMVisionApiResponse? HttpResponse" in result_text
+    assert "public Exception? Exception" in result_text
+    assert "catch (AMVisionApiException exception)" in boundary_text
+    assert "catch (Exception exception)" in boundary_text
 
 
 def test_dotnet_http_timeout_defaults_and_generated_configs_are_300_seconds() -> None:

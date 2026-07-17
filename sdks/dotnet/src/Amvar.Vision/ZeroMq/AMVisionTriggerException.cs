@@ -21,11 +21,13 @@ namespace Amvar.Vision
             string errorCode,
             string message,
             IReadOnlyDictionary<string, JToken>? details = null,
-            Exception? innerException = null)
+            Exception? innerException = null,
+            string? rawReplyJson = null)
             : base(message, innerException)
         {
             ErrorCode = errorCode;
             Details = details ?? new Dictionary<string, JToken>();
+            RawReplyJson = rawReplyJson;
         }
 
         /// <summary>
@@ -37,6 +39,11 @@ namespace Amvar.Vision
         /// TriggerSource 错误详情。
         /// </summary>
         public IReadOnlyDictionary<string, JToken> Details { get; }
+
+        /// <summary>
+        /// backend-service ZeroMQ adapter 返回的原始 reply JSON；传输失败或没有 reply 时为空。
+        /// </summary>
+        public string? RawReplyJson { get; }
     }
 
     /// <summary>

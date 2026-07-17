@@ -81,11 +81,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AMVisionOperationRunner.cs" />
+    <Compile Include="AMVisionOperationRunner.CallResults.cs" />
     <Compile Include="AMVisionOperationRunner.ModelId.cs" />
     <Compile Include="AMVisionOperationRunner.Selectors.cs" />
     <Compile Include="AMVisionOperationRunner.TriggerId.cs" />
     <Compile Include="Http\AMVisionApiException.cs" />
     <Compile Include="Http\AMVisionApiResponse.cs" />
+    <Compile Include="Http\AMVisionCallResult.cs" />
     <Compile Include="Http\AMVisionClient.Configured.cs" />
     <Compile Include="Http\AMVisionClient.ConfiguredSelectors.cs" />
     <Compile Include="Http\AMVisionClient.cs" />
