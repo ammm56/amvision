@@ -11,6 +11,10 @@ namespace Amvar.Vision.Configuration
 /// </summary>
 internal sealed class WorkflowConfigurationCatalog
 {
+    private readonly IReadOnlyDictionary<string, ConfiguredRuntime> runtimesById;
+    private readonly IReadOnlyDictionary<string, ConfiguredTriggerSource> triggerSourcesById;
+    private readonly IReadOnlyDictionary<string, ConfiguredModelDeployment> modelDeploymentsByIdAndMode;
+
     /// <summary>
     /// 创建按 runtime key 和 TriggerSource key 查询的只读配置索引。
     /// </summary>
@@ -33,6 +37,20 @@ internal sealed class WorkflowConfigurationCatalog
             new Dictionary<string, ConfiguredTriggerSource>(triggerSources, StringComparer.OrdinalIgnoreCase));
         ModelDeployments = new ReadOnlyDictionary<string, ConfiguredModelDeployment>(
             new Dictionary<string, ConfiguredModelDeployment>(modelDeployments, StringComparer.OrdinalIgnoreCase));
+        runtimesById = BuildUniqueIndex(
+            Runtimes.Values,
+            item => item.Runtime.WorkflowRuntimeId,
+            "workflow_runtime_id");
+        triggerSourcesById = BuildUniqueIndex(
+            TriggerSources.Values,
+            item => item.TriggerSource.TriggerSourceId,
+            "trigger_source_id");
+        modelDeploymentsByIdAndMode = BuildUniqueIndex(
+            ModelDeployments.Values,
+            item => BuildModelDeploymentIdKey(
+                item.ModelDeployment.DeploymentInstanceId,
+                item.ModelDeployment.RuntimeMode),
+            "deployment_instance_id/runtime_mode");
         DefaultBackend = Runtimes.Count > 0
             ? Runtimes.Values.First().Backend
             : ModelDeployments.Values.First().Backend;
@@ -80,15 +98,12 @@ internal sealed class WorkflowConfigurationCatalog
     public ConfiguredRuntime GetRuntimeById(string workflowRuntimeId)
     {
         var id = ConfigValidation.RequireText(workflowRuntimeId, nameof(workflowRuntimeId));
-        var matches = Runtimes.Values
-            .Where(item => string.Equals(item.Runtime.WorkflowRuntimeId, id, StringComparison.Ordinal))
-            .ToArray();
-        if (matches.Length != 1)
+        if (!runtimesById.TryGetValue(id, out var runtime))
         {
-            throw new KeyNotFoundException($"Workflow runtime id does not exist or is not unique: {id}.");
+            throw new KeyNotFoundException($"Workflow runtime id does not exist: {id}.");
         }
 
-        return matches[0];
+        return runtime;
     }
 
     /// <summary>
@@ -113,15 +128,12 @@ internal sealed class WorkflowConfigurationCatalog
     public ConfiguredTriggerSource GetTriggerSourceById(string triggerSourceId)
     {
         var id = ConfigValidation.RequireText(triggerSourceId, nameof(triggerSourceId));
-        var matches = TriggerSources.Values
-            .Where(item => string.Equals(item.TriggerSource.TriggerSourceId, id, StringComparison.Ordinal))
-            .ToArray();
-        if (matches.Length != 1)
+        if (!triggerSourcesById.TryGetValue(id, out var triggerSource))
         {
-            throw new KeyNotFoundException($"TriggerSource id does not exist or is not unique: {id}.");
+            throw new KeyNotFoundException($"TriggerSource id does not exist: {id}.");
         }
 
-        return matches[0];
+        return triggerSource;
     }
 
     /// <summary>
@@ -150,18 +162,45 @@ internal sealed class WorkflowConfigurationCatalog
         var id = ConfigValidation.RequireText(deploymentInstanceId, nameof(deploymentInstanceId));
         var mode = ModelDeploymentRuntimeModes.Normalize(
             ConfigValidation.RequireText(runtimeMode, nameof(runtimeMode)));
-        var matches = ModelDeployments.Values
-            .Where(item =>
-                string.Equals(item.ModelDeployment.DeploymentInstanceId, id, StringComparison.Ordinal)
-                && string.Equals(item.ModelDeployment.RuntimeMode, mode, StringComparison.Ordinal))
-            .ToArray();
-        if (matches.Length != 1)
+        var indexKey = BuildModelDeploymentIdKey(id, mode);
+        if (!modelDeploymentsByIdAndMode.TryGetValue(indexKey, out var modelDeployment))
         {
             throw new KeyNotFoundException(
-                $"Model deployment id/runtime mode does not exist or is not unique: {id} / {mode}.");
+                $"Model deployment id/runtime mode does not exist: {id} / {mode}.");
         }
 
-        return matches[0];
+        return modelDeployment;
+    }
+
+    /// <summary>
+    /// 启动时构建精确 id 索引并拒绝重复值，避免每次调用扫描配置集合。
+    /// </summary>
+    private static IReadOnlyDictionary<string, T> BuildUniqueIndex<T>(
+        IEnumerable<T> items,
+        Func<T, string> keySelector,
+        string fieldName)
+    {
+        var index = new Dictionary<string, T>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            var key = ConfigValidation.RequireText(keySelector(item), fieldName);
+            if (index.ContainsKey(key))
+            {
+                throw new InvalidOperationException($"Duplicate {fieldName} in SDK config catalog: {key}.");
+            }
+
+            index[key] = item;
+        }
+
+        return new ReadOnlyDictionary<string, T>(index);
+    }
+
+    /// <summary>
+    /// deployment_instance_id 可能同时存在 sync 和 async 配置，因此使用复合索引。
+    /// </summary>
+    private static string BuildModelDeploymentIdKey(string deploymentInstanceId, string runtimeMode)
+    {
+        return deploymentInstanceId + "\0" + runtimeMode;
     }
 
     /// <summary>

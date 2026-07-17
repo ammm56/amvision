@@ -31,7 +31,7 @@ namespace Amvar.Vision
                 GetModelDeploymentNameById(deploymentInstanceId, runtimeMode), cancellationToken);
         }
 
-        public Task<AMVisionApiResponse> StartModelDeploymentRuntimeByIdAsync(
+        public Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeByIdAsync(
             string deploymentInstanceId, string runtimeMode,
             CancellationToken cancellationToken = default)
         {
@@ -39,7 +39,7 @@ namespace Amvar.Vision
                 GetModelDeploymentNameById(deploymentInstanceId, runtimeMode), cancellationToken);
         }
 
-        public Task<AMVisionApiResponse> StopModelDeploymentRuntimeByIdAsync(
+        public Task<ModelDeploymentRuntimeStatusResponse> StopModelDeploymentRuntimeByIdAsync(
             string deploymentInstanceId, string runtimeMode,
             CancellationToken cancellationToken = default)
         {
@@ -47,7 +47,7 @@ namespace Amvar.Vision
                 GetModelDeploymentNameById(deploymentInstanceId, runtimeMode), cancellationToken);
         }
 
-        public Task<AMVisionApiResponse> ResetModelDeploymentRuntimeByIdAsync(
+        public Task<ModelDeploymentRuntimeHealthResponse> ResetModelDeploymentRuntimeByIdAsync(
             string deploymentInstanceId, string runtimeMode,
             CancellationToken cancellationToken = default)
         {
@@ -55,7 +55,7 @@ namespace Amvar.Vision
                 GetModelDeploymentNameById(deploymentInstanceId, runtimeMode), cancellationToken);
         }
 
-        public Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeByIdAsync(
+        public Task<ModelDeploymentRuntimeHealthResponse> WarmupModelDeploymentRuntimeByIdAsync(
             string deploymentInstanceId, string runtimeMode,
             CancellationToken cancellationToken = default)
         {

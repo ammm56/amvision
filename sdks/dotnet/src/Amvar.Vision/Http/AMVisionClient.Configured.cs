@@ -49,7 +49,6 @@ namespace Amvar.Vision
                 throw new ArgumentNullException(nameof(catalog));
             }
 
-            WorkflowConfigStore.Initialize(catalog);
             var options = BuildOptions(catalog.DefaultBackend);
             var client = new AMVisionClient(options, catalog);
             return client;

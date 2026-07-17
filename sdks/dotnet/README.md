@@ -6,7 +6,7 @@
 
 - Solution：`sdks/dotnet/amvar-vision-vs2019-net472.sln`
 - SDK 项目：`sdks/dotnet/src/Amvar.Vision/Amvar.Vision.vs2019.net472.csproj`
-- Console 示例项目：`sdks/dotnet/apps/Amvar.Vision.Console/Amvar.Vision.Console.vs2019.net472.csproj`
+- Console 示例项目：`sdks/dotnet/apps/AMVision.Console/AMVision.Console.vs2019.net472.csproj`
 - Target framework：`.NET Framework 4.7.2`
 - Language version：`C# 8.0`
 - Assembly：`Amvar.Vision.dll`
@@ -45,7 +45,18 @@ SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、Trigger
 
 `AMVisionOperationRunner` 高层 API 明确区分 name 与 id：原有不带 `ById` 后缀的方法只接收配置中的可读 `name`，对应的 `ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的管理类 `ById` 方法还要求显式传入 `sync` 或 `async` runtime mode，推理方法则由同步或异步方法语义确定 mode。
 
-生成配置和 .NET SDK 的 HTTP 默认超时统一为 300 秒。Workflow invoke 和 ZeroMQ reply 的业务超时仍由各自配置字段独立控制，不与 HTTP 连接超时混用。完整的 name 与 id 调用清单见 `apps/AMVision.Console/Program.cs`。
+生成配置和 .NET SDK 的 HTTP 默认超时统一为 300 秒。Workflow invoke 和 ZeroMQ reply 的业务超时仍由各自配置字段独立控制，不与 HTTP 连接超时混用。
+
+配置加载阶段会完成以下稳定性校验：
+
+- name 使用忽略大小写的唯一索引；id 使用区分大小写的精确索引
+- `deployment_instance_id` 与 `runtime_mode` 组成模型 deployment 的 id 复合索引
+- 重复 runtime id、TriggerSource id 或模型复合 id 会在启动时直接报错
+- 一个 Runner 加载的所有配置必须使用相同的 HTTP 地址、token 和 HTTP 超时；`project_id` 仍按每个资源独立保存
+
+`AMVisionOperationRunner` 适合长期复用：内部只创建一个 HTTP client，并按 TriggerSource 缓存 ZeroMQ client；释放 Runner 时会释放其持有的 socket 和 HTTP 资源。模型管理、查询和推理的高层方法统一返回强类型响应，非 2xx 响应统一抛出 `AMVisionApiException`。需要查看原始状态码和响应正文时，仍可通过 `runner.Client` 使用底层 `AMVisionApiResponse` 方法。
+
+完整的调用清单分别见 `apps/AMVision.Console/KeyNameSdkCalls.cs` 和 `apps/AMVision.Console/ResourceIdSdkCalls.cs`。
 
 默认查找顺序：
 
@@ -122,9 +133,14 @@ public static class Example
 }
 ```
 
-Console 示例项目采用代码内手动调试方式，不再要求记忆命令行参数。打开 `apps/Amvar.Vision.Console/Program.cs` 后，只需要修改顶部的 `RuntimeName`、`TriggerSourceName`、`ModelDeploymentName`、`ImagePath` 等常量，并在 `MainAsync` 中保留一个实际调用块即可。
+Console 示例项目采用代码内手动调试方式，不要求记忆命令行参数：
 
-默认运行只执行 `GetSystemConfigResponseAsync`，用于确认 `Config/config*.json` 和 backend-service 连接正常。Workflow runtime、Model deployment、ZeroMQ image bytes、ZeroMQ BGR24 等调用都在同一个方法中以示例代码块保留，第三方开发者可以直接按自己的业务选择对应方法复制到项目中。
+- `KeyNameSdkCalls.cs`：默认入口，修改用户可读的 deployment、应用和 TriggerSource key name
+- `ResourceIdSdkCalls.cs`：稳定 id 兜底入口，修改 `deployment_instance_id`、`workflow_runtime_id` 和 `trigger_source_id`
+- `SdkCallInputs.cs`：两种入口共用的图片、run id、task id 等测试输入
+- `Program.cs`：只负责 Runner 生命周期；注释/启用两行 `RunAsync` 即可切换 name 或 id 语义
+
+两个调用文件都按“Model deployment → Workflow App Runtime → TriggerSource”排列，具体请求默认保持注释，避免启动 Console 时意外启动、停止或触发现场资源。取消需要的调用行注释即可直接调试。
 
 ## 后续框架版本
 

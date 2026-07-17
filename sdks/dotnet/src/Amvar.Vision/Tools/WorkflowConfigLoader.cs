@@ -140,9 +140,22 @@ namespace Amvar.Vision.Tools
             var runtimes = new Dictionary<string, ConfiguredRuntime>(StringComparer.OrdinalIgnoreCase);
             var triggerSources = new Dictionary<string, ConfiguredTriggerSource>(StringComparer.OrdinalIgnoreCase);
             var modelDeployments = new Dictionary<string, ConfiguredModelDeployment>(StringComparer.OrdinalIgnoreCase);
+            BackendConfig? sharedHttpBackend = null;
+            string? sharedHttpBackendFile = null;
             foreach (var file in files)
             {
                 var config = LoadFile(file);
+                if (sharedHttpBackend == null)
+                {
+                    sharedHttpBackend = config.Backend;
+                    sharedHttpBackendFile = file;
+                }
+                else if (!HttpBackendsEquivalent(sharedHttpBackend, config.Backend))
+                {
+                    throw new InvalidOperationException(
+                        $"All config files loaded by one SDK runner must use the same backend.base_api_url, backend.access_token and backend.http_timeout_seconds. Existing file: {sharedHttpBackendFile}; current file: {file}");
+                }
+
                 if (config.Runtime != null)
                 {
                     var invoke = config.Invoke ?? new InvokeConfig();
@@ -193,6 +206,20 @@ namespace Amvar.Vision.Tools
             }
 
             return new WorkflowConfigurationCatalog(runtimes, triggerSources, modelDeployments);
+        }
+
+        /// <summary>
+        /// 一个 Runner 只复用一个 HttpClient，因此所有配置必须共享同一 HTTP 连接设置。
+        /// project_id 由每个资源配置独立携带，可以不同。
+        /// </summary>
+        private static bool HttpBackendsEquivalent(BackendConfig left, BackendConfig right)
+        {
+            return string.Equals(
+                    left.BaseApiUrl.Trim().TrimEnd('/'),
+                    right.BaseApiUrl.Trim().TrimEnd('/'),
+                    StringComparison.OrdinalIgnoreCase)
+                && string.Equals(left.AccessToken.Trim(), right.AccessToken.Trim(), StringComparison.Ordinal)
+                && left.HttpTimeoutSeconds == right.HttpTimeoutSeconds;
         }
 
         /// <summary>

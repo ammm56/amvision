@@ -649,8 +649,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
-        public async Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
+        /// <returns>启动后的模型运行时状态；非 2xx 响应抛出 AMVisionApiException。</returns>
+        public async Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -666,8 +666,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
-        public async Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
+        /// <returns>停止后的模型运行时状态；非 2xx 响应抛出 AMVisionApiException。</returns>
+        public async Task<ModelDeploymentRuntimeStatusResponse> StopModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -683,8 +683,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
-        public async Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
+        /// <returns>重置后的模型运行时健康状态；非 2xx 响应抛出 AMVisionApiException。</returns>
+        public async Task<ModelDeploymentRuntimeHealthResponse> ResetModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -700,8 +700,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
-        public async Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
+        /// <returns>预热后的模型运行时健康状态；非 2xx 响应抛出 AMVisionApiException。</returns>
+        public async Task<ModelDeploymentRuntimeHealthResponse> WarmupModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
