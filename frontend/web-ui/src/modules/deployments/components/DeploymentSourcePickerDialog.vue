@@ -1,54 +1,6 @@
 <template>
-  <div v-if="open" class="deployment-source-picker-backdrop" @click="$emit('close')">
-    <div
-      class="deployment-source-picker"
-      role="dialog"
-      aria-modal="true"
-      aria-label="选择部署来源模型"
-      @click.stop
-      @keydown.esc.prevent="$emit('close')"
-    >
-      <header class="deployment-source-picker__header">
-        <div>
-          <p class="page-kicker">DEPLOYMENT SOURCE</p>
-          <h2>选择部署来源模型</h2>
-          <p class="deployment-source-picker__description">
-            按任务类型浏览已登记的 ModelVersion 和转换完成的 ModelBuild，选择后自动填入部署所需信息。
-          </p>
-        </div>
-        <button
-          type="button"
-          class="deployment-source-picker__close"
-          title="关闭"
-          aria-label="关闭"
-          @click="$emit('close')"
-        >
-          <X :size="16" />
-        </button>
-      </header>
-
-      <div class="deployment-source-picker__toolbar">
-        <span class="deployment-source-picker__label">任务类型</span>
-        <div class="deployment-source-picker__chips" role="tablist" aria-label="任务类型">
-          <button
-            v-for="option in taskTypeOptions"
-            :key="option.value"
-            type="button"
-            class="deployment-source-picker__chip"
-            :class="{ 'is-active': option.value === taskType }"
-            @click.stop="$emit('change-task-type', option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="deployment-source-picker__body">
-        <section class="deployment-source-picker__column">
-          <header class="deployment-source-picker__section-heading">
-            <strong>模型列表</strong>
-            <span class="deployment-source-picker__section-count">{{ models.length }}</span>
-          </header>
+  <ModelPickerDialogShell :open="open" :loading="loading" kicker="DEPLOYMENT SOURCE" title="选择部署来源模型" description="按任务类型浏览已登记的 ModelVersion 和转换完成的 ModelBuild，选择后自动填入部署所需信息。" close-label="关闭" task-type-label="任务类型" :task-type-options="taskTypeOptions" :selected-task-type="taskType" list-title="模型列表" :list-count="models.length" detail-title="模型详情" @close="$emit('close')" @change-task-type="emitTaskType">
+    <template #list>
 
           <EmptyState
             v-if="!loading && models.length === 0"
@@ -80,12 +32,8 @@
               </div>
             </button>
           </div>
-        </section>
-
-        <section class="deployment-source-picker__column deployment-source-picker__detail">
-          <header class="deployment-source-picker__section-heading">
-            <strong>模型详情</strong>
-          </header>
+    </template>
+    <template #detail>
 
           <div v-if="selectedModelDetail" class="deployment-source-detail">
             <div class="deployment-source-detail__summary">
@@ -187,15 +135,11 @@
             <strong>请选择左侧模型</strong>
             <span>选择模型后，这里会显示可部署版本和转换构建。</span>
           </div>
-        </section>
-      </div>
-    </div>
-  </div>
+    </template>
+  </ModelPickerDialogShell>
 </template>
 
 <script setup lang="ts">
-import { X } from '@lucide/vue'
-
 import type {
   DeploymentSourceModelBuild,
   DeploymentSourceModelDetail,
@@ -203,6 +147,7 @@ import type {
   DeploymentSourceModelVersionDetail,
 } from '@/modules/models/services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
+import ModelPickerDialogShell from '@/shared/ui/components/ModelPickerDialogShell.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import { hasCudaDevice } from '../deployment-device-support'
 import type { ModelTaskType } from '../services/deployment.service'
@@ -232,6 +177,12 @@ const emit = defineEmits<{
   'select-model': [modelId: string]
   'apply-source': [selection: DeploymentSourceSelection]
 }>()
+
+function emitTaskType(taskType: string): void {
+  if (props.taskTypeOptions.some((option) => option.value === taskType)) {
+    emit('change-task-type', taskType as ModelTaskType)
+  }
+}
 
 function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSelection {
   const model = props.selectedModelDetail
@@ -313,32 +264,6 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 </script>
 
 <style scoped>
-.deployment-source-picker-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgb(16 20 24 / 0.38);
-}
-
-.deployment-source-picker {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 12px;
-  width: min(1120px, calc(100vw - 36px));
-  max-height: min(820px, calc(100vh - 36px));
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: 0 24px 48px rgb(0 0 0 / 0.18);
-}
-
-.deployment-source-picker__header,
-.deployment-source-picker__toolbar,
-.deployment-source-picker__section-heading,
 .deployment-source-card__meta,
 .deployment-source-card__footer {
   display: flex;
@@ -348,86 +273,12 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   flex-wrap: wrap;
 }
 
-.deployment-source-picker__header h2,
-.deployment-source-picker__header p {
-  margin: 0;
-}
-
-.deployment-source-picker__description {
-  margin-top: 8px !important;
-  color: var(--muted);
-}
-
-.deployment-source-picker__toolbar {
-  align-items: center;
-}
-
-.deployment-source-picker__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  color: var(--text);
-  background: var(--button-secondary-bg);
-  cursor: pointer;
-}
-
-.deployment-source-picker__label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.deployment-source-picker__chips {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
-.deployment-source-picker__chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  color: var(--muted);
-  background: var(--button-secondary-bg);
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.deployment-source-picker__chip.is-active {
-  border-color: var(--accent);
-  color: #ffffff;
-  background: var(--accent);
-}
-
-.deployment-source-picker__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 14px;
-  min-height: 0;
-}
-
-.deployment-source-picker__column,
 .deployment-source-detail,
 .deployment-source-group {
   display: grid;
   gap: 12px;
   min-height: 0;
   align-content: start;
-}
-
-.deployment-source-picker__detail {
-  overflow: hidden;
 }
 
 .deployment-source-detail {
@@ -469,7 +320,7 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   background: var(--selected-row-bg);
 }
 
-.deployment-source-picker .compact-list__item.is-disabled {
+.compact-list__item.is-disabled {
   opacity: 0.72;
 }
 
@@ -492,12 +343,12 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   padding-right: 4px;
 }
 
-.deployment-source-picker .compact-list__item {
+.compact-list__item {
   align-items: flex-start;
   min-width: 0;
 }
 
-.deployment-source-picker .table-actions {
+.table-actions {
   flex: 0 0 auto;
 }
 
@@ -519,20 +370,6 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
 .deployment-source-card__footer {
   color: var(--muted);
   font-size: 12px;
-}
-
-.deployment-source-picker__section-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  color: var(--muted);
-  background: var(--button-secondary-bg);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .deployment-source-pill {
@@ -564,14 +401,4 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
   align-content: center;
 }
 
-@media (max-width: 960px) {
-  .deployment-source-picker {
-    width: min(100%, calc(100vw - 24px));
-    max-height: min(100%, calc(100vh - 24px));
-  }
-
-  .deployment-source-picker__body {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

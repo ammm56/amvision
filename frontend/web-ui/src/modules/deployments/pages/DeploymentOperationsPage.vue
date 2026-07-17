@@ -424,6 +424,8 @@ const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
 
 let skipNextRuntimeModeRefresh = false
 let runtimeRefreshSequence = 0
+let sourceModelLoadSequence = 0
+let sourceModelDetailSequence = 0
 const runtimeRefreshTokenByDeployment = new Map<string, number>()
 
 onMounted(async () => {
@@ -444,9 +446,7 @@ watch(runtimeMode, () => {
 })
 
 watch(selectedTaskType, () => {
-  selectedSourceModelId.value = ''
-  selectedSourceModelDetail.value = null
-  sourceModels.value = []
+  sourceModelDetailSequence += 1
   if (deploymentSourcePickerOpen.value) {
     void loadDeploymentSourceModels()
   }
@@ -500,34 +500,50 @@ async function openDeploymentSourcePicker(): Promise<void> {
 }
 
 async function loadDeploymentSourceModels(): Promise<void> {
+  const loadSequence = ++sourceModelLoadSequence
+  sourceModelDetailSequence += 1
+  const taskType = selectedTaskType.value
   sourceModelsLoading.value = true
   errorMessage.value = null
   try {
-    sourceModels.value = await listDeploymentSourceModels(selectedProjectId.value, selectedTaskType.value)
-    if (sourceModels.value.length === 0) {
-      selectedSourceModelId.value = ''
-      selectedSourceModelDetail.value = null
-      return
-    }
-    const preferredModelId = selectedSourceModelId.value
-      || selectedDeploymentSource.value?.modelId
-      || sourceModels.value[0].model_id
-    if (preferredModelId) {
-      await selectDeploymentSourceModel(preferredModelId)
-    }
+    const models = await listDeploymentSourceModels(selectedProjectId.value, taskType)
+    if (loadSequence !== sourceModelLoadSequence) return
+    const candidateModelIds = [
+      selectedSourceModelId.value,
+      selectedDeploymentSource.value?.taskType === taskType ? selectedDeploymentSource.value.modelId : '',
+      models[0]?.model_id ?? '',
+    ]
+    const preferredModelId = candidateModelIds.find((modelId) => models.some((model) => model.model_id === modelId)) ?? ''
+    const modelDetail = preferredModelId
+      ? await getDeploymentSourceModelDetail(selectedProjectId.value, preferredModelId)
+      : null
+    if (loadSequence !== sourceModelLoadSequence) return
+    sourceModels.value = models
+    selectedSourceModelId.value = preferredModelId
+    selectedSourceModelDetail.value = modelDetail
   } catch (error) {
+    if (loadSequence !== sourceModelLoadSequence) return
+    sourceModels.value = []
+    selectedSourceModelId.value = ''
+    selectedSourceModelDetail.value = null
     errorMessage.value = error instanceof Error ? error.message : '部署来源模型加载失败'
   } finally {
-    sourceModelsLoading.value = false
+    if (loadSequence === sourceModelLoadSequence) {
+      sourceModelsLoading.value = false
+    }
   }
 }
 
 async function selectDeploymentSourceModel(modelId: string): Promise<void> {
+  const detailSequence = ++sourceModelDetailSequence
   selectedSourceModelId.value = modelId
   errorMessage.value = null
   try {
-    selectedSourceModelDetail.value = await getDeploymentSourceModelDetail(selectedProjectId.value, modelId)
+    const modelDetail = await getDeploymentSourceModelDetail(selectedProjectId.value, modelId)
+    if (detailSequence !== sourceModelDetailSequence || selectedSourceModelId.value !== modelId) return
+    selectedSourceModelDetail.value = modelDetail
   } catch (error) {
+    if (detailSequence !== sourceModelDetailSequence || selectedSourceModelId.value !== modelId) return
     errorMessage.value = error instanceof Error ? error.message : '模型详情加载失败'
   }
 }

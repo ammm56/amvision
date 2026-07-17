@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { i18n } from '@/platform/i18n'
+import {
+  getDeploymentSourceModelDetail,
+  listDeploymentSourceModels,
+  type DeploymentSourceModelDetail,
+  type DeploymentSourceModelSummary,
+} from '@/modules/models/services/model.service'
 import DeploymentOperationsPage from './DeploymentOperationsPage.vue'
 import {
   listTaskDeploymentEvents,
@@ -115,6 +121,30 @@ const event: TaskDeploymentProcessEvent = {
   created_at: '2026-07-10T01:01:00Z',
   message: 'runtime process started',
   payload: {},
+}
+
+const detectionSourceModel: DeploymentSourceModelSummary = {
+  model_id: 'detection-model',
+  scope_kind: 'project',
+  model_name: 'Detection model',
+  model_type: 'yolo11',
+  task_type: 'detection',
+  model_scale: 's',
+  metadata: {},
+  version_count: 1,
+  build_count: 0,
+  available_versions: [],
+}
+
+const classificationSourceModel: DeploymentSourceModelSummary = {
+  ...detectionSourceModel,
+  model_id: 'classification-model',
+  model_name: 'Classification model',
+  task_type: 'classification',
+}
+
+function sourceModelDetail(model: DeploymentSourceModelSummary): DeploymentSourceModelDetail {
+  return { ...model, versions: [], builds: [] }
 }
 
 describe('DeploymentOperationsPage', () => {
@@ -319,6 +349,43 @@ describe('DeploymentOperationsPage', () => {
 
     expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith('detection', 'deployment-2', 'sync', 'health')
     expect(findDeploymentActionButton(wrapper, 'deployment-2', 'stop').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps picker content stable while a new task type loads and replaces it atomically', async () => {
+    let resolveClassificationModels!: (models: DeploymentSourceModelSummary[]) => void
+    const classificationModelsPromise = new Promise<DeploymentSourceModelSummary[]>((resolve) => {
+      resolveClassificationModels = resolve
+    })
+    vi.mocked(listDeploymentSourceModels).mockImplementation(async (_projectId, taskType) => (
+      taskType === 'classification'
+        ? classificationModelsPromise
+        : [detectionSourceModel]
+    ))
+    vi.mocked(getDeploymentSourceModelDetail).mockImplementation(async (_projectId, modelId) => (
+      sourceModelDetail(modelId === classificationSourceModel.model_id ? classificationSourceModel : detectionSourceModel)
+    ))
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Detection model')
+    await clickButtonByText(wrapper, 'classification')
+    await nextTick()
+
+    const pickerBody = wrapper.find('.model-picker-shell__body')
+    expect(pickerBody.attributes('aria-busy')).toBe('true')
+    expect(wrapper.text()).toContain('Detection model')
+
+    resolveClassificationModels([classificationSourceModel])
+    await flushPromises()
+
+    expect(pickerBody.attributes('aria-busy')).toBe('false')
+    expect(wrapper.text()).not.toContain('Detection model')
+    expect(wrapper.text()).toContain('Classification model')
   })
 })
 

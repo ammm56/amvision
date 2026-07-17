@@ -1,52 +1,6 @@
 <template>
-  <div v-if="open" class="platform-model-picker-backdrop" @click="$emit('close')">
-    <div
-      class="platform-model-picker"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="title"
-      @click.stop
-      @keydown.esc.prevent="$emit('close')"
-    >
-      <header class="platform-model-picker__header">
-        <div>
-          <p class="page-kicker">{{ kicker }}</p>
-          <h2>{{ title }}</h2>
-          <p class="platform-model-picker__description">{{ description }}</p>
-        </div>
-        <button
-          type="button"
-          class="platform-model-picker__close"
-          :title="closeLabel"
-          :aria-label="closeLabel"
-          @click="$emit('close')"
-        >
-          <X :size="16" />
-        </button>
-      </header>
-
-      <div class="platform-model-picker__toolbar">
-        <span class="platform-model-picker__label">{{ taskTypeLabel }}</span>
-        <div class="platform-model-picker__chips" role="tablist" :aria-label="taskTypeLabel">
-          <button
-            v-for="option in taskTypeOptions"
-            :key="option.value"
-            type="button"
-            class="platform-model-picker__chip"
-            :class="{ 'is-active': option.value === selectedTaskType }"
-            @click.stop="$emit('change-task-type', option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="platform-model-picker__body">
-        <section class="platform-model-picker__column">
-          <header class="platform-model-picker__section-heading">
-            <strong>{{ modelListTitle }}</strong>
-            <span class="platform-model-picker__section-count">{{ models.length }}</span>
-          </header>
+  <ModelPickerDialogShell :open="open" :loading="loading" :kicker="kicker" :title="title" :description="description" :close-label="closeLabel" :task-type-label="taskTypeLabel" :task-type-options="taskTypeOptions" :selected-task-type="selectedTaskType" :list-title="modelListTitle" :list-count="models.length" :detail-title="detailTitle" @close="$emit('close')" @change-task-type="$emit('change-task-type', $event)">
+    <template #list>
 
           <EmptyState
             v-if="!loading && models.length === 0"
@@ -77,12 +31,8 @@
               </div>
             </button>
           </div>
-        </section>
-
-        <section class="platform-model-picker__column platform-model-picker__detail">
-          <header class="platform-model-picker__section-heading">
-            <strong>{{ detailTitle }}</strong>
-          </header>
+    </template>
+    <template #detail>
 
           <div v-if="selectedModelDetail" class="platform-model-detail">
             <div class="platform-model-detail__summary">
@@ -155,19 +105,17 @@
             <strong>{{ detailEmptyTitle }}</strong>
             <span>{{ detailEmptyDescription }}</span>
           </div>
-        </section>
-      </div>
-    </div>
-  </div>
+    </template>
+  </ModelPickerDialogShell>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { X } from '@lucide/vue'
 
 import type { PlatformBaseModelDetail, PlatformBaseModelSummary } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
+import ModelPickerDialogShell from '@/shared/ui/components/ModelPickerDialogShell.vue'
 
 interface TaskTypeOption {
   label: string
