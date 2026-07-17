@@ -7,7 +7,7 @@
   },
   "runtime": {
     "name": "托盘分拣空盘检测应用",
-    "workflow_runtime_id": "workflow-runtime-c57cd5e882f641ceb34d188cf19d2ab9"
+    "workflow_runtime_id": "workflow-runtime-df8234474efe4ca48d0a29e707f047ab"
   },
   "invoke": {
     "image_path": "",
@@ -23,7 +23,7 @@
   "trigger_sources": [
     {
       "name": "ZeroMQ 图片触发 托盘分拣空盘检测应用 runtime",
-      "trigger_source_id": "zeromq-workflow-runtime-c57cd5e882f641ceb34d188cf19d2ab9",
+      "trigger_source_id": "zeromq-workflow-runtime-df8234474efe4ca48d0a29e707f047ab",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5556",
         "default_input_binding": "request_image_ref",
