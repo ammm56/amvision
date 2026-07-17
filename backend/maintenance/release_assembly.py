@@ -751,38 +751,20 @@ def _materialize_placeholder_dirs(
     return tuple(placeholder_dirs)
 
 
-def _resolve_release_profile(
-    requested_profile_id: str,
-) -> tuple[str, dict[str, object], bool]:
-    """解析 canonical release profile，并标记旧 profile alias。"""
+def _load_release_profile(profile_id: str) -> dict[str, object]:
+    """读取并校验指定 release profile。"""
 
-    requested_profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{requested_profile_id}.json"
-    if not requested_profile_path.is_file():
-        raise FileNotFoundError(f"release profile 不存在: {requested_profile_path}")
-    requested_profile = _load_json_file(requested_profile_path)
-    requested_profile_value = str(requested_profile.get("profile_id") or "").strip()
-    if requested_profile_value != requested_profile_id:
+    profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{profile_id}.json"
+    if not profile_path.is_file():
+        raise FileNotFoundError(f"release profile 不存在: {profile_path}")
+    profile = _load_json_file(profile_path)
+    profile_id_value = str(profile.get("profile_id") or "").strip()
+    if profile_id_value != profile_id:
         raise ValueError(
             "release profile 文件名与 profile_id 不一致: "
-            f"file={requested_profile_path.name}, profile_id={requested_profile_value}"
+            f"file={profile_path.name}, profile_id={profile_id_value}"
         )
-    alias_for = str(requested_profile.get("alias_for") or "").strip()
-    canonical_profile_id = alias_for or requested_profile_id
-    source_release_profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{canonical_profile_id}.json"
-    if not source_release_profile_path.is_file():
-        raise FileNotFoundError(f"release profile 不存在: {source_release_profile_path}")
-    source_release_profile = _load_json_file(source_release_profile_path)
-    profile_id_value = str(source_release_profile.get("profile_id") or "").strip()
-    if profile_id_value != canonical_profile_id:
-        raise ValueError(
-            "release profile 文件名与 profile_id 不一致: "
-            f"file={source_release_profile_path.name}, profile_id={profile_id_value}"
-        )
-    return (
-        canonical_profile_id,
-        source_release_profile,
-        bool(alias_for),
-    )
+    return profile
 
 
 def _resolve_release_target(
@@ -819,9 +801,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     requested_profile_id = request.profile_id.strip()
     if not requested_profile_id:
         raise ValueError("release profile id 不能为空")
-    canonical_profile_id, source_release_profile, deprecated_alias = _resolve_release_profile(
-        requested_profile_id
-    )
+    source_release_profile = _load_release_profile(requested_profile_id)
     target_os, target_arch, platform_tag, accelerator_kind = _resolve_release_target(
         source_release_profile
     )
@@ -917,8 +897,6 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
 
         release_manifest = {
             "profile_id": requested_profile_id,
-            "canonical_profile_id": canonical_profile_id,
-            "deprecated_alias": deprecated_alias,
             "display_name": source_release_profile["display_name"],
             "description": source_release_profile["description"],
             "target": {

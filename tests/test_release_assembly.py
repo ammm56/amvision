@@ -110,8 +110,6 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         )
     )
     assert release_manifest["profile_id"] == "full-windows-x64-nvidia"
-    assert release_manifest["canonical_profile_id"] == "full-windows-x64-nvidia"
-    assert release_manifest["deprecated_alias"] is False
     assert release_manifest["target"] == {
         "os": "windows",
         "arch": "x64",
@@ -135,29 +133,6 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         expected_worker_profile_ids
     )
     assert release_manifest["workers"][0]["python_launcher"] == "launchers/worker/start_backend_worker.py"
-
-
-def test_assemble_release_legacy_profile_id_resolves_to_canonical_target(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证旧 profile id 仍可使用，但 manifest 会明确记录 canonical target。"""
-
-    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
-    result = assemble_release(
-        ReleaseAssemblyRequest(
-            profile_id="full-cpu",
-            output_root=tmp_path,
-        )
-    )
-
-    release_manifest = json.loads(result.release_manifest_path.read_text(encoding="utf-8"))
-    assert result.release_dir == (tmp_path / "full-cpu").resolve()
-    assert release_manifest["profile_id"] == "full-cpu"
-    assert release_manifest["canonical_profile_id"] == "full-windows-x64-cpu"
-    assert release_manifest["deprecated_alias"] is True
-    assert release_manifest["target"]["platform_tag"] == "windows-x64"
-    assert release_manifest["accelerator"] == {"kind": "cpu"}
 
 
 def test_assemble_release_rejects_reserved_ubuntu_target(
@@ -247,7 +222,6 @@ def test_assemble_release_windows_x64_cpu_excludes_nvidia_runtime_assets(
     )
     assert release_manifest["artifacts"]["include_tensorrt_runtime"] is False
     assert release_manifest["artifacts"]["include_cudnn_runtime"] is False
-    assert release_manifest["canonical_profile_id"] == "full-windows-x64-cpu"
     assert release_manifest["accelerator"] == {"kind": "cpu"}
     assert release_manifest["artifacts"]["requirements_exclude_packages"] == []
     assert [worker["profile_id"] for worker in release_manifest["workers"]] == [
@@ -312,19 +286,24 @@ def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
 
     result = assemble_release(
         ReleaseAssemblyRequest(
-            profile_id="full",
+            profile_id="full-windows-x64-nvidia",
             output_root=tmp_path,
             bundled_python_source_dir=bundled_python_source_dir,
         )
     )
 
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     assert result.bundled_python_mode == "copied-from-source"
     assert (release_dir / "python" / "python.exe").is_file()
     assert not (release_dir / "python" / "__pycache__").exists()
 
     release_manifest = json.loads(
-        (release_dir / "manifests" / "release-profiles" / "full.json").read_text(
+        (
+            release_dir
+            / "manifests"
+            / "release-profiles"
+            / "full-windows-x64-nvidia.json"
+        ).read_text(
             encoding="utf-8"
         )
     )
@@ -339,13 +318,13 @@ def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
 def test_assemble_release_requires_force_to_overwrite_existing_directory(tmp_path: Path) -> None:
     """验证 release 目录已存在时必须显式允许覆盖。"""
 
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     release_dir.mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(FileExistsError):
         assemble_release(
             ReleaseAssemblyRequest(
-                profile_id="full",
+                profile_id="full-windows-x64-nvidia",
                 output_root=tmp_path,
             )
         )
@@ -358,7 +337,7 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     """验证覆盖发布时会保留已有 python 目录内容。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     existing_python_dir = release_dir / "python"
     existing_python_dir.mkdir(parents=True, exist_ok=True)
     marker_file = existing_python_dir / "marker.txt"
@@ -370,7 +349,7 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
 
     result = assemble_release(
         ReleaseAssemblyRequest(
-            profile_id="full",
+            profile_id="full-windows-x64-nvidia",
             output_root=tmp_path,
             overwrite=True,
         )
@@ -398,7 +377,7 @@ def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
     """验证覆盖发布失败时会把原有 python 目录恢复回来。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     existing_python_dir = release_dir / "python"
     existing_python_dir.mkdir(parents=True, exist_ok=True)
     marker_file = existing_python_dir / "marker.txt"
@@ -409,7 +388,7 @@ def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
     with pytest.raises(FileNotFoundError):
         assemble_release(
             ReleaseAssemblyRequest(
-                profile_id="full",
+                profile_id="full-windows-x64-nvidia",
                 output_root=tmp_path,
                 overwrite=True,
             )
@@ -428,12 +407,12 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     assemble_release(
         ReleaseAssemblyRequest(
-            profile_id="full",
+            profile_id="full-windows-x64-nvidia",
             output_root=tmp_path,
         )
     )
 
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     stop_script_path = release_dir / "stop_amvision_full.py"
     stop_module = _load_module_from_file("release_full_stop_script", stop_script_path)
 
@@ -499,6 +478,29 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
     assert "停止 full-stack-root 超时" not in captured.out
     assert "已停止 full-stack-root，pid=99" in captured.out
     assert not state_file_path.exists()
+
+
+def test_release_full_start_resolves_the_only_generated_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证根启动器直接使用发布目录中唯一的目标 manifest。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    start_module = _load_module_from_file(
+        "release_full_start_script",
+        result.release_dir / "start_amvision_full.py",
+    )
+
+    manifest_path = start_module._resolve_release_manifest_path(result.release_dir, None)
+
+    assert manifest_path == result.release_manifest_path
 
 
 def _patch_release_runtime_asset_sources(

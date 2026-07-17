@@ -237,10 +237,10 @@
 
 ### 4. 继续硬化工程化交付面
 
-- 当前 `assemble-release` 已把同目录 Python 运行时占位/回迁、前端构建产物、`custom_nodes` 资产、`ffmpeg/ffprobe` 工具目录和本地 TensorRT runtime 目录纳入 `release/full/`。
-- 2026-06-12 已完成一轮 `release/full` 基础目标机验收：重新执行 `assemble-release --profile-id full --release-root .\release --force` 后，发布目录保留现有 `python/`，`validate-layout` 通过，发布目录 Python 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`，`start_amvision_full.py` 一键启动可拉起 `backend-service` 和 6 个 worker profile，`/api/v1/system/health`、`/docs` 与 OpenAPI 新增 non-detection conversion result 路由均可访问，`stop-amvision-full.bat` 可清理运行状态文件；这条验收现在也已固化为显式 integration 测试，并补了资源快照、日志文件、陈旧状态恢复和停止失败返回非 0 的检查。默认短时驻留，长时 soak 需要显式指定。
+- 当前 `assemble-release` 已按 Windows x64 CPU/NVIDIA profile 收敛同目录 Python、前端、`custom_nodes`、FFmpeg 和目标运行时资产。
+- NVIDIA full-stack 基础目标机验收统一使用 `full-windows-x64-nvidia` profile，覆盖六类 worker、health、OpenAPI、资源快照和 stop 回收。
 - 2026-06-15 release/full integration 已补资源过程采样：`resource-baseline.json` 现在包含 `initial / final / samples / summary`，可直接看每个组件的 RSS、CPU 和线程变化。默认仍是短时验收，长时 soak 通过 `AMVISION_RELEASE_FULL_SOAK_SECONDS` 与 `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS` 显式打开。
 - 2026-06-15 在本机重新装配 `release/full` 并用 `release/full/python/python.exe` 复跑短时启停验收：端口 `18080`、驻留 `5` 秒，`tests/integration/test_release_full_stack_acceptance.py` 结果为 `1 passed`。本次确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和资源基线写入正常；长时间负载 soak 仍保留给现场目标机按实际任务执行。
-- 2026-06-18 在本机重新执行 `assemble-release --profile-id full --release-root .\release --force --output text`，发布目录继续使用 `bundled_python_mode=preserved-existing`，并确认 `release/full/config/backend-worker.json` 已包含 classification / segmentation / pose / obb training 与 inference consumer。随后使用端口 `18185`、驻留 `30` 秒、资源采样间隔 `5` 秒复跑 `tests/integration/test_release_full_stack_acceptance.py`，结果为 `1 passed`；`resource-baseline.json` 显示 backend-service 与 6 个 worker profile 在短时驻留前后 RSS 和 CPU 基线稳定，stop 脚本完成进程回收。
-- 下一步重点应转向发布目录的更长时间现场 soak、日志/指标/异常恢复样例，以及 `full` 目录向现场派生变体时的裁剪规范。这里不是“缺少启动验收入口”，而是还需要按目标机器和实际负载建立更长时间基线。
+- 2026-06-18 的 NVIDIA full-stack 短时资源复验通过；当前组装命令和发布目录已统一迁移到 `full-windows-x64-nvidia`。
+- 下一步重点应转向两个 Windows profile 的更长时间现场 soak、日志、指标和异常恢复样例。
 

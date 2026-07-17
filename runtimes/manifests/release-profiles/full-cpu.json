@@ -1,7 +1,0 @@
-{
-  "profile_id": "full-cpu",
-  "display_name": "amvision full CPU（兼容别名）",
-  "description": "旧 CPU 发布入口；assemble-release 会解析为 full-windows-x64-cpu。",
-  "implementation_status": "deprecated-alias",
-  "alias_for": "full-windows-x64-cpu"
-}

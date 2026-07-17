@@ -1,7 +1,0 @@
-{
-  "profile_id": "full-nvidia",
-  "display_name": "amvision full NVIDIA（兼容别名）",
-  "description": "旧 NVIDIA 发布入口；assemble-release 会解析为 full-windows-x64-nvidia。",
-  "implementation_status": "deprecated-alias",
-  "alias_for": "full-windows-x64-nvidia"
-}

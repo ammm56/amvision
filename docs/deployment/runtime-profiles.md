@@ -22,7 +22,7 @@
 | `full-ubuntu-x64-nvidia` | 仅预留名称，未实现 | Ubuntu x64 NVIDIA | 未组装 | 未定义 |
 | `full-ubuntu-x64-cpu` | 仅预留名称，未实现 | Ubuntu x64 CPU | 未组装 | 未定义 |
 
-`full`、`full-nvidia` 和 `full-cpu` 仅作为旧命令兼容别名，分别解析到对应 Windows canonical profile。新发布必须显式使用带 OS、架构和 accelerator 的名称。Ubuntu 名称只用于固定未来目录和 profile 命名，本阶段调用会明确失败，不会生成看似可用但未经实现的包。
+发布只接受表中完整 profile id，不提供缩写或旧名称。Ubuntu 名称只用于固定未来目录和 profile 命名，本阶段调用会明确失败，不会生成看似可用但未经实现的包。
 
 ## 根因说明：CPU 机器前端无内容
 
@@ -58,15 +58,6 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 生成目录：
 
 - `release/full-windows-x64-cpu/`
-
-### 旧入口
-
-```powershell
-conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full --release-root .\release --force --output text
-```
-
-`full` 当前等价于 `full-windows-x64-nvidia`，不适合 CPU-only 机器。
 
 ## 共用约定
 

@@ -36,7 +36,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 
 说明：
 
-- `full`、`full-nvidia`、`full-cpu` 仅作为兼容入口；新发布显式选择带 `windows-x64` 的 canonical profile
+- 发布必须显式选择带 `windows-x64` 的完整 profile id
 - `assemble-release --force` 会保留并回迁当前发行目录里的 `python/`，不会在覆盖发布时删除这个大体量目录
 - 首次发布由发布人员把对应 Windows Python 环境手工复制到 `python/`；当前不使用 `runtime-cache/`
 - Ubuntu x64 CPU/NVIDIA profile 名称已预留，但当前不实现、不组装、不验收

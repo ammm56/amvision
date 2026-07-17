@@ -99,7 +99,7 @@
   - `python -m backend.workers.main`
 - maintenance：
   - `python -m backend.maintenance.main validate-layout --output text`
-  - `python -m backend.maintenance.main assemble-release --profile-id full --release-root ./release --force --output text`
+  - `python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root ./release --force --output text`
 
 ### 当前最小回归入口
 

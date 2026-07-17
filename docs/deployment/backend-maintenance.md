@@ -40,7 +40,7 @@
 
 - canonical profile 为 `full-windows-x64-nvidia` 和 `full-windows-x64-cpu`
 - NVIDIA 包复制并校验 Windows x64 TensorRT / cuDNN；CPU 包不复制这些资产，并拒绝 NVIDIA-only requirements
-- `full`、`full-nvidia`、`full-cpu` 保留为旧命令兼容别名；Ubuntu profile 仅预留，当前不允许组装
+- profile id 必须使用完整目标名称；Ubuntu profile 仅预留，当前不允许组装
 - 自动复制 backend 源码、配置模板、Python launcher 和 Windows bat wrapper
 - 自动复制当前 profile 需要的全部 worker profile manifest，并生成 `start-<profile_id>-worker.bat`
 - 自动复制仓库根 `README.md`、`LICENSE`、`LICENSE.zh-CN` 和 `COMMERCIAL_LICENSE_REQUIRED.md`

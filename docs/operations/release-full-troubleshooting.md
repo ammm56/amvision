@@ -31,7 +31,7 @@
 
 2026-06-12 已完成一轮 `release/full` 基础验收：
 
-- `assemble-release --profile-id full --release-root .\release --force --output text` 通过，`bundled_python_mode=preserved-existing`。
+- `assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text` 通过，`bundled_python_mode=preserved-existing`。
 - `validate-layout` 通过，`frontend/`、`custom_nodes/`、`tools/ffmpeg/`、`tools/cudnn/`、`python/python.exe` 和 worker profile 目录均存在。
 - `release/full/python/python.exe` 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`。
 - `start_amvision_full.py` 可拉起 `backend-service` 与 `dataset-import / dataset-export / training / conversion / evaluation / inference` 六个 worker profile。
@@ -41,7 +41,7 @@
 - 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间。当前文件包含 `initial`、`final`、`samples` 和 `summary` 四段：`samples` 用于长时 soak 过程采样，`summary` 用于直接查看 RSS、CPU 和线程数变化。
 - 2026-06-15 已在本机重新装配 `release/full` 并复跑一次短时启停验收：使用 `release/full/python/python.exe`、端口 `18080`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`，结果为 `1 passed`。本次验收确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和 `resource-baseline.json` 写入正常；这仍是短时空载验收，不替代现场长时间负载 soak。
 - 2026-06-16 已复跑 `tests/integration/test_release_full_stack_acceptance.py`：使用端口 `18080`、`logs/integration-full-stack-codex-short`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`、资源采样间隔 `1` 秒，结果为 `1 passed`。本次资源摘要中 backend-service 与 6 个 worker profile 的 RSS、线程数和 CPU 时间在短时驻留前后无增长；这仍是短时空载验收，不替代目标机长时间负载 soak。
-- 2026-06-18 已重新执行 `assemble-release --profile-id full --release-root .\release --force --output text`，发布目录继续保留既有 `release/full/python/`，并确认 `release/full/config/backend-worker.json` 已包含最新 classification / segmentation / pose / obb training 与 inference consumer。随后使用端口 `18185`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=30`、资源采样间隔 `5` 秒复跑 `tests/integration/test_release_full_stack_acceptance.py`，结果为 `1 passed`；`logs/yolov8-release-acceptance-20260618/resource-baseline.json` 记录了 backend-service 与 6 个 worker profile 的短时 RSS、CPU 和线程数基线，stop 脚本完成进程回收。
+- 2026-06-18 已完成 NVIDIA full-stack 短时验收；当前复验统一使用 `full-windows-x64-nvidia` profile 和对应发布目录。
 - 2026-06-24 已跑一轮更长 `release/full` 空载常驻基线：使用端口 `18240`、日志目录 `logs/model-mainline-long-soak-20260624-r1`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=600`、`AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS=30`，结果为 `1 passed`。本次验收覆盖陈旧 `runtime-state.json` 恢复、backend-service 与 6 个 worker profile 启动、health / docs / OpenAPI、30 秒间隔资源采样、stop 脚本回收和进程残留检查；`resource-baseline.json` 中 7 个组件 RSS 增量为 `32768` 到 `40960` bytes，CPU 时间增量均为 `0.0`，线程数最终从 `4` 回落到 `2`。日志中未发现 `ERROR`、`Traceback`、`Exception`、`failed` 等异常关键词，stop 后 `runtime-state.json` 已删除。该记录是空载常驻和异常恢复基线，不替代真实模型 deployment 持续推理负载 soak。
 - 2026-06-25 已按验收与修复主线补一轮 `release/full` 60 秒空载驻留复验：日志目录 `logs/integration-full-stack-1782389454`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=60`、`AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS=10`，结果为 `1 passed`。本次复验确认 health / docs / OpenAPI、组件日志、资源采样、陈旧状态文件恢复、stop 脚本回收和进程残留检查仍正常；`resource-baseline.json` 中 backend-service 与 6 个 worker profile 的 RSS 均无增长，CPU 时间增量均为 `0.0`，日志中未发现 `ERROR`、`Traceback`、`Exception`、`failed` 等异常关键词，stop 后 `runtime-state.json` 已删除。
 
@@ -93,7 +93,7 @@
 
 典型根因：
 
-- CPU-only 机器误用了 `full` 或 `full-nvidia` 发布包
+- CPU-only 机器误用了 `full-windows-x64-nvidia` 发布包
 - NVIDIA 完整包启动了训练、转换、评估、推理等全部 worker
 - 某个 worker 因 TensorRT、CUDA、NVIDIA driver 或 GPU-only Python 依赖不可用而退出
 - `start-amvision-full` 发现子组件退出后，会停止整个 stack，backend-service 也随之退出
@@ -103,15 +103,15 @@
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root .\release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
 ```
 
-然后在 `release/full-cpu/` 中部署和启动。CPU profile 的验收点：
+然后在 `release/full-windows-x64-cpu/` 中部署和启动。CPU profile 的验收点：
 
 - 不存在 `tools/tensorrt/`
 - 不存在 `tools/cudnn/`
 - `app/requirements.txt` 不包含 `tensorrt-cu12`、`cuda-python`
-- 默认只启动 `dataset-import`、`dataset-export`、`inference` 三类 worker
+- 包含六类 worker，可按现场需要通过启动参数选择实际启动的 worker
 
 如果必须在 CPU 机器上跑模型推理，应使用 ONNX Runtime / OpenVINO CPU 路线构建和部署模型，不应使用 TensorRT 构建。
 
@@ -256,7 +256,7 @@ Get-Content .\logs\full-stack\worker-dataset-export.log -Tail 80
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full --release-root .\release --force --bundled-python-source-dir $env:CONDA_PREFIX --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --bundled-python-source-dir $env:CONDA_PREFIX --output text
 ```
 
 判断方式：

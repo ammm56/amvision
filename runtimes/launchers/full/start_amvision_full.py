@@ -37,8 +37,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--release-manifest-file",
-        default="manifests/release-profiles/full.json",
-        help="release manifest 路径；相对路径按应用根目录解析",
+        help="release manifest 路径；不传时要求发布目录中只有一个 manifest",
     )
     parser.add_argument("--host", default="0.0.0.0", help="backend-service 监听地址")
     parser.add_argument(
@@ -188,30 +187,32 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
     )
 
 
-def _resolve_release_manifest_path(app_root: Path, release_manifest_file: str) -> Path:
+def _resolve_release_manifest_path(
+    app_root: Path,
+    release_manifest_file: str | None,
+) -> Path:
     """解析一键启动应使用的 release manifest 文件。
 
     参数：
     - app_root：当前应用根目录。
-    - release_manifest_file：release manifest 路径。
+    - release_manifest_file：可选的 release manifest 路径。
 
     返回：
     - Path：真实存在的 release manifest 文件路径。
     """
 
-    manifest_path = resolve_path(app_root, release_manifest_file)
-    if manifest_path.is_file():
-        return manifest_path
+    if release_manifest_file is not None and release_manifest_file.strip():
+        return resolve_path(app_root, release_manifest_file.strip())
 
-    default_manifest_path = app_root / "manifests" / "release-profiles" / "full.json"
-    if manifest_path == default_manifest_path.resolve():
-        profile_manifest_paths = sorted(
-            (app_root / "manifests" / "release-profiles").glob("*.json")
+    profile_manifest_paths = sorted(
+        (app_root / "manifests" / "release-profiles").glob("*.json")
+    )
+    if len(profile_manifest_paths) != 1:
+        raise ValueError(
+            "未指定 release manifest，发布目录必须且只能包含一个 manifest: "
+            f"count={len(profile_manifest_paths)}"
         )
-        if len(profile_manifest_paths) == 1:
-            return profile_manifest_paths[0]
-
-    return manifest_path
+    return profile_manifest_paths[0]
 
 
 def _load_release_manifest(app_root: Path, manifest_path: Path) -> dict[str, object]:
