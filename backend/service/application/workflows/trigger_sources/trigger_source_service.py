@@ -17,6 +17,10 @@ from backend.service.application.errors import (
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
+from backend.service.application.workflows.trigger_sources.zeromq_transport import (
+    ZEROMQ_BUFFER_TTL_SECONDS_KEY,
+    resolve_zeromq_buffer_ttl_seconds,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -859,6 +863,9 @@ def _normalize_transport_config_for_kind(
         return normalized_config
     normalized_config[_ZEROMQ_BIND_ENDPOINT_KEY] = _read_zeromq_bind_endpoint(
         normalized_config
+    )
+    normalized_config[ZEROMQ_BUFFER_TTL_SECONDS_KEY] = (
+        resolve_zeromq_buffer_ttl_seconds(normalized_config)
     )
     return normalized_config
 

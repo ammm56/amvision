@@ -30,6 +30,9 @@ from backend.service.application.runtime.support.safe_counter import (
 from backend.service.application.workflows.trigger_sources.protocol_adapter import (
     WorkflowTriggerEventHandler,
 )
+from backend.service.application.workflows.trigger_sources.zeromq_transport import (
+    resolve_zeromq_buffer_ttl_seconds,
+)
 from backend.service.application.workflows.runtime.policies import (
     should_return_workflow_timing_metadata,
 )
@@ -450,8 +453,8 @@ class ZeroMqTriggerAdapter:
         """把 ZeroMQ 二进制帧写入 LocalBufferBroker。"""
 
         pool_name = _read_optional_transport_text(trigger_source, "pool_name")
-        ttl_seconds = _read_optional_transport_float(
-            trigger_source, "buffer_ttl_seconds"
+        ttl_seconds = resolve_zeromq_buffer_ttl_seconds(
+            trigger_source.transport_config
         )
         media_type = (
             envelope.media_type

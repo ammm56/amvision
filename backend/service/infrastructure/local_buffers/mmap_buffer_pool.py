@@ -226,9 +226,13 @@ class MmapBufferPool:
             try:
                 slot_index = self._find_free_slot_index()
             except InvalidRequestError:
-                increment_safe_counter(self._allocation_failure_count)
-                increment_safe_counter(self._pool_full_count)
-                raise
+                self._expire_leases_locked(created_at)
+                try:
+                    slot_index = self._find_free_slot_index()
+                except InvalidRequestError:
+                    increment_safe_counter(self._allocation_failure_count)
+                    increment_safe_counter(self._pool_full_count)
+                    raise
             slot_state = self._slots[slot_index]
             slot_state.generation += 1
             lease = BufferLease(
@@ -568,6 +572,40 @@ class MmapBufferPool:
             increment_safe_counter(self._frame_write_count)
             return self._build_frame_ref_locked(frame_state)
 
+    def abort_frame(self, *, reservation: dict[str, object]) -> None:
+        """放弃 writing frame reservation，使槽位可再次被 channel 使用。"""
+
+        self._ensure_open()
+        with self._lock:
+            frame_state = self._require_writing_frame_for_reservation_locked(reservation)
+            frame_state.sequence_id = -1
+            frame_state.size = 0
+            frame_state.state = "reserved"
+            frame_state.media_type = None
+            frame_state.shape = ()
+            frame_state.dtype = None
+            frame_state.layout = None
+            frame_state.pixel_format = None
+            frame_state.metadata = {}
+
+    def destroy_frame_channel(self, *, stream_id: str) -> int:
+        """销毁 frame channel，释放其全部预留槽位并失效旧 FrameRef。"""
+
+        self._ensure_open()
+        normalized_stream_id = _require_stripped_text(stream_id, "stream_id")
+        with self._lock:
+            channel = self._ring_channels.pop(normalized_stream_id, None)
+            if channel is None:
+                raise InvalidRequestError(
+                    "ring buffer channel 不存在",
+                    details={"stream_id": normalized_stream_id},
+                )
+            for slot_index in channel.slot_indices:
+                slot_state = self._slots[slot_index]
+                slot_state.generation += 1
+                slot_state.frame = None
+            return len(channel.slot_indices)
+
     def write_frame(
         self,
         *,
@@ -599,21 +637,26 @@ class MmapBufferPool:
         if not isinstance(content, bytes) or not content:
             raise InvalidRequestError("ring buffer 写入内容必须是非空 bytes")
         reservation = self.allocate_frame(stream_id=stream_id, size=len(content))
-        self._mmap.seek(int(reservation["offset"]))
-        self._mmap.write(content)
-        if len(content) < int(reservation["size"]):
-            self._mmap.write(b"\x00" * (int(reservation["size"]) - len(content)))
-        if self.config.flush_on_write:
-            self._mmap.flush()
-        return self.commit_frame(
-            reservation=reservation,
-            media_type=media_type,
-            shape=shape,
-            dtype=dtype,
-            layout=layout,
-            pixel_format=pixel_format,
-            metadata=metadata,
-        )
+        try:
+            self._mmap.seek(int(reservation["offset"]))
+            self._mmap.write(content)
+            if self.config.flush_on_write:
+                self._mmap.flush()
+            return self.commit_frame(
+                reservation=reservation,
+                media_type=media_type,
+                shape=shape,
+                dtype=dtype,
+                layout=layout,
+                pixel_format=pixel_format,
+                metadata=metadata,
+            )
+        except Exception:
+            try:
+                self.abort_frame(reservation=reservation)
+            except InvalidRequestError:
+                pass
+            raise
 
     def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
         """读取 BufferRef 对应的字节，并校验 lease 一致性。
@@ -740,15 +783,20 @@ class MmapBufferPool:
         """
 
         current_time = now or datetime.now(timezone.utc)
-        expired_count = 0
         with self._lock:
-            for slot_state in self._slots:
-                lease = slot_state.lease
-                if lease is not None and lease.expires_at is not None and lease.expires_at <= current_time:
-                    slot_state.lease = None
-                    expired_count += 1
-            for _ in range(expired_count):
-                increment_safe_counter(self._expired_count)
+            return self._expire_leases_locked(current_time)
+
+    def _expire_leases_locked(self, current_time: datetime) -> int:
+        """在持有 pool lock 时回收过期 lease。"""
+
+        expired_count = 0
+        for slot_state in self._slots:
+            lease = slot_state.lease
+            if lease is not None and lease.expires_at is not None and lease.expires_at <= current_time:
+                slot_state.lease = None
+                expired_count += 1
+        for _ in range(expired_count):
+            increment_safe_counter(self._expired_count)
         return expired_count
 
     def build_status(self) -> dict[str, object]:

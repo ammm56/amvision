@@ -37,6 +37,10 @@ from backend.service.application.workflows.trigger_sources.workflow_submitter im
     WorkflowSubmitter,
     WorkflowTriggerSubmitRequest,
 )
+from backend.service.application.workflows.trigger_sources.zeromq_transport import (
+    DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS,
+    resolve_zeromq_buffer_ttl_seconds,
+)
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
@@ -50,6 +54,15 @@ from backend.service.infrastructure.integrations.directory import (
     DirectoryWatchTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
+
+
+@pytest.mark.parametrize("invalid_value", [0, -1, True, "nan", "inf", "invalid"])
+def test_zeromq_buffer_ttl_requires_positive_finite_number(invalid_value: object) -> None:
+    """验证 ZeroMQ buffer TTL 默认存在且拒绝非正数和非有限数值。"""
+
+    assert resolve_zeromq_buffer_ttl_seconds({}) == DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS
+    with pytest.raises(InvalidRequestError, match="buffer_ttl_seconds"):
+        resolve_zeromq_buffer_ttl_seconds({"buffer_ttl_seconds": invalid_value})
 
 
 def test_trigger_event_normalizer_and_input_binding_mapper_resolve_payload_paths() -> (

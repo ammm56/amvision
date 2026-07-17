@@ -661,6 +661,35 @@ class LocalBufferBrokerProcessSupervisor:
         finally:
             client.close()
 
+    def abort_frame(self, *, reservation: dict[str, object]) -> None:
+        """放弃尚未 commit 的 frame reservation。"""
+
+        client = self._require_client()
+        try:
+            client.abort_frame(reservation=reservation)
+        except Exception as exc:
+            self._record_recent_error(action="abort-frame", error=exc)
+            raise
+        finally:
+            client.close()
+
+    def destroy_frame_channel(
+        self,
+        *,
+        stream_id: str,
+        pool_name: str | None = None,
+    ) -> int:
+        """销毁 frame channel 并释放其预留槽位。"""
+
+        client = self._require_client()
+        try:
+            return client.destroy_frame_channel(stream_id=stream_id, pool_name=pool_name)
+        except Exception as exc:
+            self._record_recent_error(action="destroy-frame-channel", error=exc)
+            raise
+        finally:
+            client.close()
+
     def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
         """释放一条 broker lease。"""
 

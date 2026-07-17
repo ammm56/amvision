@@ -59,6 +59,7 @@ from backend.service.settings import (
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
 )
+from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
 from tests.local_buffer_broker_fake_worker import fake_deployment_worker_records_broker_event_channel
 
 
@@ -92,6 +93,37 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_
         supervisor.stop()
 
     assert supervisor.is_running is False
+
+
+def test_workflow_parent_cleanup_releases_registered_buffer_lease(tmp_path: Path) -> None:
+    """验证 worker 未执行 finally 时父进程可按 cleanup 元数据兜底释放 lease。"""
+
+    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        result = client.write_bytes(
+            content=b"parent-cleanup",
+            owner_kind="workflow-trigger-source",
+            owner_id="trigger-1:event-1",
+            media_type="image/raw",
+        )
+        metadata: dict[str, object] = {}
+        register_local_buffer_lease_cleanup(
+            metadata,
+            lease_id=result.lease.lease_id,
+            pool_name=result.lease.pool_name,
+        )
+        manager = object.__new__(WorkflowRuntimeWorkerManager)
+        manager.local_buffer_broker_event_channel_provider = supervisor.get_event_channel
+
+        assert manager.cleanup_parent_local_buffer_leases(metadata) == 1
+        assert supervisor.get_status()["pools"][0]["free_count"] == 2
+        # 重复 cleanup 不抛错，满足 worker/父进程并发收尾时的幂等语义。
+        assert manager.cleanup_parent_local_buffer_leases(metadata) == 0
+    finally:
+        supervisor.stop()
 
 
 def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
@@ -258,6 +290,8 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
         client = supervisor.create_client()
         assert client is not None
         channel = client.create_frame_channel(stream_id="line-a-camera-1", frame_capacity=2)
+        abandoned = client.allocate_frame(stream_id="line-a-camera-1", size=7)
+        client.abort_frame(reservation=abandoned)
 
         first_frame = client.write_frame(
             stream_id="line-a-camera-1",
@@ -281,7 +315,8 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
         status = client.get_status()["pools"][0]
 
         assert channel["frame_capacity"] == 2
-        assert first_frame.sequence_id == 0
+        # abort 的 reservation 保留已分配序号，避免并发写入时回退序号产生冲突。
+        assert first_frame.sequence_id == 1
         assert first_frame.path.endswith("image-test-001.dat")
         assert client.read_frame_ref(second_frame) == b"frame-2"
         assert client.read_frame_ref(third_frame) == b"frame-3"
@@ -291,6 +326,12 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
         assert status["frame_write_count"] == 3
         assert status["frame_overwrite_count"] == 1
         assert status["frame_channels"][0]["published_frame_count"] == 3
+        assert client.destroy_frame_channel(stream_id="line-a-camera-1") == 2
+        destroyed_status = client.get_status()["pools"][0]
+        assert destroyed_status["frame_reserved_count"] == 0
+        assert destroyed_status["free_count"] == 3
+        with pytest.raises(InvalidRequestError):
+            client.read_frame_ref(third_frame)
     finally:
         supervisor.stop()
 

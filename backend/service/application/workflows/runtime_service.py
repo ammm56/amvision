@@ -1100,15 +1100,16 @@ class WorkflowRuntimeService:
             message="workflow run 已进入队列",
         )
 
+        worker_execution_metadata = with_input_buffer_ref_cleanups(
+            metadata,
+            normalized_request.input_bindings or {},
+        )
         try:
             self.worker_manager.submit_async_run(
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=with_input_buffer_ref_cleanups(
-                    metadata,
-                    normalized_request.input_bindings or {},
-                ),
+                execution_metadata=worker_execution_metadata,
                 timeout_seconds=workflow_run.requested_timeout_seconds,
                 callbacks=self._build_async_run_callbacks(
                     workflow_app_runtime.workflow_runtime_id,
@@ -1116,6 +1117,7 @@ class WorkflowRuntimeService:
                 ),
             )
         except ServiceError as error:
+            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
             workflow_run = replace(
                 workflow_run,
                 state="failed",
@@ -1241,16 +1243,17 @@ class WorkflowRuntimeService:
         raw_template_outputs: dict[str, object] = {}
         raw_node_records: tuple[dict[str, object], ...] = ()
         node_timings: tuple[dict[str, object], ...] = ()
+        worker_execution_metadata = with_input_buffer_ref_cleanups(
+            execution_metadata,
+            normalized_request.input_bindings or {},
+        )
         try:
             worker_invoke_started_at = monotonic()
             worker_result = self.worker_manager.invoke_runtime(
                 workflow_app_runtime=workflow_app_runtime,
                 workflow_run_id=workflow_run.workflow_run_id,
                 input_bindings=dict(normalized_request.input_bindings or {}),
-                execution_metadata=with_input_buffer_ref_cleanups(
-                    execution_metadata,
-                    normalized_request.input_bindings or {},
-                ),
+                execution_metadata=worker_execution_metadata,
                 timeout_seconds=workflow_run.requested_timeout_seconds,
             )
             sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(worker_invoke_started_at)
@@ -1285,6 +1288,7 @@ class WorkflowRuntimeService:
                 worker_result.worker_state,
             )
         except OperationTimeoutError as exc:
+            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
             workflow_run = replace(
                 workflow_run,
                 state="timed_out",
@@ -1303,6 +1307,12 @@ class WorkflowRuntimeService:
                     "last_error": exc.message,
                 },
             )
+        except ServiceError:
+            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+            raise
+        except Exception:
+            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+            raise
 
         sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(sync_timing_started_at)
         workflow_run = replace(

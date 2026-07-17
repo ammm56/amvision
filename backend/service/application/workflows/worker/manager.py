@@ -17,7 +17,14 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
-from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
+from backend.service.application.local_buffers import (
+    LocalBufferBrokerClient,
+    LocalBufferBrokerEventChannel,
+)
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
+    list_registered_execution_cleanups,
+)
 from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
 from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
@@ -360,8 +367,10 @@ class WorkflowRuntimeWorkerManager:
         """
 
         if self._stopping.is_set():
+            self.cleanup_parent_local_buffer_leases(execution_metadata)
             raise ServiceConfigurationError("workflow runtime worker manager 当前已停止")
         if not self.is_runtime_available(workflow_app_runtime.workflow_runtime_id):
+            self.cleanup_parent_local_buffer_leases(execution_metadata)
             raise ServiceConfigurationError(
                 "workflow runtime worker 当前未运行",
                 details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
@@ -384,7 +393,21 @@ class WorkflowRuntimeWorkerManager:
         async_handle.thread = async_thread
         with self._lock:
             self._async_runs[workflow_run_id] = async_handle
-        async_thread.start()
+        try:
+            async_thread.start()
+        except Exception as exc:
+            with self._lock:
+                self._async_runs.pop(workflow_run_id, None)
+            self.cleanup_parent_local_buffer_leases(execution_metadata)
+            raise ServiceConfigurationError(
+                "workflow run 后台线程启动失败",
+                details={
+                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                    "workflow_run_id": workflow_run_id,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc) or type(exc).__name__,
+                },
+            ) from exc
 
     def cancel_async_run(self, workflow_run_id: str, *, timeout_seconds: float = 10.0) -> bool:
         """取消一条已经提交的异步 WorkflowRun。
@@ -569,6 +592,7 @@ class WorkflowRuntimeWorkerManager:
             )
             async_handle.callbacks.on_completed(worker_result)
         except OperationCancelledError:
+            self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
             runtime_state: WorkflowRuntimeWorkerState | None = None
             if async_handle.dispatched_event.is_set() and not self._stopping.is_set():
                 try:
@@ -585,9 +609,24 @@ class WorkflowRuntimeWorkerManager:
                     )
             async_handle.callbacks.on_cancelled(runtime_state)
         except OperationTimeoutError as error:
+            self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
             async_handle.callbacks.on_timed_out(error)
         except ServiceError as error:
+            self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
             async_handle.callbacks.on_failed(error)
+        except Exception as exc:
+            self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
+            async_handle.callbacks.on_failed(
+                ServiceConfigurationError(
+                    "workflow runtime worker 调用异常退出",
+                    details={
+                        "workflow_runtime_id": async_handle.workflow_app_runtime.workflow_runtime_id,
+                        "workflow_run_id": async_handle.workflow_run_id,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc) or type(exc).__name__,
+                    },
+                )
+            )
         finally:
             async_handle.completion_event.set()
             with self._lock:
@@ -601,6 +640,49 @@ class WorkflowRuntimeWorkerManager:
             return
         async_handle.dispatched_event.set()
         async_handle.callbacks.on_started()
+
+    def cleanup_parent_local_buffer_leases(
+        self,
+        execution_metadata: dict[str, object],
+    ) -> int:
+        """父进程兜底释放 worker 未能执行 cleanup 的 LocalBufferBroker lease。"""
+
+        cleanup_items = tuple(
+            item
+            for item in list_registered_execution_cleanups(execution_metadata)
+            if item.resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
+        )
+        if not cleanup_items:
+            return 0
+        try:
+            channel = self._resolve_local_buffer_broker_event_channel()
+        except Exception:
+            return 0
+        if channel is None:
+            return 0
+        try:
+            client = LocalBufferBrokerClient(channel)
+        except Exception:
+            return 0
+        released_count = 0
+        try:
+            for cleanup_item in cleanup_items:
+                pool_name_value = cleanup_item.metadata.get("pool_name")
+                try:
+                    client.release(
+                        cleanup_item.resource_id,
+                        pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
+                    )
+                    released_count += 1
+                except Exception:
+                    # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
+                    continue
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+        return released_count
 
     def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:
         """向指定 worker 请求当前状态。"""

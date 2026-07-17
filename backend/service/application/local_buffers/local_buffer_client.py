@@ -249,21 +249,28 @@ class LocalBufferBrokerClient:
             size=len(content),
             pool_name=pool_name,
         )
-        self._mmap_cache.write(
-            path=str(reservation["file_path"]),
-            offset=int(reservation["offset"]),
-            content=content,
-            size=int(reservation["size"]),
-        )
-        return self.commit_frame(
-            reservation=reservation,
-            media_type=media_type,
-            shape=shape,
-            dtype=dtype,
-            layout=layout,
-            pixel_format=pixel_format,
-            metadata=metadata,
-        )
+        try:
+            self._mmap_cache.write(
+                path=str(reservation["file_path"]),
+                offset=int(reservation["offset"]),
+                content=content,
+                size=int(reservation["size"]),
+            )
+            return self.commit_frame(
+                reservation=reservation,
+                media_type=media_type,
+                shape=shape,
+                dtype=dtype,
+                layout=layout,
+                pixel_format=pixel_format,
+                metadata=metadata,
+            )
+        except Exception:
+            try:
+                self.abort_frame(reservation=reservation)
+            except Exception:
+                pass
+            raise
 
     def allocate_frame(
         self,
@@ -329,6 +336,31 @@ class LocalBufferBrokerClient:
         )
         frame_ref_payload = _require_payload_dict(payload, "frame_ref")
         return FrameRef.model_validate(frame_ref_payload)
+
+    def abort_frame(self, *, reservation: dict[str, object]) -> None:
+        """放弃尚未 commit 的 frame reservation。"""
+
+        self._send_request(
+            action="abort-frame",
+            payload={"reservation": dict(reservation)},
+        )
+
+    def destroy_frame_channel(
+        self,
+        *,
+        stream_id: str,
+        pool_name: str | None = None,
+    ) -> int:
+        """销毁 frame channel 并返回释放的槽位数。"""
+
+        payload = self._send_request(
+            action="destroy-frame-channel",
+            payload={"stream_id": stream_id, "pool_name": pool_name},
+        )
+        released_slot_count = payload.get("released_slot_count")
+        if not isinstance(released_slot_count, int) or isinstance(released_slot_count, bool):
+            raise ServiceConfigurationError("LocalBufferBroker destroy-frame-channel 返回格式无效")
+        return released_slot_count
 
     def allocate_buffer(
         self,

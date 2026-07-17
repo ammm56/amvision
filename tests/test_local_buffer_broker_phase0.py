@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from time import sleep
 
 import pytest
 
@@ -191,6 +192,78 @@ def test_mmap_buffer_pool_expires_ttl_leases_and_reports_status(tmp_path: Path) 
         assert status["expired_count"] == 1
         with pytest.raises(InvalidRequestError, match="不可读"):
             pool.read_buffer_ref(write_result.buffer_ref)
+
+
+def test_mmap_buffer_pool_reclaims_expired_lease_on_pool_full_then_retries_once(tmp_path: Path) -> None:
+    """验证 pool 满时会先回收过期 lease，且成功重试不计入 pool_full。"""
+
+    with _build_pool(tmp_path) as pool:
+        pool.allocate(size=1, owner_kind="test", owner_id="expired", ttl_seconds=0.001)
+        active_lease = pool.allocate(size=1, owner_kind="test", owner_id="active")
+        sleep(0.01)
+
+        recovered_lease = pool.allocate(size=1, owner_kind="test", owner_id="recovered")
+        status = pool.build_status()
+
+        assert recovered_lease.owner_id == "recovered"
+        assert status["free_count"] == 0
+        assert status["expired_count"] == 1
+        assert status["pool_full_count"] == 0
+        assert status["allocation_failure_count"] == 0
+        pool.release(active_lease.lease_id)
+        pool.release(recovered_lease.lease_id)
+
+
+def test_mmap_buffer_pool_can_abort_and_destroy_frame_channel(tmp_path: Path) -> None:
+    """验证 writing frame 可 abort，channel 可销毁且旧 FrameRef 会失效。"""
+
+    with _build_pool(tmp_path) as pool:
+        pool.create_frame_channel(stream_id="camera-a", frame_capacity=2)
+        reservation = pool.allocate_frame(stream_id="camera-a", size=4)
+        pool.abort_frame(reservation=reservation)
+        assert pool.build_status()["frame_writing_count"] == 0
+
+        frame_ref = pool.write_frame(
+            stream_id="camera-a",
+            content=b"data",
+            media_type="image/raw",
+        )
+        assert pool.destroy_frame_channel(stream_id="camera-a") == 2
+        status = pool.build_status()
+        assert status["frame_reserved_count"] == 0
+        assert status["free_count"] == 2
+        with pytest.raises(InvalidRequestError):
+            pool.read_frame_ref(frame_ref)
+
+
+def test_mmap_buffer_pool_high_frequency_soak_keeps_capacity_stable(tmp_path: Path) -> None:
+    """高频顺序写入释放不会造成 free_count 漂移或虚假 pool-full。"""
+
+    iterations = 20_000
+    with MmapBufferPool(
+        MmapBufferPoolConfig(
+            pool_name="soak",
+            root_dir=tmp_path / "soak",
+            file_size_bytes=4 * 64,
+            slot_size_bytes=64,
+            broker_epoch="epoch-soak",
+        )
+    ) as pool:
+        for sequence_id in range(iterations):
+            result = pool.write_bytes(
+                content=sequence_id.to_bytes(8, "little"),
+                owner_kind="soak-test",
+                owner_id=f"frame-{sequence_id}",
+                media_type="application/octet-stream",
+            )
+            pool.release(result.lease.lease_id)
+
+        status = pool.build_status()
+        assert status["free_count"] == 4
+        assert status["pool_full_count"] == 0
+        assert status["expired_count"] == 0
+        assert status["allocation_count"] == iterations
+        assert status["released_count"] == iterations
 
 
 def test_resolve_image_reference_and_load_image_bytes_support_buffer_ref(tmp_path: Path) -> None:

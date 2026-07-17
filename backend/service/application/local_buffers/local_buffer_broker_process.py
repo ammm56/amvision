@@ -75,6 +75,10 @@ class LocalBufferBrokerRegistry:
             return self._handle_allocate_frame(dict(payload))
         if action == "commit-frame":
             return self._handle_commit_frame(dict(payload))
+        if action == "abort-frame":
+            return self._handle_abort_frame(dict(payload))
+        if action == "destroy-frame-channel":
+            return self._handle_destroy_frame_channel(dict(payload))
         if action == "validate-frame-ref":
             return self._handle_validate_frame_ref(dict(payload))
         if action == "read-frame-ref":
@@ -177,6 +181,28 @@ class LocalBufferBrokerRegistry:
             metadata=dict(payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
         )
         return {"frame_ref": frame_ref.model_dump(mode="json")}
+
+    def _handle_abort_frame(self, payload: dict[str, object]) -> dict[str, object]:
+        """处理 abort-frame 控制动作。"""
+
+        reservation = payload.get("reservation")
+        if not isinstance(reservation, dict):
+            raise InvalidRequestError("LocalBufferBroker abort-frame 缺少 reservation")
+        pool = self._require_pool(str(reservation.get("pool_name") or self.settings.default_pool_name))
+        pool.abort_frame(reservation=dict(reservation))
+        return {"aborted": True}
+
+    def _handle_destroy_frame_channel(self, payload: dict[str, object]) -> dict[str, object]:
+        """处理 destroy-frame-channel 控制动作。"""
+
+        pool = self._require_pool(_read_optional_str(payload, "pool_name") or self.settings.default_pool_name)
+        stream_id = _require_str(payload, "stream_id")
+        released_slot_count = pool.destroy_frame_channel(stream_id=stream_id)
+        return {
+            "destroyed": True,
+            "stream_id": stream_id,
+            "released_slot_count": released_slot_count,
+        }
 
     def _handle_validate_frame_ref(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 validate-frame-ref 控制动作。"""
