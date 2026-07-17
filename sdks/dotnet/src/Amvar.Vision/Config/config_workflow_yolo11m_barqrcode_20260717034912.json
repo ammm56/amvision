@@ -3,7 +3,7 @@
     "base_api_url": "http://127.0.0.1:5600",
     "access_token": "amvision-default-user-token",
     "project_id": "project-1",
-    "http_timeout_seconds": 240
+    "http_timeout_seconds": 300
   },
   "runtime": {
     "name": "新建应用yolo11m_barqrcode",
@@ -15,7 +15,7 @@
     "timeout_seconds": 30,
     "event_limit": 20,
     "event_preview_count": 5,
-    "source": "amvar-vision-console",
+    "source": "amvision-workflows-console",
     "sync_scenario": "sync-invoke",
     "async_scenario": "async-run",
     "use_direct_input_bindings": false

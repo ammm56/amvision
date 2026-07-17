@@ -1,0 +1,35 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:5600",
+    "access_token": "amvision-default-user-token",
+    "project_id": "project-1",
+    "http_timeout_seconds": 300
+  },
+  "runtime": {
+    "name": "新建应用yoloxm条码识别",
+    "workflow_runtime_id": "workflow-runtime-1aa7b19c3b1f4d3db1db3b75fb526dd5"
+  },
+  "invoke": {
+    "image_path": "",
+    "image_input_binding": "request_image_base64",
+    "timeout_seconds": 30,
+    "event_limit": 20,
+    "event_preview_count": 5,
+    "source": "amvision-workflows-console",
+    "sync_scenario": "sync-invoke",
+    "async_scenario": "async-run",
+    "use_direct_input_bindings": false
+  },
+  "trigger_sources": [
+    {
+      "name": "ZeroMQ 图片触发 新建应用yoloxm条码识别 runtime",
+      "trigger_source_id": "zeromq-workflow-runtime-1aa7b19c3b1f4d3db1db3b75fb526dd5",
+      "zero_mq": {
+        "bind_endpoint": "tcp://127.0.0.1:5557",
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 30
+      }
+    }
+  ],
+  "model_deployments": []
+}

@@ -100,7 +100,7 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
 
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert workflow_config["backend"]["access_token"] == "amvision-default-user-token"
-    assert workflow_config["backend"]["http_timeout_seconds"] == 240
+    assert workflow_config["backend"]["http_timeout_seconds"] == 300
     assert workflow_config["runtime"]["name"] == "新建应用yolo11m_barqrcode"
     assert workflow_config["runtime"]["workflow_runtime_id"] == "workflow-runtime-sdk-config"
     assert workflow_config_name.startswith("Config/config_workflow_yolo11m_barqrcode_")

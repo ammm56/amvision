@@ -21,7 +21,7 @@ namespace Amvar.Vision
         /// <summary>
         /// HTTP 请求超时时间。需要覆盖模型部署启动、预热这类长控制面调用，避免 SDK 在后端返回明确结果前先超时。
         /// </summary>
-        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(240);
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(300);
 
         /// <summary>
         /// 校验管理 API 参数是否完整。

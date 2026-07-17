@@ -22,7 +22,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 
 _PACKAGE_FORMAT_ID = "amvision.sdk-config-package.v1"
-_DEFAULT_HTTP_TIMEOUT_SECONDS = 240
+_DEFAULT_HTTP_TIMEOUT_SECONDS = 300
 _DEFAULT_INVOKE_TIMEOUT_SECONDS = 30
 _DEFAULT_EVENT_LIMIT = 20
 _DEFAULT_EVENT_PREVIEW_COUNT = 5
