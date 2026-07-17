@@ -112,7 +112,7 @@ class BackendWorkerAppSettings(BaseModel):
     """
 
     app_name: str = "amvision worker"
-    app_version: str = "0.1.2"
+    app_version: str = "0.1.3"
 
 
 class BackendWorkerWorkspaceConfig(BaseModel):

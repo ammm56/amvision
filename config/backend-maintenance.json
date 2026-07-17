@@ -1,7 +1,7 @@
 {
   "app": {
     "app_name": "amvision maintenance",
-    "app_version": "0.1.2"
+    "app_version": "0.1.3"
   },
   "workspace": {
     "root_dir": "./data/maintenance"

@@ -1,7 +1,7 @@
 {
   "app": {
     "app_name": "amvision backend-service",
-    "app_version": "0.1.2"
+    "app_version": "0.1.3"
   },
   "cors": {
     "enabled": true,
