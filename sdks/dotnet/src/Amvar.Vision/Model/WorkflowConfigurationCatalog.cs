@@ -75,6 +75,23 @@ internal sealed class WorkflowConfigurationCatalog
     }
 
     /// <summary>
+    /// 通过 workflow_runtime_id 精确获取配置，不把 id 当作 name 猜测。
+    /// </summary>
+    public ConfiguredRuntime GetRuntimeById(string workflowRuntimeId)
+    {
+        var id = ConfigValidation.RequireText(workflowRuntimeId, nameof(workflowRuntimeId));
+        var matches = Runtimes.Values
+            .Where(item => string.Equals(item.Runtime.WorkflowRuntimeId, id, StringComparison.Ordinal))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new KeyNotFoundException($"Workflow runtime id does not exist or is not unique: {id}.");
+        }
+
+        return matches[0];
+    }
+
+    /// <summary>
     /// 通过 TriggerSource key 获取配置；key 不存在时抛出明确错误。
     /// </summary>
     /// <param name="triggerSourceName">TriggerSource 字典 key。</param>
@@ -91,6 +108,23 @@ internal sealed class WorkflowConfigurationCatalog
     }
 
     /// <summary>
+    /// 通过 trigger_source_id 精确获取配置，不把 id 当作 name 猜测。
+    /// </summary>
+    public ConfiguredTriggerSource GetTriggerSourceById(string triggerSourceId)
+    {
+        var id = ConfigValidation.RequireText(triggerSourceId, nameof(triggerSourceId));
+        var matches = TriggerSources.Values
+            .Where(item => string.Equals(item.TriggerSource.TriggerSourceId, id, StringComparison.Ordinal))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new KeyNotFoundException($"TriggerSource id does not exist or is not unique: {id}.");
+        }
+
+        return matches[0];
+    }
+
+    /// <summary>
     /// 通过模型 deployment key 获取配置；key 不存在时抛出明确错误。
     /// </summary>
     /// <param name="modelDeploymentName">模型 deployment 字典 key。</param>
@@ -104,6 +138,30 @@ internal sealed class WorkflowConfigurationCatalog
         }
 
         return modelDeployment;
+    }
+
+    /// <summary>
+    /// 通过 deployment_instance_id 精确获取配置，不把 id 当作 name 猜测。
+    /// </summary>
+    public ConfiguredModelDeployment GetModelDeploymentById(
+        string deploymentInstanceId,
+        string runtimeMode)
+    {
+        var id = ConfigValidation.RequireText(deploymentInstanceId, nameof(deploymentInstanceId));
+        var mode = ModelDeploymentRuntimeModes.Normalize(
+            ConfigValidation.RequireText(runtimeMode, nameof(runtimeMode)));
+        var matches = ModelDeployments.Values
+            .Where(item =>
+                string.Equals(item.ModelDeployment.DeploymentInstanceId, id, StringComparison.Ordinal)
+                && string.Equals(item.ModelDeployment.RuntimeMode, mode, StringComparison.Ordinal))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new KeyNotFoundException(
+                $"Model deployment id/runtime mode does not exist or is not unique: {id} / {mode}.");
+        }
+
+        return matches[0];
     }
 
     /// <summary>

@@ -39,7 +39,7 @@
         </div>
         <div>
           <span>{{ t('inferenceOps.fields.model') }}</span>
-          <strong>{{ selectedDeployment.model_name }}</strong>
+          <strong>{{ deploymentModelName(selectedDeployment) }}</strong>
         </div>
         <div>
           <span>{{ t('inferenceOps.fields.runtime') }}</span>
@@ -305,7 +305,7 @@ const canReadTasks = computed(() => sessionStore.hasScopes(['tasks:read']))
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const deploymentOptions = computed(() => deployments.value.map((deployment) => ({
-  label: `${deployment.display_name || deployment.deployment_instance_id} / ${deployment.model_name}`,
+  label: deploymentOptionLabel(deployment),
   value: deployment.deployment_instance_id,
 })))
 const inputTransportModeOptions = [
@@ -360,6 +360,20 @@ function buildPreviewImageSrc(value: unknown): string | null {
   if (!trimmed) return null
   if (trimmed.startsWith('data:image/')) return trimmed
   return `data:image/jpeg;base64,${trimmed}`
+}
+
+function deploymentModelName(deployment: TaskDeploymentInstance): string {
+  return deployment.model_name?.trim()
+    || deployment.display_name?.trim()
+    || deployment.model_build_id?.trim()
+    || deployment.model_version_id?.trim()
+    || deployment.deployment_instance_id
+}
+
+function deploymentOptionLabel(deployment: TaskDeploymentInstance): string {
+  const displayName = deployment.display_name?.trim() || deployment.deployment_instance_id
+  const modelName = deploymentModelName(deployment)
+  return modelName === displayName ? displayName : `${displayName} / ${modelName}`
 }
 
 async function setTaskType(value: SelectValue): Promise<void> {

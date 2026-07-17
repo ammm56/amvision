@@ -19,7 +19,7 @@ namespace Amvar.Vision
     /// 该类面向第三方集成和现场长期运行场景，一次加载配置后复用 HTTP client、operation 对象和 ZeroMQ client。
     /// 需要直接访问底层 REST API 时，可以通过 <see cref="Client"/> 调用 AMVisionClient 上的完整接口。
     /// </remarks>
-    public sealed class AMVisionOperationRunner : IDisposable
+    public sealed partial class AMVisionOperationRunner : IDisposable
     {
         /// <summary>
         /// 底层 HTTP SDK client。

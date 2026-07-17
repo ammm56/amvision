@@ -41,7 +41,9 @@ Console 示例不是 SDK 边界的一部分，不能把核心封装写到 consol
 
 ## Config 自动加载
 
-SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。第三方调用方只需要传对应的 key name 和必要的业务参数，不需要在外部重复拼 URL、构造 ZeroMQ envelope 或读取配置文件。
+SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。生成的 `name` 优先保留前端用户维护的应用、触发源和部署实例展示名称。
+
+高层 API 明确区分 name 与 id：`ByName` 方法接收配置中的可读 `name`，`ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的 id 查找还会按同步或异步 runtime mode 精确匹配。
 
 默认查找顺序：
 
@@ -62,15 +64,18 @@ public static class Example
     {
         using (var client = AMVisionClient.CreateFromConfig())
         {
-            var runtimeResult = await client.InvokeConfiguredWorkflowRuntimeAsync(
-                "tray-empty-runtime").ConfigureAwait(false);
+            var runtimeResult = await client.InvokeConfiguredWorkflowRuntimeByNameAsync(
+                "托盘分拣空盘检测应用").ConfigureAwait(false);
 
-            var modelResult = await client.InvokeConfiguredModelDeploymentWithImageFileAsync(
-                "slot-classifier",
+            var sameRuntimeResult = await client.InvokeConfiguredWorkflowRuntimeByIdAsync(
+                "workflow-runtime-c57cd5e882f641ceb34d188cf19d2ab9").ConfigureAwait(false);
+
+            var modelResult = await client.InvokeConfiguredModelDeploymentWithImageFileByNameAsync(
+                "yolo11-s-20260713012828 model-build-2cac15bfc11d",
                 @".\images\slot.jpg").ConfigureAwait(false);
 
-            var triggerResult = client.InvokeConfiguredZeroMqBgr24ImageFile(
-                "zeromq-tray-empty",
+            var triggerResult = client.InvokeConfiguredZeroMqImageFileById(
+                "zeromq-workflow-runtime-c57cd5e882f641ceb34d188cf19d2ab9",
                 @".\images\tray.jpg");
 
             Console.WriteLine(runtimeResult.State);

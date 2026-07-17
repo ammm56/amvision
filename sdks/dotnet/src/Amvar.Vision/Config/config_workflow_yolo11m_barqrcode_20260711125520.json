@@ -6,7 +6,7 @@
     "http_timeout_seconds": 240
   },
   "runtime": {
-    "name": "yolo11m_barqrcode",
+    "name": "新建应用yolo11m_barqrcode",
     "workflow_runtime_id": "workflow-runtime-768e3187953642e9a5a85353ffd96881"
   },
   "invoke": {
@@ -22,7 +22,7 @@
   },
   "trigger_sources": [
     {
-      "name": "zeromq_yolo11m_barqrcode",
+      "name": "ZeroMQ 图片触发 新建应用yolo11m_barqrcode runtime",
       "trigger_source_id": "zeromq-workflow-runtime-768e3187953642e9a5a85353ffd96881",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",

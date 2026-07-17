@@ -22,7 +22,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 
 
 _PACKAGE_FORMAT_ID = "amvision.sdk-config-package.v1"
-_DEFAULT_HTTP_TIMEOUT_SECONDS = 60
+_DEFAULT_HTTP_TIMEOUT_SECONDS = 240
 _DEFAULT_INVOKE_TIMEOUT_SECONDS = 30
 _DEFAULT_EVENT_LIMIT = 20
 _DEFAULT_EVENT_PREVIEW_COUNT = 5
@@ -185,6 +185,16 @@ class SdkConfigPackageService:
             runtimes=runtimes,
             trigger_sources=trigger_sources,
             deployments=deployments,
+            application_display_names={
+                runtime.workflow_runtime_id: name
+                for runtime in runtimes
+                if (
+                    name := _read_runtime_application_display_name(
+                        self.dataset_storage,
+                        runtime,
+                    )
+                )
+            },
         )
 
 
@@ -195,6 +205,7 @@ class _ProjectSdkConfigResources:
     runtimes: tuple[WorkflowAppRuntime, ...]
     trigger_sources: tuple[WorkflowTriggerSource, ...]
     deployments: tuple[DeploymentInstanceView, ...]
+    application_display_names: dict[str, str]
 
 
 class _SdkConfigPackageBuilder:
@@ -216,6 +227,9 @@ class _SdkConfigPackageBuilder:
             workflow_file = self._build_workflow_file(
                 runtime=runtime,
                 trigger_sources=trigger_sources_by_runtime.get(runtime.workflow_runtime_id, ()),
+                application_display_name=resources.application_display_names.get(
+                    runtime.workflow_runtime_id
+                ),
             )
             files.append(workflow_file)
 
@@ -274,10 +288,14 @@ class _SdkConfigPackageBuilder:
         *,
         runtime: WorkflowAppRuntime,
         trigger_sources: tuple[WorkflowTriggerSource, ...],
+        application_display_name: str | None,
     ) -> SdkConfigPackageFile:
         """构建单个 WorkflowAppRuntime 对应的配置文件。"""
 
-        runtime_key = self._unique_key(_build_runtime_key(runtime))
+        runtime_key = self._unique_key(
+            _build_runtime_key(runtime, application_display_name=application_display_name),
+            fallback="workflow_runtime",
+        )
         payload = {
             "backend": self._build_backend_config(),
             "runtime": {
@@ -301,7 +319,7 @@ class _SdkConfigPackageBuilder:
             ],
             "model_deployments": [],
         }
-        path = f"Config/config_workflow_{runtime_key}_{self.timestamp}.json"
+        path = f"Config/config_workflow_{_safe_file_part(runtime_key)}_{self.timestamp}.json"
         return SdkConfigPackageFile(
             path=path,
             kind="workflow-runtime",
@@ -317,7 +335,10 @@ class _SdkConfigPackageBuilder:
     ) -> dict[str, object]:
         """构建 Console 调用 TriggerSource 所需的最小配置。"""
 
-        trigger_key = self._unique_key(_build_trigger_source_key(trigger_source))
+        trigger_key = self._unique_key(
+            _build_trigger_source_key(trigger_source),
+            fallback="trigger_source",
+        )
         bind_endpoint = _read_optional_text(trigger_source.transport_config, "bind_endpoint") or ""
         if not bind_endpoint:
             self.warnings.append(
@@ -373,7 +394,7 @@ class _SdkConfigPackageBuilder:
         """构建单个模型 deployment 调用配置。"""
 
         base_key = _build_model_deployment_key(deployment)
-        key = self._unique_key(f"{base_key}_{runtime_mode}")
+        key = self._unique_key(base_key, fallback="model_deployment")
         config: dict[str, object] = {
             "name": key,
             "task_type": deployment.task_type,
@@ -407,15 +428,17 @@ class _SdkConfigPackageBuilder:
             "http_timeout_seconds": _DEFAULT_HTTP_TIMEOUT_SECONDS,
         }
 
-    def _unique_key(self, value: str) -> str:
+    def _unique_key(self, value: str, *, fallback: str) -> str:
         """生成 zip 内唯一的配置 key。"""
 
-        base_key = _safe_key(value, fallback="amvision_config")
-        count = self.used_keys.get(base_key, 0)
-        self.used_keys[base_key] = count + 1
-        if count == 0:
-            return base_key
-        return f"{base_key}_{count + 1}"
+        base_key = _display_key(value, fallback=fallback)
+        candidate = base_key
+        suffix = 2
+        while candidate.casefold() in self.used_keys:
+            candidate = f"{base_key}_{suffix}"
+            suffix += 1
+        self.used_keys[candidate.casefold()] = 1
+        return candidate
 
 
 def _normalize_request(
@@ -500,7 +523,7 @@ def _build_package_readme(plan: SdkConfigPackagePlan) -> str:
             "",
             "1. 将 `Config/` 目录复制到 `Amvision.Workflows.Console` 程序目录。",
             "2. 按现场 token、endpoint 或图片路径修改对应 `config_*.json`。",
-            "3. 在程序中按 `runtime.name`、`trigger_sources[].name` 或 `model_deployments[].name` 调用对应方法。",
+            "3. 默认使用 `runtime.name`、`trigger_sources[].name` 或 `model_deployments[].name` 调用；.NET SDK 也提供明确的 `ById` 方法按对应资源 id 调用。",
             "",
         ]
     )
@@ -512,91 +535,66 @@ def _to_pretty_json(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
-def _build_runtime_key(runtime: WorkflowAppRuntime) -> str:
-    """根据 WorkflowAppRuntime 生成短配置 key。"""
+def _build_runtime_key(
+    runtime: WorkflowAppRuntime,
+    *,
+    application_display_name: str | None,
+) -> str:
+    """优先使用前端维护的 WorkflowAppRuntime 展示名称。"""
 
+    if application_display_name and application_display_name.strip():
+        return application_display_name.strip()
     if runtime.display_name and runtime.display_name.strip():
-        return _safe_key(
-            runtime.display_name,
-            fallback=_short_resource_key("runtime", runtime.workflow_runtime_id),
-            trim_suffixes=("workflow_runtime", "runtime"),
-        )
-    return _short_resource_key("runtime", runtime.workflow_runtime_id)
+        return runtime.display_name.strip()
+    return runtime.workflow_runtime_id
+
+
+def _read_runtime_application_display_name(
+    dataset_storage: LocalDatasetStorage,
+    runtime: WorkflowAppRuntime,
+) -> str | None:
+    """从 runtime 固化的 application snapshot 读取用户维护的应用名称。"""
+
+    try:
+        payload = dataset_storage.read_json(runtime.application_snapshot_object_key)
+    except (OSError, ValueError, InvalidRequestError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    display_name = payload.get("display_name")
+    if isinstance(display_name, str) and display_name.strip():
+        return display_name.strip()
+    application = payload.get("application")
+    if isinstance(application, dict):
+        nested_display_name = application.get("display_name")
+        if isinstance(nested_display_name, str) and nested_display_name.strip():
+            return nested_display_name.strip()
+    return None
 
 
 def _build_trigger_source_key(trigger_source: WorkflowTriggerSource) -> str:
-    """根据 TriggerSource 生成短配置 key。"""
+    """优先使用前端维护的 TriggerSource 展示名称。"""
 
     if trigger_source.display_name and trigger_source.display_name.strip():
-        return _safe_key(
-            trigger_source.display_name,
-            fallback=_short_resource_key("zeromq", trigger_source.trigger_source_id),
-            trim_suffixes=("trigger_source", "runtime", "source"),
-        )
-    return _short_resource_key("zeromq", trigger_source.trigger_source_id)
+        return trigger_source.display_name.strip()
+    return trigger_source.trigger_source_id
 
 
 def _build_model_deployment_key(deployment: DeploymentInstanceView) -> str:
-    """根据 DeploymentInstance 生成短配置 key。"""
+    """优先使用前端维护的 DeploymentInstance 展示名称。"""
 
-    source = deployment.display_name or deployment.model_name or ""
-    if source:
-        return _safe_key(
-            source,
-            fallback=_short_resource_key("model", deployment.deployment_instance_id),
-            trim_suffixes=("deployment", "deployment_instance"),
-        )
-    return _short_resource_key("model", deployment.deployment_instance_id)
-
-
-def _safe_key(
-    value: str,
-    *,
-    fallback: str,
-    trim_suffixes: tuple[str, ...] = (),
-) -> str:
-    """把展示名称转换成 Console 可用短 key。"""
-
-    normalized = re.sub(r"[^0-9A-Za-z_]+", "_", value.strip().lower()).strip("_")
-    normalized = re.sub(r"_+", "_", normalized)
-    normalized = _strip_technical_id_suffix(normalized)
-    for suffix in trim_suffixes:
-        normalized = _strip_named_suffix(normalized, suffix)
-    return normalized or fallback
-
-
-def _strip_technical_id_suffix(value: str) -> str:
-    """去掉 display name 后面拼上的 workflow_runtime / trigger_source 等技术 id。"""
-
-    normalized = re.sub(
-        r"_(zeromq_workflow_runtime|workflow_runtime|deployment_instance|trigger_source|model_build|model_version)_[0-9a-f]{8,64}$",
-        "",
-        value,
+    return (
+        deployment.display_name.strip()
+        or deployment.model_name.strip()
+        or deployment.deployment_instance_id
     )
-    normalized = re.sub(r"_[0-9a-f]{24,64}$", "", normalized)
-    return normalized.strip("_")
 
 
-def _strip_named_suffix(value: str, suffix: str) -> str:
-    """去掉业务 key 末尾多余的通用名词。"""
+def _display_key(value: str, *, fallback: str) -> str:
+    """保留用户可读名称，仅清理会破坏 JSON key 查找的控制字符。"""
 
-    suffix_key = suffix.strip("_").lower()
-    if not suffix_key:
-        return value
-    if value == suffix_key:
-        return value
-    if value.endswith(f"_{suffix_key}"):
-        return value[: -(len(suffix_key) + 1)].strip("_")
-    return value
-
-
-def _short_resource_key(prefix: str, resource_id: str) -> str:
-    """根据资源 id 生成短兜底 key。"""
-
-    match = re.search(r"([0-9a-f]{8})[0-9a-f-]*$", resource_id.lower())
-    if match:
-        return f"{prefix}_{match.group(1)}"
-    return _safe_key(resource_id, fallback=prefix, trim_suffixes=())
+    normalized = re.sub(r"[\x00-\x1f\x7f]+", " ", value).strip()
+    return normalized or fallback
 
 
 def _safe_file_part(value: str) -> str:

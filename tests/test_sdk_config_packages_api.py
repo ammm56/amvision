@@ -38,7 +38,7 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
         checkpoint_file_id="checkpoint-sdk-config-package",
         labels_file_id="labels-sdk-config-package",
     )
-    _seed_workflow_runtime_and_trigger_source(session_factory)
+    _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
 
     try:
         with client:
@@ -100,10 +100,11 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
 
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert workflow_config["backend"]["access_token"] == "amvision-default-user-token"
-    assert workflow_config["runtime"]["name"] == "yolo11m_barqrcode"
+    assert workflow_config["backend"]["http_timeout_seconds"] == 240
+    assert workflow_config["runtime"]["name"] == "新建应用yolo11m_barqrcode"
     assert workflow_config["runtime"]["workflow_runtime_id"] == "workflow-runtime-sdk-config"
     assert workflow_config_name.startswith("Config/config_workflow_yolo11m_barqrcode_")
-    assert workflow_config["trigger_sources"][0]["name"] == "zeromq_yolo11m_barqrcode"
+    assert workflow_config["trigger_sources"][0]["name"] == "zeromq yolo11m_barqrcode runtime"
     assert workflow_config["trigger_sources"][0]["trigger_source_id"] == "zeromq-sdk-config"
     assert workflow_config["trigger_sources"][0]["zero_mq"]["bind_endpoint"] == "tcp://127.0.0.1:5555"
 
@@ -111,13 +112,14 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert "runtime" not in model_config
     assert model_config["model_deployments"][0]["task_type"] == "detection"
     assert model_config["model_deployments"][0]["runtime_mode"] == "sync"
+    assert model_config["model_deployments"][0]["name"] == "Barcode Detector"
 
 
 def test_sdk_config_package_can_include_current_access_token(tmp_path: Path) -> None:
     """验证默认配置包会写入当前 Bearer token 并在 manifest 标记。"""
 
-    client, session_factory, _dataset_storage = _create_sdk_config_package_test_client(tmp_path)
-    _seed_workflow_runtime_and_trigger_source(session_factory)
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
     token = "amvision-default-user-token"
 
     try:
@@ -144,8 +146,8 @@ def test_sdk_config_package_can_include_current_access_token(tmp_path: Path) -> 
 def test_sdk_config_package_can_skip_current_access_token(tmp_path: Path) -> None:
     """验证明确关闭 token 写入时仍使用占位符。"""
 
-    client, session_factory, _dataset_storage = _create_sdk_config_package_test_client(tmp_path)
-    _seed_workflow_runtime_and_trigger_source(session_factory)
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
 
     try:
         with client:
@@ -221,10 +223,20 @@ def _create_sdk_config_package_test_client(tmp_path: Path) -> tuple[TestClient, 
     return TestClient(application), session_factory, dataset_storage
 
 
-def _seed_workflow_runtime_and_trigger_source(session_factory: object) -> None:
+def _seed_workflow_runtime_and_trigger_source(
+    session_factory: object,
+    dataset_storage: object,
+) -> None:
     """直接写入一个已存在 runtime 和 ZeroMQ TriggerSource。"""
 
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    dataset_storage.write_json(
+        "projects/project-1/workflows/apps/workflow-app-sdk-config/app.json",
+        {
+            "application_id": "workflow-app-sdk-config",
+            "display_name": "新建应用yolo11m_barqrcode",
+        },
+    )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
         unit_of_work.workflow_runtime.save_workflow_app_runtime(

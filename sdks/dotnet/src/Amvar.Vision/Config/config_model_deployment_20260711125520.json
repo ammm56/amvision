@@ -7,7 +7,7 @@
   },
   "model_deployments": [
     {
-      "name": "yolo11_m_20260630190724_sync",
+      "name": "yolo11-m-20260630190724 model-build-c8d6e4f701fc",
       "task_type": "detection",
       "deployment_instance_id": "deployment-instance-10efb0e8eb7d4927995e135ce5177f0b",
       "runtime_mode": "sync",
@@ -20,7 +20,7 @@
       "default_media_type": "image/jpeg"
     },
     {
-      "name": "yolo11_m_20260630190724_sync_2",
+      "name": "yolo11-m-20260630190724 model-build-c8d6e4f701fc_2",
       "task_type": "detection",
       "deployment_instance_id": "deployment-instance-8a186ddbab564e86a1649c16965ffa0f",
       "runtime_mode": "sync",
