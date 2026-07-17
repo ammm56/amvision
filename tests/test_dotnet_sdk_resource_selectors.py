@@ -202,3 +202,29 @@ def test_dotnet_http_timeout_defaults_and_generated_configs_are_300_seconds() ->
     for config_path in (SDK_ROOT / "Config").glob("config*.json"):
         payload = json.loads(config_path.read_text(encoding="utf-8"))
         assert payload["backend"]["http_timeout_seconds"] == 300
+
+
+def test_netmq_runtime_dependencies_are_packaged() -> None:
+    """ZeroMQ 完整传递依赖必须进入离线库并由 SDK 项目复制到输出目录。"""
+
+    dependency_names = (
+        "System.Runtime.CompilerServices.Unsafe.dll",
+        "System.Memory.dll",
+        "System.Buffers.dll",
+        "System.Numerics.Vectors.dll",
+    )
+    project_text = (
+        SDK_ROOT / "Amvar.Vision.vs2019.net472.csproj"
+    ).read_text(encoding="utf-8")
+    readme_text = (ROOT / "sdks" / "dotnet" / "README.md").read_text(encoding="utf-8")
+
+    for dependency_name in dependency_names:
+        dependency_path = (
+            ROOT / "sdks" / "dotnet" / "libs" / "net472" / dependency_name
+        )
+        assert dependency_path.is_file()
+        assert dependency_path.stat().st_size > 0
+        assert f"libs\\net472\\{dependency_name}" in project_text
+    assert "<Private>true</Private>" in project_text
+    assert "AssemblyVersion 6.0.3.0" in readme_text
+    assert "AssemblyVersion 4.0.5.0" in readme_text

@@ -21,10 +21,14 @@ VS2019 项目不依赖 NuGet 还原，不要求第三方使用者联网安装包
 - `NetMQ.dll`
 - `AsyncIO.dll`
 - `NaCl.dll`
+- `System.Runtime.CompilerServices.Unsafe.dll`（NuGet 6.1.2，AssemblyVersion 6.0.3.0）
+- `System.Memory.dll`（NuGet 4.6.3，AssemblyVersion 4.0.5.0）
+- `System.Buffers.dll`（NuGet 4.6.1，AssemblyVersion 4.0.5.0）
+- `System.Numerics.Vectors.dll`（NuGet 4.6.1，AssemblyVersion 4.1.6.0）
 
 JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件只保留上述直接引用，不使用 `PackageReference`，也不通过 NuGet 恢复依赖。
 
-当前 `NetMQ.dll` 版本在 .NET Framework 4.7.2 下还会带出少量运行时传递依赖。使用 ZeroMQ Trigger 调用时，发布目录需要随 `Amvar.Vision.dll` 一起放置 `libs/net472` 中的 DLL。仅使用 HTTP workflow/model/runtime API 时，第三方项目可以只携带 `Amvar.Vision.dll`、`Newtonsoft.Json.dll` 和 .NET Framework 自带程序集；如现场项目已有同名依赖，应以最终程序输出目录中的同一版本为准，避免同目录放置多份不同版本 DLL。
+当前 `NetMQ.dll` 在 .NET Framework 4.7.2 下通过 `NaCl.Net`、`System.Collections.Immutable` 等组件依赖 `System.Memory`、`System.Buffers`、`System.Numerics.Vectors` 和 `System.Runtime.CompilerServices.Unsafe`。这些 DLL 必须使用上表列出的 AssemblyVersion。使用 ZeroMQ Trigger 调用时，发布目录需要随 `Amvar.Vision.dll` 一起放置 `libs/net472` 中的全部 DLL。仅使用 HTTP workflow/model/runtime API 时，第三方项目可以只携带 `Amvar.Vision.dll`、`Newtonsoft.Json.dll` 和 .NET Framework 自带程序集；如现场项目已有同名依赖，应以最终程序输出目录中的同一版本为准，避免同目录放置多份不同版本 DLL。
 
 ## 功能边界
 
