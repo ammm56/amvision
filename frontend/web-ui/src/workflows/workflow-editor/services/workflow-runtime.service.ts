@@ -50,6 +50,11 @@ export interface WorkflowRuntimeInvokeInput {
   timeoutSeconds?: number | null
 }
 
+export interface WorkflowRuntimeStatusRefreshResult {
+  items: WorkflowAppRuntime[]
+  failedRuntimeIds: string[]
+}
+
 export interface WorkflowExecutionPolicyCreateInput {
   projectId: string
   executionPolicyId: string
@@ -208,6 +213,42 @@ export async function restartWorkflowAppRuntime(workflowRuntimeId: string): Prom
 
 export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Promise<WorkflowAppRuntime> {
   return apiRequest<WorkflowAppRuntime>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/health`)
+}
+
+/**
+ * 主动读取每个 runtime 的现场状态，避免页面继续展示列表接口中的持久化快照。
+ * 单个 runtime 刷新失败时保留资源身份，但把状态标为 unknown，调用方不会误判为 running。
+ */
+export async function refreshWorkflowAppRuntimeStatuses(
+  runtimes: WorkflowAppRuntime[],
+): Promise<WorkflowRuntimeStatusRefreshResult> {
+  const results: Array<{ item: WorkflowAppRuntime; failed: boolean }> = []
+  const concurrency = 8
+  for (let offset = 0; offset < runtimes.length; offset += concurrency) {
+    const batch = await Promise.all(runtimes.slice(offset, offset + concurrency).map(async (runtime) => {
+      try {
+        return { item: await getWorkflowAppRuntimeHealth(runtime.workflow_runtime_id), failed: false }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '读取 runtime health 失败'
+        return {
+          item: {
+            ...runtime,
+            observed_state: 'unknown',
+            last_error: `状态刷新失败：${message}`,
+            health_summary: { status_refresh_failed: true },
+          },
+          failed: true,
+        }
+      }
+    }))
+    results.push(...batch)
+  }
+  return {
+    items: results.map((result) => result.item),
+    failedRuntimeIds: results
+      .filter((result) => result.failed)
+      .map((result) => result.item.workflow_runtime_id),
+  }
 }
 
 export async function listWorkflowAppRuntimeInstances(workflowRuntimeId: string): Promise<WorkflowAppRuntimeInstance[]> {

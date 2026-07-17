@@ -324,7 +324,10 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import { getWorkflowApp, type WorkflowAppDocument } from '@/workflows/workflow-editor/services/workflow-app.service'
-import { listWorkflowAppRuntimes } from '@/workflows/workflow-editor/services/workflow-runtime.service'
+import {
+  listWorkflowAppRuntimes,
+  refreshWorkflowAppRuntimeStatuses,
+} from '@/workflows/workflow-editor/services/workflow-runtime.service'
 import type { FlowApplicationBinding, WorkflowAppRuntime, WorkflowJsonObject } from '@/workflows/workflow-editor/types'
 import {
   createWorkflowTriggerSource,
@@ -333,6 +336,7 @@ import {
   enableWorkflowTriggerSource,
   getWorkflowTriggerSourceHealth,
   listWorkflowTriggerSources,
+  refreshWorkflowTriggerSourceStatuses,
   type InputBindingMappingItem,
   type WorkflowTriggerSource,
   type WorkflowTriggerSourceHealth,
@@ -870,10 +874,15 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
         limit: triggerSourcePagination.value.limit,
       }),
     ])
+    const [runtimeStatusResult, triggerStatusResult] = await Promise.all([
+      refreshWorkflowAppRuntimeStatuses(runtimeResult.items),
+      refreshWorkflowTriggerSourceStatuses(triggerSourceResult.items),
+    ])
     backendServiceConfig.value = configResult.config
     syncLocalBufferPoolSelection()
-    runtimes.value = runtimeResult.items
-    triggerSources.value = triggerSourceResult.items
+    runtimes.value = runtimeStatusResult.items
+    triggerSources.value = triggerStatusResult.items
+    healthByTriggerSourceId.value = triggerStatusResult.healthByTriggerSourceId
     triggerSourcePagination.value = triggerSourceResult.pagination
     const queryRuntimeId = readQueryString('runtime_id')
     const queryApplicationId = readQueryString('application_id')
@@ -883,6 +892,10 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
       ?? runtimes.value[0]
     selectedRuntimeId.value = contextRuntime?.workflow_runtime_id ?? ''
     await loadSelectedRuntimeApp()
+    const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
+    if (failedIds.length > 0) {
+      errorMessage.value = `部分运行状态刷新失败，已标记为 unknown：${failedIds.join(', ')}`
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '读取 TriggerSource 页面失败'
   } finally {

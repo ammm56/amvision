@@ -152,6 +152,7 @@ import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { deleteWorkflowApplication } from '../services/workflow-application.service'
 import { deleteWorkflowTemplateVersion } from '../services/workflow-template.service'
 import { listWorkflowApps, type WorkflowAppSummary } from '../services/workflow-app.service'
+import { refreshWorkflowAppRuntimeStatuses } from '../services/workflow-runtime.service'
 import type { WorkflowAppRuntime, WorkflowNodeCatalogResponse } from '../types'
 
 const { t } = useI18n()
@@ -218,10 +219,22 @@ async function loadPage(offset?: number): Promise<void> {
       getWorkflowNodeCatalog(),
       listWorkflowApps(selectedProjectId.value, { offset: pageOffset, limit: applicationPagination.value.limit }),
     ])
+    const runtimeStatusResult = await refreshWorkflowAppRuntimeStatuses(workflowAppResponse.runtimes)
+    const runtimeById = new Map(runtimeStatusResult.items.map((runtime) => [runtime.workflow_runtime_id, runtime]))
     nodeCatalog.value = catalogResponse
-    workflowApps.value = workflowAppResponse.items
-    appRuntimes.value = workflowAppResponse.runtimes
+    workflowApps.value = workflowAppResponse.items.map((workflowApp) => {
+      const runtimes = workflowApp.runtimes.map((runtime) => runtimeById.get(runtime.workflow_runtime_id) ?? runtime)
+      return {
+        ...workflowApp,
+        runtimes,
+        primaryRuntime: runtimes.find((runtime) => runtime.observed_state === 'running') ?? runtimes[0] ?? null,
+      }
+    })
+    appRuntimes.value = runtimeStatusResult.items
     applicationPagination.value = workflowAppResponse.pagination
+    if (runtimeStatusResult.failedRuntimeIds.length > 0) {
+      errorMessage.value = `部分 runtime 状态刷新失败，已标记为 unknown：${runtimeStatusResult.failedRuntimeIds.join(', ')}`
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.messages.loadFailed')
   } finally {

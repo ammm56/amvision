@@ -401,7 +401,11 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import { listWorkflowTriggerSources, type WorkflowTriggerSource } from '@/modules/integrations/services/trigger-source.service'
+import {
+  listWorkflowTriggerSources,
+  refreshWorkflowTriggerSourceStatuses,
+  type WorkflowTriggerSource,
+} from '@/modules/integrations/services/trigger-source.service'
 import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
 import { getWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
 import {
@@ -412,6 +416,7 @@ import {
   getWorkflowRun,
   invokeWorkflowAppRuntime,
   restartWorkflowAppRuntime,
+  refreshWorkflowAppRuntimeStatuses,
   startWorkflowAppRuntime,
   stopWorkflowAppRuntime,
 } from '../services/workflow-runtime.service'
@@ -835,13 +840,25 @@ async function loadPage(): Promise<void> {
       getWorkflowApp(selectedProjectId.value, applicationId.value),
       listWorkflowTriggerSources({ projectId: selectedProjectId.value, limit: 100 }),
     ])
+    const [runtimeStatusResult, triggerStatusResult] = await Promise.all([
+      refreshWorkflowAppRuntimeStatuses(appDocument.runtimes),
+      refreshWorkflowTriggerSourceStatuses(triggerSourceResult.items),
+    ])
+    appDocument.runtimes = runtimeStatusResult.items
+    appDocument.primaryRuntime = runtimeStatusResult.items.find((runtime) => runtime.observed_state === 'running')
+      ?? runtimeStatusResult.items[0]
+      ?? null
     workflowApp.value = appDocument
-    triggerSources.value = triggerSourceResult.items
+    triggerSources.value = triggerStatusResult.items
     const queryRuntimeId = typeof route.query.runtime_id === 'string' ? route.query.runtime_id : ''
     selectedRuntimeId.value = appDocument.runtimes.some((runtime) => runtime.workflow_runtime_id === queryRuntimeId)
       ? queryRuntimeId
       : appDocument.primaryRuntime?.workflow_runtime_id ?? appDocument.runtimes[0]?.workflow_runtime_id ?? ''
     resetSamplePayload()
+    const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
+    if (failedIds.length > 0) {
+      errorMessage.value = `部分运行状态刷新失败，已标记为 unknown：${failedIds.join(', ')}`
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '读取 Workflow App 详情失败'
   } finally {

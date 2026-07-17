@@ -92,6 +92,12 @@ export interface WorkflowTriggerSourceCreateInput {
   metadata?: WorkflowJsonObject
 }
 
+export interface WorkflowTriggerSourceStatusRefreshResult {
+  items: WorkflowTriggerSource[]
+  healthByTriggerSourceId: Record<string, WorkflowTriggerSourceHealth>
+  failedTriggerSourceIds: string[]
+}
+
 function encodePathPart(value: string): string {
   return encodeURIComponent(value)
 }
@@ -147,4 +153,60 @@ export async function deleteWorkflowTriggerSource(triggerSourceId: string): Prom
 
 export async function getWorkflowTriggerSourceHealth(triggerSourceId: string): Promise<WorkflowTriggerSourceHealth> {
   return apiRequest<WorkflowTriggerSourceHealth>(`/workflows/trigger-sources/${encodePathPart(triggerSourceId)}/health`)
+}
+
+/** 主动读取 TriggerSource 适配器状态；刷新失败项显式标为 unknown，避免沿用过期状态。 */
+export async function refreshWorkflowTriggerSourceStatuses(
+  sources: WorkflowTriggerSource[],
+): Promise<WorkflowTriggerSourceStatusRefreshResult> {
+  const results: Array<{
+    item: WorkflowTriggerSource
+    health: WorkflowTriggerSourceHealth | null
+    failed: boolean
+  }> = []
+  const concurrency = 8
+  for (let offset = 0; offset < sources.length; offset += concurrency) {
+    const batch = await Promise.all(sources.slice(offset, offset + concurrency).map(async (source) => {
+      try {
+        const health = await getWorkflowTriggerSourceHealth(source.trigger_source_id)
+        return {
+          item: {
+            ...source,
+            enabled: health.enabled,
+            desired_state: health.desired_state,
+            observed_state: health.observed_state,
+            last_triggered_at: health.last_triggered_at ?? null,
+            last_error: health.last_error ?? null,
+            health_summary: { ...health.health_summary },
+          },
+          health,
+          failed: false,
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '读取 TriggerSource health 失败'
+        return {
+          item: {
+            ...source,
+            observed_state: 'unknown',
+            last_error: `状态刷新失败：${message}`,
+            health_summary: { status_refresh_failed: true },
+          },
+          health: null,
+          failed: true,
+        }
+      }
+    }))
+    results.push(...batch)
+  }
+  return {
+    items: results.map((result) => result.item),
+    healthByTriggerSourceId: Object.fromEntries(
+      results
+        .filter((result): result is typeof result & { health: WorkflowTriggerSourceHealth } => result.health !== null)
+        .map((result) => [result.item.trigger_source_id, result.health]),
+    ),
+    failedTriggerSourceIds: results
+      .filter((result) => result.failed)
+      .map((result) => result.item.trigger_source_id),
+  }
 }
