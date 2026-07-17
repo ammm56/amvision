@@ -12,7 +12,12 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.service.application.events import InMemoryServiceEventBus
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+    ServiceError,
+)
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
@@ -419,11 +424,44 @@ class DeploymentProcessSupervisor:
             state.desired_running = True
             current_status = self._build_status_from_locked_state(state)
         if current_status.process_state == "running":
-            self._send_request(
-                state=state,
-                action="start",
-                timeout_seconds=self.settings.startup_timeout_seconds,
-            )
+            try:
+                self._send_request(
+                    state=state,
+                    action="start",
+                    timeout_seconds=self.settings.startup_timeout_seconds,
+                )
+            except ServiceError as error:
+                current_status = self._mark_start_failed(state, error.message)
+                self._record_deployment_status_event(
+                    current_status,
+                    event_type="deployment.start.failed",
+                    message="deployment 启动确认失败",
+                    payload={
+                        "error_code": error.code,
+                        "error_message": error.message,
+                        "error_details": dict(error.details),
+                    },
+                )
+                raise
+            except Exception as error:
+                error_message = f"deployment 启动确认失败: {error}"
+                current_status = self._mark_start_failed(state, error_message)
+                self._record_deployment_status_event(
+                    current_status,
+                    event_type="deployment.start.failed",
+                    message="deployment 启动确认失败",
+                    payload={
+                        "error_code": "deployment_start_failed",
+                        "error_message": error_message,
+                    },
+                )
+                raise ServiceConfigurationError(
+                    error_message,
+                    details={
+                        "deployment_instance_id": state.config.deployment_instance_id,
+                        "runtime_mode": self.runtime_mode,
+                    },
+                ) from error
             current_status = self._build_status(state)
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
@@ -432,6 +470,23 @@ class DeploymentProcessSupervisor:
                 message="deployment 进程已启动",
             )
         return current_status
+
+    def _mark_start_failed(
+        self,
+        state: _DeploymentProcessState,
+        error_message: str,
+    ) -> DeploymentProcessStatus:
+        """把一次启动确认失败收束为 stopped 状态，并关闭刚拉起的子进程。
+
+        start API 的语义是确认 runtime 已经可用后才返回成功。子进程在超时后继续加载会造成
+        调用方看到失败、页面随后又显示 running 的不一致状态，因此失败时必须取消期望运行状态。
+        """
+
+        with state.lock:
+            state.desired_running = False
+            state.last_error = error_message
+            self._stop_process_locked(state)
+            return self._build_status_from_locked_state(state)
 
     def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
         """显式停止指定 deployment 的子进程。"""
@@ -454,10 +509,75 @@ class DeploymentProcessSupervisor:
         """显式启动并预热指定 deployment 子进程。"""
 
         state = self._ensure_state(config)
-        with state.lock:
-            self._start_process_with_capacity_locked(state)
-            state.desired_running = True
-        payload = self._send_request(state=state, action="warmup")
+        was_running = self._is_process_running(state)
+        self.start_deployment(config)
+        try:
+            payload = self._send_request(
+                state=state,
+                action="warmup",
+                timeout_seconds=self.settings.startup_timeout_seconds,
+            )
+        except ServiceError as error:
+            if was_running:
+                with state.lock:
+                    state.last_error = error.message
+                health = self._build_health(state, None)
+                self._record_deployment_health_event(
+                    health,
+                    event_type="deployment.warmup.failed",
+                    message="deployment 预热失败",
+                    payload={
+                        "error_code": error.code,
+                        "error_message": error.message,
+                        "error_details": dict(error.details),
+                    },
+                )
+            else:
+                status = self._mark_start_failed(state, error.message)
+                self._record_deployment_status_event(
+                    status,
+                    event_type="deployment.warmup.failed",
+                    message="deployment 预热失败",
+                    payload={
+                        "error_code": error.code,
+                        "error_message": error.message,
+                        "error_details": dict(error.details),
+                    },
+                )
+            raise
+        except Exception as error:
+            error_message = f"deployment 预热失败: {error}"
+            if was_running:
+                with state.lock:
+                    state.last_error = error_message
+                health = self._build_health(state, None)
+                self._record_deployment_health_event(
+                    health,
+                    event_type="deployment.warmup.failed",
+                    message="deployment 预热失败",
+                    payload={
+                        "error_code": "deployment_warmup_failed",
+                        "error_message": error_message,
+                    },
+                )
+            else:
+                status = self._mark_start_failed(state, error_message)
+                self._record_deployment_status_event(
+                    status,
+                    event_type="deployment.warmup.failed",
+                    message="deployment 预热失败",
+                    payload={
+                        "error_code": "deployment_warmup_failed",
+                        "error_message": error_message,
+                    },
+                )
+            raise ServiceConfigurationError(
+                error_message,
+                details={
+                    "deployment_instance_id": state.config.deployment_instance_id,
+                    "runtime_mode": self.runtime_mode,
+                },
+            ) from error
         health = self._build_health(state, payload)
         self._record_deployment_health_event(
             health,
@@ -599,16 +719,26 @@ class DeploymentProcessSupervisor:
         effective_timeout_seconds = (
             self.settings.request_timeout_seconds if timeout_seconds is None else timeout_seconds
         )
+        wait_started_at = monotonic()
         completed = pending.event.wait(timeout=max(0.1, effective_timeout_seconds))
         if not completed:
             with state.lock:
                 state.pending_responses.pop(request_id, None)
-            raise ServiceConfigurationError(
+                process = state.process
+                process_id = process.pid if process is not None else None
+                process_alive = bool(process is not None and process.is_alive())
+            elapsed_ms = round((monotonic() - wait_started_at) * 1000.0, 3)
+            raise OperationTimeoutError(
                 "等待 deployment 子进程响应超时",
                 details={
                     "deployment_instance_id": state.config.deployment_instance_id,
                     "runtime_mode": self.runtime_mode,
                     "action": action,
+                    "request_id": request_id,
+                    "timeout_seconds": effective_timeout_seconds,
+                    "elapsed_ms": elapsed_ms,
+                    "process_id": process_id,
+                    "process_alive": process_alive,
                 },
             )
         if pending.error_message is not None:
@@ -618,6 +748,7 @@ class DeploymentProcessSupervisor:
                     "deployment_instance_id": state.config.deployment_instance_id,
                     "runtime_mode": self.runtime_mode,
                     "action": action,
+                    "request_id": request_id,
                 },
             )
         response = pending.response or {}

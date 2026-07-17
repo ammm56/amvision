@@ -94,13 +94,14 @@ namespace AMVision.Console
                 // 系统配置
                 //var systemConfig = await runner.GetSystemConfigResponseAsync(cancellationToken).ConfigureAwait(false);
 
-                // Model deployment 查询和管理
+                // Model deployment 查询和管理。
                 var deploymentStatus = await runner.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
                 var deploymentHealth = await runner.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
-                var deploymentReset = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentStart = await runner.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentStartSucceeded = deploymentStart.IsSuccessStatusCode;
+                //var deploymentStop = await runner.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentWarmup = await runner.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
+                //var deploymentReset = await runner.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);
 
                 // Model deployment 同步推理
                 //var deploymentInvoke = await runner.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken).ConfigureAwait(false);

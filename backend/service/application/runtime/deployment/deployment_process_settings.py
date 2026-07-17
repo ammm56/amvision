@@ -11,7 +11,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     字段：
     - auto_restart：deployment 进程异常退出后是否自动拉起。
     - monitor_interval_seconds：监督线程巡检 deployment 进程状态的间隔秒数。
-    - startup_timeout_seconds：启动 deployment 子进程后等待 ready 响应的最长秒数。
+    - startup_timeout_seconds：启动 deployment 子进程后等待 runtime 加载完成并返回 ready 响应的最长秒数。
     - request_timeout_seconds：父进程等待子进程返回控制面或推理结果的最长秒数。
     - shutdown_timeout_seconds：停止 deployment 进程时等待优雅退出的最长秒数。
     - max_running_process_count：当前 backend-service 进程内允许同时运行的独立 deployment 子进程总数。
@@ -27,7 +27,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
 
     auto_restart: bool = True
     monitor_interval_seconds: float = 0.5
-    startup_timeout_seconds: float = Field(default=30.0, gt=0.0)
+    startup_timeout_seconds: float = Field(default=180.0, gt=0.0)
     request_timeout_seconds: float = 30.0
     shutdown_timeout_seconds: float = 5.0
     max_running_process_count: int = Field(default=32, ge=1)

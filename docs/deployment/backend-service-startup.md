@@ -116,6 +116,7 @@
   "deployment_process_supervisor": {
     "auto_restart": true,
     "monitor_interval_seconds": 0.5,
+    "startup_timeout_seconds": 180.0,
     "request_timeout_seconds": 30.0,
     "shutdown_timeout_seconds": 5.0,
     "max_running_process_count": 32,
@@ -147,6 +148,7 @@
 - AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
+- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__STARTUP_TIMEOUT_SECONDS=180.0
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__REQUEST_TIMEOUT_SECONDS=30.0
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__SHUTDOWN_TIMEOUT_SECONDS=5.0
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MAX_RUNNING_PROCESS_COUNT=32
@@ -174,7 +176,7 @@
 - 前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项；页面不维护独立默认 pool 列表
 - 如果使用 `config/backend-service.local.json` 覆盖 `local_buffer_broker`，建议把 `enabled/root_dir/default_pool_name/pools` 作为完整配置块一起写入，避免现场配置只覆盖部分字段后难以判断实际 pool 大小
 - pool 的 `flush_on_write` 默认建议为 `false`，用于 ZeroMQ 和本机 workflow 临时图片输入；只有确实需要把 mmap 写入强制刷到文件系统时才改为 `true`
-- `deployment_process_supervisor` 提供 deployment 子进程的默认 warmup、keep-warm 和 TensorRT 输出 host buffer 行为；DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`
+- `deployment_process_supervisor` 提供 deployment 子进程的启动确认、普通请求、warmup、keep-warm 和 TensorRT 输出 host buffer 行为；`startup_timeout_seconds` 是 start / warmup 等待 runtime 加载完成并返回 ready 响应的最长时间，默认 180 秒；`request_timeout_seconds` 只用于 health、reset、infer 等普通运行期命令，默认 30 秒。DeploymentInstance 还可以通过 `metadata.deployment_process` 覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds`、`tensorrt_pinned_output_buffer_enabled` 和 `tensorrt_pinned_output_buffer_max_bytes`
 - `deployment_process_supervisor.max_running_process_count` 限制当前 backend-service 进程内同时运行的独立 deployment 子进程总数，默认 32。这个限制不影响 DeploymentInstance 创建数量，也不限制单个子进程内的 `instance_count`，只在显式 start、warmup 或崩溃自动拉起真正启动子进程时生效。
 - `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
 - `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `detection-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `detection-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底

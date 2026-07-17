@@ -649,8 +649,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>模型 deployment 运行状态。</returns>
-        public async Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeAsync(
+        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
+        public async Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -666,8 +666,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>模型 deployment 运行状态。</returns>
-        public async Task<ModelDeploymentRuntimeStatusResponse> StopModelDeploymentRuntimeAsync(
+        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
+        public async Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -683,8 +683,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>模型 deployment 运行状态。</returns>
-        public async Task<ModelDeploymentRuntimeStatusResponse> ResetModelDeploymentRuntimeAsync(
+        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
+        public async Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {
@@ -700,8 +700,8 @@ namespace Amvar.Vision
         /// </summary>
         /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
         /// <param name="cancellationToken">取消信号。</param>
-        /// <returns>预热响应。</returns>
-        public async Task<ModelDeploymentRuntimeWarmupResponse> WarmupModelDeploymentRuntimeAsync(
+        /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
+        public async Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
             string modelDeploymentName,
             CancellationToken cancellationToken = default)
         {

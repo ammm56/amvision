@@ -27,10 +27,10 @@ namespace Amvar.Vision.Configuration
         public string ProjectId { get; set; } = "project-1";
 
         /// <summary>
-        /// HTTP client 请求超时时间，单位为秒。
+        /// HTTP client 请求超时时间，单位为秒。需要大于后端 deployment 启动确认超时。
         /// </summary>
         [JsonProperty("http_timeout_seconds")]
-        public int HttpTimeoutSeconds { get; set; } = 60;
+        public int HttpTimeoutSeconds { get; set; } = 240;
 
         /// <summary>
         /// 校验 backend 配置是否满足 SDK 启动和调用要求。

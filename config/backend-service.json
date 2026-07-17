@@ -89,6 +89,7 @@
   "deployment_process_supervisor": {
     "auto_restart": true,
     "monitor_interval_seconds": 0.5,
+    "startup_timeout_seconds": 180.0,
     "request_timeout_seconds": 30.0,
     "shutdown_timeout_seconds": 5.0,
     "max_running_process_count": 32,

@@ -61,8 +61,6 @@ namespace Amvar.Vision
                     method.Method,
                     relativePath);
 
-                // SDK 调用默认把 HTTP 非 2xx 视为异常，避免调用方漏判 IsSuccessStatusCode 后继续处理失败响应。
-                apiResponse.EnsureSuccessStatusCode();
                 return apiResponse;
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)

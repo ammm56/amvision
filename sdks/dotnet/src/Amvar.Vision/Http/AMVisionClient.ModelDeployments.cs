@@ -12,6 +12,10 @@ namespace Amvar.Vision
         /// <summary>
         /// 启动模型部署 runtime。
         /// </summary>
+        /// <remarks>
+        /// 返回原始 HTTP API 响应。后端返回 4xx/5xx 时不会在此方法内抛出 API 异常，调用方可通过
+        /// IsSuccessStatusCode、ErrorCode、ErrorMessage 和 ErrorDetails 判断失败原因。
+        /// </remarks>
         public async Task<AMVisionApiResponse> StartModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
@@ -30,8 +34,11 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 启动模型部署 runtime，并返回 typed response。
+        /// 启动模型部署 runtime，并按成功响应读取进程状态。
         /// </summary>
+        /// <remarks>
+        /// typed 方法会校验 HTTP 状态码；后端返回 4xx/5xx 时会抛出 AMVisionApiException。
+        /// </remarks>
         public async Task<ModelDeploymentRuntimeStatusResponse> StartModelDeploymentRuntimeResponseAsync(
             string taskType,
             string deploymentInstanceId,
@@ -51,6 +58,9 @@ namespace Amvar.Vision
         /// <summary>
         /// 停止模型部署 runtime。
         /// </summary>
+        /// <remarks>
+        /// 返回原始 HTTP API 响应。后端返回 4xx/5xx 时不会在此方法内抛出 API 异常。
+        /// </remarks>
         public async Task<AMVisionApiResponse> StopModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
@@ -69,8 +79,11 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 停止模型部署 runtime，并返回 typed response。
+        /// 停止模型部署 runtime，并按成功响应读取进程状态。
         /// </summary>
+        /// <remarks>
+        /// typed 方法会校验 HTTP 状态码；后端返回 4xx/5xx 时会抛出 AMVisionApiException。
+        /// </remarks>
         public async Task<ModelDeploymentRuntimeStatusResponse> StopModelDeploymentRuntimeResponseAsync(
             string taskType,
             string deploymentInstanceId,
@@ -90,6 +103,9 @@ namespace Amvar.Vision
         /// <summary>
         /// 重置模型部署 runtime。
         /// </summary>
+        /// <remarks>
+        /// 返回原始 HTTP API 响应。后端返回 4xx/5xx 时不会在此方法内抛出 API 异常。
+        /// </remarks>
         public async Task<AMVisionApiResponse> ResetModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
@@ -108,9 +124,13 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 重置模型部署 runtime，并返回 typed response。
+        /// 重置模型部署 runtime，并按成功响应读取 runtime health。
         /// </summary>
-        public async Task<ModelDeploymentRuntimeStatusResponse> ResetModelDeploymentRuntimeResponseAsync(
+        /// <remarks>
+        /// 后端 reset 接口返回 health，而不是 status。typed 方法会校验 HTTP 状态码；后端返回 4xx/5xx
+        /// 时会抛出 AMVisionApiException。
+        /// </remarks>
+        public async Task<ModelDeploymentRuntimeHealthResponse> ResetModelDeploymentRuntimeResponseAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -122,13 +142,16 @@ namespace Amvar.Vision
                 runtimeMode,
                 cancellationToken).ConfigureAwait(false);
 
-            var typedResponse = ReadJson<ModelDeploymentRuntimeStatusResponse>(apiResponse);
+            var typedResponse = ReadJson<ModelDeploymentRuntimeHealthResponse>(apiResponse);
             return typedResponse;
         }
 
         /// <summary>
         /// 预热模型部署 runtime。
         /// </summary>
+        /// <remarks>
+        /// 返回原始 HTTP API 响应。后端返回 4xx/5xx 时不会在此方法内抛出 API 异常。
+        /// </remarks>
         public async Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
             string taskType,
             string deploymentInstanceId,
@@ -147,9 +170,13 @@ namespace Amvar.Vision
         }
 
         /// <summary>
-        /// 预热模型部署 runtime，并返回 typed response。
+        /// 预热模型部署 runtime，并按成功响应读取 runtime health。
         /// </summary>
-        public async Task<ModelDeploymentRuntimeWarmupResponse> WarmupModelDeploymentRuntimeResponseAsync(
+        /// <remarks>
+        /// 后端 warmup 接口返回 health，而不是独立 warmup payload。typed 方法会校验 HTTP 状态码；
+        /// 后端返回 4xx/5xx 时会抛出 AMVisionApiException。
+        /// </remarks>
+        public async Task<ModelDeploymentRuntimeHealthResponse> WarmupModelDeploymentRuntimeResponseAsync(
             string taskType,
             string deploymentInstanceId,
             string runtimeMode,
@@ -161,7 +188,7 @@ namespace Amvar.Vision
                 runtimeMode,
                 cancellationToken).ConfigureAwait(false);
 
-            var typedResponse = ReadJson<ModelDeploymentRuntimeWarmupResponse>(apiResponse);
+            var typedResponse = ReadJson<ModelDeploymentRuntimeHealthResponse>(apiResponse);
             return typedResponse;
         }
 

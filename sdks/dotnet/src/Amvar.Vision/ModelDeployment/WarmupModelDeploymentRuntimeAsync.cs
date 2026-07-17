@@ -15,15 +15,15 @@ internal sealed partial class ModelDeploymentOperations
     /// </summary>
     /// <param name="modelDeploymentName">模型 deployment 配置 key。</param>
     /// <param name="cancellationToken">取消信号。</param>
-    /// <returns>runtime 预热响应。</returns>
-    public async Task<ModelDeploymentRuntimeWarmupResponse> WarmupModelDeploymentRuntimeAsync(
+    /// <returns>HTTP API 响应；非 2xx 响应不会在此方法内抛出 API 异常。</returns>
+    public async Task<AMVisionApiResponse> WarmupModelDeploymentRuntimeAsync(
         string modelDeploymentName,
         CancellationToken cancellationToken = default)
     {
         var configuredModelDeployment = GetConfiguredModelDeployment(modelDeploymentName);
         var modelDeployment = configuredModelDeployment.ModelDeployment;
         var deploymentInstanceId = RequireDeploymentInstanceId(configuredModelDeployment);
-        var response = await client.WarmupModelDeploymentRuntimeResponseAsync(
+        var response = await client.WarmupModelDeploymentRuntimeAsync(
             modelDeployment.TaskType,
             deploymentInstanceId,
             modelDeployment.RuntimeMode,

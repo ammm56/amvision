@@ -98,27 +98,4 @@ namespace Amvar.Vision
         public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
     }
 
-    /// <summary>
-    /// 模型部署 runtime 预热响应。
-    /// </summary>
-    public sealed class ModelDeploymentRuntimeWarmupResponse
-    {
-        [JsonProperty("deployment_instance_id")]
-        public string DeploymentInstanceId { get; set; } = string.Empty;
-
-        [JsonProperty("runtime_mode")]
-        public string RuntimeMode { get; set; } = string.Empty;
-
-        [JsonProperty("warmed_instance_count")]
-        public int? WarmedInstanceCount { get; set; }
-
-        [JsonProperty("pinned_output_total_bytes")]
-        public long? PinnedOutputTotalBytes { get; set; }
-
-        [JsonProperty("status")]
-        public string? Status { get; set; }
-
-        [JsonExtensionData]
-        public IDictionary<string, JToken> ExtensionData { get; set; } = new Dictionary<string, JToken>();
-    }
 }
