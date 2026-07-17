@@ -1,37 +1,7 @@
 {
   "profile_id": "full-nvidia",
-  "display_name": "amvision full NVIDIA",
-  "description": "NVIDIA GPU 工作站完整发布目录，包含训练、转换、评估、异步推理 worker，并复制 TensorRT 与 cuDNN 运行时资产。",
-  "service": {
-    "python_launcher": "runtimes/launchers/service/start_backend_service.py",
-    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
-    "linux_launcher": "runtimes/launchers/service/start-backend-service.sh",
-    "hosted_task_manager_enabled": false
-  },
-  "worker": {
-    "python_launcher": "runtimes/launchers/worker/start_backend_worker.py",
-    "windows_launcher": "runtimes/launchers/worker/start-backend-worker.bat",
-    "linux_launcher": "runtimes/launchers/worker/start-backend-worker.sh",
-    "worker_profile_ids": [
-      "dataset-import",
-      "dataset-export",
-      "training",
-      "conversion",
-      "evaluation",
-      "inference"
-    ]
-  },
-  "maintenance": {
-    "python_launcher": "runtimes/launchers/maintenance/invoke_backend_maintenance.py",
-    "windows_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.bat",
-    "linux_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.sh",
-    "default_command": "validate-layout"
-  },
-  "artifacts": {
-    "include_frontend": true,
-    "include_tensorrt_runtime": true,
-    "include_cudnn_runtime": true,
-    "requirements_file": "requirements.txt",
-    "requirements_exclude_packages": []
-  }
+  "display_name": "amvision full NVIDIA（兼容别名）",
+  "description": "旧 NVIDIA 发布入口；assemble-release 会解析为 full-windows-x64-nvidia。",
+  "implementation_status": "deprecated-alias",
+  "alias_for": "full-windows-x64-nvidia"
 }

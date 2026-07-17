@@ -33,14 +33,17 @@
 - 校验 `launchers` 或 `runtimes/launchers`
 - 校验 `manifests/release-profiles` 或 `runtimes/manifests/release-profiles`
 - 校验 `manifests/worker-profiles` 或 `runtimes/manifests/worker-profiles`
+- 发布目录中会按 manifest 校验目标平台、`README.md`、Windows bundled Python、Windows FFmpeg 和根 launcher
+- CPU 发布会把 TensorRT/cuDNN 目录视为非法混入；Windows 发布会把 Linux launcher、Linux FFmpeg 和 Linux Python 布局视为非法混入
 
 ### assemble-release
 
-- 按指定 `release profile` 组装 `release/<profile_id>/` 发行目录；当前默认使用 `full`
-- `full` 和 `full-nvidia` 面向 NVIDIA GPU 工作站，会复制 TensorRT / cuDNN 运行时资产
-- `full-cpu` 面向 Intel CPU 工作站，不复制 TensorRT / cuDNN，并从发行目录 `app/requirements.txt` 中排除 `tensorrt-cu12`、`cuda-python`
-- 自动复制 backend 源码、配置模板、Python launcher 和 bat/sh wrapper
-- 自动复制当前 profile 需要的 worker profile manifest，并生成 `start-<profile_id>-worker.bat/sh`
+- canonical profile 为 `full-windows-x64-nvidia` 和 `full-windows-x64-cpu`
+- NVIDIA 包复制并校验 Windows x64 TensorRT / cuDNN；CPU 包不复制这些资产，并拒绝 NVIDIA-only requirements
+- `full`、`full-nvidia`、`full-cpu` 保留为旧命令兼容别名；Ubuntu profile 仅预留，当前不允许组装
+- 自动复制 backend 源码、配置模板、Python launcher 和 Windows bat wrapper
+- 自动复制当前 profile 需要的全部 worker profile manifest，并生成 `start-<profile_id>-worker.bat`
+- 自动复制仓库根 `README.md`、`LICENSE`、`LICENSE.zh-CN` 和 `COMMERCIAL_LICENSE_REQUIRED.md`
 - 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`，并按 profile 过滤不适用依赖
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
 - 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
@@ -71,9 +74,8 @@ conda activate amvision
 python -m backend.maintenance.main version --output text
 python -m backend.maintenance.main show-config --output json
 python -m backend.maintenance.main validate-layout --output json
-python -m backend.maintenance.main assemble-release --profile-id full --release-root ./release --force --output text
-python -m backend.maintenance.main assemble-release --profile-id full-nvidia --release-root ./release --force --output text
-python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root ./release --force --output text
 python -m backend.maintenance.main rebuild-pycache --output text
 python -m backend.maintenance.main rebuild-pycache --python-package sqlalchemy --output text
 python -m backend.maintenance.main rebuild-pycache --clean-only --output text

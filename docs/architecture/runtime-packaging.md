@@ -279,18 +279,20 @@ release/
 3. 收敛 backend、frontend、custom_nodes 和默认配置
 4. 收敛目标平台的 `ffmpeg/ffprobe`、TensorRT 等运行时工具目录
 5. 生成服务、worker 和维护脚本的统一入口
-6. 通过 `assemble-release` 生成 `full` 发布目录
+6. 通过 `assemble-release` 生成目标明确的 Windows x64 CPU 或 NVIDIA 发布目录
 7. 执行最小启动验证、节点目录扫描和接口健康检查
 
 ## 当前装配结果
 
-- 当前对应 manifest：`runtimes/manifests/release-profiles/full.json`
+- 当前 canonical manifest：`full-windows-x64-nvidia.json`、`full-windows-x64-cpu.json`
 - 发布目录默认包含 backend-service、全部 worker profile、前端目录、custom_nodes 目录、配置目录、数据目录、日志目录，以及保留或占位的 `python/` 目录
-- 如果后续需要推理专用目录，建议从 `release/full/` 复制一份后再手工调整 `requirements.txt`、`python/` 和不需要的 worker launcher
+- Windows 包只收敛 Windows launcher 和 Windows FFmpeg；CPU 包不携带 TensorRT/cuDNN
+- Ubuntu x64 CPU/NVIDIA profile id 已预留但未实现，不能通过复制 Windows 包冒充
+- bundled Python 体积较大，首次组装只创建 `python/`，由发布人员手工复制目标环境
 
 ## 长稳 soak 验收入口
 
-`tests/integration/test_release_full_stack_acceptance.py` 是 `release/full` 的显式验收入口。默认只做短时启动、health、OpenAPI、组件日志、资源快照和 stop 回收检查；现场长稳验证通过环境变量放大。
+`tests/integration/test_release_full_stack_acceptance.py` 是完整发布包的显式验收入口。默认只做短时启动、health、OpenAPI、组件日志、资源快照和 stop 回收检查；现场长稳验证通过环境变量放大。
 
 常用变量：
 

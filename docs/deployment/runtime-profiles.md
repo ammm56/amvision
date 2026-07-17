@@ -15,13 +15,14 @@
 
 ## 硬件 profile 边界
 
-| profile_id | 目标环境 | NVIDIA 运行时资产 | requirements 处理 | 默认 worker |
+| profile_id | 当前状态 | 目标环境 | 运行时资产 | 默认 worker |
 | --- | --- | --- | --- | --- |
-| `full` | NVIDIA GPU 工作站，兼容旧命令入口 | 复制 TensorRT / cuDNN | 保留完整 `requirements.txt` | dataset-import / dataset-export / training / conversion / evaluation / inference |
-| `full-nvidia` | NVIDIA GPU 工作站，推荐显式使用 | 复制 TensorRT / cuDNN | 保留完整 `requirements.txt` | dataset-import / dataset-export / training / conversion / evaluation / inference |
-| `full-cpu` | Intel CPU 工作站，无 NVIDIA GPU | 不复制 TensorRT / cuDNN | 排除 `tensorrt-cu12`、`cuda-python` | dataset-import / dataset-export / inference |
+| `full-windows-x64-nvidia` | 已实现，推荐 | Windows x64 NVIDIA | Windows FFmpeg、TensorRT、cuDNN | 全部六类 worker |
+| `full-windows-x64-cpu` | 已实现，推荐 | Windows x64 CPU | Windows FFmpeg，不含 NVIDIA 资产 | 全部六类 worker |
+| `full-ubuntu-x64-nvidia` | 仅预留名称，未实现 | Ubuntu x64 NVIDIA | 未组装 | 未定义 |
+| `full-ubuntu-x64-cpu` | 仅预留名称，未实现 | Ubuntu x64 CPU | 未组装 | 未定义 |
 
-`full` 当前保留为 NVIDIA 完整发布包别名，用于兼容已有命令习惯；新发布建议显式选择 `full-nvidia` 或 `full-cpu`。只有 Intel CPU 的电脑必须使用 `full-cpu`，不能使用 `full`/`full-nvidia` 后再靠现场手工删除 NVIDIA 文件。
+`full`、`full-nvidia` 和 `full-cpu` 仅作为旧命令兼容别名，分别解析到对应 Windows canonical profile。新发布必须显式使用带 OS、架构和 accelerator 的名称。Ubuntu 名称只用于固定未来目录和 profile 命名，本阶段调用会明确失败，不会生成看似可用但未经实现的包。
 
 ## 根因说明：CPU 机器前端无内容
 
@@ -40,23 +41,23 @@ CPU-only 机器如果使用 NVIDIA 完整包，常见现象是启动脚本显示
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-nvidia --release-root .\release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
 ```
 
 生成目录：
 
-- `release/full-nvidia/`
+- `release/full-windows-x64-nvidia/`
 
 ### Intel CPU 工作站
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root .\release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
 ```
 
 生成目录：
 
-- `release/full-cpu/`
+- `release/full-windows-x64-cpu/`
 
 ### 旧入口
 
@@ -65,14 +66,15 @@ conda activate amvision
 python -m backend.maintenance.main assemble-release --profile-id full --release-root .\release --force --output text
 ```
 
-`full` 当前等价于 NVIDIA 完整包，不适合 CPU-only 机器。
+`full` 当前等价于 `full-windows-x64-nvidia`，不适合 CPU-only 机器。
 
 ## 共用约定
 
 - `backend-service` 不托管队列消费者，队列执行统一交给独立 worker profile。
 - `runtimes/launchers/` 和 `runtimes/manifests/` 是仓库内模板来源；`assemble-release` 会复制到发行目录。
-- 发布根目录会生成 `start-amvision-full.*` 和 `stop-amvision-full.*`，作为整套启动与停止入口。
-- 发布目录优先通过 bundled Python 启动 Python launcher；Windows 使用 bat wrapper，Linux 使用 sh wrapper。
+- 发布根目录会复制仓库根 `README.md` 和授权文件，便于发布包独立交付和核对。
+- 当前 Windows 包只生成 `.bat` wrapper，不复制 Linux `.sh` launcher 或 Linux FFmpeg。
+- `python/` 默认只创建空目录，完整 bundled Python 由发布人员手工复制；`--force` 覆盖同一 profile 时会保留已有 `python/`。
 - 发布目录保留 maintenance launcher，用于版本输出、配置查看、布局校验和 release 组装。
 - 发布目录复制完整后端源码；不同硬件环境通过 release profile 区分，不通过手工修改发行目录区分。
 
@@ -93,7 +95,7 @@ python -m backend.maintenance.main assemble-release --profile-id full --release-
 
 ## 发布目录关键路径
 
-所有 profile 的目录名默认与 `profile_id` 一致，例如 `release/full-cpu/` 或 `release/full-nvidia/`。至少应包含：
+所有 profile 的目录名默认与 `profile_id` 一致，例如 `release/full-windows-x64-cpu/` 或 `release/full-windows-x64-nvidia/`。至少应包含：
 
 - `app/backend/`
 - `app/requirements.txt`
@@ -126,9 +128,9 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 | `logs/full-stack/service.log` | backend-service 主日志 |
 | `logs/full-stack/worker-dataset-import.log` | dataset-import worker 日志 |
 | `logs/full-stack/worker-dataset-export.log` | dataset-export worker 日志 |
-| `logs/full-stack/worker-training.log` | training worker 日志，CPU profile 默认没有 |
-| `logs/full-stack/worker-conversion.log` | conversion worker 日志，CPU profile 默认没有 |
-| `logs/full-stack/worker-evaluation.log` | evaluation worker 日志，CPU profile 默认没有 |
+| `logs/full-stack/worker-training.log` | training worker 日志 |
+| `logs/full-stack/worker-conversion.log` | conversion worker 日志 |
+| `logs/full-stack/worker-evaluation.log` | evaluation worker 日志 |
 | `logs/full-stack/worker-inference.log` | inference worker 日志 |
 | `logs/full-stack/runtime-state.json` | full 一键启动写入的运行状态文件，供 stop 脚本回收进程 |
 
@@ -158,13 +160,13 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 ## 推荐启动顺序
 
 1. 先执行 maintenance `validate-layout`
-2. 在对应发行目录根目录执行 `start-amvision-full.bat` 或 `start-amvision-full.sh`
+2. 在对应发行目录根目录执行 `start-amvision-full.bat`
 3. 检查 health、OpenAPI 文档和目标业务 smoke test
 4. 如需排障，再拆回独立 service / worker launcher
 
 ## 运维重点
 
-- 发布前先确认目标机硬件类型，再选择 `full-nvidia` 或 `full-cpu`。
+- 发布前先确认目标机硬件类型，再选择 `full-windows-x64-nvidia` 或 `full-windows-x64-cpu`。
 - CPU-only 目标机不能安装 NVIDIA 完整包后依赖现场手工裁剪。
 - 核对 bundled Python 体积与磁盘空间。
 - 核对厂商 runtime、驱动和目标设备兼容性。

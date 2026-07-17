@@ -6,12 +6,12 @@
 
 ## 适用范围
 
-- 已通过 `assemble-release` 生成 `release/full-nvidia/`、`release/full-cpu/` 或兼容入口 `release/full/`
+- 已通过 `assemble-release` 生成 `release/full-windows-x64-nvidia/` 或 `release/full-windows-x64-cpu/`
 - 需要在一台新机器或新目录上完成首次可运行验证
 
 ## 执行前提
 
-- 当前工作目录切到实际发行目录，例如 `release/full-nvidia/` 或 `release/full-cpu/`
+- 当前工作目录切到实际发行目录，例如 `release/full-windows-x64-nvidia/` 或 `release/full-windows-x64-cpu/`
 - `python/` 下已经存在可执行 Python，并已安装 `app/requirements.txt` 中的依赖
 - `config/backend-service.json`、`config/backend-worker.json` 已按现场路径和端口要求检查过一遍
 - 准备一个体积较小的 zip 数据集样本，用于 DatasetImport smoke test
@@ -37,12 +37,14 @@
 - `frontend/index.html`
 - `frontend/runtime-config.json`
 
-如果当前是 `full-nvidia`，还应存在：
+如果当前是 `full-windows-x64-nvidia`，还应存在：
 
 - `tools/tensorrt`
 - `tools/cudnn`
 
-如果当前是 `full-cpu`，则不应存在 `tools/tensorrt` 和 `tools/cudnn`，`app/requirements.txt` 中也不应包含 `tensorrt-cu12`、`cuda-python`。
+如果当前是 `full-windows-x64-cpu`，则不应存在 `tools/tensorrt` 和 `tools/cudnn`，`app/requirements.txt` 中也不应包含 `tensorrt-cu12`、`cuda-python`。
+
+两个 Windows 包都应存在根目录 `README.md`、`python/python.exe`、`tools/ffmpeg/windows-x64/`，并且不应混入 Linux `.sh` launcher、`tools/ffmpeg/linux-x64/` 或 `python/bin/python3`。
 
 如果目录结构不完整，先停止后续步骤，回到 release 组装阶段排查。
 

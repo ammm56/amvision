@@ -55,7 +55,8 @@
 
 当前 `assemble-release` 的 bundled Python 处理规则如下：
 
-- 仓库默认不写任何系统绝对路径；bundled Python 是否重建，应由现场目录内容或显式本地配置决定。
+- 不维护 `runtime-cache/`，也不自动准备大体量 Python 环境；Windows x64 CPU 和 NVIDIA 环境由发布人员手工复制到各自发布目录的 `python/`。
+- 首次组装只创建空 `python/`，复制完成后应至少存在 `python/python.exe`。
 - 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来。
 - 如果 release 组装失败，暂存的 `python/` 目录会恢复回发布目录，避免失败时丢失原有运行时。
 - 只有在显式提供 bundled Python 来源目录时，才会重建发布目录里的 `python/`。

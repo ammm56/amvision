@@ -1,0 +1,14 @@
+{
+  "profile_id": "full-ubuntu-x64-nvidia",
+  "display_name": "amvision full Ubuntu x64 NVIDIA（预留）",
+  "description": "为未来 Ubuntu x64 NVIDIA 发布固定的 profile id；当前阶段未实现，assemble-release 会拒绝组装。",
+  "implementation_status": "reserved",
+  "target": {
+    "os": "ubuntu",
+    "arch": "x64",
+    "platform_tag": "ubuntu-x64"
+  },
+  "accelerator": {
+    "kind": "nvidia"
+  }
+}

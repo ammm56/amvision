@@ -1,0 +1,43 @@
+{
+  "profile_id": "full-windows-x64-nvidia",
+  "display_name": "amvision full Windows x64 NVIDIA",
+  "description": "Windows x64 NVIDIA GPU 工作站完整发布目录，包含训练、转换、评估、异步推理 worker，以及 Windows TensorRT 与 cuDNN 运行时资产。",
+  "target": {
+    "os": "windows",
+    "arch": "x64",
+    "platform_tag": "windows-x64"
+  },
+  "accelerator": {
+    "kind": "nvidia"
+  },
+  "service": {
+    "python_launcher": "runtimes/launchers/service/start_backend_service.py",
+    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
+    "hosted_task_manager_enabled": false
+  },
+  "worker": {
+    "python_launcher": "runtimes/launchers/worker/start_backend_worker.py",
+    "windows_launcher": "runtimes/launchers/worker/start-backend-worker.bat",
+    "worker_profile_ids": [
+      "dataset-import",
+      "dataset-export",
+      "training",
+      "conversion",
+      "evaluation",
+      "inference"
+    ]
+  },
+  "maintenance": {
+    "python_launcher": "runtimes/launchers/maintenance/invoke_backend_maintenance.py",
+    "windows_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.bat",
+    "default_command": "validate-layout"
+  },
+  "artifacts": {
+    "include_frontend": true,
+    "include_tensorrt_runtime": true,
+    "include_cudnn_runtime": true,
+    "ffmpeg_platform": "windows-x64",
+    "requirements_file": "requirements.txt",
+    "requirements_exclude_packages": []
+  }
+}

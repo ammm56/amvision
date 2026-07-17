@@ -85,9 +85,9 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 
 ## 同目录 Python 运行时启动
 
-当前仓库已经提供 Python launcher 和最薄的 bat/sh wrapper：
+当前仓库保留跨平台 launcher 源码模板；本阶段组装的 Windows 发布包只复制 bat wrapper：
 
-当前 `full` 发布目录的默认入口已经切到根目录一键启动脚本：`start-amvision-full.bat`、`start-amvision-full.sh`。
+当前 Windows 发布目录的默认入口是根目录 `start-amvision-full.bat`。
 本页保留 `launchers/worker/` 的调用方式，主要用于只拉起单个 worker 或拆分排障。
 
 - `runtimes/launchers/worker/start_backend_worker.py`
@@ -117,12 +117,12 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 - Python launcher 会把工作目录切到应用根目录，并自动补齐 `PYTHONPATH` 后再执行 `backend.workers.main`
 - 如果提供 `--worker-profile-file`，launcher 会把 profile 内的消费者集合、并发数和轮询间隔注入 worker 环境变量
 - 仓库里的 `runtimes/manifests/worker-profiles/*.json` 会在发布时复制到 `manifests/worker-profiles/*.json`
-- 发行目录下由 `assemble-release` 额外生成 `launchers/worker/start-<profile_id>-worker.bat` 与 `start-<profile_id>-worker.sh`
+- 当前 Windows 发行目录由 `assemble-release` 额外生成 `launchers/worker/start-<profile_id>-worker.bat`
 
 ## full 发布中的 worker 角色
 
-- 当前 `runtimes/manifests/release-profiles/full.json` 会生成 `dataset-import`、`dataset-export`、`training`、`conversion`、`evaluation`、`inference` 六个独立 worker profile
-- `runtimes/manifests/release-profiles/full-cpu.json` 面向 Intel CPU 工作站，默认只生成并启动 `dataset-import`、`dataset-export`、`inference` 三个 worker profile
+- 当前两个 Windows canonical profile 都会生成 `dataset-import`、`dataset-export`、`training`、`conversion`、`evaluation`、`inference` 六个独立 worker profile
+- `runtimes/manifests/release-profiles/full-windows-x64-cpu.json` 面向 Windows x64 CPU 工作站，与 NVIDIA 完整包一样声明全部六类 worker；具体现场可通过根启动器参数只启需要的 worker
 - 如果只需要单进程联调，也可以继续使用 `config/backend-worker.json` 里的全量 `enabled_consumer_kinds`
 - 不同硬件环境和 worker 集合应通过 release profile 表达，不再复制 `release/full/` 后手工删除 worker launcher 或依赖
 

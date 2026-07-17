@@ -6,7 +6,7 @@
 
 ## 适用范围
 
-- 通过 `assemble-release` 组装的 `release/full-nvidia/`、`release/full-cpu/` 或兼容入口 `release/full/`
+- 通过 `assemble-release` 组装的 `release/full-windows-x64-nvidia/` 或 `release/full-windows-x64-cpu/`
 - 同目录 Python 运行时
 - Windows bat / Linux sh 根目录一键启动
 
@@ -24,20 +24,22 @@ NVIDIA GPU 工作站：
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-nvidia --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root ./release --force --output text
 ```
 
 Intel CPU 工作站：
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-cpu --release-root ./release --force --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root ./release --force --output text
 ```
 
 说明：
 
-- `full` 仍作为 NVIDIA 完整包兼容入口存在；新发布建议显式选择 `full-nvidia` 或 `full-cpu`
+- `full`、`full-nvidia`、`full-cpu` 仅作为兼容入口；新发布显式选择带 `windows-x64` 的 canonical profile
 - `assemble-release --force` 会保留并回迁当前发行目录里的 `python/`，不会在覆盖发布时删除这个大体量目录
+- 首次发布由发布人员把对应 Windows Python 环境手工复制到 `python/`；当前不使用 `runtime-cache/`
+- Ubuntu x64 CPU/NVIDIA profile 名称已预留，但当前不实现、不组装、不验收
 - 如果发行目录原本不存在 `python/`，且本次也没有显式提供 bundled Python 来源目录，发布目录只会生成空的 `python/` 占位目录
 - 发布目录会复制 `frontend/web-ui/dist/`，并确保 `frontend/runtime-config.json` 存在
 - 发布目录会复制 `custom_nodes/` 作为 workflow app 运行资源
@@ -58,16 +60,12 @@ python -m backend.maintenance.main assemble-release --profile-id full-cpu --rele
 .\start-amvision-full.bat
 ```
 
-Linux 等价调用：
-
-```bash
-./start-amvision-full.sh
-```
+Ubuntu x64 CPU/NVIDIA 发布尚未实现，本阶段没有可交付的 Linux 等价调用。
 
 当前行为：
 
 - 同时启动 backend-service 和当前 release profile 中声明的全部 worker
-- 默认使用 `manifests/release-profiles/full.json`；如果发行目录中只有一个 release profile manifest，启动器会自动使用这个 manifest
+- 每个 canonical 发行目录只包含一个生成后的 release manifest，启动器会自动使用该 manifest
 - `custom_nodes/` 已随发布目录一起准备好，适合作为完整运行资源直接发出
 - 子进程日志写到 `logs/full-stack/`
 - 运行状态文件写到 `logs/full-stack/runtime-state.json`

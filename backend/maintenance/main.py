@@ -6,6 +6,7 @@ import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
 from backend.maintenance.extension_pretrained_manifests import (
@@ -29,15 +30,22 @@ from backend.contracts.workflows.resource_semantics import (
 )
 from backend.service.infrastructure.object_store.object_key_layout import RUNTIME_INPUTS_STORAGE_ROOT
 
+if TYPE_CHECKING:
+    from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
+    from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        LocalDatasetStorage,
+    )
 
-def _load_release_manifest_artifacts_for_layout(app_root: Path) -> dict[str, object]:
-    """读取发布目录中的 release manifest artifacts，用于布局校验分支判断。
+
+def _load_release_manifest_for_layout(app_root: Path) -> dict[str, object]:
+    """读取发布目录中的 release manifest，用于目标感知的布局校验。
 
     参数：
     - app_root：当前 maintenance 工作目录。
 
     返回：
-    - dict[str, object]：当前发布 profile 的 artifacts 字典；找不到或格式异常时返回空字典。
+    - dict[str, object]：当前发布 manifest；找不到或格式异常时返回空字典。
     """
 
     release_profile_dir = app_root / "manifests" / "release-profiles"
@@ -56,8 +64,7 @@ def _load_release_manifest_artifacts_for_layout(app_root: Path) -> dict[str, obj
         manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    artifacts = manifest_payload.get("artifacts")
-    return artifacts if isinstance(artifacts, dict) else {}
+    return manifest_payload if isinstance(manifest_payload, dict) else {}
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -90,7 +97,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--profile-id",
-        default="full",
+        default="full-windows-x64-nvidia",
         help="assemble-release 使用的 release profile id",
     )
     parser.add_argument(
@@ -196,6 +203,8 @@ def run_command(
     if command == "validate-layout":
         app_root = Path.cwd()
         layout_kind = "release" if (app_root / "app" / "backend").is_dir() else "source"
+        release_manifest: dict[str, object] = {}
+        forbidden_paths: dict[str, Path] = {}
         expected_paths = {
             "config": (app_root / "config",),
             "data": (app_root / "data",),
@@ -213,34 +222,79 @@ def run_command(
             ),
         }
         if layout_kind == "release":
-            release_artifacts = _load_release_manifest_artifacts_for_layout(app_root)
+            release_manifest = _load_release_manifest_for_layout(app_root)
+            release_artifacts = release_manifest.get("artifacts")
+            release_artifacts = release_artifacts if isinstance(release_artifacts, dict) else {}
+            release_target = release_manifest.get("target")
+            release_target = release_target if isinstance(release_target, dict) else {}
+            accelerator_section = release_manifest.get("accelerator")
+            accelerator_section = (
+                accelerator_section if isinstance(accelerator_section, dict) else {}
+            )
+            accelerator = str(accelerator_section.get("kind") or "").strip().lower()
+            platform_tag = str(release_target.get("platform_tag") or "windows-x64").strip()
             expected_paths.update(
                 {
+                    "root_readme": (app_root / "README.md",),
+                    "root_license": (app_root / "LICENSE",),
+                    "root_license_zh_cn": (app_root / "LICENSE.zh-CN",),
+                    "root_commercial_license_notice": (
+                        app_root / "COMMERCIAL_LICENSE_REQUIRED.md",
+                    ),
                     "app_backend": (app_root / "app" / "backend",),
                     "app_requirements": (app_root / "app" / "requirements.txt",),
                     "custom_nodes": (app_root / "custom_nodes",),
-                    "ffmpeg_tools": (
-                        app_root / "tools" / "ffmpeg",
-                    ),
+                    "ffmpeg_tools": (app_root / "tools" / "ffmpeg" / platform_tag,),
                     "frontend_index": (app_root / "frontend" / "index.html",),
                     "frontend_runtime_config": (
                         app_root / "frontend" / "runtime-config.json",
                     ),
-                    "python_executable": (
-                        app_root / "python" / "python.exe",
-                        app_root / "python" / "bin" / "python3",
-                        app_root / "python" / "bin" / "python",
+                    "python_executable": (app_root / "python" / "python.exe",),
+                    "start_launcher": (app_root / "start-amvision-full.bat",),
+                    "stop_launcher": (app_root / "stop-amvision-full.bat",),
+                }
+            )
+            if accelerator == "nvidia" or bool(
+                release_artifacts.get("include_tensorrt_runtime", False)
+            ):
+                expected_paths["tensorrt_tools"] = (app_root / "tools" / "tensorrt",)
+            if accelerator == "nvidia" or bool(
+                release_artifacts.get("include_cudnn_runtime", False)
+            ):
+                expected_paths["cudnn_tools"] = (app_root / "tools" / "cudnn",)
+            forbidden_paths.update(
+                {
+                    "linux_start_launcher": app_root / "start-amvision-full.sh",
+                    "linux_stop_launcher": app_root / "stop-amvision-full.sh",
+                    "linux_ffmpeg": app_root / "tools" / "ffmpeg" / "linux-x64",
+                    "linux_python": app_root / "python" / "bin" / "python3",
+                    "linux_service_launcher": (
+                        app_root / "launchers" / "service" / "start-backend-service.sh"
+                    ),
+                    "linux_worker_launcher": (
+                        app_root / "launchers" / "worker" / "start-backend-worker.sh"
+                    ),
+                    "linux_maintenance_launcher": (
+                        app_root
+                        / "launchers"
+                        / "maintenance"
+                        / "invoke-backend-maintenance.sh"
                     ),
                 }
             )
-            if bool(release_artifacts.get("include_tensorrt_runtime", False)):
-                expected_paths["tensorrt_tools"] = (app_root / "tools" / "tensorrt",)
-            if bool(release_artifacts.get("include_cudnn_runtime", False)):
-                expected_paths["cudnn_tools"] = (app_root / "tools" / "cudnn",)
+            if accelerator == "cpu":
+                forbidden_paths.update(
+                    {
+                        "cpu_tensorrt_tools": app_root / "tools" / "tensorrt",
+                        "cpu_cudnn_tools": app_root / "tools" / "cudnn",
+                    }
+                )
         return {
             "command": command,
             "app_root": str(app_root),
             "layout_kind": layout_kind,
+            "target": release_manifest.get("target", {}),
+            "accelerator": release_manifest.get("accelerator"),
             "workspace_dir": str(runtime.workspace_dir),
             "paths": {
                 name: {
@@ -250,9 +304,21 @@ def run_command(
                 }
                 for name, paths in expected_paths.items()
             },
+            "forbidden_paths": {
+                name: {
+                    "path": str(path),
+                    "exists": path.exists(),
+                    "valid": not path.exists(),
+                }
+                for name, path in forbidden_paths.items()
+            },
         }
     if command == "assemble-release":
-        resolved_profile_id = "full" if profile_id is None or not profile_id.strip() else profile_id.strip()
+        resolved_profile_id = (
+            "full-windows-x64-nvidia"
+            if profile_id is None or not profile_id.strip()
+            else profile_id.strip()
+        )
         result = assemble_release(
             ReleaseAssemblyRequest(
                 profile_id=resolved_profile_id,
@@ -289,6 +355,7 @@ def run_command(
             "generated_root_launchers": [str(path) for path in result.generated_root_launchers],
             "worker_profiles": list(result.worker_profile_ids),
             "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
+            "copied_root_documents": [str(path) for path in result.copied_root_documents],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
     if command == REBUILD_PYCACHE_COMMAND:

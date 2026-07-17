@@ -24,6 +24,12 @@ SOURCE_FRONTEND_RUNTIME_CONFIG_TEMPLATE_FILE = (
 )
 SOURCE_REQUIREMENTS_FILE = REPOSITORY_ROOT / "requirements.txt"
 SOURCE_REQUIREMENTS_CPU_FILE = REPOSITORY_ROOT / "requirements_cpu.txt"
+SOURCE_ROOT_DOCUMENTS = (
+    REPOSITORY_ROOT / "README.md",
+    REPOSITORY_ROOT / "LICENSE",
+    REPOSITORY_ROOT / "LICENSE.zh-CN",
+    REPOSITORY_ROOT / "COMMERCIAL_LICENSE_REQUIRED.md",
+)
 SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
 SOURCE_RELEASE_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
@@ -35,6 +41,11 @@ SOURCE_CUDNN_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "cudnn_dll"
 _SUPPORTED_REQUIREMENTS_FILES = {
     "requirements.txt": SOURCE_REQUIREMENTS_FILE,
     "requirements_cpu.txt": SOURCE_REQUIREMENTS_CPU_FILE,
+}
+
+_SUPPORTED_RELEASE_TARGETS = {
+    ("windows", "x64", "nvidia"),
+    ("windows", "x64", "cpu"),
 }
 
 
@@ -63,7 +74,7 @@ class ReleaseAssemblyRequest:
     def resolve_release_dir(self) -> Path:
         """返回当前 profile 的发行目录。"""
 
-        return self.output_root.resolve() / self.profile_id
+        return self.output_root.resolve() / self.profile_id.strip()
 
 
 @dataclass(frozen=True)
@@ -92,6 +103,7 @@ class ReleaseAssemblyResult:
     generated_root_launchers: tuple[Path, ...]
     worker_profile_ids: tuple[str, ...]
     generated_worker_launchers: tuple[Path, ...]
+    copied_root_documents: tuple[Path, ...]
     placeholder_dirs: tuple[Path, ...]
 
 
@@ -172,8 +184,11 @@ def _ignore_bundled_python_copy(directory: str, names: list[str]) -> set[str]:
     }
 
 
-def _copy_launcher_tree(release_dir: Path) -> None:
-    """复制通用 launcher 脚本到发行目录。"""
+def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
+    """按目标操作系统复制通用 launcher 脚本到发行目录。"""
+
+    if target_os != "windows":
+        raise ValueError(f"当前 release 组装尚未实现目标操作系统: {target_os}")
 
     _copy_file(SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py")
     _copy_file(
@@ -185,20 +200,12 @@ def _copy_launcher_tree(release_dir: Path) -> None:
         release_dir / "launchers" / "service" / "start-backend-service.bat",
     )
     _copy_file(
-        SOURCE_LAUNCHERS_DIR / "service" / "start-backend-service.sh",
-        release_dir / "launchers" / "service" / "start-backend-service.sh",
-    )
-    _copy_file(
         SOURCE_LAUNCHERS_DIR / "worker" / "start_backend_worker.py",
         release_dir / "launchers" / "worker" / "start_backend_worker.py",
     )
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "worker" / "start-backend-worker.bat",
         release_dir / "launchers" / "worker" / "start-backend-worker.bat",
-    )
-    _copy_file(
-        SOURCE_LAUNCHERS_DIR / "worker" / "start-backend-worker.sh",
-        release_dir / "launchers" / "worker" / "start-backend-worker.sh",
     )
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "maintenance" / "invoke_backend_maintenance.py",
@@ -208,14 +215,10 @@ def _copy_launcher_tree(release_dir: Path) -> None:
         SOURCE_LAUNCHERS_DIR / "maintenance" / "invoke-backend-maintenance.bat",
         release_dir / "launchers" / "maintenance" / "invoke-backend-maintenance.bat",
     )
-    _copy_file(
-        SOURCE_LAUNCHERS_DIR / "maintenance" / "invoke-backend-maintenance.sh",
-        release_dir / "launchers" / "maintenance" / "invoke-backend-maintenance.sh",
-    )
 
 
-def _copy_full_root_launchers(release_dir: Path) -> tuple[Path, ...]:
-    """复制 full 发布目录根目录的启动和停止脚本。
+def _copy_full_root_launchers(release_dir: Path, *, target_os: str) -> tuple[Path, ...]:
+    """按目标操作系统复制 full 发布目录根启动和停止脚本。
 
     参数：
     - release_dir：当前发行目录。
@@ -224,13 +227,14 @@ def _copy_full_root_launchers(release_dir: Path) -> tuple[Path, ...]:
     - tuple[Path, ...]：已复制到发行目录根目录的脚本列表。
     """
 
+    if target_os != "windows":
+        raise ValueError(f"当前 release 组装尚未实现目标操作系统: {target_os}")
+
     root_launcher_paths = (
         release_dir / "start_amvision_full.py",
         release_dir / "start-amvision-full.bat",
-        release_dir / "start-amvision-full.sh",
         release_dir / "stop_amvision_full.py",
         release_dir / "stop-amvision-full.bat",
-        release_dir / "stop-amvision-full.sh",
     )
     _copy_file(
         SOURCE_FULL_LAUNCHERS_DIR / "start_amvision_full.py",
@@ -241,22 +245,27 @@ def _copy_full_root_launchers(release_dir: Path) -> tuple[Path, ...]:
         root_launcher_paths[1],
     )
     _copy_file(
-        SOURCE_FULL_LAUNCHERS_DIR / "start-amvision-full.sh",
+        SOURCE_FULL_LAUNCHERS_DIR / "stop_amvision_full.py",
         root_launcher_paths[2],
     )
     _copy_file(
-        SOURCE_FULL_LAUNCHERS_DIR / "stop_amvision_full.py",
+        SOURCE_FULL_LAUNCHERS_DIR / "stop-amvision-full.bat",
         root_launcher_paths[3],
     )
-    _copy_file(
-        SOURCE_FULL_LAUNCHERS_DIR / "stop-amvision-full.bat",
-        root_launcher_paths[4],
-    )
-    _copy_file(
-        SOURCE_FULL_LAUNCHERS_DIR / "stop-amvision-full.sh",
-        root_launcher_paths[5],
-    )
     return root_launcher_paths
+
+
+def _copy_root_documents(release_dir: Path) -> tuple[Path, ...]:
+    """复制发布根目录需要的项目说明和授权文件。"""
+
+    copied_paths: list[Path] = []
+    for source_path in SOURCE_ROOT_DOCUMENTS:
+        if not source_path.is_file():
+            raise FileNotFoundError(f"发布根文档不存在: {source_path}")
+        target_path = release_dir / source_path.name
+        _copy_file(source_path, target_path)
+        copied_paths.append(target_path)
+    return tuple(copied_paths)
 
 
 def _build_worker_windows_wrapper(profile_id: str) -> str:
@@ -274,26 +283,6 @@ def _build_worker_windows_wrapper(profile_id: str) -> str:
         ":run\r\n"
         f"\"%PYTHON_EXE%\" \"%SCRIPT_DIR%start_backend_worker.py\" --worker-profile-file \"manifests/worker-profiles/{profile_id}.json\" %*\r\n"
         "endlocal\r\n"
-    )
-
-
-def _build_worker_linux_wrapper(profile_id: str) -> str:
-    """生成带固定 profile 的 Linux worker wrapper。"""
-
-    return (
-        "#!/usr/bin/env sh\n"
-        "set -eu\n"
-        "SCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\n"
-        "if [ -n \"${AMVISION_PYTHON_EXECUTABLE:-}\" ]; then\n"
-        "  PYTHON_EXE=\"$AMVISION_PYTHON_EXECUTABLE\"\n"
-        "elif [ -x \"$SCRIPT_DIR/../../python/bin/python3\" ]; then\n"
-        "  PYTHON_EXE=\"$SCRIPT_DIR/../../python/bin/python3\"\n"
-        "elif [ -x \"$SCRIPT_DIR/../../python/bin/python\" ]; then\n"
-        "  PYTHON_EXE=\"$SCRIPT_DIR/../../python/bin/python\"\n"
-        "else\n"
-        "  PYTHON_EXE=python3\n"
-        "fi\n"
-        f"exec \"$PYTHON_EXE\" \"$SCRIPT_DIR/start_backend_worker.py\" --worker-profile-file \"manifests/worker-profiles/{profile_id}.json\" \"$@\"\n"
     )
 
 
@@ -414,6 +403,7 @@ def _copy_runtime_assets(
     release_dir: Path,
     *,
     artifacts_section: dict[str, object],
+    platform_tag: str,
 ) -> None:
     """复制 release 运行期需要的静态资产。
 
@@ -431,15 +421,67 @@ def _copy_runtime_assets(
         release_dir / "custom_nodes",
         ignore=_ignore_custom_nodes_copy,
     )
+    ffmpeg_platform = str(artifacts_section.get("ffmpeg_platform") or platform_tag).strip()
+    if ffmpeg_platform != platform_tag:
+        raise ValueError(
+            "artifacts.ffmpeg_platform 必须与 target.platform_tag 一致: "
+            f"ffmpeg_platform={ffmpeg_platform}, platform_tag={platform_tag}"
+        )
+    source_ffmpeg_platform_dir = SOURCE_FFMPEG_RUNTIME_DIR / ffmpeg_platform
+    if not source_ffmpeg_platform_dir.is_dir():
+        raise FileNotFoundError(f"目标平台 FFmpeg 资产不存在: {source_ffmpeg_platform_dir}")
     _copy_directory_tree(
-        SOURCE_FFMPEG_RUNTIME_DIR,
-        release_dir / "tools" / "ffmpeg",
+        source_ffmpeg_platform_dir,
+        release_dir / "tools" / "ffmpeg" / ffmpeg_platform,
         ignore=_ignore_custom_nodes_copy,
     )
     if bool(artifacts_section.get("include_tensorrt_runtime", False)):
         _copy_tensorrt_runtime_assets(release_dir)
     if bool(artifacts_section.get("include_cudnn_runtime", False)):
         _copy_cudnn_runtime_assets(release_dir)
+
+
+def _validate_windows_nvidia_runtime_assets(release_dir: Path) -> None:
+    """确认 Windows x64 NVIDIA 包中的 TensorRT/cuDNN 资产可识别。"""
+
+    tensorrt_bin_dir = release_dir / "tools" / "tensorrt" / "bin"
+    tensorrt_python_dir = release_dir / "tools" / "tensorrt" / "python"
+    cudnn_bin_dir = release_dir / "tools" / "cudnn" / "bin"
+    required_paths = (
+        tensorrt_bin_dir / "trtexec.exe",
+        tensorrt_python_dir,
+        cudnn_bin_dir,
+    )
+    missing_paths = [str(path) for path in required_paths if not path.exists()]
+    if missing_paths:
+        raise FileNotFoundError(
+            "Windows x64 NVIDIA 发布缺少运行时资产: " + ", ".join(missing_paths)
+        )
+    if not any(tensorrt_bin_dir.glob("nvinfer*.dll")):
+        raise FileNotFoundError(f"TensorRT bin 缺少 nvinfer DLL: {tensorrt_bin_dir}")
+    if not any(tensorrt_python_dir.glob("*cp312*win_amd64.whl")):
+        raise FileNotFoundError(
+            f"TensorRT Python 目录缺少 CPython 3.12 Windows x64 wheel: {tensorrt_python_dir}"
+        )
+    if not any(cudnn_bin_dir.rglob("cudnn64_*.dll")):
+        raise FileNotFoundError(f"cuDNN bin 缺少 Windows x64 DLL: {cudnn_bin_dir}")
+
+
+def _validate_cpu_requirements(requirements_path: Path) -> None:
+    """确认 CPU 发布 requirements 不包含 NVIDIA-only 依赖。"""
+
+    package_names = {
+        package_name
+        for line in requirements_path.read_text(encoding="utf-8").splitlines()
+        if (package_name := _normalize_requirement_name(line)) is not None
+    }
+    forbidden_packages = {"tensorrt-cu12", "cuda-python"}
+    included_forbidden = sorted(package_names & forbidden_packages)
+    if included_forbidden:
+        raise ValueError(
+            "Windows x64 CPU requirements 包含 NVIDIA-only 依赖: "
+            + ", ".join(included_forbidden)
+        )
 
 
 def _copy_tensorrt_runtime_assets(release_dir: Path) -> None:
@@ -709,14 +751,80 @@ def _materialize_placeholder_dirs(
     return tuple(placeholder_dirs)
 
 
+def _resolve_release_profile(
+    requested_profile_id: str,
+) -> tuple[str, dict[str, object], bool]:
+    """解析 canonical release profile，并标记旧 profile alias。"""
+
+    requested_profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{requested_profile_id}.json"
+    if not requested_profile_path.is_file():
+        raise FileNotFoundError(f"release profile 不存在: {requested_profile_path}")
+    requested_profile = _load_json_file(requested_profile_path)
+    requested_profile_value = str(requested_profile.get("profile_id") or "").strip()
+    if requested_profile_value != requested_profile_id:
+        raise ValueError(
+            "release profile 文件名与 profile_id 不一致: "
+            f"file={requested_profile_path.name}, profile_id={requested_profile_value}"
+        )
+    alias_for = str(requested_profile.get("alias_for") or "").strip()
+    canonical_profile_id = alias_for or requested_profile_id
+    source_release_profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{canonical_profile_id}.json"
+    if not source_release_profile_path.is_file():
+        raise FileNotFoundError(f"release profile 不存在: {source_release_profile_path}")
+    source_release_profile = _load_json_file(source_release_profile_path)
+    profile_id_value = str(source_release_profile.get("profile_id") or "").strip()
+    if profile_id_value != canonical_profile_id:
+        raise ValueError(
+            "release profile 文件名与 profile_id 不一致: "
+            f"file={source_release_profile_path.name}, profile_id={profile_id_value}"
+        )
+    return (
+        canonical_profile_id,
+        source_release_profile,
+        bool(alias_for),
+    )
+
+
+def _resolve_release_target(
+    source_release_profile: dict[str, object],
+) -> tuple[str, str, str, str]:
+    """读取并校验当前阶段支持的 OS、架构和 accelerator。"""
+
+    target_section = source_release_profile.get("target")
+    accelerator_section = source_release_profile.get("accelerator")
+    if not isinstance(target_section, dict) or not isinstance(accelerator_section, dict):
+        raise ValueError("canonical release profile 必须包含 target 和 accelerator")
+    target_os = str(target_section.get("os") or "").strip().lower()
+    target_arch = str(target_section.get("arch") or "").strip().lower()
+    platform_tag = str(target_section.get("platform_tag") or "").strip().lower()
+    accelerator_kind = str(accelerator_section.get("kind") or "").strip().lower()
+    expected_platform_tag = f"{target_os}-{target_arch}"
+    if platform_tag != expected_platform_tag:
+        raise ValueError(
+            "target.platform_tag 与 os/arch 不一致: "
+            f"platform_tag={platform_tag}, expected={expected_platform_tag}"
+        )
+    target_key = (target_os, target_arch, accelerator_kind)
+    if target_key not in _SUPPORTED_RELEASE_TARGETS:
+        raise ValueError(
+            "当前阶段尚未实现 release target: "
+            f"os={target_os}, arch={target_arch}, accelerator={accelerator_kind}"
+        )
+    return target_os, target_arch, platform_tag, accelerator_kind
+
+
 def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     """按指定 release profile 组装发行目录。"""
 
-    source_release_profile_path = SOURCE_RELEASE_PROFILES_DIR / f"{request.profile_id}.json"
-    if not source_release_profile_path.is_file():
-        raise FileNotFoundError(f"release profile 不存在: {source_release_profile_path}")
-
-    source_release_profile = _load_json_file(source_release_profile_path)
+    requested_profile_id = request.profile_id.strip()
+    if not requested_profile_id:
+        raise ValueError("release profile id 不能为空")
+    canonical_profile_id, source_release_profile, deprecated_alias = _resolve_release_profile(
+        requested_profile_id
+    )
+    target_os, target_arch, platform_tag, accelerator_kind = _resolve_release_target(
+        source_release_profile
+    )
     artifacts_section = source_release_profile["artifacts"]
     assert isinstance(artifacts_section, dict)
     release_dir = request.resolve_release_dir()
@@ -730,10 +838,22 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
 
     try:
         _copy_application_sources(release_dir, artifacts_section=artifacts_section)
-        _copy_runtime_assets(release_dir, artifacts_section=artifacts_section)
+        _copy_runtime_assets(
+            release_dir,
+            artifacts_section=artifacts_section,
+            platform_tag=platform_tag,
+        )
         requirements_path = release_dir / "app" / "requirements.txt"
-        _copy_launcher_tree(release_dir)
-        generated_root_launchers = _copy_full_root_launchers(release_dir)
+        if accelerator_kind == "nvidia":
+            _validate_windows_nvidia_runtime_assets(release_dir)
+        else:
+            _validate_cpu_requirements(requirements_path)
+        _copy_launcher_tree(release_dir, target_os=target_os)
+        generated_root_launchers = _copy_full_root_launchers(
+            release_dir,
+            target_os=target_os,
+        )
+        copied_root_documents = _copy_root_documents(release_dir)
 
         worker_section = source_release_profile["worker"]
         assert isinstance(worker_section, dict)
@@ -757,18 +877,11 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             windows_wrapper_path = (
                 release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat"
             )
-            linux_wrapper_path = (
-                release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh"
-            )
             windows_wrapper_path.write_text(
                 _build_worker_windows_wrapper(profile_id),
                 encoding="utf-8",
             )
-            linux_wrapper_path.write_text(
-                _build_worker_linux_wrapper(profile_id),
-                encoding="utf-8",
-            )
-            generated_worker_launchers.extend((windows_wrapper_path, linux_wrapper_path))
+            generated_worker_launchers.append(windows_wrapper_path)
 
             worker_entries.append(
                 {
@@ -778,7 +891,6 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                     "manifest": f"manifests/worker-profiles/{profile_id}.json",
                     "python_launcher": "launchers/worker/start_backend_worker.py",
                     "windows_launcher": f"launchers/worker/start-{profile_id}-worker.bat",
-                    "linux_launcher": f"launchers/worker/start-{profile_id}-worker.sh",
                     "enabled_consumer_kinds": source_worker_profile["enabled_consumer_kinds"],
                     "max_concurrent_tasks": source_worker_profile.get("max_concurrent_tasks", 1),
                     "poll_interval_seconds": source_worker_profile.get("poll_interval_seconds", 1.0),
@@ -804,20 +916,27 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         )
 
         release_manifest = {
-            "profile_id": source_release_profile["profile_id"],
+            "profile_id": requested_profile_id,
+            "canonical_profile_id": canonical_profile_id,
+            "deprecated_alias": deprecated_alias,
             "display_name": source_release_profile["display_name"],
             "description": source_release_profile["description"],
+            "target": {
+                "os": target_os,
+                "arch": target_arch,
+                "platform_tag": platform_tag,
+            },
+            "accelerator": {"kind": accelerator_kind},
             "requirements_file": "app/requirements.txt",
             "bundled_python": {
                 "python_dir": "python",
                 "mode": bundled_python_mode,
                 "included": bundled_python_mode != "placeholder-empty",
-                "managed_manually": bundled_python_mode == "placeholder-empty",
+                "managed_manually": bundled_python_mode != "copied-from-source",
             },
             "service": {
                 "python_launcher": "launchers/service/start_backend_service.py",
                 "windows_launcher": "launchers/service/start-backend-service.bat",
-                "linux_launcher": "launchers/service/start-backend-service.sh",
                 "hosted_task_manager_enabled": source_release_profile["service"][
                     "hosted_task_manager_enabled"
                 ],
@@ -826,18 +945,15 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             "maintenance": {
                 "python_launcher": "launchers/maintenance/invoke_backend_maintenance.py",
                 "windows_launcher": "launchers/maintenance/invoke-backend-maintenance.bat",
-                "linux_launcher": "launchers/maintenance/invoke-backend-maintenance.sh",
                 "default_command": source_release_profile["maintenance"]["default_command"],
             },
             "stack": {
                 "python_launcher": "start_amvision_full.py",
                 "windows_launcher": "start-amvision-full.bat",
-                "linux_launcher": "start-amvision-full.sh",
                 "logs_dir": "logs/full-stack",
                 "state_file": "logs/full-stack/runtime-state.json",
                 "stop_python_launcher": "stop_amvision_full.py",
                 "stop_windows_launcher": "stop-amvision-full.bat",
-                "stop_linux_launcher": "stop-amvision-full.sh",
             },
             "artifacts": artifacts_section,
             "layout": {
@@ -865,6 +981,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             generated_root_launchers=generated_root_launchers,
             worker_profile_ids=worker_profile_ids,
             generated_worker_launchers=tuple(generated_worker_launchers),
+            copied_root_documents=copied_root_documents,
             placeholder_dirs=placeholder_dirs,
         )
     except Exception:

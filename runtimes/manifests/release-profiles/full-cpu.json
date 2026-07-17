@@ -1,34 +1,7 @@
 {
   "profile_id": "full-cpu",
-  "display_name": "amvision full Intel CPU",
-  "description": "Intel CPU 工作站发布目录，保留前端、backend-service、数据集导入导出和异步推理 worker，不复制 NVIDIA TensorRT/cuDNN 运行时资产。",
-  "service": {
-    "python_launcher": "runtimes/launchers/service/start_backend_service.py",
-    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
-    "linux_launcher": "runtimes/launchers/service/start-backend-service.sh",
-    "hosted_task_manager_enabled": false
-  },
-  "worker": {
-    "python_launcher": "runtimes/launchers/worker/start_backend_worker.py",
-    "windows_launcher": "runtimes/launchers/worker/start-backend-worker.bat",
-    "linux_launcher": "runtimes/launchers/worker/start-backend-worker.sh",
-    "worker_profile_ids": [
-      "dataset-import",
-      "dataset-export",
-      "inference"
-    ]
-  },
-  "maintenance": {
-    "python_launcher": "runtimes/launchers/maintenance/invoke_backend_maintenance.py",
-    "windows_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.bat",
-    "linux_launcher": "runtimes/launchers/maintenance/invoke-backend-maintenance.sh",
-    "default_command": "validate-layout"
-  },
-  "artifacts": {
-    "include_frontend": true,
-    "include_tensorrt_runtime": false,
-    "include_cudnn_runtime": false,
-    "requirements_file": "requirements_cpu.txt",
-    "requirements_exclude_packages": []
-  }
+  "display_name": "amvision full CPU（兼容别名）",
+  "description": "旧 CPU 发布入口；assemble-release 会解析为 full-windows-x64-cpu。",
+  "implementation_status": "deprecated-alias",
+  "alias_for": "full-windows-x64-cpu"
 }

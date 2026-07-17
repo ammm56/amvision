@@ -292,7 +292,7 @@ Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 
 发布阶段应优先由项目同目录 Python 解释器启动 backend-service，而不是依赖系统 PATH。
 
-当前 `full` 发布目录的默认入口已经切到根目录一键启动脚本：`start-amvision-full.bat`、`start-amvision-full.sh`。
+当前 Windows 发布目录的默认入口已经切到根目录一键启动脚本 `start-amvision-full.bat`。Ubuntu 发布尚未实现，因此发布包当前不复制 `.sh` 根 launcher。
 本页保留 `launchers/service/` 的调用方式，主要用于只拉起 service 或拆分排障。
 
 如果发布目录结构类似下面这样：

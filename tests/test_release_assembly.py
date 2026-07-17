@@ -5,28 +5,30 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import backend.maintenance.release_assembly as release_assembly
+from backend.maintenance.main import run_command
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
 
 
-def test_assemble_release_materializes_full_layout(
+def test_assemble_release_materializes_windows_x64_nvidia_layout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 full profile 会生成完整的 release 布局和专用 worker wrapper。"""
+    """验证 Windows x64 NVIDIA profile 只生成目标平台需要的完整布局。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     result = assemble_release(
         ReleaseAssemblyRequest(
-            profile_id="full",
+            profile_id="full-windows-x64-nvidia",
             output_root=tmp_path,
         )
     )
 
-    release_dir = tmp_path / "full"
+    release_dir = tmp_path / "full-windows-x64-nvidia"
     assert result.release_dir == release_dir.resolve()
     assert (release_dir / "app" / "backend").is_dir()
     assert (release_dir / "config" / "backend-service.json").is_file()
@@ -36,10 +38,21 @@ def test_assemble_release_materializes_full_layout(
     assert (release_dir / "launchers" / "maintenance" / "invoke_backend_maintenance.py").is_file()
     assert (release_dir / "start_amvision_full.py").is_file()
     assert (release_dir / "start-amvision-full.bat").is_file()
-    assert (release_dir / "start-amvision-full.sh").is_file()
+    assert not (release_dir / "start-amvision-full.sh").exists()
     assert (release_dir / "stop_amvision_full.py").is_file()
     assert (release_dir / "stop-amvision-full.bat").is_file()
-    assert (release_dir / "stop-amvision-full.sh").is_file()
+    assert not (release_dir / "stop-amvision-full.sh").exists()
+    for document_name in (
+        "README.md",
+        "LICENSE",
+        "LICENSE.zh-CN",
+        "COMMERCIAL_LICENSE_REQUIRED.md",
+    ):
+        copied_document = release_dir / document_name
+        assert copied_document.is_file()
+        assert copied_document.read_bytes() == (
+            release_assembly.REPOSITORY_ROOT / document_name
+        ).read_bytes()
     assert (release_dir / "app" / "requirements.txt").is_file()
     assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
     assert (release_dir / "custom_nodes" / "opencv_geometry_nodes" / "manifest.json").is_file()
@@ -52,10 +65,14 @@ def test_assemble_release_materializes_full_layout(
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
-    assert (release_dir / "tools" / "ffmpeg" / "linux-x64" / "ffprobe").is_file()
+    assert not (release_dir / "tools" / "ffmpeg" / "linux-x64").exists()
     assert (release_dir / "tools" / "tensorrt" / "bin" / "trtexec.exe").is_file()
     assert (
-        release_dir / "tools" / "tensorrt" / "python" / "tensorrt-10.16.1.11-cp312.whl"
+        release_dir
+        / "tools"
+        / "tensorrt"
+        / "python"
+        / "tensorrt-10.16.1.11-cp312-none-win_amd64.whl"
     ).is_file()
     assert (release_dir / "tools" / "tensorrt" / "doc" / "README.txt").is_file()
     assert not (release_dir / "tools" / "tensorrt" / "include").exists()
@@ -68,7 +85,7 @@ def test_assemble_release_materializes_full_layout(
     assert result.bundled_python_mode == "placeholder-empty"
 
     requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
-    assert "torch==2.8.0" in requirements_text
+    assert "torch==2.12.1" in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
     assert "tensorrt-cu12==10.16.1.11" in requirements_text
@@ -85,13 +102,22 @@ def test_assemble_release_materializes_full_layout(
     for profile_id in expected_worker_profile_ids:
         assert (release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json").is_file()
         assert (release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat").is_file()
-        assert (release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh").is_file()
+        assert not (release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh").exists()
 
     release_manifest = json.loads(
-        (release_dir / "manifests" / "release-profiles" / "full.json").read_text(
+        (release_dir / "manifests" / "release-profiles" / "full-windows-x64-nvidia.json").read_text(
             encoding="utf-8"
         )
     )
+    assert release_manifest["profile_id"] == "full-windows-x64-nvidia"
+    assert release_manifest["canonical_profile_id"] == "full-windows-x64-nvidia"
+    assert release_manifest["deprecated_alias"] is False
+    assert release_manifest["target"] == {
+        "os": "windows",
+        "arch": "x64",
+        "platform_tag": "windows-x64",
+    }
+    assert release_manifest["accelerator"] == {"kind": "nvidia"}
     assert release_manifest["requirements_file"] == "app/requirements.txt"
     assert release_manifest["bundled_python"] == {
         "python_dir": "python",
@@ -111,11 +137,11 @@ def test_assemble_release_materializes_full_layout(
     assert release_manifest["workers"][0]["python_launcher"] == "launchers/worker/start_backend_worker.py"
 
 
-def test_assemble_release_cpu_profile_excludes_nvidia_runtime_assets(
+def test_assemble_release_legacy_profile_id_resolves_to_canonical_target(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 CPU-only profile 不复制 NVIDIA 运行时，也不会携带 CUDA/TensorRT requirements。"""
+    """验证旧 profile id 仍可使用，但 manifest 会明确记录 canonical target。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     result = assemble_release(
@@ -125,44 +151,150 @@ def test_assemble_release_cpu_profile_excludes_nvidia_runtime_assets(
         )
     )
 
-    release_dir = tmp_path / "full-cpu"
+    release_manifest = json.loads(result.release_manifest_path.read_text(encoding="utf-8"))
+    assert result.release_dir == (tmp_path / "full-cpu").resolve()
+    assert release_manifest["profile_id"] == "full-cpu"
+    assert release_manifest["canonical_profile_id"] == "full-windows-x64-cpu"
+    assert release_manifest["deprecated_alias"] is True
+    assert release_manifest["target"]["platform_tag"] == "windows-x64"
+    assert release_manifest["accelerator"] == {"kind": "cpu"}
+
+
+def test_assemble_release_rejects_reserved_ubuntu_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Ubuntu profile 位置可预留，但当前阶段不会误组装未实现的包。"""
+
+    source_profile_dir = tmp_path / "release-profiles"
+    source_profile_dir.mkdir(parents=True, exist_ok=True)
+    (source_profile_dir / "full-ubuntu-x64-cpu.json").write_text(
+        json.dumps(
+            {
+                "profile_id": "full-ubuntu-x64-cpu",
+                "target": {
+                    "os": "ubuntu",
+                    "arch": "x64",
+                    "platform_tag": "ubuntu-x64",
+                },
+                "accelerator": {"kind": "cpu"},
+                "artifacts": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        release_assembly,
+        "SOURCE_RELEASE_PROFILES_DIR",
+        source_profile_dir,
+    )
+
+    with pytest.raises(ValueError, match="尚未实现 release target"):
+        assemble_release(
+            ReleaseAssemblyRequest(
+                profile_id="full-ubuntu-x64-cpu",
+                output_root=tmp_path,
+            )
+        )
+
+
+def test_assemble_release_windows_x64_cpu_excludes_nvidia_runtime_assets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 CPU-only profile 不复制 NVIDIA 运行时，也不会携带 CUDA/TensorRT requirements。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+
+    release_dir = tmp_path / "full-windows-x64-cpu"
     assert result.release_dir == release_dir.resolve()
     assert (release_dir / "app" / "backend").is_dir()
     assert (release_dir / "frontend" / "index.html").is_file()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
     assert not (release_dir / "tools" / "tensorrt").exists()
     assert not (release_dir / "tools" / "cudnn").exists()
+    assert not (release_dir / "tools" / "ffmpeg" / "linux-x64").exists()
+    assert not (release_dir / "start-amvision-full.sh").exists()
 
     requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
     assert "tensorrt-cu12==" not in requirements_text
     assert "cuda-python==" not in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
-    assert "当前 release profile 已排除这些 GPU-only 依赖" in requirements_text
+    assert "torch==2.12.1" in requirements_text
 
-    assert result.worker_profile_ids == ("dataset-import", "dataset-export", "inference")
-    assert (release_dir / "manifests" / "worker-profiles" / "dataset-import.json").is_file()
-    assert (release_dir / "manifests" / "worker-profiles" / "dataset-export.json").is_file()
-    assert (release_dir / "manifests" / "worker-profiles" / "inference.json").is_file()
-    assert not (release_dir / "manifests" / "worker-profiles" / "training.json").exists()
-    assert not (release_dir / "launchers" / "worker" / "start-training-worker.bat").exists()
+    assert result.worker_profile_ids == (
+        "dataset-import",
+        "dataset-export",
+        "training",
+        "conversion",
+        "evaluation",
+        "inference",
+    )
+    assert (release_dir / "manifests" / "worker-profiles" / "training.json").is_file()
+    assert (release_dir / "launchers" / "worker" / "start-training-worker.bat").is_file()
 
     release_manifest = json.loads(
-        (release_dir / "manifests" / "release-profiles" / "full-cpu.json").read_text(
+        (release_dir / "manifests" / "release-profiles" / "full-windows-x64-cpu.json").read_text(
             encoding="utf-8"
         )
     )
     assert release_manifest["artifacts"]["include_tensorrt_runtime"] is False
     assert release_manifest["artifacts"]["include_cudnn_runtime"] is False
-    assert release_manifest["artifacts"]["requirements_exclude_packages"] == [
-        "tensorrt-cu12",
-        "cuda-python",
-    ]
+    assert release_manifest["canonical_profile_id"] == "full-windows-x64-cpu"
+    assert release_manifest["accelerator"] == {"kind": "cpu"}
+    assert release_manifest["artifacts"]["requirements_exclude_packages"] == []
     assert [worker["profile_id"] for worker in release_manifest["workers"]] == [
         "dataset-import",
         "dataset-export",
+        "training",
+        "conversion",
+        "evaluation",
         "inference",
     ]
+
+
+def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证布局检查会识别 Windows CPU 包所需路径和禁止混入的资产。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    (result.release_dir / "python" / "python.exe").write_text("python", encoding="utf-8")
+    monkeypatch.chdir(result.release_dir)
+    runtime = SimpleNamespace(workspace_dir=result.release_dir)
+
+    layout_result = run_command("validate-layout", runtime)
+
+    assert layout_result["target"]["platform_tag"] == "windows-x64"
+    assert layout_result["accelerator"] == {"kind": "cpu"}
+    assert layout_result["paths"]["root_readme"]["exists"] is True
+    assert layout_result["paths"]["python_executable"]["exists"] is True
+    assert layout_result["paths"]["ffmpeg_tools"]["exists"] is True
+    assert all(
+        entry["valid"] is True
+        for entry in layout_result["forbidden_paths"].values()
+    )
+
+    (result.release_dir / "tools" / "tensorrt").mkdir(parents=True)
+    invalid_layout_result = run_command("validate-layout", runtime)
+    assert (
+        invalid_layout_result["forbidden_paths"]["cpu_tensorrt_tools"]["valid"]
+        is False
+    )
 
 
 def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
@@ -466,7 +598,11 @@ def _patch_release_runtime_asset_sources(
     (source_tensorrt_runtime_dir / "lib").mkdir(parents=True, exist_ok=True)
     (source_tensorrt_runtime_dir / "bin" / "trtexec.exe").write_text("trtexec", encoding="utf-8")
     (source_tensorrt_runtime_dir / "bin" / "nvinfer_11.dll").write_text("dll", encoding="utf-8")
-    (source_tensorrt_runtime_dir / "python" / "tensorrt-10.16.1.11-cp312.whl").write_text(
+    (
+        source_tensorrt_runtime_dir
+        / "python"
+        / "tensorrt-10.16.1.11-cp312-none-win_amd64.whl"
+    ).write_text(
         "wheel",
         encoding="utf-8",
     )
