@@ -1,8 +1,10 @@
+using Amvar.Vision;
+using Newtonsoft.Json;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Amvar.Vision;
 using static AMVision.Console.SdkCallInputs;
 
 namespace AMVision.Console
@@ -33,9 +35,10 @@ namespace AMVision.Console
         {
             // 管理与状态；CallAsync 保留正常数据、后端错误响应或本地异常，不中断后续调用。
             var start = await runner.CallAsync(api => api.StartModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
+            string resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
             var warmup = await runner.CallAsync(api => api.WarmupModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             //var reset = await runner.CallAsync(api => api.ResetModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
-            var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
+            //var stop = await runner.CallAsync(api => api.StopModelDeploymentRuntimeAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             var status = await runner.CallAsync(api => api.GetModelDeploymentRuntimeStatusAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             var health = await runner.CallAsync(api => api.GetModelDeploymentRuntimeHealthAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
 
@@ -43,6 +46,7 @@ namespace AMVision.Console
             //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
             var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken)).ConfigureAwait(false);
             var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
             //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
             //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
@@ -67,7 +71,8 @@ namespace AMVision.Console
             // 管理与状态
             //var projectRuntimes = await runner.CallAsync(api => api.ListProjectRuntimesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             var start = await runner.CallAsync(api => api.StartRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
-            var stop = await runner.CallAsync(api => api.StopRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
+            string resultStr = JsonConvert.SerializeObject(start, Formatting.Indented);
+            //var stop = await runner.CallAsync(api => api.StopRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             var runtime = await runner.CallAsync(api => api.GetRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             var health = await runner.CallAsync(api => api.GetRuntimeHealthAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             //var restart = await runner.CallAsync(api => api.RestartRuntimeAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
@@ -79,6 +84,7 @@ namespace AMVision.Console
             //var invoke = await runner.CallAsync(api => api.InvokeRuntimeAppResultAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             var invokeBase64 = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBase64Async(RuntimeName, LoadImageBase64(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
             var invokeBytes = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageBytesAsync(RuntimeName, LoadImageBytes(), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
             //var invokeFile = await runner.CallAsync(api => api.InvokeRuntimeAppResultWithImageFromFileAsync(RuntimeName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
 
             // 异步任务
@@ -101,8 +107,9 @@ namespace AMVision.Console
             //var sources = await runner.CallAsync(api => api.ListTriggerSourcesAsync(RuntimeName, cancellationToken)).ConfigureAwait(false);
             //var source = await runner.CallAsync(api => api.GetTriggerSourceAsync(TriggerSourceName, cancellationToken)).ConfigureAwait(false);
             var enable = await runner.CallAsync(api => api.EnableTriggerSourceAsync(TriggerSourceName, cancellationToken)).ConfigureAwait(false);
-            var disable = await runner.CallAsync(api => api.DisableTriggerSourceAsync(TriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            //var disable = await runner.CallAsync(api => api.DisableTriggerSourceAsync(TriggerSourceName, cancellationToken)).ConfigureAwait(false);
             var health = await runner.CallAsync(api => api.GetTriggerSourceHealthAsync(TriggerSourceName, cancellationToken)).ConfigureAwait(false);
+            string resultStr = JsonConvert.SerializeObject(health, Formatting.Indented);
 
             // ZeroMQ 事件与编码图片
             //var eventResult = runner.Call(api => api.InvokeZeroMqEvent(TriggerSourceName, new Dictionary<string, object?> { { "source", "dotnet-console" } }, cancellationToken));
@@ -114,6 +121,7 @@ namespace AMVision.Console
             // ZeroMQ BGR24 raw 图片
             var frame = LoadBgr24ImageFrame();
             var bgr24 = runner.Call(api => api.InvokeZeroMqBgr24(TriggerSourceName, frame.Bytes, frame.Width, frame.Height, cancellationToken));
+            resultStr = JsonConvert.SerializeObject(bgr24, Formatting.Indented);
             var bgr24File = runner.Call(api => api.InvokeZeroMqBgr24FromFile(TriggerSourceName, ImagePath, cancellationToken));
             //var configuredBgr24 = runner.Call(api => api.InvokeConfiguredZeroMqBgr24Image(TriggerSourceName, cancellationToken));
             using (var bitmap = LoadBitmap())
