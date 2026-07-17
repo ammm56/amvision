@@ -295,7 +295,7 @@
         </div>
         <EmptyState v-if="!eventsLoading && deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
         <ol v-else class="event-timeline event-timeline--compact">
-          <li v-for="event in deploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
+          <li v-for="event in sortedDeploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
             <time>{{ formatSystemDateTime(event.created_at) }}</time>
             <strong>{{ event.event_type }}</strong>
             <span>{{ event.message }}</span>
@@ -374,6 +374,7 @@ const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: 
 
 const deployments = ref<TaskDeploymentInstance[]>([])
 const deploymentEvents = ref<TaskDeploymentProcessEvent[]>([])
+const sortedDeploymentEvents = computed(() => [...deploymentEvents.value].sort(compareDeploymentEventsNewestFirst))
 const loading = ref(false)
 const creating = ref(false)
 const eventsLoading = ref(false)
@@ -390,6 +391,18 @@ const selectedSourceModelId = ref('')
 const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
 const selectedDeploymentSource = ref<DeploymentSourceSelection | null>(null)
 const pendingDeleteDeploymentId = ref<string | null>(null)
+
+function compareDeploymentEventsNewestFirst(
+  left: TaskDeploymentProcessEvent,
+  right: TaskDeploymentProcessEvent,
+): number {
+  const leftTimestamp = Date.parse(left.created_at)
+  const rightTimestamp = Date.parse(right.created_at)
+  if (Number.isFinite(leftTimestamp) && Number.isFinite(rightTimestamp) && leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp
+  }
+  return right.sequence - left.sequence
+}
 
 const modelType = ref('')
 const modelVersionId = ref('')

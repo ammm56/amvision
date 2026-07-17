@@ -123,6 +123,14 @@ const event: TaskDeploymentProcessEvent = {
   payload: {},
 }
 
+const latestEvent: TaskDeploymentProcessEvent = {
+  ...event,
+  sequence: 2,
+  event_type: 'runtime.warmup.completed',
+  created_at: '2026-07-10T01:02:00Z',
+  message: 'runtime warmup completed',
+}
+
 const detectionSourceModel: DeploymentSourceModelSummary = {
   model_id: 'detection-model',
   scope_kind: 'project',
@@ -235,6 +243,22 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '停止')
     await flushPromises()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
+  })
+
+  it('renders deployment events newest first without depending on API order', async () => {
+    vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event, latestEvent])
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const renderedEvents = wrapper.findAll('.deployment-events-panel li')
+    expect(renderedEvents).toHaveLength(2)
+    expect(renderedEvents[0]?.text()).toContain('runtime.warmup.completed')
+    expect(renderedEvents[1]?.text()).toContain('runtime.started')
   })
 
   it('refreshes all runtime states and scopes busy buttons to the operated deployment', async () => {
