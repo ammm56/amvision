@@ -370,6 +370,7 @@ def test_workflow_trigger_source_api_defaults_to_sync_reply(
     assert payload["submit_mode"] == "sync"
     assert payload["ack_policy"] == "ack-after-run-finished"
     assert payload["result_mode"] == "sync-reply"
+    assert payload["transport_config"]["buffer_ttl_seconds"] == 30.0
     assert payload["input_binding_mapping"]["request_image_base64"]["required"] is False
     assert payload["input_binding_mapping"]["request_image_ref"]["required"] is False
 

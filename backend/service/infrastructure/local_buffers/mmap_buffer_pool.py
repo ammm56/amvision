@@ -151,6 +151,8 @@ class MmapBufferPool:
         self._expired_count = SafeCounterState()
         self._max_used_count = 0
         self._frame_channel_count = SafeCounterState()
+        self._frame_channel_destroy_count = SafeCounterState()
+        self._frame_abort_count = SafeCounterState()
         self._frame_write_count = SafeCounterState()
         self._frame_overwrite_count = SafeCounterState()
 
@@ -587,6 +589,7 @@ class MmapBufferPool:
             frame_state.layout = None
             frame_state.pixel_format = None
             frame_state.metadata = {}
+            increment_safe_counter(self._frame_abort_count)
 
     def destroy_frame_channel(self, *, stream_id: str) -> int:
         """销毁 frame channel，释放其全部预留槽位并失效旧 FrameRef。"""
@@ -604,6 +607,7 @@ class MmapBufferPool:
                 slot_state = self._slots[slot_index]
                 slot_state.generation += 1
                 slot_state.frame = None
+            increment_safe_counter(self._frame_channel_destroy_count)
             return len(channel.slot_indices)
 
     def write_frame(
@@ -810,6 +814,8 @@ class MmapBufferPool:
             released_count_snapshot = snapshot_safe_counter(self._released_count)
             expired_count_snapshot = snapshot_safe_counter(self._expired_count)
             frame_channel_count_snapshot = snapshot_safe_counter(self._frame_channel_count)
+            frame_channel_destroy_count_snapshot = snapshot_safe_counter(self._frame_channel_destroy_count)
+            frame_abort_count_snapshot = snapshot_safe_counter(self._frame_abort_count)
             frame_write_count_snapshot = snapshot_safe_counter(self._frame_write_count)
             frame_overwrite_count_snapshot = snapshot_safe_counter(self._frame_overwrite_count)
             active_count = self._count_leases_by_state_locked("active")
@@ -840,8 +846,14 @@ class MmapBufferPool:
                 "expired_count": expired_count_snapshot["value"],
                 "expired_count_rollover_count": expired_count_snapshot["rollover_count"],
                 "max_used_count": self._max_used_count,
-                "frame_channel_count": frame_channel_count_snapshot["value"],
-                "frame_channel_count_rollover_count": frame_channel_count_snapshot["rollover_count"],
+                "frame_channel_count": len(self._ring_channels),
+                "frame_channel_count_rollover_count": 0,
+                "frame_channel_created_count": frame_channel_count_snapshot["value"],
+                "frame_channel_created_count_rollover_count": frame_channel_count_snapshot["rollover_count"],
+                "frame_channel_destroy_count": frame_channel_destroy_count_snapshot["value"],
+                "frame_channel_destroy_count_rollover_count": frame_channel_destroy_count_snapshot["rollover_count"],
+                "frame_abort_count": frame_abort_count_snapshot["value"],
+                "frame_abort_count_rollover_count": frame_abort_count_snapshot["rollover_count"],
                 "frame_write_count": frame_write_count_snapshot["value"],
                 "frame_write_count_rollover_count": frame_write_count_snapshot["rollover_count"],
                 "frame_overwrite_count": frame_overwrite_count_snapshot["value"],

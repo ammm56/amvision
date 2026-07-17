@@ -330,6 +330,9 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
         destroyed_status = client.get_status()["pools"][0]
         assert destroyed_status["frame_reserved_count"] == 0
         assert destroyed_status["free_count"] == 3
+        assert destroyed_status["frame_channel_count"] == 0
+        assert destroyed_status["frame_channel_destroy_count"] == 1
+        assert destroyed_status["frame_abort_count"] == 1
         with pytest.raises(InvalidRequestError):
             client.read_frame_ref(third_frame)
     finally:

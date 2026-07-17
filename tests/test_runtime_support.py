@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     IMAGE_TRANSPORT_MEMORY,
     IMAGE_TRANSPORT_STORAGE,
+    build_preview_response_image_payload,
     build_response_image_payload,
     build_memory_image_payload,
     build_storage_image_payload,
@@ -114,7 +116,8 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert loaded_payload["media_type"] == "image/raw"
     assert np.array_equal(loaded_matrix, image_matrix)
     assert response_image["transport_kind"] == "inline-base64"
-    assert response_image["media_type"] == "image/png"
+    assert response_image["media_type"] == "image/jpeg"
+    assert base64.b64decode(response_image["image_base64"]).startswith(b"\xff\xd8\xff")
     assert response_image["width"] == 3
     assert response_image["height"] == 2
     assert "shape" not in response_image
@@ -239,6 +242,45 @@ def test_build_response_image_payload_defaults_to_inline_base64(tmp_path: Path) 
     assert response_image["media_type"] == "image/png"
     assert response_image["image_base64"] == "cG5nLXJlc3BvbnNl"
     assert "object_key" not in response_image
+
+
+def test_preview_detects_unknown_dimensions_before_selecting_high_resolution_transport(
+    tmp_path: Path,
+) -> None:
+    """验证缺少尺寸的长边大图解码一次后才切换 source transport。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry()
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload={"object_key": "inputs/source.png"},
+    )
+    image_matrix = np.zeros((10, 1930, 3), dtype=np.uint8)
+    encoded, encoded_matrix = cv2.imencode(".png", image_matrix)
+    assert encoded is True
+    memory_payload = register_image_bytes(
+        request,
+        content=encoded_matrix.tobytes(),
+        media_type="image/png",
+    )
+
+    response_image = build_preview_response_image_payload(
+        request,
+        image_payload=memory_payload,
+        response_transport_mode="inline-base64",
+        object_key="outputs/source.png",
+        display_object_key="outputs/display.jpg",
+    )
+
+    assert response_image["source_image"]["transport_kind"] == "storage-ref"
+    assert response_image["source_width"] == 1930
+    assert response_image["source_height"] == 10
+    assert response_image["display_image"]["transport_kind"] == "inline-base64"
+    assert response_image["display_width"] == 1920
+    assert response_image["preview_image_kind"] == "display"
 
 
 def test_build_response_image_payload_supports_explicit_storage_ref(tmp_path: Path) -> None:

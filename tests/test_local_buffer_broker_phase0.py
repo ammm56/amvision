@@ -232,6 +232,10 @@ def test_mmap_buffer_pool_can_abort_and_destroy_frame_channel(tmp_path: Path) ->
         status = pool.build_status()
         assert status["frame_reserved_count"] == 0
         assert status["free_count"] == 2
+        assert status["frame_channel_count"] == 0
+        assert status["frame_channel_created_count"] == 1
+        assert status["frame_channel_destroy_count"] == 1
+        assert status["frame_abort_count"] == 1
         with pytest.raises(InvalidRequestError):
             pool.read_frame_ref(frame_ref)
 

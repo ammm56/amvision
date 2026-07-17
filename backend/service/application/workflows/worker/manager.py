@@ -9,9 +9,11 @@ from threading import Event, Lock, Thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+import logging
 import multiprocessing
 
 from backend.service.application.errors import (
+    InvalidRequestError,
     OperationCancelledError,
     OperationTimeoutError,
     ServiceConfigurationError,
@@ -56,6 +58,9 @@ if TYPE_CHECKING:
         PublishedInferenceGatewayDispatcher,
         PublishedInferenceGatewayEventChannel,
     )
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -656,13 +661,15 @@ class WorkflowRuntimeWorkerManager:
             return 0
         try:
             channel = self._resolve_local_buffer_broker_event_channel()
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("读取 LocalBufferBroker cleanup channel 失败: %s", exc)
             return 0
         if channel is None:
             return 0
         try:
             client = LocalBufferBrokerClient(channel)
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("创建 LocalBufferBroker cleanup client 失败: %s", exc)
             return 0
         released_count = 0
         try:
@@ -674,14 +681,20 @@ class WorkflowRuntimeWorkerManager:
                         pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
                     )
                     released_count += 1
-                except Exception:
+                except InvalidRequestError:
                     # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
                     continue
+                except Exception as exc:
+                    LOGGER.warning(
+                        "父进程释放 LocalBufferBroker lease 失败: lease_id=%s error=%s",
+                        cleanup_item.resource_id,
+                        exc,
+                    )
         finally:
             try:
                 client.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                LOGGER.warning("关闭 LocalBufferBroker cleanup client 失败: %s", exc)
         return released_count
 
     def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:

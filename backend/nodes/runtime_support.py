@@ -1115,11 +1115,19 @@ def build_preview_response_image_payload(
     normalized_mode = _normalize_response_transport_mode(response_transport_mode)
     original_image_payload = require_image_payload(image_payload)
     source_width, source_height = _read_payload_dimensions(original_image_payload)
+    loaded_image: PreviewLoadedImage | None = None
+    if source_width is None or source_height is None:
+        loaded_image = _load_preview_image_matrix(
+            request,
+            image_payload=original_image_payload,
+        )
+        _, _, loaded_width, loaded_height = loaded_image
+        source_width = loaded_width if loaded_width > 0 else None
+        source_height = loaded_height if loaded_height > 0 else None
     high_resolution = _is_high_resolution_preview_image(source_width, source_height)
-    dimensions_unknown = source_width is None or source_height is None
     source_mode = normalized_mode
     if (
-        (high_resolution or dimensions_unknown)
+        high_resolution
         and normalized_mode == RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64
         and object_key is not None
     ):
@@ -1136,15 +1144,6 @@ def build_preview_response_image_payload(
     source_width, source_height = _read_payload_dimensions(source_image, fallback=(source_width, source_height))
     display_image = source_image
     display_scale = 1.0
-    loaded_image: PreviewLoadedImage | None = None
-    if source_width is None or source_height is None:
-        loaded_image = _load_preview_image_matrix(
-            request,
-            image_payload=original_image_payload,
-        )
-        _, _, loaded_width, loaded_height = loaded_image
-        source_width = loaded_width if loaded_width > 0 else None
-        source_height = loaded_height if loaded_height > 0 else None
     if _is_high_resolution_preview_image(source_width, source_height):
         display_image, detected_source_width, detected_source_height, display_scale = _build_resized_preview_display_image(
             request,
