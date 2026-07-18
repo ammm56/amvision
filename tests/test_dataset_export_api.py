@@ -404,7 +404,7 @@ def test_delete_completed_dataset_export_removes_export_files_package_and_task(
             package_path = dataset_storage.resolve(package_object_key)
             version_image_path = dataset_storage.resolve(
                 "projects/project-1/datasets/dataset-1/versions/"
-                "dataset-version-api-delete/images/train/train-1.jpg"
+                "dataset-version-api-delete/images/train/sample-1/train-1.jpg"
             )
             assert export_root.is_dir()
             assert package_path.is_file()
@@ -494,7 +494,8 @@ def _seed_dataset_version(
 
     for sample in dataset_version.samples:
         image_object_key = str(
-            sample.metadata.get("image_object_key") or f"images/{sample.split}/{sample.file_name}"
+            sample.metadata.get("image_object_key")
+            or f"images/{sample.split}/{sample.sample_id}/{sample.file_name}"
         ).lstrip("/")
         dataset_storage.write_bytes(
             (

@@ -105,7 +105,9 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
             f"{dataset_import.version_path}/samples/train/{sample.sample_id}.json"
         )
         sample_manifest = json.loads(sample_manifest_path.read_text(encoding="utf-8"))
-        assert sample_manifest["image_object_key"].endswith("images/train/train-1.jpg")
+        assert sample_manifest["image_object_key"].endswith(
+            f"images/train/{sample.sample_id}/train-1.jpg"
+        )
         assert sample_manifest["annotations"][0]["category_id"] == 0
     finally:
         session_factory.engine.dispose()
@@ -412,6 +414,82 @@ def test_import_dataset_zip_creates_imagenet_classification_dataset_version(tmp_
         assert dataset_version.task_type == "classification"
         assert dataset_version.samples[0].annotations[0].category_id in {0, 1}
         assert dataset_import.validation_report["task_type"] == "classification"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_imagenet_preserves_same_file_name_images_across_classes(
+    tmp_path: Path,
+) -> None:
+    """验证不同类别的同名图片使用独立存储键，不会互相覆盖。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    ok_image_bytes = _build_test_image_bytes(
+        image_format="PNG",
+        size=(32, 24),
+        color=(20, 180, 40),
+    )
+    ng_image_bytes = _build_test_image_bytes(
+        image_format="PNG",
+        size=(32, 24),
+        color=(220, 30, 40),
+    )
+    package = io.BytesIO()
+    with zipfile.ZipFile(package, mode="w") as zip_file:
+        zip_file.writestr("dataset-root/train/ok/shared.png", ok_image_bytes)
+        zip_file.writestr("dataset-root/train/ng/shared.png", ng_image_bytes)
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-imagenet-same-name",
+                    "format_type": "imagenet",
+                    "task_type": "classification",
+                },
+                files={
+                    "package": (
+                        "imagenet-same-name.zip",
+                        package.getvalue(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_version is not None
+        samples_by_class = {
+            sample.annotations[0].category_id: sample
+            for sample in dataset_version.samples
+        }
+        assert set(samples_by_class) == {0, 1}
+
+        stored_images: dict[int, bytes] = {}
+        stored_keys: set[str] = set()
+        for category_id, sample in samples_by_class.items():
+            image_object_key = str(sample.metadata["image_object_key"])
+            stored_keys.add(image_object_key)
+            stored_images[category_id] = dataset_storage.resolve(
+                f"{dataset_import.version_path}/{image_object_key}"
+            ).read_bytes()
+
+        assert len(stored_keys) == 2
+        assert stored_images[0] == ng_image_bytes
+        assert stored_images[1] == ok_image_bytes
     finally:
         session_factory.engine.dispose()
 
@@ -1886,10 +1964,11 @@ def _build_test_image_bytes(
     *,
     image_format: str,
     size: tuple[int, int],
+    color: tuple[int, int, int] = (120, 180, 200),
 ) -> bytes:
     """构建一张测试图片的二进制内容。"""
 
-    image = Image.new("RGB", size, color=(120, 180, 200))
+    image = Image.new("RGB", size, color=color)
     buffer = io.BytesIO()
     image.save(buffer, format=image_format)
     return buffer.getvalue()

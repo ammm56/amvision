@@ -181,7 +181,6 @@ class CocoDatasetImportParserMixin:
                             annotations=tuple(annotations),
                             metadata={
                                 "source_image_ref": self._relative_path(dataset_root, source_image_path),
-                                "image_object_key": f"images/{current_split}/{normalized_file_name}",
                             },
                         ),
                         source_image_path=source_image_path,

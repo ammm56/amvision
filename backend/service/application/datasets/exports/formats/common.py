@@ -52,7 +52,7 @@ def _build_version_image_relative_path(
 
     image_object_key = str(
         sample.metadata.get("image_object_key")
-        or f"images/{sample.split}/{sample.file_name}"
+        or f"images/{sample.split}/{sample.sample_id}/{sample.file_name}"
     ).lstrip("/")
     return (
         f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"

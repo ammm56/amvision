@@ -330,7 +330,8 @@ def _create_exporter_with_storage(
         for sample in dataset_version.samples:
             image_path = storage.resolve(
                 f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"
-                f"{dataset_version.dataset_version_id}/images/{sample.split}/{sample.file_name}"
+                f"{dataset_version.dataset_version_id}/images/{sample.split}/"
+                f"{sample.sample_id}/{sample.file_name}"
             )
             _write_image(image_path, width=sample.width, height=sample.height)
     return SqlAlchemyDatasetExporter(session_factory=session_factory, dataset_storage=storage), storage

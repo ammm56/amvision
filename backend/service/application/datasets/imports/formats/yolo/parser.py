@@ -224,9 +224,6 @@ class YoloDatasetImportParserMixin(
                         annotations=tuple(annotations),
                         metadata={
                             "source_image_ref": str(sample_row["source_image_ref"]),
-                            "image_object_key": (
-                                f"images/{sample_split}/{sample_row['file_name']}"
-                            ),
                         },
                     ),
                     source_image_path=sample_row["source_image_path"],

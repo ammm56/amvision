@@ -319,6 +319,77 @@ def test_export_dataset_generates_imagenet_classification_layout(tmp_path: Path)
     assert dataset_storage.resolve(f"{export_result.export_path}/val/ng/ng-1.jpg").is_file()
 
 
+def test_export_imagenet_preserves_same_file_name_images_across_classes(
+    tmp_path: Path,
+) -> None:
+    """验证 classification 导出按 sample 存储键读取同名图片。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-imagenet-same-name",
+        dataset_id="dataset-imagenet-same-name",
+        project_id="project-1",
+        task_type="classification",
+        categories=(
+            DatasetCategory(category_id=0, name="ok"),
+            DatasetCategory(category_id=1, name="ng"),
+        ),
+        samples=(
+            DatasetSample(
+                sample_id="sample-ok",
+                image_id=1,
+                file_name="shared.png",
+                width=32,
+                height=24,
+                split="train",
+                annotations=(
+                    ClassificationAnnotation(annotation_id="ann-ok", category_id=0),
+                ),
+            ),
+            DatasetSample(
+                sample_id="sample-ng",
+                image_id=2,
+                file_name="shared.png",
+                width=32,
+                height=24,
+                split="train",
+                annotations=(
+                    ClassificationAnnotation(annotation_id="ann-ng", category_id=1),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+    version_root = (
+        "projects/project-1/datasets/dataset-imagenet-same-name/versions/"
+        "dataset-version-imagenet-same-name"
+    )
+    dataset_storage.write_bytes(
+        f"{version_root}/images/train/sample-ok/shared.png",
+        b"ok-image",
+    )
+    dataset_storage.write_bytes(
+        f"{version_root}/images/train/sample-ng/shared.png",
+        b"ng-image",
+    )
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-imagenet-same-name",
+            dataset_version_id="dataset-version-imagenet-same-name",
+            format_id=IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    assert dataset_storage.resolve(
+        f"{export_result.export_path}/train/ok/shared.png"
+    ).read_bytes() == b"ok-image"
+    assert dataset_storage.resolve(
+        f"{export_result.export_path}/train/ng/shared.png"
+    ).read_bytes() == b"ng-image"
+
+
 def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
     """验证导出支持 DOTA 风格 OBB 标注文件。"""
 
@@ -797,7 +868,8 @@ def _seed_dataset_version_files(
 
     for sample in dataset_version.samples:
         image_object_key = str(
-            sample.metadata.get("image_object_key") or f"images/{sample.split}/{sample.file_name}"
+            sample.metadata.get("image_object_key")
+            or f"images/{sample.split}/{sample.sample_id}/{sample.file_name}"
         ).lstrip("/")
         dataset_storage.write_bytes(
             (

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from backend.service.application.datasets.imports.contracts import (
     ParsedDatasetContent,
     ParsedDatasetSample,
 )
+from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.datasets.dataset_version import (
     DatasetAnnotation,
     DatasetSample,
@@ -57,15 +60,39 @@ class DatasetImportVersionWriterMixin:
                 for category in dataset_version.categories
             ],
         )
+        image_object_keys: set[str] = set()
+        sample_object_keys: set[str] = set()
         for parsed_sample in parsed_content.samples:
             sample = parsed_sample.sample
+            relative_image_object_key = self._require_version_image_object_key(sample)
             image_object_key = (
-                f"{version_layout.images_dir}/{sample.split}/{sample.file_name}"
+                f"{version_layout.version_path}/{relative_image_object_key}"
             )
             sample_object_key = (
                 f"{version_layout.samples_dir}/{sample.split}/{sample.sample_id}.json"
             )
-            self.dataset_storage.copy_file(parsed_sample.source_image_path, image_object_key)
+            if image_object_key in image_object_keys:
+                raise InvalidRequestError(
+                    "数据集版本图片存储键重复",
+                    details={
+                        "image_object_key": image_object_key,
+                        "sample_id": sample.sample_id,
+                    },
+                )
+            if sample_object_key in sample_object_keys:
+                raise InvalidRequestError(
+                    "数据集版本样本存储键重复",
+                    details={
+                        "sample_object_key": sample_object_key,
+                        "sample_id": sample.sample_id,
+                    },
+                )
+            image_object_keys.add(image_object_key)
+            sample_object_keys.add(sample_object_key)
+            self.dataset_storage.copy_file(
+                parsed_sample.source_image_path,
+                image_object_key,
+            )
             self.dataset_storage.write_json(
                 sample_object_key,
                 {
@@ -118,6 +145,12 @@ class DatasetImportVersionWriterMixin:
         next_annotation_index = 1
         for sample_index, parsed_sample in enumerate(parsed_content.samples, start=1):
             source_sample = parsed_sample.sample
+            scoped_sample_id = f"sample-{dataset_version_id}-{sample_index}"
+            image_object_key = self._build_version_image_object_key(
+                sample_id=scoped_sample_id,
+                split=source_sample.split,
+                file_name=source_sample.file_name,
+            )
             scoped_annotations: list[DatasetAnnotation] = []
             for annotation in source_sample.annotations:
                 scoped_annotations.append(
@@ -136,7 +169,7 @@ class DatasetImportVersionWriterMixin:
             scoped_samples.append(
                 ParsedDatasetSample(
                     sample=DatasetSample(
-                        sample_id=f"sample-{dataset_version_id}-{sample_index}",
+                        sample_id=scoped_sample_id,
                         image_id=source_sample.image_id,
                         file_name=source_sample.file_name,
                         width=source_sample.width,
@@ -146,6 +179,7 @@ class DatasetImportVersionWriterMixin:
                         metadata={
                             **source_sample.metadata,
                             "source_sample_id": source_sample.sample_id,
+                            "image_object_key": image_object_key,
                         },
                     ),
                     source_image_path=parsed_sample.source_image_path,
@@ -166,3 +200,38 @@ class DatasetImportVersionWriterMixin:
             detected_profile=dict(parsed_content.detected_profile),
             validation_report=dict(parsed_content.validation_report),
         )
+
+    @staticmethod
+    def _build_version_image_object_key(
+        *,
+        sample_id: str,
+        split: str,
+        file_name: str,
+    ) -> str:
+        """按 sample identity 构造不会被同名文件覆盖的图片存储键。"""
+
+        normalized_file_name = str(PurePosixPath(file_name.replace("\\", "/")))
+        path = PurePosixPath(normalized_file_name)
+        if (
+            not normalized_file_name
+            or normalized_file_name == "."
+            or path.is_absolute()
+            or ".." in path.parts
+        ):
+            raise InvalidRequestError(
+                "数据集样本文件名无效",
+                details={"sample_id": sample_id, "file_name": file_name},
+            )
+        return f"images/{split}/{sample_id}/{normalized_file_name}"
+
+    @staticmethod
+    def _require_version_image_object_key(sample: DatasetSample) -> str:
+        """读取归一化阶段生成的唯一图片存储键。"""
+
+        image_object_key = sample.metadata.get("image_object_key")
+        if not isinstance(image_object_key, str) or not image_object_key.strip():
+            raise InvalidRequestError(
+                "数据集样本缺少图片存储键",
+                details={"sample_id": sample.sample_id},
+            )
+        return image_object_key.strip().lstrip("/")
