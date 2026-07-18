@@ -149,6 +149,16 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
             assert dataset_version is not None
             assert dataset_import.dataset_version_id is not None
 
+            version_list_response = client.get(
+                "/api/v1/datasets/versions",
+                headers=_build_dataset_read_headers(),
+                params={"project_id": "project-1"},
+            )
+            assert version_list_response.status_code == 200
+            assert [item["dataset_version_id"] for item in version_list_response.json()] == [
+                dataset_import.dataset_version_id
+            ]
+
             import_root = dataset_storage.resolve(dataset_import.package_path.rsplit("/", 1)[0])
             version_root = dataset_storage.resolve(dataset_import.version_path)
             assert import_root.is_dir()
@@ -170,6 +180,18 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
         )
         assert deleted_import is None
         assert preserved_version is not None
+
+        with client:
+            preserved_version_list_response = client.get(
+                "/api/v1/datasets/versions",
+                headers=_build_dataset_read_headers(),
+                params={"project_id": "project-1"},
+            )
+        assert preserved_version_list_response.status_code == 200
+        assert [
+            item["dataset_version_id"]
+            for item in preserved_version_list_response.json()
+        ] == [dataset_import.dataset_version_id]
 
         unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
         try:

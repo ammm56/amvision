@@ -12,8 +12,38 @@ interface UseDatasetVersionSelectionOptions {
   datasetId: Ref<string>
   datasetVersionId: Ref<string>
   imports: Ref<DatasetImportSummary[]>
+  datasetVersions: Ref<DatasetVersionRelation[]>
   exports: Ref<DatasetExportSummary[]>
   t: (key: string) => string
+}
+
+export interface DatasetVersionSelectionItem extends DatasetVersionRelation {
+  source_import_id: string
+  source_format_type: string
+  source_created_at: string
+  source_status: string
+}
+
+export function buildDatasetVersionSelectionItems(
+  datasetVersions: DatasetVersionRelation[],
+  imports: DatasetImportSummary[],
+): DatasetVersionSelectionItem[] {
+  return datasetVersions.map((version) => {
+    const sourceImportId = typeof version.metadata.source_import_id === 'string'
+      ? version.metadata.source_import_id
+      : ''
+    const sourceImport = imports.find((item) => item.dataset_import_id === sourceImportId)
+      ?? imports.find((item) => item.dataset_version_id === version.dataset_version_id)
+    return {
+      ...version,
+      source_import_id: sourceImport?.dataset_import_id ?? sourceImportId,
+      source_format_type: sourceImport?.format_type
+        ?? (typeof version.metadata.format_type === 'string' ? version.metadata.format_type : ''),
+      source_created_at: sourceImport?.created_at
+        ?? (typeof version.metadata.created_at === 'string' ? version.metadata.created_at : ''),
+      source_status: sourceImport?.processing_state || sourceImport?.status || '',
+    }
+  }).sort((left, right) => right.source_created_at.localeCompare(left.source_created_at))
 }
 
 export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOptions) {
@@ -26,18 +56,12 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   const resolvedDatasetVersionId = computed(
     () =>
       options.datasetVersionId.value.trim() ||
-      options.imports.value.find((item) => item.dataset_version_id)?.dataset_version_id ||
+      options.datasetVersions.value[0]?.dataset_version_id ||
       '',
   )
 
-  const availableDatasetVersions = computed(() => {
-    const byVersionId = new Map<string, DatasetImportSummary>()
-    for (const item of [...options.imports.value].sort((left, right) => right.created_at.localeCompare(left.created_at))) {
-      const versionId = item.dataset_version_id?.trim()
-      if (!versionId || byVersionId.has(versionId)) continue
-      byVersionId.set(versionId, item)
-    }
-    return [...byVersionId.values()]
+  const availableDatasetVersions = computed<DatasetVersionSelectionItem[]>(() => {
+    return buildDatasetVersionSelectionItems(options.datasetVersions.value, options.imports.value)
   })
 
   const filteredDatasetVersions = computed(() => {
@@ -46,11 +70,10 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     return availableDatasetVersions.value.filter((item) =>
       [
         item.dataset_version_id ?? '',
-        item.dataset_import_id,
+        item.source_import_id,
         item.task_type,
-        item.format_type ?? '',
-        item.processing_state,
-        item.status,
+        item.source_format_type,
+        item.source_status,
       ]
         .join(' ')
         .toLowerCase()
@@ -58,8 +81,10 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     )
   })
 
-  const selectedDatasetVersionImport = computed(
-    () => availableDatasetVersions.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value) ?? null,
+  const selectedDatasetVersion = computed(
+    () => availableDatasetVersions.value.find(
+      (item) => item.dataset_version_id === resolvedDatasetVersionId.value,
+    ) ?? null,
   )
 
   const resolvedDatasetId = computed(() => {
@@ -67,9 +92,9 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     if (relation?.dataset_version_id === resolvedDatasetVersionId.value && relation.dataset_id.trim().length > 0) {
       return relation.dataset_id.trim()
     }
-    const importDatasetId = selectedDatasetVersionImport.value?.dataset_id?.trim()
-    if (importDatasetId) {
-      return importDatasetId
+    const selectedDatasetId = selectedDatasetVersion.value?.dataset_id.trim()
+    if (selectedDatasetId) {
+      return selectedDatasetId
     }
     const exportDatasetId = options.exports.value.find((item) => item.dataset_version_id === resolvedDatasetVersionId.value)?.dataset_id.trim()
     if (exportDatasetId) {
@@ -79,7 +104,7 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   })
 
   const selectedDatasetVersionFormatLabel = computed(() => {
-    const formatTypeValue = selectedDatasetVersionImport.value?.format_type ?? ''
+    const formatTypeValue = selectedDatasetVersion.value?.source_format_type ?? ''
     return formatTypeValue ? resolveImportFormatDisplayName(formatTypeValue) : options.t('common.noValue')
   })
 
@@ -125,9 +150,9 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   function selectDatasetVersion(nextDatasetVersionId: string): void {
     const normalizedDatasetVersionId = nextDatasetVersionId.trim()
     if (!normalizedDatasetVersionId) return
-    const matchedImport = availableDatasetVersions.value.find((item) => item.dataset_version_id === normalizedDatasetVersionId)
-    if (matchedImport) {
-      options.datasetId.value = matchedImport.dataset_id
+    const matchedVersion = availableDatasetVersions.value.find((item) => item.dataset_version_id === normalizedDatasetVersionId)
+    if (matchedVersion) {
+      options.datasetId.value = matchedVersion.dataset_id
     }
     options.datasetVersionId.value = normalizedDatasetVersionId
     closeDatasetVersionPicker()
@@ -158,7 +183,7 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
   }
 
   watch(
-    [resolvedDatasetVersionId, () => selectedDatasetVersionImport.value?.dataset_id ?? options.datasetId.value.trim()],
+    [resolvedDatasetVersionId, () => selectedDatasetVersion.value?.dataset_id ?? options.datasetId.value.trim()],
     ([nextDatasetVersionId, nextDatasetId]) => {
       const normalizedDatasetId = typeof nextDatasetId === 'string' ? nextDatasetId.trim() : ''
       void loadDatasetVersionRelation(normalizedDatasetId, nextDatasetVersionId)
@@ -175,7 +200,7 @@ export function useDatasetVersionSelection(options: UseDatasetVersionSelectionOp
     resolvedDatasetId,
     availableDatasetVersions,
     filteredDatasetVersions,
-    selectedDatasetVersionImport,
+    selectedDatasetVersion,
     selectedDatasetVersionFormatLabel,
     selectedDatasetVersionSampleCount,
     selectedDatasetVersionCategoryCount,

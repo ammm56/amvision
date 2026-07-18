@@ -102,6 +102,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/datasets/imports/{dataset_import_id} | datasets:read | 查询单条导入记录详情、校验报告和关联 DatasetVersion。 |
 | DELETE | /api/v1/datasets/imports/{dataset_import_id} | datasets:write | 删除一个已完成或已失败的 DatasetImport 记录，并清理关联文件目录。 |
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
+| GET | /api/v1/datasets/versions?project_id={project_id} | datasets:read | 查询 Project 下持久化的 DatasetVersion；版本生命周期独立于导入运行记录。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id} | datasets:read | 查询一个 DatasetVersion 的摘要，包括 task_type、样本数、类别数和 split 列表。 |
 | GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 implemented、default_format 和按 task_type 分组的 format_types_by_task_type。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
@@ -618,6 +619,12 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 - 返回当前 Dataset 下的导入记录摘要列表
 - 当前列表项也会公开 task_id
+
+### GET /api/v1/datasets/versions?project_id={project_id}
+
+- 返回当前 Project 下持久化的 DatasetVersion 摘要列表
+- DatasetVersion 是导入完成后的稳定数据资源，不依赖 DatasetImport 运行记录继续存在
+- 删除已完成的 DatasetImport 只清理导入包、暂存目录、任务和导入记录；对应 DatasetVersion 仍可通过本接口发现并继续导出或训练
 
 ## DatasetExport 资源组
 

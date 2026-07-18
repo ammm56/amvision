@@ -133,6 +133,7 @@ backend/service/application/datasets/
 - 当前已把 preview run 的创建请求、请求规范化、列表过滤、默认保留时间和删除前状态判断拆到 `runtime/preview_runs.py`。
 - 当前已把 app runtime 的创建请求、请求规范化、资源更新主体 metadata 和 worker state 回写拆到 `runtime/app_runtimes.py`。
 - 当前已把 sync/async invoke 请求与同步调用结果拆到 `runtime/invokes.py`，把 WorkflowRun 结果回写、node_records 序列化、BufferRef cleanup 和 WorkflowRun events 文件读写拆到 `runtime/persistence.py`。
+- 当前已把 UTC 时间、preview metadata、payload 留存开关、诊断计时清理和轻量 node timing 摘要拆到 `runtime/metadata.py`，避免继续把纯 metadata 工具堆在事务服务文件尾部。
 - 后续继续收 API route 响应组装边界，以及 service runtime 内部更细的按任务分类 builder。
 
 ### 目标结构
@@ -187,7 +188,7 @@ backend/service/application/workflows/
 
 1. 先收 `workflow_service.py`：已拆 `documents/contracts.py`、`documents/validation.py`、`documents/storage.py`、`documents/templates.py` 和 `documents/applications.py`。
 2. 再收 `graph_executor.py`：已拆 `execution/contracts.py`、`execution/registry.py`、`execution/foreach.py`、`execution/variables.py`、`execution/inputs.py`、`execution/topology.py` 和 `execution/events.py`；后续只在确认收益明确时继续拆 for-each 执行循环本体。
-3. 再收 `runtime_service.py`：已拆 `runtime/policies.py`、`runtime/preview_runs.py`、`runtime/app_runtimes.py`、`runtime/invokes.py` 和 `runtime/persistence.py`。
+3. 再收 `runtime_service.py`：已拆 `runtime/policies.py`、`runtime/preview_runs.py`、`runtime/app_runtimes.py`、`runtime/invokes.py`、`runtime/persistence.py` 和 `runtime/metadata.py`；后续继续按 preview/app-runtime/workflow-run 编排边界拆 service，而不是新增无边界 helper。
 4. 再收旧 `runtime_worker.py`：已删除旧平铺文件，拆到 `worker/manager.py`、`worker/process.py`、`worker/messages.py`、`worker/heartbeat.py` 和 `worker/health.py`。
 5. 最后收旧 `service_node_runtime.py`：已删除旧平铺文件，按 `service_runtime/context.py`、`service_runtime/builders.py` 和 `service_runtime/payloads.py` 细分平台服务装配。
 

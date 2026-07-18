@@ -165,6 +165,10 @@ export async function getDatasetVersionRelation(datasetId: string, datasetVersio
   )
 }
 
+export async function listProjectDatasetVersions(projectId: string): Promise<DatasetVersionRelation[]> {
+  return apiRequest<DatasetVersionRelation[]>('/datasets/versions', { query: { project_id: projectId } })
+}
+
 export async function getDatasetExportFormats(): Promise<DatasetExportFormatCatalog> {
   return apiRequest<DatasetExportFormatCatalog>('/datasets/export-formats')
 }

@@ -49,6 +49,7 @@ def test_yolox_model_spec_exposes_detection_capabilities() -> None:
     assert spec.supports_model_scale("s") is True
     assert spec.supports_model_scale("nano") is True
     assert spec.supports_build_format("onnx") is True
+    assert spec.supports_build_format("rknn") is False
     assert spec.resolve_default_dataset_format(DETECTION_TASK_TYPE) == COCO_DETECTION_DATASET_FORMAT
 
 
@@ -63,6 +64,7 @@ def test_yolo_model_profiles_expose_shared_task_defaults() -> None:
     assert profile.supports_task_type(POSE_TASK_TYPE) is True
     assert profile.supports_task_type(OBB_TASK_TYPE) is True
     assert profile.supports_model_scale("nano") is True
+    assert profile.supports_build_format("rknn") is False
     assert profile.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
     assert profile.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
@@ -79,6 +81,7 @@ def test_yolo_model_specs_follow_registered_profiles() -> None:
         assert spec.supports_task_type(POSE_TASK_TYPE) is True
         assert spec.supports_task_type(OBB_TASK_TYPE) is True
         assert spec.supports_task_type(CLASSIFICATION_TASK_TYPE) is True
+        assert spec.supports_build_format("rknn") is False
         assert spec.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
         assert spec.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
         assert spec.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT

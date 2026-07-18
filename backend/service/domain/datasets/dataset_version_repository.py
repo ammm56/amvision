@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from backend.service.domain.datasets.dataset_version import DatasetVersion
+from backend.service.domain.datasets.dataset_version_summary import DatasetVersionSummary
 
 
 class DatasetVersionRepository(Protocol):
@@ -39,6 +40,21 @@ class DatasetVersionRepository(Protocol):
 
         返回：
         - 该 Dataset 下的 DatasetVersion 列表。
+        """
+
+        ...
+
+    def list_project_dataset_version_summaries(
+        self,
+        project_id: str,
+    ) -> tuple[DatasetVersionSummary, ...]:
+        """按 Project id 列出轻量 DatasetVersion 摘要。
+
+        参数：
+        - project_id：Project id。
+
+        返回：
+        - 该 Project 下不包含 samples 和 annotations 的 DatasetVersion 摘要。
         """
 
         ...

@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档用于说明当前已经公开的 DatasetImport REST 接口，包括 zip 上传导入、导入详情查询和导入列表查询三组能力。
+本文档用于说明当前已经公开的 DatasetImport REST 接口，包括 zip 上传导入、导入详情查询、导入列表查询和持久化 DatasetVersion 列表查询。
 
 当前导入提交已经正式关联 TaskRecord。提交响应、详情响应和列表响应都会公开 task_id，后续可以配合 tasks API 或 /ws/v1/tasks/events 观察后台处理状态。
 
@@ -13,6 +13,7 @@
 - Dataset zip 导入接口
 - DatasetImport 详情查询接口
 - Dataset 下的导入记录列表接口
+- Project 下的 DatasetVersion 列表接口
 - 请求头鉴权规则
 - 常见错误码和调试方式
 
@@ -328,7 +329,7 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 | sample_count | integer | 版本样本总数。 |
 | category_count | integer | 版本类别总数。 |
 | split_names | array of string | 版本包含的 split 列表。 |
-| metadata | object | 版本元数据。当前会记录 source_import_id、format_type、image_root、annotation_root、manifest_file、split_strategy、split_counts。 |
+| metadata | object | 版本元数据。当前会记录 source_import_id、created_at、format_type、image_root、annotation_root、manifest_file、split_strategy、split_counts。 |
 
 #### 失败响应
 
@@ -403,6 +404,29 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 
 - 401：缺少主体信息
 - 403：主体没有 datasets:read scope
+- 503：持久化或数据库操作失败
+
+### GET /api/v1/datasets/versions?project_id={project_id}
+
+按 Project id 返回持久化的 DatasetVersion 摘要。DatasetVersion 是导入完成后的稳定数据资源，生命周期独立于 DatasetImport 运行记录。
+
+#### 查询参数
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| project_id | string | 是 | 要列出数据集版本的 Project id。 |
+
+#### 成功响应
+
+- 状态码：200 OK
+- 每项结构与导入详情中的 dataset_version 相同
+- 删除已完成的 DatasetImport 后，对应 DatasetVersion 仍会出现在本列表中，可继续用于导出和训练
+
+#### 失败响应
+
+- 401：缺少主体信息
+- 403：主体没有 datasets:read scope
+- 404：当前主体看不到指定 Project
 - 503：持久化或数据库操作失败
 
 ## 错误响应格式

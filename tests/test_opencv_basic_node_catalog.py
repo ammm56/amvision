@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from custom_nodes.opencv_basic_nodes.workflow.catalog_builder import build_custom_node_catalog_payload
 
 
@@ -19,7 +20,10 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert actual_catalog_payload == expected_catalog_payload
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,
-        payload_type_ids={"measurements.v1", "rotated-rects.v1", "lines.v1", "circles.v1", "ellipses.v1"},
+        payload_type_ids={"measurements.v1", "lines.v1", "circles.v1", "ellipses.v1"},
+    )
+    _assert_core_source_image_schema_supports_local_buffer_refs(
+        payload_type_id="rotated-rects.v1",
     )
     _assert_custom_catalog_does_not_redeclare_core_payload(
         catalog_payload=actual_catalog_payload,
@@ -56,6 +60,22 @@ def _assert_source_image_schema_supports_local_buffer_refs(
         assert "frame_ref" in source_image_schema["properties"]
         assert requirements_by_kind["buffer"] == {"buffer_ref"}
         assert requirements_by_kind["frame"] == {"frame_ref"}
+
+
+def _assert_core_source_image_schema_supports_local_buffer_refs(
+    *,
+    payload_type_id: str,
+) -> None:
+    """验证已提升为 core 的图片结果 payload 仍支持 LocalBufferBroker 引用。"""
+
+    contracts_by_type = {
+        contract.payload_type_id: contract.model_dump(mode="json")
+        for contract in get_core_workflow_payload_contracts()
+    }
+    _assert_source_image_schema_supports_local_buffer_refs(
+        catalog_payload={"payload_contracts": [contracts_by_type[payload_type_id]]},
+        payload_type_ids={payload_type_id},
+    )
 
 
 def _assert_custom_catalog_does_not_redeclare_core_payload(

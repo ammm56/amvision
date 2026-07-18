@@ -42,7 +42,7 @@
 
       <DatasetExportForm
         :resolved-dataset-version-id="resolvedDatasetVersionId"
-        :selected-dataset-version-import="selectedDatasetVersionImport"
+        :selected-dataset-version="selectedDatasetVersion"
         :resolved-dataset-version-task-type="resolvedDatasetVersionTaskType"
         :selected-dataset-version-format-label="selectedDatasetVersionFormatLabel"
         :selected-dataset-version-sample-count="selectedDatasetVersionSampleCount"
@@ -109,7 +109,7 @@ import { useDatasetExportState } from '../composables/useDatasetExportState'
 import { useDatasetFormatCapabilities, type DatasetSelectOption } from '../composables/useDatasetFormatCapabilities'
 import { useDatasetImportState } from '../composables/useDatasetImportState'
 import { useDatasetVersionSelection } from '../composables/useDatasetVersionSelection'
-import type { DatasetExportSummary, DatasetImportSummary } from '../services/dataset.service'
+import type { DatasetExportSummary, DatasetImportSummary, DatasetVersionRelation } from '../services/dataset.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
@@ -130,6 +130,7 @@ const importDatasetId = ref(createDefaultDatasetId())
 const datasetId = ref('')
 const datasetVersionId = ref('')
 const imports = ref<DatasetImportSummary[]>([])
+const datasetVersions = ref<DatasetVersionRelation[]>([])
 const exports = ref<DatasetExportSummary[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -144,7 +145,7 @@ const {
   resolvedDatasetId,
   availableDatasetVersions,
   filteredDatasetVersions,
-  selectedDatasetVersionImport,
+  selectedDatasetVersion,
   selectedDatasetVersionFormatLabel,
   selectedDatasetVersionSampleCount,
   selectedDatasetVersionCategoryCount,
@@ -157,6 +158,7 @@ const {
   datasetId,
   datasetVersionId,
   imports,
+  datasetVersions,
   exports,
   t,
 })
@@ -195,6 +197,7 @@ const {
   formatType,
   taskType,
   imports,
+  datasetVersions,
   errorMessage,
   createDatasetId: createDefaultDatasetId,
   t,

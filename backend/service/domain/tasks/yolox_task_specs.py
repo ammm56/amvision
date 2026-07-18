@@ -12,7 +12,6 @@ YoloXConversionTarget = Literal[
     "onnx-optimized",
     "openvino-ir",
     "tensorrt-engine",
-    "rknn",
 ]
 
 

@@ -2,9 +2,11 @@ import { ref, type Ref } from 'vue'
 
 import {
   listProjectDatasetImports,
+  listProjectDatasetVersions,
   submitDatasetImport,
   type DatasetImportSubmissionResponse,
   type DatasetImportSummary,
+  type DatasetVersionRelation,
 } from '../services/dataset.service'
 import { selectValueToString, type DatasetSelectValue } from './useDatasetFormatCapabilities'
 
@@ -16,6 +18,7 @@ interface UseDatasetImportStateOptions {
   formatType: Ref<string>
   taskType: Ref<string>
   imports: Ref<DatasetImportSummary[]>
+  datasetVersions: Ref<DatasetVersionRelation[]>
   errorMessage: Ref<string | null>
   createDatasetId: () => string
   t: (key: string) => string
@@ -35,19 +38,28 @@ export function useDatasetImportState(options: UseDatasetImportStateOptions) {
   async function refreshImportRecords(): Promise<void> {
     if (!options.selectedProjectId.value.trim()) return
 
-    const nextImports = await listProjectDatasetImports(options.selectedProjectId.value.trim())
+    const [nextImports, nextDatasetVersions] = await Promise.all([
+      listProjectDatasetImports(options.selectedProjectId.value.trim()),
+      listProjectDatasetVersions(options.selectedProjectId.value.trim()),
+    ])
     options.imports.value = nextImports
+    options.datasetVersions.value = nextDatasetVersions
     const currentDatasetVersionId = options.datasetVersionId.value.trim()
-    const selectedImport = nextImports.find((item) => item.dataset_version_id === currentDatasetVersionId)
-    if (selectedImport) {
-      options.datasetId.value = selectedImport.dataset_id
+    const selectedVersion = nextDatasetVersions.find(
+      (item) => item.dataset_version_id === currentDatasetVersionId,
+    )
+    if (selectedVersion) {
+      options.datasetId.value = selectedVersion.dataset_id
       return
     }
 
-    const latestImportWithVersion = nextImports.find((item) => item.dataset_version_id)
-    options.datasetVersionId.value = latestImportWithVersion?.dataset_version_id ?? ''
-    if (latestImportWithVersion) {
-      options.datasetId.value = latestImportWithVersion.dataset_id
+    const latestImportedVersionId = nextImports.find((item) => item.dataset_version_id)?.dataset_version_id
+    const latestDatasetVersion = nextDatasetVersions.find(
+      (item) => item.dataset_version_id === latestImportedVersionId,
+    ) ?? nextDatasetVersions[0]
+    options.datasetVersionId.value = latestDatasetVersion?.dataset_version_id ?? ''
+    if (latestDatasetVersion) {
+      options.datasetId.value = latestDatasetVersion.dataset_id
     }
   }
 

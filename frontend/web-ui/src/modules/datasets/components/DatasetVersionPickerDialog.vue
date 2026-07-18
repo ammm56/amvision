@@ -43,27 +43,27 @@
       <div v-else class="dataset-version-picker__list">
         <button
           v-for="item in filteredDatasetVersions"
-          :key="item.dataset_version_id ?? item.dataset_import_id"
+          :key="item.dataset_version_id"
           type="button"
           class="dataset-version-picker__item"
           :class="{ 'is-selected': item.dataset_version_id === resolvedDatasetVersionId }"
-          @click="$emit('select', item.dataset_version_id ?? '')"
+          @click="$emit('select', item.dataset_version_id)"
         >
           <div class="dataset-version-picker__item-main">
             <div class="dataset-version-picker__item-title">
               <strong>{{ item.dataset_version_id }}</strong>
               <div class="dataset-version-picker__item-chips">
                 <span class="dataset-version-chip">{{ item.task_type }}</span>
-                <span class="dataset-version-chip">{{ resolveImportFormatDisplayName(item.format_type || '') || t('common.noValue') }}</span>
+                <span class="dataset-version-chip">{{ resolveImportFormatDisplayName(item.source_format_type) || t('common.noValue') }}</span>
               </div>
             </div>
             <div class="dataset-version-picker__item-meta">
-              <span>{{ t('datasetOps.versionPicker.importIdLabel') }} {{ item.dataset_import_id }}</span>
-              <span>{{ t('datasetOps.versionPicker.createdAtLabel') }} {{ formatSystemDateTime(item.created_at) }}</span>
+              <span>{{ t('datasetOps.versionPicker.importIdLabel') }} {{ item.source_import_id || t('common.noValue') }}</span>
+              <span v-if="item.source_created_at">{{ t('datasetOps.versionPicker.createdAtLabel') }} {{ formatSystemDateTime(item.source_created_at) }}</span>
             </div>
           </div>
           <div class="dataset-version-picker__item-side">
-            <StatusBadge :tone="statusTone(item.processing_state || item.status)">{{ item.processing_state || item.status }}</StatusBadge>
+            <StatusBadge v-if="item.source_status" :tone="statusTone(item.source_status)">{{ item.source_status }}</StatusBadge>
             <Check v-if="item.dataset_version_id === resolvedDatasetVersionId" :size="18" />
           </div>
         </button>
@@ -77,14 +77,14 @@ import { onMounted, ref } from 'vue'
 import { Check, Search, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
-import type { DatasetImportSummary } from '../services/dataset.service'
+import type { DatasetVersionSelectionItem } from '../composables/useDatasetVersionSelection'
 import { resolveImportFormatDisplayName } from '../composables/useDatasetFormatCapabilities'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 defineProps<{
   search: string
-  filteredDatasetVersions: DatasetImportSummary[]
+  filteredDatasetVersions: DatasetVersionSelectionItem[]
   resolvedDatasetVersionId: string
   statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()

@@ -2,38 +2,51 @@
 
 from __future__ import annotations
 
+import pytest
+
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.conversions.yolox_conversion_planner import (
     DefaultYoloXConversionPlanner,
     YoloXConversionPlanningRequest,
 )
+from backend.service.application.conversions.yolo_model_conversion_planner import (
+    DefaultYoloModelConversionPlanner,
+    YoloModelConversionPlanningRequest,
+)
+from backend.service.domain.files.detection_model_file_types import YOLO11_DETECTION_FILE_TYPES
 
 
-def test_conversion_planner_builds_stable_graph_for_future_targets() -> None:
-    """验证 planner 会为未来下游目标保留稳定的 ONNX 中间层图谱。"""
+def test_conversion_planner_rejects_unimplemented_rknn_target() -> None:
+    """验证 planner 不会把尚未实现的 RKNN 转换声明为可执行能力。"""
 
     planner = DefaultYoloXConversionPlanner()
 
-    plan = planner.build_plan(
-        YoloXConversionPlanningRequest(
-            project_id="project-1",
-            source_model_version_id="model-version-1",
-            target_formats=("onnx-optimized", "rknn"),
+    with pytest.raises(InvalidRequestError):
+        planner.build_plan(
+            YoloXConversionPlanningRequest(
+                project_id="project-1",
+                source_model_version_id="model-version-1",
+                target_formats=("rknn",),  # type: ignore[arg-type]
+            )
         )
+
+
+def test_yolo_model_conversion_planner_rejects_unimplemented_rknn_target() -> None:
+    """验证 YOLO 主线 planner 与公开 conversion service 的能力边界一致。"""
+
+    planner = DefaultYoloModelConversionPlanner(
+        file_types=YOLO11_DETECTION_FILE_TYPES,
+        supported_task_types=("detection",),
     )
 
-    assert plan.target_formats == ("onnx-optimized", "rknn")
-    assert [step.kind for step in plan.steps] == [
-        "export-onnx",
-        "validate-onnx",
-        "optimize-onnx",
-        "build-rknn",
-    ]
-    assert plan.steps[0].source_format == "pytorch-checkpoint"
-    assert plan.steps[0].target_format == "onnx"
-    assert plan.steps[1].produced_file_type is None
-    assert plan.steps[2].target_format == "onnx-optimized"
-    assert plan.steps[3].source_format == "onnx-optimized"
-    assert plan.steps[3].target_format == "rknn"
+    with pytest.raises(InvalidRequestError):
+        planner.build_plan(
+            YoloModelConversionPlanningRequest(
+                project_id="project-1",
+                source_model_version_id="model-version-1",
+                target_formats=("rknn",),  # type: ignore[arg-type]
+            )
+        )
 
 
 def test_conversion_planner_builds_openvino_ir_chain() -> None:

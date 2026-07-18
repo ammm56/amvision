@@ -993,9 +993,9 @@ class WorkflowRuntimeWorkerManager:
         """返回 runtime worker 启动阶段的控制面等待超时。"""
 
         configured_timeout_seconds = float(
-            self.settings.deployment_process_supervisor.request_timeout_seconds
+            self.settings.deployment_process_supervisor.startup_timeout_seconds
         )
-        return min(max(configured_timeout_seconds, 5.0), 15.0)
+        return max(configured_timeout_seconds, 5.0)
 
     def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
         """读取当前 broker 事件通道。"""

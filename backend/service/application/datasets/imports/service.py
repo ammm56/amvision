@@ -324,6 +324,7 @@ class SqlAlchemyDatasetImportService(
                 task_type=parsed_content.task_type,
                 metadata={
                     "source_import_id": dataset_import_id,
+                    "created_at": current_import.created_at,
                     "format_type": parsed_content.format_type,
                     "image_root": parsed_content.image_root,
                     "annotation_root": parsed_content.annotation_root,

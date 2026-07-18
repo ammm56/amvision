@@ -153,9 +153,17 @@ def decode_image_bytes_to_matrix(
     等编码图片仍走 OpenCV 解码。
     """
 
-    if not isinstance(image_bytes, bytes) or not image_bytes:
-        raise InvalidRequestError(error_message, details={"reason": "empty_bytes"})
     metadata = normalize_image_payload_metadata(image_payload)
+    transport_kind = (
+        _normalize_optional_text(image_payload.get("transport_kind"))
+        if isinstance(image_payload, dict)
+        else None
+    )
+    if not isinstance(image_bytes, bytes) or not image_bytes:
+        details: dict[str, object] = {"reason": "empty_bytes"}
+        if transport_kind is not None:
+            details["transport_kind"] = transport_kind
+        raise InvalidRequestError(error_message, details=details)
     if _is_raw_media_type(metadata.media_type):
         return _decode_raw_image_bytes_to_matrix(
             cv2_module=cv2_module,
@@ -172,13 +180,13 @@ def decode_image_bytes_to_matrix(
         cv2_module.IMREAD_COLOR if imdecode_flags is None else imdecode_flags,
     )
     if image_matrix is None:
-        raise InvalidRequestError(
-            error_message,
-            details={
-                "media_type": metadata.media_type,
-                "byte_length": len(image_bytes),
-            },
-        )
+        details = {
+            "media_type": metadata.media_type,
+            "byte_length": len(image_bytes),
+        }
+        if transport_kind is not None:
+            details["transport_kind"] = transport_kind
+        raise InvalidRequestError(error_message, details=details)
     return image_matrix
 
 

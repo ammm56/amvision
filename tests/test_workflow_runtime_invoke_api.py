@@ -648,7 +648,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
 
     run_payload = invoke_response.json()
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "OpenCV 无法读取输入图片"
+    assert run_payload["error_message"] == "图片节点无法读取输入图片"
     error_details = run_payload["metadata"]["error_details"]
     assert error_details["error_code"] == "invalid_request"
     assert error_details["node_id"] == "blur_image"
@@ -715,7 +715,7 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
 
     run_payload = invoke_response.json()
     assert run_payload["state"] == "failed"
-    assert run_payload["error_message"] == "Barcode 节点无法读取输入图片"
+    assert run_payload["error_message"] == "图片节点无法读取输入图片"
     error_details = run_payload["metadata"]["error_details"]
     assert error_details["error_code"] == "invalid_request"
     assert error_details["transport_kind"] == "memory"

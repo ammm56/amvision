@@ -18,7 +18,6 @@ from backend.service.domain.models.model_build_formats import (
     ONNX_OPTIMIZED_BUILD_FORMAT,
     OPENVINO_IR_BUILD_FORMAT,
     PYTORCH_CHECKPOINT_BUILD_FORMAT,
-    RKNN_BUILD_FORMAT,
     TENSORRT_ENGINE_BUILD_FORMAT,
 )
 from backend.service.domain.models.model_task_types import (
@@ -40,7 +39,6 @@ YOLO_MODEL_BUILD_FORMATS: Final[tuple[ModelBuildFormat, ...]] = (
     ONNX_OPTIMIZED_BUILD_FORMAT,
     OPENVINO_IR_BUILD_FORMAT,
     TENSORRT_ENGINE_BUILD_FORMAT,
-    RKNN_BUILD_FORMAT,
 )
 
 

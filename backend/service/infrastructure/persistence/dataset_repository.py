@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,6 +17,7 @@ from backend.service.domain.datasets.dataset_version import (
     ObbAnnotation,
     PoseAnnotation,
 )
+from backend.service.domain.datasets.dataset_version_summary import DatasetVersionSummary
 from backend.service.infrastructure.persistence.dataset_orm import (
     DatasetAnnotationRecord,
     DatasetCategoryRecord,
@@ -108,6 +109,87 @@ class SqlAlchemyDatasetVersionRepository:
             ) from error
 
         return tuple(self._to_domain(record) for record in records)
+
+    def list_project_dataset_version_summaries(
+        self,
+        project_id: str,
+    ) -> tuple[DatasetVersionSummary, ...]:
+        """按 Project id 列出轻量摘要，不加载 samples 和 annotations。"""
+
+        version_statement = (
+            select(
+                DatasetVersionRecord.dataset_version_id,
+                DatasetVersionRecord.dataset_id,
+                DatasetVersionRecord.project_id,
+                DatasetVersionRecord.task_type,
+                DatasetVersionRecord.metadata_json,
+            )
+            .where(DatasetVersionRecord.project_id == project_id)
+            .order_by(DatasetVersionRecord.dataset_version_id.desc())
+        )
+        try:
+            version_rows = self.session.execute(version_statement).all()
+            version_ids = tuple(str(row.dataset_version_id) for row in version_rows)
+            if not version_ids:
+                return ()
+
+            category_rows = self.session.execute(
+                select(
+                    DatasetCategoryRecord.dataset_version_id,
+                    func.count(DatasetCategoryRecord.category_id),
+                )
+                .where(DatasetCategoryRecord.dataset_version_id.in_(version_ids))
+                .group_by(DatasetCategoryRecord.dataset_version_id)
+            ).all()
+            sample_rows = self.session.execute(
+                select(
+                    DatasetSampleRecord.dataset_version_id,
+                    DatasetSampleRecord.split,
+                    func.count(DatasetSampleRecord.sample_id),
+                )
+                .where(DatasetSampleRecord.dataset_version_id.in_(version_ids))
+                .group_by(DatasetSampleRecord.dataset_version_id, DatasetSampleRecord.split)
+            ).all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "列出 Project DatasetVersion 摘要失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+        category_counts = {
+            str(dataset_version_id): int(category_count)
+            for dataset_version_id, category_count in category_rows
+        }
+        sample_counts: dict[str, int] = {}
+        split_names_by_version: dict[str, set[str]] = {}
+        for dataset_version_id, split_name, sample_count in sample_rows:
+            normalized_version_id = str(dataset_version_id)
+            sample_counts[normalized_version_id] = (
+                sample_counts.get(normalized_version_id, 0) + int(sample_count)
+            )
+            split_names_by_version.setdefault(normalized_version_id, set()).add(
+                str(split_name)
+            )
+
+        split_order = ("train", "val", "test")
+        return tuple(
+            DatasetVersionSummary(
+                dataset_version_id=str(row.dataset_version_id),
+                dataset_id=str(row.dataset_id),
+                project_id=str(row.project_id),
+                task_type=str(row.task_type),
+                sample_count=sample_counts.get(str(row.dataset_version_id), 0),
+                category_count=category_counts.get(str(row.dataset_version_id), 0),
+                split_names=tuple(
+                    split_name
+                    for split_name in split_order
+                    if split_name
+                    in split_names_by_version.get(str(row.dataset_version_id), set())
+                ),
+                metadata=dict(row.metadata_json or {}),
+            )
+            for row in version_rows
+        )
 
     def _to_record(self, dataset_version: DatasetVersion) -> DatasetVersionRecord:
         """把领域对象转换为 ORM 实体。"""

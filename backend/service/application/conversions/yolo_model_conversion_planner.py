@@ -17,7 +17,6 @@ YoloModelConversionStepKind = Literal[
     "optimize-onnx",
     "build-openvino-ir",
     "build-tensorrt-engine",
-    "build-rknn",
 ]
 
 YoloModelConversionTarget = Literal[
@@ -25,7 +24,6 @@ YoloModelConversionTarget = Literal[
     "onnx-optimized",
     "openvino-ir",
     "tensorrt-engine",
-    "rknn",
 ]
 
 
@@ -107,12 +105,10 @@ _SUPPORTED_CONVERSION_TARGETS = frozenset({
     "onnx-optimized",
     "openvino-ir",
     "tensorrt-engine",
-    "rknn",
 })
 _DOWNSTREAM_TARGETS_REQUIRING_OPTIMIZED_ONNX = frozenset({
     "openvino-ir",
     "tensorrt-engine",
-    "rknn",
 })
 
 
@@ -208,17 +204,6 @@ class DefaultYoloModelConversionPlanner:
                     target_format="tensorrt-engine",
                     required_file_type=self.file_types.onnx_optimized_file_type,
                     produced_file_type=self.file_types.tensorrt_engine_file_type,
-                )
-            )
-
-        if "rknn" in target_formats:
-            planned_steps.append(
-                YoloModelConversionStep(
-                    kind="build-rknn",
-                    source_format="onnx-optimized",
-                    target_format="rknn",
-                    required_file_type=self.file_types.onnx_optimized_file_type,
-                    produced_file_type=self.file_types.rknn_file_type,
                 )
             )
 
@@ -349,7 +334,6 @@ def _require_step_literal(payload: dict[str, object], key: str) -> YoloModelConv
         "optimize-onnx",
         "build-openvino-ir",
         "build-tensorrt-engine",
-        "build-rknn",
     }:
         raise InvalidRequestError("转换步骤 kind 不受支持", details={"kind": value})
     return value

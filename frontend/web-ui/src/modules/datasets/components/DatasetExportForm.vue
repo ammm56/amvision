@@ -19,13 +19,13 @@
           </Button>
         </div>
         <div class="dataset-version-summary" :class="{ 'is-empty': !resolvedDatasetVersionId }">
-          <template v-if="selectedDatasetVersionImport">
+          <template v-if="selectedDatasetVersion">
             <div class="dataset-version-summary__top">
               <div class="dataset-version-summary__identity">
-                <strong>{{ selectedDatasetVersionImport.dataset_version_id }}</strong>
+                <strong>{{ selectedDatasetVersion.dataset_version_id }}</strong>
                 <span>
                   {{ t('datasetOps.versionPicker.importIdLabel') }}
-                  {{ selectedDatasetVersionImport.dataset_import_id }}
+                  {{ selectedDatasetVersion.source_import_id || t('common.noValue') }}
                 </span>
               </div>
               <div class="dataset-version-summary__chips">
@@ -36,7 +36,7 @@
             <div class="dataset-version-summary__grid">
               <div class="dataset-version-summary__item">
                 <span>{{ t('datasetOps.versionPicker.createdAtLabel') }}</span>
-                <strong>{{ formatSystemDateTime(selectedDatasetVersionImport.created_at) }}</strong>
+                <strong>{{ selectedDatasetVersion.source_created_at ? formatSystemDateTime(selectedDatasetVersion.source_created_at) : t('common.noValue') }}</strong>
               </div>
               <div class="dataset-version-summary__item">
                 <span>{{ t('datasetOps.versionPicker.sampleCountLabel') }}</span>
@@ -101,7 +101,8 @@ import { PackageCheck } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
-import type { DatasetExportSubmissionResponse, DatasetImportSummary } from '../services/dataset.service'
+import type { DatasetVersionSelectionItem } from '../composables/useDatasetVersionSelection'
+import type { DatasetExportSubmissionResponse } from '../services/dataset.service'
 import type { DatasetSelectOption, DatasetSelectValue } from '../composables/useDatasetFormatCapabilities'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
@@ -109,7 +110,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 
 defineProps<{
   resolvedDatasetVersionId: string
-  selectedDatasetVersionImport: DatasetImportSummary | null
+  selectedDatasetVersion: DatasetVersionSelectionItem | null
   resolvedDatasetVersionTaskType: string
   selectedDatasetVersionFormatLabel: string
   selectedDatasetVersionSampleCount: string

@@ -288,7 +288,7 @@ def test_detection_deployment_infer_opencv_health_app_runtime_smoke_returns_heal
     assert response_data["health"]["process_state"] == "running"
     assert response_data["health"]["healthy_instance_count"] == 1
     assert response_data["annotated_image"]["transport_kind"] == "inline-base64"
-    assert response_data["annotated_image"]["media_type"] == "image/png"
+    assert response_data["annotated_image"]["media_type"] == "image/jpeg"
 
 
 def test_detection_deployment_infer_opencv_health_zeromq_app_runtime_smoke_returns_detections_and_image(
@@ -366,7 +366,7 @@ def test_detection_deployment_infer_opencv_health_zeromq_app_runtime_smoke_retur
     assert response_data["detections"][0]["bbox_xyxy"] == [0.0, 0.0, 1.0, 1.0]
     assert response_data["detections"][1]["class_name"] == "box-b"
     assert response_data["annotated_image"]["transport_kind"] == "inline-base64"
-    assert response_data["annotated_image"]["media_type"] == "image/png"
+    assert response_data["annotated_image"]["media_type"] == "image/jpeg"
     assert isinstance(response_data["annotated_image"]["image_base64"], str)
     assert response_data["annotated_image"]["image_base64"]
 

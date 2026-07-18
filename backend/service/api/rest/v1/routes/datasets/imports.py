@@ -201,6 +201,43 @@ def list_dataset_imports(
 
 
 @dataset_imports_router.get(
+	"/versions",
+	response_model=list[DatasetVersionRelationResponse],
+)
+def list_project_dataset_versions(
+	project_id: Annotated[str, Query()],
+	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read"))],
+	unit_of_work: Annotated[UnitOfWork, Depends(get_unit_of_work)],
+) -> list[DatasetVersionRelationResponse]:
+	"""按 Project id 返回持久化的数据集版本列表。
+
+	DatasetVersion 是导入完成后的稳定资源，其生命周期独立于 DatasetImport
+	运行记录。该接口避免删除导入记录后版本在前端不可发现。
+	"""
+
+	if not _project_visible(principal=principal, project_id=project_id):
+		raise ResourceNotFoundError(
+			"找不到指定的 Project",
+			details={"project_id": project_id},
+		)
+
+	dataset_versions = unit_of_work.datasets.list_project_dataset_version_summaries(project_id)
+	return [
+		DatasetVersionRelationResponse(
+			dataset_version_id=dataset_version.dataset_version_id,
+			dataset_id=dataset_version.dataset_id,
+			project_id=dataset_version.project_id,
+			task_type=dataset_version.task_type,
+			sample_count=dataset_version.sample_count,
+			category_count=dataset_version.category_count,
+			split_names=dataset_version.split_names,
+			metadata=dict(dataset_version.metadata),
+		)
+		for dataset_version in dataset_versions
+	]
+
+
+@dataset_imports_router.get(
 	"/imports/{dataset_import_id}",
 	response_model=DatasetImportDetailResponse,
 )
