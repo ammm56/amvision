@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from pathlib import Path, PurePosixPath
 
@@ -73,6 +74,7 @@ class CocoDatasetImportParserMixin:
             categories_payload = payload.get("categories", [])
             if not isinstance(categories_payload, list):
                 raise InvalidRequestError("COCO categories 必须是数组")
+            manifest_category_ids: set[str] = set()
             for category_payload in categories_payload:
                 if not isinstance(category_payload, dict):
                     raise InvalidRequestError("COCO category 项必须是对象")
@@ -80,6 +82,12 @@ class CocoDatasetImportParserMixin:
                 category_name = str(category_payload.get("name", "")).strip()
                 if not category_key or not category_name:
                     raise InvalidRequestError("COCO category id 和 name 不能为空")
+                if category_key in manifest_category_ids:
+                    raise InvalidRequestError(
+                        "COCO manifest 中存在重复 category id",
+                        details={"category_id": category_key},
+                    )
+                manifest_category_ids.add(category_key)
                 mapped_name = requested_class_map.get(category_key, category_name)
                 existing_name = source_categories.get(category_key)
                 if existing_name is not None and existing_name != mapped_name:
@@ -127,6 +135,11 @@ class CocoDatasetImportParserMixin:
                 image_key = str(image_payload.get("id", "")).strip()
                 if not image_key:
                     raise InvalidRequestError("COCO image id 不能为空")
+                if image_key in image_payload_by_id:
+                    raise InvalidRequestError(
+                        "COCO images 存在重复 id",
+                        details={"image_id": image_key},
+                    )
                 image_payload_by_id[image_key] = image_payload
 
             annotations_by_image_id: dict[str, list[dict[str, object]]] = defaultdict(list)
@@ -134,6 +147,11 @@ class CocoDatasetImportParserMixin:
                 if not isinstance(annotation_payload, dict):
                     raise InvalidRequestError("COCO annotation 项必须是对象")
                 image_key = str(annotation_payload.get("image_id", "")).strip()
+                if image_key not in image_payload_by_id:
+                    raise InvalidRequestError(
+                        "COCO annotation 引用了未定义的 image_id",
+                        details={"image_id": image_key},
+                    )
                 annotations_by_image_id[image_key].append(annotation_payload)
 
             for source_image_key, image_payload in image_payload_by_id.items():
@@ -149,6 +167,8 @@ class CocoDatasetImportParserMixin:
                 image_refs.append(self._relative_path(dataset_root, source_image_path))
                 width = self._read_int(image_payload, "width", "COCO image.width 不能为空")
                 height = self._read_int(image_payload, "height", "COCO image.height 不能为空")
+                if width <= 0 or height <= 0:
+                    raise InvalidRequestError("COCO image.width 和 height 必须大于 0")
                 annotations: list[DatasetAnnotation] = []
                 for annotation_index, annotation_payload in enumerate(
                     annotations_by_image_id.get(source_image_key, ()),
@@ -158,6 +178,17 @@ class CocoDatasetImportParserMixin:
                     if source_category_id not in category_id_map:
                         raise InvalidRequestError("COCO annotation 引用了未定义的 category_id", details={"category_id": source_category_id})
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
+                    raw_area = annotation_payload.get("area")
+                    area = (
+                        float(raw_area)
+                        if raw_area is not None
+                        else bbox_xywh[2] * bbox_xywh[3]
+                    )
+                    if not math.isfinite(area) or area < 0:
+                        raise InvalidRequestError(
+                            "COCO annotation.area 必须是非负有限数字",
+                            details={"annotation_id": annotation_payload.get("id")},
+                        )
                     annotations.append(
                         _build_annotation_for_task(
                             task_type=task_type,
@@ -165,10 +196,20 @@ class CocoDatasetImportParserMixin:
                             category_id=category_id_map[source_category_id],
                             bbox_xywh=bbox_xywh,
                             iscrowd=int(annotation_payload.get("iscrowd", 0) or 0),
-                            area=float(annotation_payload.get("area") or (bbox_xywh[2] * bbox_xywh[3])),
+                            area=area,
                             annotation_payload=annotation_payload,
                         )
                     )
+                    built_annotation = annotations[-1]
+                    if (
+                        task_type == "segmentation"
+                        and isinstance(getattr(built_annotation, "segmentation", None), dict)
+                        and built_annotation.segmentation.get("size") != [height, width]
+                    ):
+                        raise InvalidRequestError(
+                            "COCO segmentation RLE size 与图片尺寸不一致",
+                            details={"annotation_id": built_annotation.annotation_id},
+                        )
                 parsed_samples.append(
                     ParsedDatasetSample(
                         sample=DatasetSample(

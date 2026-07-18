@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from backend.contracts.datasets.exports.imagenet_classification_export import (
@@ -97,15 +98,21 @@ class ImageNetExportMixin:
             )
         )
         category_map = {category.category_id: category.name for category in categories}
+        for class_name in category_map.values():
+            self._require_imagenet_class_name(class_name)
         payloads: dict[str, ImageNetClassificationAnnotationPayload] = {}
         for split_name, samples in split_samples:
+            exported_file_names = self._build_imagenet_export_file_names(
+                samples=samples,
+                category_map=category_map,
+            )
             images: list[ImageNetClassificationImage] = []
             annotations: list[ImageNetClassificationAnnotation] = []
             next_annotation_id = 1
             for sample in samples:
                 sample_annotation = self._require_classification_annotation(sample)
                 class_name = category_map[sample_annotation.category_id]
-                relative_file_name = f"{class_name}/{sample.file_name}"
+                relative_file_name = f"{class_name}/{exported_file_names[sample.sample_id]}"
                 images.append(
                     ImageNetClassificationImage(
                         image_id=sample.image_id,
@@ -173,6 +180,10 @@ class ImageNetExportMixin:
             )
 
         for split_name, samples in split_samples:
+            exported_file_names = self._build_imagenet_export_file_names(
+                samples=samples,
+                category_map=category_map,
+            )
             for sample in samples:
                 classification_annotation = self._require_classification_annotation(sample)
                 class_name = category_map[classification_annotation.category_id]
@@ -182,7 +193,8 @@ class ImageNetExportMixin:
                 )
                 self.dataset_storage.copy_relative_file(
                     source_relative_path,
-                    f"{export_result.export_path}/{split_name}/{class_name}/{sample.file_name}",
+                    f"{export_result.export_path}/{split_name}/{class_name}/"
+                    f"{exported_file_names[sample.sample_id]}",
                 )
 
     def _serialize_imagenet_classification_payload(
@@ -226,9 +238,61 @@ class ImageNetExportMixin:
     ) -> ClassificationAnnotation:
         """要求 classification 样本至少有一条类别标注。"""
 
-        for annotation in sample.annotations:
-            if isinstance(annotation, ClassificationAnnotation):
-                return annotation
-        raise ValueError(
-            f"classification 样本缺少类别标注: sample_id={sample.sample_id}"
-        )
+        classification_annotations = [
+            annotation
+            for annotation in sample.annotations
+            if isinstance(annotation, ClassificationAnnotation)
+        ]
+        if len(classification_annotations) != 1 or len(sample.annotations) != 1:
+            raise ValueError(
+                "classification 样本必须且只能包含一条 classification 标注: "
+                f"sample_id={sample.sample_id}"
+            )
+        return classification_annotations[0]
+
+    def _require_imagenet_class_name(self, class_name: str) -> None:
+        """要求类别名称可安全地作为 ImageNet 单层目录名。"""
+
+        normalized = PurePosixPath(class_name.replace("\\", "/"))
+        if (
+            not class_name.strip()
+            or normalized.is_absolute()
+            or len(normalized.parts) != 1
+            or normalized.name in {".", ".."}
+        ):
+            raise ValueError(f"ImageNet 类别名称不是合法目录名: {class_name}")
+
+    def _build_imagenet_export_file_names(
+        self,
+        *,
+        samples: tuple[DatasetSample, ...],
+        category_map: dict[int, str],
+    ) -> dict[str, str]:
+        """生成同一 split/class 下不覆盖的稳定图片文件名。"""
+
+        collision_counts: dict[tuple[str, str], int] = {}
+        sample_rows: list[tuple[DatasetSample, str, str]] = []
+        for sample in samples:
+            annotation = self._require_classification_annotation(sample)
+            class_name = category_map.get(annotation.category_id)
+            if class_name is None:
+                raise ValueError(
+                    "classification 标注引用了未定义类别: "
+                    f"category_id={annotation.category_id}"
+                )
+            file_name = Path(sample.file_name).name
+            if not file_name:
+                raise ValueError(f"classification 文件名无效: sample_id={sample.sample_id}")
+            key = (class_name, file_name.casefold())
+            collision_counts[key] = collision_counts.get(key, 0) + 1
+            sample_rows.append((sample, class_name, file_name))
+
+        result: dict[str, str] = {}
+        for sample, class_name, file_name in sample_rows:
+            key = (class_name, file_name.casefold())
+            if collision_counts[key] == 1:
+                result[sample.sample_id] = file_name
+                continue
+            suffix = Path(file_name).suffix
+            result[sample.sample_id] = f"{sample.sample_id}{suffix}"
+        return result

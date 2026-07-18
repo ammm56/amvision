@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 from backend.service.application.errors import InvalidRequestError
 
@@ -50,7 +51,18 @@ class YoloPoseAnnotationMixin:
             dataset_root=dataset_root,
             line_index=line_index,
         )
-        keypoint_values = [float(value) for value in parts[5:]]
+        try:
+            keypoint_values = [float(value) for value in parts[5:]]
+        except ValueError as error:
+            raise InvalidRequestError(
+                "YOLO pose 关键点必须是数字",
+                details={"line_index": line_index},
+            ) from error
+        if not all(math.isfinite(value) for value in keypoint_values):
+            raise InvalidRequestError(
+                "YOLO pose 关键点必须只包含有限数字",
+                details={"line_index": line_index},
+            )
         if pose_shape is not None:
             keypoint_count, point_dimensions = pose_shape
             expected_value_count = keypoint_count * point_dimensions
@@ -91,6 +103,15 @@ class YoloPoseAnnotationMixin:
         num_keypoints = 0
         if point_dimensions == 3:
             for point_index in range(0, len(keypoint_values), 3):
+                if not (
+                    0.0 <= keypoint_values[point_index] <= 1.0
+                    and 0.0 <= keypoint_values[point_index + 1] <= 1.0
+                    and keypoint_values[point_index + 2] in {0.0, 1.0, 2.0}
+                ):
+                    raise InvalidRequestError(
+                        "YOLO pose 坐标必须位于 0 到 1，visibility 必须是 0、1 或 2",
+                        details={"line_index": line_index},
+                    )
                 point_x = keypoint_values[point_index] * image_width
                 point_y = keypoint_values[point_index + 1] * image_height
                 visibility = float(keypoint_values[point_index + 2])
@@ -99,6 +120,14 @@ class YoloPoseAnnotationMixin:
                     num_keypoints += 1
         else:
             for point_index in range(0, len(keypoint_values), 2):
+                if not (
+                    0.0 <= keypoint_values[point_index] <= 1.0
+                    and 0.0 <= keypoint_values[point_index + 1] <= 1.0
+                ):
+                    raise InvalidRequestError(
+                        "YOLO pose 坐标必须位于 0 到 1",
+                        details={"line_index": line_index},
+                    )
                 point_x = keypoint_values[point_index] * image_width
                 point_y = keypoint_values[point_index + 1] * image_height
                 normalized_keypoints.extend([point_x, point_y, 2.0])

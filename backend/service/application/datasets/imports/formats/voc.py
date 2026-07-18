@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
@@ -60,6 +61,13 @@ class VocDatasetImportParserMixin:
             raise InvalidRequestError("Pascal VOC 数据集必须包含 JPEGImages 和 Annotations")
 
         split_membership = self._load_voc_split_membership(dataset_root)
+        xml_stems = {path.stem for path in xml_paths}
+        unknown_members = sorted(set(split_membership) - xml_stems)
+        if unknown_members:
+            raise InvalidRequestError(
+                "VOC ImageSets 引用了不存在的 annotation",
+                details={"sample_names": unknown_members[:20]},
+            )
         forced_split = self._resolve_requested_split(split_strategy)
         sample_rows: list[dict[str, object]] = []
         category_names_in_order: list[str] = []
@@ -94,9 +102,16 @@ class VocDatasetImportParserMixin:
                 raise InvalidRequestError("VOC xml 缺少 size 节点")
             width = self._read_xml_int(size_node, "width", "VOC width 不能为空")
             height = self._read_xml_int(size_node, "height", "VOC height 不能为空")
+            if width <= 0 or height <= 0:
+                raise InvalidRequestError("VOC width 和 height 必须大于 0")
             stem_name = xml_path.stem
             sample_split = forced_split or split_membership.get(stem_name)
             if sample_split is None:
+                if split_membership:
+                    raise InvalidRequestError(
+                        "VOC annotation 未出现在任何 ImageSets split 中",
+                        details={"sample_name": stem_name},
+                    )
                 sample_split = self._normalize_split_name(split_strategy, default="train")
 
             raw_annotations: list[dict[str, object]] = []
@@ -110,10 +125,13 @@ class VocDatasetImportParserMixin:
                 bndbox_node = object_node.find("bndbox")
                 if bndbox_node is None:
                     raise InvalidRequestError("VOC object 缺少 bndbox")
-                xmin = float((bndbox_node.findtext("xmin") or "0").strip())
-                ymin = float((bndbox_node.findtext("ymin") or "0").strip())
-                xmax = float((bndbox_node.findtext("xmax") or "0").strip())
-                ymax = float((bndbox_node.findtext("ymax") or "0").strip())
+                try:
+                    xmin = float((bndbox_node.findtext("xmin") or "0").strip())
+                    ymin = float((bndbox_node.findtext("ymin") or "0").strip())
+                    xmax = float((bndbox_node.findtext("xmax") or "0").strip())
+                    ymax = float((bndbox_node.findtext("ymax") or "0").strip())
+                except ValueError as error:
+                    raise InvalidRequestError("VOC bndbox 必须是数字") from error
                 bbox_xywh = self._build_voc_bbox_xywh(
                     xmin=xmin,
                     ymin=ymin,
@@ -238,6 +256,12 @@ class VocDatasetImportParserMixin:
             for line in split_file.read_text(encoding="utf-8").splitlines():
                 sample_name = line.strip()
                 if sample_name:
+                    previous_split = membership.get(sample_name)
+                    if previous_split is not None and previous_split != split_name:
+                        raise InvalidRequestError(
+                            "VOC 样本不能同时属于多个 split",
+                            details={"sample_name": sample_name},
+                        )
                     membership[sample_name] = split_name
 
         return membership
@@ -254,13 +278,15 @@ class VocDatasetImportParserMixin:
     ) -> tuple[float, float, float, float]:
         """把 VOC 的 1-based inclusive xyxy 转换为平台统一的 0-based xywh。"""
 
-        clipped_xmin = max(1.0, min(float(image_width), xmin))
-        clipped_ymin = max(1.0, min(float(image_height), ymin))
-        clipped_xmax = max(clipped_xmin, min(float(image_width), xmax))
-        clipped_ymax = max(clipped_ymin, min(float(image_height), ymax))
+        if not all(math.isfinite(value) for value in (xmin, ymin, xmax, ymax)):
+            raise InvalidRequestError("VOC bndbox 必须只包含有限数字")
+        if not (1.0 <= xmin <= xmax <= image_width):
+            raise InvalidRequestError("VOC bndbox x 坐标超出图片范围或顺序错误")
+        if not (1.0 <= ymin <= ymax <= image_height):
+            raise InvalidRequestError("VOC bndbox y 坐标超出图片范围或顺序错误")
         return (
-            clipped_xmin - 1.0,
-            clipped_ymin - 1.0,
-            clipped_xmax - clipped_xmin + 1.0,
-            clipped_ymax - clipped_ymin + 1.0,
+            xmin - 1.0,
+            ymin - 1.0,
+            xmax - xmin + 1.0,
+            ymax - ymin + 1.0,
         )

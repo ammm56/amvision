@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+
+from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.datasets.dataset_version import (
     DatasetAnnotation,
     DetectionAnnotation,
@@ -20,23 +23,47 @@ def _build_annotation_for_task(
 
     extra_meta = {
         key: value for key, value in annotation_payload.items()
-        if key not in {"id", "image_id", "category_id", "bbox", "iscrowd", "area"}
+        if key not in {
+            "id", "image_id", "category_id", "bbox", "iscrowd", "area",
+            "segmentation", "keypoints", "num_keypoints", "poly", "polygon",
+        }
     }
     if task_type == "segmentation":
         seg = annotation_payload.get("segmentation")
+        _validate_coco_segmentation(segmentation=seg, annotation_id=annotation_id)
         return InstanceSegmentationAnnotation(
             annotation_id=annotation_id, category_id=category_id,
             bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
-            segmentation=seg if isinstance(seg, list) else None,
+            segmentation=seg if isinstance(seg, (list, dict)) else None,
             metadata=extra_meta,
         )
     if task_type == "pose":
         kp = annotation_payload.get("keypoints")
+        if not isinstance(kp, list) or len(kp) == 0 or len(kp) % 3 != 0:
+            raise InvalidRequestError(
+                "COCO pose annotation.keypoints 必须是非空且长度为 3 的倍数的数组",
+                details={"annotation_id": annotation_id},
+            )
+        try:
+            keypoints = [float(value) for value in kp]
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError("COCO pose keypoints 必须是数字") from error
+        if not all(math.isfinite(value) for value in keypoints):
+            raise InvalidRequestError("COCO pose keypoints 必须是有限数字")
+        visibility_values = keypoints[2::3]
+        if any(value not in {0.0, 1.0, 2.0} for value in visibility_values):
+            raise InvalidRequestError("COCO pose visibility 必须是 0、1 或 2")
         nk = int(annotation_payload.get("num_keypoints", 0) or 0)
+        visible_count = sum(1 for value in visibility_values if value > 0)
+        if nk != visible_count:
+            raise InvalidRequestError(
+                "COCO pose num_keypoints 与可见关键点数量不一致",
+                details={"annotation_id": annotation_id},
+            )
         return PoseAnnotation(
             annotation_id=annotation_id, category_id=category_id,
             bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
-            keypoints=kp if isinstance(kp, list) else None,
+            keypoints=keypoints,
             num_keypoints=nk, metadata=extra_meta,
         )
     if task_type == "obb":
@@ -54,6 +81,60 @@ def _build_annotation_for_task(
         annotation_id=annotation_id, category_id=category_id,
         bbox_xywh=bbox_xywh, iscrowd=iscrowd, area=area,
         metadata=extra_meta,
+    )
+
+
+def _validate_coco_segmentation(
+    *, segmentation: object, annotation_id: str,
+) -> None:
+    """校验 COCO polygon 或 RLE segmentation 的基本结构。"""
+
+    if isinstance(segmentation, list):
+        if not segmentation or any(
+            not isinstance(polygon, list)
+            or len(polygon) < 6
+            or len(polygon) % 2 != 0
+            for polygon in segmentation
+        ):
+            raise InvalidRequestError(
+                "COCO segmentation polygon 必须包含至少一个三点多边形",
+                details={"annotation_id": annotation_id},
+            )
+        try:
+            polygon_values = [
+                float(value) for polygon in segmentation for value in polygon
+            ]
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError("COCO segmentation polygon 坐标必须是数字") from error
+        if not all(math.isfinite(value) for value in polygon_values):
+            raise InvalidRequestError("COCO segmentation polygon 坐标必须是有限数字")
+        return
+    if isinstance(segmentation, dict):
+        size = segmentation.get("size")
+        counts = segmentation.get("counts")
+        if (
+            not isinstance(size, list)
+            or len(size) != 2
+            or not all(isinstance(value, int) and value > 0 for value in size)
+            or not isinstance(counts, (str, list))
+        ):
+            raise InvalidRequestError(
+                "COCO segmentation RLE 必须包含合法的 size 和 counts",
+                details={"annotation_id": annotation_id},
+            )
+        if isinstance(counts, list) and (
+            not counts
+            or any(not isinstance(value, int) or value < 0 for value in counts)
+            or sum(counts) != size[0] * size[1]
+        ):
+            raise InvalidRequestError(
+                "COCO segmentation 未压缩 RLE counts 与 mask 尺寸不一致",
+                details={"annotation_id": annotation_id},
+            )
+        return
+    raise InvalidRequestError(
+        "COCO segmentation annotation 缺少合法的 polygon 或 RLE",
+        details={"annotation_id": annotation_id},
     )
 
 def _extract_obb_polygon(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path, PurePosixPath
+import math
 from xml.etree import ElementTree
 
 from PIL import Image
@@ -178,7 +179,12 @@ class DatasetImportSupportMixin:
 
         if not isinstance(bbox_payload, list) or len(bbox_payload) != 4:
             raise InvalidRequestError("COCO bbox 必须是长度为 4 的数组")
-        bbox_xywh = tuple(float(value) for value in bbox_payload)
+        try:
+            bbox_xywh = tuple(float(value) for value in bbox_payload)
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError("COCO bbox 必须只包含有限数字") from error
+        if not all(math.isfinite(value) for value in bbox_xywh):
+            raise InvalidRequestError("COCO bbox 必须只包含有限数字")
         if bbox_xywh[2] <= 0 or bbox_xywh[3] <= 0:
             raise InvalidRequestError("COCO bbox 必须是正面积框")
         return bbox_xywh

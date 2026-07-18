@@ -23,6 +23,10 @@ class DatasetStorageSettings:
     """
 
     root_dir: str = "./data/files"
+    max_import_package_bytes: int = 20 * 1024**3
+    max_import_extracted_bytes: int = 200 * 1024**3
+    max_import_member_count: int = 2_000_000
+    max_import_compression_ratio: float = 1000.0
 
 
 @dataclass(frozen=True)
@@ -240,6 +244,7 @@ class LocalDatasetStorage:
         source_stream: BinaryIO,
         *,
         chunk_size: int = 1024 * 1024,
+        max_bytes: int | None = None,
     ) -> int:
         """把输入流按块写入本地文件。
 
@@ -258,13 +263,22 @@ class LocalDatasetStorage:
             source_stream.seek(0)
 
         written_size = 0
-        with target_path.open("wb") as target_stream:
-            while True:
-                chunk = source_stream.read(chunk_size)
-                if not chunk:
-                    break
-                target_stream.write(chunk)
-                written_size += len(chunk)
+        try:
+            with target_path.open("wb") as target_stream:
+                while True:
+                    chunk = source_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    if max_bytes is not None and written_size + len(chunk) > max_bytes:
+                        raise InvalidRequestError(
+                            "上传的数据集压缩包超过大小限制",
+                            details={"max_bytes": max_bytes},
+                        )
+                    target_stream.write(chunk)
+                    written_size += len(chunk)
+        except Exception:
+            target_path.unlink(missing_ok=True)
+            raise
 
         return written_size
 
@@ -388,22 +402,28 @@ class LocalDatasetStorage:
 
         source_archive = self.resolve(archive_path)
         destination_dir = self.resolve(destination_path)
-        if destination_dir.exists():
-            shutil.rmtree(destination_dir)
-        destination_dir.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(source_archive) as zip_file:
-            for member in zip_file.infolist():
-                member_path = PurePosixPath(member.filename)
-                self._validate_zip_member(member_path=member_path, member=member)
-                target_path = destination_dir.joinpath(*member_path.parts)
-                if member.is_dir():
-                    target_path.mkdir(parents=True, exist_ok=True)
-                    continue
+            members = zip_file.infolist()
+            self._validate_zip_limits(members)
+            if destination_dir.exists():
+                shutil.rmtree(destination_dir)
+            destination_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                for member in members:
+                    member_path = PurePosixPath(member.filename)
+                    self._validate_zip_member(member_path=member_path, member=member)
+                    target_path = destination_dir.joinpath(*member_path.parts)
+                    if member.is_dir():
+                        target_path.mkdir(parents=True, exist_ok=True)
+                        continue
 
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                with zip_file.open(member) as source_stream, target_path.open("wb") as target_stream:
-                    shutil.copyfileobj(source_stream, target_stream)
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zip_file.open(member) as source_stream, target_path.open("wb") as target_stream:
+                        shutil.copyfileobj(source_stream, target_stream)
+            except Exception:
+                shutil.rmtree(destination_dir, ignore_errors=True)
+                raise
 
     def delete_tree(self, relative_path: str) -> None:
         """删除一个相对目录或文件。
@@ -523,3 +543,30 @@ class LocalDatasetStorage:
                 "zip 包中存在不支持的符号链接",
                 details={"member": member.filename},
             )
+
+    def _validate_zip_limits(self, members: list[zipfile.ZipInfo]) -> None:
+        """在解压前校验成员数、总大小和单成员压缩比。"""
+
+        if len(members) > self.settings.max_import_member_count:
+            raise InvalidRequestError(
+                "数据集压缩包文件数量超过限制",
+                details={"max_member_count": self.settings.max_import_member_count},
+            )
+        total_size = sum(member.file_size for member in members if not member.is_dir())
+        if total_size > self.settings.max_import_extracted_bytes:
+            raise InvalidRequestError(
+                "数据集压缩包解压后总大小超过限制",
+                details={"max_extracted_bytes": self.settings.max_import_extracted_bytes},
+            )
+        for member in members:
+            if member.is_dir() or member.file_size == 0:
+                continue
+            ratio = member.file_size / max(1, member.compress_size)
+            if ratio > self.settings.max_import_compression_ratio:
+                raise InvalidRequestError(
+                    "数据集压缩包中存在异常压缩比文件",
+                    details={
+                        "member": member.filename,
+                        "max_compression_ratio": self.settings.max_import_compression_ratio,
+                    },
+                )

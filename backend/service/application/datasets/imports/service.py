@@ -493,9 +493,20 @@ class SqlAlchemyDatasetImportService(
         """
 
         if package_file is not None:
-            return self.dataset_storage.write_stream(import_layout.package_path, package_file)
+            return self.dataset_storage.write_stream(
+                import_layout.package_path,
+                package_file,
+                max_bytes=self.dataset_storage.settings.max_import_package_bytes,
+            )
         if request.package_bytes is None:
             raise InvalidRequestError("上传 zip 文件不能为空")
+        if len(request.package_bytes) > self.dataset_storage.settings.max_import_package_bytes:
+            raise InvalidRequestError(
+                "上传的数据集压缩包超过大小限制",
+                details={
+                    "max_bytes": self.dataset_storage.settings.max_import_package_bytes,
+                },
+            )
         self.dataset_storage.write_bytes(import_layout.package_path, request.package_bytes)
         return len(request.package_bytes)
 

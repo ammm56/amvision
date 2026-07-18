@@ -9,6 +9,9 @@ import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+)
 from backend.contracts.datasets.exports.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
@@ -390,6 +393,63 @@ def test_export_imagenet_preserves_same_file_name_images_across_classes(
     ).read_bytes() == b"ng-image"
 
 
+def test_export_imagenet_renames_same_class_file_name_collisions(
+    tmp_path: Path,
+) -> None:
+    """验证同一 split/class 的同名图片不会互相覆盖。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-imagenet-collision",
+        dataset_id="dataset-imagenet-collision",
+        project_id="project-1",
+        task_type="classification",
+        categories=(DatasetCategory(category_id=0, name="ok"),),
+        samples=tuple(
+            DatasetSample(
+                sample_id=sample_id,
+                image_id=index,
+                file_name="shared.png",
+                width=32,
+                height=24,
+                split="train",
+                annotations=(
+                    ClassificationAnnotation(
+                        annotation_id=f"ann-{index}", category_id=0
+                    ),
+                ),
+            )
+            for index, sample_id in enumerate(("sample-a", "sample-b"), start=1)
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+    version_root = (
+        "projects/project-1/datasets/dataset-imagenet-collision/versions/"
+        "dataset-version-imagenet-collision"
+    )
+    dataset_storage.write_bytes(
+        f"{version_root}/images/train/sample-a/shared.png", b"image-a"
+    )
+    dataset_storage.write_bytes(
+        f"{version_root}/images/train/sample-b/shared.png", b"image-b"
+    )
+
+    result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-imagenet-collision",
+            dataset_version_id="dataset-version-imagenet-collision",
+            format_id=IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+        )
+    )
+
+    assert dataset_storage.resolve(
+        f"{result.export_path}/train/ok/sample-a.png"
+    ).read_bytes() == b"image-a"
+    assert dataset_storage.resolve(
+        f"{result.export_path}/train/ok/sample-b.png"
+    ).read_bytes() == b"image-b"
+
+
 def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
     """验证导出支持 DOTA 风格 OBB 标注文件。"""
 
@@ -448,6 +508,107 @@ def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
         100.0,
     ]
     assert dataset_storage.resolve(f"{export_result.export_path}/images/train/ship-1.png").is_file()
+    assert dataset_storage.resolve(
+        f"{export_result.export_path}/labels/train/ship-1.txt"
+    ).read_text(encoding="utf-8") == (
+        "10 20 120 20 120 100 10 100 ship 0"
+    )
+
+
+def test_export_dataset_preserves_coco_rle_segmentation(tmp_path: Path) -> None:
+    """验证 COCO RLE 经数据库持久化和导出后不会丢失。"""
+
+    rle = {"size": [4, 4], "counts": "04<"}
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-rle-1",
+        dataset_id="dataset-rle-1",
+        project_id="project-1",
+        task_type="segmentation",
+        categories=(DatasetCategory(category_id=0, name="part"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="part.png",
+                width=4,
+                height=4,
+                split="train",
+                annotations=(
+                    InstanceSegmentationAnnotation(
+                        annotation_id="ann-rle-1",
+                        category_id=0,
+                        bbox_xywh=(0.0, 0.0, 2.0, 2.0),
+                        segmentation=rle,
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    export_result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-rle-1",
+            dataset_version_id="dataset-version-rle-1",
+            format_id=COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        )
+    )
+
+    payload = json.loads(
+        dataset_storage.resolve(
+            f"{export_result.export_path}/annotations/instances_train.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["annotations"][0]["segmentation"] == rle
+
+
+def test_export_yolo_segmentation_rejects_rle_without_partial_output(
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO 不会把无法无损表达的 RLE 错写成 detection 标签。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-yolo-rle-1",
+        dataset_id="dataset-yolo-rle-1",
+        project_id="project-1",
+        task_type="segmentation",
+        categories=(DatasetCategory(category_id=0, name="part"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="part.png",
+                width=4,
+                height=4,
+                split="train",
+                annotations=(
+                    InstanceSegmentationAnnotation(
+                        annotation_id="ann-rle-1",
+                        category_id=0,
+                        bbox_xywh=(0.0, 0.0, 2.0, 2.0),
+                        segmentation={"size": [4, 4], "counts": "04<"},
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    with pytest.raises(ValueError, match="无法无损导出 COCO RLE"):
+        exporter.export_dataset(
+            DatasetExportRequest(
+                project_id="project-1",
+                dataset_id="dataset-yolo-rle-1",
+                dataset_version_id="dataset-version-yolo-rle-1",
+                format_id=YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+            )
+        )
+
+    exports_root = dataset_storage.resolve(
+        "projects/project-1/datasets/dataset-yolo-rle-1/exports"
+    )
+    assert not exports_root.exists()
 
 
 def test_export_dataset_generates_yolo_segmentation_layout(tmp_path: Path) -> None:

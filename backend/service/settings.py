@@ -248,6 +248,10 @@ class BackendServiceDatasetStorageConfig(BaseModel):
     """
 
     root_dir: str = "./data/files"
+    max_import_package_bytes: int = Field(default=20 * 1024**3, gt=0)
+    max_import_extracted_bytes: int = Field(default=200 * 1024**3, gt=0)
+    max_import_member_count: int = Field(default=2_000_000, gt=0)
+    max_import_compression_ratio: float = Field(default=1000.0, gt=0)
 
 
 class BackendServiceQueueConfig(BaseModel):
@@ -432,7 +436,13 @@ class BackendServiceSettings(BaseSettings):
         - 供 LocalDatasetStorage 使用的 DatasetStorageSettings。
         """
 
-        return DatasetStorageSettings(root_dir=self.dataset_storage.root_dir)
+        return DatasetStorageSettings(
+            root_dir=self.dataset_storage.root_dir,
+            max_import_package_bytes=self.dataset_storage.max_import_package_bytes,
+            max_import_extracted_bytes=self.dataset_storage.max_import_extracted_bytes,
+            max_import_member_count=self.dataset_storage.max_import_member_count,
+            max_import_compression_ratio=self.dataset_storage.max_import_compression_ratio,
+        )
 
     def to_queue_settings(self) -> LocalFileQueueSettings:
         """把统一配置转换为本地队列配置。

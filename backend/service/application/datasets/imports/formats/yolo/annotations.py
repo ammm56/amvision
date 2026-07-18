@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 from backend.service.application.datasets.imports.formats.yolo.detection import (
     YoloDetectionAnnotationMixin,
@@ -58,7 +59,7 @@ class YoloAnnotationParserMixin(
                     "line_index": line_index,
                 },
             ) from error
-        if numeric_value < 0 or not numeric_value.is_integer():
+        if not math.isfinite(numeric_value) or numeric_value < 0 or not numeric_value.is_integer():
             raise InvalidRequestError(
                 "YOLO 标注类别 id 必须是非负整数",
                 details={
@@ -148,6 +149,17 @@ class YoloAnnotationParserMixin(
                     "line_index": line_index,
                 },
             ) from error
+        normalized_bbox = (center_x, center_y, box_width, box_height)
+        if not all(math.isfinite(value) for value in normalized_bbox):
+            raise InvalidRequestError(
+                "YOLO bbox 必须只包含有限数字",
+                details={"line_index": line_index},
+            )
+        if not all(0.0 <= value <= 1.0 for value in normalized_bbox):
+            raise InvalidRequestError(
+                "YOLO bbox 归一化坐标必须位于 0 到 1",
+                details={"line_index": line_index},
+            )
         if box_width <= 0 or box_height <= 0:
             raise InvalidRequestError(
                 "YOLO bbox 宽高必须大于 0",
@@ -207,6 +219,16 @@ class YoloAnnotationParserMixin(
                     "line_index": line_index,
                 },
             ) from error
+        if not all(math.isfinite(value) for value in normalized_values):
+            raise InvalidRequestError(
+                "YOLO polygon 必须只包含有限数字",
+                details={"line_index": line_index},
+            )
+        if not all(0.0 <= value <= 1.0 for value in normalized_values):
+            raise InvalidRequestError(
+                "YOLO polygon 归一化坐标必须位于 0 到 1",
+                details={"line_index": line_index},
+            )
         pixel_values: list[float] = []
         for value_index in range(0, len(normalized_values), 2):
             pixel_values.append(normalized_values[value_index] * image_width)

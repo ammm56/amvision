@@ -56,7 +56,9 @@ class InstanceSegmentationAnnotation:
     annotation_id: str
     category_id: int
     bbox_xywh: tuple[float, float, float, float]
-    segmentation: list[list[float]] | None = None
+    # COCO instance segmentation 同时允许 polygon 列表和 RLE 对象；内部模型必须
+    # 原样保留两种标准表示，避免导入持久化时静默丢失 mask。
+    segmentation: list[list[float]] | dict[str, object] | None = None
     iscrowd: int = 0
     area: float | None = None
     metadata: dict[str, object] = field(default_factory=dict)

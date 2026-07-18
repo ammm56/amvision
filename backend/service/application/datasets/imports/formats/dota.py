@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from backend.service.application.datasets.imports.contracts import (
@@ -84,6 +85,8 @@ class DotaDatasetImportParserMixin:
                         stripped = line.strip()
                         if not stripped:
                             continue
+                        if self._is_dota_metadata_line(stripped):
+                            continue
                         parts = stripped.split()
                         if len(parts) < 9:
                             raise InvalidRequestError(
@@ -93,8 +96,38 @@ class DotaDatasetImportParserMixin:
                                     "line_index": line_index,
                                 },
                             )
-                        polygon_xy = tuple(float(value) for value in parts[:8])
+                        try:
+                            polygon_xy = tuple(float(value) for value in parts[:8])
+                        except ValueError as error:
+                            raise InvalidRequestError(
+                                "DOTA polygon 坐标必须是数字",
+                                details={"line_index": line_index},
+                            ) from error
+                        if not all(math.isfinite(value) for value in polygon_xy):
+                            raise InvalidRequestError(
+                                "DOTA polygon 坐标必须是有限数字",
+                                details={"line_index": line_index},
+                            )
+                        if _compute_polygon_area(polygon_xy) <= 0:
+                            raise InvalidRequestError(
+                                "DOTA polygon 面积必须大于 0",
+                                details={"line_index": line_index},
+                            )
                         source_class_name = parts[8]
+                        difficult = 0
+                        if len(parts) >= 10:
+                            try:
+                                difficult = int(parts[9])
+                            except ValueError as error:
+                                raise InvalidRequestError(
+                                    "DOTA difficult 必须是 0 或 1",
+                                    details={"line_index": line_index},
+                                ) from error
+                            if difficult not in {0, 1}:
+                                raise InvalidRequestError(
+                                    "DOTA difficult 必须是 0 或 1",
+                                    details={"line_index": line_index},
+                                )
                         mapped_class_name = requested_class_map.get(
                             source_class_name,
                             source_class_name,
@@ -106,7 +139,7 @@ class DotaDatasetImportParserMixin:
                                 "polygon_xy": polygon_xy,
                                 "class_name": mapped_class_name,
                                 "source_class_name": source_class_name,
-                                "difficult": int(parts[9]) if len(parts) >= 10 and parts[9].isdigit() else 0,
+                                "difficult": difficult,
                             }
                         )
 
@@ -256,10 +289,13 @@ class DotaDatasetImportParserMixin:
 
         if not label_dir.is_dir():
             return False
-        for label_path in sorted(label_dir.glob("*.txt")):
+        label_paths = sorted(label_dir.glob("*.txt"))
+        for label_path in label_paths:
             for line in label_path.read_text(encoding="utf-8").splitlines():
                 stripped = line.strip()
                 if not stripped:
+                    continue
+                if self._is_dota_metadata_line(stripped):
                     continue
                 parts = stripped.split()
                 if len(parts) < 9:
@@ -274,4 +310,10 @@ class DotaDatasetImportParserMixin:
                 except ValueError:
                     return True
                 return False
-        return False
+        return bool(label_paths)
+
+    def _is_dota_metadata_line(self, line: str) -> bool:
+        """识别 DOTA 官方 label 文件可选的 imagesource/gsd 头。"""
+
+        normalized = line.casefold()
+        return normalized.startswith("imagesource:") or normalized.startswith("gsd:")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 from backend.contracts.datasets.exports.coco_detection_export import CocoDetectionAnnotation
 from backend.contracts.datasets.exports.coco_instance_segmentation_export import COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT
 from backend.contracts.datasets.exports.coco_keypoints_export import COCO_KEYPOINTS_DATASET_FORMAT
@@ -58,6 +60,36 @@ def _build_version_image_relative_path(
         f"projects/{dataset_version.project_id}/datasets/{dataset_version.dataset_id}/versions/"
         f"{dataset_version.dataset_version_id}/{image_object_key}"
     )
+
+
+def _build_collision_safe_image_names(
+    samples: tuple[DatasetSample, ...],
+    *,
+    match_by_stem: bool = False,
+) -> dict[str, str]:
+    """生成不会在目标格式中互相覆盖的相对图片名。"""
+
+    rows: list[tuple[DatasetSample, PurePosixPath, str]] = []
+    counts: dict[str, int] = {}
+    for sample in samples:
+        normalized = PurePosixPath(sample.file_name.replace("\\", "/"))
+        if normalized.is_absolute() or ".." in normalized.parts or not normalized.name:
+            raise ValueError(f"样本文件名不是安全相对路径: sample_id={sample.sample_id}")
+        collision_path = normalized.with_suffix("") if match_by_stem else normalized
+        key = collision_path.as_posix().casefold()
+        counts[key] = counts.get(key, 0) + 1
+        rows.append((sample, normalized, key))
+
+    result: dict[str, str] = {}
+    for sample, normalized, key in rows:
+        if counts[key] == 1:
+            result[sample.sample_id] = normalized.as_posix()
+            continue
+        renamed = normalized.parent / f"{sample.sample_id}{normalized.suffix}"
+        result[sample.sample_id] = renamed.as_posix()
+    if len(set(value.casefold() for value in result.values())) != len(result):
+        raise ValueError("样本 sample_id 无法生成唯一的导出文件名")
+    return result
 
 def _dataset_export_format_matches_task_type(
     *,

@@ -71,10 +71,26 @@ class YoloDatasetImportParserMixin(
         image_refs: list[str] = []
         annotation_refs: list[str] = []
         missing_label_count = 0
+        image_split_by_path: dict[Path, str] = {}
+        label_image_by_path: dict[Path, Path] = {}
         for detected_split_name, image_entries in split_image_entries.items():
             sample_split = forced_split or detected_split_name
             for source_root, image_path in image_entries:
+                resolved_image_path = image_path.resolve()
+                previous_split = image_split_by_path.get(resolved_image_path)
+                if previous_split is not None:
+                    raise InvalidRequestError(
+                        "YOLO 图片被重复引用或同时属于多个 split",
+                        details={
+                            "image_file": str(image_path),
+                            "previous_split": previous_split,
+                            "current_split": sample_split,
+                        },
+                    )
+                image_split_by_path[resolved_image_path] = sample_split
                 width, height = self._read_image_size(image_path)
+                if width <= 0 or height <= 0:
+                    raise InvalidRequestError("YOLO 图片宽高必须大于 0")
                 normalized_file_name = self._relative_path_from_any(
                     image_path,
                     source_root,
@@ -91,6 +107,18 @@ class YoloDatasetImportParserMixin(
                     split_name=detected_split_name,
                     image_path=image_path,
                 )
+                resolved_label_path = label_path.resolve()
+                previous_image = label_image_by_path.get(resolved_label_path)
+                if previous_image is not None and previous_image != resolved_image_path:
+                    raise InvalidRequestError(
+                        "YOLO 多张图片映射到了同一个 label 文件",
+                        details={
+                            "label_file": str(label_path),
+                            "first_image": str(previous_image),
+                            "second_image": str(resolved_image_path),
+                        },
+                    )
+                label_image_by_path[resolved_label_path] = resolved_image_path
                 image_refs.append(source_image_ref)
                 if label_path.is_file():
                     annotation_refs.append(

@@ -36,7 +36,11 @@
     "echo": false
   },
   "dataset_storage": {
-    "root_dir": "./data/files"
+    "root_dir": "./data/files",
+    "max_import_package_bytes": 21474836480,
+    "max_import_extracted_bytes": 214748364800,
+    "max_import_member_count": 2000000,
+    "max_import_compression_ratio": 1000.0
   },
   "queue": {
     "root_dir": "./data/queue",

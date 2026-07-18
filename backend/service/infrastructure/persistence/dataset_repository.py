@@ -377,7 +377,7 @@ class SqlAlchemyDatasetVersionRepository:
         if annotation_type == "segmentation":
             segmentation = (
                 annotation.segmentation_json
-                if isinstance(annotation.segmentation_json, list)
+                if isinstance(annotation.segmentation_json, (list, dict))
                 else None
             )
             return InstanceSegmentationAnnotation(

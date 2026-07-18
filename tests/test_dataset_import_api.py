@@ -1814,11 +1814,13 @@ def _build_dota_zip_bytes() -> bytes:
         zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
         zip_file.writestr(
             "dataset-root/labels/train_original/train-1.txt",
+            "imagesource:GoogleEarth\ngsd:0.5\n"
             "10 10 30 10 30 30 10 30 ship 0\n",
         )
         zip_file.writestr("dataset-root/images/val/val-1.png", image_bytes)
         zip_file.writestr(
             "dataset-root/labels/val_original/val-1.txt",
+            "imagesource:GoogleEarth\ngsd:0.5\n"
             "12 12 28 12 28 28 12 28 ship 0\n",
         )
     return buffer.getvalue()
