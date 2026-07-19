@@ -7,6 +7,9 @@ from typing import Any
 from backend.service.application.runtime.predictors.yolo26.classification.contracts import (
     Yolo26ClassificationPredictionCategory,
 )
+from backend.service.application.runtime.predictors.classification_preview import (
+    render_classification_preview_image_if_requested,
+)
 
 
 def render_yolo26_classification_preview_image_if_requested(
@@ -18,33 +21,12 @@ def render_yolo26_classification_preview_image_if_requested(
 ) -> bytes | None:
     """按请求参数决定是否生成 classification 调试预览图。"""
 
-    if not save_result_image:
-        return None
-    preview = image.copy()
-    overlay_lines = categories or (
-        Yolo26ClassificationPredictionCategory(
-            class_id=-1,
-            class_name="no-result",
-            probability=0.0,
-        ),
+    return render_classification_preview_image_if_requested(
+        cv2_module=cv2_module,
+        image=image,
+        categories=categories,
+        save_result_image=save_result_image,
     )
-    for line_index, category in enumerate(overlay_lines, start=1):
-        label = category.class_name or str(category.class_id)
-        text = f"top{line_index} {label}: {category.probability:.3f}"
-        cv2_module.putText(
-            preview,
-            text,
-            (12, 24 * line_index),
-            cv2_module.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (40, 180, 120),
-            2,
-            cv2_module.LINE_AA,
-        )
-    ok, encoded = cv2_module.imencode(".jpg", preview)
-    if not ok:
-        return None
-    return bytes(encoded.tobytes())
 
 
 __all__ = ["render_yolo26_classification_preview_image_if_requested"]
