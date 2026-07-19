@@ -245,6 +245,20 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     }
   }
 
+  function toggleGroupLocked(group: WorkflowGraphGroup): void {
+    group.locked = !group.locked
+    if (group.locked) {
+      if (groupDragState.value?.groupId === group.group_id) stopGroupDrag()
+      if (groupResizeState.value?.groupId === group.group_id) stopGroupResize()
+    }
+    selectedGroupId.value = group.group_id
+    options.setStatusMessage(
+      group.locked
+        ? `已锁定节点组：${group.name}，组区域可用于拖动画布`
+        : `已解锁节点组：${group.name}，可移动和调整大小`,
+    )
+  }
+
   function renameGroup(groupId: string, nextName: string): void {
     const group = options.graphGroups.value.find((item) => item.group_id === groupId)
     if (!group) return
@@ -365,6 +379,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     syncGroupMemberships,
     syncMembershipAfterNodeDrag,
     toggleGroupEnabled,
+    toggleGroupLocked,
     renameGroup,
     deleteGroup,
     updateGroupColor,

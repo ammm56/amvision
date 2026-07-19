@@ -2708,6 +2708,16 @@ a:hover {
   border-style: dotted;
 }
 
+.workflow-graph-group.is-locked {
+  pointer-events: none;
+  border-style: dashed;
+}
+
+.workflow-graph-group.is-locked .workflow-graph-group__header {
+  pointer-events: auto;
+  cursor: grab;
+}
+
 .workflow-graph-group--draft {
   pointer-events: none;
   border-style: dashed;
@@ -2733,6 +2743,7 @@ a:hover {
 }
 
 .workflow-graph-group__toggle,
+.workflow-graph-group__lock,
 .workflow-graph-group__delete {
   display: inline-flex;
   align-items: center;
@@ -2746,8 +2757,14 @@ a:hover {
 }
 
 .workflow-graph-group__toggle:hover,
+.workflow-graph-group__lock:hover,
 .workflow-graph-group__delete:hover {
   background: rgb(255 255 255 / 0.18);
+}
+
+.workflow-graph-group__lock.is-active {
+  color: #202529;
+  background: #e8f7fa;
 }
 
 .workflow-graph-group__color-picker {

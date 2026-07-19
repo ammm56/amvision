@@ -8,10 +8,11 @@
         'is-selected': selectedGroupId === group.group_id,
         'is-disabled': readGroupState(group) === 'disabled',
         'is-mixed': readGroupState(group) === 'mixed',
+        'is-locked': group.locked,
       }"
       :style="groupStyle(group)"
-      @mousedown.stop="emit('startGroupDrag', $event, group)"
-      @click.stop="emit('selectGroup', group.group_id)"
+      @mousedown="handleGroupMouseDown($event, group)"
+      @click="handleGroupClick($event, group)"
     >
       <div class="workflow-graph-group__header">
         <button
@@ -25,6 +26,19 @@
           <CheckCircle v-if="readGroupState(group) === 'enabled'" :size="14" />
           <CircleOff v-else-if="readGroupState(group) === 'disabled'" :size="14" />
           <CircleDotDashed v-else :size="14" />
+        </button>
+        <button
+          type="button"
+          class="workflow-graph-group__lock"
+          :class="{ 'is-active': group.locked }"
+          :title="readLockTitle(group)"
+          :aria-label="readLockTitle(group)"
+          :aria-pressed="group.locked"
+          @mousedown.stop
+          @click.stop="emit('toggleGroupLocked', group)"
+        >
+          <Lock v-if="group.locked" :size="13" />
+          <LockOpen v-else :size="13" />
         </button>
         <input
           v-if="editingGroupId === group.group_id"
@@ -80,6 +94,7 @@
         </button>
       </div>
       <button
+        v-if="!group.locked"
         type="button"
         class="workflow-graph-group__resize"
         title="调整节点组大小"
@@ -102,7 +117,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { CheckCircle, CircleDotDashed, CircleOff, Trash2 } from '@lucide/vue'
+import { CheckCircle, CircleDotDashed, CircleOff, Lock, LockOpen, Trash2 } from '@lucide/vue'
 
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
 import type { WorkflowGraphGroupState } from '../graph/useWorkflowGraphGroups'
@@ -119,6 +134,7 @@ const emit = defineEmits<{
   startGroupDrag: [event: MouseEvent, group: WorkflowGraphGroup]
   startGroupResize: [event: MouseEvent, group: WorkflowGraphGroup]
   toggleGroupEnabled: [group: WorkflowGraphGroup]
+  toggleGroupLocked: [group: WorkflowGraphGroup]
   renameGroup: [groupId: string, name: string]
   deleteGroup: [groupId: string]
   updateGroupColor: [groupId: string, color: string]
@@ -150,6 +166,22 @@ function readToggleTitle(group: WorkflowGraphGroup): string {
   if (state === 'enabled') return '禁用节点组'
   if (state === 'disabled') return '启用节点组'
   return '统一启用节点组'
+}
+
+function readLockTitle(group: WorkflowGraphGroup): string {
+  return group.locked ? '解锁节点组，恢复移动和调整大小' : '锁定节点组，组区域用于拖动画布'
+}
+
+function handleGroupMouseDown(event: MouseEvent, group: WorkflowGraphGroup): void {
+  if (group.locked) return
+  event.stopPropagation()
+  emit('startGroupDrag', event, group)
+}
+
+function handleGroupClick(event: MouseEvent, group: WorkflowGraphGroup): void {
+  if (group.locked) return
+  event.stopPropagation()
+  emit('selectGroup', group.group_id)
 }
 
 function readGroupColor(group: WorkflowGraphGroup): string {

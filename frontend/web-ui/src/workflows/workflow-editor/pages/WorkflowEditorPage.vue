@@ -60,6 +60,7 @@
           @start-group-drag="startGroupDrag"
           @start-group-resize="startGroupResize"
           @toggle-group-enabled="toggleGroupEnabled"
+          @toggle-group-locked="toggleGroupLocked"
           @rename-group="renameGroup"
           @delete-group="deleteGroup"
           @update-group-color="updateGroupColor"
@@ -959,6 +960,7 @@ const {
   startGroupResize,
   syncMembershipAfterNodeDrag,
   toggleGroupEnabled,
+  toggleGroupLocked,
   renameGroup,
   deleteGroup,
   updateGroupColor,
