@@ -590,6 +590,7 @@ def run_workflow_snapshot_process_worker(
     session_factory: SessionFactory | None = None
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
+    published_inference_gateway: PublishedInferenceGatewayClient | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         session_factory = SessionFactory(settings.to_database_settings())
@@ -695,6 +696,8 @@ def run_workflow_snapshot_process_worker(
             async_supervisor.stop()
         if local_buffer_reader is not None:
             local_buffer_reader.close()
+        if published_inference_gateway is not None:
+            published_inference_gateway.close()
         if session_factory is not None:
             session_factory.engine.dispose()
 

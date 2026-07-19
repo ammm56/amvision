@@ -417,7 +417,7 @@ backend/broker/
 - detection deployment 节点通过 PublishedInferenceGateway 调用已发布推理服务。
 - 保留 HTTP/base64/object_key 输入，进入内部执行前可转换为 BufferRef。
 
-当前主干已完成上述基础能力。memory image-ref 在存在 broker writer 时会先写入 LocalBufferBroker direct mmap 数据面，再以 BufferRef 调用 PublishedInferenceGateway；storage、buffer 和 frame image-ref 会按引用传递给长期运行的 deployment worker。
+当前主干已完成上述基础能力。memory image-ref 在存在 broker writer 时会先写入 LocalBufferBroker direct mmap 数据面，再以 BufferRef 调用 PublishedInferenceGateway；storage、buffer 和 frame image-ref 会按引用传递给长期运行的 deployment worker。同一个 Workflow Run 内重复调用相同 deployment 时，PublishedInferenceGateway 会按执行作用域复用已经解析并完成运行检查的 process config；缓存数量有固定上限，进程失效时会清除当前作用域缓存并按原有 auto-start 规则恢复，避免把跨 Run 的过期状态当作长期真值。父子进程事件通道使用单一响应路由线程按 `request_id` 分发可乱序响应，父进程 dispatcher 通过有界执行池处理推理事件；该机制属于所有 workflow 推理节点共享的调用边界，不为具体 Workflow App 或模型类型维护专用分支。
 
 ### 第 2 阶段：deployment worker BufferRef 输入增强
 

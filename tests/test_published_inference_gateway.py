@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from time import sleep
 from types import SimpleNamespace
 
 from backend.contracts.buffers import BufferRef
@@ -21,7 +24,9 @@ from backend.service.application.deployments import (
 from backend.service.application.models.inference.detection_inference_task_service import (
     run_detection_inference_task,
 )
-from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessExecution
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessExecution,
+)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionDetection,
     DetectionPredictionExecutionResult,
@@ -32,12 +37,18 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     list_registered_execution_cleanups,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 from tests.api_test_support import build_test_jpeg_bytes
 
 
-def test_published_inference_gateway_client_calls_parent_supervisor_with_event_dispatcher() -> None:
+def test_published_inference_gateway_client_calls_parent_supervisor_with_event_dispatcher() -> (
+    None
+):
     """验证 gateway client 通过父进程事件 dispatcher 调用 backend-service 持有的 supervisor。"""
 
     context = multiprocessing.get_context("spawn")
@@ -82,10 +93,21 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
         assert fake_supervisor.last_prediction_request is not None
         assert fake_supervisor.last_prediction_request.input_image_bytes is None
         assert fake_supervisor.last_prediction_request.input_image_payload is not None
-        assert fake_supervisor.last_prediction_request.input_image_payload["transport_kind"] == "buffer"
-        assert fake_supervisor.last_prediction_request.input_image_payload["buffer_ref"]["lease_id"] == "lease-1"
+        assert (
+            fake_supervisor.last_prediction_request.input_image_payload[
+                "transport_kind"
+            ]
+            == "buffer"
+        )
+        assert (
+            fake_supervisor.last_prediction_request.input_image_payload["buffer_ref"][
+                "lease_id"
+            ]
+            == "lease-1"
+        )
         assert fake_supervisor.last_prediction_request.score_threshold == 0.41
     finally:
+        client.close()
         dispatcher.stop()
         channel.request_queue.close()
         channel.request_queue.join_thread()
@@ -93,7 +115,85 @@ def test_published_inference_gateway_client_calls_parent_supervisor_with_event_d
         channel.response_queue.join_thread()
 
 
-def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway_call() -> None:
+def test_published_inference_gateway_client_correlates_out_of_order_responses() -> None:
+    """验证并发请求乱序完成时，每个调用仍收到自己的响应。"""
+
+    context = multiprocessing.get_context("spawn")
+    channel = PublishedInferenceGatewayEventChannel(
+        request_queue=context.Queue(),
+        response_queue=context.Queue(),
+        request_timeout_seconds=3.0,
+    )
+    dispatcher = PublishedInferenceGatewayDispatcher(
+        channel=channel,
+        gateway=_OutOfOrderPublishedInferenceGateway(),
+    )
+    dispatcher.start()
+    client = PublishedInferenceGatewayClient(channel)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            slow_future = executor.submit(client.infer, _build_gateway_request("slow"))
+            fast_future = executor.submit(client.infer, _build_gateway_request("fast"))
+            slow_result = slow_future.result(timeout=3.0)
+            fast_result = fast_future.result(timeout=3.0)
+
+        assert slow_result.metadata["trace_id"] == "slow"
+        assert fast_result.metadata["trace_id"] == "fast"
+    finally:
+        client.close()
+        dispatcher.stop()
+        channel.request_queue.close()
+        channel.request_queue.join_thread()
+        channel.response_queue.close()
+        channel.response_queue.join_thread()
+
+
+def test_published_inference_gateway_reuses_process_context_within_execution_scope() -> (
+    None
+):
+    """验证同一 Workflow Run 的逐项推理只解析并检查一次 deployment。"""
+
+    deployment_service = _FakeDeploymentService()
+    deployment_supervisor = _FakeDeploymentSupervisor()
+    gateway = DetectionDeploymentPublishedInferenceGateway(
+        deployment_service=deployment_service,
+        deployment_process_supervisor=deployment_supervisor,
+    )
+    request = PublishedInferenceRequest(
+        task_type="detection",
+        deployment_instance_id="deployment-1",
+        image_payload={
+            "transport_kind": "buffer",
+            "buffer_ref": _build_buffer_ref().model_dump(mode="json"),
+            "media_type": "image/jpeg",
+            "width": 64,
+            "height": 64,
+        },
+        auto_start_process=True,
+        execution_scope_id="workflow-run-1",
+    )
+
+    first_result = gateway.infer(request)
+    second_result = gateway.infer(request)
+
+    assert first_result.detections == second_result.detections
+    assert deployment_service.resolve_calls == 1
+    assert deployment_supervisor.ensure_calls == 1
+    assert deployment_supervisor.status_calls == 3
+    assert deployment_supervisor.inference_calls == 2
+    assert (
+        first_result.metadata["timings"]["published_inference_gateway_context_reused"]
+        is False
+    )
+    assert (
+        second_result.metadata["timings"]["published_inference_gateway_context_reused"]
+        is True
+    )
+
+
+def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway_call() -> (
+    None
+):
     """验证 detection 节点会把 execution memory 图片转换为 BufferRef 后调用 gateway。"""
 
     source_bytes = build_test_jpeg_bytes()
@@ -118,7 +218,10 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
         WorkflowNodeExecutionRequest(
             node_id="detect",
             node_definition=object(),
-            parameters={"deployment_instance_id": "deployment-1", "score_threshold": 0.52},
+            parameters={
+                "deployment_instance_id": "deployment-1",
+                "score_threshold": 0.52,
+            },
             input_values={
                 "image": build_memory_image_payload(
                     image_handle=registered_image.image_handle,
@@ -142,7 +245,10 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
     assert fake_gateway.last_request is not None
     assert fake_gateway.last_request.input_image_bytes is None
     assert fake_gateway.last_request.image_payload["transport_kind"] == "buffer"
-    assert fake_gateway.last_request.image_payload["buffer_ref"]["lease_id"] == "lease-memory"
+    assert (
+        fake_gateway.last_request.image_payload["buffer_ref"]["lease_id"]
+        == "lease-memory"
+    )
     assert fake_gateway.last_request.score_threshold == 0.52
 
 
@@ -193,7 +299,9 @@ def test_yolox_detection_node_releases_local_buffer_lease_after_gateway_call() -
     assert not list_registered_execution_cleanups(execution_metadata)
 
 
-def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails() -> None:
+def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails() -> (
+    None
+):
     """验证临时 LocalBufferBroker lease 立即释放失败时会登记 workflow cleanup 兜底。"""
 
     source_bytes = build_test_jpeg_bytes()
@@ -240,7 +348,10 @@ def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails(
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
     assert fake_writer.release_calls == [("lease-memory", "image-test")]
     assert len(cleanup_items) == 1
-    assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
+    assert (
+        cleanup_items[0].resource_kind
+        == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
+    )
     assert cleanup_items[0].resource_id == "lease-memory"
     assert cleanup_items[0].metadata == {"pool_name": "image-test"}
 
@@ -272,16 +383,30 @@ def test_run_detection_inference_task_preserves_input_image_payload() -> None:
     assert fake_supervisor.last_prediction_request.input_uri is None
     assert fake_supervisor.last_prediction_request.input_image_bytes is None
     assert fake_supervisor.last_prediction_request.input_image_payload is not None
-    assert fake_supervisor.last_prediction_request.input_image_payload["transport_kind"] == "buffer"
-    assert fake_supervisor.last_prediction_request.input_image_payload["buffer_ref"]["lease_id"] == "lease-1"
+    assert (
+        fake_supervisor.last_prediction_request.input_image_payload["transport_kind"]
+        == "buffer"
+    )
+    assert (
+        fake_supervisor.last_prediction_request.input_image_payload["buffer_ref"][
+            "lease_id"
+        ]
+        == "lease-1"
+    )
 
 
 class _FakeDeploymentService:
     """返回固定 process_config 的测试 deployment service。"""
 
+    def __init__(self) -> None:
+        """初始化解析计数。"""
+
+        self.resolve_calls = 0
+
     def resolve_process_config(self, deployment_instance_id: str) -> SimpleNamespace:
         """返回测试 process_config。"""
 
+        self.resolve_calls += 1
         return SimpleNamespace(deployment_instance_id=deployment_instance_id)
 
 
@@ -294,16 +419,24 @@ class _FakeDeploymentSupervisor:
         self.process_state = "stopped"
         self.start_calls: list[str] = []
         self.last_prediction_request = None
+        self.ensure_calls = 0
+        self.status_calls = 0
+        self.inference_calls = 0
 
     def ensure_deployment(self, config: SimpleNamespace) -> None:
         """登记 deployment 配置。"""
 
+        self.ensure_calls += 1
         self.last_config = config
 
     def get_status(self, config: SimpleNamespace) -> SimpleNamespace:
         """返回当前进程状态。"""
 
-        return SimpleNamespace(process_state=self.process_state, deployment_instance_id=config.deployment_instance_id)
+        self.status_calls += 1
+        return SimpleNamespace(
+            process_state=self.process_state,
+            deployment_instance_id=config.deployment_instance_id,
+        )
 
     def start_deployment(self, config: SimpleNamespace) -> SimpleNamespace:
         """模拟启动 deployment worker。"""
@@ -312,9 +445,12 @@ class _FakeDeploymentSupervisor:
         self.start_calls.append(config.deployment_instance_id)
         return self.get_status(config)
 
-    def run_inference(self, *, config: SimpleNamespace, request) -> DeploymentProcessExecution:
+    def run_inference(
+        self, *, config: SimpleNamespace, request
+    ) -> DeploymentProcessExecution:
         """记录推理请求并返回固定结果。"""
 
+        self.inference_calls += 1
         self.last_prediction_request = request
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
@@ -367,7 +503,9 @@ class _FakeLocalBufferWriter:
         self.last_owner_id = owner_id
         return SimpleNamespace(
             lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-test"),
-            buffer_ref=_build_buffer_ref(lease_id="lease-memory", media_type=media_type),
+            buffer_ref=_build_buffer_ref(
+                lease_id="lease-memory", media_type=media_type
+            ),
         )
 
     def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
@@ -407,7 +545,53 @@ class _FakePublishedInferenceGateway:
         )
 
 
-def _build_buffer_ref(*, lease_id: str = "lease-1", media_type: str = "image/jpeg") -> BufferRef:
+class _OutOfOrderPublishedInferenceGateway:
+    """让两个并发请求按相反顺序完成的测试 gateway。"""
+
+    def __init__(self) -> None:
+        """初始化双请求同步屏障。"""
+
+        self._barrier = Barrier(2)
+
+    def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
+        """等待两个请求同时进入，并让 slow 请求后完成。"""
+
+        self._barrier.wait(timeout=2.0)
+        if request.trace_id == "slow":
+            sleep(0.05)
+        return PublishedInferenceResult(
+            task_type=request.task_type,
+            deployment_instance_id=request.deployment_instance_id,
+            latency_ms=1.0,
+            image_width=64,
+            image_height=64,
+            metadata={"trace_id": request.trace_id or ""},
+        )
+
+
+def _build_gateway_request(trace_id: str) -> PublishedInferenceRequest:
+    """构造并发 gateway 关联测试请求。"""
+
+    return PublishedInferenceRequest(
+        task_type="detection",
+        deployment_instance_id=f"deployment-{trace_id}",
+        image_payload={
+            "transport_kind": "buffer",
+            "buffer_ref": _build_buffer_ref(lease_id=f"lease-{trace_id}").model_dump(
+                mode="json"
+            ),
+            "media_type": "image/jpeg",
+            "width": 64,
+            "height": 64,
+        },
+        trace_id=trace_id,
+        execution_scope_id="workflow-run-concurrent",
+    )
+
+
+def _build_buffer_ref(
+    *, lease_id: str = "lease-1", media_type: str = "image/jpeg"
+) -> BufferRef:
     """构造测试使用的 BufferRef。"""
 
     return BufferRef(
@@ -429,6 +613,10 @@ def _build_runtime_session_info() -> DetectionRuntimeSessionInfo:
         backend_name="fake",
         model_uri="models/model.onnx",
         device_name="cpu",
-        input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-        output_spec=DetectionRuntimeTensorSpec(name="detections", shape=(1, 7), dtype="float32"),
+        input_spec=DetectionRuntimeTensorSpec(
+            name="images", shape=(1, 3, 64, 64), dtype="float32"
+        ),
+        output_spec=DetectionRuntimeTensorSpec(
+            name="detections", shape=(1, 7), dtype="float32"
+        ),
     )

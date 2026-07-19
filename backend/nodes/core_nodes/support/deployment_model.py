@@ -21,7 +21,9 @@ from backend.nodes.runtime_support import (
     require_image_payload,
     resolve_image_reference,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.application.workflows.runtime.policies import (
     should_return_workflow_timing_metadata,
 )
@@ -66,10 +68,14 @@ def run_direct_model_inference(
         inference_result = runtime_context.build_published_inference_gateway().infer(
             PublishedInferenceRequest(
                 task_type=task_type,
-                deployment_instance_id=require_str_parameter(request, "deployment_instance_id"),
+                deployment_instance_id=require_str_parameter(
+                    request, "deployment_instance_id"
+                ),
                 image_payload=image_payload,
                 input_image_bytes=input_image_bytes,
-                score_threshold=get_optional_float_parameter(request, "score_threshold"),
+                score_threshold=get_optional_float_parameter(
+                    request, "score_threshold"
+                ),
                 top_k=get_optional_int_parameter(request, "top_k"),
                 mask_threshold=get_optional_float_parameter(request, "mask_threshold"),
                 keypoint_confidence_threshold=get_optional_float_parameter(
@@ -77,17 +83,20 @@ def run_direct_model_inference(
                     "keypoint_confidence_threshold",
                 ),
                 auto_start_process=bool(
-                    get_optional_bool_parameter(request, "auto_start_process") is not False
+                    get_optional_bool_parameter(request, "auto_start_process")
+                    is not False
                 ),
                 runtime_mode="sync",
                 save_result_image=bool(
                     get_optional_bool_parameter(request, "save_result_image") is True
                 ),
                 return_preview_image_base64=bool(
-                    get_optional_bool_parameter(request, "return_preview_image_base64") is True
+                    get_optional_bool_parameter(request, "return_preview_image_base64")
+                    is True
                 ),
                 extra_options=get_optional_dict_parameter(request, "extra_options"),
                 trace_id=_read_optional_trace_id(request),
+                execution_scope_id=_read_optional_execution_scope_id(request),
             ),
         )
     finally:
@@ -170,7 +179,10 @@ def _try_write_memory_image_to_local_buffer(
         owner_kind="workflow-runtime",
         owner_id=_build_buffer_owner_id(request),
         media_type=str(normalized_payload["media_type"]),
-        shape=tuple(int(item) for item in require_image_payload(normalized_payload).get("shape", ())),
+        shape=tuple(
+            int(item)
+            for item in require_image_payload(normalized_payload).get("shape", ())
+        ),
         dtype=_read_optional_payload_text(normalized_payload, "dtype"),
         layout=_read_optional_payload_text(normalized_payload, "layout"),
         pixel_format=_read_optional_payload_text(normalized_payload, "pixel_format"),
@@ -187,8 +199,12 @@ def _try_write_memory_image_to_local_buffer(
     pool_name = getattr(lease, "pool_name", None)
     return _TemporaryLocalBufferInput(
         payload=buffer_payload,
-        lease_id=lease_id.strip() if isinstance(lease_id, str) and lease_id.strip() else None,
-        pool_name=pool_name.strip() if isinstance(pool_name, str) and pool_name.strip() else None,
+        lease_id=lease_id.strip()
+        if isinstance(lease_id, str) and lease_id.strip()
+        else None,
+        pool_name=pool_name.strip()
+        if isinstance(pool_name, str) and pool_name.strip()
+        else None,
     )
 
 
@@ -237,7 +253,9 @@ def _register_local_buffer_lease_cleanup(
     register_local_buffer_lease_cleanup(
         request.execution_metadata,
         lease_id=lease_id.strip(),
-        pool_name=pool_name.strip() if isinstance(pool_name, str) and pool_name.strip() else None,
+        pool_name=pool_name.strip()
+        if isinstance(pool_name, str) and pool_name.strip()
+        else None,
     )
 
 
@@ -266,6 +284,17 @@ def _read_optional_trace_id(request: WorkflowNodeExecutionRequest) -> str | None
     trace_id = request.execution_metadata.get("trace_id")
     if isinstance(trace_id, str) and trace_id.strip():
         return trace_id.strip()
+    workflow_run_id = request.execution_metadata.get("workflow_run_id")
+    if isinstance(workflow_run_id, str) and workflow_run_id.strip():
+        return workflow_run_id.strip()
+    return None
+
+
+def _read_optional_execution_scope_id(
+    request: WorkflowNodeExecutionRequest,
+) -> str | None:
+    """读取单次 Workflow Run 的稳定作用域 id，供重复模型调用复用运行上下文。"""
+
     workflow_run_id = request.execution_metadata.get("workflow_run_id")
     if isinstance(workflow_run_id, str) and workflow_run_id.strip():
         return workflow_run_id.strip()

@@ -66,7 +66,8 @@
     "opencv.draw",
     "vision.render",
     "inspection.roi.visualize",
-    "inspection.roi.batch"
+    "inspection.roi.batch",
+    "execution.pure"
   ],
   "runtime_requirements": {
     "python_packages": [

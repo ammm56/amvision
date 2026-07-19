@@ -240,6 +240,8 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 - node_pack_id: opencv.basic-nodes / opencv.render-nodes / opencv.defect-nodes / opencv.shape-nodes / opencv.measurement-nodes / opencv.geometry-nodes / opencv.matching-nodes
 - capability_tags: [opencv.preprocess] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching]
 
+`capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。
+
 ## 最小 JSON 例子
 
 ### NodeDefinition

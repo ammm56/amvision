@@ -79,7 +79,9 @@ def test_workflow_graph_executor_runs_python_callable_and_worker_task_nodes() ->
         display_name="Text Pipeline",
         nodes=(
             WorkflowGraphNode(node_id="normalize", node_type_id="core.text.normalize"),
-            WorkflowGraphNode(node_id="uppercase", node_type_id="core.text.uppercase-worker"),
+            WorkflowGraphNode(
+                node_id="uppercase", node_type_id="core.text.uppercase-worker"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -122,7 +124,10 @@ def test_workflow_graph_executor_runs_python_callable_and_worker_task_nodes() ->
     )
 
     assert execution_result.outputs["final_text"]["value"] == "HELLO WORKFLOW"
-    assert [record.node_id for record in execution_result.node_records] == ["normalize", "uppercase"]
+    assert [record.node_id for record in execution_result.node_records] == [
+        "normalize",
+        "uppercase",
+    ]
     assert execution_result.node_records[1].runtime_kind == "worker-task"
 
 
@@ -156,7 +161,9 @@ def test_workflow_graph_executor_requires_registered_handler() -> None:
         template_id="missing-handler-template",
         template_version="1.0.0",
         display_name="Missing Handler Template",
-        nodes=(WorkflowGraphNode(node_id="worker", node_type_id="core.text.worker-only"),),
+        nodes=(
+            WorkflowGraphNode(node_id="worker", node_type_id="core.text.worker-only"),
+        ),
         template_inputs=(
             WorkflowGraphInput(
                 input_id="source_text",
@@ -375,11 +382,113 @@ def test_workflow_graph_executor_ignores_edges_from_disabled_nodes() -> None:
     assert [record.node_id for record in execution_result.node_records] == ["target"]
 
 
+def test_workflow_graph_executor_skips_unused_pure_node_branch() -> None:
+    """验证纯节点仅连接禁用下游时不会执行，同时不影响可观察节点。"""
+
+    pure_node = NodeDefinition(
+        node_type_id="core.test.pure-render",
+        display_name="Pure Render",
+        category="test.execution",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        output_ports=(
+            NodePortDefinition(
+                name="value",
+                display_name="Value",
+                payload_type_id="value.v1",
+            ),
+        ),
+        capability_tags=("execution.pure",),
+    )
+    preview_node = NodeDefinition(
+        node_type_id="core.test.preview",
+        display_name="Preview",
+        category="test.execution",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        input_ports=(
+            NodePortDefinition(
+                name="value",
+                display_name="Value",
+                payload_type_id="value.v1",
+            ),
+        ),
+    )
+    observable_node = NodeDefinition(
+        node_type_id="core.test.observable",
+        display_name="Observable",
+        category="test.execution",
+        implementation_kind=NODE_IMPLEMENTATION_CORE,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        output_ports=(
+            NodePortDefinition(
+                name="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+            ),
+        ),
+    )
+    template = WorkflowGraphTemplate(
+        template_id="unused-pure-branch-template",
+        template_version="1.0.0",
+        display_name="Unused Pure Branch",
+        nodes=(
+            WorkflowGraphNode(node_id="pure", node_type_id=pure_node.node_type_id),
+            WorkflowGraphNode(
+                node_id="preview",
+                node_type_id=preview_node.node_type_id,
+                enabled=False,
+            ),
+            WorkflowGraphNode(
+                node_id="observable", node_type_id=observable_node.node_type_id
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-pure-preview",
+                source_node_id="pure",
+                source_port="value",
+                target_node_id="preview",
+                target_port="value",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+                source_node_id="observable",
+                source_port="result",
+            ),
+        ),
+    )
+    registry = WorkflowNodeRuntimeRegistry()
+    registry.register_python_callable(pure_node, _raise_assertion_handler)
+    registry.register_python_callable(preview_node, _raise_assertion_handler)
+    registry.register_python_callable(
+        observable_node, lambda request: {"result": {"value": "ok"}}
+    )
+
+    execution_result = WorkflowGraphExecutor(registry=registry).execute(
+        template=template,
+        input_values={},
+    )
+
+    assert execution_result.outputs["result"] == {"value": "ok"}
+    assert [record.node_id for record in execution_result.node_records] == [
+        "observable"
+    ]
+
+
 def _normalize_text_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """去除输入文本两端空白。"""
 
     raw_payload = request.input_values["text"]
-    raw_text = str(raw_payload.get("value") or "") if isinstance(raw_payload, dict) else str(raw_payload)
+    raw_text = (
+        str(raw_payload.get("value") or "")
+        if isinstance(raw_payload, dict)
+        else str(raw_payload)
+    )
     return {"text": {"value": raw_text.strip()}}
 
 
@@ -387,21 +496,33 @@ def _uppercase_text_worker(request: WorkflowNodeExecutionRequest) -> dict[str, o
     """模拟 worker-task 处理函数，把文本转换为大写。"""
 
     raw_payload = request.input_values["text"]
-    raw_text = str(raw_payload.get("value") or "") if isinstance(raw_payload, dict) else str(raw_payload)
+    raw_text = (
+        str(raw_payload.get("value") or "")
+        if isinstance(raw_payload, dict)
+        else str(raw_payload)
+    )
     return {"result": {"value": raw_text.upper()}}
 
 
-def _raise_assertion_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _raise_assertion_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """用于验证节点失败定位的测试处理函数。"""
 
     raise AssertionError("boom")
 
 
-def _optional_input_target_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _optional_input_target_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """返回必填输入值，并标记可选输入是否为空。"""
 
     required_payload = request.input_values["required_value"]
-    required_value = required_payload.get("value") if isinstance(required_payload, dict) else required_payload
+    required_value = (
+        required_payload.get("value")
+        if isinstance(required_payload, dict)
+        else required_payload
+    )
     return {
         "result": {
             "value": required_value,

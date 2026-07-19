@@ -22,6 +22,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from custom_nodes.opencv_render_nodes.backend.nodes.draw_rois import (
+    _fill_polygon_alpha,
+)
 
 
 def test_opencv_basic_batch7_draw_roi_execute(tmp_path: Path) -> None:
@@ -38,7 +41,9 @@ def test_opencv_basic_batch7_draw_roi_execute(tmp_path: Path) -> None:
         template_version="1.0.0",
         display_name="OpenCV Batch7 Draw ROI",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi",
                 node_type_id="core.vision.roi-create",
@@ -139,7 +144,9 @@ def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
         template_version="1.0.0",
         display_name="OpenCV Batch7 Draw ROIs",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi_a",
                 node_type_id="core.vision.roi-create",
@@ -158,7 +165,9 @@ def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
                     "polygon_xy": [[70, 22], [108, 28], [100, 74], [66, 70]],
                 },
             ),
-            WorkflowGraphNode(node_id="roi_list", node_type_id="core.vision.roi-list-create"),
+            WorkflowGraphNode(
+                node_id="roi_list", node_type_id="core.vision.roi-list-create"
+            ),
             WorkflowGraphNode(
                 node_id="draw_rois",
                 node_type_id="custom.opencv.draw-rois",
@@ -256,20 +265,53 @@ def test_opencv_basic_batch7_draw_rois_execute(tmp_path: Path) -> None:
     assert roi_overlay_bytes != source_bytes
 
 
+def test_opencv_basic_batch7_draw_rois_alpha_fill_only_blends_polygon_region() -> None:
+    """验证透明填充只融合 ROI 局部区域，不为每个 ROI 处理整张图片。"""
+
+    import cv2
+    import numpy as np
+
+    image_matrix = np.zeros((120, 160, 3), dtype=np.uint8)
+    polygon_points = np.asarray(
+        [[[20, 30]], [[70, 30]], [[70, 80]], [[20, 80]]],
+        dtype=np.int32,
+    )
+    tracking_cv2 = _TrackingCv2(cv2)
+
+    _fill_polygon_alpha(
+        cv2_module=tracking_cv2,
+        np_module=np,
+        image_matrix=image_matrix,
+        polygon_points=polygon_points,
+        color=(0, 180, 255),
+        fill_alpha=0.12,
+    )
+
+    assert tracking_cv2.blended_shapes
+    blended_height, blended_width = tracking_cv2.blended_shapes[0][:2]
+    assert blended_height < image_matrix.shape[0]
+    assert blended_width < image_matrix.shape[1]
+    assert np.count_nonzero(image_matrix) > 0
+
+
 def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
     """验证 crop-export 可消费 ROI Grid Create.rois 批量输出裁剪图。"""
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage.write_bytes("inputs/roi-crop-export.png", _build_roi_render_test_png_bytes())
+    dataset_storage.write_bytes(
+        "inputs/roi-crop-export.png", _build_roi_render_test_png_bytes()
+    )
 
     template = WorkflowGraphTemplate(
         template_id="opencv-batch7-crop-export-rois",
         template_version="1.0.0",
         display_name="OpenCV Batch7 Crop Export ROIs",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi_grid",
                 node_type_id="core.vision.roi-grid-create",
@@ -285,7 +327,9 @@ def test_opencv_basic_batch7_crop_export_rois_execute(tmp_path: Path) -> None:
                     "roi_id_prefix": "slot",
                 },
             ),
-            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="crop_export", node_type_id="custom.opencv.crop-export"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -365,14 +409,18 @@ def test_opencv_basic_batch7_image_refs_statistics_execute(tmp_path: Path) -> No
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage.write_bytes("inputs/roi-statistics.png", _build_image_refs_statistics_test_png_bytes())
+    dataset_storage.write_bytes(
+        "inputs/roi-statistics.png", _build_image_refs_statistics_test_png_bytes()
+    )
 
     template = WorkflowGraphTemplate(
         template_id="opencv-batch7-image-refs-statistics",
         template_version="1.0.0",
         display_name="OpenCV Batch7 Image Refs Statistics",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi_grid",
                 node_type_id="core.vision.roi-grid-create",
@@ -388,7 +436,9 @@ def test_opencv_basic_batch7_image_refs_statistics_execute(tmp_path: Path) -> No
                     "roi_id_prefix": "slot",
                 },
             ),
-            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="crop_export", node_type_id="custom.opencv.crop-export"
+            ),
             WorkflowGraphNode(
                 node_id="statistics",
                 node_type_id="custom.opencv.image-refs-statistics",
@@ -483,14 +533,18 @@ def test_opencv_basic_batch7_image_refs_empty_check_execute(tmp_path: Path) -> N
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage.write_bytes("inputs/roi-empty-check.png", _build_image_refs_empty_check_test_png_bytes())
+    dataset_storage.write_bytes(
+        "inputs/roi-empty-check.png", _build_image_refs_empty_check_test_png_bytes()
+    )
 
     template = WorkflowGraphTemplate(
         template_id="opencv-batch7-image-refs-empty-check",
         template_version="1.0.0",
         display_name="OpenCV Batch7 Image Refs Empty Check",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi_grid",
                 node_type_id="core.vision.roi-grid-create",
@@ -506,7 +560,9 @@ def test_opencv_basic_batch7_image_refs_empty_check_execute(tmp_path: Path) -> N
                     "roi_id_prefix": "slot",
                 },
             ),
-            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="crop_export", node_type_id="custom.opencv.crop-export"
+            ),
             WorkflowGraphNode(
                 node_id="slot_metrics",
                 node_type_id="custom.opencv.image-refs-slot-metrics",
@@ -630,14 +686,18 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage.write_bytes("inputs/roi-slot-state.png", _build_image_refs_empty_check_test_png_bytes())
+    dataset_storage.write_bytes(
+        "inputs/roi-slot-state.png", _build_image_refs_empty_check_test_png_bytes()
+    )
 
     template = WorkflowGraphTemplate(
         template_id="opencv-batch7-slot-state",
         template_version="1.0.0",
         display_name="OpenCV Batch7 Slot State",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="roi_grid",
                 node_type_id="core.vision.roi-grid-create",
@@ -653,7 +713,9 @@ def test_opencv_basic_batch7_slot_empty_occupied_state_execute(tmp_path: Path) -
                     "roi_id_prefix": "slot",
                 },
             ),
-            WorkflowGraphNode(node_id="crop_export", node_type_id="custom.opencv.crop-export"),
+            WorkflowGraphNode(
+                node_id="crop_export", node_type_id="custom.opencv.crop-export"
+            ),
             WorkflowGraphNode(
                 node_id="slot_metrics",
                 node_type_id="custom.opencv.image-refs-slot-metrics",
@@ -846,7 +908,9 @@ def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
         template_version="1.0.0",
         display_name="OpenCV Batch7 Draw Regions",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="otsu",
                 node_type_id="custom.opencv.otsu-threshold",
@@ -860,7 +924,11 @@ def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
             WorkflowGraphNode(
                 node_id="draw_regions",
                 node_type_id="custom.opencv.draw-regions",
-                parameters={"mask_alpha": 0.4, "draw_boxes": True, "draw_polygons": True},
+                parameters={
+                    "mask_alpha": 0.4,
+                    "draw_boxes": True,
+                    "draw_polygons": True,
+                },
             ),
         ),
         edges=(
@@ -943,7 +1011,10 @@ def test_opencv_basic_batch7_draw_regions_execute(tmp_path: Path) -> None:
     assert draw_regions["transport_kind"] == "memory"
     assert draw_regions["media_type"] == "image/raw"
     assert draw_regions["pixel_format"] == "bgr24"
-    assert len(draw_regions_bytes) == int(draw_regions["width"]) * int(draw_regions["height"]) * 3
+    assert (
+        len(draw_regions_bytes)
+        == int(draw_regions["width"]) * int(draw_regions["height"]) * 3
+    )
     assert draw_regions_bytes != source_bytes
 
 
@@ -958,13 +1029,17 @@ def _create_repository_executor() -> WorkflowGraphExecutor:
         node_pack_loader=node_pack_loader,
     )
     runtime_registry_loader.refresh()
-    return WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    return WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
 
 
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
 
 
 def _build_roi_render_test_png_bytes() -> bytes:
@@ -1023,3 +1098,29 @@ def _build_image_refs_empty_check_test_png_bytes() -> bytes:
     success, encoded = cv2.imencode(".png", image)
     assert success is True
     return encoded.tobytes()
+
+
+class _TrackingCv2:
+    """记录 addWeighted 输入尺寸并转发实际 OpenCV 调用。"""
+
+    def __init__(self, cv2_module: object) -> None:
+        """保存实际 OpenCV 模块。"""
+
+        self.cv2_module = cv2_module
+        self.blended_shapes: list[tuple[int, ...]] = []
+
+    def boundingRect(self, points: object):
+        """转发外接矩形计算。"""
+
+        return self.cv2_module.boundingRect(points)
+
+    def fillPoly(self, image: object, points: object, color: object) -> None:
+        """转发 polygon 填充。"""
+
+        self.cv2_module.fillPoly(image, points, color)
+
+    def addWeighted(self, source: object, *args: object, **kwargs: object):
+        """记录局部矩阵尺寸并转发透明融合。"""
+
+        self.blended_shapes.append(tuple(int(item) for item in source.shape))
+        return self.cv2_module.addWeighted(source, *args, **kwargs)

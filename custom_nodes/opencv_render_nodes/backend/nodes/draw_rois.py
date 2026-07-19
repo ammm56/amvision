@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from backend.nodes.opencv_label_text import build_ascii_overlay_label, choose_ascii_overlay_name
+from backend.nodes.opencv_label_text import (
+    build_ascii_overlay_label,
+    choose_ascii_overlay_name,
+)
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes._opencv_shared.backend.runtime.images import (
     build_output_image_matrix_payload,
     load_image_matrix,
@@ -53,25 +58,39 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         field_name="fill_alpha",
         default=0.12,
     )
-    draw_label = True if request.parameters.get("draw_label") is None else bool(request.parameters.get("draw_label"))
-    draw_bbox = False if request.parameters.get("draw_bbox") is None else bool(request.parameters.get("draw_bbox"))
-    draw_index = True if request.parameters.get("draw_index") is None else bool(request.parameters.get("draw_index"))
+    draw_label = (
+        True
+        if request.parameters.get("draw_label") is None
+        else bool(request.parameters.get("draw_label"))
+    )
+    draw_bbox = (
+        False
+        if request.parameters.get("draw_bbox") is None
+        else bool(request.parameters.get("draw_bbox"))
+    )
+    draw_index = (
+        True
+        if request.parameters.get("draw_index") is None
+        else bool(request.parameters.get("draw_index"))
+    )
 
     for roi_index, roi_payload in enumerate(roi_items, start=1):
         color = COLOR_PALETTE[(roi_index - 1) % len(COLOR_PALETTE)]
         polygon_points = np_module.asarray(
-            [[int(round(point[0])), int(round(point[1]))] for point in roi_payload["polygon_xy"]],
+            [
+                [int(round(point[0])), int(round(point[1]))]
+                for point in roi_payload["polygon_xy"]
+            ],
             dtype=np_module.int32,
         ).reshape((-1, 1, 2))
         if fill_alpha > 0.0:
-            overlay_matrix = image_matrix.copy()
-            cv2_module.fillPoly(overlay_matrix, [polygon_points], color)
-            image_matrix = cv2_module.addWeighted(
-                overlay_matrix,
-                fill_alpha,
-                image_matrix,
-                1.0 - fill_alpha,
-                0.0,
+            _fill_polygon_alpha(
+                cv2_module=cv2_module,
+                np_module=np_module,
+                image_matrix=image_matrix,
+                polygon_points=polygon_points,
+                color=color,
+                fill_alpha=fill_alpha,
             )
         cv2_module.polylines(
             image_matrix,
@@ -105,13 +124,56 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             request,
             source_payload=image_payload,
             image_matrix=image_matrix,
-            object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+            object_key=normalize_optional_object_key(
+                request.parameters.get("output_object_key")
+            ),
             variant_name="draw-rois",
             output_extension=".png",
             media_type="image/png",
             error_message="OpenCV 批量绘制 ROI 后无法编码输出图片",
         )
     }
+
+
+def _fill_polygon_alpha(
+    *,
+    cv2_module: object,
+    np_module: object,
+    image_matrix: object,
+    polygon_points: object,
+    color: tuple[int, int, int],
+    fill_alpha: float,
+) -> None:
+    """只在 polygon 外接区域内执行透明填充，避免为每个 ROI 复制整张图片。"""
+
+    if fill_alpha >= 1.0:
+        cv2_module.fillPoly(image_matrix, [polygon_points], color)
+        return
+
+    image_height, image_width = image_matrix.shape[:2]
+    polygon_x, polygon_y, polygon_width, polygon_height = cv2_module.boundingRect(
+        polygon_points
+    )
+    clip_x1 = max(0, int(polygon_x))
+    clip_y1 = max(0, int(polygon_y))
+    clip_x2 = min(int(image_width), int(polygon_x + polygon_width))
+    clip_y2 = min(int(image_height), int(polygon_y + polygon_height))
+    if clip_x1 >= clip_x2 or clip_y1 >= clip_y2:
+        return
+
+    image_region = image_matrix[clip_y1:clip_y2, clip_x1:clip_x2]
+    overlay_region = image_region.copy()
+    region_origin = np_module.asarray([clip_x1, clip_y1], dtype=np_module.int32)
+    region_polygon_points = polygon_points - region_origin
+    cv2_module.fillPoly(overlay_region, [region_polygon_points], color)
+    cv2_module.addWeighted(
+        overlay_region,
+        fill_alpha,
+        image_region,
+        1.0 - fill_alpha,
+        0.0,
+        dst=image_region,
+    )
 
 
 def _draw_bbox(

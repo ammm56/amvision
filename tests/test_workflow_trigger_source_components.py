@@ -22,14 +22,18 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.deployment_model import run_direct_model_inference
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.execution.contracts import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.execution.contracts import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.application.workflows.trigger_sources import (
     InputBindingMapper,
     RawTriggerEvent,
     TriggerEventNormalizer,
     WorkflowResultDispatcher,
 )
-from backend.service.application.workflows.runtime_service import WorkflowRuntimeSyncInvokeResult
+from backend.service.application.workflows.runtime_service import (
+    WorkflowRuntimeSyncInvokeResult,
+)
 from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
     TriggerSourceSupervisor,
 )
@@ -57,7 +61,9 @@ from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdap
 
 
 @pytest.mark.parametrize("invalid_value", [0, -1, True, "nan", "inf", "invalid"])
-def test_zeromq_buffer_ttl_requires_positive_finite_number(invalid_value: object) -> None:
+def test_zeromq_buffer_ttl_requires_positive_finite_number(
+    invalid_value: object,
+) -> None:
     """验证 ZeroMQ buffer TTL 默认存在且拒绝非正数和非有限数值。"""
 
     assert resolve_zeromq_buffer_ttl_seconds({}) == DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS
@@ -256,7 +262,9 @@ def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     runtime_service = _CapturingSyncRuntimeService()
 
     trigger_result = WorkflowSubmitter(runtime_service=runtime_service).submit_event(
-        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source, trigger_event=trigger_event
+        )
     )
 
     execution_metadata = runtime_service.last_request.execution_metadata
@@ -285,7 +293,9 @@ def test_workflow_submitter_omits_diagnostics_by_default() -> None:
     trigger_result = WorkflowSubmitter(
         runtime_service=_DiagnosticSyncRuntimeService()
     ).submit_event(
-        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source, trigger_event=trigger_event
+        )
     )
 
     assert trigger_result.state == "succeeded"
@@ -313,7 +323,9 @@ def test_workflow_submitter_returns_diagnostics_when_enabled() -> None:
     trigger_result = WorkflowSubmitter(
         runtime_service=_DiagnosticSyncRuntimeService()
     ).submit_event(
-        WorkflowTriggerSubmitRequest(trigger_source=trigger_source, trigger_event=trigger_event)
+        WorkflowTriggerSubmitRequest(
+            trigger_source=trigger_source, trigger_event=trigger_event
+        )
     )
 
     assert trigger_result.state == "succeeded"
@@ -409,11 +421,13 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert local_buffer_writer.write_calls[0]["pool_name"] == "image-640x640"
 
 
-def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_default() -> None:
+def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_default() -> (
+    None
+):
     """验证 BGR24 高速触发默认不返回 workflow 和 deployment 诊断字段。"""
 
-    trigger_result, runtime_service, local_buffer_writer = _run_bgr24_deployment_trigger_smoke(
-        return_diagnostics=False
+    trigger_result, runtime_service, local_buffer_writer = (
+        _run_bgr24_deployment_trigger_smoke(return_diagnostics=False)
     )
 
     assert trigger_result.state == "succeeded"
@@ -427,8 +441,13 @@ def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_de
     assert runtime_service.gateway.last_request is not None
     assert runtime_service.gateway.last_request.runtime_mode == "sync"
     assert runtime_service.gateway.last_request.input_image_bytes is None
-    assert runtime_service.gateway.last_request.image_payload["transport_kind"] == "buffer"
-    assert runtime_service.gateway.last_request.image_payload["buffer_ref"]["media_type"] == "image/raw"
+    assert (
+        runtime_service.gateway.last_request.image_payload["transport_kind"] == "buffer"
+    )
+    assert (
+        runtime_service.gateway.last_request.image_payload["buffer_ref"]["media_type"]
+        == "image/raw"
+    )
     result_payload = trigger_result.response_payload["result"]
     assert result_payload["detections"]["items"][0]["class_name"] == "barcode"
     assert "timings" not in result_payload["detections"]["metadata"]
@@ -456,8 +475,12 @@ def test_zeromq_bgr24_trigger_returns_diagnostics_when_enabled() -> None:
     ]
     assert runtime_service.gateway.last_request is not None
     result_payload = trigger_result.response_payload["result"]
-    assert result_payload["detections"]["metadata"]["timings"]["runtime_infer_ms"] == 2.25
-    assert result_payload["runtime_session_info"]["metadata"]["runtime_infer_ms"] == 2.25
+    assert (
+        result_payload["detections"]["metadata"]["timings"]["runtime_infer_ms"] == 2.25
+    )
+    assert (
+        result_payload["runtime_session_info"]["metadata"]["runtime_infer_ms"] == 2.25
+    )
 
 
 def test_zeromq_trigger_adapter_defaults_content_frame_to_image_ref_binding() -> None:
@@ -573,7 +596,9 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert adapter_health["submitted_count"] == 1
 
 
-def test_zeromq_trigger_adapter_allows_envelope_only_event_without_input_frame() -> None:
+def test_zeromq_trigger_adapter_allows_envelope_only_event_without_input_frame() -> (
+    None
+):
     """验证 ZeroMQ 也可以只发事件 envelope，用于图内自行取图的 workflow。"""
 
     trigger_source = _build_trigger_source(
@@ -606,7 +631,9 @@ def test_plc_register_trigger_adapter_polls_and_submits_event(
     class _MatchedCoilClient:
         """测试用匹配成功的 Modbus client。"""
 
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             """记录连接参数。"""
 
             self.host = host
@@ -738,7 +765,9 @@ def test_directory_poll_trigger_adapter_polls_new_files_and_writes_checkpoint(
             "extensions": ["png"],
         },
     )
-    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={
@@ -844,14 +873,18 @@ def test_directory_poll_trigger_adapter_rejects_sync_submit_mode(
         submit_mode="sync",
         transport_config={"directory_path": str(incoming_dir)},
     )
-    adapter = DirectoryPollTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    adapter = DirectoryPollTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
 
     with pytest.raises(InvalidRequestError) as error_info:
         adapter.start(
             trigger_source=trigger_source,
             event_handler=TriggerSourceSupervisor(
                 adapters={
-                    "directory-poll": _FakeProtocolAdapter(adapter_kind="directory-poll")
+                    "directory-poll": _FakeProtocolAdapter(
+                        adapter_kind="directory-poll"
+                    )
                 },
                 workflow_submitter=_FakeWorkflowSubmitter(),
             ),
@@ -881,7 +914,9 @@ def test_directory_watch_trigger_adapter_watches_new_files_and_writes_checkpoint
             "watch_timeout_ms": 100,
         },
     )
-    adapter = DirectoryWatchTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    adapter = DirectoryWatchTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={
@@ -996,7 +1031,9 @@ def test_directory_watch_trigger_adapter_rejects_sync_submit_mode(
         submit_mode="sync",
         transport_config={"directory_path": str(incoming_dir)},
     )
-    adapter = DirectoryWatchTriggerAdapter(dataset_storage_root_dir=str(tmp_path / "data"))
+    adapter = DirectoryWatchTriggerAdapter(
+        dataset_storage_root_dir=str(tmp_path / "data")
+    )
 
     with pytest.raises(InvalidRequestError) as error_info:
         adapter.start(
@@ -1053,7 +1090,11 @@ def _build_trigger_source(
 def _run_bgr24_deployment_trigger_smoke(
     *,
     return_diagnostics: bool,
-) -> tuple[TriggerResultContract, "_DeploymentModelWorkflowRuntimeService", "_FakeLocalBufferWriter"]:
+) -> tuple[
+    TriggerResultContract,
+    "_DeploymentModelWorkflowRuntimeService",
+    "_FakeLocalBufferWriter",
+]:
     """执行 BGR24 ZeroMQ -> WorkflowRuntime -> DeploymentInstance smoke。"""
 
     default_execution_metadata = (
@@ -1128,6 +1169,7 @@ class _PublishedInferenceRequest:
     return_preview_image_base64: bool = False
     extra_options: dict[str, object] | None = None
     trace_id: str | None = None
+    execution_scope_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1347,7 +1389,9 @@ class _FakeWorkflowServiceNodeRuntimeContext:
 
         _ = task_type
 
-    def require_deployment_process_supervisor(self, *, task_type: str, runtime_mode: str):
+    def require_deployment_process_supervisor(
+        self, *, task_type: str, runtime_mode: str
+    ):
         """占位 deployment supervisor resolver。"""
 
         _ = task_type, runtime_mode
