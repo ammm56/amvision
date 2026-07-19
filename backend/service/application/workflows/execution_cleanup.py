@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import pickle
 from threading import Lock, RLock
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -118,6 +119,50 @@ def prepare_execution_cleanup_state(
             raw_items = []
             execution_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = raw_items
     return raw_lock, raw_items
+
+
+def build_process_safe_execution_metadata(
+    execution_metadata: dict[str, object],
+) -> dict[str, object]:
+    """构造可安全发送到 workflow worker 子进程的执行元数据。
+
+    并行分支使用的 ``threading.RLock`` 只属于当前进程，不能进入
+    ``multiprocessing.Queue``。Queue 的 feeder 线程会异步 pickle 消息；如果把
+    RLock 直接放入队列，调用线程不会及时收到序列化异常，最终只会表现为 worker
+    永远收不到请求并在超时后被终止。
+
+    参数：
+    - execution_metadata：父进程持有的执行元数据。
+
+    返回：
+    - dict[str, object]：移除进程内同步对象、保留 cleanup 描述的独立副本。
+    """
+
+    payload = dict(execution_metadata)
+    payload.pop(WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY, None)
+    raw_cleanup_items = payload.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY)
+    if isinstance(raw_cleanup_items, list):
+        payload[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = [
+            {
+                **dict(item),
+                "metadata": dict(item.get("metadata"))
+                if isinstance(item, dict) and isinstance(item.get("metadata"), dict)
+                else {},
+            }
+            for item in raw_cleanup_items
+            if isinstance(item, dict)
+        ]
+    try:
+        pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception as exc:
+        raise ServiceConfigurationError(
+            "workflow execution_metadata 包含不能跨进程传递的数据",
+            details={
+                "error_type": type(exc).__name__,
+                "error_message": str(exc) or type(exc).__name__,
+            },
+        ) from exc
+    return payload
 
 
 def list_registered_execution_cleanups(

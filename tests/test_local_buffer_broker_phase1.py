@@ -8,6 +8,7 @@ from threading import Thread
 from time import monotonic, sleep
 import json
 import multiprocessing
+import pickle
 
 import pytest
 
@@ -43,7 +44,12 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
 from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
+    WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY,
+    build_process_safe_execution_metadata,
+    register_local_buffer_lease_cleanup,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.snapshot_execution import (
@@ -455,6 +461,32 @@ def test_local_buffer_broker_release_owner_keeps_other_runs(tmp_path: Path) -> N
     finally:
         client.close()
         supervisor.stop()
+
+
+def test_workflow_cleanup_metadata_is_safe_across_process_boundary() -> None:
+    """验证并行 cleanup 锁不会进入 workflow worker 的进程消息。"""
+
+    metadata: dict[str, object] = {}
+    register_local_buffer_lease_cleanup(
+        metadata,
+        lease_id="lease-process-boundary",
+        pool_name="image-4k",
+    )
+
+    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
+    process_metadata = build_process_safe_execution_metadata(metadata)
+
+    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY not in process_metadata
+    assert process_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] == [
+        {
+            "resource_kind": "local_buffer_lease",
+            "resource_id": "lease-process-boundary",
+            "metadata": {"pool_name": "image-4k"},
+        }
+    ]
+    assert pickle.loads(pickle.dumps(process_metadata)) == process_metadata
+    # 父进程仍保留自己的锁，可在入队失败、取消和超时路径执行兜底 cleanup。
+    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
 
 
 def test_local_buffer_broker_status_reports_pool_counts_and_failures(tmp_path: Path) -> None:

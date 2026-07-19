@@ -25,6 +25,7 @@ from backend.service.application.local_buffers import (
 )
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
+    build_process_safe_execution_metadata,
     list_registered_execution_cleanups,
 )
 from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
@@ -488,6 +489,9 @@ class WorkflowRuntimeWorkerManager:
                 )
             message_id = uuid4().hex
             pending = _WorkflowRuntimePendingResponse()
+            process_execution_metadata = build_process_safe_execution_metadata(
+                execution_metadata
+            )
             with handle.state_lock:
                 if not handle.process.is_alive():
                     self._terminate_failed_handle(
@@ -508,7 +512,7 @@ class WorkflowRuntimeWorkerManager:
                         "workflow_run_id": workflow_run_id,
                         "requested_timeout_seconds": timeout_seconds,
                         "input_bindings": dict(input_bindings),
-                        "execution_metadata": dict(execution_metadata),
+                        "execution_metadata": process_execution_metadata,
                     }
                 )
                 request_queue_put_ms = _elapsed_ms(queue_put_started_at)
