@@ -2378,7 +2378,8 @@ a:hover {
 
 .workflow-graph-node-widget__deployment button:hover:not(:disabled) {
   border-color: var(--graph-accent, #168da0);
-  color: #fff;
+  color: var(--graph-text-strong, #172228);
+  background: color-mix(in srgb, var(--graph-panel-soft, #eef3f5) 82%, var(--graph-accent, #168da0));
 }
 
 .workflow-graph-node-widget__deployment button:disabled {

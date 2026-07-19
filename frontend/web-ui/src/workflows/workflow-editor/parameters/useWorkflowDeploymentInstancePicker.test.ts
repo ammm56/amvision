@@ -101,6 +101,7 @@ describe('useWorkflowDeploymentInstancePicker', () => {
       readNodeTitle: () => 'Classification',
       setStatusMessage: (message) => statusMessages.push(message),
       setErrorMessage: () => undefined,
+      translate: (key, params) => `${key} ${Object.values(params ?? {}).join(' ')}`,
     })
 
     await picker.openForNode(node)
@@ -131,6 +132,7 @@ describe('useWorkflowDeploymentInstancePicker', () => {
       readNodeTitle: () => 'Classification',
       setStatusMessage: () => undefined,
       setErrorMessage: () => undefined,
+      translate: (key) => key,
     })
 
     await picker.openForNode(node)

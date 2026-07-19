@@ -24,19 +24,19 @@
         <input
           :value="readTextValue(node, field)"
           readonly
-          :title="readTextValue(node, field) || '尚未选择部署实例'"
-          placeholder="选择发布实例"
+          :title="readTextValue(node, field) || t('workflowEditor.deploymentPicker.notSelected')"
+          :placeholder="t('workflowEditor.deploymentPicker.selectPlaceholder')"
         >
         <button
           type="button"
           :disabled="field.readonly"
-          title="选择适用于当前节点类型的发布实例"
-          aria-label="选择发布实例"
+          :title="t('workflowEditor.deploymentPicker.selectApplicable')"
+          :aria-label="t('workflowEditor.deploymentPicker.selectAria')"
           @mousedown.stop
           @click.stop="emit('select-deployment-instance', node)"
         >
           <ListFilter :size="13" />
-          选择
+          {{ t('workflowEditor.deploymentPicker.selectAction') }}
         </button>
       </div>
       <input
@@ -75,12 +75,15 @@
 
 <script setup lang="ts">
 import { ListFilter } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import SelectField from '@/shared/ui/components/Select.vue'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
 
 type SelectValue = string | number | boolean | null
+
+const { t } = useI18n()
 
 interface SelectOption {
   label: string

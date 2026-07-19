@@ -17,6 +17,7 @@ export interface WorkflowDeploymentInstancePickerOptions<NodeView extends Workfl
   readNodeTitle: (node: NodeView) => string
   setStatusMessage: (message: string | null) => void
   setErrorMessage: (message: string | null) => void
+  translate: (key: string, params?: Record<string, string | number>) => string
 }
 
 const modelTaskTypes: ModelTaskType[] = ['detection', 'classification', 'segmentation', 'pose', 'obb']
@@ -65,7 +66,9 @@ export function useWorkflowDeploymentInstancePicker<NodeView extends WorkflowDep
   async function openForNode(node: NodeView): Promise<void> {
     const resolvedTaskType = readModelInferenceTaskType(node)
     if (!resolvedTaskType) {
-      options.setErrorMessage(`${options.readNodeTitle(node)} 无法确定模型推理任务类型`)
+      options.setErrorMessage(options.translate('workflowEditor.deploymentPicker.messages.unknownTaskType', {
+        node: options.readNodeTitle(node),
+      }))
       return
     }
     activeNode.value = node
@@ -94,7 +97,7 @@ export function useWorkflowDeploymentInstancePicker<NodeView extends WorkflowDep
     if (!open.value || !currentTaskType) return
     if (!projectId) {
       deployments.value = []
-      errorMessage.value = '当前项目 id 为空，无法读取部署实例'
+      errorMessage.value = options.translate('workflowEditor.deploymentPicker.messages.emptyProjectId')
       return
     }
     const currentSequence = ++requestSequence
@@ -111,7 +114,9 @@ export function useWorkflowDeploymentInstancePicker<NodeView extends WorkflowDep
     } catch (error) {
       if (currentSequence !== requestSequence || !open.value) return
       deployments.value = []
-      errorMessage.value = error instanceof Error ? error.message : '读取部署实例失败'
+      errorMessage.value = error instanceof Error
+        ? error.message
+        : options.translate('workflowEditor.deploymentPicker.messages.loadFailed')
     } finally {
       if (currentSequence === requestSequence) loading.value = false
     }
@@ -131,9 +136,10 @@ export function useWorkflowDeploymentInstancePicker<NodeView extends WorkflowDep
       deployment_instance_id: deployment.deployment_instance_id,
     }
     options.setErrorMessage(null)
-    options.setStatusMessage(
-      `已为 ${options.readNodeTitle(node)} 选择部署实例：${deployment.display_name || deployment.deployment_instance_id}`,
-    )
+    options.setStatusMessage(options.translate('workflowEditor.deploymentPicker.messages.selected', {
+      node: options.readNodeTitle(node),
+      deployment: deployment.display_name || deployment.deployment_instance_id,
+    }))
     close()
   }
 

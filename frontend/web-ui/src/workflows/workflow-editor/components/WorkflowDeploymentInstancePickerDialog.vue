@@ -2,32 +2,32 @@
   <ModelPickerDialogShell
     :open="open"
     :loading="loading"
-    kicker="MODEL INFERENCE"
-    title="选择发布实例"
-    :description="`仅显示当前项目中适用于 ${taskTypeLabel} 节点的部署实例，确认后自动填写 Deployment Instance Id。`"
-    close-label="关闭发布实例选择"
-    task-type-label="节点推理类型"
+    :kicker="t('workflowEditor.deploymentPicker.kicker')"
+    :title="t('workflowEditor.deploymentPicker.title')"
+    :description="t('workflowEditor.deploymentPicker.description', { taskType: taskTypeLabel })"
+    :close-label="t('workflowEditor.deploymentPicker.close')"
+    :task-type-label="t('workflowEditor.deploymentPicker.nodeTaskType')"
     :task-type-options="[{ label: taskTypeLabel, value: taskType }]"
     :selected-task-type="taskType"
-    list-title="已部署实例"
+    :list-title="t('workflowEditor.deploymentPicker.deployedInstances')"
     :list-count="deployments.length"
-    detail-title="实例详情"
+    :detail-title="t('workflowEditor.deploymentPicker.instanceDetails')"
     @close="emit('close')"
   >
     <template #list>
       <div class="workflow-deployment-picker__list-pane">
         <InlineError :message="errorMessage" />
         <div class="workflow-deployment-picker__list-actions">
-          <span>按运行状态和更新时间排序</span>
+          <span>{{ t('workflowEditor.deploymentPicker.sortHint') }}</span>
           <Button size="sm" variant="secondary" :disabled="loading" @click="emit('refresh')">
             <RefreshCw :size="14" />
-            刷新
+            {{ t('workflowEditor.deploymentPicker.refresh') }}
           </Button>
         </div>
         <EmptyState
           v-if="!loading && !errorMessage && deployments.length === 0"
-          title="暂无可选部署实例"
-          :description="`当前项目没有 ${taskTypeLabel} 部署实例，请先在部署页面创建实例。`"
+          :title="t('workflowEditor.deploymentPicker.emptyTitle')"
+          :description="t('workflowEditor.deploymentPicker.emptyDescription', { taskType: taskTypeLabel })"
         />
         <div v-else class="workflow-deployment-picker__list">
           <button
@@ -55,7 +55,7 @@
     <template #detail>
       <div class="workflow-deployment-picker__detail-pane">
         <div v-if="configuredDeploymentMissing" class="workflow-deployment-picker__warning" role="status">
-          当前节点配置的实例 {{ configuredDeploymentId }} 已不在可用列表中。请选择新的部署实例。
+          {{ t('workflowEditor.deploymentPicker.configuredMissing', { deploymentInstanceId: configuredDeploymentId }) }}
         </div>
         <div v-if="selectedDeployment" class="workflow-deployment-picker__detail">
           <header class="workflow-deployment-picker__detail-heading">
@@ -69,33 +69,33 @@
           </header>
 
           <div class="workflow-deployment-picker__detail-grid">
-            <div><span>任务类型</span><strong>{{ selectedDeployment.task_type || taskType }}</strong></div>
-            <div><span>模型</span><strong>{{ selectedDeployment.model_name || '-' }}</strong></div>
-            <div><span>模型 Scale</span><strong>{{ selectedDeployment.model_scale || '-' }}</strong></div>
-            <div><span>来源类型</span><strong>{{ selectedDeployment.source_kind || '-' }}</strong></div>
-            <div><span>ModelVersion id</span><strong>{{ selectedDeployment.model_version_id || '-' }}</strong></div>
-            <div><span>ModelBuild id</span><strong>{{ selectedDeployment.model_build_id || '-' }}</strong></div>
-            <div><span>Runtime</span><strong>{{ runtimeLabel(selectedDeployment) }}</strong></div>
-            <div><span>执行模式</span><strong>{{ selectedDeployment.runtime_execution_mode || '-' }}</strong></div>
-            <div><span>实例数</span><strong>{{ selectedDeployment.instance_count }}</strong></div>
-            <div><span>输入尺寸</span><strong>{{ inputSizeLabel(selectedDeployment.input_size) }}</strong></div>
-            <div><span>标签数</span><strong>{{ selectedDeployment.labels?.length ?? 0 }}</strong></div>
-            <div><span>更新时间</span><strong>{{ formatSystemDateTime(selectedDeployment.updated_at) }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.taskType') }}</span><strong>{{ selectedDeployment.task_type || taskType }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.model') }}</span><strong>{{ selectedDeployment.model_name || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.modelScale') }}</span><strong>{{ selectedDeployment.model_scale || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.sourceKind') }}</span><strong>{{ selectedDeployment.source_kind || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.modelVersionId') }}</span><strong>{{ selectedDeployment.model_version_id || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.modelBuildId') }}</span><strong>{{ selectedDeployment.model_build_id || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.runtime') }}</span><strong>{{ runtimeLabel(selectedDeployment) }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.executionMode') }}</span><strong>{{ selectedDeployment.runtime_execution_mode || '-' }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.instanceCount') }}</span><strong>{{ selectedDeployment.instance_count }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.inputSize') }}</span><strong>{{ inputSizeLabel(selectedDeployment.input_size) }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.labelCount') }}</span><strong>{{ selectedDeployment.labels?.length ?? 0 }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.updatedAt') }}</span><strong>{{ formatSystemDateTime(selectedDeployment.updated_at) }}</strong></div>
           </div>
 
           <div class="workflow-deployment-picker__apply">
-            <span v-if="selectedDeployment.deployment_instance_id === configuredDeploymentId">当前节点正在使用此实例</span>
-            <span v-else>选择后只更新当前节点参数，保存应用时持久化。</span>
+            <span v-if="selectedDeployment.deployment_instance_id === configuredDeploymentId">{{ t('workflowEditor.deploymentPicker.currentInstance') }}</span>
+            <span v-else>{{ t('workflowEditor.deploymentPicker.applyHint') }}</span>
             <Button variant="primary" @click="emit('apply')">
               <Check :size="15" />
-              使用此部署实例
+              {{ t('workflowEditor.deploymentPicker.useInstance') }}
             </Button>
           </div>
         </div>
         <EmptyState
           v-else
-          title="请选择部署实例"
-          description="选择左侧实例后，这里会显示模型来源与 runtime 详细信息。"
+          :title="t('workflowEditor.deploymentPicker.detailEmptyTitle')"
+          :description="t('workflowEditor.deploymentPicker.detailEmptyDescription')"
         />
       </div>
     </template>
@@ -104,6 +104,8 @@
 
 <script setup lang="ts">
 import { Check, RefreshCw } from '@lucide/vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { ModelTaskType, TaskDeploymentInstance } from '@/modules/deployments/services/deployment.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -114,18 +116,20 @@ import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 
-defineProps<{
+const props = defineProps<{
   open: boolean
   loading: boolean
   errorMessage: string | null
   taskType: ModelTaskType
-  taskTypeLabel: string
   deployments: TaskDeploymentInstance[]
   selectedDeploymentId: string
   selectedDeployment: TaskDeploymentInstance | null
   configuredDeploymentId: string
   configuredDeploymentMissing: boolean
 }>()
+
+const { t } = useI18n()
+const taskTypeLabel = computed(() => t(`workflowEditor.deploymentPicker.taskTypes.${props.taskType}`))
 
 const emit = defineEmits<{
   close: []
@@ -261,9 +265,9 @@ function inputSizeLabel(inputSize: [number, number] | null | undefined): string 
 }
 
 .workflow-deployment-picker__warning {
-  border-color: #f2c66d;
-  color: #8a4b00;
-  background: #fff4d6;
+  border-color: color-mix(in srgb, var(--warning) 46%, var(--line));
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--summary-bg));
 }
 
 .workflow-deployment-picker__apply {
