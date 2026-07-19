@@ -284,7 +284,6 @@ function readDefinitionDescription(definition: NodeDefinition): string {
 }
 
 function readCategoryLabel(category: string): string {
-  if (category === 'logic.parallel') return t('workflowEditor.nodePicker.categories.logicParallel')
   return category.replaceAll('.', ' / ')
 }
 
