@@ -17,6 +17,28 @@
         :disabled="field.readonly"
         @update:model-value="emit('update-enum', node, field, $event)"
       />
+      <div
+        v-else-if="isModelInferenceDeploymentField(node, field)"
+        class="workflow-graph-node-widget__deployment"
+      >
+        <input
+          :value="readTextValue(node, field)"
+          readonly
+          :title="readTextValue(node, field) || '尚未选择部署实例'"
+          placeholder="选择发布实例"
+        >
+        <button
+          type="button"
+          :disabled="field.readonly"
+          title="选择适用于当前节点类型的发布实例"
+          aria-label="选择发布实例"
+          @mousedown.stop
+          @click.stop="emit('select-deployment-instance', node)"
+        >
+          <ListFilter :size="13" />
+          选择
+        </button>
+      </div>
       <input
         v-else-if="isBoolean(field)"
         type="checkbox"
@@ -52,7 +74,10 @@
 </template>
 
 <script setup lang="ts">
+import { ListFilter } from '@lucide/vue'
+
 import SelectField from '@/shared/ui/components/Select.vue'
+import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
 
 type SelectValue = string | number | boolean | null
@@ -97,5 +122,6 @@ const emit = defineEmits<{
   'update-text': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'update-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
   'commit-json-draft': [node: WorkflowNodeParameterNode, field: NodeParameterUiField, event: Event]
+  'select-deployment-instance': [node: WorkflowNodeParameterNode]
 }>()
 </script>

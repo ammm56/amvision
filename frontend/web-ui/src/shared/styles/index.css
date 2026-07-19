@@ -2345,6 +2345,47 @@ a:hover {
   border-radius: 6px;
 }
 
+.workflow-graph-node-widget__deployment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px;
+  min-width: 0;
+}
+
+.workflow-graph-node-widget__deployment input {
+  overflow: hidden;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-graph-node-widget__deployment button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--graph-line, #4a5458);
+  border-radius: 7px;
+  color: var(--graph-text, #e7ecef);
+  background: var(--graph-panel-soft, #24292d);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workflow-graph-node-widget__deployment button:hover:not(:disabled) {
+  border-color: var(--graph-accent, #168da0);
+  color: #fff;
+}
+
+.workflow-graph-node-widget__deployment button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .workflow-graph-node-preview__image-frame {
   position: relative;
   height: 112px;

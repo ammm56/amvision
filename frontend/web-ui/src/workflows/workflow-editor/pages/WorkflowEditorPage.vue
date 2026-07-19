@@ -118,6 +118,7 @@
           @update-text-parameter="updateNodeParameterFromTextEvent"
           @update-json-parameter-draft="updateNodeParameterJsonDraft"
           @commit-json-parameter-draft="commitNodeParameterJsonDraft"
+          @select-deployment-instance="openDeploymentInstancePicker"
           @open-preview-display="openPreviewDisplayViewer"
           @open-preview-image="openImageViewer"
         />
@@ -230,6 +231,23 @@
       @preview-image-interaction="previewPreviewImageInteraction"
       @run-image-preview="runPreviewFromImageViewer"
     />
+    <WorkflowDeploymentInstancePickerDialog
+      v-if="deploymentPickerTaskType"
+      :open="deploymentPickerOpen"
+      :loading="deploymentPickerLoading"
+      :error-message="deploymentPickerErrorMessage"
+      :task-type="deploymentPickerTaskType"
+      :task-type-label="deploymentTaskTypeLabel(deploymentPickerTaskType)"
+      :deployments="deploymentPickerDeployments"
+      :selected-deployment-id="deploymentPickerSelectedId"
+      :selected-deployment="deploymentPickerSelectedDeployment"
+      :configured-deployment-id="deploymentPickerConfiguredId"
+      :configured-deployment-missing="deploymentPickerConfiguredMissing"
+      @close="closeDeploymentInstancePicker"
+      @refresh="refreshDeploymentInstancePicker"
+      @select="selectDeploymentInstance"
+      @apply="applySelectedDeploymentInstance"
+    />
   </section>
 </template>
 
@@ -242,6 +260,7 @@ import { usePreferencesStore } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
 import type { SupportedLocale } from '@/platform/i18n'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import WorkflowDeploymentInstancePickerDialog from '../components/WorkflowDeploymentInstancePickerDialog.vue'
 import WorkflowBoundaryNodeLayer from '../components/WorkflowBoundaryNodeLayer.vue'
 import WorkflowGraphGroupLayer from '../components/WorkflowGraphGroupLayer.vue'
 import WorkflowGraphLinksLayer from '../components/WorkflowGraphLinksLayer.vue'
@@ -290,6 +309,8 @@ import {
   useWorkflowNodeParameters,
   type WorkflowNodeParameterSelectValue,
 } from '../parameters/useWorkflowNodeParameters'
+import { useWorkflowDeploymentInstancePicker } from '../parameters/useWorkflowDeploymentInstancePicker'
+import type { ModelTaskType } from '@/modules/deployments/services/deployment.service'
 import { useWorkflowPreflight } from '../validation/useWorkflowPreflight'
 import { useWorkflowEditorActions } from '../actions/useWorkflowEditorActions'
 import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedback'
@@ -749,6 +770,42 @@ const graphNodeWidgetRowHeight = 34
 let imageInteractionPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
+const {
+  open: deploymentPickerOpen,
+  loading: deploymentPickerLoading,
+  errorMessage: deploymentPickerErrorMessage,
+  taskType: deploymentPickerTaskType,
+  deployments: deploymentPickerDeployments,
+  selectedDeploymentId: deploymentPickerSelectedId,
+  selectedDeployment: deploymentPickerSelectedDeployment,
+  configuredDeploymentId: deploymentPickerConfiguredId,
+  configuredDeploymentMissing: deploymentPickerConfiguredMissing,
+  openForNode: openDeploymentInstancePicker,
+  close: closeDeploymentInstancePicker,
+  refresh: refreshDeploymentInstancePicker,
+  selectDeployment: selectDeploymentInstance,
+  applySelectedDeployment: applySelectedDeploymentInstance,
+} = useWorkflowDeploymentInstancePicker<GraphNodeView>({
+  selectedProjectId,
+  readNodeTitle: readGraphNodeTitle,
+  setStatusMessage: (message) => {
+    statusMessage.value = message
+  },
+  setErrorMessage: (message) => {
+    errorMessage.value = message
+  },
+})
+
+function deploymentTaskTypeLabel(taskType: ModelTaskType): string {
+  const labels: Record<ModelTaskType, string> = {
+    detection: '目标检测 detection',
+    classification: '图像分类 classification',
+    segmentation: '实例分割 segmentation',
+    pose: '姿态估计 pose',
+    obb: '旋转框检测 obb',
+  }
+  return labels[taskType]
+}
 const routeApplicationId = computed(() => (typeof route.params.applicationId === 'string' ? route.params.applicationId : ''))
 const isNewApp = computed(() => route.path.endsWith('/new'))
 const {

@@ -88,6 +88,7 @@
       @update-text="(targetNode, field, event) => emit('updateTextParameter', targetNode, field, event)"
       @update-json-draft="(targetNode, field, event) => emit('updateJsonParameterDraft', targetNode, field, event)"
       @commit-json-draft="(targetNode, field, event) => emit('commitJsonParameterDraft', targetNode, field, event)"
+      @select-deployment-instance="(targetNode) => emit('selectDeploymentInstance', targetNode)"
     />
     <WorkflowNodePreviewDisplay
       v-if="hasPreviewDisplay(node)"
@@ -151,6 +152,7 @@ const emit = defineEmits<{
   updateTextParameter: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   updateJsonParameterDraft: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
   commitJsonParameterDraft: [node: WorkflowGraphNodeView, field: NodeParameterUiField, event: Event]
+  selectDeploymentInstance: [node: WorkflowGraphNodeView]
   openPreviewDisplay: [display: PreviewNodeDisplay]
   openPreviewImage: [image: PreviewViewerImage]
 }>()
