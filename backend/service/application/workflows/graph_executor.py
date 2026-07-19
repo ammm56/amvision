@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Lock
 from time import perf_counter
 from typing import Callable
 
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
     NodePortDefinition,
+    WorkflowGraphInput,
     WorkflowGraphNode,
+    WorkflowGraphOutput,
     WorkflowGraphTemplate,
     validate_workflow_graph_template,
 )
@@ -48,6 +52,11 @@ from backend.service.application.workflows.execution.inputs import (
     resolve_node_inputs,
     validate_template_inputs,
 )
+from backend.service.application.workflows.execution.parallel_list import (
+    WorkflowParallelListBranchPlan,
+    WorkflowParallelListExecutionPlan,
+    build_parallel_list_execution_plans,
+)
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
@@ -59,6 +68,9 @@ from backend.service.application.workflows.execution.variables import (
     read_workflow_variable_snapshot,
     restore_workflow_variable_value,
     write_workflow_variable_value,
+)
+from backend.service.application.workflows.execution_cleanup import (
+    prepare_execution_cleanup_state,
 )
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
@@ -111,10 +123,19 @@ class WorkflowGraphExecutor:
             template=template,
             topological_order=topological_order,
         )
+        parallel_list_plans = build_parallel_list_execution_plans(
+            template=template,
+            topological_order=topological_order,
+        )
         managed_loop_internal_node_ids: set[str] = set()
         for plan in for_each_plans.values():
             managed_loop_internal_node_ids.add(plan.start_node_id)
             managed_loop_internal_node_ids.update(plan.body_node_order)
+        managed_parallel_internal_node_ids = {
+            node_id
+            for plan in parallel_list_plans.values()
+            for node_id in plan.body_node_ids
+        }
         execution_metadata_payload = (
             execution_metadata if execution_metadata is not None else {}
         )
@@ -127,8 +148,12 @@ class WorkflowGraphExecutor:
                 continue
             if node_id in managed_loop_internal_node_ids:
                 continue
+            if node_id in managed_parallel_internal_node_ids:
+                continue
             node_definition = node_definitions_by_node_id[node_id]
-            if node_id in for_each_plans:
+            if node_id in parallel_list_plans:
+                resolved_inputs: dict[str, object] = {}
+            elif node_id in for_each_plans:
                 plan = for_each_plans[node_id]
                 start_node = node_instances[plan.start_node_id]
                 start_node_definition = self.registry.get_node_definition(
@@ -163,7 +188,66 @@ class WorkflowGraphExecutor:
                 inputs=resolved_inputs,
             )
             node_started_at = perf_counter()
-            if node_id in for_each_plans:
+            if node_id in parallel_list_plans:
+                try:
+                    raw_outputs, resolved_inputs, parallel_node_records = (
+                        self._execute_parallel_list_node(
+                            template=template,
+                            plan=parallel_list_plans[node_id],
+                            input_values=input_values,
+                            execution_metadata=execution_metadata_payload,
+                            runtime_context=runtime_context,
+                            node_output_values=node_output_values,
+                            event_callback=event_callback,
+                        )
+                    )
+                    node_records.extend(parallel_node_records)
+                except ServiceError as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
+                    augment_service_error_with_node_context(
+                        exc=exc,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                    )
+                    emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="parallel branches failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=dict(exc.details),
+                        extra_payload={"duration_ms": duration_ms},
+                    )
+                    raise
+                except Exception as exc:
+                    duration_ms = _elapsed_ms(node_started_at)
+                    failed_node_details = build_failed_node_details(
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        exc=exc,
+                    )
+                    emit_node_event(
+                        event_callback=event_callback,
+                        event_type="node.failed",
+                        message="parallel branches failed",
+                        node_id=node_id,
+                        node=node,
+                        node_definition=node_definition,
+                        execution_index=execution_index,
+                        inputs=resolved_inputs,
+                        error_details=failed_node_details,
+                        extra_payload={"duration_ms": duration_ms},
+                    )
+                    raise ServiceConfigurationError(
+                        "workflow 三路并行分支执行失败",
+                        details=failed_node_details,
+                    ) from exc
+            elif node_id in for_each_plans:
                 try:
                     raw_outputs = self._execute_for_each_node(
                         template=template,
@@ -542,6 +626,266 @@ class WorkflowGraphExecutor:
             )
 
         return plans
+
+    def _execute_parallel_list_node(
+        self,
+        *,
+        template: WorkflowGraphTemplate,
+        plan: WorkflowParallelListExecutionPlan,
+        input_values: dict[str, object],
+        execution_metadata: dict[str, object],
+        runtime_context: object | None,
+        node_output_values: dict[tuple[str, str], object],
+        event_callback: Callable[[dict[str, object]], None] | None,
+    ) -> tuple[
+        dict[str, object],
+        dict[str, object],
+        tuple[WorkflowNodeExecutionRecord, ...],
+    ]:
+        """并发执行三条显式分支，并按固定端口顺序交给合并节点。"""
+
+        event_lock = Lock()
+        # 三个分支使用浅拷贝的执行元数据；提前创建共享 cleanup list 和锁，保证
+        # 任一分支登记的临时资源都会由外层 Workflow Run 统一回收。
+        prepare_execution_cleanup_state(execution_metadata)
+
+        def build_branch_event_callback(
+            branch_index: int,
+        ) -> Callable[[dict[str, object]], None] | None:
+            if event_callback is None:
+                return None
+
+            def emit_branch_event(event: dict[str, object]) -> None:
+                normalized_event = dict(event)
+                raw_payload = normalized_event.get("payload")
+                payload = dict(raw_payload) if isinstance(raw_payload, dict) else {}
+                payload["parallel_branch_index"] = branch_index
+                payload["parallel_start_node_id"] = plan.start_node_id
+                payload["parallel_end_node_id"] = plan.end_node_id
+                normalized_event["payload"] = payload
+                with event_lock:
+                    event_callback(normalized_event)
+
+            return emit_branch_event
+
+        def run_branch(
+            branch: WorkflowParallelListBranchPlan,
+        ) -> tuple[object, tuple[WorkflowNodeExecutionRecord, ...]]:
+            start_output_key = (plan.start_node_id, branch.start_port)
+            if start_output_key not in node_output_values:
+                raise InvalidRequestError(
+                    "并行拆分节点尚未产出分支列表",
+                    details={
+                        "node_id": plan.start_node_id,
+                        "branch_port": branch.start_port,
+                    },
+                )
+            if branch.direct_passthrough:
+                return node_output_values[start_output_key], ()
+            branch_template, branch_inputs = self._build_parallel_branch_template(
+                template=template,
+                plan=plan,
+                branch=branch,
+                input_values=input_values,
+                node_output_values=node_output_values,
+            )
+            branch_metadata = dict(execution_metadata)
+            raw_workflow_variables = execution_metadata.get("workflow_variables")
+            if isinstance(raw_workflow_variables, dict):
+                branch_metadata["workflow_variables"] = dict(raw_workflow_variables)
+            else:
+                branch_metadata.pop("workflow_variables", None)
+            try:
+                branch_result = WorkflowGraphExecutor(registry=self.registry).execute(
+                    template=branch_template,
+                    input_values=branch_inputs,
+                    execution_metadata=branch_metadata,
+                    runtime_context=runtime_context,
+                    event_callback=build_branch_event_callback(branch.branch_index),
+                )
+            except ServiceError as exc:
+                exc.details.setdefault("parallel_branch_index", branch.branch_index)
+                exc.details.setdefault("parallel_start_node_id", plan.start_node_id)
+                exc.details.setdefault("parallel_end_node_id", plan.end_node_id)
+                raise
+            return branch_result.outputs["branch_result"], branch_result.node_records
+
+        futures: list[
+            tuple[
+                WorkflowParallelListBranchPlan,
+                Future[tuple[object, tuple[WorkflowNodeExecutionRecord, ...]]],
+            ]
+        ] = []
+        with ThreadPoolExecutor(
+            max_workers=3,
+            thread_name_prefix="amvision-workflow-parallel-3",
+        ) as executor:
+            for branch in plan.branches:
+                futures.append((branch, executor.submit(run_branch, branch)))
+            try:
+                branch_results = [
+                    (branch, future.result()) for branch, future in futures
+                ]
+            except Exception:
+                for _, future in futures:
+                    future.cancel()
+                raise
+
+        resolved_merge_inputs: dict[str, object] = {}
+        branch_node_records: list[WorkflowNodeExecutionRecord] = []
+        for branch, (branch_output, records) in branch_results:
+            resolved_merge_inputs[branch.end_port] = branch_output
+            branch_node_records.extend(records)
+
+        end_node = next(
+            node for node in template.nodes if node.node_id == plan.end_node_id
+        )
+        end_node_definition = self.registry.get_node_definition(end_node.node_type_id)
+        end_handler = self.registry.resolve_handler(node_definition=end_node_definition)
+        raw_outputs = dict(
+            end_handler(
+                WorkflowNodeExecutionRequest(
+                    node_id=end_node.node_id,
+                    node_definition=end_node_definition,
+                    parameters=dict(end_node.parameters),
+                    input_values=resolved_merge_inputs,
+                    execution_metadata=execution_metadata,
+                    runtime_context=runtime_context,
+                )
+            )
+        )
+        return raw_outputs, resolved_merge_inputs, tuple(branch_node_records)
+
+    def _build_parallel_branch_template(
+        self,
+        *,
+        template: WorkflowGraphTemplate,
+        plan: WorkflowParallelListExecutionPlan,
+        branch: WorkflowParallelListBranchPlan,
+        input_values: dict[str, object],
+        node_output_values: dict[tuple[str, str], object],
+    ) -> tuple[WorkflowGraphTemplate, dict[str, object]]:
+        """把一条显式并行分支构造成隔离的可执行子图。"""
+
+        body_node_ids = set(branch.body_node_ids)
+        branch_nodes = tuple(
+            node for node in template.nodes if node.node_id in body_node_ids
+        )
+        branch_edges = tuple(
+            edge
+            for edge in template.edges
+            if edge.source_node_id in body_node_ids
+            and edge.target_node_id in body_node_ids
+        )
+        branch_template_inputs: list[WorkflowGraphInput] = []
+        branch_input_values: dict[str, object] = {}
+
+        for template_input in template.template_inputs:
+            if template_input.target_node_id not in body_node_ids:
+                continue
+            if template_input.input_id not in input_values:
+                continue
+            branch_input_id = (
+                f"parallel-{branch.branch_index}-template-{template_input.input_id}"
+            )
+            branch_template_inputs.append(
+                WorkflowGraphInput(
+                    input_id=branch_input_id,
+                    display_name=template_input.display_name,
+                    payload_type_id=template_input.payload_type_id,
+                    target_node_id=template_input.target_node_id,
+                    target_port=template_input.target_port,
+                    required=True,
+                )
+            )
+            branch_input_values[branch_input_id] = input_values[template_input.input_id]
+
+        for edge_index, edge in enumerate(template.edges, start=1):
+            if edge.target_node_id not in body_node_ids:
+                continue
+            if edge.source_node_id in body_node_ids:
+                continue
+            source_key = (edge.source_node_id, edge.source_port)
+            if source_key not in node_output_values:
+                raise InvalidRequestError(
+                    "并行分支的外部依赖尚未产出",
+                    details={
+                        "node_id": plan.start_node_id,
+                        "branch_index": branch.branch_index,
+                        "source_node_id": edge.source_node_id,
+                        "source_port": edge.source_port,
+                    },
+                )
+            target_node = next(
+                node for node in branch_nodes if node.node_id == edge.target_node_id
+            )
+            target_definition = self.registry.get_node_definition(
+                target_node.node_type_id
+            )
+            target_port_definition = _get_input_port_definition(
+                node_definition=target_definition,
+                port_name=edge.target_port,
+            )
+            if target_port_definition is None:
+                raise InvalidRequestError(
+                    "并行分支外部依赖引用了不存在的目标端口",
+                    details={"edge_id": edge.edge_id},
+                )
+            branch_input_id = f"parallel-{branch.branch_index}-edge-{edge_index}"
+            branch_template_inputs.append(
+                WorkflowGraphInput(
+                    input_id=branch_input_id,
+                    display_name=branch_input_id,
+                    payload_type_id=target_port_definition.payload_type_id,
+                    target_node_id=edge.target_node_id,
+                    target_port=edge.target_port,
+                    required=True,
+                )
+            )
+            branch_input_values[branch_input_id] = node_output_values[source_key]
+
+        result_node = next(
+            node
+            for node in branch_nodes
+            if node.node_id == branch.result_source_node_id
+        )
+        result_definition = self.registry.get_node_definition(result_node.node_type_id)
+        result_port_definition = next(
+            (
+                port
+                for port in result_definition.output_ports
+                if port.name == branch.result_source_port
+            ),
+            None,
+        )
+        if result_port_definition is None:
+            raise InvalidRequestError(
+                "并行分支结果引用了不存在的输出端口",
+                details={
+                    "node_id": result_node.node_id,
+                    "source_port": branch.result_source_port,
+                },
+            )
+        branch_template = WorkflowGraphTemplate(
+            template_id=(
+                f"{template.template_id}-parallel-{plan.start_node_id}-{branch.branch_index}"
+            ),
+            template_version=template.template_version,
+            display_name=f"{template.display_name} / parallel branch {branch.branch_index}",
+            nodes=branch_nodes,
+            edges=branch_edges,
+            template_inputs=tuple(branch_template_inputs),
+            template_outputs=(
+                WorkflowGraphOutput(
+                    output_id="branch_result",
+                    display_name="Branch Result",
+                    payload_type_id=result_port_definition.payload_type_id,
+                    source_node_id=branch.result_source_node_id,
+                    source_port=branch.result_source_port,
+                ),
+            ),
+        )
+        return branch_template, branch_input_values
 
     def _execute_for_each_node(
         self,

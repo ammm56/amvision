@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from threading import Lock, RLock
+from typing import TYPE_CHECKING, Any, Protocol
 
 from backend.service.application.errors import ServiceConfigurationError, ServiceError
 
@@ -12,11 +13,14 @@ if TYPE_CHECKING:
 
 
 WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY = "workflow_execution_cleanup_items"
+WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY = "workflow_execution_cleanup_lock"
 WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY = "workflow_deployment_cleanup_ids"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE = "deployment_instance"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT = "dataset_storage_object"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE = "dataset_storage_tree"
 WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE = "local_buffer_lease"
+_CLEANUP_LOCK_CREATION_LOCK = Lock()
+_RLOCK_TYPE = type(RLock())
 
 
 @dataclass(frozen=True)
@@ -75,30 +79,45 @@ def register_execution_cleanup(
     if not normalized_resource_kind or not normalized_resource_id:
         return
     normalized_metadata = _normalize_cleanup_metadata(metadata)
-    raw_items = execution_metadata.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY)
-    if not isinstance(raw_items, list):
-        raw_items = []
-        execution_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = raw_items
-    for raw_item in raw_items:
-        if not isinstance(raw_item, dict):
-            continue
-        if raw_item.get("resource_kind") != normalized_resource_kind:
-            continue
-        if raw_item.get("resource_id") != normalized_resource_id:
-            continue
-        existing_metadata = raw_item.get("metadata")
-        if isinstance(existing_metadata, dict):
-            existing_metadata.update(normalized_metadata)
-        elif normalized_metadata:
-            raw_item["metadata"] = dict(normalized_metadata)
-        return
-    raw_items.append(
-        {
-            "resource_kind": normalized_resource_kind,
-            "resource_id": normalized_resource_id,
-            "metadata": dict(normalized_metadata),
-        }
-    )
+    cleanup_lock, raw_items = prepare_execution_cleanup_state(execution_metadata)
+    with cleanup_lock:
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            if raw_item.get("resource_kind") != normalized_resource_kind:
+                continue
+            if raw_item.get("resource_id") != normalized_resource_id:
+                continue
+            existing_metadata = raw_item.get("metadata")
+            if isinstance(existing_metadata, dict):
+                existing_metadata.update(normalized_metadata)
+            elif normalized_metadata:
+                raw_item["metadata"] = dict(normalized_metadata)
+            return
+        raw_items.append(
+            {
+                "resource_kind": normalized_resource_kind,
+                "resource_id": normalized_resource_id,
+                "metadata": dict(normalized_metadata),
+            }
+        )
+
+
+def prepare_execution_cleanup_state(
+    execution_metadata: dict[str, object],
+) -> tuple[Any, list[object]]:
+    """准备可由并行 workflow 分支安全共享的 cleanup 状态。"""
+
+    with _CLEANUP_LOCK_CREATION_LOCK:
+        raw_lock = execution_metadata.get(WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY)
+        if not isinstance(raw_lock, _RLOCK_TYPE):
+            raw_lock = RLock()
+            execution_metadata[WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY] = raw_lock
+        raw_items = execution_metadata.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY)
+        if not isinstance(raw_items, list):
+            raw_items = []
+            execution_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = raw_items
+    return raw_lock, raw_items
 
 
 def list_registered_execution_cleanups(
@@ -115,45 +134,50 @@ def list_registered_execution_cleanups(
 
     normalized_items: list[WorkflowExecutionCleanupItem] = []
     normalized_item_index: dict[tuple[str, str], int] = {}
-    raw_items = execution_metadata.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY)
-    if isinstance(raw_items, list):
-        for raw_item in raw_items:
-            if not isinstance(raw_item, dict):
-                continue
-            normalized_resource_kind = raw_item.get("resource_kind")
-            normalized_resource_id = raw_item.get("resource_id")
-            if not isinstance(normalized_resource_kind, str) or not isinstance(normalized_resource_id, str):
-                continue
-            normalized_resource_kind = normalized_resource_kind.strip()
-            normalized_resource_id = normalized_resource_id.strip()
-            if not normalized_resource_kind or not normalized_resource_id:
-                continue
-            _append_or_merge_cleanup_item(
-                normalized_items,
-                normalized_item_index,
-                WorkflowExecutionCleanupItem(
-                    resource_kind=normalized_resource_kind,
-                    resource_id=normalized_resource_id,
-                    metadata=_normalize_cleanup_metadata(raw_item.get("metadata")),
-                ),
-            )
+    cleanup_lock, raw_items = prepare_execution_cleanup_state(execution_metadata)
+    with cleanup_lock:
+        raw_items_snapshot = list(raw_items)
+        raw_legacy_deployment_ids = execution_metadata.get(WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY)
+        legacy_deployment_ids_snapshot = (
+            list(raw_legacy_deployment_ids)
+            if isinstance(raw_legacy_deployment_ids, list)
+            else []
+        )
+    for raw_item in raw_items_snapshot:
+        if not isinstance(raw_item, dict):
+            continue
+        normalized_resource_kind = raw_item.get("resource_kind")
+        normalized_resource_id = raw_item.get("resource_id")
+        if not isinstance(normalized_resource_kind, str) or not isinstance(normalized_resource_id, str):
+            continue
+        normalized_resource_kind = normalized_resource_kind.strip()
+        normalized_resource_id = normalized_resource_id.strip()
+        if not normalized_resource_kind or not normalized_resource_id:
+            continue
+        _append_or_merge_cleanup_item(
+            normalized_items,
+            normalized_item_index,
+            WorkflowExecutionCleanupItem(
+                resource_kind=normalized_resource_kind,
+                resource_id=normalized_resource_id,
+                metadata=_normalize_cleanup_metadata(raw_item.get("metadata")),
+            ),
+        )
 
-    raw_legacy_deployment_ids = execution_metadata.get(WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY)
-    if isinstance(raw_legacy_deployment_ids, list):
-        for raw_deployment_id in raw_legacy_deployment_ids:
-            if not isinstance(raw_deployment_id, str):
-                continue
-            normalized_deployment_id = raw_deployment_id.strip()
-            if not normalized_deployment_id:
-                continue
-            _append_or_merge_cleanup_item(
-                normalized_items,
-                normalized_item_index,
-                WorkflowExecutionCleanupItem(
-                    resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
-                    resource_id=normalized_deployment_id,
-                ),
-            )
+    for raw_deployment_id in legacy_deployment_ids_snapshot:
+        if not isinstance(raw_deployment_id, str):
+            continue
+        normalized_deployment_id = raw_deployment_id.strip()
+        if not normalized_deployment_id:
+            continue
+        _append_or_merge_cleanup_item(
+            normalized_items,
+            normalized_item_index,
+            WorkflowExecutionCleanupItem(
+                resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE,
+                resource_id=normalized_deployment_id,
+            ),
+        )
     return tuple(normalized_items)
 
 

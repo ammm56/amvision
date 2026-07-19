@@ -204,7 +204,7 @@ const categoryGroups = computed<CategoryGroup[]>(() => {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([category, definitions]) => ({
       id: category,
-      label: category.replaceAll('.', ' / '),
+      label: readCategoryLabel(category),
       definitions: sortDefinitions(definitions),
     }))
 })
@@ -281,6 +281,11 @@ function readDefinitionDisplayName(definition: NodeDefinition): string {
 
 function readDefinitionDescription(definition: NodeDefinition): string {
   return resolveNodeDefinitionDescription(definition, currentLocale.value)
+}
+
+function readCategoryLabel(category: string): string {
+  if (category === 'logic.parallel') return t('workflowEditor.nodePicker.categories.logicParallel')
+  return category.replaceAll('.', ' / ')
 }
 
 function formatNodePackLabel(packId: string): string {

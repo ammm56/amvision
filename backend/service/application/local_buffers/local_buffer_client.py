@@ -6,6 +6,7 @@ import mmap
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import Empty
+from threading import Lock, RLock
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -126,6 +127,9 @@ class LocalBufferBrokerClient:
         self._request_count = SafeCounterState()
         self._error_count = SafeCounterState()
         self._last_error: dict[str, object] | None = None
+        # broker response queue 是单消费者通道。控制请求必须成对串行读取，避免并发
+        # workflow 分支取走其他 request_id 的响应；mmap 数据写入仍在锁外完成。
+        self._request_response_lock = Lock()
 
     def get_status(self) -> dict[str, object]:
         """读取 broker 当前状态摘要。"""
@@ -594,32 +598,37 @@ class LocalBufferBrokerClient:
     def _send_request(self, *, action: str, payload: dict[str, object]) -> dict[str, object]:
         """发送一条 broker 事件并解析响应。"""
 
-        request_id = f"broker-{uuid4().hex}"
-        increment_safe_counter(self._request_count)
-        try:
-            self.channel.request_queue.put(
-                {"request_id": request_id, "action": action, "payload": dict(payload)}
-            )
-            response = self.channel.response_queue.get(
-                timeout=max(0.1, self.channel.request_timeout_seconds)
-            )
-        except Empty as exc:
-            error = OperationTimeoutError(
-                "等待 LocalBufferBroker 响应超时",
-                details={"action": action, "timeout_seconds": self.channel.request_timeout_seconds},
-            )
-            self._record_error(action=action, error=error)
-            raise error from exc
-        except Exception as exc:
-            self._record_error(action=action, error=exc)
-            raise
-        try:
-            payload = _deserialize_response(response, action=action, request_id=request_id)
-            self._last_error = None
-            return payload
-        except Exception as exc:
-            self._record_error(action=action, error=exc)
-            raise
+        with self._request_response_lock:
+            request_id = f"broker-{uuid4().hex}"
+            increment_safe_counter(self._request_count)
+            try:
+                self.channel.request_queue.put(
+                    {"request_id": request_id, "action": action, "payload": dict(payload)}
+                )
+                response = self.channel.response_queue.get(
+                    timeout=max(0.1, self.channel.request_timeout_seconds)
+                )
+            except Empty as exc:
+                error = OperationTimeoutError(
+                    "等待 LocalBufferBroker 响应超时",
+                    details={"action": action, "timeout_seconds": self.channel.request_timeout_seconds},
+                )
+                self._record_error(action=action, error=error)
+                raise error from exc
+            except Exception as exc:
+                self._record_error(action=action, error=exc)
+                raise
+            try:
+                response_payload = _deserialize_response(
+                    response,
+                    action=action,
+                    request_id=request_id,
+                )
+                self._last_error = None
+                return response_payload
+            except Exception as exc:
+                self._record_error(action=action, error=exc)
+                raise
 
     def _record_error(self, *, action: str, error: Exception) -> None:
         """记录一次 broker client 调用错误。"""
@@ -700,6 +709,7 @@ class _MmapFileCache:
         """初始化空 mmap 文件缓存。"""
 
         self._mapped_files: dict[Path, _MappedFile] = {}
+        self._lock = RLock()
 
     def write(self, *, path: str, offset: int, content: bytes, size: int, flush: bool = False) -> None:
         """直接写入 mmap 文件指定区域。
@@ -712,13 +722,14 @@ class _MmapFileCache:
         - flush：是否强制 flush 到 mmap 文件。
         """
 
-        mapped_file = self._require_mapped_file(path)
-        mapped_file.mmap_view.seek(offset)
-        mapped_file.mmap_view.write(content)
-        if len(content) < size:
-            mapped_file.mmap_view.write(b"\x00" * (size - len(content)))
-        if flush:
-            mapped_file.mmap_view.flush()
+        with self._lock:
+            mapped_file = self._require_mapped_file(path)
+            mapped_file.mmap_view.seek(offset)
+            mapped_file.mmap_view.write(content)
+            if len(content) < size:
+                mapped_file.mmap_view.write(b"\x00" * (size - len(content)))
+            if flush:
+                mapped_file.mmap_view.flush()
 
     def read(self, *, path: str, offset: int, size: int) -> bytes:
         """直接读取 mmap 文件指定区域。
@@ -732,16 +743,18 @@ class _MmapFileCache:
         - bytes：读取到的内容。
         """
 
-        mapped_file = self._require_mapped_file(path)
-        mapped_file.mmap_view.seek(offset)
-        return mapped_file.mmap_view.read(size)
+        with self._lock:
+            mapped_file = self._require_mapped_file(path)
+            mapped_file.mmap_view.seek(offset)
+            return mapped_file.mmap_view.read(size)
 
     def close(self) -> None:
         """关闭全部缓存的 mmap 文件。"""
 
-        for mapped_file in self._mapped_files.values():
-            mapped_file.close()
-        self._mapped_files.clear()
+        with self._lock:
+            for mapped_file in self._mapped_files.values():
+                mapped_file.close()
+            self._mapped_files.clear()
 
     def _require_mapped_file(self, path: str) -> _MappedFile:
         """返回指定路径对应的 mmap 文件映射。"""

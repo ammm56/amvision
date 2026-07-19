@@ -6,6 +6,7 @@ import base64
 from dataclasses import dataclass
 import mimetypes
 from pathlib import PurePosixPath
+from threading import RLock
 from typing import Any
 from uuid import uuid4
 
@@ -115,6 +116,7 @@ class ExecutionImageRegistry:
         """初始化空的 execution image registry。"""
 
         self._entries: dict[str, ExecutionImageEntry] = {}
+        self._lock = RLock()
 
     def register_image_bytes(
         self,
@@ -165,7 +167,8 @@ class ExecutionImageRegistry:
             pixel_format=_normalize_optional_text(pixel_format),
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
-        self._entries[image_handle] = entry
+        with self._lock:
+            self._entries[image_handle] = entry
         return entry
 
     def register_image_matrix(
@@ -193,7 +196,8 @@ class ExecutionImageRegistry:
             pixel_format="bgr24",
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
-        self._entries[image_handle] = entry
+        with self._lock:
+            self._entries[image_handle] = entry
         return entry
 
     def get_entry(self, image_handle: str) -> ExecutionImageEntry:
@@ -209,7 +213,8 @@ class ExecutionImageRegistry:
         normalized_image_handle = image_handle.strip() if isinstance(image_handle, str) else ""
         if not normalized_image_handle:
             raise InvalidRequestError("execution image registry 要求 image_handle 不能为空")
-        entry = self._entries.get(normalized_image_handle)
+        with self._lock:
+            entry = self._entries.get(normalized_image_handle)
         if entry is None:
             raise InvalidRequestError(
                 "execution image registry 中不存在指定图片句柄",
@@ -252,12 +257,14 @@ class ExecutionImageRegistry:
 
         normalized_image_handle = image_handle.strip() if isinstance(image_handle, str) else ""
         if normalized_image_handle:
-            self._entries.pop(normalized_image_handle, None)
+            with self._lock:
+                self._entries.pop(normalized_image_handle, None)
 
     def clear(self) -> None:
         """清空当前执行范围内的全部图片。"""
 
-        self._entries.clear()
+        with self._lock:
+            self._entries.clear()
 
 
 def require_dataset_storage(request: WorkflowNodeExecutionRequest) -> LocalDatasetStorage:

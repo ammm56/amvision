@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 from time import monotonic, sleep
@@ -93,6 +94,28 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_
         supervisor.stop()
 
     assert supervisor.is_running is False
+
+
+def test_local_buffer_broker_client_serializes_shared_response_channel(
+    tmp_path: Path,
+) -> None:
+    """验证同一个 client 被三路分支复用时不会交叉消费 broker 响应。"""
+
+    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+
+        def read_status_repeatedly() -> tuple[str, ...]:
+            return tuple(str(client.get_status()["state"]) for _ in range(20))
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            results = tuple(executor.map(lambda _: read_status_repeatedly(), range(3)))
+
+        assert all(states == ("running",) * 20 for states in results)
+    finally:
+        supervisor.stop()
 
 
 def test_workflow_parent_cleanup_releases_registered_buffer_lease(tmp_path: Path) -> None:

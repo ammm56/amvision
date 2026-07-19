@@ -153,6 +153,12 @@ custom_nodes/
 - custom node 的注册、卸载和升级不应要求修改核心前端代码结构
 - 与 ComfyUI 对齐的是“节点扩展模型”，不是照搬其无约束运行方式
 
+## 通用三路并行列表边界
+
+Workflow 核心节点提供显式的 `Parallel List Split 3` 与 `Ordered List Merge 3` 边界。它们只处理普通列表，三条分支可以复用现有 For Each、模型推理、OCR、条码、OpenCV、规则和格式转换节点，不绑定某个 Workflow App 或模型类型。
+
+执行器只并行这对可见边界内的三条分支，不自动并行整张 DAG。当前 80 个 ROI、3 个 deployment instance 的 classification 应用只是第一条现场验证链，不得把托盘、插槽、ROI 数量或 classification 规则写入节点实现。详细契约、执行边界和验证要求见 [workflow-parallel-list-branches.md](workflow-parallel-list-branches.md)。
+
 ## 节点组边界
 
 节点组用于 workflow editor 中的画布整理、调试分支管理和批量启用 / 禁用节点。节点组可以向 ComfyUI 的 group 框体验靠拢，但它不是 runtime node。

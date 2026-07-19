@@ -714,6 +714,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         empty: '没有匹配的节点',
         requiresInputPort: '需要输入端口',
         requiresOutputPort: '需要输出端口',
+        categories: {
+          logicParallel: '逻辑 / 并行',
+        },
       },
       deploymentPicker: {
         kicker: '模型推理',
@@ -1926,6 +1929,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         empty: 'No matching nodes',
         requiresInputPort: 'Requires input port',
         requiresOutputPort: 'Requires output port',
+        categories: {
+          logicParallel: 'Logic / Parallel',
+        },
       },
       deploymentPicker: {
         kicker: 'Model Inference',
@@ -3132,6 +3138,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         empty: '一致するノードがありません',
         requiresInputPort: '入力ポートが必要',
         requiresOutputPort: '出力ポートが必要',
+        categories: {
+          logicParallel: 'ロジック / 並列',
+        },
       },
       deploymentPicker: {
         kicker: 'モデル推論',
@@ -4338,6 +4347,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         empty: '일치하는 노드가 없습니다',
         requiresInputPort: '입력 포트 필요',
         requiresOutputPort: '출력 포트 필요',
+        categories: {
+          logicParallel: '로직 / 병렬',
+        },
       },
       deploymentPicker: {
         kicker: '모델 추론',
