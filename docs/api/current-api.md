@@ -1987,7 +1987,6 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
   "transport_config": {
     "bind_endpoint": "tcp://127.0.0.1:5556",
     "default_input_binding": "request_image_ref",
-    "buffer_ttl_seconds": 30,
     "content_transport": "local-buffer",
     "pool_name": "image-4k"
   },

@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 from backend.service.api.app import create_app
 from backend.service.api.bootstrap import BackendServiceBootstrap
 from backend.service.api.rest.v1.routes.system.config import build_system_config_payload
-from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.settings import (
     BackendServiceAppSettings,
@@ -23,6 +25,7 @@ from backend.service.settings import (
     BackendServiceSettings,
     BackendServiceStaticAccessTokenConfig,
     BackendServiceTaskManagerConfig,
+    BackendServiceZeroMqTriggerConfig,
     get_backend_service_settings,
 )
 from tests.api_test_support import (
@@ -39,7 +42,9 @@ def test_health_route_returns_request_id_header(tmp_path: Path) -> None:
     client, session_factory = _create_test_client(tmp_path)
     try:
         with client:
-            response = client.get("/api/v1/system/health", headers={"x-request-id": "request-1"})
+            response = client.get(
+                "/api/v1/system/health", headers={"x-request-id": "request-1"}
+            )
     finally:
         session_factory.engine.dispose()
 
@@ -145,7 +150,9 @@ def test_system_config_route_returns_resolved_backend_config(tmp_path: Path) -> 
     local_buffer_config = payload["config"]["local_buffer_broker"]
     assert local_buffer_config["default_pool_name"] == "image-test"
     assert "default_pool" not in local_buffer_config
-    assert [pool["pool_name"] for pool in local_buffer_config["pools"]] == ["image-test"]
+    assert [pool["pool_name"] for pool in local_buffer_config["pools"]] == [
+        "image-test"
+    ]
 
 
 def test_system_config_payload_redacts_sensitive_config_values() -> None:
@@ -176,10 +183,14 @@ def test_system_config_payload_redacts_sensitive_config_values() -> None:
     assert "secret-db-password" not in json.dumps(payload)
 
 
-def test_diagnostics_route_requires_auth_read_and_returns_system_summary(tmp_path: Path) -> None:
+def test_diagnostics_route_requires_auth_read_and_returns_system_summary(
+    tmp_path: Path,
+) -> None:
     """验证系统诊断接口需要 auth:read 并返回设置页依赖的摘要字段。"""
 
-    client, session_factory = _create_test_client(tmp_path, enable_local_buffer_broker=False)
+    client, session_factory = _create_test_client(
+        tmp_path, enable_local_buffer_broker=False
+    )
     try:
         with client:
             denied_token = issue_test_user_token(
@@ -218,10 +229,14 @@ def test_app_startup_initializes_missing_database_tables(tmp_path: Path) -> None
     """验证 FastAPI 应用启动时会初始化缺失的数据表。"""
 
     database_path = tmp_path / "startup.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}")
+    )
     try:
         settings = BackendServiceSettings(
-            database=BackendServiceDatabaseConfig(url=f"sqlite:///{database_path.as_posix()}"),
+            database=BackendServiceDatabaseConfig(
+                url=f"sqlite:///{database_path.as_posix()}"
+            ),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
         )
         with TestClient(create_app(settings=settings, session_factory=session_factory)):
@@ -274,7 +289,10 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
         assert application.version == "0.2.0"
         assert application.state.backend_service_settings == settings
         assert application.state.dataset_storage.root_dir == storage_root.resolve()
-        assert application.state.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
+        assert (
+            application.state.queue_backend.root_dir
+            == (tmp_path / "queue-root").resolve()
+        )
         assert application.state.background_task_manager_host is None
     finally:
         application.state.session_factory.engine.dispose()
@@ -288,10 +306,16 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
 
     frontend_dir = tmp_path / "frontend"
     frontend_dir.mkdir(parents=True, exist_ok=True)
-    (frontend_dir / "index.html").write_text("<html><body>amvision frontend</body></html>\n", encoding="utf-8")
+    (frontend_dir / "index.html").write_text(
+        "<html><body>amvision frontend</body></html>\n", encoding="utf-8"
+    )
     (frontend_dir / "assets").mkdir(parents=True, exist_ok=True)
-    (frontend_dir / "assets" / "app.js").write_text("console.log('app');\n", encoding="utf-8")
-    (frontend_dir / "assets" / "style.css").write_text("body { color: #111; }\n", encoding="utf-8")
+    (frontend_dir / "assets" / "app.js").write_text(
+        "console.log('app');\n", encoding="utf-8"
+    )
+    (frontend_dir / "assets" / "style.css").write_text(
+        "body { color: #111; }\n", encoding="utf-8"
+    )
 
     # 模拟现场 Windows 机器把 .js 注册成 text/plain 的情况，服务端应在挂载前修正。
     mimetypes.add_type("text/plain", ".js", strict=True)
@@ -303,10 +327,22 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
         database=BackendServiceDatabaseConfig(
             url=f"sqlite:///{(tmp_path / 'frontend-static.db').as_posix()}"
         ),
-        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(tmp_path / "files")),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(tmp_path / "files")
+        ),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "queue-root")),
         task_manager=BackendServiceTaskManagerConfig(enabled=False),
         local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
+        zeromq_trigger=BackendServiceZeroMqTriggerConfig(
+            buffer_ttl_seconds=330.0,
+            buffer_ttl_safety_margin_seconds=30.0,
+            receive_hwm=1,
+            send_hwm=1,
+            max_message_size_bytes=1024 * 1024 * 1024,
+            poll_timeout_ms=100,
+            startup_timeout_seconds=2.0,
+            shutdown_timeout_seconds=10.0,
+        ),
     )
 
     application = create_app(settings=settings)
@@ -323,7 +359,9 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
         assert route_fallback_response.status_code == 200
         assert "amvision frontend" in route_fallback_response.text
         assert asset_response.status_code == 200
-        assert asset_response.headers["content-type"].startswith("application/javascript")
+        assert asset_response.headers["content-type"].startswith(
+            "application/javascript"
+        )
         assert css_response.status_code == 200
         assert css_response.headers["content-type"].startswith("text/css")
         assert missing_asset_response.status_code == 404
@@ -360,6 +398,16 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                     "enabled": False,
                     "max_concurrent_tasks": 3,
                     "poll_interval_seconds": 2.0,
+                },
+                "zeromq_trigger": {
+                    "buffer_ttl_seconds": 330.0,
+                    "buffer_ttl_safety_margin_seconds": 30.0,
+                    "receive_hwm": 1,
+                    "send_hwm": 1,
+                    "max_message_size_bytes": 1073741824,
+                    "poll_timeout_ms": 100,
+                    "startup_timeout_seconds": 2.0,
+                    "shutdown_timeout_seconds": 10.0,
                 },
             }
         ),
@@ -402,6 +450,7 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
     assert settings.task_manager.enabled is True
     assert settings.task_manager.max_concurrent_tasks == 4
     assert settings.task_manager.poll_interval_seconds == 2.0
+    assert settings.zeromq_trigger.max_message_size_bytes == 1073741824
 
     get_backend_service_settings.cache_clear()
 

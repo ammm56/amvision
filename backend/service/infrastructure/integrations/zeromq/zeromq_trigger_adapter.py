@@ -31,10 +31,7 @@ from backend.service.application.workflows.trigger_sources.protocol_adapter impo
     WorkflowTriggerEventHandler,
 )
 from backend.service.application.workflows.trigger_sources.zeromq_transport import (
-    resolve_zeromq_buffer_ttl_seconds,
-    resolve_zeromq_max_message_size_bytes,
-    resolve_zeromq_receive_hwm,
-    resolve_zeromq_send_hwm,
+    ZeroMqTriggerRuntimeConfig,
 )
 from backend.service.application.workflows.runtime.policies import (
     should_return_workflow_timing_metadata,
@@ -178,28 +175,17 @@ class ZeroMqTriggerAdapter:
         self,
         *,
         local_buffer_writer: LocalBufferByteWriter,
-        poll_timeout_ms: int = 100,
-        startup_timeout_seconds: float = 2.0,
-        shutdown_timeout_seconds: float = 10.0,
+        runtime_config: ZeroMqTriggerRuntimeConfig,
     ) -> None:
         """初始化 ZeroMqTriggerAdapter。
 
         参数：
         - local_buffer_writer：LocalBufferBroker 写入接口。
-        - poll_timeout_ms：后台线程轮询间隔毫秒数。
-        - startup_timeout_seconds：等待监听线程完成 bind 的最长秒数。
+        - runtime_config：从 backend-service 统一配置注入的 ZeroMQ 运行参数。
         """
 
-        if poll_timeout_ms <= 0:
-            raise InvalidRequestError("poll_timeout_ms 必须大于 0")
-        if startup_timeout_seconds <= 0:
-            raise InvalidRequestError("startup_timeout_seconds 必须大于 0")
-        if shutdown_timeout_seconds <= 0:
-            raise InvalidRequestError("shutdown_timeout_seconds 必须大于 0")
         self.local_buffer_writer = local_buffer_writer
-        self.poll_timeout_ms = poll_timeout_ms
-        self.startup_timeout_seconds = startup_timeout_seconds
-        self.shutdown_timeout_seconds = shutdown_timeout_seconds
+        self.runtime_config = runtime_config
         self._states: dict[str, _ZeroMqAdapterState] = {}
         self._lock = RLock()
 
@@ -233,13 +219,15 @@ class ZeroMqTriggerAdapter:
         )
         state.thread = thread
         thread.start()
-        if not state.startup_event.wait(timeout=self.startup_timeout_seconds):
+        if not state.startup_event.wait(
+            timeout=self.runtime_config.startup_timeout_seconds
+        ):
             self.stop(trigger_source_id=trigger_source.trigger_source_id)
             raise OperationTimeoutError(
                 "等待 ZeroMQ TriggerSource 启动超时",
                 details={
                     "trigger_source_id": trigger_source.trigger_source_id,
-                    "timeout_seconds": self.startup_timeout_seconds,
+                    "timeout_seconds": self.runtime_config.startup_timeout_seconds,
                 },
             )
         with state.lifecycle_lock:
@@ -271,12 +259,14 @@ class ZeroMqTriggerAdapter:
         with state.lifecycle_lock:
             state.stopping = True
             state.stop_event.set()
-        if not state.stopped_event.wait(timeout=self.shutdown_timeout_seconds):
+        if not state.stopped_event.wait(
+            timeout=self.runtime_config.shutdown_timeout_seconds
+        ):
             raise OperationTimeoutError(
                 "等待 ZeroMQ TriggerSource 停止超时",
                 details={
                     "trigger_source_id": normalized_trigger_source_id,
-                    "timeout_seconds": self.shutdown_timeout_seconds,
+                    "timeout_seconds": self.runtime_config.shutdown_timeout_seconds,
                 },
             )
         if state.thread is not None:
@@ -344,7 +334,10 @@ class ZeroMqTriggerAdapter:
         if state is not None:
             increment_safe_counter(state.received_count)
         try:
-            _validate_multipart_frames(trigger_source, frames)
+            _validate_multipart_frames(
+                frames,
+                runtime_config=self.runtime_config,
+            )
             parse_started_at = monotonic()
             envelope = _parse_envelope(frames)
             _validate_envelope_target(trigger_source, envelope)
@@ -372,7 +365,9 @@ class ZeroMqTriggerAdapter:
                 buffer_ref = BufferRef.model_validate(buffer_ref_payload)
                 cleanup_item = build_local_buffer_lease_cleanup_item(
                     lease_id=buffer_ref.lease_id,
-                    pool_name=_read_optional_transport_text(trigger_source, "pool_name"),
+                    pool_name=_read_optional_transport_text(
+                        trigger_source, "pool_name"
+                    ),
                 )
                 execution_metadata = dict(trigger_source.default_execution_metadata)
                 execution_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = (
@@ -397,9 +392,15 @@ class ZeroMqTriggerAdapter:
             )
             timings["zeromq_submit_event_ms"] = _elapsed_ms(submit_started_at)
             timings["zeromq_adapter_total_ms"] = _elapsed_ms(adapter_started_at)
-            if should_return_workflow_timing_metadata(trigger_source.default_execution_metadata):
+            if should_return_workflow_timing_metadata(
+                trigger_source.default_execution_metadata
+            ):
                 result = result.model_copy(
-                    update={"metadata": _merge_trigger_result_timings(result.metadata, timings)}
+                    update={
+                        "metadata": _merge_trigger_result_timings(
+                            result.metadata, timings
+                        )
+                    }
                 )
             if buffer_ref_payload is not None and (
                 result.workflow_run_id is None
@@ -465,15 +466,15 @@ class ZeroMqTriggerAdapter:
         socket.linger = 0
         socket.setsockopt(
             zeromq.RCVHWM,
-            resolve_zeromq_receive_hwm(trigger_source.transport_config),
+            self.runtime_config.receive_hwm,
         )
         socket.setsockopt(
             zeromq.SNDHWM,
-            resolve_zeromq_send_hwm(trigger_source.transport_config),
+            self.runtime_config.send_hwm,
         )
         socket.setsockopt(
             zeromq.MAXMSGSIZE,
-            resolve_zeromq_max_message_size_bytes(trigger_source.transport_config),
+            self.runtime_config.max_message_size_bytes,
         )
         poller = zeromq.Poller()
         try:
@@ -484,7 +485,7 @@ class ZeroMqTriggerAdapter:
                 state.stopping = False
             state.startup_event.set()
             while not state.stop_event.is_set():
-                events = dict(poller.poll(self.poll_timeout_ms))
+                events = dict(poller.poll(self.runtime_config.poll_timeout_ms))
                 if socket not in events:
                     continue
                 receive_started_at = monotonic()
@@ -530,12 +531,10 @@ class ZeroMqTriggerAdapter:
         """把 ZeroMQ 二进制帧写入 LocalBufferBroker。"""
 
         pool_name = _read_optional_transport_text(trigger_source, "pool_name")
-        ttl_seconds = resolve_zeromq_buffer_ttl_seconds(
-            trigger_source.transport_config
-        )
         ttl_seconds = max(
-            ttl_seconds,
-            float(trigger_source.reply_timeout_seconds or 300) + 30.0,
+            self.runtime_config.buffer_ttl_seconds,
+            float(trigger_source.reply_timeout_seconds or 300)
+            + self.runtime_config.buffer_ttl_safety_margin_seconds,
         )
         media_type = (
             envelope.media_type
@@ -569,7 +568,9 @@ class ZeroMqTriggerAdapter:
             raise InvalidRequestError("LocalBufferBroker 写入结果缺少 buffer_ref")
         return dict(buffer_ref.model_dump(mode="json"))
 
-    def _release_buffer_ref_payload(self, buffer_ref_payload: dict[str, object] | None) -> None:
+    def _release_buffer_ref_payload(
+        self, buffer_ref_payload: dict[str, object] | None
+    ) -> None:
         """在没有新 WorkflowRun 接管 cleanup 时释放输入 buffer。
 
         参数：
@@ -633,8 +634,9 @@ def _parse_envelope(frames: list[bytes]) -> ZeroMqFrameEnvelope:
 
 
 def _validate_multipart_frames(
-    trigger_source: WorkflowTriggerSource,
     frames: list[bytes],
+    *,
+    runtime_config: ZeroMqTriggerRuntimeConfig,
 ) -> None:
     """限制 envelope/content 两帧协议和单帧大小。"""
 
@@ -643,11 +645,11 @@ def _validate_multipart_frames(
             "ZeroMQ 触发消息只能包含 envelope 和可选 content 两帧",
             details={"frame_count": len(frames)},
         )
-    max_message_size_bytes = resolve_zeromq_max_message_size_bytes(
-        trigger_source.transport_config
-    )
+    max_message_size_bytes = runtime_config.max_message_size_bytes
     oversized_frames = [
-        index for index, frame in enumerate(frames) if len(frame) > max_message_size_bytes
+        index
+        for index, frame in enumerate(frames)
+        if len(frame) > max_message_size_bytes
     ]
     if oversized_frames:
         raise InvalidRequestError(
@@ -677,7 +679,9 @@ def _merge_trigger_result_timings(
     """把 ZeroMQ adapter 计时合并进 TriggerResult metadata。"""
 
     payload = dict(metadata)
-    timings = dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    timings = (
+        dict(payload.get("timings")) if isinstance(payload.get("timings"), dict) else {}
+    )
     for key, value in timing_payload.items():
         if isinstance(value, bool):
             timings[str(key)] = value
@@ -776,7 +780,9 @@ def _record_adapter_error(state: _ZeroMqAdapterState, error: Exception) -> None:
     increment_safe_counter(state.error_count)
     with state.lifecycle_lock:
         state.last_error = (
-            error.message if isinstance(error, ServiceError) else error.__class__.__name__
+            error.message
+            if isinstance(error, ServiceError)
+            else error.__class__.__name__
         )
 
 

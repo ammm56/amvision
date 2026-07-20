@@ -17,16 +17,6 @@ from backend.service.application.errors import (
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
-from backend.service.application.workflows.trigger_sources.zeromq_transport import (
-    ZEROMQ_BUFFER_TTL_SECONDS_KEY,
-    ZEROMQ_MAX_MESSAGE_SIZE_BYTES_KEY,
-    ZEROMQ_RECEIVE_HWM_KEY,
-    ZEROMQ_SEND_HWM_KEY,
-    resolve_zeromq_buffer_ttl_seconds,
-    resolve_zeromq_max_message_size_bytes,
-    resolve_zeromq_receive_hwm,
-    resolve_zeromq_send_hwm,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -57,6 +47,14 @@ _ACK_POLICIES = {
 _RESULT_MODES = {"sync-reply", "accepted-then-query", "event-only"}
 _ZEROMQ_TRIGGER_KIND = "zeromq-topic"
 _ZEROMQ_BIND_ENDPOINT_KEY = "bind_endpoint"
+_ZEROMQ_PROCESS_CONFIG_KEYS = frozenset(
+    {
+        "buffer_ttl_seconds",
+        "receive_hwm",
+        "send_hwm",
+        "max_message_size_bytes",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -723,10 +721,10 @@ class WorkflowTriggerSourceService:
         if request.trigger_kind != _ZEROMQ_TRIGGER_KIND:
             return
         bind_endpoint = _read_zeromq_bind_endpoint(request.transport_config)
-        for trigger_source in (
-            unit_of_work.workflow_trigger_sources.list_trigger_sources_by_kind(
-                _ZEROMQ_TRIGGER_KIND
-            )
+        for (
+            trigger_source
+        ) in unit_of_work.workflow_trigger_sources.list_trigger_sources_by_kind(
+            _ZEROMQ_TRIGGER_KIND
         ):
             if trigger_source.trigger_source_id == existing_trigger_source_id:
                 continue
@@ -921,18 +919,11 @@ def _normalize_transport_config_for_kind(
     normalized_config[_ZEROMQ_BIND_ENDPOINT_KEY] = _read_zeromq_bind_endpoint(
         normalized_config
     )
-    normalized_config[ZEROMQ_BUFFER_TTL_SECONDS_KEY] = (
-        resolve_zeromq_buffer_ttl_seconds(normalized_config)
-    )
-    normalized_config[ZEROMQ_RECEIVE_HWM_KEY] = resolve_zeromq_receive_hwm(
-        normalized_config
-    )
-    normalized_config[ZEROMQ_SEND_HWM_KEY] = resolve_zeromq_send_hwm(
-        normalized_config
-    )
-    normalized_config[ZEROMQ_MAX_MESSAGE_SIZE_BYTES_KEY] = (
-        resolve_zeromq_max_message_size_bytes(normalized_config)
-    )
+    # ZeroMQ socket、消息上限和输入 lease TTL 是 backend-service 进程级
+    # 资源约束，统一由 config/backend-service.json 管理。创建 TriggerSource
+    # 时主动移除旧调用方携带的同名字段，避免持久化快照覆盖最新全局配置。
+    for key in _ZEROMQ_PROCESS_CONFIG_KEYS:
+        normalized_config.pop(key, None)
     return normalized_config
 
 

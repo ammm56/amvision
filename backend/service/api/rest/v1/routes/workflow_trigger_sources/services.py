@@ -10,7 +10,9 @@ from backend.service.application.errors import (
     PermissionDeniedError,
     ServiceConfigurationError,
 )
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.application.workflows.trigger_sources import (
     WorkflowTriggerSourceService,
 )
@@ -32,7 +34,9 @@ def build_trigger_source_service(request: Request) -> WorkflowTriggerSourceServi
     )
 
 
-def build_workflow_json_service_from_request(request: Request) -> LocalWorkflowJsonService:
+def build_workflow_json_service_from_request(
+    request: Request,
+) -> LocalWorkflowJsonService:
     """基于 application.state 构建 workflow 图编排文件服务。"""
 
     return LocalWorkflowJsonService(
@@ -89,4 +93,3 @@ def ensure_project_visible(
             "当前主体无权访问该 Project",
             details={"project_id": project_id},
         )
-

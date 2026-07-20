@@ -124,7 +124,9 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     },
                 },
             )
-            default_principal_id = get_default_test_principal_id(context.session_factory)
+            default_principal_id = get_default_test_principal_id(
+                context.session_factory
+            )
     finally:
         context.session_factory.engine.dispose()
 
@@ -136,7 +138,9 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert create_payload["enabled"] is False
     assert create_payload["observed_state"] == "stopped"
     assert create_payload["updated_by"] == default_principal_id
-    assert create_payload["runtime_summary"]["workflow_runtime_id"] == "workflow-runtime-1"
+    assert (
+        create_payload["runtime_summary"]["workflow_runtime_id"] == "workflow-runtime-1"
+    )
     assert create_payload["application_summary"] is None
 
     assert list_response.status_code == 200
@@ -169,9 +173,14 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert failed_payload["enabled"] is True
     assert failed_payload["desired_state"] == "running"
     assert failed_payload["observed_state"] == "failed"
-    assert failed_payload["last_error"] == "当前 TriggerSource 类型尚未接入可用 adapter，无法启用"
+    assert (
+        failed_payload["last_error"]
+        == "当前 TriggerSource 类型尚未接入可用 adapter，无法启用"
+    )
     assert failed_payload["health_summary"]["adapter_configured"] is False
-    assert failed_payload["health_summary"]["recent_error"]["trigger_kind"] == "http-api"
+    assert (
+        failed_payload["health_summary"]["recent_error"]["trigger_kind"] == "http-api"
+    )
 
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
@@ -278,7 +287,9 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                     },
                 },
             )
-            default_principal_id = get_default_test_principal_id(context.session_factory)
+            default_principal_id = get_default_test_principal_id(
+                context.session_factory
+            )
     finally:
         context.session_factory.engine.dispose()
 
@@ -287,8 +298,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
     duplicate_endpoint_payload = create_duplicate_endpoint_response.json()
     assert duplicate_endpoint_payload["error"]["code"] == "invalid_request"
     assert (
-        duplicate_endpoint_payload["error"]["details"]["bind_endpoint"]
-        == bind_endpoint
+        duplicate_endpoint_payload["error"]["details"]["bind_endpoint"] == bind_endpoint
     )
     assert (
         duplicate_endpoint_payload["error"]["details"]["conflict_trigger_source_id"]
@@ -348,6 +358,10 @@ def test_workflow_trigger_source_api_defaults_to_sync_reply(
                     "transport_config": {
                         "bind_endpoint": f"inproc://workflow-trigger-defaults-{uuid4().hex}",
                         "default_input_binding": "request_image_ref",
+                        "buffer_ttl_seconds": 1,
+                        "receive_hwm": 2,
+                        "send_hwm": 3,
+                        "max_message_size_bytes": 16,
                     },
                     "input_binding_mapping": {
                         "request_image_base64": {
@@ -370,10 +384,10 @@ def test_workflow_trigger_source_api_defaults_to_sync_reply(
     assert payload["submit_mode"] == "sync"
     assert payload["ack_policy"] == "ack-after-run-finished"
     assert payload["result_mode"] == "sync-reply"
-    assert payload["transport_config"]["buffer_ttl_seconds"] == 330.0
-    assert payload["transport_config"]["receive_hwm"] == 1
-    assert payload["transport_config"]["send_hwm"] == 1
-    assert payload["transport_config"]["max_message_size_bytes"] == 134217728
+    assert "buffer_ttl_seconds" not in payload["transport_config"]
+    assert "receive_hwm" not in payload["transport_config"]
+    assert "send_hwm" not in payload["transport_config"]
+    assert "max_message_size_bytes" not in payload["transport_config"]
     assert payload["input_binding_mapping"]["request_image_base64"]["required"] is False
     assert payload["input_binding_mapping"]["request_image_ref"]["required"] is False
 
@@ -437,7 +451,9 @@ def test_workflow_trigger_source_api_controls_plc_register_adapter(
     class _IdleCoilClient:
         """测试用空闲 Modbus client。"""
 
-        def __init__(self, host: str, *, port: int, timeout: float, retries: int) -> None:
+        def __init__(
+            self, host: str, *, port: int, timeout: float, retries: int
+        ) -> None:
             """记录连接参数。"""
 
             self.host = host

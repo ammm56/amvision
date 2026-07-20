@@ -184,7 +184,22 @@ frame 1: image bytes 或 frame bytes
 frame n: 可选附加二进制数据
 ```
 
-当前 ZeroMQ REQ/REP 实现只接受 1 个 envelope frame，或 1 个 envelope + 1 个 binary frame。adapter 默认设置 `receive_hwm=1`、`send_hwm=1` 和 `max_message_size_bytes=134217728`，并在写入 mmap 前拒绝异常 multipart 数量和超限 frame。`buffer_ttl_seconds` 必须为正数，默认 330 秒；实际输入 lease TTL 取该配置与 `reply_timeout_seconds + 30` 秒安全余量中的较大值。
+当前 ZeroMQ REQ/REP 实现只接受 1 个 envelope frame，或 1 个 envelope + 1 个 binary frame，并在写入 mmap 前拒绝异常 multipart 数量和超限 frame。ZeroMQ 的全局缺省值和 listener 生命周期参数统一放在 `config/backend-service.json` 的 `zeromq_trigger` 中，不在 Python 协议实现内维护环境相关数值：
+
+| 配置字段 | 含义 |
+| --- | --- |
+| `buffer_ttl_seconds` | binary frame 写入 LocalBufferBroker 后的默认 lease TTL。 |
+| `buffer_ttl_safety_margin_seconds` | 在 `reply_timeout_seconds` 之外额外保留 lease 的安全余量。 |
+| `receive_hwm` | ZeroMQ socket 接收队列高水位，单位为消息数；低内存设备建议保持较小值。 |
+| `send_hwm` | ZeroMQ socket 发送队列高水位，单位为消息数。 |
+| `max_message_size_bytes` | 单个 ZeroMQ frame 的默认协议上限，不代表 LocalBufferBroker 的固定图片分辨率。 |
+| `poll_timeout_ms` | listener 检查停止信号的轮询间隔。 |
+| `startup_timeout_seconds` | 等待 listener 完成 bind 的最长时间。 |
+| `shutdown_timeout_seconds` | 等待 listener 关闭 socket 并确认线程退出的最长时间。 |
+
+默认 `max_message_size_bytes=1073741824`，可容纳 16384×16384×4 字节的未压缩 frame。该值只是 ZeroMQ 防御异常大消息的可调协议上限，不会在 listener 启动时预分配 1 GiB 内存；实际 binary frame 仍必须能放入 TriggerSource 选择的 LocalBuffer pool 单个 slot。接入 8K 或 16K 图片时，应按 `width × height × channel_count × bytes_per_channel` 计算最小 slot 容量，在 `local_buffer_broker.pools` 中新增匹配 pool，并让 TriggerSource 的 `pool_name` 指向该 pool；不需要修改 Python 代码。低内存设备可以同时降低消息上限、HWM 和 pool slot 数量。
+
+这些进程级资源约束不写入单个 TriggerSource 的 `transport_config`。控制面会移除旧调用方携带的 `buffer_ttl_seconds`、`receive_hwm`、`send_hwm` 和 `max_message_size_bytes`，运行时也不会读取数据库中遗留的同名快照，因此修改 `backend-service.json` 并重启服务后会统一作用于所有 ZeroMQ listener。实际输入 lease TTL 取全局 TTL 与 `reply_timeout_seconds + buffer_ttl_safety_margin_seconds` 中的较大值。
 
 停用 TriggerSource 时，状态只会在线程确认退出且 REP socket 已关闭后变为 `stopped`。停止超时会保留 `stopping/failed` 可观测状态，不能提前移除实例或在旧 listener 尚存活时对外报告已停止。
 

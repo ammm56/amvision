@@ -911,7 +911,6 @@ function buildTransportConfig(): WorkflowJsonObject {
     return {
       bind_endpoint: normalizedEndpoint,
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
-      buffer_ttl_seconds: selectedProtocolTemplate.value.defaultReplyTimeoutSeconds,
       content_transport: 'local-buffer',
       pool_name: selectedPoolName,
     }

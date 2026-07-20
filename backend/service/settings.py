@@ -6,11 +6,18 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
+from backend.service.application.workflows.trigger_sources.zeromq_transport import (
+    ZeroMqTriggerRuntimeConfig,
+)
 from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -85,9 +92,15 @@ class BackendServiceStaticAccessTokenConfig(BaseModel):
     token: str = Field(description="Bearer token 明文")
     principal_id: str = Field(description="主体 id")
     principal_type: str = Field(default="user", description="主体类型")
-    project_ids: list[str] = Field(default_factory=list, description="Project 可见范围列表；为空表示全部 Project")
-    scopes: list[str] = Field(default_factory=list, description="当前 token 持有的 scopes")
-    metadata: dict[str, object] = Field(default_factory=dict, description="附加主体元数据")
+    project_ids: list[str] = Field(
+        default_factory=list, description="Project 可见范围列表；为空表示全部 Project"
+    )
+    scopes: list[str] = Field(
+        default_factory=list, description="当前 token 持有的 scopes"
+    )
+    metadata: dict[str, object] = Field(
+        default_factory=dict, description="附加主体元数据"
+    )
 
 
 class BackendServiceLocalAuthConfig(BaseModel):
@@ -104,12 +117,16 @@ class BackendServiceLocalAuthConfig(BaseModel):
     """
 
     enabled: bool = Field(default=True, description="是否启用本地用户与登录会话")
-    access_token_ttl_hours: int = Field(default=168, description="兼容字段；登录会话 access token 默认有效期小时数")
+    access_token_ttl_hours: int = Field(
+        default=168, description="兼容字段；登录会话 access token 默认有效期小时数"
+    )
     session_access_token_ttl_hours: int | None = Field(
         default=None,
         description="登录会话 access token 默认有效期小时数",
     )
-    refresh_token_ttl_hours: int = Field(default=720, description="登录会话 refresh token 默认有效期小时数")
+    refresh_token_ttl_hours: int = Field(
+        default=720, description="登录会话 refresh token 默认有效期小时数"
+    )
     user_token_default_ttl_hours: int = Field(
         default=0,
         description="长期调用 user token 默认有效期小时数；0 表示永久有效",
@@ -147,7 +164,9 @@ class BackendServiceAuthProviderConfig(BaseModel):
     enabled: bool = Field(default=True, description="是否公开该 provider")
     login_mode: str = Field(default="external-browser", description="provider 登录模式")
     issuer_url: str | None = Field(default=None, description="可选 issuer 地址")
-    metadata: dict[str, object] = Field(default_factory=dict, description="附加目录元数据")
+    metadata: dict[str, object] = Field(
+        default_factory=dict, description="附加目录元数据"
+    )
 
 
 class BackendServiceAuthConfig(BaseModel):
@@ -316,6 +335,48 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     )
 
 
+class BackendServiceZeroMqTriggerConfig(BaseModel):
+    """描述 ZeroMQ TriggerSource 的全局缺省值与 listener 生命周期配置。
+
+    字段：
+    - buffer_ttl_seconds：输入 frame 的默认 LocalBuffer lease TTL。
+    - buffer_ttl_safety_margin_seconds：同步调用超时之外的 lease 安全余量。
+    - receive_hwm：接收队列高水位，单位为消息数。
+    - send_hwm：发送队列高水位，单位为消息数。
+    - max_message_size_bytes：单个 ZeroMQ frame 的默认最大字节数。
+    - poll_timeout_ms：listener 轮询停止信号的间隔毫秒数。
+    - startup_timeout_seconds：listener bind 启动超时秒数。
+    - shutdown_timeout_seconds：listener 完整停止超时秒数。
+
+    说明：
+    - 所有字段必须由 config JSON、环境变量或启动参数显式提供。
+    - 进程内所有 ZeroMQ listener 使用同一套资源约束，避免持久化 TriggerSource 快照覆盖现场配置。
+    """
+
+    buffer_ttl_seconds: float = Field(gt=0)
+    buffer_ttl_safety_margin_seconds: float = Field(ge=0)
+    receive_hwm: int = Field(gt=0)
+    send_hwm: int = Field(gt=0)
+    max_message_size_bytes: int = Field(gt=0)
+    poll_timeout_ms: int = Field(gt=0)
+    startup_timeout_seconds: float = Field(gt=0)
+    shutdown_timeout_seconds: float = Field(gt=0)
+
+    def to_runtime_config(self) -> ZeroMqTriggerRuntimeConfig:
+        """转换为 application/infrastructure 共用的不可变运行配置。"""
+
+        return ZeroMqTriggerRuntimeConfig(
+            buffer_ttl_seconds=self.buffer_ttl_seconds,
+            buffer_ttl_safety_margin_seconds=self.buffer_ttl_safety_margin_seconds,
+            receive_hwm=self.receive_hwm,
+            send_hwm=self.send_hwm,
+            max_message_size_bytes=self.max_message_size_bytes,
+            poll_timeout_ms=self.poll_timeout_ms,
+            startup_timeout_seconds=self.startup_timeout_seconds,
+            shutdown_timeout_seconds=self.shutdown_timeout_seconds,
+        )
+
+
 class BackendServiceCustomNodesConfig(BaseModel):
     """描述 backend-service 使用的 custom_nodes 目录配置。
 
@@ -344,6 +405,7 @@ class BackendServiceSettings(BaseSettings):
     - task_manager：内嵌后台任务管理器配置。
     - async_inference_gateway：异步推理 gateway 配置。
     - workflow_runtime：workflow runtime 结果缓存配置。
+    - zeromq_trigger：ZeroMQ TriggerSource 全局缺省值与 listener 生命周期配置。
     - custom_nodes：自定义节点目录配置。
     - local_buffer_broker：本机 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
@@ -358,8 +420,12 @@ class BackendServiceSettings(BaseSettings):
     app: BackendServiceAppSettings = Field(default_factory=BackendServiceAppSettings)
     cors: BackendServiceCorsConfig = Field(default_factory=BackendServiceCorsConfig)
     auth: BackendServiceAuthConfig = Field(default_factory=BackendServiceAuthConfig)
-    projects: BackendServiceProjectsConfig = Field(default_factory=BackendServiceProjectsConfig)
-    database: BackendServiceDatabaseConfig = Field(default_factory=BackendServiceDatabaseConfig)
+    projects: BackendServiceProjectsConfig = Field(
+        default_factory=BackendServiceProjectsConfig
+    )
+    database: BackendServiceDatabaseConfig = Field(
+        default_factory=BackendServiceDatabaseConfig
+    )
     dataset_storage: BackendServiceDatasetStorageConfig = Field(
         default_factory=BackendServiceDatasetStorageConfig
     )
@@ -373,8 +439,13 @@ class BackendServiceSettings(BaseSettings):
     workflow_runtime: BackendServiceWorkflowRuntimeConfig = Field(
         default_factory=BackendServiceWorkflowRuntimeConfig
     )
-    custom_nodes: BackendServiceCustomNodesConfig = Field(default_factory=BackendServiceCustomNodesConfig)
-    local_buffer_broker: LocalBufferBrokerSettings = Field(default_factory=LocalBufferBrokerSettings)
+    zeromq_trigger: BackendServiceZeroMqTriggerConfig
+    custom_nodes: BackendServiceCustomNodesConfig = Field(
+        default_factory=BackendServiceCustomNodesConfig
+    )
+    local_buffer_broker: LocalBufferBrokerSettings = Field(
+        default_factory=LocalBufferBrokerSettings
+    )
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig
     )

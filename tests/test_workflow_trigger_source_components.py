@@ -22,7 +22,10 @@ from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
 )
 from backend.nodes.core_nodes.support.deployment_model import run_direct_model_inference
-from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+)
 from backend.service.application.workflows.execution.contracts import (
     WorkflowNodeExecutionRequest,
 )
@@ -46,8 +49,7 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
 )
 from backend.service.application.workflows.trigger_sources.zeromq_transport import (
-    DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS,
-    resolve_zeromq_buffer_ttl_seconds,
+    ZeroMqTriggerRuntimeConfig,
 )
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.domain.workflows.workflow_trigger_source_records import (
@@ -64,15 +66,29 @@ from backend.service.infrastructure.integrations.directory import (
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 
 
-@pytest.mark.parametrize("invalid_value", [0, -1, True, "nan", "inf", "invalid"])
-def test_zeromq_buffer_ttl_requires_positive_finite_number(
-    invalid_value: object,
-) -> None:
-    """验证 ZeroMQ buffer TTL 默认存在且拒绝非正数和非有限数值。"""
+_ZEROMQ_RUNTIME_CONFIG = ZeroMqTriggerRuntimeConfig(
+    buffer_ttl_seconds=330.0,
+    buffer_ttl_safety_margin_seconds=30.0,
+    receive_hwm=1,
+    send_hwm=1,
+    max_message_size_bytes=1024 * 1024 * 1024,
+    poll_timeout_ms=100,
+    startup_timeout_seconds=2.0,
+    shutdown_timeout_seconds=10.0,
+)
 
-    assert resolve_zeromq_buffer_ttl_seconds({}) == DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS
-    with pytest.raises(InvalidRequestError, match="buffer_ttl_seconds"):
-        resolve_zeromq_buffer_ttl_seconds({"buffer_ttl_seconds": invalid_value})
+
+def _build_zeromq_adapter(
+    local_buffer_writer: object,
+    **runtime_overrides: object,
+) -> ZeroMqTriggerAdapter:
+    """使用显式运行配置构造 ZeroMQ adapter。"""
+
+    runtime_config = replace(_ZEROMQ_RUNTIME_CONFIG, **runtime_overrides)
+    return ZeroMqTriggerAdapter(
+        local_buffer_writer=local_buffer_writer,
+        runtime_config=runtime_config,
+    )
 
 
 def test_trigger_event_normalizer_and_input_binding_mapper_resolve_payload_paths() -> (
@@ -445,12 +461,11 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
         transport_config={
             "bind_endpoint": f"inproc://zeromq-trigger-test-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
-            "buffer_ttl_seconds": 5,
             "pool_name": "image-640x640",
         },
     )
     local_buffer_writer = _FakeLocalBufferWriter()
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    adapter = _build_zeromq_adapter(local_buffer_writer)
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
@@ -504,7 +519,7 @@ def test_zeromq_trigger_adapter_releases_unclaimed_replay_buffer() -> None:
         transport_config={"default_input_binding": "request_image_ref"},
     )
     local_buffer_writer = _FakeLocalBufferWriter()
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    adapter = _build_zeromq_adapter(local_buffer_writer)
 
     class _ReplayHandler:
         def handle_trigger_event(self, *, trigger_source, raw_event):
@@ -604,7 +619,7 @@ def test_zeromq_trigger_adapter_defaults_content_frame_to_image_ref_binding() ->
             },
         },
     )
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
@@ -635,7 +650,7 @@ def test_zeromq_trigger_adapter_releases_buffer_when_submit_is_rejected() -> Non
         transport_config={"default_input_binding": "request_image_ref"},
     )
     local_buffer_writer = _FakeLocalBufferWriter()
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    adapter = _build_zeromq_adapter(local_buffer_writer)
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
         workflow_submitter=_RejectingWorkflowSubmitter(),
@@ -666,7 +681,7 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
             "default_input_binding": "request_image_ref",
         },
     )
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
         workflow_submitter=_FakeWorkflowSubmitter(),
@@ -725,8 +740,8 @@ def test_zeromq_stop_keeps_stopping_state_until_listener_exits() -> None:
                 state="accepted",
             )
 
-    adapter = ZeroMqTriggerAdapter(
-        local_buffer_writer=_FakeLocalBufferWriter(),
+    adapter = _build_zeromq_adapter(
+        _FakeLocalBufferWriter(),
         shutdown_timeout_seconds=0.05,
     )
     context = zmq.Context.instance()
@@ -744,7 +759,9 @@ def test_zeromq_stop_keeps_stopping_state_until_listener_exits() -> None:
         assert health["running"] is True
         assert health["stopping"] is True
         with pytest.raises(InvalidRequestError, match="已经启动"):
-            adapter.start(trigger_source=trigger_source, event_handler=_BlockingHandler())
+            adapter.start(
+                trigger_source=trigger_source, event_handler=_BlockingHandler()
+            )
         release.set()
         socket.recv_multipart()
         adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
@@ -758,9 +775,11 @@ def test_zeromq_trigger_rejects_extra_or_oversized_frames() -> None:
 
     trigger_source = _build_trigger_source(
         trigger_kind="zeromq-topic",
-        transport_config={"max_message_size_bytes": 16},
     )
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    adapter = _build_zeromq_adapter(
+        _FakeLocalBufferWriter(),
+        max_message_size_bytes=16,
+    )
     handler = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
         workflow_submitter=_FakeWorkflowSubmitter(),
@@ -789,7 +808,7 @@ def test_zeromq_trigger_adapter_allows_envelope_only_event_without_input_frame()
         trigger_kind="zeromq-topic",
         input_binding_mapping={},
     )
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
     submitter = _FakeWorkflowSubmitter()
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
@@ -1298,14 +1317,13 @@ def _run_bgr24_deployment_trigger_smoke(
         transport_config={
             "bind_endpoint": f"inproc://zeromq-bgr24-deployment-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
-            "buffer_ttl_seconds": 5,
             "pool_name": "image-raw-bgr24",
         },
         default_execution_metadata=default_execution_metadata,
     )
     local_buffer_writer = _FakeLocalBufferWriter()
     runtime_service = _DeploymentModelWorkflowRuntimeService()
-    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+    adapter = _build_zeromq_adapter(local_buffer_writer)
     supervisor = TriggerSourceSupervisor(
         adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
         workflow_submitter=WorkflowSubmitter(runtime_service=runtime_service),

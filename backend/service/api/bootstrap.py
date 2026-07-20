@@ -12,7 +12,9 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
-from backend.service.application.auth.default_local_auth_seeder import DefaultLocalAuthSeeder
+from backend.service.application.auth.default_local_auth_seeder import (
+    DefaultLocalAuthSeeder,
+)
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
     PublishedInferenceGateway,
@@ -66,7 +68,9 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
-from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
+from backend.service.application.workflows.worker.manager import (
+    WorkflowRuntimeWorkerManager,
+)
 from backend.service.application.workflows.trigger_sources.trigger_source_service import (
     WorkflowTriggerSourceService,
 )
@@ -115,13 +119,15 @@ def _register_gateway_registry_classes() -> None:
     """延迟加载 gateway registry 类映射，避免循环导入。"""
     if _GATEWAY_REGISTRY_CLASSES:
         return
-    _GATEWAY_REGISTRY_CLASSES.update({
-        "detection": DetectionAsyncInferenceGatewayDispatcherRegistry,
-        "classification": ClassificationAsyncInferenceGatewayDispatcherRegistry,
-        "segmentation": SegmentationAsyncInferenceGatewayDispatcherRegistry,
-        "pose": PoseAsyncInferenceGatewayDispatcherRegistry,
-        "obb": ObbAsyncInferenceGatewayDispatcherRegistry,
-    })
+    _GATEWAY_REGISTRY_CLASSES.update(
+        {
+            "detection": DetectionAsyncInferenceGatewayDispatcherRegistry,
+            "classification": ClassificationAsyncInferenceGatewayDispatcherRegistry,
+            "segmentation": SegmentationAsyncInferenceGatewayDispatcherRegistry,
+            "pose": PoseAsyncInferenceGatewayDispatcherRegistry,
+            "obb": ObbAsyncInferenceGatewayDispatcherRegistry,
+        }
+    )
 
 
 def _build_deployment_supervisor(
@@ -253,31 +259,49 @@ class BackendServiceRuntime:
     published_inference_gateway: PublishedInferenceGateway
     detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor
     detection_async_deployment_process_supervisor: DeploymentProcessSupervisor
-    detection_async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry
+    detection_async_inference_gateway_dispatcher_registry: (
+        DetectionAsyncInferenceGatewayDispatcherRegistry
+    )
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
     workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
     background_task_manager_host: HostedBackgroundTaskManager | None
     classification_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
-    classification_async_deployment_supervisor: DeploymentProcessSupervisor | None = None
-    classification_async_inference_gateway_registry: ClassificationAsyncInferenceGatewayDispatcherRegistry | None = None
+    classification_async_deployment_supervisor: DeploymentProcessSupervisor | None = (
+        None
+    )
+    classification_async_inference_gateway_registry: (
+        ClassificationAsyncInferenceGatewayDispatcherRegistry | None
+    ) = None
     segmentation_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
     segmentation_async_deployment_supervisor: DeploymentProcessSupervisor | None = None
-    segmentation_async_inference_gateway_registry: SegmentationAsyncInferenceGatewayDispatcherRegistry | None = None
+    segmentation_async_inference_gateway_registry: (
+        SegmentationAsyncInferenceGatewayDispatcherRegistry | None
+    ) = None
     pose_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
     pose_async_deployment_supervisor: DeploymentProcessSupervisor | None = None
-    pose_async_inference_gateway_registry: PoseAsyncInferenceGatewayDispatcherRegistry | None = None
+    pose_async_inference_gateway_registry: (
+        PoseAsyncInferenceGatewayDispatcherRegistry | None
+    ) = None
     obb_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
     obb_async_deployment_supervisor: DeploymentProcessSupervisor | None = None
-    obb_async_inference_gateway_registry: ObbAsyncInferenceGatewayDispatcherRegistry | None = None
+    obb_async_inference_gateway_registry: (
+        ObbAsyncInferenceGatewayDispatcherRegistry | None
+    ) = None
 
     def iter_all_deployment_supervisors(self):
         """按 (task_type, mode) 遍历所有 deployment supervisor 和 gateway registry。"""
         _FIELD_PREFIXES = ("detection", "classification", "segmentation", "pose", "obb")
         for field_prefix in _FIELD_PREFIXES:
-            sync_sup = getattr(self, f"{field_prefix}_sync_deployment_process_supervisor", None)
-            async_sup = getattr(self, f"{field_prefix}_async_deployment_process_supervisor", None)
-            gw_reg = getattr(self, f"{field_prefix}_async_inference_gateway_registry", None) or getattr(
+            sync_sup = getattr(
+                self, f"{field_prefix}_sync_deployment_process_supervisor", None
+            )
+            async_sup = getattr(
+                self, f"{field_prefix}_async_deployment_process_supervisor", None
+            )
+            gw_reg = getattr(
+                self, f"{field_prefix}_async_inference_gateway_registry", None
+            ) or getattr(
                 self,
                 f"{field_prefix}_async_inference_gateway_dispatcher_registry",
                 None,
@@ -460,18 +484,28 @@ class BackendServiceBootstrap(
             detection_async_deployment_process_supervisor,
             detection_async_inference_gateway_dispatcher_registry,
         ) = _build_task_type_deployment_runtimes(task_type="detection", **_build_kw)
-        (classification_sync_deployment_supervisor,
-         classification_async_deployment_supervisor,
-         classification_async_inference_gateway_registry) = _build_task_type_deployment_runtimes(task_type="classification", **_build_kw)
-        (segmentation_sync_deployment_supervisor,
-         segmentation_async_deployment_supervisor,
-         segmentation_async_inference_gateway_registry) = _build_task_type_deployment_runtimes(task_type="segmentation", **_build_kw)
-        (pose_sync_deployment_supervisor,
-         pose_async_deployment_supervisor,
-         pose_async_inference_gateway_registry) = _build_task_type_deployment_runtimes(task_type="pose", **_build_kw)
-        (obb_sync_deployment_supervisor,
-         obb_async_deployment_supervisor,
-         obb_async_inference_gateway_registry) = _build_task_type_deployment_runtimes(task_type="obb", **_build_kw)
+        (
+            classification_sync_deployment_supervisor,
+            classification_async_deployment_supervisor,
+            classification_async_inference_gateway_registry,
+        ) = _build_task_type_deployment_runtimes(
+            task_type="classification", **_build_kw
+        )
+        (
+            segmentation_sync_deployment_supervisor,
+            segmentation_async_deployment_supervisor,
+            segmentation_async_inference_gateway_registry,
+        ) = _build_task_type_deployment_runtimes(task_type="segmentation", **_build_kw)
+        (
+            pose_sync_deployment_supervisor,
+            pose_async_deployment_supervisor,
+            pose_async_inference_gateway_registry,
+        ) = _build_task_type_deployment_runtimes(task_type="pose", **_build_kw)
+        (
+            obb_sync_deployment_supervisor,
+            obb_async_deployment_supervisor,
+            obb_async_inference_gateway_registry,
+        ) = _build_task_type_deployment_runtimes(task_type="obb", **_build_kw)
         published_inference_gateway = TaskTypeDeploymentPublishedInferenceGateway(
             deployment_services_by_task_type={
                 "detection": SqlAlchemyDetectionDeploymentService(
@@ -566,8 +600,9 @@ class BackendServiceBootstrap(
                 ),
                 "plc-register": PlcRegisterTriggerAdapter(),
                 "zeromq-topic": ZeroMqTriggerAdapter(
-                    local_buffer_writer=local_buffer_broker_supervisor
-                )
+                    local_buffer_writer=local_buffer_broker_supervisor,
+                    runtime_config=settings.zeromq_trigger.to_runtime_config(),
+                ),
             },
             workflow_submitter=WorkflowSubmitter(
                 runtime_service=trigger_workflow_runtime_service
@@ -622,12 +657,24 @@ class BackendServiceBootstrap(
 
         application.state.backend_service_runtime = runtime
         application.state.backend_service_settings = runtime.settings
-        application.state.async_inference_service_id = runtime.async_inference_service_id
-        application.state.detection_async_inference_service_id = runtime.async_inference_service_id
-        application.state.classification_async_inference_service_id = runtime.async_inference_service_id
-        application.state.segmentation_async_inference_service_id = runtime.async_inference_service_id
-        application.state.pose_async_inference_service_id = runtime.async_inference_service_id
-        application.state.obb_async_inference_service_id = runtime.async_inference_service_id
+        application.state.async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
+        application.state.detection_async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
+        application.state.classification_async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
+        application.state.segmentation_async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
+        application.state.pose_async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
+        application.state.obb_async_inference_service_id = (
+            runtime.async_inference_service_id
+        )
         application.state.session_factory = runtime.session_factory
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
@@ -697,7 +744,9 @@ class BackendServiceBootstrap(
         application.state.workflow_runtime_worker_manager = (
             runtime.workflow_runtime_worker_manager
         )
-        application.state.workflow_preview_run_manager = runtime.workflow_preview_run_manager
+        application.state.workflow_preview_run_manager = (
+            runtime.workflow_preview_run_manager
+        )
         application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
         application.state.background_task_manager_host = (
             runtime.background_task_manager_host

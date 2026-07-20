@@ -61,6 +61,16 @@
     "raw_result_cache_ttl_seconds": 900.0,
     "raw_result_cache_max_items": 64
   },
+  "zeromq_trigger": {
+    "buffer_ttl_seconds": 330.0,
+    "buffer_ttl_safety_margin_seconds": 30.0,
+    "receive_hwm": 1,
+    "send_hwm": 1,
+    "max_message_size_bytes": 134217728,
+    "poll_timeout_ms": 100,
+    "startup_timeout_seconds": 2.0,
+    "shutdown_timeout_seconds": 10.0
+  },
   "local_buffer_broker": {
     "enabled": true,
     "root_dir": "./data/buffers",
