@@ -42,17 +42,17 @@ namespace AMVision.Console
 
             // 同步推理入口固定匹配 sync 配置。
             //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentByIdAsync(DeploymentInstanceId, cancellationToken)).ConfigureAwait(false);
-            //var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadImageBase64(), cancellationToken)).ConfigureAwait(false);
-            //var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            //var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdByIdAsync(DeploymentInstanceId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
             //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriByIdAsync(DeploymentInstanceId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
 
             // 异步推理入口固定匹配 async 配置。
             //var run = await runner.CallAsync(api => api.RunConfiguredModelDeploymentByIdAsync(DeploymentInstanceId, cancellationToken)).ConfigureAwait(false);
-            //var runBase64 = await runner.CallAsync(api => api.RunModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadImageBase64(), cancellationToken)).ConfigureAwait(false);
-            //var runBytes = await runner.CallAsync(api => api.RunModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken)).ConfigureAwait(false);
-            //var runFile = await runner.CallAsync(api => api.RunModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runBase64 = await runner.CallAsync(api => api.RunModelDeploymentWithImageBase64ByIdAsync(DeploymentInstanceId, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            //var runBytes = await runner.CallAsync(api => api.RunModelDeploymentWithImageBytesByIdAsync(DeploymentInstanceId, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var runFile = await runner.CallAsync(api => api.RunModelDeploymentWithImageFromFileByIdAsync(DeploymentInstanceId, ModelImagePath, ModelImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var runFileId = await runner.CallAsync(api => api.RunModelDeploymentWithInputFileIdByIdAsync(DeploymentInstanceId, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
             //var runUri = await runner.CallAsync(api => api.RunModelDeploymentWithInputUriByIdAsync(DeploymentInstanceId, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
             //var task = await runner.CallAsync(api => api.GetModelInferenceTaskByIdAsync(DeploymentInstanceId, ModelInferenceTaskId, includeEvents: true, cancellationToken: cancellationToken)).ConfigureAwait(false);

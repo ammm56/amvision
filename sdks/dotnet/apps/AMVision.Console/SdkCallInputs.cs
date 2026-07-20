@@ -9,9 +9,11 @@ namespace AMVision.Console
     /// </summary>
     internal static class SdkCallInputs
     {
+        // Resources/Img 仅存放开发者自己的本地调试图片，不纳入 Git 管理。
         public const string ModelImagePath = @"Resources\Img\qrcode50.jpg";
-        public const string ImagePath = @"Resources\Img\qrcode50.jpg";
-        public const string ImageMediaType = "image/jpeg";
+        public const string ImagePath = @"Resources\Img\Image_20260718144521743.bmp";
+        public const string ModelImageMediaType = "image/jpeg";
+        public const string ImageMediaType = "image/bmp";
         public const string WorkflowRunId = "workflow-run-xxx";
         public const string ModelInferenceTaskId = "inference-task-xxx";
         public const string ModelDeploymentInputUri = "runtime/inputs/image.jpg";

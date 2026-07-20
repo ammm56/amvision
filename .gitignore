@@ -262,3 +262,6 @@ runtimes/third_party/
 docs/api/postman/assets/*.zip
 
 .codex/*.toml
+
+# .NET SDK Console 的本地/私有调试图片
+sdks/dotnet/apps/AMVision.Console/Resources/Img/
