@@ -9,6 +9,7 @@ namespace AMVision.Console
     /// </summary>
     internal static class SdkCallInputs
     {
+        public const string ModelImagePath = @"Resources\Img\qrcode50.jpg";
         public const string ImagePath = @"Resources\Img\qrcode50.jpg";
         public const string ImageMediaType = "image/jpeg";
         public const string WorkflowRunId = "workflow-run-xxx";
@@ -16,9 +17,19 @@ namespace AMVision.Console
         public const string ModelDeploymentInputUri = "runtime/inputs/image.jpg";
         public const string ModelDeploymentInputFileId = "project-file-xxx";
 
+        public static string LoadModelImageBase64()
+        {
+            return ImageConversionTools.ImageFileToDataUrl(ModelImagePath);
+        }
+
         public static string LoadImageBase64()
         {
             return ImageConversionTools.ImageFileToDataUrl(ImagePath);
+        }
+
+        public static byte[] LoadModelImageBytes()
+        {
+            return File.ReadAllBytes(ModelImagePath);
         }
 
         public static byte[] LoadImageBytes()

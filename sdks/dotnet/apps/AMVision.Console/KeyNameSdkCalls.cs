@@ -16,8 +16,8 @@ namespace AMVision.Console
     internal static class KeyNameSdkCalls
     {
         private const string ModelDeploymentName = "yolox-m-20260630190217 model-build-770c1fd9910e";
-        private const string RuntimeName = "新建应用yoloxm条码识别";
-        private const string TriggerSourceName = "ZeroMQ 图片触发 新建应用yoloxm条码识别 runtime";
+        private const string RuntimeName = "摆盘分拣塑盒满盘检测应用";
+        private const string TriggerSourceName = "ZeroMQ 图片触发 摆盘分拣塑盒满盘检测应用 runtime";
 
         public static async Task RunAsync(
             AMVisionOperationRunner runner,
@@ -44,10 +44,10 @@ namespace AMVision.Console
 
             // 同步推理
             //var invoke = await runner.CallAsync(api => api.InvokeConfiguredModelDeploymentAsync(ModelDeploymentName, cancellationToken)).ConfigureAwait(false);
-            var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadImageBase64(), cancellationToken)).ConfigureAwait(false);
-            var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadImageBytes(), Path.GetFileName(ImagePath), ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            var invokeBase64 = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBase64Async(ModelDeploymentName, LoadModelImageBase64(), cancellationToken)).ConfigureAwait(false);
+            var invokeBytes = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageBytesAsync(ModelDeploymentName, LoadModelImageBytes(), Path.GetFileName(ModelImagePath), ImageMediaType, cancellationToken)).ConfigureAwait(false);
             resultStr = JsonConvert.SerializeObject(invokeBytes, Formatting.Indented);
-            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
+            //var invokeFile = await runner.CallAsync(api => api.InvokeModelDeploymentWithImageFromFileAsync(ModelDeploymentName, ModelImagePath, ImageMediaType, cancellationToken)).ConfigureAwait(false);
             //var invokeFileId = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputFileIdAsync(ModelDeploymentName, ModelDeploymentInputFileId, cancellationToken)).ConfigureAwait(false);
             //var invokeUri = await runner.CallAsync(api => api.InvokeModelDeploymentWithInputUriAsync(ModelDeploymentName, ModelDeploymentInputUri, cancellationToken)).ConfigureAwait(false);
 
