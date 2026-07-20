@@ -22,6 +22,7 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert {
         item["node_type_id"] for item in actual_catalog_payload["node_definitions"]
     } == {
+        "custom.opencv.circle-measure",
         "custom.opencv.contour",
         "custom.opencv.contour-filter",
         "custom.opencv.contour-approx",
@@ -69,7 +70,13 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
         "custom.opencv.min-enclosing-circle",
     }:
         properties = node_by_type[node_type_id]["parameter_schema"]["properties"]
-        limit_name = "max_contours" if node_type_id == "custom.opencv.contour" else "limit"
+        limit_name = (
+            "max_contours"
+            if node_type_id == "custom.opencv.contour"
+            else "max_results"
+            if node_type_id == "custom.opencv.hough-circles"
+            else "limit"
+        )
         assert properties[limit_name]["default"] == 10
         assert properties[limit_name]["maximum"] == 1000
     hough_line_properties = node_by_type["custom.opencv.hough-lines"]["parameter_schema"]["properties"]
@@ -77,7 +84,21 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert hough_line_properties["processing_max_long_edge"]["default"] == 2048
     assert (
         node_by_type["custom.opencv.hough-circles"]["parameter_schema"]["properties"][
-            "processing_max_long_edge"
+            "processing_max_long_edge_px"
         ]["default"]
         == 2048
     )
+    hough_circle_properties = node_by_type["custom.opencv.hough-circles"]["parameter_schema"]["properties"]
+    assert "param1" not in hough_circle_properties
+    assert "param2" not in hough_circle_properties
+    assert hough_circle_properties["canny_high_threshold"]["default"] == 100
+    assert hough_circle_properties["center_vote_threshold"]["default"] == 20
+    assert hough_circle_properties["ransac_iterations"]["default"] == 32
+    assert hough_circle_properties["max_results"]["default"] == 10
+    assert hough_circle_properties["maximum_candidates"]["default"] == 40
+    circle_measure_schema = node_by_type["custom.opencv.circle-measure"]["parameter_schema"]
+    assert circle_measure_schema["required"] == [
+        "reference_center_xy",
+        "reference_radius_px",
+    ]
+    assert circle_measure_schema["properties"]["ransac_iterations"]["default"] == 64

@@ -45,11 +45,31 @@
           />
           <circle
             v-else-if="overlay.circle"
-            class="workflow-graph-node-preview__overlay-shape workflow-graph-node-preview__overlay-shape--circle"
+            :class="[
+              'workflow-graph-node-preview__overlay-shape',
+              'workflow-graph-node-preview__overlay-shape--circle',
+              readOverlayKindClass(overlay.kind),
+            ]"
             :cx="overlay.circle.centerX"
             :cy="overlay.circle.centerY"
             :r="overlay.circle.radius"
           />
+          <template v-if="overlay.circle && overlay.kind === 'selected-circle'">
+            <line
+              class="workflow-graph-node-preview__overlay-shape workflow-graph-node-preview__overlay-shape--selected-center"
+              :x1="overlay.circle.centerX - Math.max(4, overlay.circle.radius * 0.18)"
+              :y1="overlay.circle.centerY"
+              :x2="overlay.circle.centerX + Math.max(4, overlay.circle.radius * 0.18)"
+              :y2="overlay.circle.centerY"
+            />
+            <line
+              class="workflow-graph-node-preview__overlay-shape workflow-graph-node-preview__overlay-shape--selected-center"
+              :x1="overlay.circle.centerX"
+              :y1="overlay.circle.centerY - Math.max(4, overlay.circle.radius * 0.18)"
+              :x2="overlay.circle.centerX"
+              :y2="overlay.circle.centerY + Math.max(4, overlay.circle.radius * 0.18)"
+            />
+          </template>
         </template>
       </svg>
     </div>
@@ -96,6 +116,14 @@ const emit = defineEmits<{
   'open-display': [display: PreviewNodeDisplay]
   'open-image': [image: PreviewViewerImage]
 }>()
+
+function readOverlayKindClass(kind: string): string {
+  const normalizedKind = kind
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalizedKind ? `workflow-graph-node-preview__overlay-shape--kind-${normalizedKind}` : ''
+}
 
 function readOverlayViewBox(image: PreviewViewerImage | null): string {
   const width = image?.sourceWidth ?? image?.width ?? 0

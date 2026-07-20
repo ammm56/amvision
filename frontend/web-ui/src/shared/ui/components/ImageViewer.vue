@@ -201,6 +201,22 @@
                 :r="overlay.circle.radius"
                 @mousedown="handleOverlayMouseDown(overlay, $event)"
               />
+              <template v-if="overlay.circle && overlay.kind === 'selected-circle'">
+                <line
+                  class="image-viewer__overlay-shape image-viewer__overlay-shape--selected-center"
+                  :x1="overlay.circle.centerX - Math.max(4, overlay.circle.radius * 0.18)"
+                  :y1="overlay.circle.centerY"
+                  :x2="overlay.circle.centerX + Math.max(4, overlay.circle.radius * 0.18)"
+                  :y2="overlay.circle.centerY"
+                />
+                <line
+                  class="image-viewer__overlay-shape image-viewer__overlay-shape--selected-center"
+                  :x1="overlay.circle.centerX"
+                  :y1="overlay.circle.centerY - Math.max(4, overlay.circle.radius * 0.18)"
+                  :x2="overlay.circle.centerX"
+                  :y2="overlay.circle.centerY + Math.max(4, overlay.circle.radius * 0.18)"
+                />
+              </template>
             </template>
             <rect
               v-if="draftTemplateBboxXyxy"

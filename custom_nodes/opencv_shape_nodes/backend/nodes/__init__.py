@@ -6,6 +6,10 @@ from custom_nodes.opencv_shape_nodes.backend.nodes.contour import (
     NODE_TYPE_ID as CONTOUR_NODE_TYPE_ID,
     handle_node as contour_handler,
 )
+from custom_nodes.opencv_shape_nodes.backend.nodes.circle_measure import (
+    NODE_TYPE_ID as CIRCLE_MEASURE_NODE_TYPE_ID,
+    handle_node as circle_measure_handler,
+)
 from custom_nodes.opencv_shape_nodes.backend.nodes.contour_approx import (
     NODE_TYPE_ID as CONTOUR_APPROX_NODE_TYPE_ID,
     handle_node as contour_approx_handler,
@@ -49,6 +53,7 @@ from custom_nodes.opencv_shape_nodes.backend.nodes.min_enclosing_circle import (
 
 
 NODE_HANDLERS = (
+    (CIRCLE_MEASURE_NODE_TYPE_ID, circle_measure_handler),
     (CONTOUR_NODE_TYPE_ID, contour_handler),
     (CONTOUR_APPROX_NODE_TYPE_ID, contour_approx_handler),
     (CONTOUR_FILTER_NODE_TYPE_ID, contour_filter_handler),

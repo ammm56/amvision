@@ -78,7 +78,8 @@ Image
 | 透视变换 | `custom.opencv.perspective-transform` | 四点透视矫正 | 在图上点选 4 个角点，写回 `source_points` |
 | 平面变换 | `custom.opencv.planar-transform-bridge` | 透视结果和 ROI 坐标互转 | 复用透视四点和输出尺寸 |
 | 轮廓转 ROI | `core.vision.roi-from-contour` | 从 contour 生成 ROI | 在 debug 图上点选 contour，写回 `selected_contour_index` |
-| Hough 圆 | `custom.opencv.hough-circles` | 找圆孔或圆形特征 | 在图上选搜索 ROI、估计半径范围和目标圆 |
+| Hough 圆 | `custom.opencv.hough-circles` | 快速产生一个或多个候选圆，并可执行径向边缘精定位 | Search ROI 固定搜索范围；Reference Circle 只写参考圆心、半径和容差，不得覆盖 Search ROI |
+| Circle Measure | `custom.opencv.circle-measure` | 已知近似圆位置时执行亚像素径向边缘测量和 robust circle fitting | 在固定 Search ROI 中选择 Reference Circle，输出拟合误差、圆弧覆盖率和结构化拒绝原因 |
 | Hough 线 | `custom.opencv.hough-lines` | 找直线或边线 | 在图上选搜索 ROI、线段、角度范围和方向 |
 | 拟合线 | `custom.opencv.fit-line` | 从轮廓拟合直线 | 在图上选 contour 或搜索 ROI |
 | 最小外接矩形 | `custom.opencv.min-area-rect` | 计算旋转矩形 | 在图上选择候选 contour 或结果 index |
@@ -135,13 +136,15 @@ Image
 | --- | --- | --- |
 | bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
 | polygon | `polygon_xy`、`source_points`；四点透视时同时估算 `output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
-| circle | `center_x`、`center_y`、`radius`、`min_radius`、`max_radius` | `custom.opencv.hough-circles`、`custom.opencv.min-enclosing-circle` |
+| circle | `center_x`、`center_y`、`radius`，或 `reference_center_xy`、`reference_radius_px`、`center_tolerance_px`、`radius_tolerance_px` | `custom.opencv.hough-circles`、`custom.opencv.circle-measure`、`custom.opencv.min-enclosing-circle` |
 | line | `line_xyxy`、`search_bbox_xyxy`、`min_line_length`、`angle_min_deg`、`angle_max_deg`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、`custom.opencv.rotation-correct`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |
 | template-region | `template_bbox_xyxy`、`search_bbox_xyxy` 或输入模板图来源 | `custom.opencv.template-match` |
 | point-pair | `source_points`、`target_points`、`debug_manual_pair_lines_xyxy` | `custom.opencv.affine-transform`、`custom.opencv.orb-match`、`custom.opencv.homography-estimate` |
 | match-line | `debug_selected_match_ids` | `custom.opencv.orb-match`、`custom.opencv.homography-estimate` |
 | homography-overlay | `debug_selected_projection_id` | `custom.opencv.homography-estimate` |
+
+Hough Circles 和 Circle Measure 的图形语义必须保持独立：Search ROI 使用蓝色虚线矩形，Reference Circle 使用紫色虚线圆，普通候选使用橙色实线圆，最终选中圆使用绿色粗实线和圆心十字，被拒绝候选仅在 Debug Preview 中使用红色或灰色虚线。颜色由亮色、暗色主题变量提供，节点实现不得写死组件颜色。精定位链路使用有界 RANSAC 初始化和 Huber/Tukey IRLS，并限制候选数、径向采样数和拟合迭代次数。
 
 ## 节点定义扩展方式
 

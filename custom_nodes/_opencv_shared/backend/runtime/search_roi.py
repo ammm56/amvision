@@ -145,7 +145,7 @@ def build_search_roi_overlay(search_roi: ResolvedSearchRoi) -> dict[str, object]
     if search_roi.bbox_xyxy is None:
         return None
     return {
-        "kind": "bbox",
+        "kind": "search-roi",
         "id": "search-roi",
         "label": "Search ROI",
         "bbox_xyxy": [float(value) for value in search_roi.bbox_xyxy],

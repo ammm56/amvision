@@ -192,7 +192,7 @@ Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List I
 优先级：
 
 1. ROI polygon / bbox：用于 crop、perspective-transform、roi-grid-create 和区域规则。
-2. Circle：用于 hough-circles、圆孔定位、圆度和半径范围估计。
+2. Circle：用于 hough-circles、circle-measure、圆孔定位、圆度和半径范围估计；Reference Circle 与 Search ROI 是两个独立参数对象，前者不得覆盖后者。
 3. Line：用于 hough-lines、fit-line、找边、角度校正和平行度测量。
 4. Template region：用于模板匹配、局部定位和换型参数准备。
 5. Geometry：`rotation-correct` 用 line 写回角度，`affine-transform` 用 point-pair 写回三点关系，`undistort/remap` 用 debug preview 检查矫正结果和标定映射。

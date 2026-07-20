@@ -40,43 +40,136 @@
   "parameter_schema": {
     "type": "object",
     "properties": {
-      "dp": {
+      "accumulator_resolution_ratio": {
         "type": "number",
-        "minimum": 0,
-        "default": 1
+        "exclusiveMinimum": 0,
+        "maximum": 4,
+        "default": 1,
+        "title": "Accumulator Resolution Ratio",
+        "description": "圆心累加器相对处理图的降采样比例；1 表示相同分辨率，2 表示宽高各减半。"
       },
-      "min_dist": {
+      "minimum_center_distance_px": {
         "type": "number",
-        "minimum": 0,
-        "default": 20
+        "exclusiveMinimum": 0,
+        "default": 20,
+        "title": "Minimum Center Distance (px)",
+        "description": "候选圆心之间允许的最小原图像素距离。"
       },
-      "param1": {
+      "canny_high_threshold": {
         "type": "number",
-        "minimum": 0,
-        "default": 100
+        "exclusiveMinimum": 0,
+        "default": 100,
+        "title": "Canny High Threshold",
+        "description": "Hough Gradient 内部 Canny 的高阈值。"
       },
-      "param2": {
+      "center_vote_threshold": {
         "type": "number",
-        "minimum": 0,
-        "default": 20
+        "exclusiveMinimum": 0,
+        "default": 20,
+        "title": "Center Vote Threshold",
+        "description": "圆心累加器投票阈值；越低候选越多，也更容易出现误检。"
       },
-      "min_radius": {
+      "minimum_radius_px": {
         "type": "integer",
         "minimum": 0,
-        "default": 0
+        "default": 0,
+        "title": "Minimum Radius (px)"
       },
-      "max_radius": {
+      "maximum_radius_px": {
         "type": "integer",
         "minimum": 0,
-        "default": 0
+        "default": 0,
+        "title": "Maximum Radius (px)"
       },
-      "blur_kernel_size": {
+      "median_blur_kernel_size": {
         "type": "integer",
         "minimum": 1,
         "maximum": 31,
         "default": 5,
-        "title": "Blur Kernel Size",
+        "title": "Median Blur Kernel Size",
         "description": "HoughCircles 前的 median blur 奇数核尺寸；1 表示不模糊。"
+      },
+      "reference_center_xy": {
+        "type": "array",
+        "title": "Reference Center",
+        "description": "可选参考圆心 [x, y]；用于限制现场位置漂移和稳定排序。",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "number" }
+      },
+      "reference_radius_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "title": "Reference Radius (px)"
+      },
+      "center_tolerance_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 50,
+        "title": "Center Tolerance (px)"
+      },
+      "radius_tolerance_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 10,
+        "title": "Radius Tolerance (px)"
+      },
+      "refine_candidates": {
+        "type": "boolean",
+        "default": true,
+        "title": "Refine Candidates",
+        "description": "沿候选圆径向采样边缘，并使用 robust circle fitting 进行亚像素精定位。"
+      },
+      "edge_polarity": {
+        "type": "string",
+        "enum": ["any", "dark-to-bright", "bright-to-dark"],
+        "default": "any",
+        "title": "Edge Polarity"
+      },
+      "radial_sample_count": {
+        "type": "integer",
+        "minimum": 12,
+        "maximum": 720,
+        "default": 180,
+        "title": "Radial Sample Count"
+      },
+      "gradient_threshold": {
+        "type": "number",
+        "minimum": 0,
+        "default": 5,
+        "title": "Gradient Threshold"
+      },
+      "robust_loss": {
+        "type": "string",
+        "enum": ["huber", "tukey"],
+        "default": "huber",
+        "title": "Robust Loss"
+      },
+      "ransac_iterations": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 256,
+        "default": 32,
+        "title": "RANSAC Iterations"
+      },
+      "fit_inlier_threshold_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 2,
+        "title": "Fit Inlier Threshold (px)"
+      },
+      "minimum_arc_coverage": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.2,
+        "title": "Minimum Arc Coverage"
+      },
+      "maximum_fit_error_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 3,
+        "title": "Maximum Fit Error (px)"
       },
       "sort_by": {
         "type": "string",
@@ -87,22 +180,33 @@
           "area",
           "center_x",
           "center_y",
-          "search_center_distance"
+          "search_center_distance",
+          "reference_center_distance",
+          "reference_radius_deviation",
+          "quality_score"
         ],
-        "default": "radius"
+        "default": "quality_score"
       },
       "descending": {
         "type": "boolean",
         "default": true
       },
-      "limit": {
+      "max_results": {
         "type": "integer",
         "minimum": 1,
         "maximum": 1000,
         "default": 10,
         "title": "Result Limit"
       },
-      "processing_max_long_edge": {
+      "maximum_candidates": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 40,
+        "title": "Maximum Candidates",
+        "description": "进入精定位和质量验证的 Hough 候选上限，防止低阈值在复杂图像上产生无界计算。"
+      },
+      "processing_max_long_edge_px": {
         "type": "integer",
         "minimum": 256,
         "maximum": 32768,

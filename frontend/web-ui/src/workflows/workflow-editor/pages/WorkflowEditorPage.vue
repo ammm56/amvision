@@ -1366,9 +1366,30 @@ function buildPreviewImageInteractionParameterUpdates(
   }
   if (event.tool === 'circle' && event.circle) {
     const radius = Math.max(1, event.circle.radius)
+    const currentCenterTolerance = Number(currentParameters.center_tolerance_px)
+    const currentRadiusTolerance = Number(currentParameters.radius_tolerance_px)
     if (targetParameters.has('center_x')) updates.center_x = roundInteractionNumber(event.circle.centerX)
     if (targetParameters.has('center_y')) updates.center_y = roundInteractionNumber(event.circle.centerY)
     if (targetParameters.has('radius')) updates.radius = roundInteractionNumber(radius)
+    if (targetParameters.has('reference_center_xy')) {
+      updates.reference_center_xy = [
+        roundInteractionNumber(event.circle.centerX),
+        roundInteractionNumber(event.circle.centerY),
+      ]
+    }
+    if (targetParameters.has('reference_radius_px')) {
+      updates.reference_radius_px = roundInteractionNumber(radius)
+    }
+    if (targetParameters.has('center_tolerance_px')) {
+      updates.center_tolerance_px = Number.isFinite(currentCenterTolerance) && currentCenterTolerance > 0
+        ? currentCenterTolerance
+        : roundInteractionNumber(radius)
+    }
+    if (targetParameters.has('radius_tolerance_px')) {
+      updates.radius_tolerance_px = Number.isFinite(currentRadiusTolerance) && currentRadiusTolerance > 0
+        ? currentRadiusTolerance
+        : roundInteractionNumber(Math.max(1, radius * 0.25))
+    }
     if (targetParameters.has('search_bbox_xyxy')) {
       updates.search_bbox_xyxy = [
         roundInteractionNumber(event.circle.centerX - radius),
@@ -1380,6 +1401,11 @@ function buildPreviewImageInteractionParameterUpdates(
     if (targetParameters.has('min_radius')) updates.min_radius = Math.max(0, Math.floor(radius * 0.75))
     if (targetParameters.has('max_radius')) updates.max_radius = Math.max(1, Math.ceil(radius * 1.25))
     if (targetParameters.has('min_dist')) updates.min_dist = Math.max(1, Math.ceil(radius * 2))
+    if (targetParameters.has('minimum_radius_px')) updates.minimum_radius_px = Math.max(0, Math.floor(radius * 0.75))
+    if (targetParameters.has('maximum_radius_px')) updates.maximum_radius_px = Math.max(1, Math.ceil(radius * 1.25))
+    if (targetParameters.has('minimum_center_distance_px')) {
+      updates.minimum_center_distance_px = Math.max(1, Math.ceil(radius * 2))
+    }
     return updates
   }
   if (event.tool === 'line' && event.lineXyxy) {

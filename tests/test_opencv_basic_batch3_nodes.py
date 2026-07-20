@@ -185,12 +185,13 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
                 node_id="circles",
                 node_type_id="custom.opencv.hough-circles",
                 parameters={
-                    "dp": 1.2,
-                    "min_dist": 20.0,
-                    "param1": 100.0,
-                    "param2": 18.0,
-                    "min_radius": 14,
-                    "max_radius": 24,
+                    "accumulator_resolution_ratio": 1.2,
+                    "minimum_center_distance_px": 20.0,
+                    "canny_high_threshold": 100.0,
+                    "center_vote_threshold": 18.0,
+                    "minimum_radius_px": 14,
+                    "maximum_radius_px": 24,
+                    "refine_candidates": False,
                     "sort_by": "radius",
                     "descending": True,
                     "debug_image_panel_enabled": True,
@@ -281,13 +282,109 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     controls_by_name = {control["parameter_name"]: control for control in interaction["controls"]}
     assert debug_preview["type"] == "image-preview"
     assert set(tools_by_name["circle"]["target_parameters"]) == {
-        "search_bbox_xyxy",
-        "min_dist",
-        "min_radius",
-        "max_radius",
+        "reference_center_xy",
+        "reference_radius_px",
+        "center_tolerance_px",
+        "radius_tolerance_px",
     }
     assert tools_by_name["rect"]["target_parameters"] == ["search_bbox_xyxy"]
-    assert {"param1", "param2", "min_radius", "max_radius"} <= set(controls_by_name)
+    assert {
+        "canny_high_threshold",
+        "center_vote_threshold",
+        "minimum_radius_px",
+        "maximum_radius_px",
+    } <= set(controls_by_name)
+
+
+def test_circle_measure_returns_structured_empty_result_when_no_edge_is_found(tmp_path: Path) -> None:
+    """验证未找到有效圆边缘时返回空结果，而不是中断 Workflow Run。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes("inputs/circle-measure-empty.png", _build_circle_test_png_bytes())
+
+    template = WorkflowGraphTemplate(
+        template_id="opencv-circle-measure-empty",
+        template_version="1.0.0",
+        display_name="OpenCV Circle Measure Empty",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="measure",
+                node_type_id="custom.opencv.circle-measure",
+                parameters={
+                    "reference_center_xy": [14.0, 14.0],
+                    "reference_radius_px": 6.0,
+                    "center_tolerance_px": 4.0,
+                    "radius_tolerance_px": 2.0,
+                    "gradient_threshold": 20.0,
+                    "debug_image_panel_enabled": True,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-measure",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="measure",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="circles",
+                display_name="Circles",
+                payload_type_id="circles.v1",
+                source_node_id="measure",
+                source_port="circles",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="measure",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": "inputs/circle-measure-empty.png",
+                "width": 96,
+                "height": 96,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-circle-measure-empty",
+            "debug_image_panels_enabled": True,
+        },
+    )
+
+    assert execution_result.outputs["circles"]["count"] == 0
+    summary = execution_result.outputs["summary"]["value"]
+    assert summary["accepted"] is False
+    assert summary["rejection_reasons"] == ["insufficient_edge_samples"]
+    debug_preview = _read_record_output(execution_result, node_id="measure", output_name="debug_preview")
+    overlay_kinds = {overlay["kind"] for overlay in debug_preview["overlays"]}
+    assert "reference-circle" in overlay_kinds
+    assert "selected-circle" not in overlay_kinds
 
 
 def test_opencv_basic_batch3_fit_line_execute(tmp_path: Path) -> None:

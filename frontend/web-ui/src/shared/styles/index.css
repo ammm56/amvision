@@ -39,6 +39,12 @@
   --badge-warning-bg: #fff4d8;
   --badge-danger-bg: #ffe7e8;
   --badge-info-bg: #e4effc;
+  --vision-overlay-search-roi: #0284c7;
+  --vision-overlay-search-roi-fill: rgb(2 132 199 / 0.1);
+  --vision-overlay-reference: #7c3aed;
+  --vision-overlay-detected: #ea580c;
+  --vision-overlay-selected: #15803d;
+  --vision-overlay-rejected: #b91c1c;
   --radius: 8px;
 }
 
@@ -80,6 +86,12 @@
   --badge-warning-bg: #3d321d;
   --badge-danger-bg: #3d2225;
   --badge-info-bg: #223246;
+  --vision-overlay-search-roi: #38bdf8;
+  --vision-overlay-search-roi-fill: rgb(56 189 248 / 0.1);
+  --vision-overlay-reference: #c084fc;
+  --vision-overlay-detected: #fb923c;
+  --vision-overlay-selected: #4ade80;
+  --vision-overlay-rejected: #f87171;
 }
 
 * {
@@ -2423,6 +2435,36 @@ a:hover {
   fill: none;
 }
 
+.workflow-graph-node-preview__overlay-shape--kind-search-roi {
+  stroke: var(--vision-overlay-search-roi);
+  stroke-dasharray: 8 5;
+}
+
+.workflow-graph-node-preview__overlay-shape--kind-reference-circle {
+  stroke: var(--vision-overlay-reference);
+  stroke-dasharray: 8 5;
+}
+
+.workflow-graph-node-preview__overlay-shape--kind-detected-circle {
+  stroke: var(--vision-overlay-detected);
+}
+
+.workflow-graph-node-preview__overlay-shape--kind-selected-circle {
+  stroke: var(--vision-overlay-selected);
+  stroke-width: 3;
+}
+
+.workflow-graph-node-preview__overlay-shape--selected-center {
+  stroke: var(--vision-overlay-selected);
+  stroke-width: 2.5;
+}
+
+.workflow-graph-node-preview__overlay-shape--kind-rejected-circle {
+  stroke: var(--vision-overlay-rejected);
+  stroke-dasharray: 5 5;
+  opacity: 0.72;
+}
+
 .workflow-graph-node-preview__empty {
   display: grid;
   min-height: 112px;
@@ -4467,10 +4509,43 @@ a:hover {
 }
 
 .image-viewer__overlay-shape--kind-search-roi {
-  stroke: #38bdf8;
+  stroke: var(--vision-overlay-search-roi);
   stroke-width: 2.5;
   stroke-dasharray: 8 5;
-  fill: rgb(56 189 248 / 0.1);
+  fill: var(--vision-overlay-search-roi-fill);
+}
+
+.image-viewer__overlay-shape--kind-reference-circle {
+  stroke: var(--vision-overlay-reference);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  fill: none;
+}
+
+.image-viewer__overlay-shape--kind-detected-circle {
+  stroke: var(--vision-overlay-detected);
+  stroke-width: 2.2;
+  fill: none;
+}
+
+.image-viewer__overlay-shape--kind-selected-circle {
+  stroke: var(--vision-overlay-selected);
+  stroke-width: 3.5;
+  fill: none;
+}
+
+.image-viewer__overlay-shape--kind-rejected-circle {
+  stroke: var(--vision-overlay-rejected);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  fill: none;
+  opacity: 0.7;
+}
+
+.image-viewer__overlay-shape--selected-center {
+  stroke: var(--vision-overlay-selected);
+  stroke-width: 2.5;
+  fill: none;
 }
 
 .image-viewer__overlay-shape--kind-match-line {
