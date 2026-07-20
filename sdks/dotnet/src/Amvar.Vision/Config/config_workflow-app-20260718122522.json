@@ -1,0 +1,35 @@
+{
+  "backend": {
+    "base_api_url": "http://127.0.0.1:5600",
+    "access_token": "amvision-default-user-token",
+    "project_id": "project-1",
+    "http_timeout_seconds": 300
+  },
+  "runtime": {
+    "name": "摆盘分拣来料空盘检测应用",
+    "workflow_runtime_id": "workflow-runtime-fb05943a1a97495bba8eb14830b853e9"
+  },
+  "invoke": {
+    "image_path": "",
+    "image_input_binding": "request_image_base64",
+    "timeout_seconds": 30,
+    "event_limit": 20,
+    "event_preview_count": 5,
+    "source": "amvision-workflows-console",
+    "sync_scenario": "sync-invoke",
+    "async_scenario": "async-run",
+    "use_direct_input_bindings": false
+  },
+  "trigger_sources": [
+    {
+      "name": "ZeroMQ 图片触发 摆盘分拣来料空盘检测应用 runtime",
+      "trigger_source_id": "zeromq-workflow-runtime-fb05943a1a97495bba8eb14830b853e9",
+      "zero_mq": {
+        "bind_endpoint": "tcp://127.0.0.1:5560",
+        "default_input_binding": "request_image_ref",
+        "timeout_seconds": 30
+      }
+    }
+  ],
+  "model_deployments": []
+}
