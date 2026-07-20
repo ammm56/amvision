@@ -8,9 +8,9 @@
         </div>
         <div class="image-viewer__actions">
           <div v-if="interactionAvailable" class="image-viewer__interaction-actions">
-            <Button v-if="hasInteractionTools" size="sm" :variant="interactionActive ? 'primary' : 'secondary'" type="button" title="在图片上取参" @click="toggleInteraction">
+            <Button v-if="hasInteractionTools" size="sm" :variant="interactionActive ? 'primary' : 'secondary'" type="button" :title="t('imageViewer.toolbar.pickOnImage')" @click="toggleInteraction">
               <Crosshair :size="15" />
-              {{ interactionActive ? '退出取参' : '取参' }}
+              {{ interactionActive ? t('imageViewer.toolbar.exitPick') : t('imageViewer.toolbar.pick') }}
             </Button>
             <div v-if="availableInteractionTools.length > 1" class="image-viewer__tool-tabs">
               <Button
@@ -19,41 +19,41 @@
                 size="sm"
                 :variant="toolItem.tool === interactionTool ? 'primary' : 'secondary'"
                 type="button"
-                :title="`切换到 ${readInteractionToolItemLabel(toolItem)}`"
+                :title="t('imageViewer.toolbar.switchTool', { tool: readInteractionToolItemLabel(toolItem) })"
                 @click="selectInteractionTool(toolItem.tool)"
               >
                 {{ readInteractionToolItemLabel(toolItem) }}
               </Button>
             </div>
-            <Button v-if="interactionTool === 'circle'" size="sm" variant="secondary" type="button" title="切换圆取参方式" @click="toggleCircleDraftMode">
-              {{ circleDraftMode === 'center-radius' ? '中心半径' : '三点圆' }}
+            <Button v-if="interactionTool === 'circle'" size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.switchCircleMode')" @click="toggleCircleDraftMode">
+              {{ circleDraftMode === 'center-radius' ? t('imageViewer.toolbar.centerRadius') : t('imageViewer.toolbar.threePointCircle') }}
             </Button>
             <div v-if="interactionTool === 'template-region'" class="image-viewer__tool-tabs">
-              <Button size="sm" :variant="templateRegionStage === 'template' ? 'primary' : 'secondary'" type="button" title="绘制模板 ROI" @click="selectTemplateRegionStage('template')">
-                模板 ROI
+              <Button size="sm" :variant="templateRegionStage === 'template' ? 'primary' : 'secondary'" type="button" :title="t('imageViewer.toolbar.drawTemplateRoi')" @click="selectTemplateRegionStage('template')">
+                {{ t('imageViewer.toolbar.templateRoi') }}
               </Button>
-              <Button size="sm" :variant="templateRegionStage === 'search' ? 'primary' : 'secondary'" type="button" title="绘制搜索 ROI" @click="selectTemplateRegionStage('search')">
-                搜索 ROI
+              <Button size="sm" :variant="templateRegionStage === 'search' ? 'primary' : 'secondary'" type="button" :title="t('imageViewer.toolbar.drawSearchRoi')" @click="selectTemplateRegionStage('search')">
+                {{ t('imageViewer.toolbar.searchRoi') }}
               </Button>
             </div>
-            <Button size="sm" variant="secondary" type="button" title="清除当前取参草稿" :disabled="!hasInteractionDraft" @click="clearInteractionDraft">
+            <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.clearDraft')" :disabled="!hasInteractionDraft" @click="clearInteractionDraft">
               <Trash2 :size="15" />
-              清除
+              {{ t('imageViewer.toolbar.clear') }}
             </Button>
-            <Button size="sm" variant="primary" type="button" title="应用到节点参数" :disabled="!canApplyInteraction" @click="applyInteractionDraft">
+            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction" @click="applyInteractionDraft">
               <Check :size="15" />
-              应用参数
+              {{ t('imageViewer.toolbar.applyParams') }}
             </Button>
             <Button
               size="sm"
               variant="primary"
               type="button"
-              :title="hasInteractionDraft ? '应用当前取参并重新 Preview Run' : '重新执行 Preview Run'"
+              :title="hasInteractionDraft ? t('imageViewer.toolbar.applyDraftAndPreview') : t('imageViewer.toolbar.rerunPreview')"
               :disabled="previewActionDisabled"
               @click="runPreviewFromViewer"
             >
               <Play :size="15" />
-              {{ previewRunning ? 'Preview 中' : (hasInteractionDraft ? '应用并 Preview' : 'Preview Run') }}
+              {{ previewRunning ? t('imageViewer.toolbar.previewRunning') : (hasInteractionDraft ? t('imageViewer.toolbar.applyAndPreview') : 'Preview Run') }}
             </Button>
             <span
               v-if="interactionFeedback"
@@ -63,23 +63,23 @@
               {{ interactionFeedback.text }}
             </span>
           </div>
-          <Button size="sm" variant="secondary" type="button" title="适配窗口" @click="fitImage">
+          <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.fit')" @click="fitImage">
             <Maximize2 :size="15" />
-            适配
+            {{ t('imageViewer.toolbar.fitShort') }}
           </Button>
-          <Button size="sm" variant="secondary" type="button" title="100% 分辨率" @click="showOriginalSize">
+          <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.originalSize')" @click="showOriginalSize">
             100%
           </Button>
-          <Button size="sm" variant="secondary" type="button" title="缩小" @click="zoomOut">
+          <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.zoomOut')" @click="zoomOut">
             <ZoomOut :size="15" />
           </Button>
-          <Button size="sm" variant="secondary" type="button" title="放大" @click="zoomIn">
+          <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.zoomIn')" @click="zoomIn">
             <ZoomIn :size="15" />
           </Button>
-          <Button size="sm" variant="secondary" type="button" title="重置位置" @click="resetView">
+          <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.resetPosition')" @click="resetView">
             <RotateCcw :size="15" />
           </Button>
-          <Button class="image-viewer__close" size="sm" variant="secondary" type="button" title="关闭" aria-label="关闭图片查看器" @click="emit('close')">
+          <Button class="image-viewer__close" size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.close')" :aria-label="t('imageViewer.toolbar.closeAria')" @click="emit('close')">
             <X :size="17" />
           </Button>
         </div>
@@ -94,10 +94,10 @@
       >
         <div v-if="tuningControls.length" class="image-viewer__tuning-panel">
           <div class="image-viewer__tuning-header">
-            <strong>算法调参</strong>
+            <strong>{{ t('imageViewer.tuning.title') }}</strong>
             <label class="image-viewer__tuning-auto">
               <input v-model="autoPreviewEnabled" type="checkbox">
-              自动 Preview
+              {{ t('imageViewer.tuning.autoPreview') }}
             </label>
           </div>
           <div class="image-viewer__tuning-list">
@@ -146,9 +146,9 @@
               </template>
             </label>
           </div>
-          <Button size="sm" variant="primary" type="button" title="写回参数并重新 Preview" @click="applyTuningParameters(true)">
+          <Button size="sm" variant="primary" type="button" :title="t('imageViewer.tuning.applyAndPreviewTitle')" @click="applyTuningParameters(true)">
             <Check :size="15" />
-            应用并 Preview
+            {{ t('imageViewer.toolbar.applyAndPreview') }}
           </Button>
         </div>
         <div v-if="viewerImageSrc" class="image-viewer__image-frame" :style="imageFrameStyle">
@@ -318,7 +318,7 @@
             />
           </svg>
         </div>
-        <div v-else class="image-viewer__empty">当前图片没有可浏览的 src</div>
+        <div v-else class="image-viewer__empty">{{ t('imageViewer.empty') }}</div>
       </div>
       <div class="image-viewer__status">
         <div class="image-viewer__status-group">
@@ -334,6 +334,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
 
 import Button from './Button.vue'
@@ -464,18 +465,18 @@ type InteractionToolId =
   | 'point-pair'
   | 'homography-overlay'
 
-const interactionToolRegistry: Record<InteractionToolId, { label: string }> = {
-  bbox: { label: '矩形 ROI' },
-  rect: { label: '矩形区域' },
-  polygon: { label: '多边形 ROI' },
-  contour: { label: '轮廓区域' },
-  circle: { label: '圆' },
-  line: { label: '线段' },
-  grid: { label: '网格' },
-  'template-region': { label: '模板区域' },
-  'match-line': { label: '匹配线' },
-  'point-pair': { label: '手动点对' },
-  'homography-overlay': { label: '投影框' },
+const interactionToolRegistry: Record<InteractionToolId, { messageKey: string }> = {
+  bbox: { messageKey: 'imageViewer.tools.bbox' },
+  rect: { messageKey: 'imageViewer.tools.rect' },
+  polygon: { messageKey: 'imageViewer.tools.polygon' },
+  contour: { messageKey: 'imageViewer.tools.contour' },
+  circle: { messageKey: 'imageViewer.tools.circle' },
+  line: { messageKey: 'imageViewer.tools.line' },
+  grid: { messageKey: 'imageViewer.tools.grid' },
+  'template-region': { messageKey: 'imageViewer.tools.templateRegion' },
+  'match-line': { messageKey: 'imageViewer.tools.matchLine' },
+  'point-pair': { messageKey: 'imageViewer.tools.pointPair' },
+  'homography-overlay': { messageKey: 'imageViewer.tools.homographyOverlay' },
 }
 
 const props = defineProps<{
@@ -491,6 +492,8 @@ const emit = defineEmits<{
   previewInteraction: [event: ViewerImageInteractionApplyEvent]
   runPreview: []
 }>()
+
+const { t } = useI18n()
 
 const viewportRef = ref<HTMLElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
@@ -730,19 +733,19 @@ const imageMetricItems = computed(() => {
 })
 const interactionStatusText = computed(() => {
   if (!interactionAvailable.value) return ''
-  if (!interactionActive.value) return tuningControls.value.length ? '可调参；取参未启用' : '取参未启用'
-  if (interactionTool.value === 'bbox') return draftBboxXyxy.value ? 'bbox 已选择，可应用参数' : '拖拽选择 bbox'
-  if (interactionTool.value === 'rect') return draftBboxXyxy.value ? '矩形区域已选择，可应用参数' : '拖拽选择矩形区域'
-  if (interactionTool.value === 'grid') return draftBboxXyxy.value ? 'grid 区域已选择，可应用参数' : '拖拽选择 grid 区域'
+  if (!interactionActive.value) return tuningControls.value.length ? t('imageViewer.status.tuningAvailableNotEnabled') : t('imageViewer.status.notEnabled')
+  if (interactionTool.value === 'bbox') return draftBboxXyxy.value ? t('imageViewer.status.bboxReady') : t('imageViewer.status.bboxHint')
+  if (interactionTool.value === 'rect') return draftBboxXyxy.value ? t('imageViewer.status.rectReady') : t('imageViewer.status.rectHint')
+  if (interactionTool.value === 'grid') return draftBboxXyxy.value ? t('imageViewer.status.gridReady') : t('imageViewer.status.gridHint')
   if (interactionTool.value === 'template-region') return readTemplateRegionStatusText()
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') return readPolygonInteractionStatusText()
-  if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? `三点定圆 ${draftPointPairs.value.length}/3` : (draftCircle.value ? '圆已选择，可应用参数' : '按住圆心拖拽半径')
+  if (interactionTool.value === 'circle') return circleDraftMode.value === 'three-point' ? t('imageViewer.status.circleThreePoint', { count: draftPointPairs.value.length }) : (draftCircle.value ? t('imageViewer.status.circleReady') : t('imageViewer.status.circleHint'))
   if (interactionTool.value === 'line') return readLineInteractionStatusText()
   if (interactionTool.value === 'point-pair') return draftPairLines.value.length > 0
-    ? `已添加 ${draftPairLines.value.length} 组点对，可继续拖拽添加`
-    : '从左图目标点拖拽到右图对应点'
-  if (interactionTool.value === 'match-line') return '点击匹配线或端点，写回点选 match id'
-  if (interactionTool.value === 'homography-overlay') return '点击 homography 投影框，写回点选 overlay id'
+    ? t('imageViewer.status.pointPairsReady', { count: draftPairLines.value.length })
+    : t('imageViewer.status.pointPairHint')
+  if (interactionTool.value === 'match-line') return t('imageViewer.status.matchLineHint')
+  if (interactionTool.value === 'homography-overlay') return t('imageViewer.status.homographyOverlayHint')
   return ''
 })
 
@@ -877,10 +880,10 @@ function stopBboxDraft(): void {
     if (templateRegionStage.value === 'template') {
       draftTemplateBboxXyxy.value = draftBboxXyxy.value
       templateRegionStage.value = 'search'
-      showInteractionFeedback('模板 ROI 已选择，请继续绘制搜索 ROI', 'info')
+      showInteractionFeedback(t('imageViewer.feedback.templateSelectedDrawSearch'), 'info')
     } else {
       draftSearchBboxXyxy.value = draftBboxXyxy.value
-      showInteractionFeedback('搜索 ROI 已选择，可以应用参数', 'success')
+      showInteractionFeedback(t('imageViewer.feedback.searchReadyApply'), 'success')
     }
     draftBbox.value = null
   }
@@ -908,7 +911,7 @@ function stopLineDraft(): void {
   if (interactionTool.value === 'point-pair') {
     draftPairLines.value = [...draftPairLines.value, draftLineXyxy.value]
     draftLine.value = null
-    showInteractionFeedback(`已添加 ${draftPairLines.value.length} 组点对`, 'success')
+    showInteractionFeedback(t('imageViewer.feedback.pointPairsAdded', { count: draftPairLines.value.length }), 'success')
     return
   }
   showInteractionFeedback(readLineInteractionStatusText(), 'success')
@@ -972,7 +975,7 @@ function readInteractionToolItemLabel(toolItem: ViewerImageInteractionTool): str
 }
 
 function readInteractionToolLabel(tool: string): string {
-  if (isSupportedInteractionTool(tool)) return interactionToolRegistry[tool].label
+  if (isSupportedInteractionTool(tool)) return t(interactionToolRegistry[tool].messageKey)
   return tool
 }
 
@@ -1019,7 +1022,7 @@ function resetInteractionState(): void {
 function applyInteractionDraft(): void {
   const event = buildInteractionDraftEvent()
   if (!event) {
-    showInteractionFeedback('当前取参还不完整，不能应用参数', 'warning')
+    showInteractionFeedback(t('imageViewer.feedback.incompleteApply'), 'warning')
     return
   }
   emit('applyInteraction', event)
@@ -1131,7 +1134,7 @@ function applyTuningParameters(requestPreview: boolean): void {
     parameters,
   }
   emit('applyInteraction', event)
-  showInteractionFeedback(requestPreview ? '调参已应用，正在 Preview Run' : '调参已应用到节点参数', 'success')
+  showInteractionFeedback(requestPreview ? t('imageViewer.feedback.tuningAppliedPreview') : t('imageViewer.feedback.tuningApplied'), 'success')
   if (requestPreview) scheduleTuningPreview(event)
 }
 
@@ -1146,7 +1149,7 @@ function scheduleTuningPreview(event: ViewerImageInteractionApplyEvent): void {
 function runPreviewFromViewer(): void {
   if (previewActionDisabled.value) {
     showInteractionFeedback(
-      props.previewRunning ? 'Preview Run 正在执行' : '当前取参还不完整，不能 Preview',
+      props.previewRunning ? t('imageViewer.feedback.previewRunning') : t('imageViewer.feedback.incompletePreview'),
       'warning',
     )
     return
@@ -1154,30 +1157,30 @@ function runPreviewFromViewer(): void {
   const event = buildInteractionDraftEvent()
   if (hasInteractionDraft.value) {
     if (!event) {
-      showInteractionFeedback('当前取参还不完整，不能 Preview', 'warning')
+      showInteractionFeedback(t('imageViewer.feedback.incompletePreview'), 'warning')
       return
     }
     emit('applyInteraction', event)
-    showInteractionFeedback(`${readAppliedFeedbackText(event)}，正在 Preview Run`, 'success')
+    showInteractionFeedback(t('imageViewer.feedback.appliedStartingPreview', { message: readAppliedFeedbackText(event) }), 'success')
   } else {
-    showInteractionFeedback('正在 Preview Run', 'info')
+    showInteractionFeedback(t('imageViewer.feedback.startingPreview'), 'info')
   }
   emit('runPreview')
 }
 
 function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {
-  if (event.tool === 'bbox') return '矩形 ROI 已应用到节点参数'
-  if (event.tool === 'rect') return '矩形区域已应用到节点参数'
-  if (event.tool === 'template-region') return '模板 ROI / 搜索 ROI 已应用到节点参数'
-  if (event.tool === 'polygon') return '多边形 ROI 已应用到节点参数'
-  if (event.tool === 'contour') return '轮廓区域已应用到节点参数'
-  if (event.tool === 'grid') return 'ROI 网格参数已应用'
-  if (event.tool === 'circle') return '圆参数已应用'
-  if (event.tool === 'line') return '线段参数已应用'
-  if (event.tool === 'point-pair') return '手动点对已应用'
-  if (event.tool === 'match-line') return '匹配线点选已应用'
-  if (event.tool === 'homography-overlay') return '投影框点选已应用'
-  return '参数已应用到节点'
+  if (event.tool === 'bbox') return t('imageViewer.applied.bbox')
+  if (event.tool === 'rect') return t('imageViewer.applied.rect')
+  if (event.tool === 'template-region') return t('imageViewer.applied.templateRegion')
+  if (event.tool === 'polygon') return t('imageViewer.applied.polygon')
+  if (event.tool === 'contour') return t('imageViewer.applied.contour')
+  if (event.tool === 'grid') return t('imageViewer.applied.grid')
+  if (event.tool === 'circle') return t('imageViewer.applied.circle')
+  if (event.tool === 'line') return t('imageViewer.applied.line')
+  if (event.tool === 'point-pair') return t('imageViewer.applied.pointPair')
+  if (event.tool === 'match-line') return t('imageViewer.applied.matchLine')
+  if (event.tool === 'homography-overlay') return t('imageViewer.applied.homographyOverlay')
+  return t('imageViewer.applied.default')
 }
 
 function handleOverlayMouseDown(overlay: ViewerImageOverlay, event: MouseEvent): void {
@@ -1187,7 +1190,7 @@ function handleOverlayMouseDown(overlay: ViewerImageOverlay, event: MouseEvent):
   event.stopPropagation()
   clearInteractionDraft()
   emit('applyInteraction', pickEvent)
-  showInteractionFeedback(`${readOverlayLabel(overlay)} 已选中，${readAppliedFeedbackText(pickEvent)}`, 'success')
+  showInteractionFeedback(t('imageViewer.feedback.overlaySelected', { label: readOverlayLabel(overlay), message: readAppliedFeedbackText(pickEvent) }), 'success')
 }
 
 function buildOverlayPickEvent(overlay: ViewerImageOverlay): ViewerImageInteractionApplyEvent | null {
@@ -1393,11 +1396,11 @@ function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerI
 function readTemplateRegionStatusText(): string {
   const templateReady = Boolean(draftTemplateBboxXyxy.value)
   const searchReady = Boolean(draftSearchBboxXyxy.value)
-  const currentStageText = templateRegionStage.value === 'template' ? '模板 ROI' : '搜索 ROI'
-  if (templateReady && searchReady) return '模板 ROI 和搜索 ROI 已选择，可应用参数'
-  if (templateReady) return '模板 ROI 已选择，继续拖拽选择搜索 ROI'
-  if (searchReady) return '搜索 ROI 已选择，继续拖拽选择模板 ROI'
-  return `拖拽选择${currentStageText}`
+  const currentStageText = templateRegionStage.value === 'template' ? t('imageViewer.toolbar.templateRoi') : t('imageViewer.toolbar.searchRoi')
+  if (templateReady && searchReady) return t('imageViewer.status.templateAndSearchReady')
+  if (templateReady) return t('imageViewer.status.templateReadyContinueSearch')
+  if (searchReady) return t('imageViewer.status.searchReadyContinueTemplate')
+  return t('imageViewer.status.dragStage', { stage: currentStageText })
 }
 
 function readPolygonInteractionStatusText(): string {
@@ -1405,25 +1408,25 @@ function readPolygonInteractionStatusText(): string {
   const minPoints = activePolygonMinPoints.value
   const maxPoints = activePolygonMaxPoints.value
   if (maxPoints !== null && maxPoints === minPoints) {
-    return pointCount >= maxPoints ? `多边形 ${pointCount}/${maxPoints}，可应用参数` : `多边形取参 ${pointCount}/${maxPoints}`
+    return pointCount >= maxPoints ? t('imageViewer.status.polygonReadyRatio', { count: pointCount, max: maxPoints }) : t('imageViewer.status.polygonRatio', { count: pointCount, max: maxPoints })
   }
-  if (pointCount >= minPoints) return `多边形 ${pointCount} 点，可应用参数`
-  return `多边形取参 ${pointCount}/${minPoints}`
+  if (pointCount >= minPoints) return t('imageViewer.status.polygonReady', { count: pointCount })
+  return t('imageViewer.status.polygonMinimum', { count: pointCount, min: minPoints })
 }
 
 function readLineInteractionStatusText(): string {
   const targetParameters = new Set(activeTargetParameters.value)
   if (!draftLineXyxy.value) {
     if (targetParameters.has('search_bbox_xyxy') && targetParameters.has('angle_min_deg') && targetParameters.has('angle_max_deg')) {
-      return '拖拽目标方向线段，自动写回搜索 ROI、最小线长和角度范围'
+      return t('imageViewer.status.lineDirectionHint')
     }
-    if (targetParameters.has('search_bbox_xyxy')) return '拖拽目标线段，自动写回搜索 ROI'
-    return '拖拽选择线段'
+    if (targetParameters.has('search_bbox_xyxy')) return t('imageViewer.status.lineSearchHint')
+    return t('imageViewer.status.lineHint')
   }
   const [x1, y1, x2, y2] = draftLineXyxy.value
   const length = roundImageCoordinate(pointDistance([x1, y1], [x2, y2]))
   const angleDeg = normalizeLineAngleDeg((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI)
-  return `线段已选择：${length}px / ${angleDeg}°，可应用参数`
+  return t('imageViewer.status.lineReady', { length, angle: angleDeg })
 }
 
 function isSupportedInteractionTool(tool: string): tool is InteractionToolId {

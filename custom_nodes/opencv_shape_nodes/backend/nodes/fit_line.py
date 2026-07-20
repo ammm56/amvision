@@ -21,10 +21,12 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
     require_contours_payload,
 )
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    require_boolean,
     require_non_negative_float,
     require_positive_int,
 )
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
 
 
 NODE_TYPE_ID = "custom.opencv.fit-line"
@@ -106,8 +108,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     reps = _read_positive_float(request.parameters.get("reps"), field_name="reps", default_value=0.01)
     aeps = _read_positive_float(request.parameters.get("aeps"), field_name="aeps", default_value=0.01)
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
-    descending = bool(request.parameters.get("descending", True))
-    limit = _read_optional_limit(request.parameters.get("limit"))
+    descending = require_boolean(
+        request.parameters.get("descending", True),
+        field_name="descending",
+    )
+    limit = read_find_result_limit(request.parameters.get("limit"))
 
     line_items: list[dict[str, object]] = []
     for line_index, contour_item in enumerate(contours_payload["items"], start=1):

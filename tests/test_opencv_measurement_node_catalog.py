@@ -35,4 +35,13 @@ def test_opencv_measurement_node_catalog_builder_matches_checked_in_catalog() ->
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.measurement-nodes"
     }
+    node_by_type = {
+        item["node_type_id"]: item
+        for item in actual_catalog_payload["node_definitions"]
+    }
+    caliper_properties = node_by_type["custom.opencv.caliper-edge"]["parameter_schema"]["properties"]
+    assert caliper_properties["max_results"]["default"] == 10
+    assert caliper_properties["max_results"]["maximum"] == 1000
+    assert "line_xyxy" in caliper_properties
+    assert "min_edge_distance" in caliper_properties
 

@@ -58,8 +58,10 @@
       "limit": {
         "type": "integer",
         "title": "Output Limit",
-        "description": "排序后最多输出多少个 rotated rect；为空表示不限制。",
-        "minimum": 1
+        "description": "排序后最多输出多少个 rotated rect。",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 10
       },
       "selected_contour_index": {
         "type": "integer",

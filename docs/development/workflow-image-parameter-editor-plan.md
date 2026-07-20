@@ -30,6 +30,43 @@
 - 参数保存仍落在 workflow template 的节点 `parameters` 中，便于版本化、复制、回滚和现场调整。
 - 不新增空盘检测专用节点；缺基础能力时只补通用节点。
 
+## OpenCV 搜索节点执行规则
+
+Circle、Line、Contour、Edge 和集合型拟合节点统一遵守以下规则：
+
+- 查找结果默认上限为 10，调用方可以显式调整，但不能使用 `None` 表示无限结果。
+- `ROI Grid Create` 等按用户明确行列生成数据的节点不套用查找结果上限；该类节点改为校验越界并按 `reject / clip / allow` 策略处理。
+- 高成本算法先在 `Search ROI` 内执行；超过处理预算时按 `processing_max_long_edge` 等比例缩小，所有结果坐标、尺寸和半径必须还原到原图坐标系。
+- 未限制 Search ROI、半径和处理预算的高分辨率 `Hough Circles` 请求在进入 OpenCV 前直接拒绝，避免不可取消的 C 调用长期占满 CPU。
+- Contour 先完成过滤和稳定排序，再截断结果；不得依赖 OpenCV 返回顺序决定业务结果。
+- Workflow preview、runtime 和临时 application worker 在进程启动阶段统一限制 OpenCV、OMP、MKL 和 OpenBLAS 线程数；节点执行过程中不修改进程全局线程配置。
+- `debug_image_panel_enabled` 与执行元数据总开关必须同时打开才生成 Debug Preview。关闭时不编码、不保存、不复制预览图，中间图继续使用内存矩阵或 image-ref 链路。
+
+这些规则由 OpenCV shared runtime 统一实现，节点只声明算法参数和结果语义，避免每个节点维护不同的性能保护逻辑。
+
+## 来料托盘应用的已验证链路
+
+`workflow-app-20260718122522` 使用通用节点组成定位和分类链路，不包含托盘专用节点：
+
+```text
+Image
+→ 四个独立 Search ROI
+→ Hough Circles（每路按 Search ROI 中心距离选择 1 个结果）
+→ Quadrilateral From Circle Centers
+→ Perspective Transform
+→ ROI Grid Create（4 × 6）
+→ Crop Export（memory）
+→ 通用 List Split / 三分支 Classification（top_k=1）
+→ Ordered Merge
+→ Slot Classification Summary
+```
+
+四个圆输入分别连接 `top_left / top_right / bottom_right / bottom_left`，角点语义由图连接显式表达；节点不根据结果位置猜测角点。`Quadrilateral From Circle Centers` 支持按局部坐标轴设置四边 outset，用于从定位孔圆心恢复托盘有效边界。
+
+三张 5472×3648 现场图片的四个定位圆结果波动约 1–3 px，透视后的 24 个 ROI 顺序和覆盖范围稳定。三分支只是当前应用按 3 个 DeploymentInstance 进程配置的图连接方式；List Split、Classification 和 Ordered Merge 都是可复用基础节点，其他 Workflow App 可按实际资源连接 1 路或更多分支。
+
+当前唯一可用的 classification Deployment 为 `yolo11-s-pcbpetslot-20260719115221`，OpenVINO CPU、3 instances、5 个槽位类别。几何定位与 ROI 验证通过不等于分类模型验证通过；现场图片类别结果异常时应单独检查训练数据域、类别定义和模型评估，不能通过修改几何节点隐藏模型问题。
+
 ## 现有相关节点清单
 
 | 类型 | 节点 | 当前用途 | 需要的图像交互 |

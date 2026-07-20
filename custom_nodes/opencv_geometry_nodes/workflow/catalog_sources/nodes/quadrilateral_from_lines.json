@@ -1,0 +1,43 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.quadrilateral-from-lines",
+  "display_name": "Quadrilateral From Lines",
+  "category": "opencv.geometry",
+  "description": "从显式连接的 Top、Right、Bottom、Left lines.v1 输入构建凸四边形 ROI；不猜测边线语义。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "top", "display_name": "Top", "payload_type_id": "lines.v1"},
+    {"name": "right", "display_name": "Right", "payload_type_id": "lines.v1"},
+    {"name": "bottom", "display_name": "Bottom", "payload_type_id": "lines.v1"},
+    {"name": "left", "display_name": "Left", "payload_type_id": "lines.v1"}
+  ],
+  "output_ports": [
+    {"name": "roi", "display_name": "ROI", "payload_type_id": "roi.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"},
+    {"name": "debug_preview", "display_name": "Debug Preview", "payload_type_id": "response-body.v1", "required": false}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "top_line_index": {"type": "integer", "minimum": 1, "default": 1},
+      "right_line_index": {"type": "integer", "minimum": 1, "default": 1},
+      "bottom_line_index": {"type": "integer", "minimum": 1, "default": 1},
+      "left_line_index": {"type": "integer", "minimum": 1, "default": 1},
+      "min_width": {"type": "number", "exclusiveMinimum": 0, "default": 1},
+      "min_height": {"type": "number", "exclusiveMinimum": 0, "default": 1},
+      "roi_id": {"type": "string", "default": "line-quadrilateral"},
+      "display_name": {"type": "string", "default": "Line Quadrilateral"},
+      "debug_image_panel_enabled": {"type": "boolean", "default": false},
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "enum": ["storage-ref", "inline-base64"],
+        "default": "storage-ref"
+      }
+    }
+  },
+  "capability_tags": ["opencv.geometry", "vision.lines", "vision.roi", "vision.alignment"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.geometry-nodes",
+  "node_pack_version": "0.1.0"
+}

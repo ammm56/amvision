@@ -91,11 +91,71 @@
         "minimum": 0,
         "default": 0
       },
+      "max_area": {
+        "type": "number",
+        "title": "Max Area",
+        "description": "大于该面积的 contour 会被过滤；为空表示不限制。",
+        "minimum": 0
+      },
+      "min_width": {
+        "type": "number",
+        "title": "Min Width",
+        "minimum": 0
+      },
+      "max_width": {
+        "type": "number",
+        "title": "Max Width",
+        "minimum": 0
+      },
+      "min_height": {
+        "type": "number",
+        "title": "Min Height",
+        "minimum": 0
+      },
+      "max_height": {
+        "type": "number",
+        "title": "Max Height",
+        "minimum": 0
+      },
+      "min_aspect_ratio": {
+        "type": "number",
+        "title": "Min Aspect Ratio",
+        "minimum": 0
+      },
+      "max_aspect_ratio": {
+        "type": "number",
+        "title": "Max Aspect Ratio",
+        "minimum": 0
+      },
+      "min_rectangularity": {
+        "type": "number",
+        "title": "Min Rectangularity",
+        "description": "contour 面积与外接 bbox 面积的最小比例。",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "max_rectangularity": {
+        "type": "number",
+        "title": "Max Rectangularity",
+        "description": "contour 面积与外接 bbox 面积的最大比例。",
+        "minimum": 0,
+        "maximum": 1
+      },
       "max_contours": {
         "type": "integer",
         "title": "Max Contours",
-        "description": "最多输出的 contour 数量；为空表示不限制。",
-        "minimum": 1
+        "description": "按面积从大到小稳定排序后最多输出的 contour 数量。",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 10
+      },
+      "processing_max_long_edge": {
+        "type": "integer",
+        "title": "Processing Max Long Edge",
+        "description": "算法处理图的最长边；大图会等比缩小，轮廓坐标和过滤尺寸自动还原到原图坐标。",
+        "minimum": 256,
+        "maximum": 32768,
+        "default": 2048
       },
       "selected_contour_index": {
         "type": "integer",

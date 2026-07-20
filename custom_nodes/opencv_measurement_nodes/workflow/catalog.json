@@ -1576,9 +1576,10 @@
       "node_type_id": "custom.opencv.caliper-edge",
       "display_name": "Caliper Edge",
       "category": "opencv.measurement",
-      "description": "在输入图片或 ROI 内按单轴 profile 搜索最强边缘，并输出单条结构化 lines.v1，适合台阶边、工件边和装配定位边的基准量测。",
+      "description": "在轴向 ROI 或任意方向 Caliper 内搜索一个或多个边缘，支持极性、NMS 和亚像素位置。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1615,6 +1616,15 @@
           "payload_type_id": "value.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -1658,6 +1668,50 @@
             "type": "number",
             "minimum": 0,
             "default": 5.0
+          },
+          "line_xyxy": {
+            "type": "array",
+            "title": "Caliper Line",
+            "description": "任意方向搜索线 [x1, y1, x2, y2]；设置后优先于轴向 ROI。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "caliper_width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 20,
+            "title": "Caliper Width"
+          },
+          "min_edge_distance": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 10,
+            "title": "Min Edge Distance"
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10,
+            "title": "Max Results"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },
@@ -1686,6 +1740,7 @@
       "description": "读取选中圆的直径、半径、面积或周长，适合孔径、圆形工件和圆斑量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "circles",
@@ -1768,6 +1823,7 @@
       "description": "计算两圆之间的中心偏移和半径差，适合同心孔、轴套和圆环装配检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "circles",
@@ -1863,6 +1919,7 @@
       "description": "读取选中直线的方向角或相对参考角度的偏差，适合做角度姿态和装配方向量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "lines",
@@ -1947,6 +2004,7 @@
       "description": "对 contour 集合执行面积、周长与包围框度量。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2014,6 +2072,7 @@
       "description": "计算两条直线的角度差和相对偏移，适合导轨、边线和平行边装配检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "lines",
@@ -2109,6 +2168,7 @@
       "description": "计算两点之间的欧氏距离、曼哈顿距离和坐标差，适合中心距、孔距和装配偏移量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "point_a",
@@ -2187,6 +2247,7 @@
       "description": "读取单个点到选中直线的距离，适合做中心点偏移、边缘偏移和装配位置量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "lines",
@@ -2276,6 +2337,7 @@
       "description": "计算两条边线之间的槽宽，适合卡槽、导轨间隙和双边距量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "lines",

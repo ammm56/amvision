@@ -22,7 +22,8 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
 )
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
-from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
+from custom_nodes._opencv_shared.backend.runtime.validators import require_boolean, require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.min-enclosing-circle"
@@ -70,8 +71,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, np_module = require_opencv_imports()
     contours_payload = require_contours_payload(request.input_values.get("contours"))
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
-    descending = bool(request.parameters.get("descending", True))
-    limit = _read_optional_limit(request.parameters.get("limit"))
+    descending = require_boolean(
+        request.parameters.get("descending", True),
+        field_name="descending",
+    )
+    limit = read_find_result_limit(request.parameters.get("limit"))
     selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     circle_items: list[dict[str, object]] = []

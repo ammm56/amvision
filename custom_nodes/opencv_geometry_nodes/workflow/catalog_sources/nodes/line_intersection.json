@@ -1,0 +1,28 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.line-intersection",
+  "display_name": "Line Intersection",
+  "category": "opencv.geometry",
+  "description": "按显式 line index 计算两个 lines.v1 输入的无限直线交点；平行、近似平行或来源不一致时快速失败。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "first_lines", "display_name": "First Lines", "payload_type_id": "lines.v1"},
+    {"name": "second_lines", "display_name": "Second Lines", "payload_type_id": "lines.v1"}
+  ],
+  "output_ports": [
+    {"name": "point", "display_name": "Point", "payload_type_id": "value.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "first_line_index": {"type": "integer", "minimum": 1, "default": 1},
+      "second_line_index": {"type": "integer", "minimum": 1, "default": 1}
+    }
+  },
+  "capability_tags": ["opencv.geometry", "vision.lines", "vision.point"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.geometry-nodes",
+  "node_pack_version": "0.1.0"
+}

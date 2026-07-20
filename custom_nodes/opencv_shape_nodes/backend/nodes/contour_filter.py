@@ -19,11 +19,13 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
 from custom_nodes.opencv_shape_nodes.backend.nodes.debug_contours import build_contours_debug_preview_output
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
 from custom_nodes._opencv_shared.backend.runtime.validators import (
+    require_boolean,
     require_non_negative_float,
     require_non_negative_int,
     require_positive_int,
 )
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
 
 
 NODE_TYPE_ID = "custom.opencv.contour-filter"
@@ -53,6 +55,19 @@ def _read_optional_positive_int(raw_value: object, *, field_name: str) -> int | 
     return require_positive_int(raw_value, field_name=field_name)
 
 
+def _validate_optional_range(
+    minimum: float | int | None,
+    maximum: float | int | None,
+    *,
+    minimum_name: str,
+    maximum_name: str,
+) -> None:
+    """验证可选过滤范围。"""
+
+    if minimum is not None and maximum is not None and minimum > maximum:
+        raise InvalidRequestError(f"{minimum_name} 不能大于 {maximum_name}")
+
+
 def _normalize_sort_by(value: object) -> str:
     """规范化 contour-filter 的排序字段。"""
 
@@ -66,6 +81,8 @@ def _normalize_sort_by(value: object) -> str:
         "width",
         "height",
         "perimeter",
+        "aspect_ratio",
+        "rectangularity",
     }:
         raise InvalidRequestError("sort_by 不在支持的 contour-filter 排序字段列表中")
     return normalized_value
@@ -82,6 +99,22 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     max_width = _read_optional_non_negative_float(request.parameters.get("max_width"), field_name="max_width")
     min_height = _read_optional_non_negative_float(request.parameters.get("min_height"), field_name="min_height")
     max_height = _read_optional_non_negative_float(request.parameters.get("max_height"), field_name="max_height")
+    min_aspect_ratio = _read_optional_non_negative_float(
+        request.parameters.get("min_aspect_ratio"), field_name="min_aspect_ratio"
+    )
+    max_aspect_ratio = _read_optional_non_negative_float(
+        request.parameters.get("max_aspect_ratio"), field_name="max_aspect_ratio"
+    )
+    min_rectangularity = _read_optional_non_negative_float(
+        request.parameters.get("min_rectangularity"), field_name="min_rectangularity"
+    )
+    max_rectangularity = _read_optional_non_negative_float(
+        request.parameters.get("max_rectangularity"), field_name="max_rectangularity"
+    )
+    if min_rectangularity is not None and min_rectangularity > 1.0:
+        raise InvalidRequestError("min_rectangularity 不能大于 1")
+    if max_rectangularity is not None and max_rectangularity > 1.0:
+        raise InvalidRequestError("max_rectangularity 不能大于 1")
     min_point_count = _read_optional_non_negative_int(
         request.parameters.get("min_point_count"),
         field_name="min_point_count",
@@ -90,10 +123,26 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request.parameters.get("max_point_count"),
         field_name="max_point_count",
     )
+    for minimum, maximum, minimum_name, maximum_name in (
+        (min_area, max_area, "min_area", "max_area"),
+        (min_width, max_width, "min_width", "max_width"),
+        (min_height, max_height, "min_height", "max_height"),
+        (min_aspect_ratio, max_aspect_ratio, "min_aspect_ratio", "max_aspect_ratio"),
+        (min_rectangularity, max_rectangularity, "min_rectangularity", "max_rectangularity"),
+        (min_point_count, max_point_count, "min_point_count", "max_point_count"),
+    ):
+        _validate_optional_range(
+            minimum,
+            maximum,
+            minimum_name=minimum_name,
+            maximum_name=maximum_name,
+        )
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
-    descending = bool(request.parameters.get("descending", False))
-    raw_limit = request.parameters.get("limit")
-    limit = None if is_empty_parameter(raw_limit) else require_positive_int(raw_limit, field_name="limit")
+    descending = require_boolean(
+        request.parameters.get("descending", False),
+        field_name="descending",
+    )
+    limit = read_find_result_limit(request.parameters.get("limit"))
     selected_contour_index = _read_optional_positive_int(
         request.parameters.get("selected_contour_index"),
         field_name="selected_contour_index",
@@ -113,6 +162,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         contour_width = float(contour_metrics["width"])
         contour_height = float(contour_metrics["height"])
         contour_perimeter = float(contour_metrics["perimeter"])
+        contour_aspect_ratio = float(contour_metrics["aspect_ratio"])
+        bbox_area = contour_width * contour_height
+        contour_rectangularity = contour_area / bbox_area if bbox_area > 0 else 0.0
         point_count = int(contour_item["point_count"])
         if min_area is not None and contour_area < min_area:
             continue
@@ -125,6 +177,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if min_height is not None and contour_height < min_height:
             continue
         if max_height is not None and contour_height > max_height:
+            continue
+        if min_aspect_ratio is not None and contour_aspect_ratio < min_aspect_ratio:
+            continue
+        if max_aspect_ratio is not None and contour_aspect_ratio > max_aspect_ratio:
+            continue
+        if min_rectangularity is not None and contour_rectangularity < min_rectangularity:
+            continue
+        if max_rectangularity is not None and contour_rectangularity > max_rectangularity:
             continue
         if min_point_count is not None and point_count < min_point_count:
             continue
@@ -140,13 +200,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                     "width": contour_width,
                     "height": contour_height,
                     "perimeter": contour_perimeter,
+                    "aspect_ratio": contour_aspect_ratio,
+                    "rectangularity": contour_rectangularity,
                 },
             )
         )
 
     filtered_items.sort(key=lambda current_item: current_item[1][sort_by], reverse=descending)
-    if limit is not None:
-        filtered_items = filtered_items[:limit]
+    filtered_items = filtered_items[:limit]
 
     contour_items = [item for item, _metrics in filtered_items]
     summary_metrics = [metrics for _item, metrics in filtered_items]
@@ -190,6 +251,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 max_width=max_width,
                 min_height=min_height,
                 max_height=max_height,
+                min_aspect_ratio=min_aspect_ratio,
+                max_aspect_ratio=max_aspect_ratio,
+                min_rectangularity=min_rectangularity,
+                max_rectangularity=max_rectangularity,
                 min_point_count=min_point_count,
                 max_point_count=max_point_count,
                 sort_by=sort_by,
@@ -211,11 +276,15 @@ def _build_contour_filter_controls(
     max_width: float | None,
     min_height: float | None,
     max_height: float | None,
+    min_aspect_ratio: float | None,
+    max_aspect_ratio: float | None,
+    min_rectangularity: float | None,
+    max_rectangularity: float | None,
     min_point_count: int | None,
     max_point_count: int | None,
     sort_by: str,
     descending: bool,
-    limit: int | None,
+    limit: int,
     source_width: int | None,
     source_height: int | None,
 ) -> list[dict[str, object]]:
@@ -232,6 +301,10 @@ def _build_contour_filter_controls(
         build_number_control("max_width", "Max Width", max_width, min_value=0.0, max_value=width_max, step=1.0),
         build_number_control("min_height", "Min Height", min_height, min_value=0.0, max_value=height_max, step=1.0),
         build_number_control("max_height", "Max Height", max_height, min_value=0.0, max_value=height_max, step=1.0),
+        build_number_control("min_aspect_ratio", "Min Aspect Ratio", min_aspect_ratio, min_value=0.0, max_value=20.0, step=0.05),
+        build_number_control("max_aspect_ratio", "Max Aspect Ratio", max_aspect_ratio, min_value=0.0, max_value=20.0, step=0.05),
+        build_number_control("min_rectangularity", "Min Rectangularity", min_rectangularity, min_value=0.0, max_value=1.0, step=0.01),
+        build_number_control("max_rectangularity", "Max Rectangularity", max_rectangularity, min_value=0.0, max_value=1.0, step=0.01),
         build_number_control(
             "min_point_count",
             "Min Points",
@@ -259,10 +332,12 @@ def _build_contour_filter_controls(
                 ("width", "Width"),
                 ("height", "Height"),
                 ("perimeter", "Perimeter"),
+                ("aspect_ratio", "Aspect Ratio"),
+                ("rectangularity", "Rectangularity"),
             ],
         ),
         build_checkbox_control("descending", "Descending", descending),
-        build_number_control("limit", "Output Limit", limit, min_value=1.0, max_value=500.0, step=1.0),
+        build_number_control("limit", "Output Limit", limit, min_value=1.0, max_value=1000.0, step=1.0),
     ]
 
 

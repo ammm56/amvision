@@ -39,6 +39,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.settings import BackendServiceSettings
+from backend.service.application.workflows.process_threads import configure_workflow_process_threads
 
 
 @dataclass(frozen=True)
@@ -222,6 +223,7 @@ def run_workflow_application_process_worker(
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
+        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())

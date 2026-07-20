@@ -319,10 +319,16 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     """描述 workflow runtime 的结果缓存配置。
 
     字段：
+    - operator_thread_count：Workflow 子进程内 OpenCV/BLAS 算子线程上限。
     - raw_result_cache_ttl_seconds：异步 WorkflowRun 原始公开 outputs 的进程内保留秒数。
     - raw_result_cache_max_items：异步 WorkflowRun 原始公开 outputs 的最大缓存条数。
     """
 
+    operator_thread_count: int = Field(
+        default=1,
+        gt=0,
+        description="Workflow Preview、临时执行和 Runtime worker 的 OpenCV/BLAS 线程上限",
+    )
     raw_result_cache_ttl_seconds: float = Field(
         default=900.0,
         ge=0.0,

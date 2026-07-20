@@ -70,6 +70,14 @@
         "minimum": 0,
         "default": 0
       },
+      "blur_kernel_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 31,
+        "default": 5,
+        "title": "Blur Kernel Size",
+        "description": "HoughCircles 前的 median blur 奇数核尺寸；1 表示不模糊。"
+      },
       "sort_by": {
         "type": "string",
         "enum": [
@@ -78,7 +86,8 @@
           "diameter",
           "area",
           "center_x",
-          "center_y"
+          "center_y",
+          "search_center_distance"
         ],
         "default": "radius"
       },
@@ -88,7 +97,18 @@
       },
       "limit": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 10,
+        "title": "Result Limit"
+      },
+      "processing_max_long_edge": {
+        "type": "integer",
+        "minimum": 256,
+        "maximum": 32768,
+        "default": 2048,
+        "title": "Processing Max Long Edge",
+        "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
       },
       "search_bbox_xyxy": {
         "type": "array",

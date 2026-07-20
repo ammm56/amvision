@@ -19,7 +19,8 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
 from custom_nodes._opencv_shared.backend.runtime.payloads import require_contours_payload
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
-from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
+from custom_nodes._opencv_shared.backend.runtime.validators import require_boolean, require_positive_int
 
 
 NODE_TYPE_ID = "custom.opencv.min-area-rect"
@@ -79,9 +80,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     cv2_module, np_module = require_opencv_imports()
     contours_payload = require_contours_payload(request.input_values.get("contours"))
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
-    descending = bool(request.parameters.get("descending", False))
-    raw_limit = request.parameters.get("limit")
-    limit = None if is_empty_parameter(raw_limit) else require_positive_int(raw_limit, field_name="limit")
+    descending = require_boolean(
+        request.parameters.get("descending", False),
+        field_name="descending",
+    )
+    limit = read_find_result_limit(request.parameters.get("limit"))
     selected_contour_index_raw = request.parameters.get("selected_contour_index")
     selected_contour_index = (
         require_positive_int(selected_contour_index_raw, field_name="selected_contour_index")

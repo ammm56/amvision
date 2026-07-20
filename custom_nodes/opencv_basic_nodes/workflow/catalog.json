@@ -1579,6 +1579,7 @@
       "description": "对输入灰度图执行 adaptive threshold，适合光照不均或背景变化明显的二值化场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1658,6 +1659,7 @@
       "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1727,6 +1729,7 @@
       "description": "把输入图片转为灰度后执行二值化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1790,6 +1793,7 @@
       "description": "对输入图片执行 Canny 边缘检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1797,6 +1801,15 @@
           "payload_type_id": "image-ref.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -1810,6 +1823,24 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "parameter_schema": {
@@ -1818,23 +1849,60 @@
           "threshold1": {
             "type": "number",
             "minimum": 0,
-            "maximum": 255
+            "maximum": 255,
+            "default": 50
           },
           "threshold2": {
             "type": "number",
             "minimum": 0,
-            "maximum": 255
+            "maximum": 255,
+            "default": 150
           },
           "aperture_size": {
             "type": "integer",
             "minimum": 3,
-            "maximum": 7
+            "maximum": 7,
+            "default": 3
           },
           "l2_gradient": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
+          },
+          "pre_blur_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "default": 3,
+            "title": "Pre Blur Kernel Size",
+            "description": "进入 Canny 前的 Gaussian Blur 奇数核；1 表示不平滑。"
           },
           "output_object_key": {
             "type": "string"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "可选搜索区域 [x1, y1, x2, y2]；区域外输出保持为 0。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },
@@ -1861,6 +1929,7 @@
       "description": "对输入图片执行 CLAHE 局部对比度增强，适合光照不稳、局部对比不足或表面纹理偏弱的工业图像预处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1929,6 +1998,7 @@
       "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2016,6 +2086,7 @@
       "description": "把 image 和 detections 或 roi-list.v1 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，或 ROI Grid Create.rois 接 rois，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2207,6 +2278,7 @@
       "description": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "images",
@@ -2276,6 +2348,7 @@
       "description": "对输入图片执行高斯模糊。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2337,6 +2410,7 @@
       "description": "把输入图片转为灰度图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2390,6 +2464,7 @@
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "images",
@@ -2554,6 +2629,7 @@
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "images",
@@ -2712,6 +2788,7 @@
       "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "images",
@@ -2861,6 +2938,7 @@
       "description": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "images",
@@ -2994,6 +3072,7 @@
       "description": "对输入图片执行按位反相，适合把暗前景/亮背景切换成后续阈值或轮廓流程更稳定的方向。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3047,6 +3126,7 @@
       "description": "对输入图片执行二阶 Laplacian 边缘增强，适合在缺口、毛刺和细小轮廓前处理时强化边界变化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3133,6 +3213,7 @@
       "description": "对输入图片执行中值滤波，适合去除椒盐噪声、小颗粒噪声和零散脏点，同时尽量保留边缘结构。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3192,6 +3273,7 @@
       "description": "对输入图片执行 morphology 操作。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3273,6 +3355,7 @@
       "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3338,6 +3421,7 @@
       "description": "对输入灰度图执行 Otsu 自动阈值分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3403,6 +3487,7 @@
       "description": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -3660,6 +3745,7 @@
       "description": "按目标宽高缩放输入图片；当仅提供一个边时按原始比例推导另一边。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -3731,6 +3817,7 @@
       "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "empty_check",
@@ -3834,6 +3921,7 @@
       "description": "对输入图片执行一阶 Sobel 边缘增强，适合在轮廓、边线和缺陷显著化前先强化方向性边缘。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",

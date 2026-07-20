@@ -18,6 +18,7 @@ from custom_nodes._opencv_shared.backend.runtime.payloads import (
 )
 from custom_nodes.opencv_shape_nodes.backend.nodes.debug_contours import build_contours_debug_preview_output
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
 from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
 
@@ -70,7 +71,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     contours_payload = require_contours_payload(request.input_values.get("contours"))
     sort_by = _read_sort_by(request.parameters.get("sort_by"))
     descending = _read_descending(request.parameters.get("descending"))
-    limit = _read_optional_limit(request.parameters.get("limit"))
+    limit = read_find_result_limit(request.parameters.get("limit"))
     selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     hull_items: list[dict[str, object]] = []

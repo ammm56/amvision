@@ -52,6 +52,7 @@ from backend.service.application.workflows.workflow_service import LocalWorkflow
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+from backend.service.application.workflows.process_threads import configure_workflow_process_threads
 
 
 LOGGER = logging.getLogger(__name__)
@@ -643,6 +644,7 @@ def run_workflow_snapshot_process_worker(
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
+        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())

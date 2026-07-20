@@ -1579,6 +1579,7 @@
       "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1682,11 +1683,71 @@
             "minimum": 0,
             "default": 0
           },
+          "max_area": {
+            "type": "number",
+            "title": "Max Area",
+            "description": "大于该面积的 contour 会被过滤；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_width": {
+            "type": "number",
+            "title": "Min Width",
+            "minimum": 0
+          },
+          "max_width": {
+            "type": "number",
+            "title": "Max Width",
+            "minimum": 0
+          },
+          "min_height": {
+            "type": "number",
+            "title": "Min Height",
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "number",
+            "title": "Max Height",
+            "minimum": 0
+          },
+          "min_aspect_ratio": {
+            "type": "number",
+            "title": "Min Aspect Ratio",
+            "minimum": 0
+          },
+          "max_aspect_ratio": {
+            "type": "number",
+            "title": "Max Aspect Ratio",
+            "minimum": 0
+          },
+          "min_rectangularity": {
+            "type": "number",
+            "title": "Min Rectangularity",
+            "description": "contour 面积与外接 bbox 面积的最小比例。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_rectangularity": {
+            "type": "number",
+            "title": "Max Rectangularity",
+            "description": "contour 面积与外接 bbox 面积的最大比例。",
+            "minimum": 0,
+            "maximum": 1
+          },
           "max_contours": {
             "type": "integer",
             "title": "Max Contours",
-            "description": "最多输出的 contour 数量；为空表示不限制。",
-            "minimum": 1
+            "description": "按面积从大到小稳定排序后最多输出的 contour 数量。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "processing_max_long_edge": {
+            "type": "integer",
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，轮廓坐标和过滤尺寸自动还原到原图坐标。",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048
           },
           "selected_contour_index": {
             "type": "integer",
@@ -1745,6 +1806,7 @@
       "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -1806,7 +1868,9 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",
@@ -1856,6 +1920,7 @@
       "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -1935,6 +2000,32 @@
             "description": "保留外接 bbox 高度小于等于该值的 contour；为空表示不限制。",
             "minimum": 0
           },
+          "min_aspect_ratio": {
+            "type": "number",
+            "title": "Min Aspect Ratio",
+            "description": "保留外接 bbox 宽高比大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_aspect_ratio": {
+            "type": "number",
+            "title": "Max Aspect Ratio",
+            "description": "保留外接 bbox 宽高比小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_rectangularity": {
+            "type": "number",
+            "title": "Min Rectangularity",
+            "description": "保留 contour 面积与外接 bbox 面积比例大于等于该值的 contour。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_rectangularity": {
+            "type": "number",
+            "title": "Max Rectangularity",
+            "description": "保留 contour 面积与外接 bbox 面积比例小于等于该值的 contour。",
+            "minimum": 0,
+            "maximum": 1
+          },
           "min_point_count": {
             "type": "integer",
             "title": "Min Points",
@@ -1957,7 +2048,9 @@
               "area",
               "width",
               "height",
-              "perimeter"
+              "perimeter",
+              "aspect_ratio",
+              "rectangularity"
             ],
             "default": "contour_index"
           },
@@ -1970,8 +2063,10 @@
           "limit": {
             "type": "integer",
             "title": "Output Limit",
-            "description": "排序后最多输出多少个 contour；为空表示不限制。",
-            "minimum": 1
+            "description": "排序后最多输出多少个 contour。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",
@@ -2020,6 +2115,7 @@
       "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2106,6 +2202,7 @@
       "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2164,7 +2261,9 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",
@@ -2214,6 +2313,7 @@
       "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2278,7 +2378,9 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",
@@ -2328,6 +2430,7 @@
       "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2411,7 +2514,9 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "debug_image_panel_enabled": {
             "type": "boolean",
@@ -2455,6 +2560,7 @@
       "description": "对输入图片执行 Hough 圆检测，并输出结构化 circles.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2537,6 +2643,14 @@
             "minimum": 0,
             "default": 0
           },
+          "blur_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "default": 5,
+            "title": "Blur Kernel Size",
+            "description": "HoughCircles 前的 median blur 奇数核尺寸；1 表示不模糊。"
+          },
           "sort_by": {
             "type": "string",
             "enum": [
@@ -2545,7 +2659,8 @@
               "diameter",
               "area",
               "center_x",
-              "center_y"
+              "center_y",
+              "search_center_distance"
             ],
             "default": "radius"
           },
@@ -2555,7 +2670,18 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10,
+            "title": "Result Limit"
+          },
+          "processing_max_long_edge": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048,
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
           },
           "search_bbox_xyxy": {
             "type": "array",
@@ -2609,6 +2735,7 @@
       "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2661,6 +2788,30 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
+          "input_mode": {
+            "type": "string",
+            "enum": [
+              "auto-canny",
+              "binary-edge"
+            ],
+            "default": "auto-canny",
+            "title": "Input Mode",
+            "description": "auto-canny 会先生成二值边缘；binary-edge 用于已连接 Canny 等边缘图。"
+          },
+          "canny_threshold1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 50,
+            "title": "Canny Threshold 1"
+          },
+          "canny_threshold2": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 150,
+            "title": "Canny Threshold 2"
+          },
           "rho_resolution": {
             "type": "number",
             "minimum": 0,
@@ -2717,7 +2868,37 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10,
+            "title": "Result Limit"
+          },
+          "deduplicate": {
+            "type": "boolean",
+            "default": true,
+            "title": "Deduplicate",
+            "description": "按角度、法向距离和投影区间过滤同一物理直线的重复 Hough 片段。"
+          },
+          "deduplicate_angle_tolerance_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 45,
+            "default": 2,
+            "title": "Deduplicate Angle Tolerance Deg"
+          },
+          "deduplicate_distance_pixels": {
+            "type": "number",
+            "minimum": 0,
+            "default": 8,
+            "title": "Deduplicate Distance Pixels"
+          },
+          "processing_max_long_edge": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048,
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
           },
           "debug_image_panel_enabled": {
             "type": "boolean",
@@ -2771,6 +2952,7 @@
       "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2838,8 +3020,10 @@
           "limit": {
             "type": "integer",
             "title": "Output Limit",
-            "description": "排序后最多输出多少个 rotated rect；为空表示不限制。",
-            "minimum": 1
+            "description": "排序后最多输出多少个 rotated rect。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",
@@ -2889,6 +3073,7 @@
       "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "contours",
@@ -2952,7 +3137,9 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
           },
           "selected_contour_index": {
             "type": "integer",

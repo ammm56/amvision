@@ -70,6 +70,32 @@
         "description": "保留外接 bbox 高度小于等于该值的 contour；为空表示不限制。",
         "minimum": 0
       },
+      "min_aspect_ratio": {
+        "type": "number",
+        "title": "Min Aspect Ratio",
+        "description": "保留外接 bbox 宽高比大于等于该值的 contour；为空表示不限制。",
+        "minimum": 0
+      },
+      "max_aspect_ratio": {
+        "type": "number",
+        "title": "Max Aspect Ratio",
+        "description": "保留外接 bbox 宽高比小于等于该值的 contour；为空表示不限制。",
+        "minimum": 0
+      },
+      "min_rectangularity": {
+        "type": "number",
+        "title": "Min Rectangularity",
+        "description": "保留 contour 面积与外接 bbox 面积比例大于等于该值的 contour。",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "max_rectangularity": {
+        "type": "number",
+        "title": "Max Rectangularity",
+        "description": "保留 contour 面积与外接 bbox 面积比例小于等于该值的 contour。",
+        "minimum": 0,
+        "maximum": 1
+      },
       "min_point_count": {
         "type": "integer",
         "title": "Min Points",
@@ -92,7 +118,9 @@
           "area",
           "width",
           "height",
-          "perimeter"
+          "perimeter",
+          "aspect_ratio",
+          "rectangularity"
         ],
         "default": "contour_index"
       },
@@ -105,8 +133,10 @@
       "limit": {
         "type": "integer",
         "title": "Output Limit",
-        "description": "排序后最多输出多少个 contour；为空表示不限制。",
-        "minimum": 1
+        "description": "排序后最多输出多少个 contour。",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 10
       },
       "selected_contour_index": {
         "type": "integer",

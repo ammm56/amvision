@@ -19,6 +19,7 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from custom_nodes._opencv_shared.backend.runtime.geometry import compute_contour_metrics_from_points
 from custom_nodes._opencv_shared.backend.runtime.payloads import require_contours_payload
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes._opencv_shared.backend.runtime.performance import read_find_result_limit
 from custom_nodes._opencv_shared.backend.runtime.validators import require_positive_int
 
 
@@ -124,7 +125,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     contours_payload = require_contours_payload(request.input_values.get("contours"))
     sort_by = _read_sort_by(request.parameters.get("sort_by"))
     descending = _read_descending(request.parameters.get("descending"))
-    limit = _read_optional_limit(request.parameters.get("limit"))
+    limit = read_find_result_limit(request.parameters.get("limit"))
     selected_contour_index = _read_optional_selected_contour_index(request.parameters.get("selected_contour_index"))
 
     ellipse_items: list[dict[str, object]] = []

@@ -29,6 +29,10 @@ def test_opencv_geometry_node_catalog_builder_matches_checked_in_catalog() -> No
         "custom.opencv.planar-transform-bridge",
         "custom.opencv.undistort",
         "custom.opencv.remap",
+        "custom.opencv.quadrilateral-from-circle-centers",
+        "custom.opencv.line-deduplicate",
+        "custom.opencv.line-intersection",
+        "custom.opencv.quadrilateral-from-lines",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.geometry-nodes"

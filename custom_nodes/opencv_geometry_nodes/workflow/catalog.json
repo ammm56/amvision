@@ -1579,6 +1579,7 @@
       "description": "按 2x3 仿射矩阵或三对点关系对图片执行几何矫正，支持直接读取上游 value.v1 变换对象，适合平移、缩放、轻微旋转或剪切对位。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1752,12 +1753,171 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-deduplicate",
+      "display_name": "Line Deduplicate",
+      "category": "opencv.geometry",
+      "description": "按角度、法向距离和线段投影重叠关系过滤重复直线；保持输入顺序并默认最多输出 10 条。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "angle_tolerance_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 90,
+            "default": 2
+          },
+          "distance_tolerance_pixels": {
+            "type": "number",
+            "minimum": 0,
+            "default": 4
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.lines",
+        "vision.filter"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.geometry-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-intersection",
+      "display_name": "Line Intersection",
+      "category": "opencv.geometry",
+      "description": "按显式 line index 计算两个 lines.v1 输入的无限直线交点；平行、近似平行或来源不一致时快速失败。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "first_lines",
+          "display_name": "First Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "second_lines",
+          "display_name": "Second Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "point",
+          "display_name": "Point",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "first_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "second_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.lines",
+        "vision.point"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.geometry-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.perspective-transform",
       "display_name": "Perspective Transform",
       "category": "opencv.geometry",
       "description": "按四点透视关系把输入图片矫正为规则矩形输出，支持直接使用 roi.v1 或固定 source_points，适合治具面矫正、标签拍扁和视角收正。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -1904,6 +2064,7 @@
       "description": "把 structured planar-transform.v1 显式桥接为图片 warp 和 ROI 投影输出，适合把 ORB/homography 结果继续接到参考帧校正、后续量测或 ROI 对位链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "transform",
@@ -2043,12 +2204,328 @@
     },
     {
       "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.quadrilateral-from-circle-centers",
+      "display_name": "Quadrilateral From Circle Centers",
+      "category": "opencv.geometry",
+      "description": "从显式连接的 TL、TR、BR、BL 四个 circles.v1 输入构建凸四边形 ROI；不猜测角点语义。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "top_left",
+          "display_name": "Top Left",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "top_right",
+          "display_name": "Top Right",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "bottom_right",
+          "display_name": "Bottom Right",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "bottom_left",
+          "display_name": "Bottom Left",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "top_left_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "top_right_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "bottom_right_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "bottom_left_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "min_width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1
+          },
+          "min_height": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1
+          },
+          "left_outset": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "right_outset": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "top_outset": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "bottom_outset": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "roi_id": {
+            "type": "string",
+            "default": "circle-quadrilateral"
+          },
+          "display_name": {
+            "type": "string",
+            "default": "Circle Quadrilateral"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.roi",
+        "vision.alignment"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.geometry-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.quadrilateral-from-lines",
+      "display_name": "Quadrilateral From Lines",
+      "category": "opencv.geometry",
+      "description": "从显式连接的 Top、Right、Bottom、Left lines.v1 输入构建凸四边形 ROI；不猜测边线语义。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "top",
+          "display_name": "Top",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "right",
+          "display_name": "Right",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "bottom",
+          "display_name": "Bottom",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "left",
+          "display_name": "Left",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "top_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "right_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "bottom_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "left_line_index": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "min_width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1
+          },
+          "min_height": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1
+          },
+          "roi_id": {
+            "type": "string",
+            "default": "line-quadrilateral"
+          },
+          "display_name": {
+            "type": "string",
+            "default": "Line Quadrilateral"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.geometry",
+        "vision.lines",
+        "vision.roi",
+        "vision.alignment"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.geometry-nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.remap",
       "display_name": "Remap",
       "category": "opencv.geometry",
       "description": "按显式映射表执行像素级重映射，支持 map_xy 或 map_x/map_y，适合配合本地标定映射文件做展开、对位和固定几何校正。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2186,6 +2663,7 @@
       "description": "按给定角度或上游 value.v1 输入对图片做旋转矫正，并输出摘要，适合先把工件姿态收正再进入后续 ROI、量测和规则链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",
@@ -2324,6 +2802,7 @@
       "description": "按相机标定参数执行镜头畸变矫正，支持参数默认值或 value.v1 动态配置对象，适合先把桶形/枕形畸变收正再进入定位和量测链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
       "input_ports": [
         {
           "name": "image",

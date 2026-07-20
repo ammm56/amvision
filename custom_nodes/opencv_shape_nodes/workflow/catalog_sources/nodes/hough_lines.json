@@ -40,6 +40,27 @@
   "parameter_schema": {
     "type": "object",
     "properties": {
+      "input_mode": {
+        "type": "string",
+        "enum": ["auto-canny", "binary-edge"],
+        "default": "auto-canny",
+        "title": "Input Mode",
+        "description": "auto-canny 会先生成二值边缘；binary-edge 用于已连接 Canny 等边缘图。"
+      },
+      "canny_threshold1": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 50,
+        "title": "Canny Threshold 1"
+      },
+      "canny_threshold2": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 255,
+        "default": 150,
+        "title": "Canny Threshold 2"
+      },
       "rho_resolution": {
         "type": "number",
         "minimum": 0,
@@ -96,7 +117,37 @@
       },
       "limit": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 10,
+        "title": "Result Limit"
+      },
+      "deduplicate": {
+        "type": "boolean",
+        "default": true,
+        "title": "Deduplicate",
+        "description": "按角度、法向距离和投影区间过滤同一物理直线的重复 Hough 片段。"
+      },
+      "deduplicate_angle_tolerance_deg": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 45,
+        "default": 2,
+        "title": "Deduplicate Angle Tolerance Deg"
+      },
+      "deduplicate_distance_pixels": {
+        "type": "number",
+        "minimum": 0,
+        "default": 8,
+        "title": "Deduplicate Distance Pixels"
+      },
+      "processing_max_long_edge": {
+        "type": "integer",
+        "minimum": 256,
+        "maximum": 32768,
+        "default": 2048,
+        "title": "Processing Max Long Edge",
+        "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
       },
       "debug_image_panel_enabled": {
         "type": "boolean",

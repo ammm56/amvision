@@ -7,6 +7,14 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 
 
+def require_boolean(value: object, *, field_name: str) -> bool:
+    """读取严格 boolean，禁止字符串和数值被隐式转换。"""
+
+    if not isinstance(value, bool):
+        raise InvalidRequestError(f"{field_name} 必须是 boolean")
+    return value
+
+
 def require_positive_int(value: object, *, field_name: str) -> int:
     """把输入值解析为正整数。
 

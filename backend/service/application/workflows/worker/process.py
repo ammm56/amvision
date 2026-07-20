@@ -21,6 +21,7 @@ from backend.service.application.workflows.snapshot_execution import (
     build_snapshot_fingerprint,
 )
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
+from backend.service.application.workflows.process_threads import configure_workflow_process_threads
 from backend.service.application.workflows.worker.health import (
     build_runtime_health_summary,
     build_runtime_instance_id,
@@ -67,6 +68,7 @@ def run_workflow_runtime_worker_process(
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
+        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())

@@ -26,6 +26,7 @@ from backend.nodes.debug_image_panel import (
     build_debug_panel_parameter_schema,
     build_interaction_tool,
     build_numeric_control,
+    build_select_control,
 )
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
@@ -78,6 +79,7 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
     row_major = _read_bool(request.parameters.get("row_major"), default=True)
     roi_id_prefix = _read_text(request.parameters.get("roi_id_prefix"), field_name="roi_id_prefix", default="roi")
     display_name_prefix = _read_optional_text(request.parameters.get("display_name_prefix"))
+    bounds_policy = _read_bounds_policy(request.parameters.get("bounds_policy"))
 
     roi_items: list[dict[str, object]] = []
     ordered_indices = _iter_grid_indices(rows=rows, columns=columns, row_major=row_major)
@@ -87,6 +89,15 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
         x2 = x1 + roi_width
         y2 = y1 + roi_height
         bbox_xyxy = [x1, y1, x2, y2]
+        if source_image is not None:
+            bbox_xyxy = _apply_bounds_policy(
+                bbox_xyxy,
+                image_width=float(source_image["width"]),
+                image_height=float(source_image["height"]),
+                bounds_policy=bounds_policy,
+                row_index=row_index,
+                column_index=column_index,
+            )
         roi_id = f"{roi_id_prefix}-{row_index + 1:02d}-{column_index + 1:02d}"
         display_name = (
             f"{display_name_prefix} {row_index + 1}-{column_index + 1}"
@@ -121,6 +132,7 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                 "step_y": step_y,
                 "roi_id_prefix": roi_id_prefix,
                 "source_image_attached": source_image is not None,
+                "bounds_policy": bounds_policy,
             }
         ),
     }
@@ -136,7 +148,7 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                     tools=[
                         build_interaction_tool(
                             "grid",
-                            "ROI 网格",
+                            "ROI Grid",
                             [
                                 "rows",
                                 "columns",
@@ -159,6 +171,12 @@ def _roi_grid_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
                             min_value=1.0,
                             max_value=max(default_roi_width, 1.0),
                             step=1.0,
+                        ),
+                        build_select_control(
+                            "bounds_policy",
+                            "Bounds Policy",
+                            bounds_policy,
+                            options=[("reject", "Reject"), ("clip", "Clip"), ("allow", "Allow")],
                         ),
                         build_numeric_control(
                             "roi_height",
@@ -320,6 +338,56 @@ def _read_optional_text(raw_value: object) -> str | None:
     return normalized_value or None
 
 
+def _read_bounds_policy(raw_value: object) -> str:
+    """读取 ROI 越界处理策略。"""
+
+    if raw_value is None or raw_value == "":
+        return "reject"
+    if not isinstance(raw_value, str):
+        raise InvalidRequestError(f"{NODE_NAME} 节点的 bounds_policy 必须是字符串")
+    normalized_value = raw_value.strip().lower()
+    if normalized_value not in {"reject", "clip", "allow"}:
+        raise InvalidRequestError(f"{NODE_NAME} 节点的 bounds_policy 仅支持 reject、clip 或 allow")
+    return normalized_value
+
+
+def _apply_bounds_policy(
+    bbox_xyxy: list[float],
+    *,
+    image_width: float,
+    image_height: float,
+    bounds_policy: str,
+    row_index: int,
+    column_index: int,
+) -> list[float]:
+    """校验或裁剪单个 Grid ROI，避免下游隐式产生空 crop。"""
+
+    x1, y1, x2, y2 = bbox_xyxy
+    inside = x1 >= 0 and y1 >= 0 and x2 <= image_width and y2 <= image_height
+    if inside or bounds_policy == "allow":
+        return bbox_xyxy
+    if bounds_policy == "reject":
+        raise InvalidRequestError(
+            f"{NODE_NAME} 第 {row_index + 1} 行第 {column_index + 1} 列 ROI 超出图片范围",
+            details={
+                "bbox_xyxy": bbox_xyxy,
+                "image_width": image_width,
+                "image_height": image_height,
+            },
+        )
+    clipped_bbox = [
+        max(0.0, min(x1, image_width)),
+        max(0.0, min(y1, image_height)),
+        max(0.0, min(x2, image_width)),
+        max(0.0, min(y2, image_height)),
+    ]
+    if clipped_bbox[2] <= clipped_bbox[0] or clipped_bbox[3] <= clipped_bbox[1]:
+        raise InvalidRequestError(
+            f"{NODE_NAME} 第 {row_index + 1} 行第 {column_index + 1} 列 ROI 裁剪后为空"
+        )
+    return clipped_bbox
+
+
 def _read_optional_source_image(raw_payload: object) -> dict[str, object] | None:
     """读取可选 source image。"""
 
@@ -376,6 +444,13 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "row_major": {"type": "boolean", "default": True, "title": "Row Major"},
                 "roi_id_prefix": {"type": "string", "default": "roi", "title": "ROI ID Prefix"},
                 "display_name_prefix": {"type": "string", "title": "Display Name Prefix"},
+                "bounds_policy": {
+                    "type": "string",
+                    "enum": ["reject", "clip", "allow"],
+                    "default": "reject",
+                    "title": "Bounds Policy",
+                    "description": "Grid ROI 越界时拒绝、裁剪或显式允许。",
+                },
                 **build_debug_panel_parameter_schema(),
             },
             "required": [],
