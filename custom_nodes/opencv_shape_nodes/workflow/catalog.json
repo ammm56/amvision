@@ -2774,7 +2774,7 @@
       "node_type_id": "custom.opencv.hough-circles",
       "display_name": "Hough Circles",
       "category": "opencv.shape",
-      "description": "在 Search ROI 内使用 Hough Gradient 发现圆候选，可选 Reference Circle 约束和径向边缘精定位，并输出 circles.v1。",
+      "description": "在 Search ROI 内执行位置无关的工业圆搜索；Reference Circle 只定义目标半径，不固定圆心，并使用径向边缘、robust fitting 和质量门槛过滤伪圆。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -2881,28 +2881,11 @@
             "title": "Median Blur Kernel Size",
             "description": "HoughCircles 前的 median blur 奇数核尺寸；1 表示不模糊。"
           },
-          "reference_center_xy": {
-            "type": "array",
-            "title": "Reference Center",
-            "description": "可选固定参考圆心 [x, y]；取参后会保存到节点，用于限制换图后的允许位置漂移和稳定排序。",
-            "minItems": 2,
-            "maxItems": 2,
-            "items": {
-              "type": "number"
-            }
-          },
           "reference_radius_px": {
             "type": "number",
-            "exclusiveMinimum": 0,
+            "minimum": 0,
             "title": "Reference Radius (px)",
-            "description": "可选固定参考半径；与 Reference Center 同时设置，不会随检测结果自动改变。"
-          },
-          "center_tolerance_px": {
-            "type": "number",
-            "exclusiveMinimum": 0,
-            "default": 50,
-            "title": "Center Tolerance (px)",
-            "description": "检测圆心相对 Reference Center 允许的最大原图像素偏移。"
+            "description": "目标圆的参考半径；仅约束尺寸，不记录取参圆心。0 表示不启用参考半径。"
           },
           "radius_tolerance_px": {
             "type": "number",
@@ -2910,6 +2893,13 @@
             "default": 10,
             "title": "Radius Tolerance (px)",
             "description": "检测半径相对 Reference Radius 允许的最大原图像素偏差，也是精定位径向搜索带宽。"
+          },
+          "maximum_refinement_center_shift_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 12,
+            "title": "Maximum Refinement Center Shift (px)",
+            "description": "robust fitting 相对每个 Hough 候选圆心允许的最大修正量；不限制目标在 Search ROI 内的整体位置漂移。"
           },
           "refine_candidates": {
             "type": "boolean",
@@ -2939,7 +2929,7 @@
           "gradient_threshold": {
             "type": "number",
             "minimum": 0,
-            "default": 5,
+            "default": 12,
             "title": "Gradient Threshold",
             "description": "精定位接受边缘的最小梯度幅度。"
           },
@@ -2972,9 +2962,33 @@
             "type": "number",
             "minimum": 0,
             "maximum": 1,
-            "default": 0.2,
+            "default": 0.55,
             "title": "Minimum Arc Coverage",
             "description": "有效边缘覆盖完整圆周的最低比例。"
+          },
+          "minimum_edge_support_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5,
+            "title": "Minimum Edge Support Ratio",
+            "description": "径向采样中达到梯度阈值的有效边缘比例，用于拒绝只在少量方向偶然成圆的纹理。"
+          },
+          "minimum_polarity_consistency": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.55,
+            "title": "Minimum Polarity Consistency",
+            "description": "圆周边缘灰度变化方向的一致性下限，用于抑制高光、文字和杂乱交叉边缘。"
+          },
+          "minimum_quality_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35,
+            "title": "Minimum Quality Score",
+            "description": "综合圆弧覆盖、边缘支持、拟合内点、极性、残差和半径匹配后的最低质量分。"
           },
           "maximum_fit_error_px": {
             "type": "number",
@@ -2982,6 +2996,30 @@
             "default": 3,
             "title": "Maximum Fit Error (px)",
             "description": "候选精定位允许的最大 RMSE，使用原图像素。"
+          },
+          "illumination_normalization": {
+            "type": "string",
+            "enum": [
+              "none",
+              "clahe"
+            ],
+            "default": "clahe",
+            "title": "Illumination Normalization",
+            "description": "CLAHE 可在 Search ROI 内减弱不均匀光照影响；纹理被过度增强时可选择 none。"
+          },
+          "clahe_clip_limit": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "default": 2,
+            "title": "CLAHE Clip Limit"
+          },
+          "clahe_tile_grid_size": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 32,
+            "default": 8,
+            "title": "CLAHE Tile Grid Size"
           },
           "sort_by": {
             "type": "string",
@@ -2993,7 +3031,6 @@
               "center_x",
               "center_y",
               "search_center_distance",
-              "reference_center_distance",
               "reference_radius_deviation",
               "quality_score"
             ],
@@ -3002,6 +3039,12 @@
           "descending": {
             "type": "boolean",
             "default": true
+          },
+          "show_rejected_candidates": {
+            "type": "boolean",
+            "default": false,
+            "title": "Show Rejected Candidates",
+            "description": "仅用于 Debug Preview 显示被质量门槛拒绝的 Hough 原始候选；正式 circles 输出始终不包含这些候选。"
           },
           "max_results": {
             "type": "integer",

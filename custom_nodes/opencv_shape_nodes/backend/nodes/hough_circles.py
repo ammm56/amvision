@@ -47,7 +47,6 @@ from custom_nodes.opencv_shape_nodes.backend.nodes.hough_circle_contract import 
     normalize_sort_by as _normalize_sort_by,
     read_choice as _read_choice,
     read_non_negative_int as _read_non_negative_int,
-    read_optional_point as _read_optional_point,
     read_positive_float as _read_positive_float,
 )
 
@@ -106,22 +105,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     if median_blur_kernel_size > 31:
         raise InvalidRequestError("median_blur_kernel_size 不能大于 31")
-    reference_center_xy = _read_optional_point(
-        request.parameters.get("reference_center_xy"),
-        field_name="reference_center_xy",
-    )
     raw_reference_radius = request.parameters.get("reference_radius_px")
     reference_radius_px = (
         None
-        if is_empty_parameter(raw_reference_radius)
+        if is_empty_parameter(raw_reference_radius) or raw_reference_radius == 0
         else _read_positive_float(raw_reference_radius, field_name="reference_radius_px", default_value=1.0)
     )
-    if (reference_center_xy is None) != (reference_radius_px is None):
-        raise InvalidRequestError("reference_center_xy 和 reference_radius_px 必须同时设置或同时留空")
-    center_tolerance_px = _read_positive_float(
-        request.parameters.get("center_tolerance_px"),
-        field_name="center_tolerance_px",
-        default_value=50.0,
+    maximum_refinement_center_shift_px = _read_positive_float(
+        request.parameters.get("maximum_refinement_center_shift_px"),
+        field_name="maximum_refinement_center_shift_px",
+        default_value=12.0,
     )
     radius_tolerance_px = _read_positive_float(
         request.parameters.get("radius_tolerance_px"),
@@ -147,7 +140,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         raise InvalidRequestError("radial_sample_count 必须在 12 到 720 之间")
     gradient_threshold = float(
         require_non_negative_float(
-            5.0
+            12.0
             if is_empty_parameter(request.parameters.get("gradient_threshold"))
             else request.parameters.get("gradient_threshold"),
             field_name="gradient_threshold",
@@ -173,7 +166,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     minimum_arc_coverage = float(
         require_non_negative_float(
-            0.2
+            0.55
             if is_empty_parameter(request.parameters.get("minimum_arc_coverage"))
             else request.parameters.get("minimum_arc_coverage"),
             field_name="minimum_arc_coverage",
@@ -181,10 +174,64 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     if minimum_arc_coverage > 1.0:
         raise InvalidRequestError("minimum_arc_coverage 不能大于 1")
+    minimum_edge_support_ratio = float(
+        require_non_negative_float(
+            0.5
+            if is_empty_parameter(request.parameters.get("minimum_edge_support_ratio"))
+            else request.parameters.get("minimum_edge_support_ratio"),
+            field_name="minimum_edge_support_ratio",
+        )
+    )
+    if minimum_edge_support_ratio > 1.0:
+        raise InvalidRequestError("minimum_edge_support_ratio 不能大于 1")
+    minimum_polarity_consistency = float(
+        require_non_negative_float(
+            0.55
+            if is_empty_parameter(request.parameters.get("minimum_polarity_consistency"))
+            else request.parameters.get("minimum_polarity_consistency"),
+            field_name="minimum_polarity_consistency",
+        )
+    )
+    if minimum_polarity_consistency > 1.0:
+        raise InvalidRequestError("minimum_polarity_consistency 不能大于 1")
+    minimum_quality_score = float(
+        require_non_negative_float(
+            0.35
+            if is_empty_parameter(request.parameters.get("minimum_quality_score"))
+            else request.parameters.get("minimum_quality_score"),
+            field_name="minimum_quality_score",
+        )
+    )
+    if minimum_quality_score > 1.0:
+        raise InvalidRequestError("minimum_quality_score 不能大于 1")
     maximum_fit_error_px = _read_positive_float(
         request.parameters.get("maximum_fit_error_px"),
         field_name="maximum_fit_error_px",
         default_value=3.0,
+    )
+    illumination_normalization = _read_choice(
+        request.parameters.get("illumination_normalization"),
+        field_name="illumination_normalization",
+        default_value="clahe",
+        choices={"none", "clahe"},
+    )
+    clahe_clip_limit = _read_positive_float(
+        request.parameters.get("clahe_clip_limit"),
+        field_name="clahe_clip_limit",
+        default_value=2.0,
+    )
+    if clahe_clip_limit > 10.0:
+        raise InvalidRequestError("clahe_clip_limit 不能大于 10")
+    clahe_tile_grid_size = _read_non_negative_int(
+        request.parameters.get("clahe_tile_grid_size"),
+        field_name="clahe_tile_grid_size",
+        default_value=8,
+    )
+    if clahe_tile_grid_size < 2 or clahe_tile_grid_size > 32:
+        raise InvalidRequestError("clahe_tile_grid_size 必须在 2 到 32 之间")
+    show_rejected_candidates = require_boolean(
+        request.parameters.get("show_rejected_candidates", False),
+        field_name="show_rejected_candidates",
     )
     sort_by = _normalize_sort_by(request.parameters.get("sort_by"))
     descending = require_boolean(
@@ -208,18 +255,26 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request.parameters.get("processing_max_long_edge_px")
     )
     search_height, search_width = [int(value) for value in search_roi.image_matrix.shape[:2]]
-    if reference_center_xy is not None and not (
-        float(search_roi.offset_x) <= reference_center_xy[0] < float(search_roi.offset_x + search_width)
-        and float(search_roi.offset_y) <= reference_center_xy[1] < float(search_roi.offset_y + search_height)
-    ):
-        raise InvalidRequestError("reference_center_xy 必须位于 Search ROI 内")
     search_center_x = float(search_roi.offset_x) + float(search_width) / 2.0
     search_center_y = float(search_roi.offset_y) + float(search_height) / 2.0
+    effective_minimum_radius_px = minimum_radius_px
+    effective_maximum_radius_px = maximum_radius_px
+    if reference_radius_px is not None:
+        reference_minimum_radius_px = max(1, int(math.floor(reference_radius_px - radius_tolerance_px)))
+        reference_maximum_radius_px = max(1, int(math.ceil(reference_radius_px + radius_tolerance_px)))
+        effective_minimum_radius_px = max(effective_minimum_radius_px, reference_minimum_radius_px)
+        effective_maximum_radius_px = (
+            min(effective_maximum_radius_px, reference_maximum_radius_px)
+            if effective_maximum_radius_px > 0
+            else reference_maximum_radius_px
+        )
+    if effective_maximum_radius_px > 0 and effective_maximum_radius_px < effective_minimum_radius_px:
+        raise InvalidRequestError("Reference Radius 与 Minimum/Maximum Radius 的有效范围没有交集")
     require_bounded_circle_search(
         source_width=search_width,
         source_height=search_height,
-        min_radius=minimum_radius_px,
-        max_radius=maximum_radius_px,
+        min_radius=effective_minimum_radius_px,
+        max_radius=effective_maximum_radius_px,
     )
     processing_image = build_processing_image(
         search_roi.image_matrix,
@@ -231,10 +286,16 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         float(processing_image.processing_height) / float(processing_image.source_height),
     )
 
+    normalized_image = processing_image.image_matrix
+    if illumination_normalization == "clahe":
+        normalized_image = cv2_module.createCLAHE(
+            clipLimit=clahe_clip_limit,
+            tileGridSize=(clahe_tile_grid_size, clahe_tile_grid_size),
+        ).apply(normalized_image)
     circle_input_image = (
-        cv2_module.medianBlur(processing_image.image_matrix, median_blur_kernel_size)
+        cv2_module.medianBlur(normalized_image, median_blur_kernel_size)
         if median_blur_kernel_size > 1
-        else processing_image.image_matrix
+        else normalized_image
     )
     raw_circles = cv2_module.HoughCircles(
         circle_input_image,
@@ -243,8 +304,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         minDist=max(1.0, minimum_center_distance_px * processing_scale),
         param1=canny_high_threshold,
         param2=center_vote_threshold,
-        minRadius=int(round(minimum_radius_px * processing_scale)) if minimum_radius_px > 0 else 0,
-        maxRadius=max(1, int(round(maximum_radius_px * processing_scale))) if maximum_radius_px > 0 else 0,
+        minRadius=int(round(effective_minimum_radius_px * processing_scale)) if effective_minimum_radius_px > 0 else 0,
+        maxRadius=max(1, int(round(effective_maximum_radius_px * processing_scale))) if effective_maximum_radius_px > 0 else 0,
     )
     circle_items: list[dict[str, object]] = []
     rejected_items: list[dict[str, object]] = []
@@ -254,10 +315,23 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             raw_circles[0][:candidate_processing_limit],
             start=1,
         ):
-            local_center_x = float(raw_circle[0])
-            local_center_y = float(raw_circle[1])
+            seed_center_x = float(raw_circle[0])
+            seed_center_y = float(raw_circle[1])
+            local_center_x = seed_center_x
+            local_center_y = seed_center_y
             local_radius = float(raw_circle[2])
             radius_scale = (processing_image.scale_x_to_source + processing_image.scale_y_to_source) / 2.0
+            seed_source_radius = local_radius * radius_scale
+            seed_radius_match_score = (
+                max(
+                    0.0,
+                    1.0
+                    - abs(seed_source_radius - reference_radius_px)
+                    / radius_tolerance_px,
+                )
+                if reference_radius_px is not None
+                else 1.0
+            )
             fit_metrics: dict[str, object] = {
                 "refined": False,
                 "arc_coverage": 0.0,
@@ -266,6 +340,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "edge_sample_count": 0,
                 "ransac_inlier_count": 0,
                 "edge_inlier_count": 0,
+                "edge_support_ratio": 0.0,
+                "fit_inlier_ratio": 0.0,
+                "polarity_consistency": 0.0,
+                "mean_edge_strength": 0.0,
+                "median_edge_strength": 0.0,
+                "refinement_center_shift_px": 0.0,
+                "radius_match_score": round(seed_radius_match_score, 6),
             }
             rejection_reasons: list[str] = []
             if refine_candidates:
@@ -282,44 +363,106 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                         cv2_module=cv2_module,
                         np_module=np_module,
                     )
-                    fitted = fit_circle_robust(
-                        radial_samples.points_xy,
-                        np_module=np_module,
-                        robust_loss=robust_loss,
-                        inlier_threshold_px=max(0.5, fit_inlier_threshold_px * processing_scale),
-                        ransac_iterations=ransac_iterations,
+                    edge_support_ratio = (
+                        float(radial_samples.accepted_count) / float(radial_samples.attempted_count)
+                        if radial_samples.attempted_count > 0
+                        else 0.0
                     )
-                    local_center_x = fitted.center_x
-                    local_center_y = fitted.center_y
-                    local_radius = fitted.radius
-                    fit_metrics = {
-                        "refined": True,
-                        "arc_coverage": round(fitted.arc_coverage, 6),
-                        "fit_rmse_px": round(fitted.fit_rmse_px * radius_scale, 4),
-                        "max_residual_px": round(fitted.max_residual_px * radius_scale, 4),
-                        "edge_sample_count": fitted.sample_count,
-                        "ransac_inlier_count": fitted.ransac_inlier_count,
-                        "edge_inlier_count": fitted.inlier_count,
-                        "mean_edge_strength": round(
-                            float(np_module.mean(radial_samples.edge_strengths))
-                            if radial_samples.accepted_count > 0
-                            else 0.0,
-                            4,
-                        ),
-                    }
+                    positive_edge_count = int(np_module.count_nonzero(radial_samples.signed_edge_strengths > 0))
+                    negative_edge_count = int(np_module.count_nonzero(radial_samples.signed_edge_strengths < 0))
+                    polarity_consistency = (
+                        float(max(positive_edge_count, negative_edge_count))
+                        / float(radial_samples.accepted_count)
+                        if radial_samples.accepted_count > 0
+                        else 0.0
+                    )
+                    fit_metrics.update(
+                        {
+                            "edge_sample_count": radial_samples.accepted_count,
+                            "edge_support_ratio": round(edge_support_ratio, 6),
+                            "polarity_consistency": round(polarity_consistency, 6),
+                            "mean_edge_strength": round(
+                                float(np_module.mean(radial_samples.edge_strengths))
+                                if radial_samples.accepted_count > 0
+                                else 0.0,
+                                4,
+                            ),
+                            "median_edge_strength": round(
+                                float(np_module.median(radial_samples.edge_strengths))
+                                if radial_samples.accepted_count > 0
+                                else 0.0,
+                                4,
+                            ),
+                        }
+                    )
+                    # 先用廉价径向统计淘汰明显伪圆，避免对大量纹理候选执行 RANSAC。
+                    should_fit_candidate = (
+                        radial_samples.accepted_count >= 3
+                        and edge_support_ratio >= minimum_edge_support_ratio
+                        and polarity_consistency >= minimum_polarity_consistency
+                    )
+                    if should_fit_candidate:
+                        fitted = fit_circle_robust(
+                            radial_samples.points_xy,
+                            np_module=np_module,
+                            robust_loss=robust_loss,
+                            inlier_threshold_px=max(0.5, fit_inlier_threshold_px * processing_scale),
+                            ransac_iterations=ransac_iterations,
+                        )
+                        local_center_x = fitted.center_x
+                        local_center_y = fitted.center_y
+                        local_radius = fitted.radius
+                        fit_inlier_ratio = (
+                            float(fitted.inlier_count) / float(fitted.sample_count)
+                            if fitted.sample_count > 0
+                            else 0.0
+                        )
+                        refinement_center_shift_px = math.hypot(
+                            fitted.center_x - seed_center_x,
+                            fitted.center_y - seed_center_y,
+                        ) * radius_scale
+                        source_radius = fitted.radius * radius_scale
+                        radius_match_score = (
+                            max(
+                                0.0,
+                                1.0
+                                - abs(source_radius - reference_radius_px)
+                                / radius_tolerance_px,
+                            )
+                            if reference_radius_px is not None
+                            else 1.0
+                        )
+                        fit_metrics = {
+                            "refined": True,
+                            "arc_coverage": round(fitted.arc_coverage, 6),
+                            "fit_rmse_px": round(fitted.fit_rmse_px * radius_scale, 4),
+                            "max_residual_px": round(fitted.max_residual_px * radius_scale, 4),
+                            "edge_sample_count": fitted.sample_count,
+                            "ransac_inlier_count": fitted.ransac_inlier_count,
+                            "edge_inlier_count": fitted.inlier_count,
+                            "edge_support_ratio": round(edge_support_ratio, 6),
+                            "fit_inlier_ratio": round(fit_inlier_ratio, 6),
+                            "polarity_consistency": round(polarity_consistency, 6),
+                            "refinement_center_shift_px": round(refinement_center_shift_px, 4),
+                            "radius_match_score": round(radius_match_score, 6),
+                            "mean_edge_strength": fit_metrics["mean_edge_strength"],
+                            "median_edge_strength": fit_metrics["median_edge_strength"],
+                        }
                 except (InvalidRequestError, ValueError, ArithmeticError):
                     rejection_reasons.append("circle_refinement_failed")
             center_x = local_center_x * processing_image.scale_x_to_source + float(search_roi.offset_x)
             center_y = local_center_y * processing_image.scale_y_to_source + float(search_roi.offset_y)
             radius = local_radius * radius_scale
-            if reference_center_xy is not None and math.hypot(
-                center_x - reference_center_xy[0], center_y - reference_center_xy[1]
-            ) > center_tolerance_px:
-                rejection_reasons.append("center_tolerance_exceeded")
             if reference_radius_px is not None and abs(radius - reference_radius_px) > radius_tolerance_px:
                 rejection_reasons.append("radius_tolerance_exceeded")
+            if refine_candidates and float(fit_metrics["refinement_center_shift_px"]) > maximum_refinement_center_shift_px:
+                rejection_reasons.append("refinement_center_shift_exceeded")
             if refine_candidates and float(fit_metrics["arc_coverage"]) < minimum_arc_coverage:
                 rejection_reasons.append("insufficient_arc_coverage")
+            if refine_candidates and float(fit_metrics["edge_support_ratio"]) < minimum_edge_support_ratio:
+                rejection_reasons.append("insufficient_edge_support")
+            if refine_candidates and float(fit_metrics["polarity_consistency"]) < minimum_polarity_consistency:
+                rejection_reasons.append("inconsistent_edge_polarity")
             if refine_candidates and float(fit_metrics["fit_rmse_px"]) > maximum_fit_error_px:
                 rejection_reasons.append("fit_error_exceeded")
             item = _build_circle_item(
@@ -328,16 +471,30 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 center_y=center_y,
                 radius=radius,
                 search_center_xy=(search_center_x, search_center_y),
-                reference_center_xy=reference_center_xy,
                 reference_radius_px=reference_radius_px,
                 fit_metrics=fit_metrics,
             )
+            if refine_candidates and float(item["quality_score"]) < minimum_quality_score:
+                rejection_reasons.append("quality_score_below_minimum")
             if rejection_reasons:
                 item["rejection_reasons"] = rejection_reasons
                 rejected_items.append(item)
             else:
                 circle_items.append(item)
 
+    circle_items, duplicate_items = _suppress_duplicate_circles(circle_items)
+    rejected_items.extend(duplicate_items)
+    rejection_reason_counts: dict[str, int] = {}
+    for rejected_item in rejected_items:
+        rejection_reasons = rejected_item.get("rejection_reasons")
+        if not isinstance(rejection_reasons, list):
+            continue
+        for rejection_reason in rejection_reasons:
+            if not isinstance(rejection_reason, str) or not rejection_reason:
+                continue
+            rejection_reason_counts[rejection_reason] = (
+                rejection_reason_counts.get(rejection_reason, 0) + 1
+            )
     circle_items.sort(
         key=lambda current_item: (
             -float(current_item[sort_by]) if descending else float(current_item[sort_by]),
@@ -361,6 +518,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             {
                 "count": len(circle_items),
                 "rejected_count": len(rejected_items),
+                "rejection_reason_counts": rejection_reason_counts,
                 "sort_by": sort_by,
                 "descending": descending,
                 "max_results": max_results,
@@ -371,13 +529,17 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "center_vote_threshold": center_vote_threshold,
                 "minimum_radius_px": minimum_radius_px,
                 "maximum_radius_px": maximum_radius_px,
+                "effective_minimum_radius_px": effective_minimum_radius_px,
+                "effective_maximum_radius_px": effective_maximum_radius_px,
                 "median_blur_kernel_size": median_blur_kernel_size,
+                "illumination_normalization": illumination_normalization,
+                "clahe_clip_limit": clahe_clip_limit,
+                "clahe_tile_grid_size": clahe_tile_grid_size,
                 "processing_max_long_edge_px": processing_max_long_edge,
-                "reference_constraint_enabled": reference_center_xy is not None,
-                "reference_center_xy": reference_center_xy,
+                "reference_size_constraint_enabled": reference_radius_px is not None,
                 "reference_radius_px": reference_radius_px,
-                "center_tolerance_px": center_tolerance_px,
                 "radius_tolerance_px": radius_tolerance_px,
+                "maximum_refinement_center_shift_px": maximum_refinement_center_shift_px,
                 "refine_candidates": refine_candidates,
                 "edge_polarity": edge_polarity,
                 "radial_sample_count": radial_sample_count,
@@ -386,7 +548,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "ransac_iterations": ransac_iterations,
                 "fit_inlier_threshold_px": fit_inlier_threshold_px,
                 "minimum_arc_coverage": minimum_arc_coverage,
+                "minimum_edge_support_ratio": minimum_edge_support_ratio,
+                "minimum_polarity_consistency": minimum_polarity_consistency,
+                "minimum_quality_score": minimum_quality_score,
                 "maximum_fit_error_px": maximum_fit_error_px,
+                "show_rejected_candidates": show_rejected_candidates,
                 "max_radius_detected": round(
                     max((float(item["radius"]) for item in circle_items), default=0.0),
                     4,
@@ -414,8 +580,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 circle_items,
                 rejected_items=rejected_items,
                 search_roi=search_roi,
-                reference_center_xy=reference_center_xy,
-                reference_radius_px=reference_radius_px,
+                show_rejected_candidates=show_rejected_candidates,
             ),
             interaction=_build_circle_interaction(
                 accumulator_resolution_ratio=accumulator_resolution_ratio,
@@ -426,10 +591,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 maximum_radius_px=maximum_radius_px,
                 median_blur_kernel_size=median_blur_kernel_size,
                 processing_max_long_edge=processing_max_long_edge,
-                reference_center_xy=reference_center_xy,
                 reference_radius_px=reference_radius_px,
-                center_tolerance_px=center_tolerance_px,
                 radius_tolerance_px=radius_tolerance_px,
+                maximum_refinement_center_shift_px=maximum_refinement_center_shift_px,
                 refine_candidates=refine_candidates,
                 edge_polarity=edge_polarity,
                 radial_sample_count=radial_sample_count,
@@ -438,7 +602,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 ransac_iterations=ransac_iterations,
                 fit_inlier_threshold_px=fit_inlier_threshold_px,
                 minimum_arc_coverage=minimum_arc_coverage,
+                minimum_edge_support_ratio=minimum_edge_support_ratio,
+                minimum_polarity_consistency=minimum_polarity_consistency,
+                minimum_quality_score=minimum_quality_score,
                 maximum_fit_error_px=maximum_fit_error_px,
+                illumination_normalization=illumination_normalization,
+                clahe_clip_limit=clahe_clip_limit,
+                clahe_tile_grid_size=clahe_tile_grid_size,
+                show_rejected_candidates=show_rejected_candidates,
                 sort_by=sort_by,
                 descending=descending,
                 max_results=max_results,
@@ -461,10 +632,9 @@ def _build_circle_interaction(
     maximum_radius_px: int,
     median_blur_kernel_size: int,
     processing_max_long_edge: int,
-    reference_center_xy: list[float] | None,
     reference_radius_px: float | None,
-    center_tolerance_px: float,
     radius_tolerance_px: float,
+    maximum_refinement_center_shift_px: float,
     refine_candidates: bool,
     edge_polarity: str,
     radial_sample_count: int,
@@ -473,7 +643,14 @@ def _build_circle_interaction(
     ransac_iterations: int,
     fit_inlier_threshold_px: float,
     minimum_arc_coverage: float,
+    minimum_edge_support_ratio: float,
+    minimum_polarity_consistency: float,
+    minimum_quality_score: float,
     maximum_fit_error_px: float,
+    illumination_normalization: str,
+    clahe_clip_limit: float,
+    clahe_tile_grid_size: int,
+    show_rejected_candidates: bool,
     sort_by: str,
     descending: bool,
     max_results: int,
@@ -499,12 +676,10 @@ def _build_circle_interaction(
                 "circle",
                 "Reference Circle",
                 [
-                    "reference_center_xy",
                     "reference_radius_px",
-                    "center_tolerance_px",
                     "radius_tolerance_px",
                 ],
-                clear_parameters=["reference_center_xy", "reference_radius_px"],
+                clear_parameters=["reference_radius_px"],
             ),
         ],
         controls=[
@@ -573,12 +748,12 @@ def _build_circle_interaction(
                 step=256.0,
             ),
             build_numeric_control(
-                "center_tolerance_px",
-                "Center Tolerance (px)",
-                center_tolerance_px,
-                min_value=1.0,
-                max_value=diagonal_length,
-                step=1.0,
+                "reference_radius_px",
+                "Reference Radius (px)",
+                reference_radius_px if reference_radius_px is not None else 0.0,
+                min_value=0.0,
+                max_value=radius_max,
+                step=0.5,
             ),
             build_numeric_control(
                 "radius_tolerance_px",
@@ -587,6 +762,14 @@ def _build_circle_interaction(
                 min_value=1.0,
                 max_value=radius_max,
                 step=1.0,
+            ),
+            build_numeric_control(
+                "maximum_refinement_center_shift_px",
+                "Maximum Refinement Center Shift (px)",
+                maximum_refinement_center_shift_px,
+                min_value=0.1,
+                max_value=radius_max,
+                step=0.5,
             ),
             build_checkbox_control("refine_candidates", "Refine Candidates", refine_candidates),
             build_select_control(
@@ -646,12 +829,58 @@ def _build_circle_interaction(
                 step=0.01,
             ),
             build_numeric_control(
+                "minimum_edge_support_ratio",
+                "Minimum Edge Support Ratio",
+                minimum_edge_support_ratio,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.01,
+            ),
+            build_numeric_control(
+                "minimum_polarity_consistency",
+                "Minimum Polarity Consistency",
+                minimum_polarity_consistency,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.01,
+            ),
+            build_numeric_control(
+                "minimum_quality_score",
+                "Minimum Quality Score",
+                minimum_quality_score,
+                min_value=0.0,
+                max_value=1.0,
+                step=0.01,
+            ),
+            build_numeric_control(
                 "maximum_fit_error_px",
                 "Maximum Fit Error (px)",
                 maximum_fit_error_px,
                 min_value=0.1,
                 max_value=20.0,
                 step=0.1,
+            ),
+            build_select_control(
+                "illumination_normalization",
+                "Illumination Normalization",
+                illumination_normalization,
+                options=[("clahe", "CLAHE"), ("none", "None")],
+            ),
+            build_numeric_control(
+                "clahe_clip_limit",
+                "CLAHE Clip Limit",
+                clahe_clip_limit,
+                min_value=0.1,
+                max_value=10.0,
+                step=0.1,
+            ),
+            build_numeric_control(
+                "clahe_tile_grid_size",
+                "CLAHE Tile Grid Size",
+                clahe_tile_grid_size,
+                min_value=2.0,
+                max_value=32.0,
+                step=1.0,
             ),
             build_select_control(
                 "sort_by",
@@ -665,12 +894,16 @@ def _build_circle_interaction(
                     ("center_x", "Center X"),
                     ("center_y", "Center Y"),
                     ("search_center_distance", "Search Center Distance"),
-                    ("reference_center_distance", "Reference Center Distance"),
                     ("reference_radius_deviation", "Reference Radius Deviation"),
                     ("quality_score", "Quality Score"),
                 ],
             ),
             build_checkbox_control("descending", "Descending", descending),
+            build_checkbox_control(
+                "show_rejected_candidates",
+                "Show Rejected Candidates",
+                show_rejected_candidates,
+            ),
             build_numeric_control(
                 "max_results",
                 "Max Results",
@@ -702,13 +935,52 @@ def _build_circle_control_ranges(*, image_width: int, image_height: int) -> tupl
     return long_edge, diagonal_length, radius_max
 
 
+def _suppress_duplicate_circles(
+    circle_items: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """按质量优先执行确定性 Circle NMS，避免同一实体输出多个近邻圆。"""
+
+    ordered_items = sorted(
+        circle_items,
+        key=lambda item: (
+            -float(item.get("quality_score", 0.0)),
+            float(item.get("center_y", 0.0)),
+            float(item.get("center_x", 0.0)),
+            float(item.get("radius", 0.0)),
+        ),
+    )
+    accepted_items: list[dict[str, object]] = []
+    duplicate_items: list[dict[str, object]] = []
+    for item in ordered_items:
+        center_x = float(item["center_x"])
+        center_y = float(item["center_y"])
+        radius = float(item["radius"])
+        duplicate = False
+        for accepted_item in accepted_items:
+            accepted_radius = float(accepted_item["radius"])
+            center_distance = math.hypot(
+                center_x - float(accepted_item["center_x"]),
+                center_y - float(accepted_item["center_y"]),
+            )
+            radius_floor = max(1.0, min(radius, accepted_radius))
+            if center_distance <= max(2.0, radius_floor * 0.25) and abs(radius - accepted_radius) <= max(2.0, radius_floor * 0.2):
+                duplicate = True
+                break
+        if duplicate:
+            duplicate_item = dict(item)
+            duplicate_item["rejection_reasons"] = ["duplicate_circle_suppressed"]
+            duplicate_items.append(duplicate_item)
+        else:
+            accepted_items.append(item)
+    return accepted_items, duplicate_items
+
+
 def _build_circle_overlays(
     circle_items: list[dict[str, object]],
     *,
     rejected_items: list[dict[str, object]],
     search_roi: ResolvedSearchRoi,
-    reference_center_xy: list[float] | None,
-    reference_radius_px: float | None,
+    show_rejected_candidates: bool,
 ) -> list[dict[str, object]]:
     """把 Hough 圆检测结果转换为图片面板 overlay。"""
 
@@ -716,23 +988,6 @@ def _build_circle_overlays(
     search_roi_overlay = build_search_roi_overlay(search_roi)
     if search_roi_overlay is not None:
         overlays.append(search_roi_overlay)
-    if reference_center_xy is not None and reference_radius_px is not None:
-        overlays.append(
-            build_circle_overlay(
-                overlay_id="reference-circle",
-                label="Reference Circle",
-                center_x=reference_center_xy[0],
-                center_y=reference_center_xy[1],
-                radius=reference_radius_px,
-                kind="reference-circle",
-                target_parameters=[
-                    "reference_center_xy",
-                    "reference_radius_px",
-                    "center_tolerance_px",
-                    "radius_tolerance_px",
-                ],
-            )
-        )
     for circle_item in circle_items:
         center_xy = circle_item.get("center_xy")
         radius = circle_item.get("radius")
@@ -749,6 +1004,8 @@ def _build_circle_overlays(
                 kind="selected-circle" if bool(circle_item.get("selected")) else "detected-circle",
             )
         )
+    if not show_rejected_candidates:
+        return overlays
     for rejected_index, circle_item in enumerate(rejected_items[:10], start=1):
         center_xy = circle_item.get("center_xy")
         radius = circle_item.get("radius")

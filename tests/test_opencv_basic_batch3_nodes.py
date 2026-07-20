@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphEdge,
     WorkflowGraphInput,
@@ -282,15 +284,12 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
     controls_by_name = {control["parameter_name"]: control for control in interaction["controls"]}
     assert debug_preview["type"] == "image-preview"
     assert set(tools_by_name["circle"]["target_parameters"]) == {
-        "reference_center_xy",
         "reference_radius_px",
-        "center_tolerance_px",
         "radius_tolerance_px",
     }
     assert tools_by_name["rect"]["target_parameters"] == ["search_bbox_xyxy"]
     assert tools_by_name["rect"]["clear_parameters"] == ["search_bbox_xyxy"]
     assert tools_by_name["circle"]["clear_parameters"] == [
-        "reference_center_xy",
         "reference_radius_px",
     ]
     assert {
@@ -298,7 +297,65 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
         "center_vote_threshold",
         "minimum_radius_px",
         "maximum_radius_px",
+        "minimum_edge_support_ratio",
+        "minimum_quality_score",
+        "show_rejected_candidates",
     } <= set(controls_by_name)
+
+
+def test_hough_circles_reference_radius_allows_large_position_shift(tmp_path: Path) -> None:
+    """验证 Reference Circle 只约束尺寸，目标在 Search ROI 内大幅偏移后仍可找到。"""
+
+    outputs = _execute_hough_circle_image(
+        tmp_path,
+        object_key="inputs/hough-circle-shifted.png",
+        image_bytes=_build_shifted_circle_test_png_bytes(),
+        parameters={
+            "search_bbox_xyxy": [20, 20, 340, 220],
+            "reference_radius_px": 32.0,
+            "radius_tolerance_px": 6.0,
+            "minimum_radius_px": 20,
+            "maximum_radius_px": 45,
+            "minimum_center_distance_px": 40.0,
+            "center_vote_threshold": 18.0,
+            "edge_polarity": "bright-to-dark",
+            "gradient_threshold": 10.0,
+            "minimum_arc_coverage": 0.5,
+            "minimum_edge_support_ratio": 0.45,
+            "minimum_quality_score": 0.3,
+        },
+    )
+
+    assert int(outputs["count"]) >= 1
+    selected = outputs["items"][0]
+    assert float(selected["center_x"]) == pytest.approx(285.0, abs=4.0)
+    assert float(selected["center_y"]) == pytest.approx(150.0, abs=4.0)
+    assert float(selected["radius"]) == pytest.approx(32.0, abs=4.0)
+
+
+def test_hough_circles_rejects_non_circular_texture_candidates(tmp_path: Path) -> None:
+    """验证矩形、交叉线和局部高光不会通过工业圆质量门槛。"""
+
+    outputs = _execute_hough_circle_image(
+        tmp_path,
+        object_key="inputs/hough-circle-false-texture.png",
+        image_bytes=_build_false_circle_texture_png_bytes(),
+        parameters={
+            "search_bbox_xyxy": [10, 10, 350, 230],
+            "reference_radius_px": 32.0,
+            "radius_tolerance_px": 6.0,
+            "minimum_radius_px": 20,
+            "maximum_radius_px": 45,
+            "center_vote_threshold": 12.0,
+            "gradient_threshold": 10.0,
+            "minimum_arc_coverage": 0.6,
+            "minimum_edge_support_ratio": 0.55,
+            "minimum_polarity_consistency": 0.65,
+            "minimum_quality_score": 0.45,
+        },
+    )
+
+    assert outputs["count"] == 0
 
 
 def test_circle_measure_returns_structured_empty_result_when_no_edge_is_found(tmp_path: Path) -> None:
@@ -823,6 +880,104 @@ def _build_circle_test_png_bytes() -> bytes:
     image = np.zeros((96, 96), dtype=np.uint8)
     cv2.circle(image, (48, 48), 18, 255, thickness=3)
     image = cv2.GaussianBlur(image, (5, 5), 1.2)
+    success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _execute_hough_circle_image(
+    tmp_path: Path,
+    *,
+    object_key: str,
+    image_bytes: bytes,
+    parameters: dict[str, object],
+) -> dict[str, object]:
+    """执行最小 Hough Circles Workflow，供工业语义回归复用。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    dataset_storage.write_bytes(object_key, image_bytes)
+    template = WorkflowGraphTemplate(
+        template_id="opencv-hough-circle-industrial",
+        template_version="1.0.0",
+        display_name="OpenCV Hough Circle Industrial",
+        nodes=(
+            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="circles",
+                node_type_id="custom.opencv.hough-circles",
+                parameters=parameters,
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-circles",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="circles",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image_base64",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="circles",
+                display_name="Circles",
+                payload_type_id="circles.v1",
+                source_node_id="circles",
+                source_port="circles",
+            ),
+        ),
+    )
+    result = executor.execute(
+        template=template,
+        input_values={
+            "request_image_base64": {
+                "object_key": object_key,
+                "width": 360,
+                "height": 240,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={"dataset_storage": dataset_storage},
+    )
+    return result.outputs["circles"]
+
+
+def _build_shifted_circle_test_png_bytes() -> bytes:
+    """构建带渐变光照且圆心远离取参位置的图片。"""
+
+    import cv2
+    import numpy as np
+
+    horizontal_gradient = np.linspace(25, 95, 360, dtype=np.uint8)
+    image = np.repeat(horizontal_gradient[None, :], 240, axis=0)
+    cv2.circle(image, (285, 150), 32, 220, thickness=-1, lineType=cv2.LINE_AA)
+    image = cv2.GaussianBlur(image, (5, 5), 1.0)
+    success, encoded = cv2.imencode(".png", image)
+    assert success is True
+    return encoded.tobytes()
+
+
+def _build_false_circle_texture_png_bytes() -> bytes:
+    """构建无圆但包含强边缘、交叉线和高光块的伪候选图片。"""
+
+    import cv2
+    import numpy as np
+
+    image = np.full((240, 360), 45, dtype=np.uint8)
+    cv2.rectangle(image, (35, 35), (150, 190), 190, thickness=5)
+    cv2.line(image, (185, 30), (335, 205), 220, thickness=6)
+    cv2.line(image, (330, 35), (180, 205), 210, thickness=4)
+    cv2.rectangle(image, (230, 80), (295, 145), 240, thickness=-1)
     success, encoded = cv2.imencode(".png", image)
     assert success is True
     return encoded.tobytes()

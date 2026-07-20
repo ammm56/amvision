@@ -45,7 +45,6 @@ def normalize_sort_by(value: object) -> str:
         "center_x",
         "center_y",
         "search_center_distance",
-        "reference_center_distance",
         "reference_radius_deviation",
         "quality_score",
     }:
@@ -66,21 +65,6 @@ def read_choice(raw_value: object, *, field_name: str, default_value: str, choic
     return normalized_value
 
 
-def read_optional_point(raw_value: object, *, field_name: str) -> list[float] | None:
-    """读取可选二维点。"""
-
-    if is_empty_parameter(raw_value):
-        return None
-    if not isinstance(raw_value, list) or len(raw_value) != 2:
-        raise InvalidRequestError(f"{field_name} 必须是 [x, y]")
-    point: list[float] = []
-    for value in raw_value:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-            raise InvalidRequestError(f"{field_name} 坐标必须是有限数值")
-        point.append(float(value))
-    return point
-
-
 def build_circle_item(
     *,
     circle_index: int,
@@ -88,7 +72,6 @@ def build_circle_item(
     center_y: float,
     radius: float,
     search_center_xy: tuple[float, float],
-    reference_center_xy: list[float] | None,
     reference_radius_px: float | None,
     fit_metrics: dict[str, object],
 ) -> dict[str, object]:
@@ -97,17 +80,28 @@ def build_circle_item(
     center_x = round(center_x, 4)
     center_y = round(center_y, 4)
     radius = round(radius, 4)
-    reference_center_distance = (
-        math.hypot(center_x - reference_center_xy[0], center_y - reference_center_xy[1])
-        if reference_center_xy is not None
-        else 0.0
-    )
     reference_radius_deviation = (
         abs(radius - reference_radius_px) if reference_radius_px is not None else 0.0
     )
     arc_coverage = float(fit_metrics.get("arc_coverage", 0.0))
     fit_rmse_px = float(fit_metrics.get("fit_rmse_px", 0.0))
-    quality_score = max(0.0, min(1.0, arc_coverage * (1.0 / (1.0 + fit_rmse_px))))
+    edge_support_ratio = float(fit_metrics.get("edge_support_ratio", 0.0))
+    fit_inlier_ratio = float(fit_metrics.get("fit_inlier_ratio", 0.0))
+    polarity_consistency = float(fit_metrics.get("polarity_consistency", 0.0))
+    radius_match_score = float(fit_metrics.get("radius_match_score", 1.0))
+    fit_quality = 1.0 / (1.0 + max(0.0, fit_rmse_px))
+    quality_score = max(
+        0.0,
+        min(
+            1.0,
+            0.3 * arc_coverage
+            + 0.2 * edge_support_ratio
+            + 0.2 * fit_inlier_ratio
+            + 0.1 * polarity_consistency
+            + 0.1 * fit_quality
+            + 0.1 * radius_match_score,
+        ),
+    )
     diameter = radius * 2.0
     return {
         "circle_index": circle_index,
@@ -122,7 +116,6 @@ def build_circle_item(
             math.hypot(center_x - search_center_xy[0], center_y - search_center_xy[1]),
             4,
         ),
-        "reference_center_distance": round(reference_center_distance, 4),
         "reference_radius_deviation": round(reference_radius_deviation, 4),
         "quality_score": round(quality_score, 6),
         **fit_metrics,

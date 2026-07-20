@@ -94,6 +94,13 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert hough_circle_properties["canny_high_threshold"]["default"] == 100
     assert hough_circle_properties["center_vote_threshold"]["default"] == 20
     assert hough_circle_properties["ransac_iterations"]["default"] == 32
+    assert "reference_center_xy" not in hough_circle_properties
+    assert "center_tolerance_px" not in hough_circle_properties
+    assert hough_circle_properties["gradient_threshold"]["default"] == 12
+    assert hough_circle_properties["minimum_arc_coverage"]["default"] == 0.55
+    assert hough_circle_properties["minimum_edge_support_ratio"]["default"] == 0.5
+    assert hough_circle_properties["illumination_normalization"]["default"] == "clahe"
+    assert hough_circle_properties["show_rejected_candidates"]["default"] is False
     assert hough_circle_properties["max_results"]["default"] == 10
     assert hough_circle_properties["maximum_candidates"]["default"] == 40
     circle_measure_node = node_by_type["custom.opencv.circle-measure"]

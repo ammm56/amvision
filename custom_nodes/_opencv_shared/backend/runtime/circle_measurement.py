@@ -15,6 +15,7 @@ class RadialEdgeSamples:
 
     points_xy: Any
     edge_strengths: Any
+    signed_edge_strengths: Any
     attempted_count: int
     accepted_count: int
 
@@ -367,6 +368,7 @@ def sample_radial_edges(
 
     points: list[list[float]] = []
     strengths: list[float] = []
+    signed_strengths: list[float] = []
     radial_step = float(radial_end - radial_start) / float(max(1, radial_sample_count - 1))
     for angle_index in range(sample_count):
         if not bool(valid_profiles[angle_index]):
@@ -392,9 +394,11 @@ def sample_radial_edges(
             ]
         )
         strengths.append(peak_strength)
+        signed_strengths.append(float(gradients[angle_index][peak_index]))
     return RadialEdgeSamples(
         points_xy=np_module.asarray(points, dtype=np_module.float64).reshape((-1, 2)),
         edge_strengths=np_module.asarray(strengths, dtype=np_module.float64),
+        signed_edge_strengths=np_module.asarray(signed_strengths, dtype=np_module.float64),
         attempted_count=sample_count,
         accepted_count=len(points),
     )

@@ -136,7 +136,7 @@ Image
 | --- | --- | --- |
 | bbox | `bbox_xyxy` | `core.vision.roi-create`、搜索 ROI 类节点 |
 | polygon | `polygon_xy`、`source_points`；四点透视时同时估算 `output_width`、`output_height` | `core.vision.roi-create`、`custom.opencv.perspective-transform` |
-| circle | `center_x`、`center_y`、`radius`，或 `reference_center_xy`、`reference_radius_px`、`center_tolerance_px`、`radius_tolerance_px` | `custom.opencv.hough-circles`、`custom.opencv.circle-measure`、`custom.opencv.min-enclosing-circle` |
+| circle | `center_x`、`center_y`、`radius`；Hough Circles 写入位置无关的 `reference_radius_px`、`radius_tolerance_px`；Circle Measure 写入 `reference_center_xy`、`reference_radius_px` 和测量容差 | `custom.opencv.hough-circles`、`custom.opencv.circle-measure`、`custom.opencv.min-enclosing-circle` |
 | line | `line_xyxy`、`search_bbox_xyxy`、`min_line_length`、`angle_min_deg`、`angle_max_deg`、`angle_deg` | `custom.opencv.hough-lines`、`custom.opencv.fit-line`、`custom.opencv.rotation-correct`、测量节点 |
 | grid | `origin_x`、`origin_y`、`roi_width`、`roi_height`、`step_x`、`step_y`、`rows`、`columns` | `core.vision.roi-grid-create` |
 | template-region | `template_bbox_xyxy`、`search_bbox_xyxy` 或输入模板图来源 | `custom.opencv.template-match` |
@@ -144,9 +144,9 @@ Image
 | match-line | `debug_selected_match_ids` | `custom.opencv.orb-match`、`custom.opencv.homography-estimate` |
 | homography-overlay | `debug_selected_projection_id` | `custom.opencv.homography-estimate` |
 
-Hough Circles 和 Circle Measure 的图形语义必须保持独立：Search ROI 使用蓝色虚线矩形，Reference Circle 使用紫色虚线圆，普通候选使用橙色实线圆，最终选中圆使用绿色粗实线和圆心十字，被拒绝候选仅在 Debug Preview 中使用红色或灰色虚线。颜色由亮色、暗色主题变量提供，节点实现不得写死组件颜色。精定位链路使用有界 RANSAC 初始化和 Huber/Tukey IRLS，并限制候选数、径向采样数和拟合迭代次数。
+Hough Circles 和 Circle Measure 的图形语义必须保持独立：Search ROI 使用蓝色虚线矩形，Reference Circle 取参草稿使用紫色虚线圆，普通候选使用橙色实线圆，最终选中圆使用绿色粗实线和圆心十字；被拒绝候选默认隐藏，仅在显式 Debug 诊断时使用红色或灰色虚线。颜色由亮色、暗色主题变量提供，节点实现不得写死组件颜色。精定位链路使用有界 RANSAC 初始化和 Huber/Tukey IRLS，并限制候选数、径向采样数和拟合迭代次数。
 
-Reference Circle 写回 Workflow 节点的 `reference_center_xy` 和 `reference_radius_px`，属于可保存、复制和版本化的显式参数，不属于 Preview Run 临时缓存。Search ROI、Reference Circle 和检测圆的原图像素读数只在交互式 Debug 图片页显示。详细参数和组合方式见 [OpenCV 圆检测与圆测量节点](../nodes/opencv-circle-nodes.md)。
+Hough Circles 的 Reference Circle 只持久化 `reference_radius_px` 和尺寸容差，绘制圆心不保存、不参与运行时筛选；Search ROI 是位置变化的唯一边界。Circle Measure 作为已知近似位置的精测节点，才持久化 `reference_center_xy` 和 `reference_radius_px`。Search ROI、取参草稿和检测圆的原图像素读数只在交互式 Debug 图片页显示。详细参数和组合方式见 [OpenCV 圆检测与圆测量节点](../nodes/opencv-circle-nodes.md)。
 
 ## 节点定义扩展方式
 
