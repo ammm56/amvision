@@ -2147,17 +2147,16 @@ a:hover {
 }
 
 .workflow-graph-node__title {
-  height: 36px;
-  padding: 5px var(--graph-node-padding-x) 1px;
+  display: block;
+  min-width: 0;
+  min-height: 30px;
+  padding: 9px var(--graph-node-padding-x) 2px;
   border-radius: 7px 7px 0 0;
   background: var(--graph-node-header, #393f43);
   font-weight: 700;
-  line-height: 15px;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workflow-graph-node__disabled-badge {
@@ -2176,8 +2175,7 @@ a:hover {
 
 .workflow-graph-node__type {
   display: block;
-  height: 24px;
-  padding: 0 var(--graph-node-padding-x) 7px;
+  padding: 0 var(--graph-node-padding-x) 8px;
   background: var(--graph-node-header, #393f43);
 }
 

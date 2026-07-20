@@ -20,7 +20,7 @@
     @click.stop="emit('nodeClick', node.node.node_id)"
     @contextmenu.prevent.stop="emit('openNodeContextMenu', $event, node)"
   >
-    <span class="workflow-graph-node__title">{{ readTitle(node) }}</span>
+    <span class="workflow-graph-node__title" :title="readTitle(node)">{{ readTitle(node) }}</span>
     <span v-if="node.node.enabled === false" class="workflow-graph-node__disabled-badge">已禁用</span>
     <span class="workflow-graph-node__type">{{ node.definition?.category || node.node.node_type_id }}</span>
     <div class="workflow-graph-node__ports">
