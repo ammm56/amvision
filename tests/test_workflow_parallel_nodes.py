@@ -9,6 +9,9 @@ from typing import Callable
 import pytest
 
 from backend.contracts.workflows.workflow_graph import (
+    NODE_CONCURRENCY_SERIALIZED,
+    NODE_CONCURRENCY_THREAD_SAFE,
+    NODE_CONCURRENCY_UNSUPPORTED_IN_PARALLEL,
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NodeDefinition,
@@ -41,6 +44,9 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution.variables import (
     read_workflow_variable_snapshot,
 )
+from backend.service.application.workflows.execution.parallel_safety import (
+    validate_parallel_template_node_definitions,
+)
 from backend.service.application.workflows.execution_cleanup import (
     list_registered_execution_cleanups,
     register_execution_cleanup,
@@ -59,6 +65,7 @@ PASSTHROUGH_NODE_DEFINITION = NodeDefinition(
     category="test.logic",
     implementation_kind=NODE_IMPLEMENTATION_CORE,
     runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+    concurrency_policy=NODE_CONCURRENCY_THREAD_SAFE,
     input_ports=(
         NodePortDefinition(
             name="value",
@@ -209,6 +216,82 @@ def test_parallel_boundary_limits_concurrency_without_changing_branch_count() ->
     assert max_active_count == 3
 
 
+def test_parallel_boundary_serializes_nodes_with_serialized_policy() -> None:
+    """验证持有进程内可变状态的节点按 node type 串行执行。"""
+
+    state_lock = Lock()
+    active_count = 0
+    max_active_count = 0
+
+    def serialized_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        nonlocal active_count, max_active_count
+        with state_lock:
+            active_count += 1
+            max_active_count = max(max_active_count, active_count)
+        try:
+            sleep(0.01)
+            return {"value": request.input_values["value"]}
+        finally:
+            with state_lock:
+                active_count -= 1
+
+    definition = PASSTHROUGH_NODE_DEFINITION.model_copy(
+        update={"concurrency_policy": NODE_CONCURRENCY_SERIALIZED}
+    )
+    result = WorkflowGraphExecutor(
+        registry=_build_registry(serialized_handler, node_definition=definition)
+    ).execute(
+        template=_build_parallel_template(branch_count=3, max_concurrency=3),
+        input_values={"source_items": {"value": list(range(6))}},
+    )
+
+    assert result.outputs["results"]["value"] == list(range(6))
+    assert max_active_count == 1
+
+
+def test_parallel_boundary_rejects_unsupported_node_before_starting_branches() -> None:
+    """验证明确不支持 Parallel 的节点在任何分支执行前失败。"""
+
+    invocation_count = 0
+
+    def handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        nonlocal invocation_count
+        invocation_count += 1
+        return {"value": request.input_values["value"]}
+
+    definition = PASSTHROUGH_NODE_DEFINITION.model_copy(
+        update={"concurrency_policy": NODE_CONCURRENCY_UNSUPPORTED_IN_PARALLEL}
+    )
+    with pytest.raises(InvalidRequestError, match="不支持在 Parallel"):
+        WorkflowGraphExecutor(
+            registry=_build_registry(handler, node_definition=definition)
+        ).execute(
+            template=_build_parallel_template(branch_count=3, max_concurrency=3),
+            input_values={"source_items": {"value": list(range(6))}},
+        )
+
+    assert invocation_count == 0
+
+
+def test_parallel_template_validation_rejects_unsupported_node() -> None:
+    """验证保存前校验会拒绝不支持 Parallel 的节点。"""
+
+    definition = PASSTHROUGH_NODE_DEFINITION.model_copy(
+        update={"concurrency_policy": NODE_CONCURRENCY_UNSUPPORTED_IN_PARALLEL}
+    )
+
+    with pytest.raises(InvalidRequestError, match="不支持在 Parallel"):
+        validate_parallel_template_node_definitions(
+            template=_build_parallel_template(branch_count=3, max_concurrency=3),
+            node_definitions=(
+                LIST_ITEM_GET_NODE_SPEC.node_definition,
+                PARALLEL_START_NODE_SPEC.node_definition,
+                PARALLEL_END_NODE_SPEC.node_definition,
+                definition,
+            ),
+        )
+
+
 def test_parallel_boundary_handles_empty_partitions() -> None:
     """验证空列表不会制造占位项或跳过 Parallel End。"""
 
@@ -249,6 +332,8 @@ def test_parallel_boundary_preserves_failed_branch_context() -> None:
 
 def _build_registry(
     handler: Callable[[WorkflowNodeExecutionRequest], dict[str, object]],
+    *,
+    node_definition: NodeDefinition = PASSTHROUGH_NODE_DEFINITION,
 ) -> WorkflowNodeRuntimeRegistry:
     """注册 Parallel、List 和 For Each 测试节点。"""
 
@@ -262,7 +347,7 @@ def _build_registry(
         FOR_EACH_END_NODE_SPEC,
     ):
         registry.register_python_callable(spec.node_definition, spec.handler)
-    registry.register_python_callable(PASSTHROUGH_NODE_DEFINITION, handler)
+    registry.register_python_callable(node_definition, handler)
     return registry
 
 

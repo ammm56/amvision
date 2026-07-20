@@ -25,6 +25,7 @@ from backend.service.application.local_buffers import (
 )
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
+    WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
     build_process_safe_execution_metadata,
     list_registered_execution_cleanups,
 )
@@ -141,6 +142,8 @@ class WorkflowRuntimeWorkerManager:
         self._stopping = Event()
         self._monitor_stop_event = Event()
         self._monitor_thread: Thread | None = None
+        self._cleanup_client_lock = Lock()
+        self._cleanup_local_buffer_client: LocalBufferBrokerClient | None = None
 
     def start(self) -> None:
         """启动管理器本身。
@@ -180,6 +183,7 @@ class WorkflowRuntimeWorkerManager:
                 continue
         for async_handle in async_handles:
             async_handle.completion_event.wait(timeout=1.0)
+        self._close_cleanup_local_buffer_client()
 
     def is_runtime_available(self, workflow_runtime_id: str) -> bool:
         """判断一个 runtime 当前是否仍有活动 worker 进程。
@@ -489,8 +493,12 @@ class WorkflowRuntimeWorkerManager:
                 )
             message_id = uuid4().hex
             pending = _WorkflowRuntimePendingResponse()
+            process_metadata_source = dict(execution_metadata)
+            process_metadata_source[WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY] = float(
+                timeout_seconds
+            )
             process_execution_metadata = build_process_safe_execution_metadata(
-                execution_metadata
+                process_metadata_source
             )
             with handle.state_lock:
                 if not handle.process.is_alive():
@@ -550,6 +558,7 @@ class WorkflowRuntimeWorkerManager:
                     )
                 if pending.event.wait(timeout=max(0.1, min(0.2, remaining_seconds))):
                     message = pending.response or {}
+                    worker_response_received = True
                     worker_reply_wait_ms = _elapsed_ms(reply_wait_started_at)
                     break
                 if not handle.process.is_alive():
@@ -572,6 +581,12 @@ class WorkflowRuntimeWorkerManager:
                     pass
             with handle.state_lock:
                 handle.pending_responses.pop(message_id if 'message_id' in locals() else "", None)
+            if "message_id" in locals():
+                self.cleanup_workflow_run_local_buffer_owner(workflow_run_id)
+            if not locals().get("worker_response_received", False):
+                # worker 未返回时无法确认其 finally 是否运行；覆盖入队失败、取消、
+                # 超时和进程硬退出，释放 TriggerSource 输入等父进程已知 lease。
+                self.cleanup_parent_local_buffer_leases(execution_metadata)
 
         worker_result = deserialize_run_result(message)
         timings = dict(worker_result.timings)
@@ -664,42 +679,117 @@ class WorkflowRuntimeWorkerManager:
         if not cleanup_items:
             return 0
         try:
-            channel = self._resolve_local_buffer_broker_event_channel()
-        except Exception as exc:
-            LOGGER.warning("读取 LocalBufferBroker cleanup channel 失败: %s", exc)
-            return 0
-        if channel is None:
-            return 0
-        try:
-            client = LocalBufferBrokerClient(channel)
+            client = self._get_cleanup_local_buffer_client()
         except Exception as exc:
             LOGGER.warning("创建 LocalBufferBroker cleanup client 失败: %s", exc)
             return 0
+        if client is None:
+            return 0
         released_count = 0
-        try:
-            for cleanup_item in cleanup_items:
-                pool_name_value = cleanup_item.metadata.get("pool_name")
-                try:
-                    client.release(
-                        cleanup_item.resource_id,
-                        pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
-                    )
-                    released_count += 1
-                except InvalidRequestError:
-                    # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
-                    continue
-                except Exception as exc:
-                    LOGGER.warning(
-                        "父进程释放 LocalBufferBroker lease 失败: lease_id=%s error=%s",
-                        cleanup_item.resource_id,
-                        exc,
-                    )
-        finally:
+        for cleanup_item in cleanup_items:
+            pool_name_value = cleanup_item.metadata.get("pool_name")
             try:
-                client.close()
+                client.release(
+                    cleanup_item.resource_id,
+                    pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
+                )
+                released_count += 1
+            except InvalidRequestError:
+                # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
+                continue
             except Exception as exc:
-                LOGGER.warning("关闭 LocalBufferBroker cleanup client 失败: %s", exc)
+                LOGGER.warning(
+                    "父进程释放 LocalBufferBroker lease 失败: lease_id=%s error=%s",
+                    cleanup_item.resource_id,
+                    exc,
+                )
+                self._invalidate_cleanup_local_buffer_client(client)
+                break
         return released_count
+
+    def cleanup_workflow_run_local_buffer_owner(self, workflow_run_id: str) -> int:
+        """按 run owner 前缀释放 worker 可能未登记的临时 ROI lease。"""
+
+        normalized_run_id = workflow_run_id.strip()
+        if not normalized_run_id:
+            return 0
+        try:
+            client = self._get_cleanup_local_buffer_client()
+        except Exception as exc:
+            LOGGER.warning("创建 LocalBufferBroker owner cleanup client 失败: %s", exc)
+            return 0
+        if client is None:
+            return 0
+        try:
+            return client.release_owner(
+                owner_kind="workflow-runtime",
+                owner_id_prefix=f"{normalized_run_id}:",
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "父进程按 Workflow Run owner 释放 LocalBufferBroker lease 失败: "
+                "workflow_run_id=%s error=%s",
+                normalized_run_id,
+                exc,
+            )
+            self._invalidate_cleanup_local_buffer_client(client)
+            return 0
+
+    def _get_cleanup_local_buffer_client(self) -> LocalBufferBrokerClient | None:
+        """复用父进程 cleanup 控制通道，避免每个 Workflow Run 创建队列。"""
+
+        cleanup_lock = getattr(self, "_cleanup_client_lock", None)
+        if cleanup_lock is None:
+            cleanup_lock = Lock()
+            self._cleanup_client_lock = cleanup_lock
+        with cleanup_lock:
+            client = getattr(self, "_cleanup_local_buffer_client", None)
+            if client is not None:
+                return client
+            channel = self._resolve_local_buffer_broker_event_channel()
+            if channel is None:
+                return None
+            client = LocalBufferBrokerClient(channel)
+            self._cleanup_local_buffer_client = client
+            return client
+
+    def _close_cleanup_local_buffer_client(self) -> None:
+        """关闭管理器持有的持久化 cleanup 控制通道。"""
+
+        cleanup_lock = getattr(self, "_cleanup_client_lock", None)
+        if cleanup_lock is None:
+            return
+        with cleanup_lock:
+            client = getattr(self, "_cleanup_local_buffer_client", None)
+            self._cleanup_local_buffer_client = None
+        if client is None:
+            return
+        try:
+            client.close()
+        except Exception as exc:
+            LOGGER.warning("关闭 LocalBufferBroker cleanup client 失败: %s", exc)
+
+    def _invalidate_cleanup_local_buffer_client(
+        self,
+        client: LocalBufferBrokerClient,
+    ) -> None:
+        """失效断开的 cleanup client，使后续调用可连接重启后的 broker。"""
+
+        cleanup_lock = getattr(self, "_cleanup_client_lock", None)
+        if cleanup_lock is None:
+            cleanup_lock = Lock()
+            self._cleanup_client_lock = cleanup_lock
+        should_close = False
+        with cleanup_lock:
+            if getattr(self, "_cleanup_local_buffer_client", None) is client:
+                self._cleanup_local_buffer_client = None
+                should_close = True
+        if not should_close:
+            return
+        try:
+            client.close()
+        except Exception as exc:  # pragma: no cover - 仅记录关闭兜底失败
+            LOGGER.warning("关闭失效 LocalBufferBroker cleanup client 失败: %s", exc)
 
     def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:
         """向指定 worker 请求当前状态。"""

@@ -119,6 +119,12 @@ def run_workflow_runtime_worker_process(
             application_snapshot_object_key=application_snapshot_object_key,
             template_snapshot_object_key=template_snapshot_object_key,
         )
+        # snapshot 在 runtime worker 生命周期内不可变，所属 project 只需在启动时读取一次。
+        # 避免每次 Workflow Run 都重复读取、解析 application snapshot。
+        snapshot_project_id = read_project_id_from_snapshot(
+            dataset_storage=dataset_storage,
+            application_snapshot_object_key=application_snapshot_object_key,
+        )
         snapshot_execution_service = SnapshotExecutionService(
             dataset_storage=dataset_storage,
             node_catalog_registry=node_catalog_registry,
@@ -207,10 +213,7 @@ def run_workflow_runtime_worker_process(
                 worker_execute_started_at = monotonic()
                 execution_result = snapshot_execution_service.execute(
                     WorkflowSnapshotExecutionRequest(
-                        project_id=read_project_id_from_snapshot(
-                            dataset_storage=dataset_storage,
-                            application_snapshot_object_key=application_snapshot_object_key,
-                        ),
+                        project_id=snapshot_project_id,
                         application_id=application_id,
                         application_snapshot_object_key=application_snapshot_object_key,
                         template_snapshot_object_key=template_snapshot_object_key,
@@ -281,8 +284,10 @@ def run_workflow_runtime_worker_process(
                 )
             except ServiceError as exc:
                 with state_lock:
-                    current_observed_state = "failed"
-                    current_last_error = exc.message
+                    # 单次 Workflow Run 的领域/依赖错误不代表 worker 进程失效；
+                    # worker 仍可继续接收下一条请求，健康状态保持 running。
+                    current_observed_state = "running"
+                    current_last_error = None
                     current_run_id = None
                 response_queue.put(
                     build_worker_error_message(
@@ -296,6 +301,8 @@ def run_workflow_runtime_worker_process(
                         current_run_id=None,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        observed_state=current_observed_state,
+                        worker_last_error=current_last_error,
                         health_summary=build_runtime_health_summary(local_buffer_reader),
                     )
                 )

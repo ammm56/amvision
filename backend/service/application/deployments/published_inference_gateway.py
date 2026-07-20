@@ -147,6 +147,13 @@ class _PendingGatewayResponse:
     response: dict[str, object] | None = None
 
 
+@dataclass
+class _PreparedContextFlight:
+    """协调同一 Workflow Run 首批并发推理只准备一次 deployment 上下文。"""
+
+    event: Event = field(default_factory=Event)
+
+
 @dataclass(frozen=True)
 class TaskTypeDeploymentPublishedInferenceGateway:
     """按 task_type 调用长期运行 deployment worker 的 PublishedInferenceGateway。"""
@@ -166,6 +173,9 @@ class TaskTypeDeploymentPublishedInferenceGateway:
         repr=False,
         compare=False,
     )
+    _prepared_process_config_flights: dict[
+        tuple[str, str, str], _PreparedContextFlight
+    ] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def infer(self, request: PublishedInferenceRequest) -> PublishedInferenceResult:
         """执行一次已发布推理。"""
@@ -259,40 +269,67 @@ class TaskTypeDeploymentPublishedInferenceGateway:
             request=request,
             normalized_task_type=normalized_task_type,
         )
+        flight: _PreparedContextFlight | None = None
+        flight_owner = False
         if cache_key is not None:
-            with self._prepared_process_configs_lock:
-                cached_process_config = self._prepared_process_configs.get(cache_key)
-                if cached_process_config is not None:
-                    self._prepared_process_configs.move_to_end(cache_key)
-                    timings["published_inference_gateway_resolve_config_ms"] = 0.0
-                    timings["published_inference_gateway_ensure_process_ms"] = 0.0
-                    return cached_process_config, True
+            while True:
+                with self._prepared_process_configs_lock:
+                    cached_process_config = self._prepared_process_configs.get(cache_key)
+                    if cached_process_config is not None:
+                        self._prepared_process_configs.move_to_end(cache_key)
+                        timings["published_inference_gateway_resolve_config_ms"] = 0.0
+                        timings["published_inference_gateway_ensure_process_ms"] = 0.0
+                        return cached_process_config, True
+                    flight = self._prepared_process_config_flights.get(cache_key)
+                    if flight is None:
+                        flight = _PreparedContextFlight()
+                        self._prepared_process_config_flights[cache_key] = flight
+                        flight_owner = True
+                        break
+                wait_started_at = perf_counter()
+                if not flight.event.wait(timeout=300.0):
+                    raise OperationTimeoutError(
+                        "等待 deployment 运行上下文准备超时",
+                        details={
+                            "execution_scope_id": cache_key[0],
+                            "deployment_instance_id": cache_key[2],
+                        },
+                    )
+                timings["published_inference_gateway_context_wait_ms"] = _elapsed_ms(
+                    wait_started_at
+                )
 
         resolve_started_at = perf_counter()
-        process_config = deployment_service.resolve_process_config(
-            request.deployment_instance_id
-        )
-        timings["published_inference_gateway_resolve_config_ms"] = _elapsed_ms(
-            resolve_started_at
-        )
-        self._validate_process_config_task_type(
-            request=request,
-            normalized_task_type=normalized_task_type,
-            process_config=process_config,
-        )
-        ensure_started_at = perf_counter()
-        deployment_process_supervisor.ensure_deployment(process_config)
-        self._ensure_running_process(
-            deployment_process_supervisor=deployment_process_supervisor,
-            process_config=process_config,
-            auto_start_process=request.auto_start_process,
-        )
-        timings["published_inference_gateway_ensure_process_ms"] = _elapsed_ms(
-            ensure_started_at
-        )
-        if cache_key is not None:
-            self._remember_prepared_process_config(cache_key, process_config)
-        return process_config, False
+        try:
+            process_config = deployment_service.resolve_process_config(
+                request.deployment_instance_id
+            )
+            timings["published_inference_gateway_resolve_config_ms"] = _elapsed_ms(
+                resolve_started_at
+            )
+            self._validate_process_config_task_type(
+                request=request,
+                normalized_task_type=normalized_task_type,
+                process_config=process_config,
+            )
+            ensure_started_at = perf_counter()
+            deployment_process_supervisor.ensure_deployment(process_config)
+            self._ensure_running_process(
+                deployment_process_supervisor=deployment_process_supervisor,
+                process_config=process_config,
+                auto_start_process=request.auto_start_process,
+            )
+            timings["published_inference_gateway_ensure_process_ms"] = _elapsed_ms(
+                ensure_started_at
+            )
+            if cache_key is not None:
+                self._remember_prepared_process_config(cache_key, process_config)
+            return process_config, False
+        finally:
+            if cache_key is not None and flight_owner and flight is not None:
+                with self._prepared_process_configs_lock:
+                    self._prepared_process_config_flights.pop(cache_key, None)
+                flight.event.set()
 
     @staticmethod
     def _build_prepared_context_key(

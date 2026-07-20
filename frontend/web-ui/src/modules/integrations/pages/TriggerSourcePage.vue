@@ -155,7 +155,7 @@
             <label class="field">
               <span class="field-label">
                 result_mode
-                <InfoHint text="sync-reply 直接返回 result_binding 的输出；accepted-then-query 返回 run id 让调用方查询；async-report/event-only 预留给后续回调或事件流。" />
+                <InfoHint text="sync-reply 直接返回 result_binding 的输出；accepted-then-query 返回 run id 让调用方查询；event-only 不返回 workflow 输出。" />
               </span>
               <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
             </label>
@@ -431,14 +431,12 @@ const submitModeOptions: SelectOption[] = [
 const resultModeOptions: SelectOption[] = [
   { label: 'sync-reply', value: 'sync-reply', description: '同步协议回包直接带结果' },
   { label: 'accepted-then-query', value: 'accepted-then-query', description: '回包带 run id，调用方之后查询' },
-  { label: 'async-report', value: 'async-report', description: '预留异步回调模式' },
   { label: 'event-only', value: 'event-only', description: '只记录事件，不要求结果回包' },
 ]
 
 const ackPolicyOptions: SelectOption[] = [
   { label: 'ack-after-run-finished', value: 'ack-after-run-finished', description: 'run 完成后确认' },
   { label: 'ack-after-run-created', value: 'ack-after-run-created', description: 'run 创建后确认' },
-  { label: 'ack-after-received', value: 'ack-after-received', description: '收到事件后确认' },
 ]
 
 const workflowRunRecordModeOptions: SelectOption[] = [
@@ -607,6 +605,8 @@ function resolveLocalBufferPoolName(): string {
 
 function setSubmitMode(value: SelectValue): void {
   submitMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
+  resultMode.value = submitMode.value === 'sync' ? 'sync-reply' : 'accepted-then-query'
+  ackPolicy.value = submitMode.value === 'sync' ? 'ack-after-run-finished' : 'ack-after-run-created'
   if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
     workflowRunRecordMode.value = 'minimal'
   }

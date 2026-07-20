@@ -51,8 +51,8 @@ class WorkflowTriggerSourceCreateRequestBody(BaseModel):
     default_execution_metadata: dict[str, object] = Field(
         default_factory=dict, description="默认执行元数据"
     )
-    ack_policy: str = Field(default="ack-after-run-finished", description="接收确认策略")
-    result_mode: str = Field(default="sync-reply", description="结果回执模式")
+    ack_policy: str | None = Field(default=None, description="接收确认策略")
+    result_mode: str | None = Field(default=None, description="结果回执模式")
     reply_timeout_seconds: int | None = Field(
         default=None, description="同步回执超时秒数"
     )

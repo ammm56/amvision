@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Callable
+from threading import Lock
 from uuid import uuid4
 import multiprocessing
 import json
 import hashlib
+import logging
 
 from sqlalchemy.engine import URL, make_url
 
@@ -49,6 +52,10 @@ from backend.service.application.workflows.workflow_service import LocalWorkflow
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
+
+
+LOGGER = logging.getLogger(__name__)
+_MAX_VALIDATED_SNAPSHOT_PAIRS = 16
 
 if TYPE_CHECKING:
     from backend.service.application.deployments import (
@@ -141,6 +148,10 @@ class SnapshotExecutionService:
         self.runtime_registry = runtime_registry
         self.runtime_context = runtime_context
         self.event_sink = event_sink
+        self._validated_snapshots: OrderedDict[
+            tuple[str, str, str], tuple[FlowApplication, WorkflowGraphTemplate]
+        ] = OrderedDict()
+        self._validated_snapshots_lock = Lock()
 
     def execute(
         self,
@@ -155,20 +166,8 @@ class SnapshotExecutionService:
         - WorkflowSnapshotExecutionResult：稳定执行结果。
         """
 
-        workflow_service = LocalWorkflowJsonService(
-            dataset_storage=self.dataset_storage,
-            node_catalog_registry=self.node_catalog_registry,
-        )
-        application = FlowApplication.model_validate(
-            self.dataset_storage.read_json(request.application_snapshot_object_key)
-        )
-        template = WorkflowGraphTemplate.model_validate(
-            self.dataset_storage.read_json(request.template_snapshot_object_key)
-        )
-        workflow_service.validate_application(
-            project_id=request.project_id,
-            application=application,
-            template_override=template,
+        application, template = self._load_validated_snapshots(
+            request=request,
         )
 
         template_input_values = _build_template_input_values(
@@ -208,6 +207,18 @@ class SnapshotExecutionService:
             )
             if cleanup_error is not None and execution_error is None:
                 raise cleanup_error
+            if cleanup_error is not None and execution_error is not None:
+                if isinstance(execution_error, ServiceError):
+                    execution_error.details["cleanup_error"] = {
+                        "error_code": cleanup_error.code,
+                        "error_message": cleanup_error.message,
+                        "details": dict(cleanup_error.details),
+                    }
+                LOGGER.error(
+                    "Workflow Run 执行失败后 cleanup 仍有错误: application_id=%s error=%s",
+                    request.application_id,
+                    cleanup_error.message,
+                )
         return WorkflowSnapshotExecutionResult(
             project_id=request.project_id,
             application_id=request.application_id,
@@ -220,6 +231,45 @@ class SnapshotExecutionService:
             template_outputs=dict(graph_execution_result.outputs),
             node_records=graph_execution_result.node_records,
         )
+
+    def _load_validated_snapshots(
+        self,
+        *,
+        request: WorkflowSnapshotExecutionRequest,
+    ) -> tuple[FlowApplication, WorkflowGraphTemplate]:
+        """按不可变 snapshot object key 缓存解析和校验结果。"""
+
+        cache_key = (
+            request.project_id,
+            request.application_snapshot_object_key,
+            request.template_snapshot_object_key,
+        )
+        with self._validated_snapshots_lock:
+            cached = self._validated_snapshots.get(cache_key)
+            if cached is not None:
+                self._validated_snapshots.move_to_end(cache_key)
+                return cached
+            workflow_service = LocalWorkflowJsonService(
+                dataset_storage=self.dataset_storage,
+                node_catalog_registry=self.node_catalog_registry,
+            )
+            application = FlowApplication.model_validate(
+                self.dataset_storage.read_json(request.application_snapshot_object_key)
+            )
+            template = WorkflowGraphTemplate.model_validate(
+                self.dataset_storage.read_json(request.template_snapshot_object_key)
+            )
+            workflow_service.validate_application(
+                project_id=request.project_id,
+                application=application,
+                template_override=template,
+            )
+            value = (application, template)
+            self._validated_snapshots[cache_key] = value
+            self._validated_snapshots.move_to_end(cache_key)
+            while len(self._validated_snapshots) > _MAX_VALIDATED_SNAPSHOT_PAIRS:
+                self._validated_snapshots.popitem(last=False)
+            return value
 
 
 def _cleanup_registered_deployment(

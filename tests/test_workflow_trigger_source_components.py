@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -21,7 +22,7 @@ from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
 )
 from backend.nodes.core_nodes.support.deployment_model import run_direct_model_inference
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 from backend.service.application.workflows.execution.contracts import (
     WorkflowNodeExecutionRequest,
 )
@@ -40,6 +41,9 @@ from backend.service.application.workflows.trigger_sources.trigger_source_superv
 from backend.service.application.workflows.trigger_sources.workflow_submitter import (
     WorkflowSubmitter,
     WorkflowTriggerSubmitRequest,
+)
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
 )
 from backend.service.application.workflows.trigger_sources.zeromq_transport import (
     DEFAULT_ZEROMQ_BUFFER_TTL_SECONDS,
@@ -116,6 +120,64 @@ def test_input_binding_mapper_rejects_missing_required_source() -> None:
         )
 
     assert error_info.value.details["binding_id"] == "request_image_base64"
+
+
+def test_trigger_source_supervisor_deduplicates_idempotency_key() -> None:
+    """验证同一 TriggerSource 的相同幂等键只创建一次 WorkflowRun。"""
+
+    trigger_source = _build_trigger_source()
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"http-api": _FakeProtocolAdapter()},
+        workflow_submitter=submitter,
+    )
+    raw_event = RawTriggerEvent(
+        event_id="event-1",
+        payload={"request": {"id": "same-key", "image": "base64-image"}},
+    )
+
+    first = supervisor.handle_trigger_event(
+        trigger_source=trigger_source,
+        raw_event=raw_event,
+    )
+    second = supervisor.handle_trigger_event(
+        trigger_source=trigger_source,
+        raw_event=replace(raw_event, event_id="event-2"),
+    )
+
+    assert first.workflow_run_id == "workflow-run-1"
+    assert second.workflow_run_id == "workflow-run-1"
+    assert second.metadata["idempotent_replay"] is True
+    assert submitter.submit_count == 1
+
+
+def test_trigger_source_supervisor_debounces_without_submitting() -> None:
+    """验证 debounce 窗口内的第二条事件不会创建 WorkflowRun。"""
+
+    trigger_source = replace(
+        _build_trigger_source(),
+        debounce_window_ms=1000,
+        idempotency_key_path=None,
+    )
+    submitter = _FakeWorkflowSubmitter()
+    supervisor = TriggerSourceSupervisor(
+        adapters={"http-api": _FakeProtocolAdapter()},
+        workflow_submitter=submitter,
+    )
+
+    supervisor.handle_trigger_event(
+        trigger_source=trigger_source,
+        raw_event=RawTriggerEvent(event_id="event-1", payload={}),
+    )
+    result = supervisor.handle_trigger_event(
+        trigger_source=trigger_source,
+        raw_event=RawTriggerEvent(event_id="event-2", payload={}),
+    )
+
+    assert result.state == "accepted"
+    assert result.workflow_run_id is None
+    assert result.metadata["debounced"] is True
+    assert submitter.submit_count == 1
 
 
 def test_input_binding_mapper_skips_missing_optional_source() -> None:
@@ -419,6 +481,49 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
     assert local_buffer_writer.write_calls[0]["pool_name"] == "image-640x640"
+    cleanup_items = submitter.last_request.trigger_source.default_execution_metadata[
+        WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY
+    ]
+    assert cleanup_items == [
+        {
+            "resource_kind": "local_buffer_lease",
+            "resource_id": "lease-1",
+            "metadata": {"pool_name": "image-640x640"},
+        }
+    ]
+
+
+def test_zeromq_trigger_adapter_releases_unclaimed_replay_buffer() -> None:
+    """验证幂等重放没有新建 WorkflowRun 时立即释放本次输入 lease。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        input_binding_mapping={
+            "request_image_ref": {"source": "payload.request_image_ref"}
+        },
+        transport_config={"default_input_binding": "request_image_ref"},
+    )
+    local_buffer_writer = _FakeLocalBufferWriter()
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=local_buffer_writer)
+
+    class _ReplayHandler:
+        def handle_trigger_event(self, *, trigger_source, raw_event):
+            return TriggerResultContract(
+                trigger_source_id=trigger_source.trigger_source_id,
+                event_id=raw_event.event_id or "event-replay",
+                state="succeeded",
+                workflow_run_id="workflow-run-original",
+                metadata={"idempotent_replay": True},
+            )
+
+    result = adapter.handle_multipart_message(
+        trigger_source=trigger_source,
+        frames=[b'{"event_id":"event-replay","media_type":"image/png"}', b"image"],
+        event_handler=_ReplayHandler(),
+    )
+
+    assert result.metadata["idempotent_replay"] is True
+    assert local_buffer_writer.released_leases == [("lease-1", None)]
 
 
 def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_default() -> (
@@ -594,6 +699,85 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert reply_payload["event_id"] == "event-live"
     assert adapter_health["received_count"] == 1
     assert adapter_health["submitted_count"] == 1
+
+
+def test_zeromq_stop_keeps_stopping_state_until_listener_exits() -> None:
+    """验证阻塞 handler 不会让 stop 假报成功或提前释放 endpoint 状态。"""
+
+    endpoint = f"inproc://zeromq-trigger-stop-{uuid4().hex}"
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+        transport_config={"bind_endpoint": endpoint},
+    )
+    entered = Event()
+    release = Event()
+
+    class _BlockingHandler:
+        def handle_trigger_event(self, *, trigger_source, raw_event):
+            del raw_event
+            entered.set()
+            release.wait(timeout=2.0)
+            return TriggerResultContract(
+                trigger_source_id=trigger_source.trigger_source_id,
+                event_id="event-stop",
+                state="accepted",
+            )
+
+    adapter = ZeroMqTriggerAdapter(
+        local_buffer_writer=_FakeLocalBufferWriter(),
+        shutdown_timeout_seconds=0.05,
+    )
+    context = zmq.Context.instance()
+    socket = context.socket(zmq.REQ)
+    socket.linger = 0
+    socket.rcvtimeo = 2000
+    adapter.start(trigger_source=trigger_source, event_handler=_BlockingHandler())
+    try:
+        socket.connect(endpoint)
+        socket.send_multipart([b'{"event_id":"event-stop"}'])
+        assert entered.wait(timeout=1.0)
+        with pytest.raises(OperationTimeoutError):
+            adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
+        health = adapter.get_health(trigger_source_id=trigger_source.trigger_source_id)
+        assert health["running"] is True
+        assert health["stopping"] is True
+        with pytest.raises(InvalidRequestError, match="已经启动"):
+            adapter.start(trigger_source=trigger_source, event_handler=_BlockingHandler())
+        release.set()
+        socket.recv_multipart()
+        adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
+    finally:
+        release.set()
+        socket.close(linger=0)
+
+
+def test_zeromq_trigger_rejects_extra_or_oversized_frames() -> None:
+    """验证 multipart 帧数量和字节上限在写入 broker 前被拒绝。"""
+
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        transport_config={"max_message_size_bytes": 16},
+    )
+    adapter = ZeroMqTriggerAdapter(local_buffer_writer=_FakeLocalBufferWriter())
+    handler = TriggerSourceSupervisor(
+        adapters={"zeromq-topic": _FakeProtocolAdapter(adapter_kind="zeromq-topic")},
+        workflow_submitter=_FakeWorkflowSubmitter(),
+    )
+
+    with pytest.raises(InvalidRequestError, match="只能包含"):
+        adapter.handle_multipart_message(
+            trigger_source=trigger_source,
+            frames=[b"{}", b"image", b"extra"],
+            event_handler=handler,
+        )
+    with pytest.raises(InvalidRequestError, match="超过"):
+        adapter.handle_multipart_message(
+            trigger_source=trigger_source,
+            frames=[b"{}", b"x" * 17],
+            event_handler=handler,
+        )
 
 
 def test_zeromq_trigger_adapter_allows_envelope_only_event_without_input_frame() -> (
@@ -1437,6 +1621,7 @@ class _FakeWorkflowSubmitter:
     """测试用 WorkflowSubmitter 替身。"""
 
     last_request: WorkflowTriggerSubmitRequest | None = None
+    submit_count: int = 0
 
     def submit_event(
         self, request: WorkflowTriggerSubmitRequest
@@ -1444,6 +1629,7 @@ class _FakeWorkflowSubmitter:
         """记录提交请求并返回 accepted 结果。"""
 
         self.last_request = request
+        self.submit_count += 1
         return TriggerResultContract(
             trigger_source_id=request.trigger_source.trigger_source_id,
             event_id=request.trigger_event.event_id,

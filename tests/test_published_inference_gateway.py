@@ -40,6 +40,9 @@ from backend.service.application.workflows.execution_cleanup import (
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
+)
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
@@ -191,6 +194,43 @@ def test_published_inference_gateway_reuses_process_context_within_execution_sco
     )
 
 
+def test_published_inference_gateway_prepares_concurrent_scope_once() -> None:
+    """验证同一 run 首批并发分支通过 single-flight 只准备一次 deployment。"""
+
+    class _SlowDeploymentService(_FakeDeploymentService):
+        def resolve_process_config(self, deployment_instance_id: str) -> SimpleNamespace:
+            sleep(0.05)
+            return super().resolve_process_config(deployment_instance_id)
+
+    deployment_service = _SlowDeploymentService()
+    deployment_supervisor = _FakeDeploymentSupervisor()
+    gateway = DetectionDeploymentPublishedInferenceGateway(
+        deployment_service=deployment_service,
+        deployment_process_supervisor=deployment_supervisor,
+    )
+    request = PublishedInferenceRequest(
+        task_type="detection",
+        deployment_instance_id="deployment-1",
+        image_payload={
+            "transport_kind": "buffer",
+            "buffer_ref": _build_buffer_ref().model_dump(mode="json"),
+            "media_type": "image/jpeg",
+            "width": 64,
+            "height": 64,
+        },
+        auto_start_process=True,
+        execution_scope_id="workflow-run-first-concurrent",
+    )
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = tuple(executor.map(gateway.infer, (request, request, request)))
+
+    assert len(results) == 3
+    assert deployment_service.resolve_calls == 1
+    assert deployment_supervisor.ensure_calls == 1
+    assert deployment_supervisor.inference_calls == 3
+
+
 def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway_call() -> (
     None
 ):
@@ -234,6 +274,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
                 "execution_image_registry": image_registry,
                 "local_buffer_reader": fake_writer,
                 "workflow_run_id": "run-1",
+                WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY: 90.0,
             },
             runtime_context=runtime_context,
         )
@@ -242,6 +283,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
     assert output["detections"]["items"][0]["class_name"] == "defect"
     assert fake_writer.last_content == source_bytes
     assert fake_writer.last_owner_id == "run-1:detect"
+    assert fake_writer.last_ttl_seconds == 120.0
     assert fake_gateway.last_request is not None
     assert fake_gateway.last_request.input_image_bytes is None
     assert fake_gateway.last_request.image_payload["transport_kind"] == "buffer"
@@ -481,6 +523,7 @@ class _FakeLocalBufferWriter:
 
         self.last_content: bytes | None = None
         self.last_owner_id: str | None = None
+        self.last_ttl_seconds: float | None = None
         self.release_calls: list[tuple[str, str | None]] = []
         self.fail_release = False
 
@@ -498,9 +541,12 @@ class _FakeLocalBufferWriter:
 
         del owner_kind
         del trace_id
-        del kwargs
         self.last_content = content
         self.last_owner_id = owner_id
+        ttl_seconds = kwargs.get("ttl_seconds")
+        self.last_ttl_seconds = (
+            float(ttl_seconds) if isinstance(ttl_seconds, int | float) else None
+        )
         return SimpleNamespace(
             lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-test"),
             buffer_ref=_build_buffer_ref(

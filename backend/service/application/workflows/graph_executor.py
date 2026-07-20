@@ -59,6 +59,12 @@ from backend.service.application.workflows.execution.parallel import (
     WorkflowParallelExecutionPlan,
     build_parallel_execution_plans,
 )
+from backend.service.application.workflows.execution.parallel_safety import (
+    PARALLEL_BRANCH_ACTIVE_KEY,
+    invoke_with_parallel_safety,
+    prepare_parallel_execution_state,
+    validate_parallel_node_definition,
+)
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
@@ -294,7 +300,11 @@ class WorkflowGraphExecutor:
                     runtime_context=runtime_context,
                 )
                 try:
-                    raw_outputs = dict(handler(execution_request))
+                    raw_outputs = invoke_with_parallel_safety(
+                        node_definition=node_definition,
+                        request=execution_request,
+                        handler=handler,
+                    )
                 except ServiceError as exc:
                     duration_ms = _elapsed_ms(node_started_at)
                     augment_service_error_with_node_context(
@@ -359,8 +369,16 @@ class WorkflowGraphExecutor:
                     node_type_id=node_definition.node_type_id,
                     runtime_kind=node_definition.runtime_kind,
                     duration_ms=duration_ms,
-                    inputs=sanitize_runtime_mapping(resolved_inputs),
-                    outputs=dict(raw_outputs),
+                    inputs=(
+                        sanitize_runtime_mapping(resolved_inputs)
+                        if _should_retain_node_record_payloads(execution_metadata_payload)
+                        else {}
+                    ),
+                    outputs=(
+                        dict(raw_outputs)
+                        if _should_retain_node_record_payloads(execution_metadata_payload)
+                        else {}
+                    ),
                 )
             )
             emit_node_event(
@@ -650,6 +668,15 @@ class WorkflowGraphExecutor:
         # 各分支使用浅拷贝的执行元数据；提前创建共享 cleanup list 和锁，保证
         # 任一分支登记的临时资源都会由外层 Workflow Run 统一回收。
         prepare_execution_cleanup_state(execution_metadata)
+        prepare_parallel_execution_state(execution_metadata)
+        for branch in plan.branches:
+            for branch_node_id in branch.body_node_ids:
+                branch_node = next(
+                    node for node in template.nodes if node.node_id == branch_node_id
+                )
+                validate_parallel_node_definition(
+                    self.registry.get_node_definition(branch_node.node_type_id)
+                )
 
         def build_branch_event_callback(
             branch_index: int,
@@ -692,6 +719,7 @@ class WorkflowGraphExecutor:
                 node_output_values=node_output_values,
             )
             branch_metadata = dict(execution_metadata)
+            branch_metadata[PARALLEL_BRANCH_ACTIVE_KEY] = True
             raw_workflow_variables = execution_metadata.get("workflow_variables")
             if isinstance(raw_workflow_variables, dict):
                 branch_metadata["workflow_variables"] = dict(raw_workflow_variables)
@@ -1100,7 +1128,11 @@ class WorkflowGraphExecutor:
             )
             node_started_at = perf_counter()
             try:
-                raw_outputs = dict(handler(execution_request))
+                raw_outputs = invoke_with_parallel_safety(
+                    node_definition=body_node_definition,
+                    request=execution_request,
+                    handler=handler,
+                )
             except ServiceError as exc:
                 duration_ms = _elapsed_ms(node_started_at)
                 augment_service_error_with_node_context(
@@ -1181,8 +1213,16 @@ class WorkflowGraphExecutor:
                     node_type_id=body_node_definition.node_type_id,
                     runtime_kind=body_node_definition.runtime_kind,
                     duration_ms=duration_ms,
-                    inputs=sanitize_runtime_mapping(resolved_inputs),
-                    outputs=dict(raw_outputs),
+                    inputs=(
+                        sanitize_runtime_mapping(resolved_inputs)
+                        if _should_retain_node_record_payloads(execution_metadata)
+                        else {}
+                    ),
+                    outputs=(
+                        dict(raw_outputs)
+                        if _should_retain_node_record_payloads(execution_metadata)
+                        else {}
+                    ),
                 )
             )
             emit_node_event(
@@ -1307,6 +1347,20 @@ def _get_input_port_definition(
     return next(
         (port for port in node_definition.input_ports if port.name == port_name), None
     )
+
+
+def _should_retain_node_record_payloads(
+    execution_metadata: dict[str, object],
+) -> bool:
+    """仅在显式保留 node records 时复制节点输入输出 payload。"""
+
+    if execution_metadata.get("retain_node_records_enabled") is False:
+        return False
+    if execution_metadata.get("workflow_run_record_mode") == "none":
+        return False
+    if execution_metadata.get("trace_level") == "none":
+        return False
+    return True
 
 
 def _elapsed_ms(started_at: float) -> float:

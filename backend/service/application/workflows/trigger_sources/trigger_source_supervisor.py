@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from threading import RLock
+from threading import Event, RLock
+from time import monotonic
 
 from backend.contracts.workflows import TriggerResultContract
 from backend.service.application.errors import InvalidRequestError, ServiceError
@@ -54,6 +55,17 @@ class _ManagedTriggerSourceState:
     timeout_count: SafeCounterState = field(default_factory=SafeCounterState)
     last_triggered_at: str | None = None
     last_error: str | None = None
+    last_submitted_monotonic: float | None = None
+
+
+@dataclass
+class _IdempotencyEntry:
+    """保存一条 TriggerSource 幂等请求的 single-flight 结果。"""
+
+    created_monotonic: float
+    cache_key: tuple[str, str]
+    completion_event: Event = field(default_factory=Event)
+    result: TriggerResultContract | None = None
 
 
 class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
@@ -78,6 +90,9 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         self.workflow_submitter = workflow_submitter
         self.event_normalizer = event_normalizer or TriggerEventNormalizer()
         self._states: dict[str, _ManagedTriggerSourceState] = {}
+        self._idempotency_entries: dict[tuple[str, str], _IdempotencyEntry] = {}
+        self._idempotency_ttl_seconds = 600.0
+        self._idempotency_max_items = 4096
         self._lock = RLock()
 
     def start_trigger_source(self, trigger_source: WorkflowTriggerSource) -> None:
@@ -117,10 +132,13 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
             trigger_source_id, "trigger_source_id"
         )
         with self._lock:
-            state = self._states.pop(normalized_trigger_source_id, None)
+            state = self._states.get(normalized_trigger_source_id)
         if state is None:
             return
         state.adapter.stop(trigger_source_id=normalized_trigger_source_id)
+        with self._lock:
+            if self._states.get(normalized_trigger_source_id) is state:
+                self._states.pop(normalized_trigger_source_id, None)
 
     def stop_all(self) -> None:
         """停止当前 supervisor 管理的全部 TriggerSource。"""
@@ -177,22 +195,164 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         trigger_event = self.event_normalizer.normalize(trigger_source, raw_event)
         state = self._get_or_create_state(trigger_source)
         increment_safe_counter(state.request_count)
-        state.last_triggered_at = trigger_event.occurred_at
-        try:
-            trigger_result = self.workflow_submitter.submit_event(
-                WorkflowTriggerSubmitRequest(
-                    trigger_source=trigger_source,
-                    trigger_event=trigger_event,
-                    created_by=trigger_source.created_by,
-                )
+        with self._lock:
+            state.last_triggered_at = trigger_event.occurred_at
+        idempotency_entry, is_idempotency_owner = self._begin_idempotent_request(
+            trigger_source=trigger_source,
+            idempotency_key=trigger_event.idempotency_key,
+        )
+        if idempotency_entry is not None and not is_idempotency_owner:
+            return self._wait_for_idempotent_result(
+                trigger_source=trigger_source,
+                trigger_event_id=trigger_event.event_id,
+                entry=idempotency_entry,
             )
+        trigger_result: TriggerResultContract | None = None
+        try:
+            if self._should_debounce(trigger_source=trigger_source, state=state):
+                trigger_result = TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=trigger_event.event_id,
+                    state="accepted",
+                    metadata={
+                        "debounced": True,
+                        "debounce_window_ms": trigger_source.debounce_window_ms,
+                    },
+                )
+            else:
+                trigger_result = self.workflow_submitter.submit_event(
+                    WorkflowTriggerSubmitRequest(
+                        trigger_source=trigger_source,
+                        trigger_event=trigger_event,
+                        created_by=trigger_source.created_by,
+                    )
+                )
         except ServiceError as error:
             increment_safe_counter(state.error_count)
-            state.last_error = error.message
+            with self._lock:
+                state.last_error = error.message
             raise
+        finally:
+            if idempotency_entry is not None and is_idempotency_owner:
+                self._complete_idempotent_request(
+                    entry=idempotency_entry,
+                    result=trigger_result,
+                )
 
+        assert trigger_result is not None
         self._record_result(state, trigger_result)
         return trigger_result
+
+    def _begin_idempotent_request(
+        self,
+        *,
+        trigger_source: WorkflowTriggerSource,
+        idempotency_key: str | None,
+    ) -> tuple[_IdempotencyEntry | None, bool]:
+        """登记或复用一条幂等请求；返回 entry 和当前调用是否为 owner。"""
+
+        if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+            return None, False
+        cache_key = (trigger_source.trigger_source_id, idempotency_key.strip())
+        now = monotonic()
+        with self._lock:
+            self._prune_idempotency_entries_locked(now)
+            entry = self._idempotency_entries.get(cache_key)
+            if entry is not None:
+                return entry, False
+            entry = _IdempotencyEntry(created_monotonic=now, cache_key=cache_key)
+            self._idempotency_entries[cache_key] = entry
+            return entry, True
+
+    def _complete_idempotent_request(
+        self,
+        *,
+        entry: _IdempotencyEntry,
+        result: TriggerResultContract | None,
+    ) -> None:
+        """发布幂等 owner 的结果，唤醒并发重复请求。"""
+
+        if result is None:
+            with self._lock:
+                if self._idempotency_entries.get(entry.cache_key) is entry:
+                    self._idempotency_entries.pop(entry.cache_key, None)
+            # 先从缓存移除失败 owner，再唤醒已经拿到旧 entry 的等待者，避免新的
+            # 同键请求错误复用一个没有结果的已完成 entry。
+            entry.completion_event.set()
+            return
+        entry.result = result
+        entry.completion_event.set()
+
+    def _wait_for_idempotent_result(
+        self,
+        *,
+        trigger_source: WorkflowTriggerSource,
+        trigger_event_id: str,
+        entry: _IdempotencyEntry,
+    ) -> TriggerResultContract:
+        """等待同一幂等键的首个请求完成并返回缓存结果。"""
+
+        timeout_seconds = float(trigger_source.reply_timeout_seconds or 30)
+        if not entry.completion_event.wait(timeout=timeout_seconds) or entry.result is None:
+            return TriggerResultContract(
+                trigger_source_id=trigger_source.trigger_source_id,
+                event_id=trigger_event_id,
+                state="timed_out",
+                error_message="等待相同 idempotency_key 的请求结果超时",
+                metadata={"idempotent_replay": True},
+            )
+        return entry.result.model_copy(
+            update={
+                "metadata": {
+                    **dict(entry.result.metadata),
+                    "idempotent_replay": True,
+                }
+            }
+        )
+
+    def _should_debounce(
+        self,
+        *,
+        trigger_source: WorkflowTriggerSource,
+        state: _ManagedTriggerSourceState,
+    ) -> bool:
+        """按 TriggerSource 的窗口抑制紧邻重复触发。"""
+
+        window_ms = trigger_source.debounce_window_ms
+        if window_ms is None or window_ms <= 0:
+            return False
+        now = monotonic()
+        with self._lock:
+            previous = state.last_submitted_monotonic
+            if previous is not None and (now - previous) * 1000.0 < float(window_ms):
+                return True
+            state.last_submitted_monotonic = now
+            return False
+
+    def _prune_idempotency_entries_locked(self, now: float) -> None:
+        """清理过期或超出容量的幂等缓存。"""
+
+        expired_keys = [
+            key
+            for key, entry in self._idempotency_entries.items()
+            if entry.completion_event.is_set()
+            and now - entry.created_monotonic >= self._idempotency_ttl_seconds
+        ]
+        for key in expired_keys:
+            self._idempotency_entries.pop(key, None)
+        overflow = len(self._idempotency_entries) - self._idempotency_max_items
+        if overflow <= 0:
+            return
+        completed_items = sorted(
+            (
+                (key, entry)
+                for key, entry in self._idempotency_entries.items()
+                if entry.completion_event.is_set()
+            ),
+            key=lambda item: item[1].created_monotonic,
+        )
+        for key, _ in completed_items[:overflow]:
+            self._idempotency_entries.pop(key, None)
 
     def get_health(self, trigger_source_id: str) -> dict[str, object]:
         """读取一条 TriggerSource 的 supervisor 运行状态。

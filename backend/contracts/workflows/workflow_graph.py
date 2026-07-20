@@ -21,6 +21,11 @@ NODE_RUNTIME_PYTHON_CALLABLE = "python-callable"
 NODE_RUNTIME_WORKER_TASK = "worker-task"
 NODE_RUNTIME_SERVICE_CALL = "service-call"
 
+NODE_CONCURRENCY_THREAD_SAFE = "thread-safe"
+NODE_CONCURRENCY_SERIALIZED = "serialized"
+NODE_CONCURRENCY_EXCLUSIVE = "exclusive"
+NODE_CONCURRENCY_UNSUPPORTED_IN_PARALLEL = "unsupported-in-parallel"
+
 FLOW_APPLICATION_RUNTIME_PYTHON_JSON = "python-json-workflow"
 FLOW_BINDING_DIRECTION_INPUT = "input"
 FLOW_BINDING_DIRECTION_OUTPUT = "output"
@@ -236,6 +241,7 @@ class NodeDefinition(BaseModel):
     - description：节点职责说明。
     - implementation_kind：实现来源，支持 core-node 或 custom-node。
     - runtime_kind：运行方式，支持 python-callable、worker-task 或 service-call。
+    - concurrency_policy：节点进入 Parallel 分支时的线程安全策略。
     - input_ports：输入端口列表。
     - output_ports：输出端口列表。
     - parameter_schema：参数 schema。
@@ -260,6 +266,12 @@ class NodeDefinition(BaseModel):
         NODE_RUNTIME_WORKER_TASK,
         NODE_RUNTIME_SERVICE_CALL,
     ]
+    concurrency_policy: Literal[
+        "thread-safe",
+        "serialized",
+        "exclusive",
+        "unsupported-in-parallel",
+    ] = NODE_CONCURRENCY_SERIALIZED
     input_ports: tuple[NodePortDefinition, ...] = ()
     output_ports: tuple[NodePortDefinition, ...] = ()
     parameter_schema: dict[str, object] = Field(default_factory=dict)

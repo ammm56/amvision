@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY = "workflow_execution_cleanup_items"
 WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY = "workflow_execution_cleanup_lock"
+WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY = "workflow_execution_timeout_seconds"
 WORKFLOW_DEPLOYMENT_CLEANUP_IDS_KEY = "workflow_deployment_cleanup_ids"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE = "deployment_instance"
 WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT = "dataset_storage_object"
@@ -140,6 +141,18 @@ def build_process_safe_execution_metadata(
 
     payload = dict(execution_metadata)
     payload.pop(WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY, None)
+    # 并行节点锁与 cleanup 锁一样，只能在实际执行所在进程中创建和使用。
+    # 即使调用方复用了曾在本进程执行过的 metadata，也不能把 threading.RLock
+    # 交给 multiprocessing.Queue 的异步 feeder 线程。
+    from backend.service.application.workflows.execution.parallel_safety import (
+        PARALLEL_BRANCH_ACTIVE_KEY,
+        PARALLEL_EXCLUSIVE_LOCK_KEY,
+        PARALLEL_NODE_LOCKS_KEY,
+    )
+
+    payload.pop(PARALLEL_BRANCH_ACTIVE_KEY, None)
+    payload.pop(PARALLEL_EXCLUSIVE_LOCK_KEY, None)
+    payload.pop(PARALLEL_NODE_LOCKS_KEY, None)
     raw_cleanup_items = payload.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY)
     if isinstance(raw_cleanup_items, list):
         payload[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = [
@@ -365,15 +378,38 @@ def register_local_buffer_lease_cleanup(
     - pool_name：可选的目标 pool 名称。
     """
 
+    cleanup_item = build_local_buffer_lease_cleanup_item(
+        lease_id=lease_id,
+        pool_name=pool_name,
+    )
+    if cleanup_item is None:
+        return
+    register_execution_cleanup(
+        execution_metadata,
+        resource_kind=str(cleanup_item["resource_kind"]),
+        resource_id=str(cleanup_item["resource_id"]),
+        metadata=dict(cleanup_item["metadata"]),
+    )
+
+
+def build_local_buffer_lease_cleanup_item(
+    *,
+    lease_id: str,
+    pool_name: str | None = None,
+) -> dict[str, object] | None:
+    """构造不含进程内锁、可随 worker 请求传递的 lease cleanup 描述。"""
+
+    normalized_lease_id = lease_id.strip()
+    if not normalized_lease_id:
+        return None
     metadata: dict[str, object] = {}
     if isinstance(pool_name, str) and pool_name.strip():
         metadata["pool_name"] = pool_name.strip()
-    register_execution_cleanup(
-        execution_metadata,
-        resource_kind=WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
-        resource_id=lease_id,
-        metadata=metadata,
-    )
+    return {
+        "resource_kind": WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
+        "resource_id": normalized_lease_id,
+        "metadata": metadata,
+    }
 
 
 def list_registered_deployment_cleanup_ids(

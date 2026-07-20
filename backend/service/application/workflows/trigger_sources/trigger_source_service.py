@@ -19,7 +19,13 @@ from backend.service.domain.workflows.workflow_trigger_source_records import (
 )
 from backend.service.application.workflows.trigger_sources.zeromq_transport import (
     ZEROMQ_BUFFER_TTL_SECONDS_KEY,
+    ZEROMQ_MAX_MESSAGE_SIZE_BYTES_KEY,
+    ZEROMQ_RECEIVE_HWM_KEY,
+    ZEROMQ_SEND_HWM_KEY,
     resolve_zeromq_buffer_ttl_seconds,
+    resolve_zeromq_max_message_size_bytes,
+    resolve_zeromq_receive_hwm,
+    resolve_zeromq_send_hwm,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -45,11 +51,10 @@ _TRIGGER_KINDS = {
 }
 _SUBMIT_MODES = {"sync", "async"}
 _ACK_POLICIES = {
-    "ack-after-received",
     "ack-after-run-created",
     "ack-after-run-finished",
 }
-_RESULT_MODES = {"sync-reply", "accepted-then-query", "async-report", "event-only"}
+_RESULT_MODES = {"sync-reply", "accepted-then-query", "event-only"}
 _ZEROMQ_TRIGGER_KIND = "zeromq-topic"
 _ZEROMQ_BIND_ENDPOINT_KEY = "bind_endpoint"
 
@@ -91,8 +96,8 @@ class WorkflowTriggerSourceCreateRequest:
     input_binding_mapping: dict[str, object] | None = None
     result_mapping: dict[str, object] | None = None
     default_execution_metadata: dict[str, object] | None = None
-    ack_policy: str = "ack-after-run-finished"
-    result_mode: str = "sync-reply"
+    ack_policy: str | None = None
+    result_mode: str | None = None
     reply_timeout_seconds: int | None = None
     debounce_window_ms: int | None = None
     idempotency_key_path: str | None = None
@@ -457,8 +462,29 @@ class WorkflowTriggerSourceService:
             request.workflow_runtime_id, "workflow_runtime_id"
         )
         submit_mode = _require_choice(request.submit_mode, "submit_mode", _SUBMIT_MODES)
-        ack_policy = _require_choice(request.ack_policy, "ack_policy", _ACK_POLICIES)
-        result_mode = _require_choice(request.result_mode, "result_mode", _RESULT_MODES)
+        default_ack_policy = (
+            "ack-after-run-finished"
+            if submit_mode == "sync"
+            else "ack-after-run-created"
+        )
+        default_result_mode = (
+            "sync-reply" if submit_mode == "sync" else "accepted-then-query"
+        )
+        ack_policy = _require_choice(
+            request.ack_policy or default_ack_policy,
+            "ack_policy",
+            _ACK_POLICIES,
+        )
+        result_mode = _require_choice(
+            request.result_mode or default_result_mode,
+            "result_mode",
+            _RESULT_MODES,
+        )
+        _validate_delivery_semantics(
+            submit_mode=submit_mode,
+            ack_policy=ack_policy,
+            result_mode=result_mode,
+        )
         if (
             request.reply_timeout_seconds is not None
             and request.reply_timeout_seconds <= 0
@@ -852,6 +878,37 @@ def _normalize_optional_str(value: str | None) -> str | None:
     return normalized_value or None
 
 
+def _validate_delivery_semantics(
+    *,
+    submit_mode: str,
+    ack_policy: str,
+    result_mode: str,
+) -> None:
+    """拒绝控制面声明与实际提交/回执行为不一致的组合。"""
+
+    if submit_mode == "sync":
+        if ack_policy != "ack-after-run-finished" or result_mode != "sync-reply":
+            raise InvalidRequestError(
+                "sync TriggerSource 必须使用 ack-after-run-finished 和 sync-reply",
+                details={
+                    "submit_mode": submit_mode,
+                    "ack_policy": ack_policy,
+                    "result_mode": result_mode,
+                },
+            )
+        return
+    if ack_policy != "ack-after-run-created":
+        raise InvalidRequestError(
+            "async TriggerSource 必须使用 ack-after-run-created",
+            details={"submit_mode": submit_mode, "ack_policy": ack_policy},
+        )
+    if result_mode not in {"accepted-then-query", "event-only"}:
+        raise InvalidRequestError(
+            "async TriggerSource 只支持 accepted-then-query 或 event-only",
+            details={"submit_mode": submit_mode, "result_mode": result_mode},
+        )
+
+
 def _normalize_transport_config_for_kind(
     trigger_kind: str,
     transport_config: dict[str, object],
@@ -866,6 +923,15 @@ def _normalize_transport_config_for_kind(
     )
     normalized_config[ZEROMQ_BUFFER_TTL_SECONDS_KEY] = (
         resolve_zeromq_buffer_ttl_seconds(normalized_config)
+    )
+    normalized_config[ZEROMQ_RECEIVE_HWM_KEY] = resolve_zeromq_receive_hwm(
+        normalized_config
+    )
+    normalized_config[ZEROMQ_SEND_HWM_KEY] = resolve_zeromq_send_hwm(
+        normalized_config
+    )
+    normalized_config[ZEROMQ_MAX_MESSAGE_SIZE_BYTES_KEY] = (
+        resolve_zeromq_max_message_size_bytes(normalized_config)
     )
     return normalized_config
 

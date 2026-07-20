@@ -30,6 +30,9 @@ from backend.service.application.workflows.documents.storage import (
     write_resource_summary,
 )
 from backend.service.application.workflows.documents.validation import summarize_workflow_template
+from backend.service.application.workflows.execution.parallel_safety import (
+    validate_parallel_template_node_definitions,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -52,6 +55,10 @@ class WorkflowTemplateDocumentStore:
 
         try:
             validate_workflow_graph_template(
+                template=template,
+                node_definitions=self.node_definitions,
+            )
+            validate_parallel_template_node_definitions(
                 template=template,
                 node_definitions=self.node_definitions,
             )

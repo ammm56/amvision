@@ -50,6 +50,12 @@ from backend.service.application.workflows.execution_cleanup import (
     build_process_safe_execution_metadata,
     register_local_buffer_lease_cleanup,
 )
+from backend.service.application.workflows.execution.parallel_safety import (
+    PARALLEL_BRANCH_ACTIVE_KEY,
+    PARALLEL_EXCLUSIVE_LOCK_KEY,
+    PARALLEL_NODE_LOCKS_KEY,
+    prepare_parallel_execution_state,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.snapshot_execution import (
@@ -463,6 +469,42 @@ def test_local_buffer_broker_release_owner_keeps_other_runs(tmp_path: Path) -> N
         supervisor.stop()
 
 
+def test_workflow_parent_cleanup_releases_unregistered_run_owner_leases(
+    tmp_path: Path,
+) -> None:
+    """验证 worker 硬退出时父进程可按 run owner 前缀回收未登记 crop lease。"""
+
+    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor.start()
+    manager = object.__new__(WorkflowRuntimeWorkerManager)
+    manager.local_buffer_broker_event_channel_provider = supervisor.get_event_channel
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        client.write_bytes(
+            content=b"crop-a",
+            owner_kind="workflow-runtime",
+            owner_id="workflow-run-hard-exit:classification-a",
+            media_type="image/raw",
+            ttl_seconds=60,
+        )
+        client.write_bytes(
+            content=b"crop-b",
+            owner_kind="workflow-runtime",
+            owner_id="workflow-run-hard-exit:classification-b",
+            media_type="image/raw",
+            ttl_seconds=60,
+        )
+
+        assert manager.cleanup_workflow_run_local_buffer_owner(
+            "workflow-run-hard-exit"
+        ) == 2
+        assert supervisor.get_status()["pools"][0]["free_count"] == 2
+    finally:
+        manager._close_cleanup_local_buffer_client()
+        supervisor.stop()
+
+
 def test_workflow_cleanup_metadata_is_safe_across_process_boundary() -> None:
     """验证并行 cleanup 锁不会进入 workflow worker 的进程消息。"""
 
@@ -472,11 +514,18 @@ def test_workflow_cleanup_metadata_is_safe_across_process_boundary() -> None:
         lease_id="lease-process-boundary",
         pool_name="image-4k",
     )
+    metadata[PARALLEL_BRANCH_ACTIVE_KEY] = True
+    prepare_parallel_execution_state(metadata)
 
     assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
+    assert PARALLEL_EXCLUSIVE_LOCK_KEY in metadata
+    assert PARALLEL_NODE_LOCKS_KEY in metadata
     process_metadata = build_process_safe_execution_metadata(metadata)
 
     assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY not in process_metadata
+    assert PARALLEL_BRANCH_ACTIVE_KEY not in process_metadata
+    assert PARALLEL_EXCLUSIVE_LOCK_KEY not in process_metadata
+    assert PARALLEL_NODE_LOCKS_KEY not in process_metadata
     assert process_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] == [
         {
             "resource_kind": "local_buffer_lease",

@@ -34,9 +34,8 @@ WorkflowTriggerKind = Literal[
     "http-api",
 ]
 WorkflowTriggerSubmitMode = Literal["sync", "async"]
-WorkflowTriggerResultMode = Literal["sync-reply", "accepted-then-query", "async-report", "event-only"]
+WorkflowTriggerResultMode = Literal["sync-reply", "accepted-then-query", "event-only"]
 WorkflowTriggerAckPolicy = Literal[
-    "ack-after-received",
     "ack-after-run-created",
     "ack-after-run-finished",
 ]
@@ -102,11 +101,9 @@ WORKFLOW_TRIGGER_SUBMIT_MODES: tuple[WorkflowTriggerSubmitMode, ...] = ("sync", 
 WORKFLOW_TRIGGER_RESULT_MODES: tuple[WorkflowTriggerResultMode, ...] = (
     "sync-reply",
     "accepted-then-query",
-    "async-report",
     "event-only",
 )
 WORKFLOW_TRIGGER_ACK_POLICIES: tuple[WorkflowTriggerAckPolicy, ...] = (
-    "ack-after-received",
     "ack-after-run-created",
     "ack-after-run-finished",
 )

@@ -2278,15 +2278,17 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
     assert error_details["error_message"] == "process fail"
     assert get_run_response.json()["state"] == "failed"
     assert get_run_response.json()["metadata"]["error_details"]["node_id"] == "explode"
-    assert health_response.json()["observed_state"] == "failed"
-    assert health_response.json()["last_error"] == "workflow 节点执行失败"
+    # 单次 Workflow Run 失败必须返回失败详情，但不能把仍可服务的 worker
+    # 误标为 failed；后续调用和显式 restart 都应继续可用。
+    assert health_response.json()["observed_state"] == "running"
+    assert health_response.json()["last_error"] is None
     assert stop_response.json()["observed_state"] == "stopped"
 
 
-def test_workflow_app_runtime_api_can_restart_after_failed_worker_state(
+def test_workflow_app_runtime_api_can_restart_after_failed_run(
     tmp_path: Path,
 ) -> None:
-    """验证 runtime worker 在 failed 后可以通过 restart 重新拉起。"""
+    """验证单次 run 失败不污染 worker，且仍可显式 restart。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -2377,7 +2379,7 @@ def test_workflow_app_runtime_api_can_restart_after_failed_worker_state(
     failed_process_id = failed_health_response.json()["worker_process_id"]
     recovered_process_id = second_start_response.json()["worker_process_id"]
     assert invoke_response.json()["state"] == "failed"
-    assert failed_health_response.json()["observed_state"] == "failed"
+    assert failed_health_response.json()["observed_state"] == "running"
     assert failed_process_id == first_process_id
     assert second_start_response.json()["observed_state"] == "running"
     assert recovered_health_response.json()["observed_state"] == "running"

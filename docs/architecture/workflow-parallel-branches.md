@@ -85,6 +85,17 @@ Parallel Start(max_concurrency=M)
 - cleanup list 和 cleanup lock 由父 Workflow Run 创建并供全部分支共享。
 - deployment 进程句柄继续由父进程 supervisor 管理，不复制到 Workflow 子线程。
 
+### Node concurrency contract
+
+每个 `NodeDefinition` 通过 `concurrency_policy` 明确声明 Parallel 分支中的并发能力：
+
+- `thread-safe`：节点可由多个分支同时调用；五类已发布模型推理节点使用该策略。
+- `serialized`：默认策略；同一 `node_type_id` 在单次 Workflow Run 内串行调用，防止旧节点或自定义节点的可变状态产生竞态。
+- `exclusive`：单次 Workflow Run 内与其他 `exclusive` 节点互斥，适合独占设备或进程内全局资源。
+- `unsupported-in-parallel`：保存校验或执行边界启动前直接拒绝，不让不安全节点进入分支线程。
+
+锁只在 Workflow worker 进程内创建。父进程向 `multiprocessing.Queue` 发送执行 metadata 前会剥离 cleanup lock、Parallel node locks 和分支标记；worker 收到请求后再创建当前进程的锁，避免 `threading.RLock` 被异步 pickle 后导致请求静默丢失。
+
 ## 当前应用配置
 
 当前 80 ROI、3 deployment instances 的应用建议配置：

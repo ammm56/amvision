@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.contracts.workflows.workflow_graph import (
+    NODE_CONCURRENCY_THREAD_SAFE,
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_WORKER_TASK,
     NodeDefinition,
@@ -58,6 +59,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         description="调用独立推理 worker 产出标准 obb 结果。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_WORKER_TASK,
+        concurrency_policy=NODE_CONCURRENCY_THREAD_SAFE,
         input_ports=(
             NodePortDefinition(
                 name="image",

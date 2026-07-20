@@ -36,6 +36,8 @@ DEFAULT_DIRECT_MODEL_SCORE_THRESHOLD = 0.3
 DEFAULT_DIRECT_MODEL_MASK_THRESHOLD = 0.5
 DEFAULT_DIRECT_MODEL_TOP_K = 5
 DEFAULT_DIRECT_MODEL_KEYPOINT_CONFIDENCE_THRESHOLD = 0.3
+DEFAULT_WORKFLOW_LOCAL_BUFFER_TTL_SECONDS = 330.0
+WORKFLOW_LOCAL_BUFFER_TTL_GRACE_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,7 @@ def _try_write_memory_image_to_local_buffer(
         layout=_read_optional_payload_text(normalized_payload, "layout"),
         pixel_format=_read_optional_payload_text(normalized_payload, "pixel_format"),
         trace_id=_read_optional_trace_id(request),
+        ttl_seconds=_resolve_workflow_local_buffer_ttl_seconds(request),
     )
     buffer_payload = dict(normalized_payload)
     buffer_payload["transport_kind"] = IMAGE_TRANSPORT_BUFFER
@@ -266,6 +269,25 @@ def _build_buffer_owner_id(request: WorkflowNodeExecutionRequest) -> str:
     if isinstance(workflow_run_id, str) and workflow_run_id.strip():
         return f"{workflow_run_id.strip()}:{request.node_id}"
     return request.node_id
+
+
+def _resolve_workflow_local_buffer_ttl_seconds(
+    request: WorkflowNodeExecutionRequest,
+) -> float:
+    """解析临时模型输入 lease 的正数 TTL，并覆盖完整 Workflow Run 超时。"""
+
+    from backend.service.application.workflows.execution_cleanup import (
+        WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
+    )
+
+    raw_timeout = request.execution_metadata.get(
+        WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY
+    )
+    if isinstance(raw_timeout, bool):
+        return DEFAULT_WORKFLOW_LOCAL_BUFFER_TTL_SECONDS
+    if isinstance(raw_timeout, (int, float)) and float(raw_timeout) > 0:
+        return float(raw_timeout) + WORKFLOW_LOCAL_BUFFER_TTL_GRACE_SECONDS
+    return DEFAULT_WORKFLOW_LOCAL_BUFFER_TTL_SECONDS
 
 
 def _read_optional_payload_text(payload: dict[str, object], key: str) -> str | None:

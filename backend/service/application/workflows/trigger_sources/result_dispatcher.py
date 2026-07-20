@@ -46,6 +46,8 @@ class WorkflowResultDispatcher:
             metadata={
                 "workflow_runtime_id": workflow_run.workflow_runtime_id,
                 "workflow_state": workflow_run.state,
+                "ack_policy": trigger_source.ack_policy,
+                "result_mode": trigger_source.result_mode,
             },
         )
 
@@ -58,6 +60,13 @@ class WorkflowResultDispatcher:
     ) -> dict[str, object]:
         """按 result_mapping 构造响应 payload。"""
 
+        if trigger_source.result_mode == "event-only":
+            return {}
+        if trigger_source.result_mode == "accepted-then-query":
+            return {
+                "workflow_run_id": workflow_run.workflow_run_id,
+                "workflow_state": workflow_run.state,
+            }
         result_mapping = dict(trigger_source.result_mapping)
         result_binding = result_mapping.get("result_binding", "workflow_result")
         effective_outputs = (
