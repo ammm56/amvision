@@ -89,7 +89,8 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     names = set(archive.namelist())
     assert "manifest.json" in names
     assert "README.md" in names
-    workflow_config_name = next(name for name in names if name.startswith("Config/config_workflow_"))
+    workflow_config_name = "Config/config_workflow-app-sdk-config.json"
+    assert workflow_config_name in names
     model_config_name = next(name for name in names if name.startswith("Config/config_model_deployment_"))
 
     manifest = json.loads(archive.read("manifest.json"))
@@ -103,7 +104,7 @@ def test_sdk_config_package_preview_and_download_include_project_resources(tmp_p
     assert workflow_config["backend"]["http_timeout_seconds"] == 300
     assert workflow_config["runtime"]["name"] == "新建应用yolo11m_barqrcode"
     assert workflow_config["runtime"]["workflow_runtime_id"] == "workflow-runtime-sdk-config"
-    assert workflow_config_name.startswith("Config/config_workflow_yolo11m_barqrcode_")
+    assert workflow_config_name == "Config/config_workflow-app-sdk-config.json"
     assert workflow_config["trigger_sources"][0]["name"] == "zeromq yolo11m_barqrcode runtime"
     assert workflow_config["trigger_sources"][0]["trigger_source_id"] == "zeromq-sdk-config"
     assert workflow_config["trigger_sources"][0]["zero_mq"]["bind_endpoint"] == "tcp://127.0.0.1:5555"
@@ -135,12 +136,99 @@ def test_sdk_config_package_can_include_current_access_token(tmp_path: Path) -> 
     assert response.status_code == 200
     archive = zipfile.ZipFile(BytesIO(response.content))
     manifest = json.loads(archive.read("manifest.json"))
-    workflow_config_name = next(
-        name for name in archive.namelist() if name.startswith("Config/config_workflow_")
-    )
+    workflow_config_name = "Config/config_workflow-app-sdk-config.json"
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert manifest["contains_access_token"] is True
     assert workflow_config["backend"]["access_token"] == token
+
+
+def test_sdk_config_package_uses_resource_ids_for_workflow_file_names(tmp_path: Path) -> None:
+    """验证中文展示名称不会再生成重复的 project 文件名。"""
+
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id="workflow-app-20260718114943",
+        application_display_name="摆盘分拣塑盒满盘检测应用",
+        workflow_runtime_id="workflow-runtime-sdk-config-first",
+    )
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id="workflow-app-20260718122522",
+        application_display_name="摆盘分拣来料空盘检测应用",
+        workflow_runtime_id="workflow-runtime-sdk-config-second",
+    )
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/sdk-config-packages/download",
+                headers=_build_headers(),
+                json={},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    workflow_names = sorted(
+        name
+        for name in archive.namelist()
+        if name.startswith("Config/config_workflow-app-")
+    )
+    assert workflow_names == [
+        "Config/config_workflow-app-20260718114943.json",
+        "Config/config_workflow-app-20260718122522.json",
+    ]
+    assert len(archive.namelist()) == len(set(archive.namelist()))
+
+
+def test_sdk_config_package_disambiguates_multiple_runtimes_for_one_application(
+    tmp_path: Path,
+) -> None:
+    """验证同一 application 的多个 runtime 会使用真实 runtime id 消歧。"""
+
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    application_id = "workflow-app-20260718114943"
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id=application_id,
+        application_display_name="摆盘分拣塑盒满盘检测应用",
+        workflow_runtime_id="workflow-runtime-primary",
+    )
+    _seed_workflow_runtime(
+        session_factory,
+        dataset_storage,
+        application_id=application_id,
+        application_display_name="摆盘分拣塑盒满盘检测应用",
+        workflow_runtime_id="workflow-runtime-backup",
+    )
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/sdk-config-packages/download",
+                headers=_build_headers(),
+                json={},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    workflow_names = sorted(
+        name
+        for name in archive.namelist()
+        if name.startswith(f"Config/config_{application_id}_")
+    )
+    assert workflow_names == [
+        f"Config/config_{application_id}_workflow-runtime-backup.json",
+        f"Config/config_{application_id}_workflow-runtime-primary.json",
+    ]
+    assert len(archive.namelist()) == len(set(archive.namelist()))
 
 
 def test_sdk_config_package_can_skip_current_access_token(tmp_path: Path) -> None:
@@ -162,9 +250,7 @@ def test_sdk_config_package_can_skip_current_access_token(tmp_path: Path) -> Non
     assert response.status_code == 200
     archive = zipfile.ZipFile(BytesIO(response.content))
     manifest = json.loads(archive.read("manifest.json"))
-    workflow_config_name = next(
-        name for name in archive.namelist() if name.startswith("Config/config_workflow_")
-    )
+    workflow_config_name = "Config/config_workflow-app-sdk-config.json"
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert manifest["contains_access_token"] is False
     assert workflow_config["backend"]["access_token"] == "<replace-with-user-token>"
@@ -273,6 +359,48 @@ def _seed_workflow_runtime_and_trigger_source(
                     }
                 },
                 reply_timeout_seconds=5,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+
+def _seed_workflow_runtime(
+    session_factory: object,
+    dataset_storage: object,
+    *,
+    application_id: str,
+    application_display_name: str,
+    workflow_runtime_id: str,
+) -> None:
+    """写入一个独立 Workflow app runtime，供文件名回归测试使用。"""
+
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    application_object_key = f"projects/project-1/workflows/apps/{application_id}/app.json"
+    dataset_storage.write_json(
+        application_object_key,
+        {
+            "application_id": application_id,
+            "display_name": application_display_name,
+        },
+    )
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        unit_of_work.workflow_runtime.save_workflow_app_runtime(
+            WorkflowAppRuntime(
+                workflow_runtime_id=workflow_runtime_id,
+                project_id="project-1",
+                application_id=application_id,
+                display_name=f"{application_display_name} runtime",
+                application_snapshot_object_key=application_object_key,
+                template_snapshot_object_key=(
+                    f"projects/project-1/workflows/templates/{application_id}/template.json"
+                ),
+                desired_state="running",
+                observed_state="running",
                 created_at=now,
                 updated_at=now,
             )

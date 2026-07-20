@@ -73,7 +73,7 @@ POST /api/v1/projects/{project_id}/sdk-config-packages/download
   "model_deployment_count": 2,
   "files": [
     {
-      "path": "Config/config_workflow_yolo11m_barqrcode_20260708153000.json",
+      "path": "Config/config_workflow-app-20260718114943.json",
       "kind": "workflow-runtime",
       "count": 1,
       "runtime_key": "yolo11m_barqrcode",
@@ -133,9 +133,10 @@ Content-Disposition: attachment; filename="amvision_sdk_configs_project-1_202607
 分组规则：
 
 - 以 WorkflowAppRuntime 为配置文件边界。
-- 每个 runtime 生成一个 `config_workflow_{runtime_key}_{timestamp}.json`。
+- 每个 runtime 生成一个 `config_{application_id}.json`，例如 `config_workflow-app-20260718114943.json`。
+- 文件名使用真实 `application_id`，不使用可能重复、包含中文或会被用户修改的展示名称，也不追加生成时间。
 - 与该 runtime 绑定的 TriggerSource 写入同一文件的 `trigger_sources`。
-- 同一 workflow app 如果有多个 runtime，就生成多个 workflow 配置文件，避免一个 key 对应多个 runtime。
+- 同一 workflow app 如果有多个 runtime，则使用 `config_{application_id}_{workflow_runtime_id}.json` 消歧，避免 zip 内同名覆盖。
 
 生成内容只保留 Console 使用所需的最小字段：
 
@@ -252,8 +253,8 @@ Config/config_model_deployment_{timestamp}.json
 amvision_sdk_configs_project-1_20260708153000.zip
 ├─ Config/
 │  ├─ config_model_deployment_20260708153000.json
-│  ├─ config_workflow_yolo11m_barqrcode_20260708153000.json
-│  └─ config_workflow_other_runtime_20260708153000.json
+│  ├─ config_workflow-app-20260718114943.json
+│  └─ config_workflow-app-20260718122522.json
 ├─ manifest.json
 └─ README.md
 ```
@@ -274,7 +275,7 @@ amvision_sdk_configs_project-1_20260708153000.zip
       "count": 2
     },
     {
-      "path": "Config/config_workflow_yolo11m_barqrcode_20260708153000.json",
+      "path": "Config/config_workflow-app-20260718114943.json",
       "kind": "workflow-runtime",
       "runtime_key": "yolo11m_barqrcode",
       "trigger_source_count": 1

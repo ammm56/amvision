@@ -217,18 +217,23 @@ class _SdkConfigPackageBuilder:
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
         self.warnings: list[str] = []
         self.used_keys: dict[str, int] = {}
+        self.used_paths: set[str] = set()
 
     def build(self, resources: _ProjectSdkConfigResources) -> SdkConfigPackagePlan:
         """构建完整配置包计划。"""
 
         files: list[SdkConfigPackageFile] = []
         trigger_sources_by_runtime = self._group_trigger_sources(resources.trigger_sources)
+        runtime_count_by_application = _count_runtimes_by_application(resources.runtimes)
         for runtime in sorted(resources.runtimes, key=lambda item: item.workflow_runtime_id):
             workflow_file = self._build_workflow_file(
                 runtime=runtime,
                 trigger_sources=trigger_sources_by_runtime.get(runtime.workflow_runtime_id, ()),
                 application_display_name=resources.application_display_names.get(
                     runtime.workflow_runtime_id
+                ),
+                application_has_multiple_runtimes=(
+                    runtime_count_by_application.get(runtime.application_id.casefold(), 0) > 1
                 ),
             )
             files.append(workflow_file)
@@ -289,6 +294,7 @@ class _SdkConfigPackageBuilder:
         runtime: WorkflowAppRuntime,
         trigger_sources: tuple[WorkflowTriggerSource, ...],
         application_display_name: str | None,
+        application_has_multiple_runtimes: bool,
     ) -> SdkConfigPackageFile:
         """构建单个 WorkflowAppRuntime 对应的配置文件。"""
 
@@ -319,7 +325,10 @@ class _SdkConfigPackageBuilder:
             ],
             "model_deployments": [],
         }
-        path = f"Config/config_workflow_{_safe_file_part(runtime_key)}_{self.timestamp}.json"
+        path = self._build_workflow_config_path(
+            runtime,
+            include_runtime_id=application_has_multiple_runtimes,
+        )
         return SdkConfigPackageFile(
             path=path,
             kind="workflow-runtime",
@@ -328,6 +337,40 @@ class _SdkConfigPackageBuilder:
             runtime_key=runtime_key,
             trigger_source_count=len(trigger_sources),
         )
+
+    def _build_workflow_config_path(
+        self,
+        runtime: WorkflowAppRuntime,
+        *,
+        include_runtime_id: bool,
+    ) -> str:
+        """使用真实资源 id 构建稳定且唯一的 Workflow 配置文件名。
+
+        单个应用只有一个 runtime 时直接使用 ``config_<application_id>.json``。
+        同一应用存在多个 runtime 时追加 ``workflow_runtime_id``，避免 zip 内同名覆盖。
+        展示名称只用于配置里的 key，不再参与文件命名。
+        """
+
+        application_part = _safe_file_part(runtime.application_id, fallback="workflow-app")
+        runtime_part = _safe_file_part(runtime.workflow_runtime_id, fallback="workflow-runtime")
+        stem = application_part
+        if include_runtime_id:
+            stem = f"{application_part}_{runtime_part}"
+
+        path = f"Config/config_{stem}.json"
+        if path.casefold() in self.used_paths:
+            path = f"Config/config_{application_part}_{runtime_part}.json"
+        if path.casefold() in self.used_paths:
+            raise InvalidRequestError(
+                "Workflow SDK 配置文件名重复",
+                details={
+                    "application_id": runtime.application_id,
+                    "workflow_runtime_id": runtime.workflow_runtime_id,
+                    "path": path,
+                },
+            )
+        self.used_paths.add(path.casefold())
+        return path
 
     def _build_trigger_source_config(
         self,
@@ -549,6 +592,18 @@ def _build_runtime_key(
     return runtime.workflow_runtime_id
 
 
+def _count_runtimes_by_application(
+    runtimes: tuple[WorkflowAppRuntime, ...],
+) -> dict[str, int]:
+    """按 application_id 统计 runtime 数量，供稳定文件名消歧。"""
+
+    counts: dict[str, int] = {}
+    for runtime in runtimes:
+        key = runtime.application_id.casefold()
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def _read_runtime_application_display_name(
     dataset_storage: LocalDatasetStorage,
     runtime: WorkflowAppRuntime,
@@ -597,11 +652,11 @@ def _display_key(value: str, *, fallback: str) -> str:
     return normalized or fallback
 
 
-def _safe_file_part(value: str) -> str:
-    """把 Project id 转换成安全文件名片段。"""
+def _safe_file_part(value: str, *, fallback: str = "project") -> str:
+    """把资源 id 转换成安全文件名片段。"""
 
     normalized = re.sub(r"[^0-9A-Za-z_.-]+", "_", value.strip()).strip("._-")
-    return normalized or "project"
+    return normalized or fallback
 
 
 def _read_optional_text(payload: dict[str, object], key: str) -> str | None:
