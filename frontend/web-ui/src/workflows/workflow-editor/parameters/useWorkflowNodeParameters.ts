@@ -182,8 +182,19 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     let changed = false
     for (const [parameterName, value] of Object.entries(updates)) {
       if (!parameterNames.has(parameterName)) continue
-      nextParameters[parameterName] = cloneWorkflowJsonValue(value)
       const draftKey = `${node.node.node_id}:${parameterName}`
+      if (value === undefined) {
+        if (!(parameterName in nextParameters)) continue
+        delete nextParameters[parameterName]
+        if (draftKey in options.complexParameterDrafts.value) {
+          const nextDrafts = { ...options.complexParameterDrafts.value }
+          delete nextDrafts[draftKey]
+          options.complexParameterDrafts.value = nextDrafts
+        }
+        changed = true
+        continue
+      }
+      nextParameters[parameterName] = cloneWorkflowJsonValue(value)
       if (draftKey in options.complexParameterDrafts.value) {
         options.complexParameterDrafts.value = {
           ...options.complexParameterDrafts.value,

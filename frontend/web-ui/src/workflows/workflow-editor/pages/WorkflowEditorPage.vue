@@ -1267,6 +1267,11 @@ function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent):
   }
   const updates = buildPreviewImageInteractionParameterUpdates(event, targetNode.node.parameters)
   if (!updates || Object.keys(updates).length === 0) {
+    if (event.clearParameterNames?.length) {
+      errorMessage.value = null
+      selectNode(event.nodeId)
+      return true
+    }
     errorMessage.value = `${readGraphNodeTitle(targetNode)} 暂不支持当前图片取参结果`
     return false
   }
@@ -1300,6 +1305,12 @@ function buildPreviewImageInteractionParameterUpdates(
 ): Record<string, unknown> | null {
   const targetParameters = new Set(event.targetParameters)
   const updates: Record<string, unknown> = {}
+  if (event.clearParameterNames?.length) {
+    for (const parameterName of event.clearParameterNames) {
+      if (parameterName in currentParameters) updates[parameterName] = undefined
+    }
+    return Object.keys(updates).length > 0 ? updates : null
+  }
   if (event.parameters) {
     for (const [parameterName, value] of Object.entries(event.parameters)) {
       updates[parameterName] = value

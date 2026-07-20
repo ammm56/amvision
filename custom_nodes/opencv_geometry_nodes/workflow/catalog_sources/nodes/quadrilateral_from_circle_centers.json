@@ -7,10 +7,30 @@
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
-    {"name": "top_left", "display_name": "Top Left", "payload_type_id": "circles.v1"},
-    {"name": "top_right", "display_name": "Top Right", "payload_type_id": "circles.v1"},
-    {"name": "bottom_right", "display_name": "Bottom Right", "payload_type_id": "circles.v1"},
-    {"name": "bottom_left", "display_name": "Bottom Left", "payload_type_id": "circles.v1"}
+    {
+      "name": "top_left",
+      "display_name": "Top Left",
+      "payload_type_id": "circles.v1",
+      "description": "左上定位圆；连线语义固定，不按圆坐标自动猜测。"
+    },
+    {
+      "name": "top_right",
+      "display_name": "Top Right",
+      "payload_type_id": "circles.v1",
+      "description": "右上定位圆；连线语义固定，不按圆坐标自动猜测。"
+    },
+    {
+      "name": "bottom_right",
+      "display_name": "Bottom Right",
+      "payload_type_id": "circles.v1",
+      "description": "右下定位圆；连线语义固定，不按圆坐标自动猜测。"
+    },
+    {
+      "name": "bottom_left",
+      "display_name": "Bottom Left",
+      "payload_type_id": "circles.v1",
+      "description": "左下定位圆；连线语义固定，不按圆坐标自动猜测。"
+    }
   ],
   "output_ports": [
     {"name": "roi", "display_name": "ROI", "payload_type_id": "roi.v1"},

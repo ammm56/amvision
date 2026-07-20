@@ -153,6 +153,7 @@ def build_interaction_tool(
     label: str,
     target_parameters: Iterable[str],
     *,
+    clear_parameters: Iterable[str] | None = None,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, object]:
     """构造 ImageViewer 工具声明。
@@ -161,6 +162,7 @@ def build_interaction_tool(
     - tool：工具语义名称，例如 bbox、polygon、circle、match-line。
     - label：界面显示名称。
     - target_parameters：工具写回的节点参数列表。
+    - clear_parameters：无草稿时“清除”操作删除的几何参数；不应包含算法调优参数。
     - extra：工具特有扩展字段，按需透传给前端。
     """
 
@@ -169,6 +171,10 @@ def build_interaction_tool(
         "label": label,
         "target_parameters": [str(parameter_name) for parameter_name in target_parameters],
     }
+    if clear_parameters is not None:
+        payload["clear_parameters"] = [
+            str(parameter_name) for parameter_name in clear_parameters
+        ]
     if extra:
         payload.update(dict(extra))
     return payload

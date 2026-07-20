@@ -42,6 +42,7 @@ export interface PreviewImageInteractionTool {
   tool: string
   label: string | null
   targetParameters: string[]
+  clearParameters: string[]
   minPoints: number | null
   maxPoints: number | null
   angleToleranceDeg: number | null
@@ -61,6 +62,7 @@ export interface PreviewImageInteractionApplyEvent {
   tool: string
   coordinateSpace: string
   targetParameters: string[]
+  clearParameterNames?: string[]
   parameters?: Record<string, unknown>
   angleToleranceDeg?: number | null
   searchPaddingRatio?: number | null
@@ -627,6 +629,7 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       tool,
       label: readDisplayText(rawTool.label) || null,
       targetParameters: readStringArray(rawTool.target_parameters),
+      clearParameters: readStringArray(rawTool.clear_parameters),
       minPoints: readDisplayNumber(rawTool.min_points),
       maxPoints: readDisplayNumber(rawTool.max_points),
       angleToleranceDeg: readDisplayNumber(rawTool.angle_tolerance_deg),

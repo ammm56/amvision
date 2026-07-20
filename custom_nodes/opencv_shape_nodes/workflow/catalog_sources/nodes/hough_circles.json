@@ -3,7 +3,7 @@
   "node_type_id": "custom.opencv.hough-circles",
   "display_name": "Hough Circles",
   "category": "opencv.shape",
-  "description": "对输入图片执行 Hough 圆检测，并输出结构化 circles.v1。",
+  "description": "在 Search ROI 内使用 Hough Gradient 发现圆候选，可选 Reference Circle 约束和径向边缘精定位，并输出 circles.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
   "input_ports": [
@@ -73,13 +73,15 @@
         "type": "integer",
         "minimum": 0,
         "default": 0,
-        "title": "Minimum Radius (px)"
+        "title": "Minimum Radius (px)",
+        "description": "候选圆的最小原图半径；现场尺寸已知时应尽量收紧范围。"
       },
       "maximum_radius_px": {
         "type": "integer",
         "minimum": 0,
         "default": 0,
-        "title": "Maximum Radius (px)"
+        "title": "Maximum Radius (px)",
+        "description": "候选圆的最大原图半径；0 表示由 OpenCV 推断，不建议在大图整图搜索时使用。"
       },
       "median_blur_kernel_size": {
         "type": "integer",
@@ -92,7 +94,7 @@
       "reference_center_xy": {
         "type": "array",
         "title": "Reference Center",
-        "description": "可选参考圆心 [x, y]；用于限制现场位置漂移和稳定排序。",
+        "description": "可选固定参考圆心 [x, y]；取参后会保存到节点，用于限制换图后的允许位置漂移和稳定排序。",
         "minItems": 2,
         "maxItems": 2,
         "items": { "type": "number" }
@@ -100,19 +102,22 @@
       "reference_radius_px": {
         "type": "number",
         "exclusiveMinimum": 0,
-        "title": "Reference Radius (px)"
+        "title": "Reference Radius (px)",
+        "description": "可选固定参考半径；与 Reference Center 同时设置，不会随检测结果自动改变。"
       },
       "center_tolerance_px": {
         "type": "number",
         "exclusiveMinimum": 0,
         "default": 50,
-        "title": "Center Tolerance (px)"
+        "title": "Center Tolerance (px)",
+        "description": "检测圆心相对 Reference Center 允许的最大原图像素偏移。"
       },
       "radius_tolerance_px": {
         "type": "number",
         "exclusiveMinimum": 0,
         "default": 10,
-        "title": "Radius Tolerance (px)"
+        "title": "Radius Tolerance (px)",
+        "description": "检测半径相对 Reference Radius 允许的最大原图像素偏差，也是精定位径向搜索带宽。"
       },
       "refine_candidates": {
         "type": "boolean",
@@ -124,52 +129,60 @@
         "type": "string",
         "enum": ["any", "dark-to-bright", "bright-to-dark"],
         "default": "any",
-        "title": "Edge Polarity"
+        "title": "Edge Polarity",
+        "description": "从圆心向外的灰度变化方向；已知目标极性时指定方向可减少误边缘。"
       },
       "radial_sample_count": {
         "type": "integer",
         "minimum": 12,
         "maximum": 720,
         "default": 180,
-        "title": "Radial Sample Count"
+        "title": "Radial Sample Count",
+        "description": "每个候选圆沿 360° 建立的径向灰度剖面数量。"
       },
       "gradient_threshold": {
         "type": "number",
         "minimum": 0,
         "default": 5,
-        "title": "Gradient Threshold"
+        "title": "Gradient Threshold",
+        "description": "精定位接受边缘的最小梯度幅度。"
       },
       "robust_loss": {
         "type": "string",
         "enum": ["huber", "tukey"],
         "default": "huber",
-        "title": "Robust Loss"
+        "title": "Robust Loss",
+        "description": "robust circle fitting 使用的损失函数；Tukey 对离群点抑制更强。"
       },
       "ransac_iterations": {
         "type": "integer",
         "minimum": 1,
         "maximum": 256,
         "default": 32,
-        "title": "RANSAC Iterations"
+        "title": "RANSAC Iterations",
+        "description": "精定位 RANSAC 初始化次数；增加会提高复杂遮挡下的稳定性并增加耗时。"
       },
       "fit_inlier_threshold_px": {
         "type": "number",
         "exclusiveMinimum": 0,
         "default": 2,
-        "title": "Fit Inlier Threshold (px)"
+        "title": "Fit Inlier Threshold (px)",
+        "description": "边缘点到拟合圆的最大内点残差，使用原图像素。"
       },
       "minimum_arc_coverage": {
         "type": "number",
         "minimum": 0,
         "maximum": 1,
         "default": 0.2,
-        "title": "Minimum Arc Coverage"
+        "title": "Minimum Arc Coverage",
+        "description": "有效边缘覆盖完整圆周的最低比例。"
       },
       "maximum_fit_error_px": {
         "type": "number",
         "exclusiveMinimum": 0,
         "default": 3,
-        "title": "Maximum Fit Error (px)"
+        "title": "Maximum Fit Error (px)",
+        "description": "候选精定位允许的最大 RMSE，使用原图像素。"
       },
       "sort_by": {
         "type": "string",

@@ -22,13 +22,17 @@ from custom_nodes._opencv_shared.backend.runtime.circle_measurement import (
 )
 from custom_nodes._opencv_shared.backend.runtime.images import load_image_matrix
 from custom_nodes._opencv_shared.backend.runtime.imports import require_opencv_imports
-from custom_nodes._opencv_shared.backend.runtime.payloads import build_circles_payload
+from custom_nodes._opencv_shared.backend.runtime.payloads import (
+    build_circles_payload,
+    require_circles_payload,
+)
 from custom_nodes._opencv_shared.backend.runtime.performance import (
     build_processing_image,
     build_processing_summary,
     read_processing_max_long_edge,
 )
 from custom_nodes._opencv_shared.backend.runtime.search_roi import (
+    ResolvedSearchRoi,
     build_search_roi_overlay,
     build_search_roi_summary,
     resolve_search_roi,
@@ -52,8 +56,11 @@ def _read_positive_float(raw_value: object, *, field_name: str, default: float |
     return value
 
 
-def _read_reference_center(raw_value: object) -> list[float]:
-    """读取原图坐标系中的参考圆心。"""
+def _read_reference_center(raw_value: object) -> list[float] | None:
+    """读取原图坐标系中的可选参考圆心。"""
+
+    if is_empty_parameter(raw_value):
+        return None
 
     if not isinstance(raw_value, list) or len(raw_value) != 2:
         raise InvalidRequestError("reference_center_xy 必须是 [x, y]")
@@ -63,6 +70,55 @@ def _read_reference_center(raw_value: object) -> list[float]:
             raise InvalidRequestError("reference_center_xy 坐标必须是有限数值")
         values.append(float(item))
     return values
+
+
+def _resolve_reference_circle(
+    request: WorkflowNodeExecutionRequest,
+) -> tuple[list[float] | None, float | None, str]:
+    """解析显式参数或上游 circles.v1 提供的参考圆。"""
+
+    reference_center_xy = _read_reference_center(
+        request.parameters.get("reference_center_xy")
+    )
+    raw_reference_radius = request.parameters.get("reference_radius_px")
+    reference_radius_px = (
+        None
+        if is_empty_parameter(raw_reference_radius)
+        else _read_positive_float(
+            raw_reference_radius,
+            field_name="reference_radius_px",
+        )
+    )
+    if (reference_center_xy is None) != (reference_radius_px is None):
+        raise InvalidRequestError(
+            "reference_center_xy 和 reference_radius_px 必须同时设置或同时留空"
+        )
+    if reference_center_xy is not None and reference_radius_px is not None:
+        return reference_center_xy, reference_radius_px, "parameters"
+
+    raw_reference_circles = request.input_values.get("reference_circles")
+    if raw_reference_circles is None:
+        return None, None, "missing"
+    reference_payload = require_circles_payload(raw_reference_circles)
+    reference_items = reference_payload["items"]
+    if not reference_items:
+        return None, None, "input-empty"
+    reference_item = next(
+        (item for item in reference_items if bool(item.get("selected"))),
+        reference_items[0],
+    )
+    center_xy = reference_item.get("center_xy")
+    radius = reference_item.get("radius")
+    reference_center_xy = _read_reference_center(center_xy)
+    reference_radius_px = _read_positive_float(
+        radius,
+        field_name="reference_circles.items[].radius",
+    )
+    if reference_center_xy is None:
+        raise InvalidRequestError(
+            "reference_circles.items[].center_xy 必须是 [x, y]"
+        )
+    return reference_center_xy, reference_radius_px, "input"
 
 
 def _read_choice(raw_value: object, *, field_name: str, default: str, choices: set[str]) -> str:
@@ -125,7 +181,12 @@ def _build_circle_measure_interaction(
 
     return build_debug_panel_interaction(
         tools=[
-            build_interaction_tool("rect", "Search ROI", ["search_bbox_xyxy"]),
+            build_interaction_tool(
+                "rect",
+                "Search ROI",
+                ["search_bbox_xyxy"],
+                clear_parameters=["search_bbox_xyxy"],
+            ),
             build_interaction_tool(
                 "circle",
                 "Reference Circle",
@@ -135,6 +196,7 @@ def _build_circle_measure_interaction(
                     "center_tolerance_px",
                     "radius_tolerance_px",
                 ],
+                clear_parameters=["reference_center_xy", "reference_radius_px"],
             ),
         ],
         controls=[
@@ -153,6 +215,102 @@ def _build_circle_measure_interaction(
     )
 
 
+def _build_reference_pending_outputs(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+    source_object_key: str | None,
+    search_roi: ResolvedSearchRoi,
+    reference_center_xy: list[float] | None,
+    reference_radius_px: float | None,
+    reference_source: str,
+    reason: str,
+    image_width: int,
+    image_height: int,
+    center_tolerance_px: float,
+    radius_tolerance_px: float,
+    radial_sample_count: int,
+    gradient_threshold: float,
+    edge_polarity: str,
+    robust_loss: str,
+    ransac_iterations: int,
+    fit_inlier_threshold_px: float,
+    minimum_arc_coverage: float,
+    maximum_fit_error_px: float,
+    processing_max_long_edge_px: int,
+) -> dict[str, object]:
+    """返回可继续取参的结构化空结果，避免未配置节点中断 Preview Run。"""
+
+    overlays: list[dict[str, object]] = []
+    search_overlay = build_search_roi_overlay(search_roi)
+    if search_overlay is not None:
+        overlays.append(search_overlay)
+    if reference_center_xy is not None and reference_radius_px is not None:
+        overlays.append(
+            build_circle_overlay(
+                overlay_id="reference-circle",
+                label="Reference Circle",
+                center_x=reference_center_xy[0],
+                center_y=reference_center_xy[1],
+                radius=reference_radius_px,
+                kind="reference-circle",
+                target_parameters=[
+                    "reference_center_xy",
+                    "reference_radius_px",
+                    "center_tolerance_px",
+                    "radius_tolerance_px",
+                ],
+            )
+        )
+    outputs: dict[str, object] = {
+        "circles": build_circles_payload(
+            items=[],
+            source_image=image_payload,
+            source_object_key=source_object_key,
+        ),
+        "summary": build_value_payload(
+            {
+                "accepted": False,
+                "configuration_state": (
+                    "reference-required"
+                    if reason == "reference_circle_required"
+                    else "reference-invalid"
+                ),
+                "rejection_reasons": [reason],
+                "reference_source": reference_source,
+                "reference_center_xy": reference_center_xy,
+                "reference_radius_px": reference_radius_px,
+                **build_search_roi_summary(search_roi),
+            }
+        ),
+    }
+    outputs.update(
+        build_debug_image_preview_output(
+            request,
+            image_payload=image_payload,
+            title="Circle Measure",
+            artifact_name="circle-measure-debug-preview",
+            overlays=overlays,
+            interaction=_build_circle_measure_interaction(
+                image_width=image_width,
+                image_height=image_height,
+                center_tolerance_px=center_tolerance_px,
+                radius_tolerance_px=radius_tolerance_px,
+                radial_sample_count=radial_sample_count,
+                gradient_threshold=gradient_threshold,
+                edge_polarity=edge_polarity,
+                robust_loss=robust_loss,
+                ransac_iterations=ransac_iterations,
+                fit_inlier_threshold_px=fit_inlier_threshold_px,
+                minimum_arc_coverage=minimum_arc_coverage,
+                maximum_fit_error_px=maximum_fit_error_px,
+                processing_max_long_edge_px=processing_max_long_edge_px,
+            ),
+        )
+    )
+    return outputs
+
+
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """在 Search ROI 中按参考圆执行径向边缘采样和 robust circle fitting。"""
 
@@ -163,10 +321,8 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     )
     image_height, image_width = [int(value) for value in image_matrix.shape[:2]]
     search_roi = resolve_search_roi(request, image_matrix=image_matrix)
-    reference_center_xy = _read_reference_center(request.parameters.get("reference_center_xy"))
-    reference_radius_px = _read_positive_float(
-        request.parameters.get("reference_radius_px"),
-        field_name="reference_radius_px",
+    reference_center_xy, reference_radius_px, reference_source = _resolve_reference_circle(
+        request
     )
     center_tolerance_px = _read_positive_float(
         request.parameters.get("center_tolerance_px"),
@@ -236,11 +392,58 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request.parameters.get("processing_max_long_edge_px")
     )
 
+    if reference_center_xy is None or reference_radius_px is None:
+        return _build_reference_pending_outputs(
+            request,
+            image_payload=image_payload,
+            source_object_key=source_object_key,
+            search_roi=search_roi,
+            reference_center_xy=None,
+            reference_radius_px=None,
+            reference_source=reference_source,
+            reason="reference_circle_required",
+            image_width=image_width,
+            image_height=image_height,
+            center_tolerance_px=center_tolerance_px,
+            radius_tolerance_px=radius_tolerance_px,
+            radial_sample_count=radial_sample_count,
+            gradient_threshold=gradient_threshold,
+            edge_polarity=edge_polarity,
+            robust_loss=robust_loss,
+            ransac_iterations=ransac_iterations,
+            fit_inlier_threshold_px=fit_inlier_threshold_px,
+            minimum_arc_coverage=minimum_arc_coverage,
+            maximum_fit_error_px=maximum_fit_error_px,
+            processing_max_long_edge_px=processing_max_long_edge_px,
+        )
+
     local_reference_x = reference_center_xy[0] - float(search_roi.offset_x)
     local_reference_y = reference_center_xy[1] - float(search_roi.offset_y)
     search_height, search_width = [int(value) for value in search_roi.image_matrix.shape[:2]]
     if not (0.0 <= local_reference_x < search_width and 0.0 <= local_reference_y < search_height):
-        raise InvalidRequestError("reference_center_xy 必须位于 Search ROI 内")
+        return _build_reference_pending_outputs(
+            request,
+            image_payload=image_payload,
+            source_object_key=source_object_key,
+            search_roi=search_roi,
+            reference_center_xy=reference_center_xy,
+            reference_radius_px=reference_radius_px,
+            reference_source=reference_source,
+            reason="reference_circle_outside_search_roi",
+            image_width=image_width,
+            image_height=image_height,
+            center_tolerance_px=center_tolerance_px,
+            radius_tolerance_px=radius_tolerance_px,
+            radial_sample_count=radial_sample_count,
+            gradient_threshold=gradient_threshold,
+            edge_polarity=edge_polarity,
+            robust_loss=robust_loss,
+            ransac_iterations=ransac_iterations,
+            fit_inlier_threshold_px=fit_inlier_threshold_px,
+            minimum_arc_coverage=minimum_arc_coverage,
+            maximum_fit_error_px=maximum_fit_error_px,
+            processing_max_long_edge_px=processing_max_long_edge_px,
+        )
     processing_image = build_processing_image(
         search_roi.image_matrix,
         cv2_module=cv2_module,
@@ -344,6 +547,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     summary = {
         "accepted": accepted,
         "rejection_reasons": rejection_reasons,
+        "reference_source": reference_source,
         "reference_center_xy": reference_center_xy,
         "reference_radius_px": reference_radius_px,
         "center_tolerance_px": center_tolerance_px,

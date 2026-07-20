@@ -36,7 +36,7 @@
                 {{ t('imageViewer.toolbar.searchRoi') }}
               </Button>
             </div>
-            <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.clearDraft')" :disabled="!hasInteractionDraft" @click="clearInteractionDraft">
+            <Button size="sm" variant="secondary" type="button" :title="hasInteractionDraft ? t('imageViewer.toolbar.clearDraft') : t('imageViewer.toolbar.clearGeometry')" :disabled="!hasInteractionDraft && !hasClearableGeometry" @click="handleClearInteraction">
               <Trash2 :size="15" />
               {{ t('imageViewer.toolbar.clear') }}
             </Button>
@@ -335,6 +335,11 @@
           </svg>
         </div>
         <div v-else class="image-viewer__empty">{{ t('imageViewer.empty') }}</div>
+        <ImageGeometryAnnotations
+          :view-box="dimensionLayerViewBox"
+          :roi-annotations="roiDimensionAnnotations"
+          :circle-annotations="circleDimensionAnnotations"
+        />
       </div>
       <div class="image-viewer__status">
         <div class="image-viewer__status-group">
@@ -354,6 +359,9 @@ import { useI18n } from 'vue-i18n'
 import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from '@lucide/vue'
 
 import Button from './Button.vue'
+import ImageGeometryAnnotations from '../image-viewer/ImageGeometryAnnotations.vue'
+import { useImageGeometryAnnotations } from '../image-viewer/useImageGeometryAnnotations'
+import { useImageViewerViewport } from '../image-viewer/useImageViewerViewport'
 
 interface ViewerImageCircleOverlay {
   centerX: number
@@ -394,6 +402,7 @@ interface ViewerImageInteractionTool {
   tool: string
   label?: string | null
   targetParameters: string[]
+  clearParameters?: string[]
   minPoints?: number | null
   maxPoints?: number | null
   angleToleranceDeg?: number | null
@@ -435,6 +444,7 @@ interface ViewerImageInteractionApplyEvent {
   tool: string
   coordinateSpace: string
   targetParameters: string[]
+  clearParameterNames?: string[]
   parameters?: Record<string, unknown>
   angleToleranceDeg?: number | null
   searchPaddingRatio?: number | null
@@ -513,10 +523,6 @@ const { t } = useI18n()
 
 const viewportRef = ref<HTMLElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
-const scale = ref(1)
-const offsetX = ref(0)
-const offsetY = ref(0)
-const panState = ref<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null)
 const naturalWidth = ref(0)
 const naturalHeight = ref(0)
 const interactionActive = ref(false)
@@ -534,6 +540,7 @@ const draftSearchBboxXyxy = ref<[number, number, number, number] | null>(null)
 const tuningParameterValues = ref<Record<string, unknown>>({})
 const autoPreviewEnabled = ref(true)
 const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'info' } | null>(null)
+const clearedGeometryLocally = ref(false)
 let tuningPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
 let fitImageAnimationFrame: number | null = null
@@ -555,15 +562,6 @@ const imageCoordinateHeight = computed(() => {
   const value = sourceImageHeight.value || naturalHeight.value
   return value > 0 ? value : 1
 })
-const imageFrameStyle = computed(() => ({
-  width: `${imageCoordinateWidth.value}px`,
-  height: `${imageCoordinateHeight.value}px`,
-  transform: `translate(-50%, -50%) translate(${offsetX.value}px, ${offsetY.value}px) scale(${scale.value})`,
-}))
-const imageElementStyle = computed(() => ({
-  width: `${imageCoordinateWidth.value}px`,
-  height: `${imageCoordinateHeight.value}px`,
-}))
 const displayImageWidth = computed(() => {
   const value = props.image?.displayWidth ?? props.image?.width
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -572,7 +570,11 @@ const displayImageHeight = computed(() => {
   const value = props.image?.displayHeight ?? props.image?.height
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 })
-const imageOverlays = computed(() => props.image?.overlays ?? [])
+const imageOverlays = computed(() => {
+  const overlays = props.image?.overlays ?? []
+  if (!clearedGeometryLocally.value) return overlays
+  return overlays.filter((overlay) => overlay.kind !== 'search-roi' && overlay.kind !== 'reference-circle')
+})
 const imageInteraction = computed(() => props.image?.interaction ?? null)
 const availableInteractionTools = computed(() => readAvailableInteractionTools(imageInteraction.value))
 const hasInteractionTools = computed(() => availableInteractionTools.value.length > 0)
@@ -605,6 +607,27 @@ const activeLineSearchPaddingMin = computed(() => {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 8
 })
 const tuningControls = computed(() => imageInteraction.value?.controls ?? [])
+const tuningPanelReservedWidth = computed(() => tuningControls.value.length > 0 ? 366 : 0)
+const {
+  scale,
+  viewportWidth,
+  viewportHeight,
+  imageFrameStyle,
+  imageElementStyle,
+  fitImage,
+  showOriginalSize,
+  resetView,
+  zoomIn,
+  zoomOut,
+  handleWheel,
+  sourceToViewport,
+  startPan,
+} = useImageViewerViewport({
+  viewportRef,
+  imageWidth: imageCoordinateWidth,
+  imageHeight: imageCoordinateHeight,
+  reservedRightPx: tuningPanelReservedWidth,
+})
 const interactionAvailable = computed(() => Boolean(
   props.image?.nodeId
   && imageInteraction.value
@@ -687,6 +710,21 @@ const draftCircle = computed<CircleDraft | null>(() => {
     radius: roundImageCoordinate(radius),
   }
 })
+const {
+  roiAnnotations: roiDimensionAnnotations,
+  circleAnnotations: circleDimensionAnnotations,
+  layerViewBox: dimensionLayerViewBox,
+} = useImageGeometryAnnotations({
+  overlays: imageOverlays,
+  draftBboxXyxy,
+  draftCircle,
+  interactionTool,
+  viewportWidth,
+  viewportHeight,
+  reservedRightPx: tuningPanelReservedWidth,
+  sourceToViewport,
+  translate: (key) => t(key),
+})
 const hasInteractionDraft = computed(() => Boolean(
   draftBbox.value
   || draftTemplateBboxXyxy.value
@@ -696,6 +734,10 @@ const hasInteractionDraft = computed(() => Boolean(
   || draftCircle.value
   || draftPointPairs.value.length > 0,
 ))
+const clearableGeometryParameters = computed(() => Array.from(new Set(
+  availableInteractionTools.value.flatMap((tool) => tool.clearParameters ?? []),
+)))
+const hasClearableGeometry = computed(() => clearableGeometryParameters.value.length > 0)
 const canApplyInteraction = computed(() => {
   if (!interactionAvailable.value) return false
   if (interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') return Boolean(draftBboxXyxy.value)
@@ -747,6 +789,7 @@ const imageMetricItems = computed(() => {
   }
   return metrics
 })
+
 const interactionStatusText = computed(() => {
   if (!interactionAvailable.value) return ''
   if (!interactionActive.value) return tuningControls.value.length ? t('imageViewer.status.tuningAvailableNotEnabled') : t('imageViewer.status.notEnabled')
@@ -766,6 +809,7 @@ const interactionStatusText = computed(() => {
 })
 
 watch(() => [props.open, viewerImageSrc.value, props.image?.nodeId] as const, ([open]) => {
+  clearedGeometryLocally.value = false
   resetInteractionState()
   initializeTuningParameterValues()
   if (!open) return
@@ -796,45 +840,6 @@ function updateNaturalImageSize(): void {
   const image = imageRef.value
   naturalWidth.value = sourceImageWidth.value || image?.naturalWidth || 0
   naturalHeight.value = sourceImageHeight.value || image?.naturalHeight || 0
-}
-
-function fitImage(): void {
-  const viewport = viewportRef.value
-  const image = imageRef.value
-  if (!viewport || !image) return
-  updateNaturalImageSize()
-  const viewportBounds = viewport.getBoundingClientRect()
-  const sourceWidth = imageCoordinateWidth.value
-  const sourceHeight = imageCoordinateHeight.value
-  scale.value = Math.min(viewportBounds.width / sourceWidth, viewportBounds.height / sourceHeight, 1)
-  offsetX.value = 0
-  offsetY.value = 0
-}
-
-function showOriginalSize(): void {
-  scale.value = 1
-  offsetX.value = 0
-  offsetY.value = 0
-}
-
-function resetView(): void {
-  scale.value = 1
-  offsetX.value = 0
-  offsetY.value = 0
-  panState.value = null
-}
-
-function zoomIn(): void {
-  scale.value = Math.min(scale.value * 1.25, 8)
-}
-
-function zoomOut(): void {
-  scale.value = Math.max(scale.value / 1.25, 0.05)
-}
-
-function handleWheel(event: WheelEvent): void {
-  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
-  scale.value = Math.min(Math.max(scale.value * factor, 0.05), 8)
 }
 
 function handleViewportMouseDown(event: MouseEvent): void {
@@ -1012,6 +1017,26 @@ function clearInteractionDraft(): void {
   draftSearchBboxXyxy.value = null
   templateRegionStage.value = 'template'
   stopActiveDraftListeners()
+}
+
+function handleClearInteraction(): void {
+  if (hasInteractionDraft.value) {
+    clearInteractionDraft()
+    return
+  }
+  const nodeId = props.image?.nodeId
+  const interaction = imageInteraction.value
+  const clearParameterNames = clearableGeometryParameters.value
+  if (!nodeId || !interaction || clearParameterNames.length === 0) return
+  emit('applyInteraction', {
+    nodeId,
+    tool: 'clear-geometry',
+    coordinateSpace: interaction.coordinateSpace,
+    targetParameters: clearParameterNames,
+    clearParameterNames,
+  })
+  clearedGeometryLocally.value = true
+  showInteractionFeedback(t('imageViewer.feedback.geometryCleared'), 'success')
 }
 
 function clearShapeDrafts(options: { keepPoints?: boolean; keepPairLines?: boolean } = {}): void {
@@ -1365,31 +1390,6 @@ function bboxHeight(overlay: ViewerImageOverlay): number {
   return overlay.bboxXyxy ? Math.max(0, overlay.bboxXyxy[3] - overlay.bboxXyxy[1]) : 0
 }
 
-function startPan(event: MouseEvent): void {
-  if (event.button !== 0) return
-  panState.value = {
-    startX: event.clientX,
-    startY: event.clientY,
-    offsetX: offsetX.value,
-    offsetY: offsetY.value,
-  }
-  document.addEventListener('mousemove', movePan)
-  document.addEventListener('mouseup', stopPan)
-}
-
-function movePan(event: MouseEvent): void {
-  const pan = panState.value
-  if (!pan) return
-  offsetX.value = pan.offsetX + event.clientX - pan.startX
-  offsetY.value = pan.offsetY + event.clientY - pan.startY
-}
-
-function stopPan(): void {
-  panState.value = null
-  document.removeEventListener('mousemove', movePan)
-  document.removeEventListener('mouseup', stopPan)
-}
-
 function readAvailableInteractionTools(interaction: ViewerImageInteraction | null): ViewerImageInteractionTool[] {
   if (!interaction) return []
   return interaction.tools.flatMap(normalizeInteractionTool)
@@ -1401,6 +1401,7 @@ function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerI
     tool: toolItem.tool,
     label: toolItem.label ?? readInteractionToolLabel(toolItem.tool),
     targetParameters: toolItem.targetParameters,
+    clearParameters: toolItem.clearParameters ?? [],
     minPoints: toolItem.minPoints ?? null,
     maxPoints: toolItem.maxPoints ?? null,
     angleToleranceDeg: toolItem.angleToleranceDeg ?? null,
@@ -1529,7 +1530,6 @@ function clampNumber(value: number, minValue: number, maxValue: number): number 
 }
 
 onUnmounted(() => {
-  stopPan()
   stopActiveDraftListeners()
   if (tuningPreviewTimer !== null) window.clearTimeout(tuningPreviewTimer)
   if (interactionFeedbackTimer !== null) window.clearTimeout(interactionFeedbackTimer)

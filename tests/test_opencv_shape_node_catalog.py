@@ -96,9 +96,12 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
     assert hough_circle_properties["ransac_iterations"]["default"] == 32
     assert hough_circle_properties["max_results"]["default"] == 10
     assert hough_circle_properties["maximum_candidates"]["default"] == 40
-    circle_measure_schema = node_by_type["custom.opencv.circle-measure"]["parameter_schema"]
-    assert circle_measure_schema["required"] == [
-        "reference_center_xy",
-        "reference_radius_px",
+    circle_measure_node = node_by_type["custom.opencv.circle-measure"]
+    circle_measure_schema = circle_measure_node["parameter_schema"]
+    assert "required" not in circle_measure_schema
+    assert [port["name"] for port in circle_measure_node["input_ports"]] == [
+        "image",
+        "roi",
+        "reference_circles",
     ]
     assert circle_measure_schema["properties"]["ransac_iterations"]["default"] == 64

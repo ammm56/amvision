@@ -288,6 +288,11 @@ def test_opencv_basic_batch3_hough_circles_execute(tmp_path: Path) -> None:
         "radius_tolerance_px",
     }
     assert tools_by_name["rect"]["target_parameters"] == ["search_bbox_xyxy"]
+    assert tools_by_name["rect"]["clear_parameters"] == ["search_bbox_xyxy"]
+    assert tools_by_name["circle"]["clear_parameters"] == [
+        "reference_center_xy",
+        "reference_radius_px",
+    ]
     assert {
         "canny_high_threshold",
         "center_vote_threshold",
@@ -385,6 +390,117 @@ def test_circle_measure_returns_structured_empty_result_when_no_edge_is_found(tm
     overlay_kinds = {overlay["kind"] for overlay in debug_preview["overlays"]}
     assert "reference-circle" in overlay_kinds
     assert "selected-circle" not in overlay_kinds
+
+
+def test_circle_measure_without_reference_remains_available_for_debug_parameter_picking(
+    tmp_path: Path,
+) -> None:
+    """验证先画 Search ROI 时不会因参考圆尚未配置而中断 Preview Run。"""
+
+    executor = _create_repository_executor()
+    dataset_storage = _create_dataset_storage(tmp_path)
+    image_registry = ExecutionImageRegistry()
+    dataset_storage.write_bytes(
+        "inputs/circle-measure-reference-pending.png",
+        _build_circle_test_png_bytes(),
+    )
+    template = WorkflowGraphTemplate(
+        template_id="opencv-circle-measure-reference-pending",
+        template_version="1.0.0",
+        display_name="OpenCV Circle Measure Reference Pending",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="input",
+                node_type_id="core.io.template-input.image",
+            ),
+            WorkflowGraphNode(
+                node_id="measure",
+                node_type_id="custom.opencv.circle-measure",
+                parameters={
+                    "search_bbox_xyxy": [4.0, 4.0, 80.0, 80.0],
+                    "debug_image_panel_enabled": True,
+                },
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-input-measure-reference-pending",
+                source_node_id="input",
+                source_port="image",
+                target_node_id="measure",
+                target_port="image",
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="request_image",
+                display_name="Request Image",
+                payload_type_id="image-ref.v1",
+                target_node_id="input",
+                target_port="payload",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="circles",
+                display_name="Circles",
+                payload_type_id="circles.v1",
+                source_node_id="measure",
+                source_port="circles",
+            ),
+            WorkflowGraphOutput(
+                output_id="summary",
+                display_name="Summary",
+                payload_type_id="value.v1",
+                source_node_id="measure",
+                source_port="summary",
+            ),
+        ),
+    )
+
+    execution_result = executor.execute(
+        template=template,
+        input_values={
+            "request_image": {
+                "object_key": "inputs/circle-measure-reference-pending.png",
+                "width": 96,
+                "height": 96,
+                "media_type": "image/png",
+            }
+        },
+        execution_metadata={
+            "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
+            "workflow_run_id": "opencv-circle-measure-reference-pending",
+            "debug_image_panels_enabled": True,
+        },
+    )
+
+    assert execution_result.outputs["circles"]["count"] == 0
+    summary = execution_result.outputs["summary"]["value"]
+    assert summary["accepted"] is False
+    assert summary["configuration_state"] == "reference-required"
+    assert summary["rejection_reasons"] == ["reference_circle_required"]
+    debug_preview = _read_record_output(
+        execution_result,
+        node_id="measure",
+        output_name="debug_preview",
+    )
+    assert [tool["tool"] for tool in debug_preview["interaction"]["tools"]] == [
+        "rect",
+        "circle",
+    ]
+    tools_by_name = {
+        tool["tool"]: tool for tool in debug_preview["interaction"]["tools"]
+    }
+    assert tools_by_name["rect"]["clear_parameters"] == ["search_bbox_xyxy"]
+    assert tools_by_name["circle"]["clear_parameters"] == [
+        "reference_center_xy",
+        "reference_radius_px",
+    ]
+    assert {overlay["kind"] for overlay in debug_preview["overlays"]} == {
+        "search-roi"
+    }
 
 
 def test_opencv_basic_batch3_fit_line_execute(tmp_path: Path) -> None:

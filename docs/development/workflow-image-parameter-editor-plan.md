@@ -146,6 +146,8 @@ Image
 
 Hough Circles 和 Circle Measure 的图形语义必须保持独立：Search ROI 使用蓝色虚线矩形，Reference Circle 使用紫色虚线圆，普通候选使用橙色实线圆，最终选中圆使用绿色粗实线和圆心十字，被拒绝候选仅在 Debug Preview 中使用红色或灰色虚线。颜色由亮色、暗色主题变量提供，节点实现不得写死组件颜色。精定位链路使用有界 RANSAC 初始化和 Huber/Tukey IRLS，并限制候选数、径向采样数和拟合迭代次数。
 
+Reference Circle 写回 Workflow 节点的 `reference_center_xy` 和 `reference_radius_px`，属于可保存、复制和版本化的显式参数，不属于 Preview Run 临时缓存。Search ROI、Reference Circle 和检测圆的原图像素读数只在交互式 Debug 图片页显示。详细参数和组合方式见 [OpenCV 圆检测与圆测量节点](../nodes/opencv-circle-nodes.md)。
+
 ## 节点定义扩展方式
 
 交互取参能力统一由节点本次 `debug_preview.interaction` 输出声明，前端不从节点类型名猜测工具，也不在页面层硬编码算法默认值。`parameter_ui_schema` 继续负责普通参数表单，不承载复杂图像交互状态。
@@ -248,9 +250,23 @@ Hough Circles 和 Circle Measure 的图形语义必须保持独立：Search ROI 
 
 只读图片预览不提供 `interaction` 字段；交互式图片面板只解析新的 `interaction.tools[]`，不保留单 `tool` / `target_parameters` 旧格式。`polygon` 工具可声明 `min_points` / `max_points`：普通 ROI 至少 3 点，透视变换固定 4 点。
 
+工具可额外声明 `clear_parameters`。该字段只包含 Search ROI、Reference Circle 等几何位置参数，不包含阈值、容差、采样数量等算法调优参数。顶部“清除”按钮遵循两段语义：存在未应用草稿时只清除草稿；没有草稿时删除所有工具声明的 `clear_parameters`，用于快速重新取参。
+
 ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 或写回参数仍按节点语义使用 `polygon_xy`、`source_points` 等字段。二者不要混用。
 
 该信息只描述编辑器如何辅助生成参数，不改变节点核心执行协议。
+
+### ImageViewer 组件边界
+
+交互式参数图片面板按以下边界维护，避免缩放、原图 overlay、CAD 标注和节点参数逻辑继续堆叠在单个页面中：
+
+- `ImageViewer.vue`：对话框编排、工具栏、取参草稿和节点参数事件。
+- `useImageViewerViewport.ts`：唯一维护 scale、offset、fit、100%、平移和坐标转换；滚轮缩放以鼠标所在视口点为锚点。
+- 原图 overlay SVG：只绘制 ROI、圆、线、轮廓和取参草稿，统一使用 source-image 坐标并随底图缩放。
+- `useImageGeometryAnnotations.ts`：把原图几何坐标转换成屏幕坐标，负责 CAD 标签位置、边界限制和标签避让。
+- `ImageGeometryAnnotations.vue`：只绘制固定屏幕像素大小的 X/Y/W/H/R/Ø 标注，不参与原图 transform。
+
+禁止通过在原图 SVG 中使用 `1 / scale` 反向放大文字来维持字号。20MP 图像在低倍率时会因此产生很大的 SVG 绘制边界，浏览器可能出现分块合成错误、底图碎片和标注漂移。屏幕标注层必须独立于原图变换，原图层与屏幕层之间只通过 `sourceToViewport()` 转换。
 
 ### Geometry 节点交互边界
 

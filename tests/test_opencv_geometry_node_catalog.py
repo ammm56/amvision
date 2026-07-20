@@ -37,3 +37,20 @@ def test_opencv_geometry_node_catalog_builder_matches_checked_in_catalog() -> No
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.geometry-nodes"
     }
+    node_by_type = {
+        item["node_type_id"]: item
+        for item in actual_catalog_payload["node_definitions"]
+    }
+    quadrilateral_node = node_by_type[
+        "custom.opencv.quadrilateral-from-circle-centers"
+    ]
+    assert [port["name"] for port in quadrilateral_node["input_ports"]] == [
+        "top_left",
+        "top_right",
+        "bottom_right",
+        "bottom_left",
+    ]
+    assert all(
+        port.get("description")
+        for port in quadrilateral_node["input_ports"]
+    )

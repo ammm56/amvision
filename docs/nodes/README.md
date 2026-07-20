@@ -8,6 +8,7 @@
 
 - [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)：node pack manifest、capability、permission scope 和兼容性规范
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)：节点扩展 trigger、hook、完成回调和数据上报规范
+- [docs/nodes/opencv-circle-nodes.md](opencv-circle-nodes.md)：Hough Circles、Circle Measure 和四圆角点组合的职责、参数与调试方法
 - [docs/nodes/examples/example.simple-node-pack.manifest.json](examples/example.simple-node-pack.manifest.json)：简单节点包可直接复制的 manifest 示例
 - [docs/nodes/examples/barcode.protocol-nodes.manifest.dependency-example.json](examples/barcode.protocol-nodes.manifest.dependency-example.json)：基于 barcode.protocol-nodes 的 pack 依赖案例 manifest
 - [custom_nodes/_scaffold/README.md](../../custom_nodes/_scaffold/README.md)：custom_nodes 初始化模板目录，包含 simple 和 dependent 两种骨架

@@ -373,6 +373,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 "maximum_radius_px": maximum_radius_px,
                 "median_blur_kernel_size": median_blur_kernel_size,
                 "processing_max_long_edge_px": processing_max_long_edge,
+                "reference_constraint_enabled": reference_center_xy is not None,
                 "reference_center_xy": reference_center_xy,
                 "reference_radius_px": reference_radius_px,
                 "center_tolerance_px": center_tolerance_px,
@@ -488,7 +489,12 @@ def _build_circle_interaction(
     )
     return build_debug_panel_interaction(
         tools=[
-            build_interaction_tool("rect", "Search ROI", ["search_bbox_xyxy"]),
+            build_interaction_tool(
+                "rect",
+                "Search ROI",
+                ["search_bbox_xyxy"],
+                clear_parameters=["search_bbox_xyxy"],
+            ),
             build_interaction_tool(
                 "circle",
                 "Reference Circle",
@@ -498,6 +504,7 @@ def _build_circle_interaction(
                     "center_tolerance_px",
                     "radius_tolerance_px",
                 ],
+                clear_parameters=["reference_center_xy", "reference_radius_px"],
             ),
         ],
         controls=[
