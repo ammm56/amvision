@@ -7,7 +7,7 @@
   },
   "runtime": {
     "name": "新建应用yoloxm条码识别",
-    "workflow_runtime_id": "workflow-runtime-1aa7b19c3b1f4d3db1db3b75fb526dd5"
+    "workflow_runtime_id": "workflow-runtime-c915c0ad5a32452a99849787c4f00f76"
   },
   "invoke": {
     "image_path": "",
@@ -23,7 +23,7 @@
   "trigger_sources": [
     {
       "name": "ZeroMQ 图片触发 新建应用yoloxm条码识别 runtime",
-      "trigger_source_id": "zeromq-workflow-runtime-1aa7b19c3b1f4d3db1db3b75fb526dd5",
+      "trigger_source_id": "zeromq-workflow-runtime-c915c0ad5a32452a99849787c4f00f76",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5557",
         "default_input_binding": "request_image_ref",
