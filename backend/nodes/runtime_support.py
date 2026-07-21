@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+import json
 import mimetypes
 from pathlib import PurePosixPath
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 from uuid import uuid4
 
@@ -116,6 +117,8 @@ class ExecutionImageRegistry:
         """初始化空的 execution image registry。"""
 
         self._entries: dict[str, ExecutionImageEntry] = {}
+        self._decoded_matrices: dict[str, Any] = {}
+        self._decoded_matrix_locks: dict[str, Lock] = {}
         self._lock = RLock()
 
     def register_image_bytes(
@@ -248,6 +251,42 @@ class ExecutionImageRegistry:
 
         return self.get_entry(image_handle).matrix
 
+    def get_or_decode_matrix(
+        self,
+        *,
+        cache_key: str,
+        decoder: Any,
+    ) -> Any:
+        """按输入引用和解码模式在单次 Workflow Run 内复用解码矩阵。
+
+        同一张 storage/buffer/frame 图片可能同时供多个定位节点使用。这里按 key
+        做 single-flight，避免大图被重复读取和解码，同时不把矩阵缓存扩展到 Run
+        之外，防止长期 runtime 持有现场图片。
+        """
+
+        normalized_cache_key = cache_key.strip() if isinstance(cache_key, str) else ""
+        if not normalized_cache_key:
+            raise InvalidRequestError("execution image registry 解码缓存 key 不能为空")
+        if not callable(decoder):
+            raise InvalidRequestError("execution image registry decoder 必须可调用")
+        with self._lock:
+            cached_matrix = self._decoded_matrices.get(normalized_cache_key)
+            if cached_matrix is not None:
+                return cached_matrix
+            decode_lock = self._decoded_matrix_locks.get(normalized_cache_key)
+            if decode_lock is None:
+                decode_lock = Lock()
+                self._decoded_matrix_locks[normalized_cache_key] = decode_lock
+        with decode_lock:
+            with self._lock:
+                cached_matrix = self._decoded_matrices.get(normalized_cache_key)
+                if cached_matrix is not None:
+                    return cached_matrix
+            decoded_matrix = decoder()
+            with self._lock:
+                self._decoded_matrices[normalized_cache_key] = decoded_matrix
+            return decoded_matrix
+
     def release(self, image_handle: str) -> None:
         """释放一张已注册的内存图片。
 
@@ -265,6 +304,8 @@ class ExecutionImageRegistry:
 
         with self._lock:
             self._entries.clear()
+            self._decoded_matrices.clear()
+            self._decoded_matrix_locks.clear()
 
 
 def require_dataset_storage(request: WorkflowNodeExecutionRequest) -> LocalDatasetStorage:
@@ -1001,18 +1042,52 @@ def load_image_matrix_from_payload(
                 if imdecode_flags == getattr(cv2_module, "IMREAD_GRAYSCALE", 0):
                     matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGR2GRAY)
                 return normalized_payload, matrix
-    normalized_payload, image_bytes = load_image_bytes_from_payload(
-        request,
-        image_payload=normalized_payload,
-    )
-    return normalized_payload, decode_image_bytes_to_matrix(
-        cv2_module=cv2_module,
-        np_module=np_module,
-        image_bytes=image_bytes,
-        image_payload=normalized_payload,
+    image_registry = require_execution_image_registry(request)
+    decode_cache_key = _build_decoded_matrix_cache_key(
+        normalized_payload,
         imdecode_flags=imdecode_flags,
-        error_message="图片节点无法读取输入图片",
-        copy_raw=copy_raw,
+    )
+
+    def decode_matrix() -> Any:
+        """只在当前输入首次使用时读取并解码图片。"""
+
+        _, image_bytes = load_image_bytes_from_payload(
+            request,
+            image_payload=normalized_payload,
+        )
+        return decode_image_bytes_to_matrix(
+            cv2_module=cv2_module,
+            np_module=np_module,
+            image_bytes=image_bytes,
+            image_payload=normalized_payload,
+            imdecode_flags=imdecode_flags,
+            error_message="图片节点无法读取输入图片",
+            copy_raw=False,
+        )
+
+    matrix = image_registry.get_or_decode_matrix(
+        cache_key=decode_cache_key,
+        decoder=decode_matrix,
+    )
+    return normalized_payload, matrix.copy() if copy_raw else matrix
+
+
+def _build_decoded_matrix_cache_key(
+    image_payload: dict[str, object],
+    *,
+    imdecode_flags: int | None,
+) -> str:
+    """为单次执行中的稳定图片引用构造解码缓存 key。"""
+
+    return json.dumps(
+        {
+            "image_payload": image_payload,
+            "imdecode_flags": imdecode_flags,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
     )
 
 

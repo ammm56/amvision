@@ -147,6 +147,11 @@ class WorkflowServiceNodeRuntimeContext:
     def build_published_inference_gateway(self) -> PublishedInferenceGateway:
         """构造 workflow 推理节点使用的 PublishedInferenceGateway。"""
 
+        # Workflow runtime worker 会注入父进程持有的 gateway proxy。此路径是
+        # 模型推理热链，必须在导入完整 service builders 之前直接返回；否则首个
+        # 模型节点会连带加载训练、转换等无关模块，并让并行分支同时阻塞在 import lock。
+        if self.published_inference_gateway is not None:
+            return self.published_inference_gateway
         from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_published_inference_gateway(self)

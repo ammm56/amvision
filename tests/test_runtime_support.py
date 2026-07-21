@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import backend.nodes.runtime_support as runtime_support
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     IMAGE_TRANSPORT_MEMORY,
@@ -160,6 +161,75 @@ def test_load_image_bytes_supports_storage_and_memory_modes(tmp_path: Path) -> N
     assert storage_bytes == b"storage-png"
     assert memory_payload["transport_kind"] == IMAGE_TRANSPORT_MEMORY
     assert memory_bytes == b"memory-png"
+
+
+def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证多个节点读取同一张大图时只执行一次 bytes 解码。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry()
+    image_matrix = np.full((24, 32, 3), 127, dtype=np.uint8)
+    encoded, encoded_matrix = cv2.imencode(".png", image_matrix)
+    assert encoded is True
+    dataset_storage.write_bytes("inputs/source.png", encoded_matrix.tobytes())
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload={"object_key": "inputs/source.png", "media_type": "image/png"},
+    )
+    decode_count = 0
+    original_decoder = runtime_support.decode_image_bytes_to_matrix
+
+    def counting_decoder(**kwargs):
+        """记录底层解码次数。"""
+
+        nonlocal decode_count
+        decode_count += 1
+        return original_decoder(**kwargs)
+
+    monkeypatch.setattr(runtime_support, "decode_image_bytes_to_matrix", counting_decoder)
+
+    _, first_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+    _, second_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+
+    assert decode_count == 1
+    assert first_matrix is second_matrix
+    assert np.array_equal(first_matrix, image_matrix)
+
+
+def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path) -> None:
+    """验证要求可写副本时不会让节点修改执行期共享解码缓存。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry()
+    image_matrix = np.full((8, 10, 3), 64, dtype=np.uint8)
+    encoded, encoded_matrix = cv2.imencode(".png", image_matrix)
+    assert encoded is True
+    dataset_storage.write_bytes("inputs/source.png", encoded_matrix.tobytes())
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload={"object_key": "inputs/source.png", "media_type": "image/png"},
+    )
+
+    _, shared_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+    _, copied_matrix = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+        copy_raw=True,
+    )
+    copied_matrix[0, 0] = 0
+
+    assert copied_matrix is not shared_matrix
+    assert np.array_equal(shared_matrix, image_matrix)
 
 
 def test_register_image_bytes_and_copy_image_payload_support_memory_source(tmp_path: Path) -> None:
