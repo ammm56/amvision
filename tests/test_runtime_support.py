@@ -240,6 +240,91 @@ def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path
     assert np.array_equal(shared_matrix, image_matrix)
 
 
+def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
+    tmp_path: Path,
+) -> None:
+    """验证 raw broker 输入直接借用 mmap view，不复制整帧并重复计入缓存。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry(decoded_cache_max_bytes=8)
+    raw_pixels = bytearray(range(18))
+
+    class BorrowedViewReader:
+        """只允许 borrowed view 路径的测试 reader。"""
+
+        def read_buffer_ref_view(self, buffer_ref: object) -> memoryview:
+            """返回模拟 mmap 的只读 view。"""
+
+            del buffer_ref
+            return memoryview(raw_pixels).toreadonly()
+
+        def read_buffer_ref(self, buffer_ref: object) -> bytes:
+            """禁止退回整帧 bytes copy。"""
+
+            del buffer_ref
+            raise AssertionError("raw broker input should use borrowed view")
+
+        def read_frame_ref(self, frame_ref: object) -> bytes:
+            """满足 reader 基础协议。"""
+
+            del frame_ref
+            raise AssertionError("frame path is not expected")
+
+    payload = {
+        "transport_kind": "buffer",
+        "media_type": "image/raw",
+        "width": 3,
+        "height": 2,
+        "shape": [2, 3, 3],
+        "dtype": "uint8",
+        "layout": "HWC",
+        "pixel_format": "bgr24",
+        "buffer_ref": {
+            "format_id": "amvision.buffer-ref.v1",
+            "buffer_id": "buffer-1",
+            "lease_id": "lease-1",
+            "path": "buffers/image-test.dat",
+            "offset": 0,
+            "size": 18,
+            "shape": [2, 3, 3],
+            "dtype": "uint8",
+            "layout": "HWC",
+            "pixel_format": "bgr24",
+            "media_type": "image/raw",
+            "readonly": True,
+            "broker_epoch": "epoch-1",
+            "generation": 1,
+        },
+    }
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload=payload,
+    )
+    request.execution_metadata["local_buffer_reader"] = BorrowedViewReader()
+
+    _, first_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+    _, second_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+    _, grayscale_matrix = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+    )
+
+    assert first_matrix is second_matrix
+    assert first_matrix.flags.writeable is False
+    assert first_matrix.shape == (2, 3, 3)
+    assert registry.decoded_cache_entry_count == 2
+    # BGR matrix 直接借用 mmap，不计私有 bytes；灰度转换新分配 2*3 bytes。
+    assert registry.decoded_cache_total_bytes == 6
+    assert grayscale_matrix.shape == (2, 3)
+    raw_pixels[0] = 99
+    assert int(first_matrix[0, 0, 0]) == 99
+
+
 def test_execution_image_registry_single_flight_decodes_once_for_parallel_readers() -> None:
     """验证并行分支同时读取同一输入时只允许一个 decoder 执行。"""
 
@@ -305,6 +390,31 @@ def test_execution_image_registry_bounds_lru_cache_and_releases_matrices() -> No
 
     registry.clear_decoded_matrices()
 
+    assert registry.decoded_cache_entry_count == 0
+    assert registry.decoded_cache_total_bytes == 0
+
+
+def test_execution_image_registry_does_not_retain_matrix_over_hard_byte_limit() -> None:
+    """验证单张超大解码矩阵只服务当前调用，不突破 Run 缓存硬上限。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry(decoded_cache_max_entries=2, decoded_cache_max_bytes=8)
+    decode_count = 0
+
+    def decode_matrix():
+        """记录超限矩阵是否被下一次调用重新解码。"""
+
+        nonlocal decode_count
+        decode_count += 1
+        return np.zeros((2, 2, 3), dtype=np.uint8)
+
+    first = registry.get_or_decode_matrix(cache_key="oversized", decoder=decode_matrix)
+    second = registry.get_or_decode_matrix(cache_key="oversized", decoder=decode_matrix)
+
+    assert first.nbytes == 12
+    assert second.nbytes == 12
+    assert first is not second
+    assert decode_count == 2
     assert registry.decoded_cache_entry_count == 0
     assert registry.decoded_cache_total_bytes == 0
 

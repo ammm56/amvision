@@ -166,6 +166,9 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
     _assert_bgr24_image_payload(image_registry, resized_image)
     _assert_bgr24_image_payload(image_registry, adaptive_image)
     _assert_bgr24_image_payload(image_registry, otsu_image)
+    grayscale_matrix = image_registry.get_entry(str(grayscale_image["image_handle"])).matrix
+    assert (grayscale_matrix[:, :, 0] == grayscale_matrix[:, :, 1]).all()
+    assert (grayscale_matrix[:, :, 1] == grayscale_matrix[:, :, 2]).all()
 
 
 def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> None:

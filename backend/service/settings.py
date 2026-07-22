@@ -321,7 +321,7 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     字段：
     - operator_thread_count：Workflow 子进程内 OpenCV/BLAS 算子线程上限。
     - decoded_image_cache_max_entries：单次 Workflow Run 解码图片缓存条目上限。
-    - decoded_image_cache_max_bytes：单次 Workflow Run 解码图片缓存软字节上限。
+    - decoded_image_cache_max_bytes：单次 Workflow Run 解码图片私有内存缓存硬字节上限。
     - raw_result_cache_ttl_seconds：异步 WorkflowRun 原始公开 outputs 的进程内保留秒数。
     - raw_result_cache_max_items：异步 WorkflowRun 原始公开 outputs 的最大缓存条数。
     """
@@ -339,7 +339,7 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     decoded_image_cache_max_bytes: int = Field(
         default=256 * 1024 * 1024,
         gt=0,
-        description="单次 Workflow Run 解码图片缓存软上限；单张超大图允许独占缓存",
+        description="单次 Workflow Run 解码图片私有内存缓存硬上限；broker mmap view 不重复计费",
     )
     raw_result_cache_ttl_seconds: float = Field(
         default=900.0,

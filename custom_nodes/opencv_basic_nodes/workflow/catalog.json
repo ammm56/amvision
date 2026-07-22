@@ -1669,6 +1669,15 @@
           "required": true,
           "multiple": false,
           "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
         }
       ],
       "output_ports": [
@@ -1678,6 +1687,24 @@
           "payload_type_id": "image-ref.v1",
           "description": "",
           "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -1702,6 +1729,31 @@
           },
           "output_object_key": {
             "type": "string"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Processing ROI",
+            "description": "可选处理区域 [x1, y1, x2, y2]；区域外保持原始 BGR24 像素不变。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
           }
         }
       },

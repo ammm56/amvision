@@ -479,6 +479,19 @@ class LocalBufferBrokerClient:
         )
         return self._mmap_cache.read(path=buffer_ref.path, offset=buffer_ref.offset, size=buffer_ref.size)
 
+    def read_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
+        """校验引用后直接借用只读 mmap view，不复制整段 bytes。"""
+
+        self._send_request(
+            action="validate-buffer-ref",
+            payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
+        )
+        return self._mmap_cache.read_view(
+            path=buffer_ref.path,
+            offset=buffer_ref.offset,
+            size=buffer_ref.size,
+        )
+
     def read_frame_ref(self, frame_ref: FrameRef) -> bytes:
         """读取 FrameRef 对应的帧字节。
 
@@ -494,6 +507,19 @@ class LocalBufferBrokerClient:
             payload={"frame_ref": frame_ref.model_dump(mode="json")},
         )
         return self._mmap_cache.read(path=frame_ref.path, offset=frame_ref.offset, size=frame_ref.size)
+
+    def read_frame_ref_view(self, frame_ref: FrameRef) -> memoryview:
+        """校验帧引用后直接借用只读 mmap view，不复制整帧 bytes。"""
+
+        self._send_request(
+            action="validate-frame-ref",
+            payload={"frame_ref": frame_ref.model_dump(mode="json")},
+        )
+        return self._mmap_cache.read_view(
+            path=frame_ref.path,
+            offset=frame_ref.offset,
+            size=frame_ref.size,
+        )
 
     def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
         """释放一条 broker lease。
@@ -747,6 +773,23 @@ class _MmapFileCache:
             mapped_file = self._require_mapped_file(path)
             mapped_file.mmap_view.seek(offset)
             return mapped_file.mmap_view.read(size)
+
+    def read_view(self, *, path: str, offset: int, size: int) -> memoryview:
+        """返回指定 mmap 区域的只读 view，不复制底层字节。"""
+
+        with self._lock:
+            mapped_file = self._require_mapped_file(path)
+            end_offset = int(offset) + int(size)
+            if int(offset) < 0 or int(size) <= 0 or end_offset > len(mapped_file.mmap_view):
+                raise InvalidRequestError(
+                    "LocalBufferBroker mmap view 范围无效",
+                    details={
+                        "offset": int(offset),
+                        "size": int(size),
+                        "mapped_size": len(mapped_file.mmap_view),
+                    },
+                )
+            return memoryview(mapped_file.mmap_view)[int(offset):end_offset].toreadonly()
 
     def close(self) -> None:
         """关闭全部缓存的 mmap 文件。"""

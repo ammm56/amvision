@@ -309,6 +309,11 @@ def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Pa
 
         assert write_result.buffer_ref.lease_id == lease.lease_id
         assert client.read_buffer_ref(write_result.buffer_ref) == b"abcdef"
+        borrowed_view = client.read_buffer_ref_view(write_result.buffer_ref)
+        assert isinstance(borrowed_view, memoryview)
+        assert borrowed_view.readonly is True
+        assert borrowed_view.tobytes() == b"abcdef"
+        borrowed_view.release()
         client.release(write_result.lease.lease_id)
     finally:
         supervisor.stop()
@@ -356,6 +361,10 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
         assert first_frame.path.endswith("image-test-001.dat")
         assert client.read_frame_ref(second_frame) == b"frame-2"
         assert client.read_frame_ref(third_frame) == b"frame-3"
+        borrowed_frame_view = client.read_frame_ref_view(third_frame)
+        assert borrowed_frame_view.readonly is True
+        assert borrowed_frame_view.tobytes() == b"frame-3"
+        borrowed_frame_view.release()
         with pytest.raises(InvalidRequestError):
             client.read_frame_ref(first_frame)
         assert status["frame_active_count"] == 2

@@ -63,7 +63,12 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
             WorkflowGraphNode(
                 node_id="bilateral",
                 node_type_id="custom.opencv.bilateral-filter",
-                parameters={"diameter": 7, "sigma_color": 60.0, "sigma_space": 60.0},
+                parameters={
+                    "diameter": 7,
+                    "sigma_color": 60.0,
+                    "sigma_space": 60.0,
+                    "search_bbox_xyxy": [5, 4, 50, 30],
+                },
             ),
             WorkflowGraphNode(
                 node_id="normalize",
@@ -160,6 +165,27 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
                 source_node_id="normalize",
                 source_port="image",
             ),
+            WorkflowGraphOutput(
+                output_id="median_image",
+                display_name="Median Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="median",
+                source_port="image",
+            ),
+            WorkflowGraphOutput(
+                output_id="bilateral_image",
+                display_name="Bilateral Image",
+                payload_type_id="image-ref.v1",
+                source_node_id="bilateral",
+                source_port="image",
+            ),
+            WorkflowGraphOutput(
+                output_id="bilateral_summary",
+                display_name="Bilateral Summary",
+                payload_type_id="value.v1",
+                source_node_id="bilateral",
+                source_port="summary",
+            ),
         ),
     )
 
@@ -183,6 +209,9 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
     cropped_image = execution_result.outputs["cropped_image"]
     crop_summary = execution_result.outputs["crop_summary"]
     normalized_image = execution_result.outputs["normalized_image"]
+    median_image = execution_result.outputs["median_image"]
+    bilateral_image = execution_result.outputs["bilateral_image"]
+    bilateral_summary = execution_result.outputs["bilateral_summary"]
 
     assert cropped_image["transport_kind"] == "memory"
     assert cropped_image["width"] == 72
@@ -203,6 +232,19 @@ def test_opencv_basic_batch10_preprocess_nodes_execute(tmp_path: Path) -> None:
     assert normalized_image["media_type"] == "image/raw"
     assert normalized_image["pixel_format"] == "bgr24"
     assert normalized_entry.byte_length == 72 * 48 * 3
+    median_entry = image_registry.get_entry(str(median_image["image_handle"]))
+    bilateral_entry = image_registry.get_entry(str(bilateral_image["image_handle"]))
+    assert bilateral_image["pixel_format"] == "bgr24"
+    assert bilateral_summary["value"]["search_roi_source"] == "parameter"
+    assert bilateral_summary["value"]["search_bbox_xyxy"] == [5, 4, 50, 30]
+    assert bilateral_summary["value"]["processing_width"] == 45
+    assert bilateral_summary["value"]["processing_height"] == 26
+    assert bilateral_summary["value"]["processing_pixel_count"] == 45 * 26
+    # ROI 外保持完整原始 BGR24 像素，不能为了局部滤波改变下游坐标或通道协议。
+    assert (bilateral_entry.matrix[:4] == median_entry.matrix[:4]).all()
+    assert (bilateral_entry.matrix[30:] == median_entry.matrix[30:]).all()
+    assert (bilateral_entry.matrix[:, :5] == median_entry.matrix[:, :5]).all()
+    assert (bilateral_entry.matrix[:, 50:] == median_entry.matrix[:, 50:]).all()
 
 
 def test_opencv_basic_crop_polygon_roi_masks_background_execute(tmp_path: Path) -> None:

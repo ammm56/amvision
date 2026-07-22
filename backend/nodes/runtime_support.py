@@ -113,6 +113,14 @@ class ResolvedImageInput:
     pixel_format: str | None = None
 
 
+@dataclass(frozen=True)
+class _DecodedMatrixResult:
+    """携带解码矩阵及其私有内存计费值。"""
+
+    matrix: Any
+    cache_size_bytes: int
+
+
 class ExecutionImageRegistry:
     """在单次 workflow 执行范围内管理内存图片引用。"""
 
@@ -126,8 +134,8 @@ class ExecutionImageRegistry:
 
         参数：
         - decoded_cache_max_entries：单次 Workflow Run 最多保留的解码矩阵数量。
-        - decoded_cache_max_bytes：解码矩阵缓存软上限；单张超大图允许独占缓存，
-          避免并行节点反复解码同一张图片造成更高峰值。
+        - decoded_cache_max_bytes：解码矩阵私有内存缓存硬上限；超过上限的单张图
+          只在当前调用和同一 single-flight 的并发等待方之间共享，不进入长期缓存。
         """
 
         if int(decoded_cache_max_entries) <= 0:
@@ -311,9 +319,14 @@ class ExecutionImageRegistry:
             return flight.result()
 
         try:
-            decoded_matrix = decoder()
+            decoded_result = decoder()
+            if isinstance(decoded_result, _DecodedMatrixResult):
+                decoded_matrix = decoded_result.matrix
+                matrix_size = max(0, int(decoded_result.cache_size_bytes))
+            else:
+                decoded_matrix = decoded_result
+                matrix_size = _estimate_matrix_nbytes(decoded_matrix)
             _make_cached_matrix_read_only(decoded_matrix)
-            matrix_size = _estimate_matrix_nbytes(decoded_matrix)
             with self._lock:
                 if decode_generation == self._decoded_cache_generation:
                     self._store_decoded_matrix(
@@ -370,13 +383,19 @@ class ExecutionImageRegistry:
     ) -> None:
         """在持有 registry lock 时写入矩阵并执行 LRU 容量回收。"""
 
+        # 字节上限是长期驻留私有内存的硬边界。单张超大图仍会返回给当前节点，
+        # 并通过 single-flight 共享给已经在等待的并发分支，但不允许突破配置后
+        # 一直存活到 Run 结束。broker mmap 零复制 view 的计费值为 0。
+        if matrix_size > self._decoded_cache_max_bytes:
+            return
+
         previous_size = self._decoded_matrix_sizes.pop(cache_key, 0)
         self._decoded_matrices.pop(cache_key, None)
         self._decoded_cache_total_bytes -= previous_size
         self._decoded_matrices[cache_key] = matrix
         self._decoded_matrix_sizes[cache_key] = matrix_size
         self._decoded_cache_total_bytes += matrix_size
-        while len(self._decoded_matrices) > 1 and (
+        while self._decoded_matrices and (
             len(self._decoded_matrices) > self._decoded_cache_max_entries
             or self._decoded_cache_total_bytes > self._decoded_cache_max_bytes
         ):
@@ -1147,6 +1166,28 @@ def load_image_matrix_from_payload(
     def decode_matrix() -> Any:
         """只在当前输入首次使用时读取并解码图片。"""
 
+        borrowed_raw_view = _try_load_borrowed_raw_image_view(
+            request,
+            image_payload=normalized_payload,
+        )
+        if borrowed_raw_view is not None:
+            matrix = decode_image_bytes_to_matrix(
+                cv2_module=cv2_module,
+                np_module=np_module,
+                image_bytes=borrowed_raw_view,
+                image_payload=normalized_payload,
+                imdecode_flags=imdecode_flags,
+                error_message="图片节点无法读取输入图片",
+                copy_raw=False,
+            )
+            return _DecodedMatrixResult(
+                matrix=matrix,
+                cache_size_bytes=_estimate_borrowed_matrix_private_nbytes(
+                    matrix=matrix,
+                    borrowed_view=borrowed_raw_view,
+                    np_module=np_module,
+                ),
+            )
         _, image_bytes = load_image_bytes_from_payload(
             request,
             image_payload=normalized_payload,
@@ -1166,6 +1207,55 @@ def load_image_matrix_from_payload(
         decoder=decode_matrix,
     )
     return normalized_payload, matrix.copy() if copy_raw else matrix
+
+
+def _try_load_borrowed_raw_image_view(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+) -> memoryview | None:
+    """在 reader 支持时直接借用 broker mmap raw 区域，避免复制整帧 bytes。"""
+
+    if str(image_payload.get("media_type") or "").strip().lower() != IMAGE_MEDIA_TYPE_RAW:
+        return None
+    transport_kind = str(image_payload.get("transport_kind") or "")
+    if transport_kind not in {IMAGE_TRANSPORT_BUFFER, IMAGE_TRANSPORT_FRAME}:
+        return None
+    local_buffer_reader = require_local_buffer_reader(request)
+    if transport_kind == IMAGE_TRANSPORT_BUFFER:
+        read_view = getattr(local_buffer_reader, "read_buffer_ref_view", None)
+        raw_ref = image_payload.get("buffer_ref")
+        if not callable(read_view) or raw_ref is None:
+            return None
+        borrowed_view = read_view(BufferRef.model_validate(raw_ref))
+    else:
+        read_view = getattr(local_buffer_reader, "read_frame_ref_view", None)
+        raw_ref = image_payload.get("frame_ref")
+        if not callable(read_view) or raw_ref is None:
+            return None
+        borrowed_view = read_view(FrameRef.model_validate(raw_ref))
+    if not isinstance(borrowed_view, memoryview):
+        raise ServiceConfigurationError(
+            "LocalBufferBroker borrowed view 必须返回 memoryview",
+            details={"transport_kind": transport_kind},
+        )
+    return borrowed_view.toreadonly()
+
+
+def _estimate_borrowed_matrix_private_nbytes(
+    *,
+    matrix: Any,
+    borrowed_view: memoryview,
+    np_module: Any,
+) -> int:
+    """只计入 raw 格式转换后新分配的矩阵，不重复计入 mmap 像素区。"""
+
+    shares_memory = getattr(np_module, "shares_memory", None)
+    if callable(shares_memory):
+        borrowed_array = np_module.frombuffer(borrowed_view, dtype=np_module.uint8)
+        if bool(shares_memory(matrix, borrowed_array)):
+            return 0
+    return _estimate_matrix_nbytes(matrix)
 
 
 def _build_decoded_matrix_cache_key(

@@ -180,8 +180,9 @@
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
 - `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-4k`
 - `workflow_runtime.decoded_image_cache_max_entries` 和 `decoded_image_cache_max_bytes` 只限制单次 Workflow Run 内对 storage、buffer、frame 等输入图片的解码矩阵缓存。缓存采用 LRU 和同 key single-flight；Run 结束、失败或 cleanup 失败后都会清空，不跨 Run 持有现场图片。
-- `decoded_image_cache_max_bytes` 是软上限：单张图片大于上限时允许该图片独占缓存，避免同一 Run 的并行分支重复解码超大图形成更高瞬时峰值。低内存设备可以降低该值和条目数；实际设置仍应至少容纳一张常用输入图的 raw 矩阵大小。
+- `decoded_image_cache_max_bytes` 是进程私有解码矩阵的硬上限。单张解码矩阵超过上限时仍可完成当前节点，并会共享给当时已经等待同一 single-flight 的并发分支，但不会进入 Run 级 LRU；这避免 16K BGR24 这类 768 MiB 矩阵因为“单张例外”长期突破 256 MiB 配置。broker raw BufferRef / FrameRef 在长期 worker 中直接借用只读 mmap view，不再复制一份等大的 Python bytes，且共享 view 不重复计入私有缓存字节数。
 - 缓存中的共享解码矩阵为只读；需要原地修改输入的节点必须显式请求可写副本。OpenCV 中间输出继续使用 raw BGR24 memory handle，不因该缓存配置增加 PNG/JPEG 编解码。
+- broker pool 和 decoded cache 不能合并为同一层：pool 管理跨进程 bytes、固定槽位、lease 和覆盖安全；decoded cache 管理当前 Run 中由 JPEG/PNG 等编码输入生成的进程内 OpenCV matrix。raw BGR24 broker 输入可以直接映射，编码图片仍必须有解码后的目标矩阵。
 - `local_buffer_broker.pools` 应按现场相机分辨率、图像编码方式和并发量显式配置；`slot_size_bytes` 必须大于单帧最大 bytes，`slot_count` 是可同时占用的槽位数量
 - 仓库默认创建 `image-4k`、`image-1080p` 和 `image-640x640` 三个 pool；`image-4k` 单槽 128MB 用于 5000x4000 级 20MP 工业相机 raw RGB/RGBA 输入；mmap 文件名按 `pool_name` 自动生成，总容量按 `slot_size_bytes * slot_count` 自动计算
 - 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件

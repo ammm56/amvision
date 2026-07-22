@@ -98,7 +98,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 控制通道只负责 allocate、commit、read-validate、release、heartbeat 和 metrics，不承载大图。大图数据只写入 mmap 文件，调用方通过 BufferRef 或 FrameRef 传递 `path`、`offset`、`size`、`broker_epoch` 和 `generation`。
 
-当前实现中，LocalBufferBroker client 的 `write_bytes` 已拆成 allocate、direct mmap write 和 commit，`read_buffer_ref` 已拆成 validate 和 direct mmap read；broker 控制动作只保留 allocate、commit、validate、release、release-owner、expire、status 和 shutdown 等状态事件。broker 进程通过父进程创建的事件队列接收控制事件，不再通过 host、port 或 authkey 暴露本地监听入口。多个 preview、runtime 和 deployment 子进程不会直接共享 broker response queue，backend-service 父进程会为每个 client channel 分配独立 response queue，并通过 router 按 request_id 分发响应。owner 批量释放支持按 owner_id 精确匹配或按 owner_id_prefix 兜底清理同一 workflow run 创建的 lease。
+当前实现中，LocalBufferBroker client 的 `write_bytes` 已拆成 allocate、direct mmap write 和 commit，读取已拆成 validate 和 direct mmap read；长期 workflow worker 读取 raw BufferRef / FrameRef 时会借用只读 mmap view，避免先复制为等大的 Python bytes。broker 控制动作只保留 allocate、commit、validate、release、release-owner、expire、status 和 shutdown 等状态事件。broker 进程通过父进程创建的事件队列接收控制事件，不再通过 host、port 或 authkey 暴露本地监听入口。多个 preview、runtime 和 deployment 子进程不会直接共享 broker response queue，backend-service 父进程会为每个 client channel 分配独立 response queue，并通过 router 按 request_id 分发响应。owner 批量释放支持按 owner_id 精确匹配或按 owner_id_prefix 兜底清理同一 workflow run 创建的 lease。
 
 ## 当前可用性核查
 
@@ -111,7 +111,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 - preview run、WorkflowAppRuntime worker 和 deployment worker 的 broker client 注入。
 - detection deployment 节点通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。
 - backend-service health、workflow runtime health 和 deployment health 中的 broker 摘要、输入计数和最近错误。
-- OpenCV 与 Barcode/QR 自定义节点通过公共 raw-aware 图片 helper 读取图片，已经具备 memory、storage、buffer 和 frame 输入兼容能力；raw BGR24 会转换为 NumPy/OpenCV matrix view 或必要 copy，不再按 PNG/JPEG 路径解码。
+- OpenCV 与 Barcode/QR 自定义节点通过公共 raw-aware 图片 helper 读取图片，已经具备 memory、storage、buffer 和 frame 输入兼容能力；raw BGR24 会转换为 NumPy/OpenCV matrix view 或必要 copy，不再按 PNG/JPEG 路径解码。view 在 Workflow Run 内保持只读，broker lease 在 Run cleanup 后才释放，避免槽位复用污染仍在执行的节点。
 - workflow 临时 ROI/crop lease 使用 `{workflow_run_id}:{node_id}` owner，并设置覆盖运行超时的正数 TTL。正常 finally 按 lease 释放；入队失败、取消、超时和 worker 退出由父进程按 owner prefix 批量释放，避免子进程在登记 cleanup 前硬退出后永久占用 slot。
 - ZeroMQ binary 输入写入后会把对应 lease cleanup 描述随本次 Workflow Run 的 execution metadata 转交给 worker；同步或异步 run 完成、取消、超时后统一释放。幂等重放、去抖或提交失败没有创建新 run 时，由 adapter 立即释放本次新写入的 lease。
 - pool-full 时 broker 会先执行一次过期 lease 回收再重试分配；`free_count`、`pool_full_count` 和 `expired_count` 可用于长时间高频运行监控。

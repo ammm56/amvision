@@ -86,7 +86,7 @@ def apply_raw_ref_metadata(
 
 def validate_raw_bgr24_bytes(
     *,
-    image_bytes: bytes,
+    image_bytes: bytes | bytearray | memoryview,
     shape: tuple[int, ...],
     dtype: str | None,
     layout: str | None,
@@ -141,7 +141,7 @@ def decode_image_bytes_to_matrix(
     *,
     cv2_module: Any,
     np_module: Any,
-    image_bytes: bytes,
+    image_bytes: bytes | bytearray | memoryview,
     image_payload: object,
     imdecode_flags: int | None = None,
     error_message: str = "输入图片无法读取",
@@ -159,7 +159,7 @@ def decode_image_bytes_to_matrix(
         if isinstance(image_payload, dict)
         else None
     )
-    if not isinstance(image_bytes, bytes) or not image_bytes:
+    if not isinstance(image_bytes, (bytes, bytearray, memoryview)) or not image_bytes:
         details: dict[str, object] = {"reason": "empty_bytes"}
         if transport_kind is not None:
             details["transport_kind"] = transport_kind
@@ -174,6 +174,11 @@ def decode_image_bytes_to_matrix(
             copy_raw=copy_raw,
         )
 
+    if not isinstance(image_bytes, bytes):
+        raise InvalidRequestError(
+            error_message,
+            details={"reason": "encoded_image_requires_bytes", "media_type": metadata.media_type},
+        )
     image_buffer = np_module.frombuffer(image_bytes, dtype=np_module.uint8)
     image_matrix = cv2_module.imdecode(
         image_buffer,
@@ -276,7 +281,7 @@ def _decode_raw_image_bytes_to_matrix(
     *,
     cv2_module: Any,
     np_module: Any,
-    image_bytes: bytes,
+    image_bytes: bytes | bytearray | memoryview,
     metadata: ImagePayloadMetadata,
     imdecode_flags: int | None,
     copy_raw: bool,
@@ -340,7 +345,12 @@ def _apply_raw_decode_flags(*, cv2_module: Any, matrix: Any, imdecode_flags: int
     return matrix
 
 
-def _decode_gray8_bytes(*, np_module: Any, image_bytes: bytes, shape: tuple[int, ...]) -> Any:
+def _decode_gray8_bytes(
+    *,
+    np_module: Any,
+    image_bytes: bytes | bytearray | memoryview,
+    shape: tuple[int, ...],
+) -> Any:
     """把 gray8 raw bytes 解释为灰度矩阵。"""
 
     if len(shape) == 2:
@@ -360,7 +370,7 @@ def _decode_gray8_bytes(*, np_module: Any, image_bytes: bytes, shape: tuple[int,
 
 def _validate_raw_3_channel_bytes(
     *,
-    image_bytes: bytes,
+    image_bytes: bytes | bytearray | memoryview,
     shape: tuple[int, ...],
     pixel_format: str,
 ) -> None:
