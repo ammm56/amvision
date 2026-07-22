@@ -63,13 +63,8 @@ def test_opencv_geometry_planar_transform_bridge_warp_and_roi_execute(tmp_path: 
     projected_roi = execution_result.outputs["projected_roi"]
     bridge_summary = execution_result.outputs["bridge_summary"]
 
-    import cv2
-    import numpy as np
-
-    warped_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(warped_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    warped_matrix = image_registry.read_matrix(str(warped_image["image_handle"]))
+    assert warped_matrix is not None
 
     assert warped_image["transport_kind"] == "memory"
     assert warped_image["width"] == 70

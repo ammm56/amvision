@@ -100,13 +100,8 @@ def test_opencv_basic_batch15_sobel_xy_execute(tmp_path: Path) -> None:
     edge_image = execution_result.outputs["edge_image"]
     edge_summary = execution_result.outputs["edge_summary"]
 
-    import cv2
-    import numpy as np
-
-    edge_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(edge_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_GRAYSCALE,
-    )
+    edge_matrix = image_registry.read_matrix(str(edge_image["image_handle"]))
+    assert edge_matrix is not None
 
     assert edge_image["transport_kind"] == "memory"
     assert edge_image["width"] == 32
@@ -116,9 +111,9 @@ def test_opencv_basic_batch15_sobel_xy_execute(tmp_path: Path) -> None:
     assert edge_summary["value"]["convert_to_grayscale"] is True
     assert edge_summary["value"]["max_edge_intensity"] > 200
     assert edge_summary["value"]["non_zero_pixel_count"] > 0
-    assert int(edge_matrix[6, 14]) > 150
-    assert int(edge_matrix[12, 8]) > 150
-    assert int(edge_matrix[12, 16]) < 20
+    assert int(edge_matrix[6, 14, 0]) > 150
+    assert int(edge_matrix[12, 8, 0]) > 150
+    assert int(edge_matrix[12, 16, 0]) < 20
 
 
 def test_opencv_basic_batch15_laplacian_color_execute(tmp_path: Path) -> None:
@@ -197,13 +192,8 @@ def test_opencv_basic_batch15_laplacian_color_execute(tmp_path: Path) -> None:
     edge_image = execution_result.outputs["edge_image"]
     edge_summary = execution_result.outputs["edge_summary"]
 
-    import cv2
-    import numpy as np
-
-    edge_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(edge_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    edge_matrix = image_registry.read_matrix(str(edge_image["image_handle"]))
+    assert edge_matrix is not None
 
     assert edge_image["transport_kind"] == "memory"
     assert edge_image["width"] == 32

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
+import gc
 from pathlib import Path
+from threading import Event, Lock
+import weakref
 
 import pytest
 
@@ -200,6 +204,9 @@ def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
     assert decode_count == 1
     assert first_matrix is second_matrix
     assert np.array_equal(first_matrix, image_matrix)
+    assert first_matrix.flags.writeable is False
+    assert registry.decoded_cache_entry_count == 1
+    assert registry.decoded_cache_total_bytes == image_matrix.nbytes
 
 
 def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path) -> None:
@@ -229,7 +236,176 @@ def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path
     copied_matrix[0, 0] = 0
 
     assert copied_matrix is not shared_matrix
+    assert copied_matrix.flags.writeable is True
     assert np.array_equal(shared_matrix, image_matrix)
+
+
+def test_execution_image_registry_single_flight_decodes_once_for_parallel_readers() -> None:
+    """验证并行分支同时读取同一输入时只允许一个 decoder 执行。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry()
+    decoder_started = Event()
+    allow_decoder_finish = Event()
+    counter_lock = Lock()
+    decode_count = 0
+    expected_matrix = np.full((16, 20, 3), 33, dtype=np.uint8)
+
+    def decoder():
+        """阻塞首个 decoder，使其他线程进入同一 flight。"""
+
+        nonlocal decode_count
+        with counter_lock:
+            decode_count += 1
+        decoder_started.set()
+        assert allow_decoder_finish.wait(timeout=2.0)
+        return expected_matrix
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(registry.get_or_decode_matrix, cache_key="same-image", decoder=decoder)
+            for _ in range(4)
+        ]
+        assert decoder_started.wait(timeout=2.0)
+        allow_decoder_finish.set()
+        matrices = [future.result(timeout=2.0) for future in futures]
+
+    assert decode_count == 1
+    assert all(matrix is expected_matrix for matrix in matrices)
+    assert expected_matrix.flags.writeable is False
+
+
+def test_execution_image_registry_bounds_lru_cache_and_releases_matrices() -> None:
+    """验证解码缓存按条目和字节软上限回收，clear 后立即断开矩阵引用。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry(decoded_cache_max_entries=2, decoded_cache_max_bytes=24)
+
+    first = registry.get_or_decode_matrix(
+        cache_key="first",
+        decoder=lambda: np.zeros((2, 2, 3), dtype=np.uint8),
+    )
+    registry.get_or_decode_matrix(
+        cache_key="second",
+        decoder=lambda: np.ones((2, 2, 3), dtype=np.uint8),
+    )
+    registry.get_or_decode_matrix(
+        cache_key="third",
+        decoder=lambda: np.full((2, 2, 3), 2, dtype=np.uint8),
+    )
+
+    assert registry.decoded_cache_entry_count == 2
+    assert registry.decoded_cache_total_bytes == 24
+    first_again = registry.get_or_decode_matrix(
+        cache_key="first",
+        decoder=lambda: np.full((2, 2, 3), 9, dtype=np.uint8),
+    )
+    assert first_again is not first
+    assert int(first_again[0, 0, 0]) == 9
+
+    registry.clear_decoded_matrices()
+
+    assert registry.decoded_cache_entry_count == 0
+    assert registry.decoded_cache_total_bytes == 0
+
+
+def test_execution_image_registry_clear_releases_last_matrix_reference() -> None:
+    """验证 clear 会真正断开 registry 对大矩阵的强引用。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry()
+    matrix = registry.get_or_decode_matrix(
+        cache_key="large-image",
+        decoder=lambda: np.zeros((128, 128, 3), dtype=np.uint8),
+    )
+    matrix_reference = weakref.ref(matrix)
+
+    registry.clear_decoded_matrices()
+    del matrix
+    gc.collect()
+
+    assert matrix_reference() is None
+
+
+def test_execution_image_registry_clear_during_decode_does_not_repopulate_cache() -> None:
+    """验证 Run 结束清理与在途 decode 竞争时不会把矩阵重新放回缓存。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry()
+    decoder_started = Event()
+    allow_decoder_finish = Event()
+
+    def decoder():
+        """等待清理发生后再返回矩阵。"""
+
+        decoder_started.set()
+        assert allow_decoder_finish.wait(timeout=2.0)
+        return np.zeros((8, 8, 3), dtype=np.uint8)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            registry.get_or_decode_matrix,
+            cache_key="in-flight",
+            decoder=decoder,
+        )
+        assert decoder_started.wait(timeout=2.0)
+        registry.clear_decoded_matrices()
+        allow_decoder_finish.set()
+        result = future.result(timeout=2.0)
+
+    assert result.flags.writeable is False
+    assert registry.decoded_cache_entry_count == 0
+    assert registry.decoded_cache_total_bytes == 0
+
+
+def test_execution_image_registry_failed_decode_allows_clean_retry() -> None:
+    """验证 decoder 异常不会留下永久 flight 或占用缓存容量。"""
+
+    np = pytest.importorskip("numpy")
+    registry = ExecutionImageRegistry()
+
+    with pytest.raises(RuntimeError, match="decode failed"):
+        registry.get_or_decode_matrix(
+            cache_key="retry-image",
+            decoder=lambda: (_ for _ in ()).throw(RuntimeError("decode failed")),
+        )
+
+    recovered = registry.get_or_decode_matrix(
+        cache_key="retry-image",
+        decoder=lambda: np.ones((4, 4, 3), dtype=np.uint8),
+    )
+
+    assert registry.decoded_cache_entry_count == 1
+    assert int(recovered[0, 0, 0]) == 1
+
+
+def test_load_image_matrix_invalidates_storage_cache_after_file_overwrite(tmp_path: Path) -> None:
+    """验证同一 object key 在 Run 内被覆盖后不会继续返回旧矩阵。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    registry = ExecutionImageRegistry()
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload={"object_key": "inputs/source.png", "media_type": "image/png"},
+    )
+    first_source = np.zeros((8, 8, 3), dtype=np.uint8)
+    second_source = np.full((9, 8, 3), 255, dtype=np.uint8)
+
+    first_ok, first_encoded = cv2.imencode(".png", first_source)
+    second_ok, second_encoded = cv2.imencode(".png", second_source)
+    assert first_ok is True and second_ok is True
+    dataset_storage.write_bytes("inputs/source.png", first_encoded.tobytes())
+    _, first_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+    dataset_storage.write_bytes("inputs/source.png", second_encoded.tobytes())
+    _, second_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
+
+    assert first_matrix.shape == first_source.shape
+    assert second_matrix.shape == second_source.shape
+    assert np.array_equal(second_matrix, second_source)
+    assert first_matrix is not second_matrix
 
 
 def test_register_image_bytes_and_copy_image_payload_support_memory_source(tmp_path: Path) -> None:

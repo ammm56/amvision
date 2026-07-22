@@ -409,6 +409,12 @@ class WorkflowRuntimeService:
                 node_catalog_registry=self.node_catalog_registry,
                 runtime_registry=self.workflow_node_runtime_registry,
                 runtime_context=self.workflow_service_node_runtime_context,
+                decoded_image_cache_max_entries=(
+                    self.settings.workflow_runtime.decoded_image_cache_max_entries
+                ),
+                decoded_image_cache_max_bytes=(
+                    self.settings.workflow_runtime.decoded_image_cache_max_bytes
+                ),
             ).execute(
                 WorkflowSnapshotExecutionRequest(
                     project_id=execution_request.project_id,

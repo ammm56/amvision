@@ -277,6 +277,12 @@ def run_workflow_application_process_worker(
             node_catalog_registry=node_catalog_registry,
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
             runtime_context=runtime_context,
+            decoded_image_cache_max_entries=(
+                settings.workflow_runtime.decoded_image_cache_max_entries
+            ),
+            decoded_image_cache_max_bytes=(
+                settings.workflow_runtime.decoded_image_cache_max_bytes
+            ),
         )
         response_queue.put(
             {
@@ -357,6 +363,8 @@ def _execute_workflow_application(
     node_catalog_registry: NodeCatalogRegistry,
     runtime_registry: WorkflowNodeRuntimeRegistry,
     runtime_context: WorkflowServiceNodeRuntimeContext,
+    decoded_image_cache_max_entries: int = 8,
+    decoded_image_cache_max_bytes: int = 256 * 1024 * 1024,
 ) -> WorkflowApplicationExecutionResult:
     """在给定运行时资源中执行一份已保存的 workflow application。"""
 
@@ -379,6 +387,8 @@ def _execute_workflow_application(
         node_catalog_registry=node_catalog_registry,
         runtime_registry=runtime_registry,
         runtime_context=runtime_context,
+        decoded_image_cache_max_entries=decoded_image_cache_max_entries,
+        decoded_image_cache_max_bytes=decoded_image_cache_max_bytes,
     ).execute(
         WorkflowSnapshotExecutionRequest(
             project_id=project_id,

@@ -134,6 +134,8 @@ class SnapshotExecutionService:
         runtime_registry: WorkflowNodeRuntimeRegistry,
         runtime_context: WorkflowServiceNodeRuntimeContext,
         event_sink: Callable[[dict[str, object]], None] | None = None,
+        decoded_image_cache_max_entries: int = 8,
+        decoded_image_cache_max_bytes: int = 256 * 1024 * 1024,
     ) -> None:
         """初始化 snapshot 执行服务。
 
@@ -149,6 +151,12 @@ class SnapshotExecutionService:
         self.runtime_registry = runtime_registry
         self.runtime_context = runtime_context
         self.event_sink = event_sink
+        self.decoded_image_cache_max_entries = int(decoded_image_cache_max_entries)
+        self.decoded_image_cache_max_bytes = int(decoded_image_cache_max_bytes)
+        if self.decoded_image_cache_max_entries <= 0:
+            raise ServiceConfigurationError("Workflow Run 解码缓存条目上限必须为正整数")
+        if self.decoded_image_cache_max_bytes <= 0:
+            raise ServiceConfigurationError("Workflow Run 解码缓存字节上限必须为正整数")
         self._validated_snapshots: OrderedDict[
             tuple[str, str, str], tuple[FlowApplication, WorkflowGraphTemplate]
         ] = OrderedDict()
@@ -180,7 +188,19 @@ class SnapshotExecutionService:
         execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
-        execution_metadata_payload.setdefault("execution_image_registry", ExecutionImageRegistry())
+        image_registry = execution_metadata_payload.get("execution_image_registry")
+        owns_image_registry = image_registry is None
+        if image_registry is None:
+            image_registry = ExecutionImageRegistry(
+                decoded_cache_max_entries=self.decoded_image_cache_max_entries,
+                decoded_cache_max_bytes=self.decoded_image_cache_max_bytes,
+            )
+            execution_metadata_payload["execution_image_registry"] = image_registry
+        elif not isinstance(image_registry, ExecutionImageRegistry):
+            raise ServiceConfigurationError(
+                "Workflow Run execution_image_registry 类型无效",
+                details={"actual_type": type(image_registry).__name__},
+            )
         if self.runtime_context.local_buffer_reader is not None:
             execution_metadata_payload.setdefault("local_buffer_reader", self.runtime_context.local_buffer_reader)
         execution_error: Exception | None = None
@@ -192,20 +212,40 @@ class SnapshotExecutionService:
                 runtime_context=self.runtime_context,
                 event_callback=self.event_sink,
             )
+            snapshot_result = WorkflowSnapshotExecutionResult(
+                project_id=request.project_id,
+                application_id=request.application_id,
+                template_id=graph_execution_result.template_id,
+                template_version=graph_execution_result.template_version,
+                outputs=_build_binding_outputs(
+                    application=application,
+                    template_outputs=graph_execution_result.outputs,
+                ),
+                template_outputs=dict(graph_execution_result.outputs),
+                node_records=graph_execution_result.node_records,
+            )
         except Exception as exc:
             execution_error = exc
             raise
         finally:
-            cleanup_error = execute_registered_execution_cleanups(
-                execution_metadata=execution_metadata_payload,
-                runtime_context=self.runtime_context,
-                handlers={
-                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
-                    WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
-                    WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
-                    WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE: _cleanup_local_buffer_lease,
-                },
-            )
+            try:
+                cleanup_error = execute_registered_execution_cleanups(
+                    execution_metadata=execution_metadata_payload,
+                    runtime_context=self.runtime_context,
+                    handlers={
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT: _cleanup_dataset_storage_object,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE: _cleanup_dataset_storage_tree,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_DEPLOYMENT_INSTANCE: _cleanup_registered_deployment,
+                        WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE: _cleanup_local_buffer_lease,
+                    },
+                )
+            finally:
+                # Runtime worker 会长期驻留；每次 Run 必须主动断开大图矩阵引用，
+                # 不能依赖下一轮 GC 或进程退出回收。
+                if owns_image_registry:
+                    image_registry.clear()
+                else:
+                    image_registry.clear_decoded_matrices()
             if cleanup_error is not None and execution_error is None:
                 raise cleanup_error
             if cleanup_error is not None and execution_error is not None:
@@ -220,18 +260,7 @@ class SnapshotExecutionService:
                     request.application_id,
                     cleanup_error.message,
                 )
-        return WorkflowSnapshotExecutionResult(
-            project_id=request.project_id,
-            application_id=request.application_id,
-            template_id=graph_execution_result.template_id,
-            template_version=graph_execution_result.template_version,
-            outputs=_build_binding_outputs(
-                application=application,
-                template_outputs=graph_execution_result.outputs,
-            ),
-            template_outputs=dict(graph_execution_result.outputs),
-            node_records=graph_execution_result.node_records,
-        )
+        return snapshot_result
 
     def _load_validated_snapshots(
         self,
@@ -694,6 +723,12 @@ def run_workflow_snapshot_process_worker(
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
             runtime_context=runtime_context,
             event_sink=(lambda event: _emit_snapshot_execution_event(event_queue, event)),
+            decoded_image_cache_max_entries=(
+                settings.workflow_runtime.decoded_image_cache_max_entries
+            ),
+            decoded_image_cache_max_bytes=(
+                settings.workflow_runtime.decoded_image_cache_max_bytes
+            ),
         ).execute(
             WorkflowSnapshotExecutionRequest(
                 project_id=_require_payload_str(request_payload, "project_id"),

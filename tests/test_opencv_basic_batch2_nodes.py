@@ -186,8 +186,8 @@ def test_opencv_basic_batch2_diff_component_nodes_execute(tmp_path: Path) -> Non
 
     assert diff_image["transport_kind"] == "memory"
     assert threshold_image["transport_kind"] == "memory"
-    assert image_registry.read_bytes(str(diff_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
-    assert image_registry.read_bytes(str(threshold_image["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert image_registry.read_matrix(str(diff_image["image_handle"])) is not None
+    assert image_registry.read_matrix(str(threshold_image["image_handle"])) is not None
     assert diff_summary["value"]["diff_mode"] == "grayscale"
     assert diff_summary["value"]["non_zero_pixel_count"] > 0
     assert threshold_summary["value"]["foreground_pixel_count"] > 0

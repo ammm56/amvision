@@ -84,6 +84,13 @@
   "async_inference_gateway": {
     "service_id": "backend-service-main"
   },
+  "workflow_runtime": {
+    "operator_thread_count": 1,
+    "decoded_image_cache_max_entries": 8,
+    "decoded_image_cache_max_bytes": 268435456,
+    "raw_result_cache_ttl_seconds": 900.0,
+    "raw_result_cache_max_items": 64
+  },
   "local_buffer_broker": {
     "enabled": true,
     "root_dir": "./data/buffers",
@@ -146,6 +153,11 @@
 - AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=16
 - AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
 - AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
+- AMVISION_WORKFLOW_RUNTIME__OPERATOR_THREAD_COUNT=1
+- AMVISION_WORKFLOW_RUNTIME__DECODED_IMAGE_CACHE_MAX_ENTRIES=8
+- AMVISION_WORKFLOW_RUNTIME__DECODED_IMAGE_CACHE_MAX_BYTES=268435456
+- AMVISION_WORKFLOW_RUNTIME__RAW_RESULT_CACHE_TTL_SECONDS=900.0
+- AMVISION_WORKFLOW_RUNTIME__RAW_RESULT_CACHE_MAX_ITEMS=64
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__STARTUP_TIMEOUT_SECONDS=180.0
@@ -167,6 +179,9 @@
 - 环境变量主要用于测试、调试、launcher 注入和临时覆盖
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
 - `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-4k`
+- `workflow_runtime.decoded_image_cache_max_entries` 和 `decoded_image_cache_max_bytes` 只限制单次 Workflow Run 内对 storage、buffer、frame 等输入图片的解码矩阵缓存。缓存采用 LRU 和同 key single-flight；Run 结束、失败或 cleanup 失败后都会清空，不跨 Run 持有现场图片。
+- `decoded_image_cache_max_bytes` 是软上限：单张图片大于上限时允许该图片独占缓存，避免同一 Run 的并行分支重复解码超大图形成更高瞬时峰值。低内存设备可以降低该值和条目数；实际设置仍应至少容纳一张常用输入图的 raw 矩阵大小。
+- 缓存中的共享解码矩阵为只读；需要原地修改输入的节点必须显式请求可写副本。OpenCV 中间输出继续使用 raw BGR24 memory handle，不因该缓存配置增加 PNG/JPEG 编解码。
 - `local_buffer_broker.pools` 应按现场相机分辨率、图像编码方式和并发量显式配置；`slot_size_bytes` 必须大于单帧最大 bytes，`slot_count` 是可同时占用的槽位数量
 - 仓库默认创建 `image-4k`、`image-1080p` 和 `image-640x640` 三个 pool；`image-4k` 单槽 128MB 用于 5000x4000 级 20MP 工业相机 raw RGB/RGBA 输入；mmap 文件名按 `pool_name` 自动生成，总容量按 `slot_size_bytes * slot_count` 自动计算
 - 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件

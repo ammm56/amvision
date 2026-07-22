@@ -106,13 +106,8 @@ def test_opencv_basic_batch12_perspective_transform_with_parameters_execute(tmp_
     warped_image = execution_result.outputs["warped_image"]
     warp_summary = execution_result.outputs["warp_summary"]
 
-    import cv2
-    import numpy as np
-
-    warped_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(warped_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    warped_matrix = image_registry.read_matrix(str(warped_image["image_handle"]))
+    assert warped_matrix is not None
 
     assert warped_image["transport_kind"] == "memory"
     assert warped_image["width"] == 80
@@ -232,13 +227,8 @@ def test_opencv_basic_batch12_perspective_transform_with_roi_execute(tmp_path: P
     warped_image = execution_result.outputs["warped_image"]
     warp_summary = execution_result.outputs["warp_summary"]
 
-    import cv2
-    import numpy as np
-
-    warped_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(warped_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    warped_matrix = image_registry.read_matrix(str(warped_image["image_handle"]))
+    assert warped_matrix is not None
 
     assert warped_image["transport_kind"] == "memory"
     assert warped_image["width"] == warp_summary["value"]["estimated_output_width"]

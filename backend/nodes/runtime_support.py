@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import base64
+from collections import OrderedDict
+from concurrent.futures import Future
 from dataclasses import dataclass
+import hashlib
 import json
 import mimetypes
 from pathlib import PurePosixPath
-from threading import Lock, RLock
+from threading import RLock
 from typing import Any
 from uuid import uuid4
 
@@ -113,12 +116,33 @@ class ResolvedImageInput:
 class ExecutionImageRegistry:
     """在单次 workflow 执行范围内管理内存图片引用。"""
 
-    def __init__(self) -> None:
-        """初始化空的 execution image registry。"""
+    def __init__(
+        self,
+        *,
+        decoded_cache_max_entries: int = 8,
+        decoded_cache_max_bytes: int = 256 * 1024 * 1024,
+    ) -> None:
+        """初始化空的 execution image registry。
+
+        参数：
+        - decoded_cache_max_entries：单次 Workflow Run 最多保留的解码矩阵数量。
+        - decoded_cache_max_bytes：解码矩阵缓存软上限；单张超大图允许独占缓存，
+          避免并行节点反复解码同一张图片造成更高峰值。
+        """
+
+        if int(decoded_cache_max_entries) <= 0:
+            raise InvalidRequestError("execution image registry 解码缓存条目上限必须为正整数")
+        if int(decoded_cache_max_bytes) <= 0:
+            raise InvalidRequestError("execution image registry 解码缓存字节上限必须为正整数")
 
         self._entries: dict[str, ExecutionImageEntry] = {}
-        self._decoded_matrices: dict[str, Any] = {}
-        self._decoded_matrix_locks: dict[str, Lock] = {}
+        self._decoded_matrices: OrderedDict[str, Any] = OrderedDict()
+        self._decoded_matrix_sizes: dict[str, int] = {}
+        self._decoded_matrix_flights: dict[str, Future[Any]] = {}
+        self._decoded_cache_max_entries = int(decoded_cache_max_entries)
+        self._decoded_cache_max_bytes = int(decoded_cache_max_bytes)
+        self._decoded_cache_total_bytes = 0
+        self._decoded_cache_generation = 0
         self._lock = RLock()
 
     def register_image_bytes(
@@ -269,23 +293,95 @@ class ExecutionImageRegistry:
             raise InvalidRequestError("execution image registry 解码缓存 key 不能为空")
         if not callable(decoder):
             raise InvalidRequestError("execution image registry decoder 必须可调用")
+        owns_flight = False
         with self._lock:
             cached_matrix = self._decoded_matrices.get(normalized_cache_key)
             if cached_matrix is not None:
+                self._decoded_matrices.move_to_end(normalized_cache_key)
                 return cached_matrix
-            decode_lock = self._decoded_matrix_locks.get(normalized_cache_key)
-            if decode_lock is None:
-                decode_lock = Lock()
-                self._decoded_matrix_locks[normalized_cache_key] = decode_lock
-        with decode_lock:
-            with self._lock:
-                cached_matrix = self._decoded_matrices.get(normalized_cache_key)
-                if cached_matrix is not None:
-                    return cached_matrix
+            flight = self._decoded_matrix_flights.get(normalized_cache_key)
+            if flight is None:
+                flight = Future()
+                self._decoded_matrix_flights[normalized_cache_key] = flight
+                decode_generation = self._decoded_cache_generation
+                owns_flight = True
+            else:
+                decode_generation = self._decoded_cache_generation
+        if not owns_flight:
+            return flight.result()
+
+        try:
             decoded_matrix = decoder()
+            _make_cached_matrix_read_only(decoded_matrix)
+            matrix_size = _estimate_matrix_nbytes(decoded_matrix)
             with self._lock:
-                self._decoded_matrices[normalized_cache_key] = decoded_matrix
+                if decode_generation == self._decoded_cache_generation:
+                    self._store_decoded_matrix(
+                        cache_key=normalized_cache_key,
+                        matrix=decoded_matrix,
+                        matrix_size=matrix_size,
+                    )
+                self._decoded_matrix_flights.pop(normalized_cache_key, None)
+            flight.set_result(decoded_matrix)
             return decoded_matrix
+        except BaseException as exc:
+            with self._lock:
+                self._decoded_matrix_flights.pop(normalized_cache_key, None)
+            flight.set_exception(exc)
+            # owner 直接抛出同一异常；并发等待方由 Future 收到一致失败结果。
+            flight.exception()
+            raise
+
+    @property
+    def decoded_cache_entry_count(self) -> int:
+        """返回当前 Run 已缓存的解码矩阵数量。"""
+
+        with self._lock:
+            return len(self._decoded_matrices)
+
+    @property
+    def decoded_cache_total_bytes(self) -> int:
+        """返回当前 Run 解码矩阵缓存的估算字节数。"""
+
+        with self._lock:
+            return self._decoded_cache_total_bytes
+
+    def clear_decoded_matrices(self) -> None:
+        """确定性释放当前 Run 的解码缓存，不删除 memory image handles。"""
+
+        with self._lock:
+            self._clear_decoded_matrices_locked()
+
+    def _clear_decoded_matrices_locked(self) -> None:
+        """在持有 registry lock 时清空解码缓存和在途索引。"""
+
+        self._decoded_cache_generation += 1
+        self._decoded_matrices.clear()
+        self._decoded_matrix_sizes.clear()
+        self._decoded_matrix_flights.clear()
+        self._decoded_cache_total_bytes = 0
+
+    def _store_decoded_matrix(
+        self,
+        *,
+        cache_key: str,
+        matrix: Any,
+        matrix_size: int,
+    ) -> None:
+        """在持有 registry lock 时写入矩阵并执行 LRU 容量回收。"""
+
+        previous_size = self._decoded_matrix_sizes.pop(cache_key, 0)
+        self._decoded_matrices.pop(cache_key, None)
+        self._decoded_cache_total_bytes -= previous_size
+        self._decoded_matrices[cache_key] = matrix
+        self._decoded_matrix_sizes[cache_key] = matrix_size
+        self._decoded_cache_total_bytes += matrix_size
+        while len(self._decoded_matrices) > 1 and (
+            len(self._decoded_matrices) > self._decoded_cache_max_entries
+            or self._decoded_cache_total_bytes > self._decoded_cache_max_bytes
+        ):
+            evicted_key, _ = self._decoded_matrices.popitem(last=False)
+            self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(evicted_key, 0)
 
     def release(self, image_handle: str) -> None:
         """释放一张已注册的内存图片。
@@ -304,8 +400,7 @@ class ExecutionImageRegistry:
 
         with self._lock:
             self._entries.clear()
-            self._decoded_matrices.clear()
-            self._decoded_matrix_locks.clear()
+            self._clear_decoded_matrices_locked()
 
 
 def require_dataset_storage(request: WorkflowNodeExecutionRequest) -> LocalDatasetStorage:
@@ -1044,6 +1139,7 @@ def load_image_matrix_from_payload(
                 return normalized_payload, matrix
     image_registry = require_execution_image_registry(request)
     decode_cache_key = _build_decoded_matrix_cache_key(
+        request,
         normalized_payload,
         imdecode_flags=imdecode_flags,
     )
@@ -1073,15 +1169,51 @@ def load_image_matrix_from_payload(
 
 
 def _build_decoded_matrix_cache_key(
+    request: WorkflowNodeExecutionRequest,
     image_payload: dict[str, object],
     *,
     imdecode_flags: int | None,
 ) -> str:
-    """为单次执行中的稳定图片引用构造解码缓存 key。"""
+    """为单次执行中的图片版本构造紧凑的解码缓存 key。
 
-    return json.dumps(
+    storage 输入包含文件版本指纹，避免同一 Run 覆盖 object key 后仍读取旧矩阵；
+    其他传输模式只使用稳定引用和解码相关元数据，不把任意扩展字段或大文本复制到 key。
+    """
+
+    transport_kind = str(image_payload.get("transport_kind") or "")
+    reference: object
+    if transport_kind == IMAGE_TRANSPORT_STORAGE:
+        object_key = str(image_payload.get("object_key") or "")
+        storage_version: tuple[int, int, int] | None = None
+        try:
+            source_path = require_dataset_storage(request).resolve(object_key)
+            file_stat = source_path.stat()
+            storage_version = (
+                int(file_stat.st_size),
+                int(file_stat.st_mtime_ns),
+                int(file_stat.st_ctime_ns),
+            )
+        except OSError:
+            # 实际读取路径继续负责返回统一的“文件不存在/无法读取”业务错误。
+            storage_version = None
+        reference = (object_key, storage_version)
+    elif transport_kind == IMAGE_TRANSPORT_MEMORY:
+        reference = str(image_payload.get("image_handle") or "")
+    elif transport_kind == IMAGE_TRANSPORT_BUFFER:
+        reference = image_payload.get("buffer_ref")
+    elif transport_kind == IMAGE_TRANSPORT_FRAME:
+        reference = image_payload.get("frame_ref")
+    else:  # require_image_payload 已校验；这里保留防御性分支。
+        reference = None
+    canonical_payload = json.dumps(
         {
-            "image_payload": image_payload,
+            "transport_kind": transport_kind,
+            "reference": reference,
+            "media_type": image_payload.get("media_type"),
+            "shape": image_payload.get("shape"),
+            "dtype": image_payload.get("dtype"),
+            "layout": image_payload.get("layout"),
+            "pixel_format": image_payload.get("pixel_format"),
             "imdecode_flags": imdecode_flags,
         },
         ensure_ascii=True,
@@ -1089,6 +1221,25 @@ def _build_decoded_matrix_cache_key(
         separators=(",", ":"),
         default=str,
     )
+    return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+
+
+def _estimate_matrix_nbytes(matrix: Any) -> int:
+    """估算矩阵持有的数据字节数，未知对象按 0 处理。"""
+
+    raw_nbytes = getattr(matrix, "nbytes", 0)
+    try:
+        return max(0, int(raw_nbytes))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _make_cached_matrix_read_only(matrix: Any) -> None:
+    """把共享解码矩阵标记为只读，防止并行节点污染其他分支输入。"""
+
+    set_flags = getattr(matrix, "setflags", None)
+    if callable(set_flags):
+        set_flags(write=False)
 
 
 def build_response_image_payload(

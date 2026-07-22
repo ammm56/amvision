@@ -132,6 +132,12 @@ def run_workflow_runtime_worker_process(
             node_catalog_registry=node_catalog_registry,
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
             runtime_context=runtime_context,
+            decoded_image_cache_max_entries=(
+                settings.workflow_runtime.decoded_image_cache_max_entries
+            ),
+            decoded_image_cache_max_bytes=(
+                settings.workflow_runtime.decoded_image_cache_max_bytes
+            ),
         )
         worker_started_at = now_isoformat()
         runtime_instance_id = build_runtime_instance_id(workflow_runtime_id)

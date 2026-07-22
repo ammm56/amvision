@@ -30,6 +30,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.node_pack_loader import NodeCatalogSnapshot
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.service.application.local_buffers import (
     LocalBufferBrokerEventChannel,
     LocalBufferBrokerPoolSettings,
@@ -734,6 +735,103 @@ def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(tmp_p
         session_factory.engine.dispose()
 
 
+def test_snapshot_execution_clears_decoded_image_cache_after_each_run(tmp_path: Path) -> None:
+    """验证长期驻留 SnapshotExecutionService 不会跨 Run 持有解码矩阵。"""
+
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    template = _build_metadata_probe_template()
+    application = _build_metadata_probe_application()
+    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
+    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    image_registry = ExecutionImageRegistry()
+
+    try:
+        runtime_registry = WorkflowNodeRuntimeRegistry()
+        runtime_registry.register_python_callable(_build_metadata_probe_node(), _image_cache_probe_handler)
+        execution_result = SnapshotExecutionService(
+            dataset_storage=dataset_storage,
+            node_catalog_registry=NodeCatalogRegistry(
+                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
+            ),
+            runtime_registry=runtime_registry,
+            runtime_context=WorkflowServiceNodeRuntimeContext(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+            ),
+        ).execute(
+            WorkflowSnapshotExecutionRequest(
+                project_id="project-1",
+                application_id=application.application_id,
+                application_snapshot_object_key="workflow/application.json",
+                template_snapshot_object_key="workflow/template.json",
+                input_bindings={"source_text": {"value": "ok"}},
+                execution_metadata={"execution_image_registry": image_registry},
+            )
+        )
+
+        assert execution_result.outputs["final_text"]["cache_entries_during_node"] == 1
+        assert image_registry.decoded_cache_entry_count == 0
+        assert image_registry.decoded_cache_total_bytes == 0
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_snapshot_execution_clears_owned_image_registry_after_run(tmp_path: Path) -> None:
+    """验证服务内部创建的 registry 在 Run 结束时释放缓存和 memory handles。"""
+
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    template = _build_metadata_probe_template()
+    application = _build_metadata_probe_application()
+    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
+    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    captured_registries: list[ExecutionImageRegistry] = []
+    captured_handles: list[str] = []
+
+    def registry_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        """注册矩阵和解码缓存，并把 registry 暴露给测试断言。"""
+
+        image_registry = request.execution_metadata["execution_image_registry"]
+        assert isinstance(image_registry, ExecutionImageRegistry)
+        entry = image_registry.register_image_bytes(content=b"encoded", media_type="image/png")
+        image_registry.get_or_decode_matrix(cache_key="probe", decoder=lambda: bytearray(b"matrix"))
+        captured_registries.append(image_registry)
+        captured_handles.append(entry.image_handle)
+        return {"result": {"value": "ok"}}
+
+    try:
+        runtime_registry = WorkflowNodeRuntimeRegistry()
+        runtime_registry.register_python_callable(_build_metadata_probe_node(), registry_probe_handler)
+        SnapshotExecutionService(
+            dataset_storage=dataset_storage,
+            node_catalog_registry=NodeCatalogRegistry(
+                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
+            ),
+            runtime_registry=runtime_registry,
+            runtime_context=WorkflowServiceNodeRuntimeContext(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+            ),
+        ).execute(
+            WorkflowSnapshotExecutionRequest(
+                project_id="project-1",
+                application_id=application.application_id,
+                application_snapshot_object_key="workflow/application.json",
+                template_snapshot_object_key="workflow/template.json",
+                input_bindings={"source_text": {"value": "ok"}},
+            )
+        )
+
+        assert len(captured_registries) == 1
+        assert captured_registries[0].decoded_cache_entry_count == 0
+        assert captured_registries[0].decoded_cache_total_bytes == 0
+        with pytest.raises(InvalidRequestError):
+            captured_registries[0].get_entry(captured_handles[0])
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_backend_service_runtime_starts_broker_and_binds_workflow_context(tmp_path: Path) -> None:
     """验证 backend-service 生命周期会启动 broker 并绑定 workflow context。"""
 
@@ -890,6 +988,20 @@ def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict
         pool_name=write_result.lease.pool_name,
     )
     return {"result": {"buffer_ref": write_result.buffer_ref.model_dump(mode="json")}}
+
+
+def _image_cache_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """在节点中写入一次解码缓存，供 Run finally 清理测试使用。"""
+
+    image_registry = request.execution_metadata["execution_image_registry"]
+    assert isinstance(image_registry, ExecutionImageRegistry)
+    image_registry.get_or_decode_matrix(cache_key="probe", decoder=lambda: bytearray(b"matrix"))
+    return {
+        "result": {
+            "value": "ok",
+            "cache_entries_during_node": image_registry.decoded_cache_entry_count,
+        }
+    }
 
 
 def _build_broker_settings(

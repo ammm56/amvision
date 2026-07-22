@@ -59,6 +59,8 @@
   },
   "workflow_runtime": {
     "operator_thread_count": 1,
+    "decoded_image_cache_max_entries": 8,
+    "decoded_image_cache_max_bytes": 268435456,
     "raw_result_cache_ttl_seconds": 900.0,
     "raw_result_cache_max_items": 64
   },
