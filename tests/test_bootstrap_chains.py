@@ -58,6 +58,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                     "max_concurrent_tasks": 3,
                     "poll_interval_seconds": 2.5
                 },
+                "async_inference_gateway_request_timeout_seconds": 12.0,
             }
         ),
         encoding="utf-8",
@@ -93,6 +94,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     )
     assert settings.task_manager.max_concurrent_tasks == 4
     assert settings.task_manager.poll_interval_seconds == 2.5
+    assert settings.async_inference_gateway_request_timeout_seconds == 12.0
 
     get_backend_worker_settings.cache_clear()
 

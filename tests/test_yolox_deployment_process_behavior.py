@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -17,6 +17,9 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
     _DeploymentWarmupBehavior,
     _KeepWarmState,
     _LocalBufferBrokerRuntimeHealth,
+    _activate_keep_warm,
+    _begin_real_inference,
+    _finish_real_inference,
     _resolve_warmup_behavior,
     _run_dummy_warmup_passes,
     _run_keep_warm_loop,
@@ -49,16 +52,22 @@ class _FakeRuntimePool:
         *,
         stop_state: _KeepWarmState | None = None,
         error_message: str | None = None,
+        started_event: Event | None = None,
+        release_event: Event | None = None,
     ) -> None:
         """初始化 fake runtime pool。
 
         参数：
         - stop_state：第一次执行后需要通知退出的 keep-warm 状态。
         - error_message：如果提供，则每次 fake 推理都会抛出这个错误。
+        - started_event：开始 fake 推理时设置的同步事件。
+        - release_event：提供后，fake 推理会等待该事件再返回。
         """
 
         self.stop_state = stop_state
         self.error_message = error_message
+        self.started_event = started_event
+        self.release_event = release_event
         self.call_count = 0
         self.requests: list[DetectionPredictionRequest] = []
 
@@ -78,6 +87,10 @@ class _FakeRuntimePool:
         del config
         self.call_count += 1
         self.requests.append(request)
+        if self.started_event is not None:
+            self.started_event.set()
+        if self.release_event is not None:
+            self.release_event.wait(timeout=0.5)
         if self.stop_state is not None:
             self.stop_state.stop_event.set()
         if self.error_message is not None:
@@ -189,6 +202,29 @@ def test_run_dummy_warmup_passes_executes_requested_count(tmp_path: Path) -> Non
     assert runtime_pool.requests == [dummy_request, dummy_request, dummy_request]
 
 
+def test_real_inference_does_not_implicitly_activate_keep_warm() -> None:
+    """验证只有显式 warmup 才会开启设备保活。"""
+
+    keep_warm_state = _KeepWarmState(
+        dummy_request=DetectionPredictionRequest(
+            input_image_bytes=b"dummy-image-bytes",
+            score_threshold=0.3,
+            save_result_image=False,
+            extra_options={"internal_request_kind": "test"},
+        )
+    )
+
+    _begin_real_inference(keep_warm_state)
+    assert keep_warm_state.pause_event.is_set() is True
+
+    _finish_real_inference(keep_warm_state)
+    assert keep_warm_state.activated_event.is_set() is False
+    assert keep_warm_state.pause_event.is_set() is False
+
+    _activate_keep_warm(keep_warm_state)
+    assert keep_warm_state.activated_event.is_set() is True
+
+
 def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) -> None:
     """验证 keep-warm 线程激活后会执行 dummy infer，并能及时退出。"""
 
@@ -234,6 +270,64 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     assert keep_warm_state.success_counter.rollover_count == 0
     assert keep_warm_state.error_counter.value == 0
     assert keep_warm_state.error_counter.rollover_count == 0
+    assert thread.is_alive() is False
+
+
+def test_real_inference_blocks_new_keep_warm_pass_and_waits_only_inflight_pass(
+    tmp_path: Path,
+) -> None:
+    """验证真实请求会阻止新保活，并只等待已经开始的一轮设备调用。"""
+
+    started_event = Event()
+    release_event = Event()
+    keep_warm_state = _KeepWarmState(
+        dummy_request=DetectionPredictionRequest(
+            input_image_bytes=b"dummy-image-bytes",
+            score_threshold=0.3,
+            save_result_image=False,
+            extra_options={"internal_request_kind": "test"},
+        )
+    )
+    keep_warm_state.activated_event.set()
+    runtime_pool = _FakeRuntimePool(
+        started_event=started_event,
+        release_event=release_event,
+    )
+    runtime_pool_config = DeploymentRuntimePoolConfig(
+        deployment_instance_id="deployment-instance-keep-warm-priority",
+        runtime_target=_build_runtime_target(tmp_path),
+        runtime_configuration=_runtime_configuration(),
+    )
+    behavior = _DeploymentWarmupBehavior(
+        warmup_dummy_inference_count=0,
+        warmup_dummy_image_size=(64, 64),
+        keep_warm_enabled=True,
+        keep_warm_interval_seconds=0.01,
+        keep_warm_yield_timeout_seconds=0.2,
+    )
+    thread = Thread(
+        target=_run_keep_warm_loop,
+        kwargs={
+            "runtime_pool": runtime_pool,
+            "runtime_pool_config": runtime_pool_config,
+            "keep_warm_state": keep_warm_state,
+            "behavior": behavior,
+        },
+        daemon=True,
+    )
+    thread.start()
+    assert started_event.wait(timeout=0.2) is True
+    assert keep_warm_state.idle_event.is_set() is False
+
+    _begin_real_inference(keep_warm_state)
+    assert keep_warm_state.pause_event.is_set() is True
+    release_event.set()
+    assert keep_warm_state.idle_event.wait(timeout=0.2) is True
+    keep_warm_state.stop_event.set()
+    _finish_real_inference(keep_warm_state)
+    thread.join(timeout=0.5)
+
+    assert runtime_pool.call_count == 1
     assert thread.is_alive() is False
 
 

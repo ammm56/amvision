@@ -10,9 +10,6 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
-from backend.service.application.runtime.deployment.deployment_process_settings import (
-    DeploymentProcessSupervisorConfig,
-)
 from backend.service.infrastructure.db.session import DatabaseSettings
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -231,7 +228,7 @@ class BackendWorkerSettings(BaseSettings):
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
     - task_manager：后台任务管理器配置。
-    - deployment_process_supervisor：沿用历史字段名；当前主要复用 request_timeout_seconds 作为 async inference gateway 等待超时。
+    - async_inference_gateway_request_timeout_seconds：等待 backend-service async inference gateway 响应的最长秒数。
     """
 
     model_config = SettingsConfigDict(
@@ -252,8 +249,9 @@ class BackendWorkerSettings(BaseSettings):
     task_manager: BackendWorkerTaskManagerConfig = Field(
         default_factory=BackendWorkerTaskManagerConfig
     )
-    deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
-        default_factory=DeploymentProcessSupervisorConfig
+    async_inference_gateway_request_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
     )
 
     @classmethod

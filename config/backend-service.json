@@ -113,7 +113,7 @@
     "operator_thread_count": 1,
     "warmup_dummy_inference_count": 6,
     "warmup_dummy_image_size": [64, 64],
-    "keep_warm_enabled": false,
+    "keep_warm_enabled": true,
     "keep_warm_interval_seconds": 0.1,
     "keep_warm_yield_timeout_seconds": 1.0,
     "tensorrt_pinned_output_buffer_enabled": true,

@@ -143,7 +143,7 @@ class DeploymentProcessKeepWarmStatus:
 
     字段：
     - enabled：当前 deployment 是否启用了 keep-warm。
-    - activated：keep-warm 是否已经被 warmup 或真实推理激活。
+    - activated：keep-warm 是否已经被显式 warmup 激活。
     - paused：当前是否因为控制面动作或真实请求而暂停。
     - idle：当前是否没有 keep-warm dummy infer 正在执行。
     - interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。

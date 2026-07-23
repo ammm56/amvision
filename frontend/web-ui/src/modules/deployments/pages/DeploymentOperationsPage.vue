@@ -1334,7 +1334,10 @@ function isDeploymentWarmupComplete(item: TaskDeploymentInstance): boolean {
 function isRuntimeHealthWarmupComplete(health: TaskDeploymentRuntimeHealth, fallbackInstanceCount: number): boolean {
   const expectedInstanceCount = Math.max(0, Number(health.instance_count || fallbackInstanceCount || 0))
   const warmedInstanceCount = Math.max(0, Number(health.warmed_instance_count || 0))
-  return expectedInstanceCount > 0 && warmedInstanceCount >= expectedInstanceCount
+  const instancesReady = expectedInstanceCount > 0 && warmedInstanceCount >= expectedInstanceCount
+  if (!instancesReady) return false
+  if (health.keep_warm?.enabled === false) return true
+  return health.keep_warm?.activated === true
 }
 
 function warmupButtonTitle(item: TaskDeploymentInstance): string {

@@ -34,7 +34,7 @@ def build_background_task_manager(
                 queue_backend=runtime.queue_backend,
                 worker_id_prefix=runtime.settings.app.app_name,
                 async_inference_request_timeout_seconds=(
-                    runtime.settings.deployment_process_supervisor.request_timeout_seconds
+                    runtime.settings.async_inference_gateway_request_timeout_seconds
                 ),
             ),
             enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,

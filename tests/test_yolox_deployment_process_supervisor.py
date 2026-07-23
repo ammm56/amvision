@@ -74,12 +74,16 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
         assert initial_health.healthy_instance_count == 2
         assert initial_health.warmed_instance_count == 0
         assert initial_health.pinned_output_total_bytes == 0
+        assert initial_health.keep_warm is not None
+        assert initial_health.keep_warm.activated is False
 
         warmup_health = supervisor.warmup_deployment(config)
         assert warmup_health.healthy_instance_count == 2
         assert warmup_health.warmed_instance_count == 2
         assert warmup_health.pinned_output_total_bytes == 1048576
         assert all(item.warmed is True for item in warmup_health.instances)
+        assert warmup_health.keep_warm is not None
+        assert warmup_health.keep_warm.activated is True
 
         execution_1 = supervisor.run_inference(
             config=config,

@@ -224,21 +224,24 @@ def run_deployment_process_worker(
 
         if action == "warmup":
             try:
-                _acquire_keep_warm_control_pause(
-                    keep_warm_state=keep_warm_state,
-                    deployment_instance_id=config.deployment_instance_id,
-                    action=action,
-                    timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
-                )
-                runtime_pool.warmup_deployment(runtime_pool_config)
-                if dummy_request is not None:
-                    _run_dummy_warmup_passes(
-                        runtime_pool=runtime_pool,
-                        runtime_pool_config=runtime_pool_config,
-                        dummy_request=dummy_request,
-                        count=behavior.warmup_dummy_inference_count,
+                try:
+                    _acquire_keep_warm_control_pause(
+                        keep_warm_state=keep_warm_state,
+                        deployment_instance_id=config.deployment_instance_id,
+                        action=action,
+                        timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
                     )
-                _activate_keep_warm(keep_warm_state)
+                    runtime_pool.warmup_deployment(runtime_pool_config)
+                    if dummy_request is not None:
+                        _run_dummy_warmup_passes(
+                            runtime_pool=runtime_pool,
+                            runtime_pool_config=runtime_pool_config,
+                            dummy_request=dummy_request,
+                            count=behavior.warmup_dummy_inference_count,
+                        )
+                    _activate_keep_warm(keep_warm_state)
+                finally:
+                    _release_keep_warm_control_pause(keep_warm_state)
                 _put_ok_response(
                     response_queue=response_queue,
                     request_id=request_id,
@@ -254,8 +257,6 @@ def run_deployment_process_worker(
                 _put_error_response(
                     response_queue=response_queue, request_id=request_id, error=error
                 )
-            finally:
-                _release_keep_warm_control_pause(keep_warm_state)
             continue
 
         if action == "health":
@@ -279,18 +280,22 @@ def run_deployment_process_worker(
 
         if action == "reset":
             try:
-                _acquire_keep_warm_control_pause(
-                    keep_warm_state=keep_warm_state,
-                    deployment_instance_id=config.deployment_instance_id,
-                    action=action,
-                    timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
-                )
-                _deactivate_keep_warm(keep_warm_state)
+                try:
+                    _acquire_keep_warm_control_pause(
+                        keep_warm_state=keep_warm_state,
+                        deployment_instance_id=config.deployment_instance_id,
+                        action=action,
+                        timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
+                    )
+                    _deactivate_keep_warm(keep_warm_state)
+                    health = runtime_pool.reset_deployment(runtime_pool_config)
+                finally:
+                    _release_keep_warm_control_pause(keep_warm_state)
                 _put_ok_response(
                     response_queue=response_queue,
                     request_id=request_id,
                     payload=_serialize_health_with_keep_warm(
-                        health=runtime_pool.reset_deployment(runtime_pool_config),
+                        health=health,
                         behavior=behavior,
                         keep_warm_state=keep_warm_state,
                         local_buffer_reader=local_buffer_reader,
@@ -301,8 +306,6 @@ def run_deployment_process_worker(
                 _put_error_response(
                     response_queue=response_queue, request_id=request_id, error=error
                 )
-            finally:
-                _release_keep_warm_control_pause(keep_warm_state)
             continue
 
         if action == "infer":
@@ -312,7 +315,7 @@ def run_deployment_process_worker(
                     timeout=max(0.05, behavior.keep_warm_yield_timeout_seconds)
                 )
                 if not yielded:
-                    _finish_real_inference(keep_warm_state, activate_keep_warm=False)
+                    _finish_real_inference(keep_warm_state)
                     _put_error_response(
                         response_queue=response_queue,
                         request_id=request_id,
@@ -327,7 +330,7 @@ def run_deployment_process_worker(
                     continue
             if not infer_slots.acquire(blocking=False):
                 if keep_warm_state is not None:
-                    _finish_real_inference(keep_warm_state, activate_keep_warm=False)
+                    _finish_real_inference(keep_warm_state)
                 _put_error_response(
                     response_queue=response_queue,
                     request_id=request_id,
@@ -382,7 +385,6 @@ def _run_inference_request(
 ) -> None:
     """在独立线程中执行一次 deployment 推理请求。"""
 
-    inference_succeeded = False
     try:
         prediction_request = _build_prediction_request(
             payload=payload,
@@ -393,7 +395,6 @@ def _run_inference_request(
             config=runtime_pool_config,
             request=prediction_request,
         )
-        inference_succeeded = True
         task_type = runtime_pool_config.runtime_target.task_type
         _put_ok_response(
             response_queue=response_queue,
@@ -412,7 +413,7 @@ def _run_inference_request(
         )
     finally:
         infer_slots.release()
-        _finish_real_inference(keep_warm_state, activate_keep_warm=inference_succeeded)
+        _finish_real_inference(keep_warm_state)
 
 
 def _build_prediction_request(
@@ -635,12 +636,9 @@ def _run_dummy_warmup_passes(
     """
 
     for _ in range(max(0, int(count))):
-        try:
-            runtime_pool.run_inference(
-                config=runtime_pool_config, request=dummy_request
-            )
-        except InvalidRequestError:
-            return
+        runtime_pool.run_inference(
+            config=runtime_pool_config, request=dummy_request
+        )
 
 
 def _start_keep_warm_thread(
@@ -695,18 +693,16 @@ def _run_keep_warm_loop(
     """
 
     while not keep_warm_state.stop_event.wait(behavior.keep_warm_interval_seconds):
-        if (
-            not keep_warm_state.activated_event.is_set()
-            or keep_warm_state.pause_event.is_set()
-        ):
-            continue
-        keep_warm_state.idle_event.clear()
-        try:
+        with keep_warm_state.lock:
             if (
-                keep_warm_state.stop_event.is_set()
+                not keep_warm_state.activated_event.is_set()
                 or keep_warm_state.pause_event.is_set()
             ):
                 continue
+            # 在同一把锁内声明本轮已经开始。真实请求随后设置 pause 时会看到
+            # idle=false，并只等待这一个已经提交、无法抢占的设备调用结束。
+            keep_warm_state.idle_event.clear()
+        try:
             runtime_pool.run_inference(
                 config=runtime_pool_config,
                 request=keep_warm_state.dummy_request,
@@ -849,21 +845,18 @@ def _begin_real_inference(keep_warm_state: _KeepWarmState | None) -> None:
 
 def _finish_real_inference(
     keep_warm_state: _KeepWarmState | None,
-    *,
-    activate_keep_warm: bool,
 ) -> None:
     """在真实推理结束后恢复 keep-warm 的可运行状态。
 
     参数：
     - keep_warm_state：keep-warm 后台线程运行状态。
-    - activate_keep_warm：当前真实推理是否成功；成功后会激活后续 keep-warm 循环。
+
+    真实推理不会隐式开启设备保活；只有显式 warmup 动作可以激活 keep-warm。
     """
 
     if keep_warm_state is None:
         return
     with keep_warm_state.lock:
-        if activate_keep_warm:
-            keep_warm_state.activated_event.set()
         keep_warm_state.real_request_count = max(
             0, keep_warm_state.real_request_count - 1
         )
@@ -883,7 +876,7 @@ def _activate_keep_warm(keep_warm_state: _KeepWarmState | None) -> None:
 
 
 def _deactivate_keep_warm(keep_warm_state: _KeepWarmState | None) -> None:
-    """停用 keep-warm 后续循环，直到下一次真实 warmup 或真实推理完成。
+    """停用 keep-warm 后续循环，直到下一次显式 warmup 完成。
 
     参数：
     - keep_warm_state：keep-warm 后台线程运行状态。

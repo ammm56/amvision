@@ -139,6 +139,12 @@ const warmHealth: TaskDeploymentRuntimeHealth = {
   ...coldHealth,
   warmed_instance_count: 2,
   instances: coldHealth.instances.map((item) => ({ ...item, warmed: true })),
+  keep_warm: { enabled: true, activated: true },
+}
+
+const loadedButIdleHealth: TaskDeploymentRuntimeHealth = {
+  ...warmHealth,
+  keep_warm: { enabled: true, activated: false },
 }
 
 const event: TaskDeploymentProcessEvent = {
@@ -429,6 +435,33 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '停止')
     await flushPromises()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
+  })
+
+  it('keeps warmup available when sessions are loaded but device keep-warm is inactive', async () => {
+    vi.mocked(runTaskDeploymentHealthAction).mockImplementation(
+      async (_taskType: ModelTaskType, _deploymentId: string, mode: string, action: DeploymentHealthAction) => ({
+        ...(action === 'warmup' ? warmHealth : loadedButIdleHealth),
+        deployment_instance_id: _deploymentId,
+        display_name: _deploymentId,
+        runtime_mode: mode,
+      }),
+    )
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    await clickButtonByText(wrapper, '预热')
+    await flushPromises()
+
+    expect(runTaskDeploymentHealthAction).toHaveBeenCalledWith(
+      'detection',
+      'deployment-1',
+      'sync',
+      'warmup',
+    )
   })
 
   it('renders deployment events newest first without depending on API order', async () => {

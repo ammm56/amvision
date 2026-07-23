@@ -35,7 +35,7 @@
 - `task_manager.enabled_consumer_kinds`：当前独立 worker 需要托管的消费者种类
 - `task_manager.max_concurrent_tasks`：最大并发任务数
 - `task_manager.poll_interval_seconds`：空闲轮询间隔秒数
-- `deployment_process_supervisor.*`：沿用历史字段名；当前 inference worker 主要复用 `request_timeout_seconds` 作为 async inference gateway 等待超时；`max_running_process_count` 的真实 enforcement 在 backend-service 的 deployment supervisor 中执行
+- `async_inference_gateway_request_timeout_seconds`：等待 backend-service async inference gateway 响应的最长秒数；deployment 子进程、warmup 和 keep-warm 只由 backend-service 管理
 
 当前默认启用的消费者种类为：
 
@@ -139,4 +139,4 @@ python runtimes/launchers/worker/start_backend_worker.py --worker-profile-file r
 1. 先通过 `backend-service` 创建任务，再确认队列目录有新任务写入。
 2. 启动目标 worker profile，确认任务状态能从 `queued` 推进到 `running` 或 `succeeded`。
 3. 针对 inference profile，先通过 deployment 控制面启动 async deployment，再创建异步 inference task。
-4. 如果 inference-task 无法消费，先检查 worker 是否启用了 `detection-inference`，再检查 queue 目录是否共享、backend-service 里的 async inference gateway dispatcher 是否已启动，以及 `deployment_process_supervisor.request_timeout_seconds` 是否过小。若任务报出 deployment 进程未启动，还需要确认任务创建时间晚于当前 backend-service 启动，并且 task_spec 内已经包含稳定 async owner id 与完整 runtime_behavior 快照。
+4. 如果 inference-task 无法消费，先检查 worker 是否启用了对应 inference consumer，再检查 queue 目录是否共享、backend-service 里的 async inference gateway dispatcher 是否已启动，以及 `async_inference_gateway_request_timeout_seconds` 是否过小。若任务报出 deployment 进程未启动，还需要确认任务创建时间晚于当前 backend-service 启动，并且 task_spec 内已经包含稳定 async owner id 与完整 runtime_behavior 快照。

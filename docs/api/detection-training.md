@@ -863,20 +863,19 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `display_name`
 - `metadata`
 
-#### 当前 deployment metadata 覆盖字段
+#### 当前 deployment 运行时覆盖字段
 
-- `metadata.deployment_process.warmup_dummy_inference_count`：覆盖默认 warmup 的 dummy infer 次数
-- `metadata.deployment_process.warmup_dummy_image_size`：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
-- `metadata.deployment_process.keep_warm_enabled`：启用 deployment 子进程内的 keep-warm 后台线程
-- `metadata.deployment_process.keep_warm_interval_seconds`：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
-- `metadata.deployment_process.tensorrt_pinned_output_buffer_enabled`：覆盖 TensorRT 输出 host buffer 是否启用 pinned memory
-- `metadata.deployment_process.tensorrt_pinned_output_buffer_max_bytes`：覆盖 TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数
+- `runtime_configuration.lifecycle.warmup_dummy_inference_count`：覆盖默认 warmup 的 dummy infer 次数
+- `runtime_configuration.lifecycle.warmup_dummy_image_size`：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
+- `runtime_configuration.lifecycle.keep_warm_enabled`：启用 deployment 子进程内的 keep-warm 后台线程
+- `runtime_configuration.lifecycle.keep_warm_interval_seconds`：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
+- TensorRT pinned output 配置位于 `runtime_configuration.backend_options`
 
 #### 当前 keep-warm 观测字段
 
 - `pinned_output_total_bytes`：当前所有已加载 session 的 pinned output host buffer 总字节数
 - `keep_warm.enabled`：当前 deployment 是否启用 keep-warm
-- `keep_warm.activated`：keep-warm 是否已经被 warmup 或真实推理激活
+- `keep_warm.activated`：keep-warm 是否已经被显式 warmup 激活
 - `keep_warm.paused`：keep-warm 当前是否因为控制面动作或真实请求而暂停
 - `keep_warm.idle`：当前是否没有 keep-warm dummy infer 正在执行
 - `keep_warm.interval_seconds`：当前生效的 keep-warm 间隔秒数
@@ -926,9 +925,9 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
 - 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放继续走 deployment snapshot 目录下的 `events.json`
-- `warmup` 会在预热前自动拉起目标子进程，并在模型会话加载后按默认配置或 `metadata.deployment_process` 覆盖值执行 N 次真实 dummy infer
-- 当 `metadata.deployment_process.keep_warm_enabled=true` 时，warmup 完成后会激活 keep-warm 后台线程；首次真实推理成功后也会激活同一机制
-- `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次 warmup 或下一次真实推理成功
+- `start` 只启动并确认目标子进程，不加载模型、不执行 dummy infer，也不激活 keep-warm
+- `warmup` 会自动拉起目标子进程，在模型会话加载后按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer，再激活 keep-warm
+- `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次显式 warmup
 
 #### 当前 inference 资源组
 

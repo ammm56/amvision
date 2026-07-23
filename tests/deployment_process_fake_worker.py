@@ -27,6 +27,7 @@ def fake_deployment_process_worker(
     del supervisor_settings
 
     warmed_instance_indexes: set[int] = set()
+    keep_warm_activated = False
     next_instance_index = 0
 
     while True:
@@ -47,18 +48,27 @@ def fake_deployment_process_worker(
                 {
                     "request_id": request_id,
                     "ok": True,
-                    "payload": _build_health_payload(config=config, warmed_instance_indexes=warmed_instance_indexes),
+                    "payload": _build_health_payload(
+                        config=config,
+                        warmed_instance_indexes=warmed_instance_indexes,
+                        keep_warm_activated=keep_warm_activated,
+                    ),
                 }
             )
             continue
         if action == "warmup":
             for instance_index in range(config.instance_count):
                 warmed_instance_indexes.add(instance_index)
+            keep_warm_activated = True
             response_queue.put(
                 {
                     "request_id": request_id,
                     "ok": True,
-                    "payload": _build_health_payload(config=config, warmed_instance_indexes=warmed_instance_indexes),
+                    "payload": _build_health_payload(
+                        config=config,
+                        warmed_instance_indexes=warmed_instance_indexes,
+                        keep_warm_activated=keep_warm_activated,
+                    ),
                 }
             )
             continue
@@ -67,17 +77,26 @@ def fake_deployment_process_worker(
                 {
                     "request_id": request_id,
                     "ok": True,
-                    "payload": _build_health_payload(config=config, warmed_instance_indexes=warmed_instance_indexes),
+                    "payload": _build_health_payload(
+                        config=config,
+                        warmed_instance_indexes=warmed_instance_indexes,
+                        keep_warm_activated=keep_warm_activated,
+                    ),
                 }
             )
             continue
         if action == "reset":
             warmed_instance_indexes.clear()
+            keep_warm_activated = False
             response_queue.put(
                 {
                     "request_id": request_id,
                     "ok": True,
-                    "payload": _build_health_payload(config=config, warmed_instance_indexes=warmed_instance_indexes),
+                    "payload": _build_health_payload(
+                        config=config,
+                        warmed_instance_indexes=warmed_instance_indexes,
+                        keep_warm_activated=keep_warm_activated,
+                    ),
                 }
             )
             continue
@@ -148,6 +167,7 @@ def _build_health_payload(
     *,
     config: Any,
     warmed_instance_indexes: set[int],
+    keep_warm_activated: bool,
 ) -> dict[str, object]:
     """构建 fake worker 返回的 health 负载。"""
 
@@ -168,4 +188,17 @@ def _build_health_payload(
         "warmed_instance_count": len(warmed_instance_indexes),
         "pinned_output_total_bytes": len(warmed_instance_indexes) * 524288,
         "instances": instances,
+        "keep_warm": {
+            "enabled": True,
+            "activated": keep_warm_activated,
+            "paused": False,
+            "idle": True,
+            "interval_seconds": 0.1,
+            "yield_timeout_seconds": 1.0,
+            "success_count": 0,
+            "success_count_rollover_count": 0,
+            "error_count": 0,
+            "error_count_rollover_count": 0,
+            "last_error": None,
+        },
     }

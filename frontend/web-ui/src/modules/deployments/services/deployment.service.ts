@@ -125,7 +125,17 @@ export interface TaskDeploymentRuntimeHealth extends TaskDeploymentProcessStatus
   warmed_instance_count: number
   pinned_output_total_bytes: number
   instances: Array<{ instance_id: string; healthy: boolean; warmed: boolean; busy: boolean; last_error?: string | null }>
-  keep_warm: Record<string, unknown>
+  keep_warm: {
+    enabled?: boolean
+    activated?: boolean
+    paused?: boolean
+    idle?: boolean
+    interval_seconds?: number
+    yield_timeout_seconds?: number
+    success_count?: number
+    error_count?: number
+    last_error?: string | null
+  }
   local_buffer_broker: Record<string, unknown>
   requested_runtime_configuration: Record<string, unknown>
   effective_runtime_configuration: Record<string, unknown>
