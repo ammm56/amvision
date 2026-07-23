@@ -16,7 +16,6 @@ export interface DeploymentLifecycleOptions {
   warmup_dummy_image_size: [number, number] | null
   keep_warm_enabled: boolean | null
   keep_warm_interval_seconds: number | null
-  keep_warm_resume_delay_seconds: number | null
 }
 
 export type DeploymentBackendOptions =
@@ -132,7 +131,6 @@ export interface TaskDeploymentRuntimeHealth extends TaskDeploymentProcessStatus
     paused?: boolean
     idle?: boolean
     interval_seconds?: number
-    resume_delay_seconds?: number
     yield_timeout_seconds?: number
     success_count?: number
     error_count?: number
@@ -229,7 +227,6 @@ export function buildDefaultDeploymentRuntimeConfiguration(
       warmup_dummy_image_size: null,
       keep_warm_enabled: null,
       keep_warm_interval_seconds: null,
-      keep_warm_resume_delay_seconds: null,
     },
     backend_options: { kind: 'default' },
   }

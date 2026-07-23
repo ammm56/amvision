@@ -1019,7 +1019,6 @@ function buildRuntimeConfiguration(): DeploymentRuntimeConfiguration {
       warmup_dummy_image_size: null,
       keep_warm_enabled: null,
       keep_warm_interval_seconds: null,
-      keep_warm_resume_delay_seconds: null,
     },
     backend_options: buildBackendOptions(),
   }

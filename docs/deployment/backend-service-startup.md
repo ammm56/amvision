@@ -50,7 +50,7 @@
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
 - 默认 task manager 配置：enabled=false、max_concurrent_tasks=16、poll_interval_seconds=1.0
-- 默认 deployment supervisor 配置：max_running_process_count=32、warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=true、keep_warm_interval_seconds=0.1、keep_warm_resume_delay_seconds=0.5、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
+- 默认 deployment supervisor 配置：max_running_process_count=32、warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=true、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
 
 常见示例：
 
@@ -132,7 +132,6 @@
     "warmup_dummy_image_size": [64, 64],
     "keep_warm_enabled": true,
     "keep_warm_interval_seconds": 0.1,
-    "keep_warm_resume_delay_seconds": 0.5,
     "keep_warm_yield_timeout_seconds": 1.0,
     "tensorrt_pinned_output_buffer_enabled": true,
     "tensorrt_pinned_output_buffer_max_bytes": 8388608
@@ -196,8 +195,7 @@
 - pool 的 `flush_on_write` 默认建议为 `false`，用于 ZeroMQ 和本机 workflow 临时图片输入；只有确实需要把 mmap 写入强制刷到文件系统时才改为 `true`
 - `deployment_process_supervisor` 提供 deployment 子进程的启动确认、普通请求、warmup、keep-warm 和 TensorRT 输出 host buffer 行为；`startup_timeout_seconds` 是 start / warmup 等待 runtime 返回的最长时间，默认 180 秒；`request_timeout_seconds` 只用于 health、reset、infer 等普通运行期命令，默认 30 秒。
 - `start` 只启动并确认子进程，不加载模型、不执行 dummy infer，也不激活 keep-warm。`warmup` 会加载全部实例、完成有限次数 dummy infer，再激活持续设备保活。真实推理只会暂时让 keep-warm 让出执行机会，不会隐式开启保活。
-- 最后一个真实推理结束后，keep-warm 会等待 `keep_warm_resume_delay_seconds` 的连续空闲窗口再恢复；窗口内到达的新真实请求会从其完成时间重新计时，避免连续生产请求之间插入不可抢占的 dummy infer。
-- DeploymentInstance 通过 `runtime_configuration.lifecycle` 显式覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled`、`keep_warm_interval_seconds` 和 `keep_warm_resume_delay_seconds`；TensorRT pinned output 配置位于 `runtime_configuration.backend_options`。
+- DeploymentInstance 通过 `runtime_configuration.lifecycle` 显式覆盖 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled` 和 `keep_warm_interval_seconds`；TensorRT pinned output 配置位于 `runtime_configuration.backend_options`。
 - `deployment_process_supervisor.max_running_process_count` 限制当前 backend-service 进程内同时运行的独立 deployment 子进程总数，默认 32。这个限制不影响 DeploymentInstance 创建数量，也不限制单个子进程内的 `instance_count`，只在显式 start、warmup 或崩溃自动拉起真正启动子进程时生效。
 - `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
 - `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `detection-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `detection-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底

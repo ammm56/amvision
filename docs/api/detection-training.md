@@ -869,7 +869,6 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - `runtime_configuration.lifecycle.warmup_dummy_image_size`：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
 - `runtime_configuration.lifecycle.keep_warm_enabled`：启用 deployment 子进程内的 keep-warm 后台线程
 - `runtime_configuration.lifecycle.keep_warm_interval_seconds`：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
-- `runtime_configuration.lifecycle.keep_warm_resume_delay_seconds`：覆盖最后一个真实推理结束后恢复 keep-warm 前的连续空闲秒数；窗口内的新真实请求会重新延后恢复时间
 - TensorRT pinned output 配置位于 `runtime_configuration.backend_options`
 
 #### 当前 keep-warm 观测字段
@@ -927,7 +926,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
 - 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放继续走 deployment snapshot 目录下的 `events.json`
 - `start` 只启动并确认目标子进程，不加载模型、不执行 dummy infer，也不激活 keep-warm
-- `warmup` 会自动拉起目标子进程，在模型会话加载后按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer，再激活 keep-warm；真实推理结束后必须连续空闲达到 `keep_warm_resume_delay_seconds` 才恢复 dummy infer
+- `warmup` 会自动拉起目标子进程，在模型会话加载后按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer，再激活 keep-warm
 - `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次显式 warmup
 
 #### 当前 inference 资源组

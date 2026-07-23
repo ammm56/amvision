@@ -194,7 +194,6 @@ def _build_health_payload(
             "paused": False,
             "idle": True,
             "interval_seconds": 0.1,
-            "resume_delay_seconds": 0.5,
             "yield_timeout_seconds": 1.0,
             "success_count": 0,
             "success_count_rollover_count": 0,

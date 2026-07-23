@@ -20,7 +20,6 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸，格式为 width、height 二元组。
     - keep_warm_enabled：是否默认启用 keep-warm 后台线程。
     - keep_warm_interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
-    - keep_warm_resume_delay_seconds：最后一个真实推理结束后恢复 keep-warm 前的连续空闲秒数。
     - keep_warm_yield_timeout_seconds：真实请求等待 keep-warm 当前一轮 dummy infer 让出的最长秒数。
     - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否默认启用 pinned memory。
     - tensorrt_pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数；超过后自动回退 pageable memory。
@@ -37,7 +36,6 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     warmup_dummy_image_size: tuple[int, int] = (64, 64)
     keep_warm_enabled: bool = True
     keep_warm_interval_seconds: float = Field(default=0.1, gt=0.0)
-    keep_warm_resume_delay_seconds: float = Field(default=0.5, ge=0.0)
     keep_warm_yield_timeout_seconds: float = Field(default=1.0, gt=0.0)
     tensorrt_pinned_output_buffer_enabled: bool = True
     tensorrt_pinned_output_buffer_max_bytes: int = Field(default=8 * 1024 * 1024, ge=0)
