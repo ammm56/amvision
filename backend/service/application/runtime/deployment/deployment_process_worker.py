@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 from threading import BoundedSemaphore, Event, Lock, Thread
+from time import monotonic
 from typing import Any
 
 from backend.contracts.buffers import BufferRef, FrameRef
@@ -58,6 +59,7 @@ class _DeploymentWarmupBehavior:
     - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸。
     - keep_warm_enabled：是否启用 keep-warm 后台线程。
     - keep_warm_interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
+    - keep_warm_resume_delay_seconds：最后一个真实推理结束后恢复 keep-warm 前的连续空闲秒数。
     - keep_warm_yield_timeout_seconds：控制面和真实请求等待 keep-warm 当前一轮让出的最长秒数。
     """
 
@@ -65,6 +67,7 @@ class _DeploymentWarmupBehavior:
     warmup_dummy_image_size: tuple[int, int]
     keep_warm_enabled: bool
     keep_warm_interval_seconds: float
+    keep_warm_resume_delay_seconds: float
     keep_warm_yield_timeout_seconds: float
 
 
@@ -77,9 +80,10 @@ class _KeepWarmState:
     - stop_event：通知后台线程退出的事件。
     - pause_event：存在真实请求或控制面操作时阻止新一轮 keep-warm 启动。
     - idle_event：当前是否没有 keep-warm dummy infer 正在执行。
-    - activated_event：只有在完成一次真实 warmup 或真实推理后才允许 keep-warm 开始循环。
+    - activated_event：只有在完成一次显式 warmup 后才允许 keep-warm 开始循环。
     - real_request_count：当前正在执行的真实推理请求数量。
     - control_pause_count：当前持有的控制面暂停次数。
+    - resume_not_before_monotonic：真实推理结束后允许恢复 keep-warm 的单调时钟时间点。
     - success_counter：keep-warm 成功完成的 dummy infer 安全计数器。
     - error_counter：keep-warm 执行失败次数安全计数器。
     - last_error：最近一次 keep-warm 失败错误。
@@ -94,6 +98,7 @@ class _KeepWarmState:
     activated_event: Event = field(default_factory=Event)
     real_request_count: int = 0
     control_pause_count: int = 0
+    resume_not_before_monotonic: float = 0.0
     success_counter: SafeCounterState = field(default_factory=SafeCounterState)
     error_counter: SafeCounterState = field(default_factory=SafeCounterState)
     last_error: str | None = None
@@ -315,7 +320,10 @@ def run_deployment_process_worker(
                     timeout=max(0.05, behavior.keep_warm_yield_timeout_seconds)
                 )
                 if not yielded:
-                    _finish_real_inference(keep_warm_state)
+                    _finish_real_inference(
+                        keep_warm_state,
+                        resume_delay_seconds=behavior.keep_warm_resume_delay_seconds,
+                    )
                     _put_error_response(
                         response_queue=response_queue,
                         request_id=request_id,
@@ -330,7 +338,10 @@ def run_deployment_process_worker(
                     continue
             if not infer_slots.acquire(blocking=False):
                 if keep_warm_state is not None:
-                    _finish_real_inference(keep_warm_state)
+                    _finish_real_inference(
+                        keep_warm_state,
+                        resume_delay_seconds=behavior.keep_warm_resume_delay_seconds,
+                    )
                 _put_error_response(
                     response_queue=response_queue,
                     request_id=request_id,
@@ -355,6 +366,9 @@ def run_deployment_process_worker(
                     "local_buffer_health": local_buffer_health,
                     "infer_slots": infer_slots,
                     "keep_warm_state": keep_warm_state,
+                    "keep_warm_resume_delay_seconds": (
+                        behavior.keep_warm_resume_delay_seconds
+                    ),
                 },
                 daemon=True,
                 name=f"deployment-infer-{config.deployment_instance_id}",
@@ -382,6 +396,7 @@ def _run_inference_request(
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
+    keep_warm_resume_delay_seconds: float,
 ) -> None:
     """在独立线程中执行一次 deployment 推理请求。"""
 
@@ -413,7 +428,10 @@ def _run_inference_request(
         )
     finally:
         infer_slots.release()
-        _finish_real_inference(keep_warm_state)
+        _finish_real_inference(
+            keep_warm_state,
+            resume_delay_seconds=keep_warm_resume_delay_seconds,
+        )
 
 
 def _build_prediction_request(
@@ -566,6 +584,7 @@ def _resolve_warmup_behavior(
     warmup_dummy_image_size = settings.warmup_dummy_image_size
     keep_warm_enabled = settings.keep_warm_enabled
     keep_warm_interval_seconds = settings.keep_warm_interval_seconds
+    keep_warm_resume_delay_seconds = settings.keep_warm_resume_delay_seconds
     if lifecycle.warmup_dummy_inference_count is not None:
         warmup_dummy_inference_count = int(lifecycle.warmup_dummy_inference_count)
     if lifecycle.warmup_dummy_image_size is not None:
@@ -574,6 +593,10 @@ def _resolve_warmup_behavior(
         keep_warm_enabled = bool(lifecycle.keep_warm_enabled)
     if lifecycle.keep_warm_interval_seconds is not None:
         keep_warm_interval_seconds = float(lifecycle.keep_warm_interval_seconds)
+    if lifecycle.keep_warm_resume_delay_seconds is not None:
+        keep_warm_resume_delay_seconds = float(
+            lifecycle.keep_warm_resume_delay_seconds
+        )
     return _DeploymentWarmupBehavior(
         warmup_dummy_inference_count=max(0, int(warmup_dummy_inference_count)),
         warmup_dummy_image_size=(
@@ -582,6 +605,9 @@ def _resolve_warmup_behavior(
         ),
         keep_warm_enabled=bool(keep_warm_enabled),
         keep_warm_interval_seconds=max(0.01, float(keep_warm_interval_seconds)),
+        keep_warm_resume_delay_seconds=max(
+            0.0, float(keep_warm_resume_delay_seconds)
+        ),
         keep_warm_yield_timeout_seconds=max(
             0.05, float(settings.keep_warm_yield_timeout_seconds)
         ),
@@ -694,6 +720,7 @@ def _run_keep_warm_loop(
 
     while not keep_warm_state.stop_event.wait(behavior.keep_warm_interval_seconds):
         with keep_warm_state.lock:
+            _refresh_keep_warm_pause_event(keep_warm_state)
             if (
                 not keep_warm_state.activated_event.is_set()
                 or keep_warm_state.pause_event.is_set()
@@ -733,6 +760,7 @@ def _snapshot_keep_warm_state(
             "paused": False,
             "idle": True,
             "interval_seconds": behavior.keep_warm_interval_seconds,
+            "resume_delay_seconds": behavior.keep_warm_resume_delay_seconds,
             "yield_timeout_seconds": behavior.keep_warm_yield_timeout_seconds,
             "success_count": 0,
             "success_count_rollover_count": 0,
@@ -751,6 +779,7 @@ def _snapshot_keep_warm_state(
             "paused": keep_warm_state.pause_event.is_set(),
             "idle": keep_warm_state.idle_event.is_set(),
             "interval_seconds": behavior.keep_warm_interval_seconds,
+            "resume_delay_seconds": behavior.keep_warm_resume_delay_seconds,
             "yield_timeout_seconds": behavior.keep_warm_yield_timeout_seconds,
             "success_count": success_counter_snapshot["value"],
             "success_count_rollover_count": success_counter_snapshot["rollover_count"],
@@ -845,11 +874,14 @@ def _begin_real_inference(keep_warm_state: _KeepWarmState | None) -> None:
 
 def _finish_real_inference(
     keep_warm_state: _KeepWarmState | None,
+    *,
+    resume_delay_seconds: float,
 ) -> None:
-    """在真实推理结束后恢复 keep-warm 的可运行状态。
+    """在真实推理结束后延迟恢复 keep-warm 的可运行状态。
 
     参数：
     - keep_warm_state：keep-warm 后台线程运行状态。
+    - resume_delay_seconds：最后一个真实推理结束后需要保持的连续空闲秒数。
 
     真实推理不会隐式开启设备保活；只有显式 warmup 动作可以激活 keep-warm。
     """
@@ -859,6 +891,10 @@ def _finish_real_inference(
     with keep_warm_state.lock:
         keep_warm_state.real_request_count = max(
             0, keep_warm_state.real_request_count - 1
+        )
+        keep_warm_state.resume_not_before_monotonic = max(
+            keep_warm_state.resume_not_before_monotonic,
+            monotonic() + max(0.0, float(resume_delay_seconds)),
         )
         _refresh_keep_warm_pause_event(keep_warm_state)
 
@@ -872,7 +908,10 @@ def _activate_keep_warm(keep_warm_state: _KeepWarmState | None) -> None:
 
     if keep_warm_state is None:
         return
-    keep_warm_state.activated_event.set()
+    with keep_warm_state.lock:
+        keep_warm_state.resume_not_before_monotonic = 0.0
+        keep_warm_state.activated_event.set()
+        _refresh_keep_warm_pause_event(keep_warm_state)
 
 
 def _deactivate_keep_warm(keep_warm_state: _KeepWarmState | None) -> None:
@@ -884,7 +923,10 @@ def _deactivate_keep_warm(keep_warm_state: _KeepWarmState | None) -> None:
 
     if keep_warm_state is None:
         return
-    keep_warm_state.activated_event.clear()
+    with keep_warm_state.lock:
+        keep_warm_state.resume_not_before_monotonic = 0.0
+        keep_warm_state.activated_event.clear()
+        _refresh_keep_warm_pause_event(keep_warm_state)
 
 
 def _refresh_keep_warm_pause_event(keep_warm_state: _KeepWarmState) -> None:
@@ -894,6 +936,7 @@ def _refresh_keep_warm_pause_event(keep_warm_state: _KeepWarmState) -> None:
         keep_warm_state.stop_event.is_set()
         or keep_warm_state.real_request_count > 0
         or keep_warm_state.control_pause_count > 0
+        or monotonic() < keep_warm_state.resume_not_before_monotonic
     ):
         keep_warm_state.pause_event.set()
         return

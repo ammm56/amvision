@@ -998,7 +998,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - instance_count
   - display_name
   - metadata
-- 当前 `runtime_configuration.lifecycle` 支持显式覆盖 warmup dummy infer 次数、最小图片尺寸、keep-warm 开关和执行间隔；TensorRT pinned output 配置位于 `runtime_configuration.backend_options`
+- 当前 `runtime_configuration.lifecycle` 支持显式覆盖 warmup dummy infer 次数、最小图片尺寸、keep-warm 开关、执行间隔和真实推理后的恢复延迟；TensorRT pinned output 配置位于 `runtime_configuration.backend_options`
 - 当前最小实现允许直接绑定训练产出的 `ModelVersion`，也允许绑定 `ModelBuild`；如果同时提供 `model_build_id` 和 `model_version_id`，两者必须指向同一来源版本
 - 当前 `ModelVersion` 默认走 `pytorch`；当前 `ModelBuild` 已支持 `onnx` / `onnx-optimized` / `openvino-ir` / `tensorrt-engine` 绑定，并自动解析为 `onnxruntime`、`openvino` 或 `tensorrt`
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
@@ -1084,6 +1084,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 显式启动并预热指定 deployment 的所有同步推理实例
 - 当前 warmup 会先加载全部实例会话，再按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer
 - `keep_warm_enabled=true` 时，有限预热完成后会激活 keep-warm 后台线程；普通 start 和真实推理不会隐式开启设备保活
+- 最后一个真实推理结束后，keep-warm 只有连续空闲达到 `keep_warm_resume_delay_seconds` 才恢复；窗口内后续真实请求会重新延后恢复时间
 - 当前响应会返回：
   - deployment_instance_id
   - display_name
@@ -1189,6 +1190,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 显式启动并预热指定 deployment 的所有异步推理实例
 - 当前 warmup 会先加载全部实例会话，再按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer
 - `keep_warm_enabled=true` 时，有限预热完成后会激活 keep-warm 后台线程；普通 start 和真实推理不会隐式开启设备保活
+- 最后一个真实推理结束后，keep-warm 只有连续空闲达到 `keep_warm_resume_delay_seconds` 才恢复；窗口内后续真实请求会重新延后恢复时间
 - 当前响应会返回与 sync/warmup 相同的 keep_warm 状态字段，以及 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
 ### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health

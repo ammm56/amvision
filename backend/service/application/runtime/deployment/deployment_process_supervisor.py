@@ -147,6 +147,7 @@ class DeploymentProcessKeepWarmStatus:
     - paused：当前是否因为控制面动作或真实请求而暂停。
     - idle：当前是否没有 keep-warm dummy infer 正在执行。
     - interval_seconds：keep-warm 连续 dummy infer 的最小间隔秒数。
+    - resume_delay_seconds：最后一个真实推理结束后恢复 keep-warm 前的连续空闲秒数。
     - yield_timeout_seconds：真实请求等待 keep-warm 让出的最长秒数。
     - success_count：keep-warm 成功完成的 dummy infer 次数。
     - success_count_rollover_count：success_count 已发生的 rollover 次数。
@@ -160,6 +161,7 @@ class DeploymentProcessKeepWarmStatus:
     paused: bool
     idle: bool
     interval_seconds: float
+    resume_delay_seconds: float
     yield_timeout_seconds: float
     success_count: int = 0
     success_count_rollover_count: int = 0
@@ -1448,6 +1450,7 @@ def _deserialize_keep_warm_status(
         paused=bool(payload.get("paused") is True),
         idle=bool(payload.get("idle") is True),
         interval_seconds=float(payload.get("interval_seconds") or 0.0),
+        resume_delay_seconds=float(payload.get("resume_delay_seconds") or 0.0),
         yield_timeout_seconds=float(payload.get("yield_timeout_seconds") or 0.0),
         success_count=int(payload.get("success_count") or 0),
         success_count_rollover_count=int(

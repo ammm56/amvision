@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Event, Thread
 
+from pytest import MonkeyPatch
+
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
@@ -20,6 +22,7 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
     _activate_keep_warm,
     _begin_real_inference,
     _finish_real_inference,
+    _refresh_keep_warm_pause_event,
     _resolve_warmup_behavior,
     _run_dummy_warmup_passes,
     _run_keep_warm_loop,
@@ -124,6 +127,7 @@ def test_process_runtime_configuration_keeps_lifecycle_and_backend_options_expli
             warmup_dummy_image_size=(80, 48),
             keep_warm_enabled=True,
             keep_warm_interval_seconds=0.2,
+            keep_warm_resume_delay_seconds=0.4,
         ),
         backend_options=TensorRtRuntimeOptions(
             pinned_output_buffer_enabled=False,
@@ -152,6 +156,7 @@ def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overr
             lifecycle=DeploymentLifecycleOptions(
                 warmup_dummy_inference_count=9,
                 keep_warm_enabled=True,
+                keep_warm_resume_delay_seconds=0.4,
             ),
         ),
     )
@@ -162,6 +167,7 @@ def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overr
             warmup_dummy_image_size=(64, 64),
             keep_warm_enabled=False,
             keep_warm_interval_seconds=0.1,
+            keep_warm_resume_delay_seconds=0.5,
             keep_warm_yield_timeout_seconds=0.7,
         ).model_dump(mode="python"),
     )
@@ -171,6 +177,7 @@ def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overr
         warmup_dummy_image_size=(64, 64),
         keep_warm_enabled=True,
         keep_warm_interval_seconds=0.1,
+        keep_warm_resume_delay_seconds=0.4,
         keep_warm_yield_timeout_seconds=0.7,
     )
 
@@ -217,12 +224,54 @@ def test_real_inference_does_not_implicitly_activate_keep_warm() -> None:
     _begin_real_inference(keep_warm_state)
     assert keep_warm_state.pause_event.is_set() is True
 
-    _finish_real_inference(keep_warm_state)
+    _finish_real_inference(keep_warm_state, resume_delay_seconds=0.0)
     assert keep_warm_state.activated_event.is_set() is False
     assert keep_warm_state.pause_event.is_set() is False
 
     _activate_keep_warm(keep_warm_state)
     assert keep_warm_state.activated_event.is_set() is True
+
+
+def test_real_inference_extends_keep_warm_resume_delay(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """验证连续真实请求会从最后一次完成时间重新计算保活恢复窗口。"""
+
+    now = [10.0]
+    monkeypatch.setattr(
+        "backend.service.application.runtime.deployment."
+        "deployment_process_worker.monotonic",
+        lambda: now[0],
+    )
+    keep_warm_state = _KeepWarmState(
+        dummy_request=DetectionPredictionRequest(
+            input_image_bytes=b"dummy-image-bytes",
+            score_threshold=0.3,
+            save_result_image=False,
+            extra_options={"internal_request_kind": "test"},
+        )
+    )
+    _activate_keep_warm(keep_warm_state)
+
+    _begin_real_inference(keep_warm_state)
+    _finish_real_inference(keep_warm_state, resume_delay_seconds=0.5)
+    assert keep_warm_state.pause_event.is_set() is True
+    assert keep_warm_state.resume_not_before_monotonic == 10.5
+
+    now[0] = 10.3
+    _begin_real_inference(keep_warm_state)
+    _finish_real_inference(keep_warm_state, resume_delay_seconds=0.5)
+    assert keep_warm_state.resume_not_before_monotonic == 10.8
+
+    now[0] = 10.79
+    with keep_warm_state.lock:
+        _refresh_keep_warm_pause_event(keep_warm_state)
+    assert keep_warm_state.pause_event.is_set() is True
+
+    now[0] = 10.8
+    with keep_warm_state.lock:
+        _refresh_keep_warm_pause_event(keep_warm_state)
+    assert keep_warm_state.pause_event.is_set() is False
 
 
 def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) -> None:
@@ -248,6 +297,7 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
         warmup_dummy_image_size=(64, 64),
         keep_warm_enabled=True,
         keep_warm_interval_seconds=0.01,
+        keep_warm_resume_delay_seconds=0.5,
         keep_warm_yield_timeout_seconds=0.2,
     )
 
@@ -303,6 +353,7 @@ def test_real_inference_blocks_new_keep_warm_pass_and_waits_only_inflight_pass(
         warmup_dummy_image_size=(64, 64),
         keep_warm_enabled=True,
         keep_warm_interval_seconds=0.01,
+        keep_warm_resume_delay_seconds=0.5,
         keep_warm_yield_timeout_seconds=0.2,
     )
     thread = Thread(
@@ -324,7 +375,7 @@ def test_real_inference_blocks_new_keep_warm_pass_and_waits_only_inflight_pass(
     release_event.set()
     assert keep_warm_state.idle_event.wait(timeout=0.2) is True
     keep_warm_state.stop_event.set()
-    _finish_real_inference(keep_warm_state)
+    _finish_real_inference(keep_warm_state, resume_delay_seconds=0.5)
     thread.join(timeout=0.5)
 
     assert runtime_pool.call_count == 1
@@ -357,6 +408,7 @@ def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(
         warmup_dummy_image_size=(64, 64),
         keep_warm_enabled=True,
         keep_warm_interval_seconds=0.01,
+        keep_warm_resume_delay_seconds=0.5,
         keep_warm_yield_timeout_seconds=0.2,
     )
 
@@ -412,6 +464,7 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
         warmup_dummy_image_size=(64, 64),
         keep_warm_enabled=True,
         keep_warm_interval_seconds=0.01,
+        keep_warm_resume_delay_seconds=0.5,
         keep_warm_yield_timeout_seconds=0.2,
     )
 

@@ -29,6 +29,7 @@ class DeploymentLifecycleOptions:
     warmup_dummy_image_size: tuple[int, int] | None = None
     keep_warm_enabled: bool | None = None
     keep_warm_interval_seconds: float | None = None
+    keep_warm_resume_delay_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -269,6 +270,14 @@ def validate_deployment_runtime_configuration(
             raise ValueError("lifecycle.keep_warm_interval_seconds 必须是数字")
         if interval <= 0:
             raise ValueError("lifecycle.keep_warm_interval_seconds 必须大于 0")
+    if lifecycle.keep_warm_resume_delay_seconds is not None:
+        resume_delay = lifecycle.keep_warm_resume_delay_seconds
+        if isinstance(resume_delay, bool) or not isinstance(resume_delay, (int, float)):
+            raise ValueError("lifecycle.keep_warm_resume_delay_seconds 必须是数字")
+        if resume_delay < 0:
+            raise ValueError(
+                "lifecycle.keep_warm_resume_delay_seconds 必须大于或等于 0"
+            )
 
     options = configuration.backend_options
     _validate_backend_runtime_options(options)

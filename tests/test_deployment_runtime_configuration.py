@@ -81,6 +81,15 @@ def test_runtime_configuration_round_trip_uses_only_current_schema() -> None:
         ),
         (
             DeploymentRuntimeConfiguration(
+                lifecycle=DeploymentLifecycleOptions(
+                    keep_warm_resume_delay_seconds=-0.1
+                ),
+                backend_options=OpenVinoCpuRuntimeOptions(),
+            ),
+            "keep_warm_resume_delay_seconds 必须大于或等于 0",
+        ),
+        (
+            DeploymentRuntimeConfiguration(
                 backend_options=OpenVinoCpuRuntimeOptions(num_streams=0),
             ),
             "backend_options.num_streams 不能小于 1",

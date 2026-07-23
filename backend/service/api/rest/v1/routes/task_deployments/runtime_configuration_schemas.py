@@ -53,6 +53,7 @@ class DeploymentLifecycleOptionsBody(_StrictModel):
     warmup_dummy_image_size: tuple[int, int] | None = None
     keep_warm_enabled: bool | None = None
     keep_warm_interval_seconds: float | None = Field(default=None, gt=0)
+    keep_warm_resume_delay_seconds: float | None = Field(default=None, ge=0)
 
 
 class DefaultRuntimeOptionsBody(_StrictModel):
