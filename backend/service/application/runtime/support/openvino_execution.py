@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from threading import Lock
 from typing import Any
 
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
     OpenVinoAutoRuntimeOptions,
@@ -53,7 +54,11 @@ def compile_openvino_model(
             continue
         accepted_properties[property_name] = value
 
-    session = core.compile_model(model_path, device_name, accepted_properties)
+    compile_properties = _coerce_compile_property_values(
+        openvino_module=openvino_module,
+        properties=accepted_properties,
+    )
+    session = core.compile_model(model_path, device_name, compile_properties)
     effective = _read_effective_properties(
         session,
         tuple(requested_properties),
@@ -160,6 +165,39 @@ def _read_supported_properties(core: object, device_name: str) -> set[str]:
     except Exception:
         return set()
     return {_normalize_property_name(item) for item in raw_properties}
+
+
+def _coerce_compile_property_values(
+    *,
+    openvino_module: Any,
+    properties: dict[object, object],
+) -> dict[object, object]:
+    """把稳定领域值转换为 OpenVINO Python API 要求的强类型 property 值。"""
+
+    compile_properties = dict(properties)
+    for property_name, value in compile_properties.items():
+        if (
+            _normalize_property_name(property_name) != "NUM_STREAMS"
+            or isinstance(value, bool)
+            or not isinstance(value, int)
+        ):
+            continue
+        streams_namespace = getattr(
+            getattr(openvino_module, "properties", None),
+            "streams",
+            None,
+        )
+        streams_value_type = getattr(streams_namespace, "Num", None)
+        if not callable(streams_value_type):
+            raise ServiceConfigurationError(
+                "当前 OpenVINO Python runtime 不支持强类型 NUM_STREAMS 配置",
+                details={
+                    "property_name": "NUM_STREAMS",
+                    "property_value": value,
+                },
+            )
+        compile_properties[property_name] = streams_value_type(value)
+    return compile_properties
 
 
 def _read_effective_properties(

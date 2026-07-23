@@ -28,6 +28,7 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
     DeploymentLifecycleOptions,
     DeploymentRuntimeConfiguration,
     OpenVinoCpuRuntimeOptions,
+    OpenVinoGpuRuntimeOptions,
     OpenVinoNpuRuntimeOptions,
     deserialize_deployment_runtime_configuration,
     serialize_deployment_runtime_configuration,
@@ -191,7 +192,7 @@ def test_openvino_compile_filters_unsupported_properties_and_records_effective_v
         }
     )
     core = _FakeOpenVinoCore(compiled_model)
-    openvino_module = SimpleNamespace(Core=lambda: core)
+    openvino_module = _build_fake_openvino_module(core)
     configuration = DeploymentRuntimeConfiguration(
         backend_options=OpenVinoCpuRuntimeOptions(
             inference_num_threads=8,
@@ -208,17 +209,51 @@ def test_openvino_compile_filters_unsupported_properties_and_records_effective_v
     )
     diagnostics = get_openvino_runtime_diagnostics(session)
 
-    assert core.compile_properties == {
-        "CACHE_DIR": "cache",
+    assert core.compile_properties["CACHE_DIR"] == "cache"
+    assert core.compile_properties["PERFORMANCE_HINT"] == "LATENCY"
+    assert isinstance(core.compile_properties["NUM_STREAMS"], _FakeStreamsNum)
+    assert core.compile_properties["NUM_STREAMS"].value == 1
+    assert diagnostics is not None
+    assert diagnostics.requested["compile_properties"] == {
         "PERFORMANCE_HINT": "LATENCY",
+        "INFERENCE_NUM_THREADS": 8,
         "NUM_STREAMS": 1,
     }
-    assert diagnostics is not None
     assert diagnostics.effective["compile_properties"] == {
         "PERFORMANCE_HINT": "LATENCY",
         "NUM_STREAMS": 1,
     }
     assert any("INFERENCE_NUM_THREADS" in warning for warning in diagnostics.warnings)
+
+
+def test_openvino_gpu_num_streams_uses_openvino_typed_value() -> None:
+    """验证 GPU NUM_STREAMS 在编译边界转换为 OpenVINO 强类型值。"""
+
+    compiled_model = _FakeCompiledModel(
+        {
+            "PERFORMANCE_HINT": "LATENCY",
+            "NUM_STREAMS": 1,
+        }
+    )
+    core = _FakeOpenVinoGpuCore(compiled_model)
+    configuration = DeploymentRuntimeConfiguration(
+        backend_options=OpenVinoGpuRuntimeOptions(num_streams=1)
+    )
+
+    session = compile_openvino_model(
+        openvino_module=_build_fake_openvino_module(core),
+        model_path="model.xml",
+        device_name="GPU",
+        base_properties={},
+        runtime_configuration=configuration,
+    )
+
+    assert isinstance(core.compile_properties["NUM_STREAMS"], _FakeStreamsNum)
+    assert core.compile_properties["NUM_STREAMS"].value == 1
+    diagnostics = get_openvino_runtime_diagnostics(session)
+    assert diagnostics is not None
+    assert diagnostics.requested["compile_properties"]["NUM_STREAMS"] == 1
+    assert diagnostics.effective["compile_properties"]["NUM_STREAMS"] == 1
 
 
 def test_openvino_npu_capabilities_and_compile_properties_are_complete(
@@ -321,6 +356,24 @@ class _FakeCompiledModel:
         return self.properties[name]
 
 
+class _FakeStreamsNum:
+    """模拟 OpenVINO properties.streams.Num 强类型值。"""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+
+def _build_fake_openvino_module(core: object) -> SimpleNamespace:
+    """构建带 streams.Num 类型入口的 OpenVINO module fake。"""
+
+    return SimpleNamespace(
+        Core=lambda: core,
+        properties=SimpleNamespace(
+            streams=SimpleNamespace(Num=_FakeStreamsNum),
+        ),
+    )
+
+
 class _FakeOpenVinoCore:
     """提供 capability 查询和 compile_model 的 OpenVINO Core fake。"""
 
@@ -341,6 +394,26 @@ class _FakeOpenVinoCore:
     ) -> _FakeCompiledModel:
         assert model_path == "model.xml"
         assert device_name == "CPU"
+        self.compile_properties = properties
+        return self.compiled_model
+
+
+class _FakeOpenVinoGpuCore(_FakeOpenVinoCore):
+    """提供 GPU capability 查询和 compile_model 的 OpenVINO Core fake。"""
+
+    def get_property(self, device_name: str, name: str) -> list[str]:
+        assert device_name == "GPU"
+        assert name == "SUPPORTED_PROPERTIES"
+        return ["PERFORMANCE_HINT", "NUM_STREAMS"]
+
+    def compile_model(
+        self,
+        model_path: str,
+        device_name: str,
+        properties: dict[object, object],
+    ) -> _FakeCompiledModel:
+        assert model_path == "model.xml"
+        assert device_name == "GPU"
         self.compile_properties = properties
         return self.compiled_model
 

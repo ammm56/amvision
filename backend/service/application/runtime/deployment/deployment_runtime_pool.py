@@ -196,7 +196,7 @@ class DeploymentRuntimePool:
     def warmup_deployment(
         self, config: DeploymentRuntimePoolConfig
     ) -> DeploymentRuntimePoolStatus:
-        """尝试预热指定 DeploymentInstance 的所有推理实例。"""
+        """预热指定 DeploymentInstance 的所有推理实例并拒绝静默降级。"""
 
         state = self._ensure_state(config)
         for instance in state.instances:
@@ -204,7 +204,43 @@ class DeploymentRuntimePool:
                 self._ensure_instance_session(config=config, instance=instance)
             except Exception as error:
                 self._mark_instance_unhealthy(instance=instance, error=error)
-        return self.get_status(config)
+        health = self._build_health(state)
+        failed_instances = tuple(
+            instance
+            for instance in health.instances
+            if not instance.healthy or not instance.warmed
+        )
+        if failed_instances:
+            first_error = next(
+                (
+                    instance.last_error
+                    for instance in failed_instances
+                    if instance.last_error
+                ),
+                None,
+            )
+            message = "deployment 推理实例预热失败"
+            if first_error:
+                message = f"{message}: {first_error}"
+            raise ServiceConfigurationError(
+                message,
+                details={
+                    "deployment_instance_id": health.deployment_instance_id,
+                    "instance_count": health.instance_count,
+                    "healthy_instance_count": health.healthy_instance_count,
+                    "warmed_instance_count": health.warmed_instance_count,
+                    "instances": [
+                        {
+                            "instance_id": instance.instance_id,
+                            "healthy": instance.healthy,
+                            "warmed": instance.warmed,
+                            "last_error": instance.last_error,
+                        }
+                        for instance in failed_instances
+                    ],
+                },
+            )
+        return self._build_status(state)
 
     def get_health(
         self, config: DeploymentRuntimePoolConfig

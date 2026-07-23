@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -141,6 +142,58 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
     assert health.instances[0].warmed is False
     assert health.instances[0].busy is False
     assert health.instances[0].last_error == "onnxruntime predict failed"
+
+
+def test_runtime_pool_warmup_preserves_session_load_errors(tmp_path: Path) -> None:
+    """验证 session 加载失败会终止预热并返回实例级根因。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    runtime_target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="onnxruntime",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="fake-model.optimized.onnx",
+        runtime_artifact_file_type=YOLOX_ONNX_OPTIMIZED_FILE,
+    )
+    config = DeploymentRuntimePoolConfig(
+        deployment_instance_id="deployment-instance-warmup-load-failure",
+        runtime_target=runtime_target,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2)
+        ),
+    )
+
+    def load_session(**_: object) -> object:
+        raise RuntimeError("OpenVINO NUM_STREAMS 配置无效")
+
+    pool = DeploymentRuntimePool(
+        dataset_storage=dataset_storage,
+        model_runtime=SimpleNamespace(load_session=load_session),
+    )
+
+    with pytest.raises(
+        ServiceConfigurationError,
+        match="deployment 推理实例预热失败: OpenVINO NUM_STREAMS 配置无效",
+    ) as caught_error:
+        pool.warmup_deployment(config)
+
+    assert caught_error.value.details["healthy_instance_count"] == 0
+    assert caught_error.value.details["warmed_instance_count"] == 0
+    assert caught_error.value.details["instances"] == [
+        {
+            "instance_id": "deployment-instance-warmup-load-failure:instance-0",
+            "healthy": False,
+            "warmed": False,
+            "last_error": "OpenVINO NUM_STREAMS 配置无效",
+        },
+        {
+            "instance_id": "deployment-instance-warmup-load-failure:instance-1",
+            "healthy": False,
+            "warmed": False,
+            "last_error": "OpenVINO NUM_STREAMS 配置无效",
+        },
+    ]
 
 
 def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
