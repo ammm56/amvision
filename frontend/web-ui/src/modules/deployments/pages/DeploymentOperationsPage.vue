@@ -29,16 +29,16 @@
         <section class="deployment-source-summary">
           <div class="section-heading">
             <div>
-              <p class="page-kicker">SOURCE</p>
-              <h3>部署来源模型</h3>
+              <p class="page-kicker">{{ t('deploymentOps.source.kicker') }}</p>
+              <h3>{{ t('deploymentOps.source.title') }}</h3>
             </div>
             <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
-              {{ selectedDeploymentSource ? '更换来源' : '选择部署来源' }}
+              {{ selectedDeploymentSource ? t('deploymentOps.source.change') : t('deploymentOps.source.choose') }}
             </Button>
           </div>
           <div v-if="selectedDeploymentSource" class="summary-grid deployment-source-summary__grid">
             <div>
-              <span>模型</span>
+              <span>{{ t('deploymentOps.columns.model') }}</span>
               <strong>{{ selectedDeploymentSource.modelName }}</strong>
             </div>
             <div>
@@ -46,11 +46,11 @@
               <strong>{{ selectedDeploymentSource.modelType }}</strong>
             </div>
             <div>
-              <span>来源类型</span>
+              <span>{{ t('deploymentOps.source.kind') }}</span>
               <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
             </div>
             <div>
-              <span>来源 id</span>
+              <span>{{ t('deploymentOps.source.id') }}</span>
               <strong>
                 {{ selectedDeploymentSource.modelBuildId || selectedDeploymentSource.modelVersionId }}
               </strong>
@@ -73,8 +73,8 @@
             </div>
           </div>
           <div v-else class="source-empty-card">
-            <strong>尚未选择部署来源模型</strong>
-            <span>先选择训练完成的 ModelVersion 或转换完成的 ModelBuild，再创建部署实例。</span>
+            <strong>{{ t('deploymentOps.source.emptyTitle') }}</strong>
+            <span>{{ t('deploymentOps.source.emptyDescription') }}</span>
           </div>
         </section>
         <div class="form-grid deployment-create-grid">
@@ -94,25 +94,23 @@
             />
           </label>
           <div v-if="isOpenVinoBackend" class="field">
-            <span>OpenVINO 性能策略</span>
+            <span>{{ t('deploymentOps.runtimeConfig.openvinoPerformanceHint') }}</span>
             <SelectField
               :model-value="openvinoPerformanceHint"
               :options="openvinoPerformanceHintOptions"
               @update:model-value="setOpenvinoPerformanceHint"
             />
-            <small>直接设置 OpenVINO PERFORMANCE_HINT；“运行时默认”表示不写入该属性。</small>
           </div>
           <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('inference_num_threads')" class="field">
-            <span>OpenVINO 推理线程数</span>
+            <span>{{ t('deploymentOps.runtimeConfig.openvinoInferenceThreads') }}</span>
             <SelectField
               :model-value="openvinoInferenceNumThreads"
               :options="openvinoInferenceThreadOptions"
               @update:model-value="setOpenvinoInferenceNumThreads"
             />
-            <small>可选范围 1–{{ openvinoMaxInferenceThreads }}，上限来自后端检测到的本机物理核心数。</small>
           </div>
-          <label v-if="isOpenVinoBackend && openvinoDeviceKind !== 'npu' && supportedRuntimeField('num_streams')" class="field">
-            <span>OpenVINO streams</span>
+          <label v-if="(openvinoDeviceKind === 'cpu' || openvinoDeviceKind === 'gpu') && supportedRuntimeField('num_streams')" class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.openvinoStreams') }}</span>
             <input
               v-model.number="openvinoNumStreams"
               type="number"
@@ -120,10 +118,9 @@
               step="1"
               @blur="normalizeOpenvinoNumStreams"
             />
-            <small>默认 1；表示每个模型实例内部并行执行的 stream 数量。</small>
           </label>
           <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('scheduling_core_type')" class="field">
-            <span>CPU core 类型</span>
+            <span>{{ t('deploymentOps.runtimeConfig.cpuCoreType') }}</span>
             <SelectField
               :model-value="openvinoSchedulingCoreType"
               :options="openvinoSchedulingCoreTypeOptions"
@@ -131,7 +128,7 @@
             />
           </div>
           <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_hyper_threading')" class="field">
-            <span>Hyper-Threading</span>
+            <span>{{ t('deploymentOps.runtimeConfig.hyperThreading') }}</span>
             <SelectField
               :model-value="openvinoHyperThreading"
               :options="autoBooleanOptions"
@@ -139,7 +136,7 @@
             />
           </div>
           <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_cpu_pinning')" class="field">
-            <span>CPU pinning</span>
+            <span>{{ t('deploymentOps.runtimeConfig.cpuPinning') }}</span>
             <SelectField
               :model-value="openvinoCpuPinning"
               :options="autoBooleanOptions"
@@ -147,7 +144,7 @@
             />
           </div>
           <div v-if="isOpenVinoBackend && openvinoDeviceKind !== 'cpu' && supportedRuntimeField('num_requests')" class="field">
-            <span>OpenVINO 并发推理请求数</span>
+            <span>{{ t('deploymentOps.runtimeConfig.openvinoInferRequests') }}</span>
             <SelectField
               :model-value="openvinoNumRequestsMode"
               :options="openvinoNumRequestsModeOptions"
@@ -159,13 +156,12 @@
               type="number"
               min="1"
               step="1"
-              aria-label="OpenVINO 并发推理请求数"
+              :aria-label="t('deploymentOps.runtimeConfig.openvinoInferRequests')"
               @blur="normalizeOpenvinoNumRequests"
             />
-            <small>这是性能策略的请求并发提示，不是部署实例数。建议保持自动，仅在压测后手动填写正整数。</small>
           </div>
-          <div v-if="openvinoDeviceKind === 'gpu' && supportedRuntimeField('inference_precision')" class="field">
-            <span>GPU inference precision</span>
+          <div v-if="(openvinoDeviceKind === 'gpu' || openvinoDeviceKind === 'npu') && supportedRuntimeField('inference_precision')" class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.inferencePrecision') }}</span>
             <SelectField
               :model-value="openvinoInferencePrecision"
               :options="openvinoInferencePrecisionOptions"
@@ -173,23 +169,41 @@
             />
           </div>
           <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('turbo')" class="field">
-            <span>NPU turbo</span>
+            <span>{{ t('deploymentOps.runtimeConfig.npuTurbo') }}</span>
             <SelectField
               :model-value="openvinoNpuTurbo"
               :options="autoBooleanOptions"
               @update:model-value="setOpenvinoNpuTurbo"
             />
           </div>
-          <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('tiles')" class="field">
-            <span>NPU tiles（空值 = auto）</span>
-            <input v-model="openvinoNpuTiles" inputmode="numeric" placeholder="auto" />
+          <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('tiles')" class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.npuTiles') }}</span>
+            <SelectField
+              :model-value="openvinoNpuTilesMode"
+              :options="autoManualOptions"
+              @update:model-value="setOpenvinoNpuTilesMode"
+            />
+            <input
+              v-if="openvinoNpuTilesMode === 'manual'"
+              v-model.number="openvinoNpuTiles"
+              type="number"
+              min="1"
+              :max="openvinoNpuMaxTiles ?? undefined"
+              step="1"
+              :aria-label="t('deploymentOps.runtimeConfig.npuTiles')"
+              @blur="normalizeOpenvinoNpuTiles"
+            />
+          </div>
+          <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('compilation_mode_params')" class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.npuCompilationModeParams') }}</span>
+            <input v-model="openvinoNpuCompilationModeParams" />
           </label>
           <label v-if="isTensorRtBackend" class="field">
-            <span>TensorRT optimization profile</span>
+            <span>{{ t('deploymentOps.runtimeConfig.tensorrtOptimizationProfile') }}</span>
             <input v-model.number="tensorrtOptimizationProfileIndex" type="number" min="0" />
           </label>
           <div v-if="isTensorRtBackend" class="field">
-            <span>TensorRT pinned output</span>
+            <span>{{ t('deploymentOps.runtimeConfig.tensorrtPinnedOutput') }}</span>
             <SelectField
               :model-value="tensorrtPinnedOutput"
               :options="serviceDefaultBooleanOptions"
@@ -242,7 +256,7 @@
             </header>
             <div class="deployment-instance-card__details">
               <div>
-                <span>模型</span>
+                <span>{{ t('deploymentOps.columns.model') }}</span>
                 <strong>{{ item.model_name }}</strong>
                 <small>{{ item.model_version_id }} / {{ item.model_build_id || '-' }}</small>
               </div>
@@ -252,7 +266,7 @@
                 <small>{{ item.runtime_execution_mode }} · {{ item.source_kind }}</small>
               </div>
               <div>
-                <span>实例</span>
+                <span>{{ t('deploymentOps.columns.instances') }}</span>
                 <strong>{{ getDeploymentInstanceCount(item) }}</strong>
                 <small>{{ formatInputSize(item.input_size) }}</small>
               </div>
@@ -318,7 +332,7 @@
             </div>
           </article>
         </div>
-        <p v-if="runtimeCapabilitiesLoading" class="result-note">正在读取当前设备的 runtime 能力…</p>
+        <p v-if="runtimeCapabilitiesLoading" class="result-note">{{ t('deploymentOps.messages.capabilitiesLoading') }}</p>
         <p v-else-if="runtimeCapabilityWarnings.length" class="result-note">
           {{ runtimeCapabilityWarnings.join('；') }}
         </p>
@@ -374,7 +388,7 @@
           </div>
           <div>
             <span>{{ t('deploymentOps.fields.processState') }}</span>
-            <strong>{{ selectedRuntimeStatus?.process_state || '未探测' }}</strong>
+            <strong>{{ selectedRuntimeStatus?.process_state || t('deploymentOps.states.notInspected') }}</strong>
           </div>
           <div>
             <span>{{ t('deploymentOps.fields.processId') }}</span>
@@ -401,7 +415,7 @@
           v-if="selectedRuntimeHealth?.configuration_warnings.length"
           class="runtime-configuration-warnings"
         >
-          <strong>运行时配置警告</strong>
+          <strong>{{ t('deploymentOps.runtimeDiagnostics.warnings') }}</strong>
           <ul>
             <li
               v-for="warning in selectedRuntimeHealth.configuration_warnings"
@@ -413,11 +427,11 @@
         </div>
         <div v-if="selectedRuntimeHealth" class="runtime-configuration-diagnostics">
           <details>
-            <summary>请求配置</summary>
+            <summary>{{ t('deploymentOps.runtimeDiagnostics.requested') }}</summary>
             <pre>{{ formatRuntimeConfiguration(selectedRuntimeHealth.requested_runtime_configuration) }}</pre>
           </details>
           <details>
-            <summary>实际生效配置</summary>
+            <summary>{{ t('deploymentOps.runtimeDiagnostics.effective') }}</summary>
             <pre>{{ formatRuntimeConfiguration(selectedRuntimeHealth.effective_runtime_configuration) }}</pre>
           </details>
         </div>
@@ -510,38 +524,6 @@ const runtimeModeOptions = [
   { label: 'sync', value: 'sync' },
   { label: 'async', value: 'async' },
 ]
-const openvinoPerformanceHintOptions = [
-  { label: '最低单次延迟', value: 'latency', description: '优先降低单次同步推理耗时' },
-  { label: '最大吞吐量', value: 'throughput', description: '优先提高持续并发处理能力' },
-  { label: '多设备累计吞吐量', value: 'cumulative_throughput', description: '用于 OpenVINO AUTO 等多设备场景' },
-  { label: '使用 OpenVINO 运行时默认', value: 'none', description: '不写入 PERFORMANCE_HINT 属性' },
-]
-const openvinoSchedulingCoreTypeOptions = [
-  { label: '自动选择', value: 'auto' },
-  { label: '任意核心', value: 'any_core' },
-  { label: '仅 P-core', value: 'pcore_only' },
-  { label: '仅 E-core', value: 'ecore_only' },
-]
-const autoBooleanOptions = [
-  { label: '自动', value: 'auto' },
-  { label: '启用', value: 'true' },
-  { label: '禁用', value: 'false' },
-]
-const serviceDefaultBooleanOptions = [
-  { label: '使用服务默认值', value: 'auto' },
-  { label: '启用', value: 'true' },
-  { label: '禁用', value: 'false' },
-]
-const openvinoInferencePrecisionOptions = [
-  { label: '自动', value: 'auto' },
-  { label: 'FP16', value: 'f16' },
-  { label: 'FP32', value: 'f32' },
-]
-const openvinoNumRequestsModeOptions = [
-  { label: '自动（推荐）', value: 'auto', description: '由 OpenVINO 根据设备和性能策略决定' },
-  { label: '手动指定', value: 'manual', description: '仅在压测确认后设置并发请求数' },
-]
-
 const RUNTIME_REFRESH_CONCURRENCY = 8
 
 const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
@@ -594,7 +576,9 @@ const openvinoHyperThreading = ref<'auto' | 'true' | 'false'>('auto')
 const openvinoCpuPinning = ref<'auto' | 'true' | 'false'>('auto')
 const openvinoInferencePrecision = ref<'auto' | 'f32' | 'f16'>('auto')
 const openvinoNpuTurbo = ref<'auto' | 'true' | 'false'>('auto')
-const openvinoNpuTiles = ref<string | number>('auto')
+const openvinoNpuTilesMode = ref<'auto' | 'manual'>('auto')
+const openvinoNpuTiles = ref(1)
+const openvinoNpuCompilationModeParams = ref('')
 const tensorrtOptimizationProfileIndex = ref(0)
 const tensorrtPinnedOutput = ref<'auto' | 'true' | 'false'>('auto')
 const runtimeCapabilities = ref<DeploymentRuntimeCapabilities | null>(null)
@@ -623,9 +607,15 @@ const deleteDeploymentDialogMessage = computed(() => {
     displayName: deployment.display_name || deployment.deployment_instance_id,
   })
 })
+const deploymentDeviceLabels = computed(() => ({
+  automaticDefault: t('deploymentOps.options.automaticDefault'),
+  openvinoAutoDefault: t('deploymentOps.options.openvinoAutoDefault'),
+  openvinoGpu: t('deploymentOps.options.openvinoGpu'),
+}))
 const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
   sessionStore.bootstrap?.devices ?? null,
   selectedDeploymentSource.value?.runtimeBackend ?? '',
+  deploymentDeviceLabels.value,
 ))
 const selectedRuntimeBackend = computed(() => selectedDeploymentSource.value?.runtimeBackend.trim().toLowerCase() ?? '')
 const isOpenVinoBackend = computed(() => selectedRuntimeBackend.value === 'openvino')
@@ -637,6 +627,52 @@ const openvinoDeviceKind = computed<'cpu' | 'gpu' | 'npu' | 'auto'>(() => {
   if (device.startsWith('npu')) return 'npu'
   return 'auto'
 })
+const openvinoPerformanceHintOptions = computed(() => {
+  const options = [
+    { label: t('deploymentOps.options.lowestLatency'), value: 'latency' },
+    { label: t('deploymentOps.options.maximumThroughput'), value: 'throughput' },
+  ]
+  if (openvinoDeviceKind.value === 'auto') {
+    options.push({
+      label: t('deploymentOps.options.cumulativeThroughput'),
+      value: 'cumulative_throughput',
+    })
+  }
+  options.push({
+    label: t('deploymentOps.options.openvinoRuntimeDefault'),
+    value: 'none',
+  })
+  return options
+})
+const openvinoSchedulingCoreTypeOptions = computed(() => [
+  { label: t('deploymentOps.options.automatic'), value: 'auto' },
+  { label: t('deploymentOps.options.anyCore'), value: 'any_core' },
+  { label: t('deploymentOps.options.pCoreOnly'), value: 'pcore_only' },
+  { label: t('deploymentOps.options.eCoreOnly'), value: 'ecore_only' },
+])
+const autoBooleanOptions = computed(() => [
+  { label: t('deploymentOps.options.automatic'), value: 'auto' },
+  { label: t('deploymentOps.options.enabled'), value: 'true' },
+  { label: t('deploymentOps.options.disabled'), value: 'false' },
+])
+const serviceDefaultBooleanOptions = computed(() => [
+  { label: t('deploymentOps.options.serviceDefault'), value: 'auto' },
+  { label: t('deploymentOps.options.enabled'), value: 'true' },
+  { label: t('deploymentOps.options.disabled'), value: 'false' },
+])
+const openvinoInferencePrecisionOptions = computed(() => [
+  { label: t('deploymentOps.options.automatic'), value: 'auto' },
+  { label: 'FP16', value: 'f16' },
+  ...(openvinoDeviceKind.value === 'gpu' ? [{ label: 'FP32', value: 'f32' }] : []),
+])
+const openvinoNumRequestsModeOptions = computed(() => [
+  { label: t('deploymentOps.options.automaticRecommended'), value: 'auto' },
+  { label: t('deploymentOps.options.manual'), value: 'manual' },
+])
+const autoManualOptions = computed(() => [
+  { label: t('deploymentOps.options.automatic'), value: 'auto' },
+  { label: t('deploymentOps.options.manual'), value: 'manual' },
+])
 const openvinoMaxInferenceThreads = computed(() => normalizePositiveInteger(
   runtimeCapabilities.value?.hardware.cpu_physical_core_count,
   1,
@@ -645,6 +681,11 @@ const openvinoInferenceThreadOptions = computed(() => Array.from(
   { length: openvinoMaxInferenceThreads.value },
   (_, index) => ({ label: String(index + 1), value: index + 1 }),
 ))
+const openvinoNpuMaxTiles = computed(() => {
+  const value = runtimeCapabilities.value?.read_only_properties.npu_max_tiles
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+})
 const runtimeCapabilityWarnings = computed(() => runtimeCapabilities.value?.warnings ?? [])
 
 let skipNextRuntimeModeRefresh = false
@@ -679,9 +720,8 @@ watch(selectedTaskType, () => {
 })
 
 watch(deploymentDeviceOptions, (options) => {
-  if (!deviceName.value) return
   if (!options.some((option) => option.value === deviceName.value)) {
-    deviceName.value = ''
+    deviceName.value = options[0]?.value ?? ''
   }
 })
 
@@ -769,6 +809,10 @@ function setOpenvinoNpuTurbo(value: SelectValue): void {
   })
 }
 
+function setOpenvinoNpuTilesMode(value: SelectValue): void {
+  openvinoNpuTilesMode.value = selectValueToString(value) === 'manual' ? 'manual' : 'auto'
+}
+
 function setTensorrtPinnedOutput(value: SelectValue): void {
   setAutoBoolean(value, (normalized) => {
     tensorrtPinnedOutput.value = normalized
@@ -777,7 +821,7 @@ function setTensorrtPinnedOutput(value: SelectValue): void {
 
 function supportedRuntimeField(fieldName: string): boolean {
   const capabilities = runtimeCapabilities.value
-  return capabilities === null || capabilities.supported_backend_fields.includes(fieldName)
+  return capabilities?.supported_backend_fields.includes(fieldName) ?? false
 }
 
 async function loadRuntimeCapabilities(): Promise<void> {
@@ -795,7 +839,7 @@ async function loadRuntimeCapabilities(): Promise<void> {
   } catch (error) {
     if (loadSequence !== runtimeCapabilityLoadSequence) return
     runtimeCapabilities.value = null
-    errorMessage.value = error instanceof Error ? error.message : 'Runtime 能力读取失败'
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.capabilitiesFailed')
   } finally {
     if (loadSequence === runtimeCapabilityLoadSequence) {
       runtimeCapabilitiesLoading.value = false
@@ -828,7 +872,8 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
     applyOpenvinoNumRequestsDefault(options.num_requests)
     openvinoInferencePrecision.value = options.inference_precision
     openvinoNpuTurbo.value = formatAutoBoolean(options.turbo)
-    openvinoNpuTiles.value = options.tiles
+    applyOpenvinoNpuTilesDefault(options.tiles)
+    openvinoNpuCompilationModeParams.value = options.compilation_mode_params ?? ''
   } else if (options.kind === 'openvino-auto') {
     openvinoPerformanceHint.value = options.performance_hint
     applyOpenvinoNumRequestsDefault(options.num_requests)
@@ -864,18 +909,24 @@ function normalizeOpenvinoNumRequests(): void {
   openvinoNumRequests.value = normalizePositiveInteger(openvinoNumRequests.value, 1)
 }
 
+function normalizeOpenvinoNpuTiles(): void {
+  openvinoNpuTiles.value = normalizePositiveInteger(
+    openvinoNpuTiles.value,
+    1,
+    openvinoNpuMaxTiles.value ?? undefined,
+  )
+}
+
 function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
   openvinoNumRequestsMode.value = value === 'auto' ? 'auto' : 'manual'
   openvinoNumRequests.value = value === 'auto' ? 1 : normalizePositiveInteger(value, 1)
 }
 
-function parseAutoNumber(value: string | number): number | 'auto' {
-  if (value === '' || value === 'auto') return 'auto'
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error('OpenVINO 数值配置必须是正整数或 auto')
-  }
-  return parsed
+function applyOpenvinoNpuTilesDefault(value: number | 'auto'): void {
+  openvinoNpuTilesMode.value = value === 'auto' ? 'auto' : 'manual'
+  openvinoNpuTiles.value = value === 'auto'
+    ? 1
+    : normalizePositiveInteger(value, 1, openvinoNpuMaxTiles.value ?? undefined)
 }
 
 function parseAutoBoolean(value: 'auto' | 'true' | 'false'): boolean | 'auto' {
@@ -932,8 +983,14 @@ function buildBackendOptions(): DeploymentBackendOptions {
         : normalizePositiveInteger(openvinoNumRequests.value, 1),
       inference_precision: openvinoInferencePrecision.value === 'f32' ? 'auto' : openvinoInferencePrecision.value,
       turbo: parseAutoBoolean(openvinoNpuTurbo.value),
-      tiles: parseAutoNumber(openvinoNpuTiles.value),
-      compilation_mode_params: null,
+      tiles: openvinoNpuTilesMode.value === 'auto'
+        ? 'auto'
+        : normalizePositiveInteger(
+            openvinoNpuTiles.value,
+            1,
+            openvinoNpuMaxTiles.value ?? undefined,
+          ),
+      compilation_mode_params: openvinoNpuCompilationModeParams.value.trim() || null,
     }
   }
   return {
@@ -1011,7 +1068,7 @@ async function loadDeploymentSourceModels(): Promise<void> {
     sourceModels.value = []
     selectedSourceModelId.value = ''
     selectedSourceModelDetail.value = null
-    errorMessage.value = error instanceof Error ? error.message : '部署来源模型加载失败'
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.sourceModelsFailed')
   } finally {
     if (loadSequence === sourceModelLoadSequence) {
       sourceModelsLoading.value = false
@@ -1029,7 +1086,7 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
     selectedSourceModelDetail.value = modelDetail
   } catch (error) {
     if (detailSequence !== sourceModelDetailSequence || selectedSourceModelId.value !== modelId) return
-    errorMessage.value = error instanceof Error ? error.message : '模型详情加载失败'
+    errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.sourceModelDetailFailed')
   }
 }
 
@@ -1041,8 +1098,13 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
   modelBuildId.value = selection.modelBuildId
   runtimeProfileId.value = selection.runtimeProfileId
   selectedTaskType.value = selection.taskType
-  if (!buildDeploymentDeviceOptions(sessionStore.bootstrap?.devices ?? null, selection.runtimeBackend).some((option) => option.value === deviceName.value)) {
-    deviceName.value = ''
+  const deviceOptions = buildDeploymentDeviceOptions(
+    sessionStore.bootstrap?.devices ?? null,
+    selection.runtimeBackend,
+    deploymentDeviceLabels.value,
+  )
+  if (!deviceOptions.some((option) => option.value === deviceName.value)) {
+    deviceName.value = deviceOptions[0]?.value ?? ''
   }
   if (!displayName.value.trim()) {
     const sourceLabel = selection.modelBuildId || selection.modelVersionId
@@ -1058,11 +1120,11 @@ function deploymentSourceUnavailableReason(selection: DeploymentSourceSelection)
   }
   const devices = sessionStore.bootstrap?.devices ?? null
   if (!hasCudaDevice(devices)) {
-    return '当前环境未检测到 NVIDIA CUDA 设备，不能创建 TensorRT deployment'
+    return t('deploymentOps.messages.tensorrtCudaUnavailable')
   }
   const tensorrt = readDeviceRecord(devices, 'tensorrt')
   if (tensorrt?.installed !== true) {
-    return '当前环境未安装 TensorRT 运行时，不能创建 TensorRT deployment'
+    return t('deploymentOps.messages.tensorrtRuntimeUnavailable')
   }
   return ''
 }
@@ -1202,7 +1264,7 @@ function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success'
 }
 
 function runtimeProcessLabel(item: TaskDeploymentInstance): string {
-  return deploymentRuntimeStatus(item.deployment_instance_id)?.process_state || '未探测'
+  return deploymentRuntimeStatus(item.deployment_instance_id)?.process_state || t('deploymentOps.states.notInspected')
 }
 
 function setDeploymentRunningAction(deploymentId: string, action: string | null): void {
@@ -1247,8 +1309,8 @@ function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
 }
 
 function deleteButtonTitle(item: TaskDeploymentInstance): string {
-  if (!canWriteModels.value) return '当前账号没有部署写权限'
-  if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
+  if (!canWriteModels.value) return t('deploymentOps.messages.writePermissionRequired')
+  if (deploymentRunningAction(item.deployment_instance_id) !== null) return t('deploymentOps.messages.actionInProgress')
   const status = deploymentRuntimeStatus(item.deployment_instance_id)
   if (status && (status.desired_state !== 'stopped' || status.process_state !== 'stopped')) {
     return t('deploymentOps.messages.deleteRequiresStopped')
@@ -1272,10 +1334,10 @@ function isRuntimeHealthWarmupComplete(health: TaskDeploymentRuntimeHealth, fall
 }
 
 function warmupButtonTitle(item: TaskDeploymentInstance): string {
-  if (isDeploymentWarmupComplete(item)) return '已预热完成'
-  if (!canWriteModels.value) return '当前账号没有部署写权限'
-  if (deploymentRunningAction(item.deployment_instance_id) !== null) return '当前部署实例操作正在执行'
-  return '预热部署实例'
+  if (isDeploymentWarmupComplete(item)) return t('deploymentOps.messages.warmupComplete')
+  if (!canWriteModels.value) return t('deploymentOps.messages.writePermissionRequired')
+  if (deploymentRunningAction(item.deployment_instance_id) !== null) return t('deploymentOps.messages.actionInProgress')
+  return t('deploymentOps.messages.warmupDeployment')
 }
 
 function canResetDeployment(item: TaskDeploymentInstance): boolean {
@@ -1438,7 +1500,7 @@ async function refreshDeploymentRuntimeSnapshot(
 
 async function submitDeployment(): Promise<void> {
   if (!selectedDeploymentSource.value || !modelType.value.trim()) {
-    errorMessage.value = '请选择部署来源模型'
+    errorMessage.value = t('deploymentOps.messages.sourceRequired')
     return
   }
   const unavailableReason = deploymentSourceUnavailableReason(selectedDeploymentSource.value)
@@ -1452,6 +1514,9 @@ async function submitDeployment(): Promise<void> {
   }
   if (isOpenVinoBackend.value && openvinoNumRequestsMode.value === 'manual') {
     normalizeOpenvinoNumRequests()
+  }
+  if (openvinoDeviceKind.value === 'npu' && openvinoNpuTilesMode.value === 'manual') {
+    normalizeOpenvinoNpuTiles()
   }
   creating.value = true
   errorMessage.value = null

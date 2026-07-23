@@ -28,6 +28,7 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
     DeploymentLifecycleOptions,
     DeploymentRuntimeConfiguration,
     OpenVinoCpuRuntimeOptions,
+    OpenVinoNpuRuntimeOptions,
     deserialize_deployment_runtime_configuration,
     serialize_deployment_runtime_configuration,
 )
@@ -220,6 +221,73 @@ def test_openvino_compile_filters_unsupported_properties_and_records_effective_v
     assert any("INFERENCE_NUM_THREADS" in warning for warning in diagnostics.warnings)
 
 
+def test_openvino_npu_capabilities_and_compile_properties_are_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证无 NPU 测试机也能覆盖 capability 和编译属性映射。"""
+
+    compiled_properties = {
+        "PERFORMANCE_HINT": "LATENCY",
+        "PERFORMANCE_HINT_NUM_REQUESTS": 2,
+        "INFERENCE_PRECISION_HINT": "f16",
+        "NPU_TURBO": True,
+        "NPU_TILES": 2,
+        "NPU_COMPILATION_MODE_PARAMS": "optimization-level=1",
+    }
+    core = _FakeOpenVinoNpuCore(_FakeCompiledModel(compiled_properties))
+    openvino_module = SimpleNamespace(Core=lambda: core)
+    monkeypatch.setattr(runtime_capabilities.util, "find_spec", lambda _name: object())
+    monkeypatch.setattr(
+        runtime_capabilities,
+        "import_module",
+        lambda _name: openvino_module,
+    )
+
+    capabilities = runtime_capabilities.inspect_deployment_runtime_capabilities(
+        runtime_backend="openvino",
+        device_name="npu",
+    )
+
+    assert capabilities["available"] is True
+    assert capabilities["supported_backend_fields"] == [
+        "performance_hint",
+        "num_requests",
+        "inference_precision",
+        "turbo",
+        "tiles",
+        "compilation_mode_params",
+    ]
+    assert capabilities["read_only_properties"]["npu_max_tiles"] == 2
+    assert (
+        capabilities["default_runtime_configuration"]["backend_options"]["kind"]
+        == "openvino-npu"
+    )
+
+    configuration = DeploymentRuntimeConfiguration(
+        backend_options=OpenVinoNpuRuntimeOptions(
+            performance_hint="latency",
+            num_requests=2,
+            inference_precision="f16",
+            turbo=True,
+            tiles=2,
+            compilation_mode_params="optimization-level=1",
+        )
+    )
+    session = compile_openvino_model(
+        openvino_module=openvino_module,
+        model_path="model.xml",
+        device_name="NPU",
+        base_properties={},
+        runtime_configuration=configuration,
+    )
+
+    assert core.compile_properties == compiled_properties
+    diagnostics = get_openvino_runtime_diagnostics(session)
+    assert diagnostics is not None
+    assert diagnostics.effective["compile_properties"] == compiled_properties
+    assert diagnostics.warnings == ()
+
+
 def test_tensorrt_profile_activation_validates_engine_range() -> None:
     """验证 TensorRT profile 使用 engine 声明的范围。"""
 
@@ -273,6 +341,43 @@ class _FakeOpenVinoCore:
     ) -> _FakeCompiledModel:
         assert model_path == "model.xml"
         assert device_name == "CPU"
+        self.compile_properties = properties
+        return self.compiled_model
+
+
+class _FakeOpenVinoNpuCore:
+    """提供 NPU capability、只读属性和编译行为。"""
+
+    available_devices = ["CPU", "NPU"]
+
+    def __init__(self, compiled_model: _FakeCompiledModel) -> None:
+        self.compiled_model = compiled_model
+        self.compile_properties: dict[object, object] = {}
+
+    def get_property(self, device_name: str, name: str) -> object:
+        assert device_name == "NPU"
+        if name == "SUPPORTED_PROPERTIES":
+            return [
+                "PERFORMANCE_HINT",
+                "PERFORMANCE_HINT_NUM_REQUESTS",
+                "INFERENCE_PRECISION_HINT",
+                "NPU_TURBO",
+                "NPU_TILES",
+                "NPU_COMPILATION_MODE_PARAMS",
+                "NPU_MAX_TILES",
+            ]
+        if name == "NPU_MAX_TILES":
+            return 2
+        raise RuntimeError(f"unsupported property: {name}")
+
+    def compile_model(
+        self,
+        model_path: str,
+        device_name: str,
+        properties: dict[object, object],
+    ) -> _FakeCompiledModel:
+        assert model_path == "model.xml"
+        assert device_name == "NPU"
         self.compile_properties = properties
         return self.compiled_model
 

@@ -3,21 +3,24 @@ export interface DeploymentDeviceOption {
   value: string
 }
 
-const defaultDeploymentDeviceOption: DeploymentDeviceOption = {
-  label: '自动选择（默认）',
-  value: '',
+export interface DeploymentDeviceLabels {
+  automaticDefault: string
+  openvinoAutoDefault: string
+  openvinoGpu: string
 }
 
 export function buildDeploymentDeviceOptions(
   devices: Record<string, unknown> | null | undefined,
   runtimeBackend: string | null | undefined,
+  labels: DeploymentDeviceLabels,
 ): DeploymentDeviceOption[] {
   const normalizedBackend = normalizeRuntimeBackend(runtimeBackend)
   if (normalizedBackend === 'openvino') {
-    return buildOpenVinoDeviceOptions(devices)
+    return buildOpenVinoDeviceOptions(devices, labels)
   }
+  const defaultDeploymentDeviceOption = buildDefaultDeploymentDeviceOption(labels)
   if (normalizedBackend === 'tensorrt') {
-    return buildTensorRtDeviceOptions(devices)
+    return buildTensorRtDeviceOptions(devices, defaultDeploymentDeviceOption)
   }
   if (normalizedBackend === 'rknn') {
     return [defaultDeploymentDeviceOption, { label: 'NPU', value: 'npu' }]
@@ -25,25 +28,41 @@ export function buildDeploymentDeviceOptions(
   if (normalizedBackend === 'onnxruntime') {
     return [defaultDeploymentDeviceOption, { label: 'cpu', value: 'cpu' }]
   }
-  return buildPyTorchDeviceOptions(devices)
+  return buildPyTorchDeviceOptions(devices, defaultDeploymentDeviceOption)
 }
 
-function buildPyTorchDeviceOptions(devices: Record<string, unknown> | null | undefined): DeploymentDeviceOption[] {
+function buildDefaultDeploymentDeviceOption(labels: DeploymentDeviceLabels): DeploymentDeviceOption {
+  return {
+    label: labels.automaticDefault,
+    value: '',
+  }
+}
+
+function buildPyTorchDeviceOptions(
+  devices: Record<string, unknown> | null | undefined,
+  defaultOption: DeploymentDeviceOption,
+): DeploymentDeviceOption[] {
   return [
-    defaultDeploymentDeviceOption,
+    defaultOption,
     { label: 'cpu', value: 'cpu' },
     ...buildCudaDeviceOptions(devices),
   ]
 }
 
-function buildTensorRtDeviceOptions(devices: Record<string, unknown> | null | undefined): DeploymentDeviceOption[] {
+function buildTensorRtDeviceOptions(
+  devices: Record<string, unknown> | null | undefined,
+  defaultOption: DeploymentDeviceOption,
+): DeploymentDeviceOption[] {
   return [
-    defaultDeploymentDeviceOption,
+    defaultOption,
     ...buildCudaDeviceOptions(devices),
   ]
 }
 
-function buildOpenVinoDeviceOptions(devices: Record<string, unknown> | null | undefined): DeploymentDeviceOption[] {
+function buildOpenVinoDeviceOptions(
+  devices: Record<string, unknown> | null | undefined,
+  labels: DeploymentDeviceLabels,
+): DeploymentDeviceOption[] {
   const openvino = readRecord(devices, 'openvino')
   const availableDevices = readStringList(openvino?.available_devices).map((value) => value.toUpperCase())
   const supportsCpu = openvino?.supports_cpu === true
@@ -54,13 +73,14 @@ function buildOpenVinoDeviceOptions(devices: Record<string, unknown> | null | un
   const supportsNpu = openvino?.supports_npu === true
     || availableDevices.some((value) => value === 'NPU' || value.startsWith('NPU.'))
 
-  const options = [defaultDeploymentDeviceOption]
-  options.push({ label: 'OpenVINO AUTO', value: 'auto' })
+  const options: DeploymentDeviceOption[] = [
+    { label: labels.openvinoAutoDefault, value: 'auto' },
+  ]
   if (supportsCpu) {
     options.push({ label: 'OpenVINO CPU', value: 'cpu' })
   }
   if (supportsGpu) {
-    options.push({ label: 'OpenVINO GPU（Intel 核显 / Arc）', value: 'gpu' })
+    options.push({ label: labels.openvinoGpu, value: 'gpu' })
   }
   if (supportsNpu) {
     options.push({ label: 'OpenVINO NPU', value: 'npu' })

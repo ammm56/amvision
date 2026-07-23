@@ -170,6 +170,17 @@ def _inspect_openvino_capabilities(
             for field_name, property_name in _OPENVINO_FIELD_PROPERTIES.items()
             if property_name in supported_properties
         ]
+        read_only_properties: dict[str, object] = {
+            "supported_properties": sorted(supported_properties),
+        }
+        if compiled_device_name.startswith("NPU"):
+            max_tiles = _read_positive_openvino_property(
+                core,
+                compiled_device_name,
+                "NPU_MAX_TILES",
+            )
+            if max_tiles is not None:
+                read_only_properties["npu_max_tiles"] = max_tiles
         return {
             "runtime_backend": "openvino",
             "device_name": device_name,
@@ -182,9 +193,7 @@ def _inspect_openvino_capabilities(
                 "openvino_available_devices": list(available_devices),
             },
             "supported_backend_fields": fields,
-            "read_only_properties": {
-                "supported_properties": sorted(supported_properties),
-            },
+            "read_only_properties": read_only_properties,
             "default_runtime_configuration": default_configuration,
             "warnings": [],
         }
@@ -236,3 +245,17 @@ def _is_openvino_device_available(
         return bool(available_devices)
     base_device = compiled_device_name.split(".", 1)[0]
     return any(item.split(".", 1)[0].upper() == base_device for item in available_devices)
+
+
+def _read_positive_openvino_property(
+    core: object,
+    device_name: str,
+    property_name: str,
+) -> int | None:
+    """读取可选的 OpenVINO 正整数只读属性。"""
+
+    try:
+        value = int(core.get_property(device_name, property_name))
+    except (TypeError, ValueError, RuntimeError):
+        return None
+    return value if value > 0 else None

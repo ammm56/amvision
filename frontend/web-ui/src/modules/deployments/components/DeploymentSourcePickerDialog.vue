@@ -1,11 +1,11 @@
 <template>
-  <ModelPickerDialogShell :open="open" :loading="loading" kicker="DEPLOYMENT SOURCE" title="选择部署来源模型" description="按任务类型浏览已登记的 ModelVersion 和转换完成的 ModelBuild，选择后自动填入部署所需信息。" close-label="关闭" task-type-label="任务类型" :task-type-options="taskTypeOptions" :selected-task-type="taskType" list-title="模型列表" :list-count="models.length" detail-title="模型详情" @close="$emit('close')" @change-task-type="emitTaskType">
+  <ModelPickerDialogShell :open="open" :loading="loading" :kicker="t('deploymentOps.sourcePicker.kicker')" :title="t('deploymentOps.sourcePicker.title')" :description="t('deploymentOps.sourcePicker.description')" :close-label="t('deploymentOps.sourcePicker.close')" :task-type-label="t('deploymentOps.sourcePicker.taskType')" :task-type-options="taskTypeOptions" :selected-task-type="taskType" :list-title="t('deploymentOps.sourcePicker.modelList')" :list-count="models.length" :detail-title="t('deploymentOps.sourcePicker.modelDetail')" @close="$emit('close')" @change-task-type="emitTaskType">
     <template #list>
 
           <EmptyState
             v-if="!loading && models.length === 0"
-            title="暂无可部署模型"
-            description="完成训练登记或模型转换后，可部署的 ModelVersion / ModelBuild 会显示在这里。"
+            :title="t('deploymentOps.sourcePicker.emptyModelsTitle')"
+            :description="t('deploymentOps.sourcePicker.emptyModelsDescription')"
           />
 
           <div v-else class="deployment-source-picker__grid">
@@ -27,8 +27,8 @@
                 <span class="deployment-source-pill">Scale · {{ model.model_scale }}</span>
               </div>
               <div class="deployment-source-card__footer">
-                <span>版本 {{ model.version_count }}</span>
-                <span>构建 {{ model.build_count }}</span>
+                <span>{{ t('deploymentOps.sourcePicker.versionCount', { count: model.version_count }) }}</span>
+                <span>{{ t('deploymentOps.sourcePicker.buildCount', { count: model.build_count }) }}</span>
               </div>
             </button>
           </div>
@@ -50,7 +50,7 @@
 
             <section class="deployment-source-group">
               <header class="deployment-source-picker__section-heading">
-                <strong>转换完成的 ModelBuild</strong>
+                <strong>{{ t('deploymentOps.sourcePicker.completedBuilds') }}</strong>
                 <span class="deployment-source-picker__section-count">{{ selectedModelDetail.builds.length }}</span>
               </header>
               <div
@@ -84,23 +84,23 @@
                       size="sm"
                       variant="secondary"
                       :disabled="!isBuildSelectable(build)"
-                      :title="buildRuntimeUnavailableReason(build) || '使用构建'"
+                      :title="buildRuntimeUnavailableReason(build) || t('deploymentOps.sourcePicker.useBuild')"
                       @click.stop="applyBuildSelection(build)"
                     >
-                      {{ isBuildSelectable(build) ? '使用构建' : '当前环境不可用' }}
+                      {{ isBuildSelectable(build) ? t('deploymentOps.sourcePicker.useBuild') : t('deploymentOps.sourcePicker.environmentUnavailable') }}
                     </Button>
                   </div>
                 </div>
               </div>
               <div v-else class="deployment-source-detail__empty">
-                <strong>暂无转换构建</strong>
-                <span>如果需要 ONNX / OpenVINO / TensorRT 部署，先在模型页完成转换。</span>
+                <strong>{{ t('deploymentOps.sourcePicker.emptyBuildsTitle') }}</strong>
+                <span>{{ t('deploymentOps.sourcePicker.emptyBuildsDescription') }}</span>
               </div>
             </section>
 
             <section class="deployment-source-group">
               <header class="deployment-source-picker__section-heading">
-                <strong>可直接部署的 ModelVersion</strong>
+                <strong>{{ t('deploymentOps.sourcePicker.directVersions') }}</strong>
                 <span class="deployment-source-picker__section-count">{{ selectedModelDetail.versions.length }}</span>
               </header>
               <div
@@ -119,27 +119,29 @@
                   </div>
                   <div class="table-actions">
                     <Button size="sm" variant="secondary" @click.stop="$emit('apply-source', versionSelection(version))">
-                      使用版本
+                      {{ t('deploymentOps.sourcePicker.useVersion') }}
                     </Button>
                   </div>
                 </div>
               </div>
               <div v-else class="deployment-source-detail__empty">
-                <strong>暂无 ModelVersion</strong>
-                <span>完成训练登记后，可直接部署的版本会显示在这里。</span>
+                <strong>{{ t('deploymentOps.sourcePicker.emptyVersionsTitle') }}</strong>
+                <span>{{ t('deploymentOps.sourcePicker.emptyVersionsDescription') }}</span>
               </div>
             </section>
           </div>
 
           <div v-else class="deployment-source-detail__empty deployment-source-detail__empty--large">
-            <strong>请选择左侧模型</strong>
-            <span>选择模型后，这里会显示可部署版本和转换构建。</span>
+            <strong>{{ t('deploymentOps.sourcePicker.selectModelTitle') }}</strong>
+            <span>{{ t('deploymentOps.sourcePicker.selectModelDescription') }}</span>
           </div>
     </template>
   </ModelPickerDialogShell>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 import type {
   DeploymentSourceModelBuild,
   DeploymentSourceModelDetail,
@@ -152,6 +154,8 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import { hasCudaDevice } from '../deployment-device-support'
 import type { ModelTaskType } from '../services/deployment.service'
 import type { DeploymentSourceSelection } from './deployment-source.types'
+
+const { t } = useI18n()
 
 interface TaskTypeOption {
   label: string
@@ -222,11 +226,11 @@ function buildRuntimeUnavailableReason(build: DeploymentSourceModelBuild): strin
     return ''
   }
   if (!hasCudaDevice(props.devices)) {
-    return '当前环境未检测到 NVIDIA CUDA 设备'
+    return t('deploymentOps.sourcePicker.cudaUnavailable')
   }
   const tensorrt = readRecord(props.devices, 'tensorrt')
   if (tensorrt?.installed !== true) {
-    return '当前环境未安装 TensorRT 运行时'
+    return t('deploymentOps.sourcePicker.tensorrtUnavailable')
   }
   return ''
 }

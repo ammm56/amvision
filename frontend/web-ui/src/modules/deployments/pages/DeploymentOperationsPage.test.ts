@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
-import { i18n } from '@/platform/i18n'
+import { i18n, setI18nLocale } from '@/platform/i18n'
 import {
   getDeploymentSourceModelDetail,
   listDeploymentSourceModels,
@@ -14,6 +14,7 @@ import {
 } from '@/modules/models/services/model.service'
 import DeploymentOperationsPage from './DeploymentOperationsPage.vue'
 import {
+  createTaskDeployment,
   getDeploymentRuntimeCapabilities,
   listTaskDeploymentEvents,
   listTaskDeployments,
@@ -179,6 +180,64 @@ const runtimeCapabilities: DeploymentRuntimeCapabilities = {
   warnings: [],
 }
 
+const autoRuntimeCapabilities: DeploymentRuntimeCapabilities = {
+  runtime_backend: 'openvino',
+  device_name: 'auto',
+  available: true,
+  hardware: {
+    cpu_physical_core_count: 8,
+    cpu_logical_processor_count: 16,
+  },
+  supported_backend_fields: [
+    'performance_hint',
+    'num_requests',
+  ],
+  read_only_properties: {},
+  default_runtime_configuration: {
+    ...runtimeConfiguration(1),
+    backend_options: {
+      kind: 'openvino-auto',
+      performance_hint: 'latency',
+      num_requests: 'auto',
+    },
+  },
+  warnings: [],
+}
+
+const npuRuntimeCapabilities: DeploymentRuntimeCapabilities = {
+  runtime_backend: 'openvino',
+  device_name: 'npu',
+  available: true,
+  hardware: {
+    cpu_physical_core_count: 8,
+    cpu_logical_processor_count: 16,
+  },
+  supported_backend_fields: [
+    'performance_hint',
+    'num_requests',
+    'inference_precision',
+    'turbo',
+    'tiles',
+    'compilation_mode_params',
+  ],
+  read_only_properties: {
+    npu_max_tiles: 2,
+  },
+  default_runtime_configuration: {
+    ...runtimeConfiguration(1),
+    backend_options: {
+      kind: 'openvino-npu',
+      performance_hint: 'latency',
+      num_requests: 'auto',
+      inference_precision: 'auto',
+      turbo: 'auto',
+      tiles: 'auto',
+      compilation_mode_params: null,
+    },
+  },
+  warnings: [],
+}
+
 const latestEvent: TaskDeploymentProcessEvent = {
   ...event,
   sequence: 2,
@@ -235,6 +294,7 @@ describe('DeploymentOperationsPage', () => {
   let pinia: Pinia
 
   beforeEach(() => {
+    setI18nLocale('zh-CN')
     pinia = createPinia()
     const projectStore = useProjectStore(pinia)
     const sessionStore = useSessionStore(pinia)
@@ -263,6 +323,10 @@ describe('DeploymentOperationsPage', () => {
       devices: {
         cuda: { available: true, device_count: 1 },
         gpu: { available: true, devices: [{ name: 'GPU 0' }] },
+        openvino: {
+          installed: true,
+          available_devices: ['CPU', 'GPU.0', 'NPU'],
+        },
       },
     } as never
 
@@ -287,7 +351,21 @@ describe('DeploymentOperationsPage', () => {
       }),
     )
     vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event])
-    vi.mocked(getDeploymentRuntimeCapabilities).mockResolvedValue(runtimeCapabilities)
+    vi.mocked(getDeploymentRuntimeCapabilities).mockImplementation(async (_backend, device) => {
+      if (device === 'cpu') return runtimeCapabilities
+      if (device === 'npu') return npuRuntimeCapabilities
+      return autoRuntimeCapabilities
+    })
+    vi.mocked(createTaskDeployment).mockImplementation(async (input) => ({
+      ...secondDeployment,
+      deployment_instance_id: 'created-deployment',
+      task_type: input.taskType,
+      runtime_backend: input.runtimeBackend ?? 'openvino',
+      runtime_precision: input.runtimePrecision ?? 'fp32',
+      device_name: input.deviceName ?? '',
+      runtime_configuration: input.runtimeConfiguration,
+      display_name: input.displayName ?? '',
+    }))
   })
 
   afterEach(() => {
@@ -503,8 +581,11 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '使用构建')
     await flushPromises()
 
+    const initialDeviceField = findFieldByText(wrapper, 'Device')
+    expect(initialDeviceField.find('.ui-select__button').text()).toContain('OpenVINO AUTO（默认）')
+    expect(wrapper.text()).not.toContain('OpenVINO streams')
+
     const requestsField = findFieldByText(wrapper, 'OpenVINO 并发推理请求数')
-    expect(requestsField.text()).toContain('不是部署实例数')
     expect(requestsField.find('.ui-select__button').text()).toContain('自动（推荐）')
     await requestsField.find('.ui-select__button').trigger('click')
     await nextTick()
@@ -526,8 +607,8 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.text()).not.toContain('平台性能目标')
     expect(wrapper.text()).toContain('OpenVINO 性能策略')
     expect(wrapper.text()).toContain('OpenVINO 推理线程数')
-    expect(wrapper.text()).toContain('可选范围 1–8')
     expect(wrapper.findAll('select')).toHaveLength(0)
+    expect(wrapper.find('.deployment-create-grid').findAll('small')).toHaveLength(0)
 
     const threadsField = findFieldByText(wrapper, 'OpenVINO 推理线程数')
     expect(threadsField.find('.ui-select__button').text()).toContain('8')
@@ -542,6 +623,87 @@ describe('DeploymentOperationsPage', () => {
     await streamsInput.setValue('0')
     await streamsInput.trigger('blur')
     expect((streamsInput.element as HTMLInputElement).value).toBe('1')
+
+    setI18nLocale('en-US')
+    await nextTick()
+    expect(wrapper.text()).toContain('OpenVINO Performance Hint')
+    expect(wrapper.text()).toContain('OpenVINO Inference Threads')
+    expect(wrapper.text()).not.toContain('OpenVINO 性能策略')
+
+    setI18nLocale('ja-JP')
+    await nextTick()
+    expect(wrapper.text()).toContain('OpenVINO パフォーマンス戦略')
+    expect(wrapper.text()).toContain('デプロイ元モデル')
+
+    setI18nLocale('ko-KR')
+    await nextTick()
+    expect(wrapper.text()).toContain('OpenVINO 성능 전략')
+    expect(wrapper.text()).toContain('배포 소스 모델')
+  })
+
+  it('renders and submits the complete capability-driven OpenVINO NPU configuration', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const deviceField = findFieldByText(wrapper, 'Device')
+    await deviceField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const npuOption = deviceField.findAll('.ui-select__option').find((item) => item.text().includes('OpenVINO NPU'))
+    expect(npuOption, 'OpenVINO NPU option exists').toBeTruthy()
+    await npuOption!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('OpenVINO streams')
+    expect(wrapper.text()).not.toContain('OpenVINO 推理线程数')
+    expect(wrapper.text()).toContain('OpenVINO inference precision')
+    expect(wrapper.text()).toContain('NPU turbo')
+    expect(wrapper.text()).toContain('NPU tiles')
+    expect(wrapper.text()).toContain('NPU compilation mode params')
+
+    const precisionField = findFieldByText(wrapper, 'OpenVINO inference precision')
+    await precisionField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(precisionField.findAll('.ui-select__option')).toHaveLength(2)
+    expect(precisionField.text()).not.toContain('FP32')
+
+    const tilesField = findFieldByText(wrapper, 'NPU tiles')
+    await tilesField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const manualTilesOption = tilesField.findAll('.ui-select__option').find((item) => item.text().includes('手动指定'))
+    expect(manualTilesOption, 'manual NPU tiles option exists').toBeTruthy()
+    await manualTilesOption!.trigger('click')
+    await nextTick()
+    const tilesInput = tilesField.find('input')
+    expect(tilesInput.attributes('max')).toBe('2')
+    await tilesInput.setValue('3')
+    await tilesInput.trigger('blur')
+    expect((tilesInput.element as HTMLInputElement).value).toBe('2')
+
+    await findFieldByText(wrapper, 'NPU compilation mode params').find('input').setValue('optimization-level=1')
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+
+    expect(createTaskDeployment).toHaveBeenCalledTimes(1)
+    const createInput = vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+    expect(createInput?.deviceName).toBe('npu')
+    expect(createInput?.runtimeConfiguration.backend_options).toEqual({
+      kind: 'openvino-npu',
+      performance_hint: 'latency',
+      num_requests: 'auto',
+      inference_precision: 'auto',
+      turbo: 'auto',
+      tiles: 2,
+      compilation_mode_params: 'optimization-level=1',
+    })
   })
 })
 
