@@ -92,8 +92,7 @@ class YoloXInferenceTaskSpec:
     - save_result_image：是否保存结果图。
     - return_preview_image_base64：是否直接返回 base64 预览图。
     - runtime_target_snapshot：提交时固化的运行时快照。
-    - runtime_behavior：提交时固化的 deployment runtime behavior。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_configuration：提交时固化的完整 deployment 运行时配置。
     - extra_options：附加推理选项。
     """
 
@@ -109,8 +108,7 @@ class YoloXInferenceTaskSpec:
     save_result_image: bool = False
     return_preview_image_base64: bool = False
     runtime_target_snapshot: dict[str, object] = field(default_factory=dict)
-    runtime_behavior: dict[str, object] = field(default_factory=dict)
-    instance_count: int = 1
+    runtime_configuration: dict[str, object] = field(default_factory=dict)
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

@@ -15,16 +15,30 @@ from backend.service.application.deployments.deployment_instance_service import 
     DeploymentInstanceView as SegmentationDeploymentInstanceView,
     SqlAlchemyDeploymentInstanceService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
-from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
-from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.targets.rfdetr import SqlAlchemyRfdetrRuntimeTargetResolver
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
+from backend.service.application.runtime.targets.yolo11 import (
+    SqlAlchemyYolo11RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.yolo26 import (
+    SqlAlchemyYolo26RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.yolov8 import (
+    SqlAlchemyYoloV8RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.rfdetr import (
+    SqlAlchemyRfdetrRuntimeTargetResolver,
+)
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
     RuntimeTargetSnapshot,
 )
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 @dataclass(frozen=True)
@@ -37,7 +51,7 @@ class SegmentationDeploymentInstanceCreateRequest:
     runtime_backend: str | None = None
     device_name: str | None = None
     runtime_precision: str | None = None
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration | None = None
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -78,7 +92,9 @@ class SqlAlchemySegmentationDeploymentService(SqlAlchemyDeploymentInstanceServic
             status=status,
             limit=limit,
         )
-        views = tuple(item for item in views if item.task_type == SEGMENTATION_TASK_TYPE)
+        views = tuple(
+            item for item in views if item.task_type == SEGMENTATION_TASK_TYPE
+        )
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
             return views
@@ -89,7 +105,9 @@ class SqlAlchemySegmentationDeploymentService(SqlAlchemyDeploymentInstanceServic
                 result.append(item)
         return tuple(result[:limit])
 
-    def _resolve_create_target(self, request: SegmentationDeploymentInstanceCreateRequest) -> RuntimeTargetSnapshot:
+    def _resolve_create_target(
+        self, request: SegmentationDeploymentInstanceCreateRequest
+    ) -> RuntimeTargetSnapshot:
         normalized_model_type = _require_model_type(request.model_type)
         registration = get_segmentation_backend_registration(normalized_model_type)
         if registration is None or registration.features.deployment is not True:
@@ -97,7 +115,9 @@ class SqlAlchemySegmentationDeploymentService(SqlAlchemyDeploymentInstanceServic
                 "当前 segmentation deployment 尚未接通指定模型分类",
                 details={
                     "model_type": normalized_model_type,
-                    "display_name": registration.display_name if registration is not None else None,
+                    "display_name": registration.display_name
+                    if registration is not None
+                    else None,
                 },
             )
         resolver_cls = _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(normalized_model_type)
@@ -106,7 +126,9 @@ class SqlAlchemySegmentationDeploymentService(SqlAlchemyDeploymentInstanceServic
                 "当前 segmentation deployment 尚未接通指定模型分类",
                 details={
                     "model_type": normalized_model_type,
-                    "display_name": registration.display_name if registration is not None else None,
+                    "display_name": registration.display_name
+                    if registration is not None
+                    else None,
                 },
             )
         runtime_target = resolver_cls(

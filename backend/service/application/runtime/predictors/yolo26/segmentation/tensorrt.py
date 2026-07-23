@@ -5,6 +5,9 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -150,6 +153,7 @@ class TensorRTYolo26SegmentationRuntimeSession:
         runtime_target: RuntimeTargetSnapshot,
         pinned_output_buffer_enabled: bool | None = None,
         pinned_output_buffer_max_bytes: int | None = None,
+        optimization_profile_index: int = 0,
     ) -> "TensorRTYolo26SegmentationRuntimeSession":
         """加载一套 TensorRT YOLO26 segmentation 会话。"""
 
@@ -202,6 +206,12 @@ class TensorRTYolo26SegmentationRuntimeSession:
             operation_name="TensorRT segmentation runtime 创建复用 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = ensure_yolo26_segmentation_cuda_success(
             imports.cudart.cudaEventCreate(),
             operation_name="TensorRT segmentation runtime 创建执行起点 event",
@@ -397,9 +407,6 @@ class TensorRTYolo26SegmentationRuntimeSession:
             device_name=self.device_name,
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
 
         postprocess_started_at = perf_counter()
         normalized_prediction_array, normalized_proto_array = (

@@ -8,8 +8,8 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.inference.detection_inference_task_service import (
-    _serialize_process_runtime_behavior,
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    serialize_deployment_runtime_configuration,
 )
 from backend.service.application.models.inference.segmentation_async_inference_gateway import (
     deserialize_segmentation_async_inference_execution_result_payload,
@@ -92,8 +92,12 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             dataset_storage=self._require_dataset_storage(),
         )
 
-    def _validate_requested_model_type(self, *, deployment_instance_id: str, requested_model_type: str | None) -> None:
-        self._validate_resolved_model_type(deployment_instance_id=deployment_instance_id)
+    def _validate_requested_model_type(
+        self, *, deployment_instance_id: str, requested_model_type: str | None
+    ) -> None:
+        self._validate_resolved_model_type(
+            deployment_instance_id=deployment_instance_id
+        )
         super()._validate_requested_model_type(
             deployment_instance_id=deployment_instance_id,
             requested_model_type=requested_model_type,
@@ -138,14 +142,15 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             runtime_target_snapshot=serialize_runtime_target_snapshot(
                 process_config.runtime_target
             ),
-            runtime_behavior=_serialize_process_runtime_behavior(
-                process_config.runtime_behavior
+            runtime_configuration=serialize_deployment_runtime_configuration(
+                process_config.runtime_configuration
             ),
-            instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
 
-    def _serialize_task_spec(self, task_spec: SegmentationInferenceTaskSpec) -> dict[str, object]:
+    def _serialize_task_spec(
+        self, task_spec: SegmentationInferenceTaskSpec
+    ) -> dict[str, object]:
         return {
             "project_id": task_spec.project_id,
             "deployment_instance_id": task_spec.deployment_instance_id,
@@ -160,32 +165,42 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             "save_result_image": task_spec.save_result_image,
             "return_preview_image_base64": task_spec.return_preview_image_base64,
             "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
-            "runtime_behavior": dict(task_spec.runtime_behavior),
-            "instance_count": task_spec.instance_count,
+            "runtime_configuration": dict(task_spec.runtime_configuration),
             "extra_options": dict(task_spec.extra_options),
         }
 
-    def _build_request_from_task_record(self, task_record) -> SegmentationInferenceTaskRequest:
+    def _build_request_from_task_record(
+        self, task_record
+    ) -> SegmentationInferenceTaskRequest:
         task_spec = dict(task_record.task_spec)
         normalized_input = self._deserialize_normalized_input(task_spec)
         return SegmentationInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             model_type=self._read_optional_str(task_spec, "model_type"),
             input_file_id=normalized_input.input_file_id,
             input_uri=normalized_input.input_uri,
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            mask_threshold=self._read_optional_float(task_spec, "mask_threshold") or 0.5,
+            mask_threshold=self._read_optional_float(task_spec, "mask_threshold")
+            or 0.5,
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 
-    def _build_prediction_request(self, *, normalized_input, request: SegmentationInferenceTaskRequest):
+    def _build_prediction_request(
+        self, *, normalized_input, request: SegmentationInferenceTaskRequest
+    ):
         return build_segmentation_prediction_request(
             normalized_input=normalized_input,
             score_threshold=self._resolve_score_threshold(request.score_threshold),
@@ -195,7 +210,14 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             extra_options=dict(request.extra_options),
         )
 
-    def _execute_task_inference(self, *, process_config, prediction_request, async_inference_owner_id: str, return_preview_image_base64: bool) -> TaskNativeInferenceExecution:
+    def _execute_task_inference(
+        self,
+        *,
+        process_config,
+        prediction_request,
+        async_inference_owner_id: str,
+        return_preview_image_base64: bool,
+    ) -> TaskNativeInferenceExecution:
         del return_preview_image_base64
         if self.async_inference_executor is not None:
             payload = self.async_inference_executor.execute_inference(
@@ -219,7 +241,17 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             execution_result=execution.execution_result,
         )
 
-    def _build_serialized_result_payload(self, *, task_id: str, request: SegmentationInferenceTaskRequest, normalized_input, runtime_target, execution: TaskNativeInferenceExecution, preview_image_uri: str | None, result_object_key: str | None) -> dict[str, object]:
+    def _build_serialized_result_payload(
+        self,
+        *,
+        task_id: str,
+        request: SegmentationInferenceTaskRequest,
+        normalized_input,
+        runtime_target,
+        execution: TaskNativeInferenceExecution,
+        preview_image_uri: str | None,
+        result_object_key: str | None,
+    ) -> dict[str, object]:
         return serialize_segmentation_inference_payload(
             build_segmentation_inference_payload(
                 request_id=task_id,
@@ -238,13 +270,25 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             )
         )
 
-    def _attach_serialize_timing(self, *, payload: dict[str, object], serialize_ms: float) -> dict[str, object]:
+    def _attach_serialize_timing(
+        self, *, payload: dict[str, object], serialize_ms: float
+    ) -> dict[str, object]:
         return attach_segmentation_inference_serialize_timing(
             payload=payload,
             serialize_ms=serialize_ms,
         )
 
-    def _build_result_summary(self, *, request: SegmentationInferenceTaskRequest, runtime_target, normalized_input, execution: TaskNativeInferenceExecution, output_object_prefix: str, result_object_key: str, preview_image_object_key: str | None) -> dict[str, object]:
+    def _build_result_summary(
+        self,
+        *,
+        request: SegmentationInferenceTaskRequest,
+        runtime_target,
+        normalized_input,
+        execution: TaskNativeInferenceExecution,
+        output_object_prefix: str,
+        result_object_key: str,
+        preview_image_object_key: str | None,
+    ) -> dict[str, object]:
         return {
             "deployment_instance_id": request.deployment_instance_id,
             "instance_id": execution.instance_id,
@@ -294,19 +338,32 @@ class SqlAlchemySegmentationInferenceTaskService(TaskNativeInferenceTaskServiceB
             self._build_request_from_task_record_fallback(task_spec)
         )
 
-    def _build_request_from_task_record_fallback(self, task_spec: dict[str, object]) -> SegmentationInferenceTaskRequest:
+    def _build_request_from_task_record_fallback(
+        self, task_spec: dict[str, object]
+    ) -> SegmentationInferenceTaskRequest:
         return SegmentationInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             input_file_id=self._read_optional_str(task_spec, "input_file_id"),
             input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
-            input_transport_mode=self._read_optional_str(task_spec, "input_transport_mode") or "storage",
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            input_source_kind=self._read_optional_str(task_spec, "input_source_kind")
+            or "input_uri",
+            input_transport_mode=self._read_optional_str(
+                task_spec, "input_transport_mode"
+            )
+            or "storage",
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            mask_threshold=self._read_optional_float(task_spec, "mask_threshold") or 0.5,
+            mask_threshold=self._read_optional_float(task_spec, "mask_threshold")
+            or 0.5,
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 

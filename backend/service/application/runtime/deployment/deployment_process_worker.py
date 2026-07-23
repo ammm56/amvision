@@ -15,8 +15,15 @@ from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_STORAGE,
     require_image_payload,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceError, ServiceConfigurationError
-from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceError,
+    ServiceConfigurationError,
+)
+from backend.service.application.local_buffers import (
+    LocalBufferBrokerClient,
+    LocalBufferBrokerEventChannel,
+)
 from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -154,21 +161,13 @@ def run_deployment_process_worker(
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id=config.deployment_instance_id,
         runtime_target=config.runtime_target,
-        instance_count=config.instance_count,
-        tensorrt_pinned_output_buffer_enabled=getattr(
-            getattr(config, "runtime_behavior", None),
-            "tensorrt_pinned_output_buffer_enabled",
-            None,
-        ),
-        tensorrt_pinned_output_buffer_max_bytes=getattr(
-            getattr(config, "runtime_behavior", None),
-            "tensorrt_pinned_output_buffer_max_bytes",
-            None,
-        ),
+        runtime_configuration=config.runtime_configuration,
     )
     runtime_pool.ensure_deployment(runtime_pool_config)
     infer_slots = BoundedSemaphore(max(1, config.instance_count))
-    behavior = _resolve_warmup_behavior(config=config, supervisor_settings=supervisor_settings)
+    behavior = _resolve_warmup_behavior(
+        config=config, supervisor_settings=supervisor_settings
+    )
     task_type = config.runtime_target.task_type
     dummy_request: PredictionRequest | None = None
     if behavior.warmup_dummy_inference_count > 0 or behavior.keep_warm_enabled:
@@ -191,7 +190,9 @@ def run_deployment_process_worker(
             continue
         request_id = str(message.get("request_id") or "")
         action = str(message.get("action") or "")
-        payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        payload = (
+            message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        )
 
         if action == "shutdown":
             _stop_keep_warm_thread(
@@ -250,7 +251,9 @@ def run_deployment_process_worker(
                     ),
                 )
             except Exception as error:
-                _put_error_response(response_queue=response_queue, request_id=request_id, error=error)
+                _put_error_response(
+                    response_queue=response_queue, request_id=request_id, error=error
+                )
             finally:
                 _release_keep_warm_control_pause(keep_warm_state)
             continue
@@ -269,7 +272,9 @@ def run_deployment_process_worker(
                     ),
                 )
             except Exception as error:
-                _put_error_response(response_queue=response_queue, request_id=request_id, error=error)
+                _put_error_response(
+                    response_queue=response_queue, request_id=request_id, error=error
+                )
             continue
 
         if action == "reset":
@@ -293,7 +298,9 @@ def run_deployment_process_worker(
                     ),
                 )
             except Exception as error:
-                _put_error_response(response_queue=response_queue, request_id=request_id, error=error)
+                _put_error_response(
+                    response_queue=response_queue, request_id=request_id, error=error
+                )
             finally:
                 _release_keep_warm_control_pause(keep_warm_state)
             continue
@@ -400,7 +407,9 @@ def _run_inference_request(
             },
         )
     except Exception as error:
-        _put_error_response(response_queue=response_queue, request_id=request_id, error=error)
+        _put_error_response(
+            response_queue=response_queue, request_id=request_id, error=error
+        )
     finally:
         infer_slots.release()
         _finish_real_inference(keep_warm_state, activate_keep_warm=inference_succeeded)
@@ -449,22 +458,30 @@ def _resolve_input_image_payload(
         return str(normalized_payload.get("object_key") or ""), None, None
     if transport_kind == IMAGE_TRANSPORT_BUFFER:
         if local_buffer_reader is None:
-            raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
+            raise ServiceConfigurationError(
+                "deployment worker 缺少 LocalBufferBroker reader"
+            )
         buffer_ref = BufferRef.model_validate(normalized_payload.get("buffer_ref"))
         try:
             content = local_buffer_reader.read_buffer_ref(buffer_ref)
-            _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_BUFFER)
+            _record_local_buffer_input(
+                local_buffer_health, transport_kind=IMAGE_TRANSPORT_BUFFER
+            )
             return None, content, normalized_payload
         except Exception as exc:
             _record_local_buffer_error(local_buffer_health, exc)
             raise
     if transport_kind == IMAGE_TRANSPORT_FRAME:
         if local_buffer_reader is None:
-            raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
+            raise ServiceConfigurationError(
+                "deployment worker 缺少 LocalBufferBroker reader"
+            )
         frame_ref = FrameRef.model_validate(normalized_payload.get("frame_ref"))
         try:
             content = local_buffer_reader.read_frame_ref(frame_ref)
-            _record_local_buffer_input(local_buffer_health, transport_kind=IMAGE_TRANSPORT_FRAME)
+            _record_local_buffer_input(
+                local_buffer_health, transport_kind=IMAGE_TRANSPORT_FRAME
+            )
             return None, content, normalized_payload
         except Exception as exc:
             _record_local_buffer_error(local_buffer_health, exc)
@@ -520,7 +537,9 @@ def _record_local_buffer_error(
 
     with local_buffer_health.lock:
         local_buffer_health.error_count += 1
-        local_buffer_health.last_error = getattr(error, "message", str(error) or type(error).__name__)
+        local_buffer_health.last_error = getattr(
+            error, "message", str(error) or type(error).__name__
+        )
 
 
 def _resolve_warmup_behavior(
@@ -538,21 +557,22 @@ def _resolve_warmup_behavior(
     - 当前子进程实际生效的 warmup 与 keep-warm 配置。
     """
 
-    settings = DeploymentProcessSupervisorConfig.model_validate(supervisor_settings or {})
-    runtime_behavior = getattr(config, "runtime_behavior", None)
+    settings = DeploymentProcessSupervisorConfig.model_validate(
+        supervisor_settings or {}
+    )
+    lifecycle = config.runtime_configuration.lifecycle
     warmup_dummy_inference_count = settings.warmup_dummy_inference_count
     warmup_dummy_image_size = settings.warmup_dummy_image_size
     keep_warm_enabled = settings.keep_warm_enabled
     keep_warm_interval_seconds = settings.keep_warm_interval_seconds
-    if runtime_behavior is not None:
-        if getattr(runtime_behavior, "warmup_dummy_inference_count", None) is not None:
-            warmup_dummy_inference_count = int(runtime_behavior.warmup_dummy_inference_count)
-        if getattr(runtime_behavior, "warmup_dummy_image_size", None) is not None:
-            warmup_dummy_image_size = tuple(runtime_behavior.warmup_dummy_image_size)
-        if getattr(runtime_behavior, "keep_warm_enabled", None) is not None:
-            keep_warm_enabled = bool(runtime_behavior.keep_warm_enabled)
-        if getattr(runtime_behavior, "keep_warm_interval_seconds", None) is not None:
-            keep_warm_interval_seconds = float(runtime_behavior.keep_warm_interval_seconds)
+    if lifecycle.warmup_dummy_inference_count is not None:
+        warmup_dummy_inference_count = int(lifecycle.warmup_dummy_inference_count)
+    if lifecycle.warmup_dummy_image_size is not None:
+        warmup_dummy_image_size = tuple(lifecycle.warmup_dummy_image_size)
+    if lifecycle.keep_warm_enabled is not None:
+        keep_warm_enabled = bool(lifecycle.keep_warm_enabled)
+    if lifecycle.keep_warm_interval_seconds is not None:
+        keep_warm_interval_seconds = float(lifecycle.keep_warm_interval_seconds)
     return _DeploymentWarmupBehavior(
         warmup_dummy_inference_count=max(0, int(warmup_dummy_inference_count)),
         warmup_dummy_image_size=(
@@ -561,7 +581,9 @@ def _resolve_warmup_behavior(
         ),
         keep_warm_enabled=bool(keep_warm_enabled),
         keep_warm_interval_seconds=max(0.01, float(keep_warm_interval_seconds)),
-        keep_warm_yield_timeout_seconds=max(0.05, float(settings.keep_warm_yield_timeout_seconds)),
+        keep_warm_yield_timeout_seconds=max(
+            0.05, float(settings.keep_warm_yield_timeout_seconds)
+        ),
     )
 
 
@@ -614,7 +636,9 @@ def _run_dummy_warmup_passes(
 
     for _ in range(max(0, int(count))):
         try:
-            runtime_pool.run_inference(config=runtime_pool_config, request=dummy_request)
+            runtime_pool.run_inference(
+                config=runtime_pool_config, request=dummy_request
+            )
         except InvalidRequestError:
             return
 
@@ -671,11 +695,17 @@ def _run_keep_warm_loop(
     """
 
     while not keep_warm_state.stop_event.wait(behavior.keep_warm_interval_seconds):
-        if not keep_warm_state.activated_event.is_set() or keep_warm_state.pause_event.is_set():
+        if (
+            not keep_warm_state.activated_event.is_set()
+            or keep_warm_state.pause_event.is_set()
+        ):
             continue
         keep_warm_state.idle_event.clear()
         try:
-            if keep_warm_state.stop_event.is_set() or keep_warm_state.pause_event.is_set():
+            if (
+                keep_warm_state.stop_event.is_set()
+                or keep_warm_state.pause_event.is_set()
+            ):
                 continue
             runtime_pool.run_inference(
                 config=runtime_pool_config,
@@ -715,7 +745,9 @@ def _snapshot_keep_warm_state(
             "last_error": None,
         }
     with keep_warm_state.lock:
-        success_counter_snapshot = snapshot_safe_counter(keep_warm_state.success_counter)
+        success_counter_snapshot = snapshot_safe_counter(
+            keep_warm_state.success_counter
+        )
         error_counter_snapshot = snapshot_safe_counter(keep_warm_state.error_counter)
         return {
             "enabled": behavior.keep_warm_enabled,
@@ -795,7 +827,9 @@ def _release_keep_warm_control_pause(keep_warm_state: _KeepWarmState | None) -> 
     if keep_warm_state is None:
         return
     with keep_warm_state.lock:
-        keep_warm_state.control_pause_count = max(0, keep_warm_state.control_pause_count - 1)
+        keep_warm_state.control_pause_count = max(
+            0, keep_warm_state.control_pause_count - 1
+        )
         _refresh_keep_warm_pause_event(keep_warm_state)
 
 
@@ -830,7 +864,9 @@ def _finish_real_inference(
     with keep_warm_state.lock:
         if activate_keep_warm:
             keep_warm_state.activated_event.set()
-        keep_warm_state.real_request_count = max(0, keep_warm_state.real_request_count - 1)
+        keep_warm_state.real_request_count = max(
+            0, keep_warm_state.real_request_count - 1
+        )
         _refresh_keep_warm_pause_event(keep_warm_state)
 
 
@@ -878,7 +914,16 @@ def _serialize_health(health: object) -> dict[str, object]:
         "instance_count": int(getattr(health, "instance_count")),
         "healthy_instance_count": int(getattr(health, "healthy_instance_count")),
         "warmed_instance_count": int(getattr(health, "warmed_instance_count")),
-        "pinned_output_total_bytes": int(getattr(health, "pinned_output_total_bytes", 0)),
+        "pinned_output_total_bytes": int(
+            getattr(health, "pinned_output_total_bytes", 0)
+        ),
+        "requested_runtime_configuration": dict(
+            getattr(health, "requested_runtime_configuration", {})
+        ),
+        "effective_runtime_configuration": dict(
+            getattr(health, "effective_runtime_configuration", {})
+        ),
+        "configuration_warnings": list(getattr(health, "configuration_warnings", ())),
         "instances": [
             {
                 "instance_id": item.instance_id,
@@ -938,7 +983,8 @@ def _snapshot_local_buffer_health(
                 local_buffer_health.error_count,
                 int(client_summary.get("error_count") or 0),
             ),
-            "recent_error": local_buffer_health.last_error or client_summary.get("recent_error"),
+            "recent_error": local_buffer_health.last_error
+            or client_summary.get("recent_error"),
         }
 
 
@@ -966,13 +1012,17 @@ def _configure_process_threads(operator_thread_count: int) -> None:
         pass
 
 
-def _put_ok_response(*, response_queue: Any, request_id: str, payload: dict[str, object]) -> None:
+def _put_ok_response(
+    *, response_queue: Any, request_id: str, payload: dict[str, object]
+) -> None:
     """写入成功响应。"""
 
     response_queue.put({"request_id": request_id, "ok": True, "payload": payload})
 
 
-def _put_error_response(*, response_queue: Any, request_id: str, error: Exception) -> None:
+def _put_error_response(
+    *, response_queue: Any, request_id: str, error: Exception
+) -> None:
     """写入失败响应。"""
 
     if isinstance(error, ServiceError):
@@ -1007,7 +1057,9 @@ def _require_payload_str(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if isinstance(value, str) and value.strip():
         return value.strip()
-    raise InvalidRequestError("deployment 推理请求缺少必要字符串字段", details={"field": key})
+    raise InvalidRequestError(
+        "deployment 推理请求缺少必要字符串字段", details={"field": key}
+    )
 
 
 def _read_payload_optional_str(payload: dict[str, object], key: str) -> str | None:
@@ -1034,7 +1086,9 @@ def _require_payload_float(payload: dict[str, object], key: str) -> float:
     value = payload.get(key)
     if isinstance(value, int | float):
         return float(value)
-    raise InvalidRequestError("deployment 推理请求缺少必要数值字段", details={"field": key})
+    raise InvalidRequestError(
+        "deployment 推理请求缺少必要数值字段", details={"field": key}
+    )
 
 
 def _read_payload_dict(payload: dict[str, object], key: str) -> dict[str, object]:

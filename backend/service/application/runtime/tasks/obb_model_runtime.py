@@ -31,14 +31,23 @@ from backend.service.application.runtime.predictors.yolov8.obb import (
     PyTorchYoloV8ObbRuntimeSession,
     TensorRTYoloV8ObbRuntimeSession,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.deployment.runtime_session_options import (
+    build_tensorrt_session_load_options,
+    resolve_runtime_session_configuration,
 )
 
 
 ObbRuntimeLoader = Callable[
-    [LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None],
+    [LocalDatasetStorage, RuntimeTargetSnapshot, DeploymentRuntimeConfiguration],
     "ObbModelRuntimeSession",
 ]
 
@@ -85,15 +94,17 @@ class DefaultObbModelRuntime:
         *,
         dataset_storage,
         runtime_target,
-        pinned_output_buffer_enabled=None,
-        pinned_output_buffer_max_bytes=None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ):
+        runtime_configuration = resolve_runtime_session_configuration(
+            runtime_target=runtime_target,
+            configuration=runtime_configuration,
+        )
         loader = self.runtime_registry.resolve_runtime_loader(runtime_target.model_type)
         return loader(
             dataset_storage,
             runtime_target,
-            pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes,
+            runtime_configuration,
         )
 
 
@@ -105,7 +116,7 @@ def build_default_obb_model_runtime_registry():
     return registry
 
 
-def _load_yolov8_obb(ds, rt, pe, pm):
+def _load_yolov8_obb(ds, rt, runtime_configuration):
     if rt.runtime_backend == "pytorch":
         return PyTorchYoloV8ObbRuntimeSession.load(
             dataset_storage=ds, runtime_target=rt
@@ -116,19 +127,20 @@ def _load_yolov8_obb(ds, rt, pe, pm):
         )
     if rt.runtime_backend == "openvino":
         return OpenVINOYoloV8ObbRuntimeSession.load(
-            dataset_storage=ds, runtime_target=rt
+            dataset_storage=ds,
+            runtime_target=rt,
+            runtime_configuration=runtime_configuration,
         )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYoloV8ObbRuntimeSession.load(
             dataset_storage=ds,
             runtime_target=rt,
-            pinned_output_buffer_enabled=pe,
-            pinned_output_buffer_max_bytes=pm,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported obb runtime backend: {rt.runtime_backend}")
 
 
-def _load_yolo11_obb(ds, rt, pe, pm):
+def _load_yolo11_obb(ds, rt, runtime_configuration):
     if rt.runtime_backend == "pytorch":
         return PyTorchYolo11ObbRuntimeSession.load(
             dataset_storage=ds, runtime_target=rt
@@ -139,19 +151,20 @@ def _load_yolo11_obb(ds, rt, pe, pm):
         )
     if rt.runtime_backend == "openvino":
         return OpenVINOYolo11ObbRuntimeSession.load(
-            dataset_storage=ds, runtime_target=rt
+            dataset_storage=ds,
+            runtime_target=rt,
+            runtime_configuration=runtime_configuration,
         )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYolo11ObbRuntimeSession.load(
             dataset_storage=ds,
             runtime_target=rt,
-            pinned_output_buffer_enabled=pe,
-            pinned_output_buffer_max_bytes=pm,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported obb runtime backend: {rt.runtime_backend}")
 
 
-def _load_yolo26_obb(ds, rt, pe, pm):
+def _load_yolo26_obb(ds, rt, runtime_configuration):
     if rt.runtime_backend == "pytorch":
         return PyTorchYolo26ObbRuntimeSession.load(
             dataset_storage=ds, runtime_target=rt
@@ -162,14 +175,15 @@ def _load_yolo26_obb(ds, rt, pe, pm):
         )
     if rt.runtime_backend == "openvino":
         return OpenVINOYolo26ObbRuntimeSession.load(
-            dataset_storage=ds, runtime_target=rt
+            dataset_storage=ds,
+            runtime_target=rt,
+            runtime_configuration=runtime_configuration,
         )
     if rt.runtime_backend == "tensorrt":
         return TensorRTYolo26ObbRuntimeSession.load(
             dataset_storage=ds,
             runtime_target=rt,
-            pinned_output_buffer_enabled=pe,
-            pinned_output_buffer_max_bytes=pm,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported obb runtime backend: {rt.runtime_backend}")
 

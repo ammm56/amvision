@@ -20,8 +20,7 @@ class BaseInferenceTaskSpec:
     save_result_image: bool = False
     return_preview_image_base64: bool = False
     runtime_target_snapshot: dict[str, object] = field(default_factory=dict)
-    runtime_behavior: dict[str, object] = field(default_factory=dict)
-    instance_count: int = 1
+    runtime_configuration: dict[str, object] = field(default_factory=dict)
     extra_options: dict[str, object] = field(default_factory=dict)
 
 

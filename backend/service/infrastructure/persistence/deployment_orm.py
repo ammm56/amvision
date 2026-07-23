@@ -19,11 +19,13 @@ class DeploymentInstanceRecord(Base):
     project_id: Mapped[str] = mapped_column(String(128), index=True)
     model_id: Mapped[str] = mapped_column(String(128), index=True)
     model_version_id: Mapped[str] = mapped_column(String(128), index=True)
-    model_build_id: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    model_build_id: Mapped[str | None] = mapped_column(
+        String(128), index=True, nullable=True
+    )
     runtime_profile_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     runtime_backend: Mapped[str] = mapped_column(String(64))
     device_name: Mapped[str] = mapped_column(String(64))
-    instance_count: Mapped[int] = mapped_column(default=1)
+    runtime_configuration_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(64), index=True)
     display_name: Mapped[str] = mapped_column(String(256), default="")
     created_at: Mapped[str] = mapped_column(String(64), index=True)

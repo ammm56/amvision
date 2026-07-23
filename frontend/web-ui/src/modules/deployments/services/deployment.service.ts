@@ -1,6 +1,69 @@
 import { apiRequest } from '@/shared/api/http-client'
 
 export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'pose' | 'obb'
+export type AutoNumber = number | 'auto'
+export type AutoBoolean = boolean | 'auto'
+
+export interface DeploymentExecutionPolicy {
+  instance_count: number
+  isolation_level: 'session'
+  overflow_policy: 'reject'
+  performance_goal: 'latency' | 'throughput' | 'balanced'
+}
+
+export interface DeploymentLifecycleOptions {
+  warmup_dummy_inference_count: number | null
+  warmup_dummy_image_size: [number, number] | null
+  keep_warm_enabled: boolean | null
+  keep_warm_interval_seconds: number | null
+}
+
+export type DeploymentBackendOptions =
+  | { kind: 'default' }
+  | {
+      kind: 'openvino-cpu'
+      performance_hint: 'latency' | 'throughput' | 'cumulative_throughput' | 'none'
+      inference_num_threads: AutoNumber
+      num_streams: AutoNumber
+      scheduling_core_type: 'auto' | 'any_core' | 'pcore_only' | 'ecore_only'
+      enable_hyper_threading: AutoBoolean
+      enable_cpu_pinning: AutoBoolean
+    }
+  | {
+      kind: 'openvino-gpu'
+      performance_hint: 'latency' | 'throughput' | 'cumulative_throughput' | 'none'
+      num_streams: AutoNumber
+      num_requests: AutoNumber
+      inference_precision: 'auto' | 'f32' | 'f16'
+      queue_priority: 'auto' | 'low' | 'medium' | 'high'
+      queue_throttle: 'auto' | 'low' | 'medium' | 'high'
+    }
+  | {
+      kind: 'openvino-npu'
+      performance_hint: 'latency' | 'throughput' | 'cumulative_throughput' | 'none'
+      num_requests: AutoNumber
+      inference_precision: 'auto' | 'f16'
+      turbo: AutoBoolean
+      tiles: AutoNumber
+      compilation_mode_params: string | null
+    }
+  | {
+      kind: 'openvino-auto'
+      performance_hint: 'latency' | 'throughput' | 'cumulative_throughput' | 'none'
+      num_requests: AutoNumber
+    }
+  | {
+      kind: 'tensorrt'
+      optimization_profile_index: number
+      pinned_output_buffer_enabled: boolean | null
+      pinned_output_buffer_max_bytes: number | null
+    }
+
+export interface DeploymentRuntimeConfiguration {
+  execution: DeploymentExecutionPolicy
+  lifecycle: DeploymentLifecycleOptions
+  backend_options: DeploymentBackendOptions
+}
 
 export interface TaskDeploymentInstance {
   deployment_instance_id: string
@@ -19,7 +82,7 @@ export interface TaskDeploymentInstance {
   device_name: string
   runtime_precision: string
   runtime_execution_mode: string
-  instance_count: number
+  runtime_configuration: DeploymentRuntimeConfiguration
   input_size: [number, number]
   labels: string[]
   created_at: string
@@ -38,7 +101,7 @@ export interface TaskDeploymentCreateInput {
   runtimeBackend?: string
   runtimePrecision?: string
   deviceName?: string
-  instanceCount: number
+  runtimeConfiguration: DeploymentRuntimeConfiguration
   displayName?: string
 }
 
@@ -64,6 +127,20 @@ export interface TaskDeploymentRuntimeHealth extends TaskDeploymentProcessStatus
   instances: Array<{ instance_id: string; healthy: boolean; warmed: boolean; busy: boolean; last_error?: string | null }>
   keep_warm: Record<string, unknown>
   local_buffer_broker: Record<string, unknown>
+  requested_runtime_configuration: Record<string, unknown>
+  effective_runtime_configuration: Record<string, unknown>
+  configuration_warnings: string[]
+}
+
+export interface DeploymentRuntimeCapabilities {
+  runtime_backend: string
+  device_name: string
+  available: boolean
+  hardware: Record<string, unknown>
+  supported_backend_fields: string[]
+  read_only_properties: Record<string, unknown>
+  default_runtime_configuration: DeploymentRuntimeConfiguration
+  warnings: string[]
 }
 
 export interface TaskDeploymentProcessEvent {
@@ -102,11 +179,47 @@ export async function createTaskDeployment(input: TaskDeploymentCreateInput): Pr
       runtime_backend: input.runtimeBackend || null,
       runtime_precision: input.runtimePrecision || null,
       device_name: input.deviceName || null,
-      instance_count: input.instanceCount,
+      runtime_configuration: input.runtimeConfiguration,
       display_name: input.displayName ?? '',
       metadata: {},
     },
   })
+}
+
+export async function getDeploymentRuntimeCapabilities(
+  runtimeBackend: string,
+  deviceName: string,
+): Promise<DeploymentRuntimeCapabilities> {
+  return apiRequest<DeploymentRuntimeCapabilities>('/models/deployment-runtime-capabilities', {
+    query: {
+      runtime_backend: runtimeBackend,
+      device_name: deviceName,
+    },
+  })
+}
+
+export function getDeploymentInstanceCount(deployment: TaskDeploymentInstance): number {
+  return deployment.runtime_configuration.execution.instance_count
+}
+
+export function buildDefaultDeploymentRuntimeConfiguration(
+  instanceCount = 1,
+): DeploymentRuntimeConfiguration {
+  return {
+    execution: {
+      instance_count: instanceCount,
+      isolation_level: 'session',
+      overflow_policy: 'reject',
+      performance_goal: 'latency',
+    },
+    lifecycle: {
+      warmup_dummy_inference_count: null,
+      warmup_dummy_image_size: null,
+      keep_warm_enabled: null,
+      keep_warm_interval_seconds: null,
+    },
+    backend_options: { kind: 'default' },
+  }
 }
 
 export async function deleteTaskDeployment(

@@ -5,7 +5,13 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
     resolve_rfdetr_runtime_input_size,
@@ -46,7 +52,9 @@ from backend.service.application.runtime.support.detection import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class TensorRTRfdetrSegmentationRuntimeSession:
@@ -104,7 +112,9 @@ class TensorRTRfdetrSegmentationRuntimeSession:
     def __del__(self) -> None:
         try:
             ensure_cuda_success(
-                self.imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+                self.imports.cudart.cudaSetDevice(
+                    resolve_cuda_device_index(self.device_name)
+                ),
                 operation_name="TensorRT RF-DETR segmentation runtime 释放前绑定 CUDA device",
                 details={"device_name": self.device_name},
             )
@@ -130,10 +140,8 @@ class TensorRTRfdetrSegmentationRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        optimization_profile_index: int = 0,
     ) -> "TensorRTRfdetrSegmentationRuntimeSession":
-        del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
         if runtime_target.runtime_backend != "tensorrt":
             raise InvalidRequestError(
                 "RF-DETR segmentation predictor 仅支持 tensorrt",
@@ -162,7 +170,9 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             severity=tensorrt_module.Logger.WARNING,
         )
         runtime = tensorrt_module.Runtime(logger)
-        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        engine = runtime.deserialize_cuda_engine(
+            runtime_target.runtime_artifact_path.read_bytes()
+        )
         if engine is None:
             raise ServiceConfigurationError(
                 "TensorRT RF-DETR segmentation engine 反序列化失败",
@@ -179,6 +189,12 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             operation_name="TensorRT RF-DETR segmentation runtime 创建 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = ensure_cuda_success(
             cuda_imports.cudart.cudaEventCreate(),
             operation_name="TensorRT RF-DETR segmentation runtime 创建执行起点 event",
@@ -264,7 +280,9 @@ class TensorRTRfdetrSegmentationRuntimeSession:
             ),
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         imports = self.imports
         image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
@@ -290,13 +308,20 @@ class TensorRTRfdetrSegmentationRuntimeSession:
         infer_started_at = perf_counter()
         try:
             ensure_cuda_success(
-                imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+                imports.cudart.cudaSetDevice(
+                    resolve_cuda_device_index(self.device_name)
+                ),
                 operation_name="TensorRT RF-DETR segmentation runtime 绑定 CUDA device",
                 details={"device_name": self.device_name},
             )
-            engine_input_shape = normalize_tensor_shape(self.engine.get_tensor_shape(self.input_name))
+            engine_input_shape = normalize_tensor_shape(
+                self.engine.get_tensor_shape(self.input_name)
+            )
             if any(dim < 0 for dim in engine_input_shape):
-                if self.context.set_input_shape(self.input_name, requested_input_shape) is not True:
+                if (
+                    self.context.set_input_shape(self.input_name, requested_input_shape)
+                    is not True
+                ):
                     raise ServiceConfigurationError(
                         "TensorRT RF-DETR segmentation execution context 设置输入 shape 失败",
                         details={
@@ -329,18 +354,26 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                 operation_name="TensorRT RF-DETR segmentation 拷贝输入到显存",
                 details={"byte_size": int(input_array.nbytes)},
             )
-            if self.context.set_tensor_address(self.input_name, int(input_device_ptr)) is not True:
+            if (
+                self.context.set_tensor_address(self.input_name, int(input_device_ptr))
+                is not True
+            ):
                 raise ServiceConfigurationError(
                     "TensorRT RF-DETR segmentation execution context 绑定输入张量失败",
                     details={"input_name": self.input_name},
                 )
 
             for index, output_name in enumerate(self.all_output_names):
-                resolved_shape = normalize_tensor_shape(self.context.get_tensor_shape(output_name))
+                resolved_shape = normalize_tensor_shape(
+                    self.context.get_tensor_shape(output_name)
+                )
                 if any(dim < 0 for dim in resolved_shape):
                     raise ServiceConfigurationError(
                         "TensorRT RF-DETR segmentation 输出 shape 尚未解析完成",
-                        details={"output_name": output_name, "shape": list(resolved_shape)},
+                        details={
+                            "output_name": output_name,
+                            "shape": list(resolved_shape),
+                        },
                     )
                 output_dtype = resolve_numpy_dtype(
                     np_module=imports.np,
@@ -351,10 +384,16 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                 output_device_ptr = ensure_cuda_success(
                     imports.cudart.cudaMalloc(int(output_array.nbytes)),
                     operation_name="TensorRT RF-DETR segmentation 分配输出显存",
-                    details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+                    details={
+                        "output_name": output_name,
+                        "byte_size": int(output_array.nbytes),
+                    },
                 )[0]
                 output_device_ptrs.append(output_device_ptr)
-                if self.context.set_tensor_address(output_name, int(output_device_ptr)) is not True:
+                if (
+                    self.context.set_tensor_address(output_name, int(output_device_ptr))
+                    is not True
+                ):
                     raise ServiceConfigurationError(
                         "TensorRT RF-DETR segmentation execution context 绑定输出张量失败",
                         details={"output_name": output_name},
@@ -390,7 +429,10 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                         self.stream,
                     ),
                     operation_name="TensorRT RF-DETR segmentation 拷贝输出到主存",
-                    details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+                    details={
+                        "output_name": output_name,
+                        "byte_size": int(output_array.nbytes),
+                    },
                 )
             ensure_cuda_success(
                 imports.cudart.cudaStreamSynchronize(self.stream),
@@ -462,7 +504,8 @@ class TensorRTRfdetrSegmentationRuntimeSession:
                     SegmentationRuntimeTensorSpec(
                         name=output_name,
                         shape=tuple(
-                            int(item) for item in output_arrays_by_name[output_name].shape
+                            int(item)
+                            for item in output_arrays_by_name[output_name].shape
                         ),
                         dtype=self.output_dtype_names[index],
                     )

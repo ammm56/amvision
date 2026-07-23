@@ -37,14 +37,24 @@ from backend.service.application.runtime.predictors.rfdetr.segmentation import (
     PyTorchRfdetrSegmentationRuntimeSession,
     TensorRTRfdetrSegmentationRuntimeSession,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.deployment.runtime_session_options import (
+    build_tensorrt_session_load_options,
+    require_tensorrt_runtime_options,
+    resolve_runtime_session_configuration,
 )
 
 
 SegmentationRuntimeLoader = Callable[
-    [LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None],
+    [LocalDatasetStorage, RuntimeTargetSnapshot, DeploymentRuntimeConfiguration],
     "SegmentationModelRuntimeSession",
 ]
 
@@ -68,8 +78,7 @@ class SegmentationModelRuntime(Protocol):
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> SegmentationModelRuntimeSession:
         """按运行时快照加载 segmentation 模型会话。"""
 
@@ -128,19 +137,21 @@ class DefaultSegmentationModelRuntime:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> SegmentationModelRuntimeSession:
         """按模型分类和 runtime backend 加载 segmentation 模型会话。"""
 
+        runtime_configuration = resolve_runtime_session_configuration(
+            runtime_target=runtime_target,
+            configuration=runtime_configuration,
+        )
         runtime_loader = self.runtime_registry.resolve_runtime_loader(
             runtime_target.model_type
         )
         return runtime_loader(
             dataset_storage,
             runtime_target,
-            pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes,
+            runtime_configuration,
         )
 
 
@@ -160,8 +171,7 @@ def build_default_segmentation_model_runtime_registry() -> (
 def _load_yolov8_segmentation_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> SegmentationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOv8 segmentation 会话。"""
 
@@ -179,13 +189,13 @@ def _load_yolov8_segmentation_session(
         return OpenVINOYoloV8SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYoloV8SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported segmentation runtime backend: {runtime_target.runtime_backend}"
@@ -195,8 +205,7 @@ def _load_yolov8_segmentation_session(
 def _load_yolo11_segmentation_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> SegmentationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO11 segmentation 会话。"""
 
@@ -214,13 +223,13 @@ def _load_yolo11_segmentation_session(
         return OpenVINOYolo11SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo11SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported segmentation runtime backend: {runtime_target.runtime_backend}"
@@ -230,8 +239,7 @@ def _load_yolo11_segmentation_session(
 def _load_yolo26_segmentation_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> SegmentationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO26 segmentation 会话。"""
 
@@ -249,13 +257,13 @@ def _load_yolo26_segmentation_session(
         return OpenVINOYolo26SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo26SegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported segmentation runtime backend: {runtime_target.runtime_backend}"
@@ -265,8 +273,7 @@ def _load_yolo26_segmentation_session(
 def _load_rfdetr_segmentation_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> SegmentationModelRuntimeSession:
     """按 runtime backend 加载 RF-DETR segmentation 会话。"""
 
@@ -283,13 +290,15 @@ def _load_rfdetr_segmentation_session(
         return OpenVINORfdetrSegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTRfdetrSegmentationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            optimization_profile_index=require_tensorrt_runtime_options(
+                runtime_configuration
+            ).optimization_profile_index,
         )
     raise ValueError(
         f"unsupported rfdetr segmentation backend: {runtime_target.runtime_backend}"

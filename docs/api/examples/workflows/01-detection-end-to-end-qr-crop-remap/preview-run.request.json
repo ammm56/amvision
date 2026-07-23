@@ -58,8 +58,21 @@
         "runtime_backend": "tensorrt",
         "device_name": "cuda",
         "runtime_precision": "fp16",
-        "instance_count": 3,
-        "keep_warm_enabled": true,
+        "runtime_configuration": {
+          "execution": {
+            "instance_count": 3,
+            "isolation_level": "session",
+            "overflow_policy": "reject",
+            "performance_goal": "latency"
+          },
+          "lifecycle": {
+            "keep_warm_enabled": true
+          },
+          "backend_options": {
+            "kind": "tensorrt",
+            "optimization_profile_index": 0
+          }
+        },
         "display_name": "barcodeqrcode-tensorrt-fp16-deployment"
       }
     },

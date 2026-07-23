@@ -5,7 +5,13 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.yolox_core.postprocess import (
     build_yolox_detection_records,
     postprocess_yolox_prediction_array,
@@ -55,7 +61,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.settings import get_backend_service_settings
 
 
@@ -136,7 +144,9 @@ class TensorRTYoloXRuntimeSession:
         - pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数；None 表示读取统一配置默认值。
         """
 
-        deployment_settings = get_backend_service_settings().deployment_process_supervisor
+        deployment_settings = (
+            get_backend_service_settings().deployment_process_supervisor
+        )
         if pinned_output_buffer_enabled is None:
             pinned_output_buffer_enabled = bool(
                 deployment_settings.tensorrt_pinned_output_buffer_enabled
@@ -163,7 +173,9 @@ class TensorRTYoloXRuntimeSession:
         self.execute_start_event = execute_start_event
         self.execute_end_event = execute_end_event
         self.pinned_output_buffer_enabled = bool(pinned_output_buffer_enabled)
-        self.pinned_output_buffer_max_bytes = max(0, int(pinned_output_buffer_max_bytes))
+        self.pinned_output_buffer_max_bytes = max(
+            0, int(pinned_output_buffer_max_bytes)
+        )
         self.input_device_ptr: int | None = None
         self.output_device_ptr: int | None = None
         self.input_capacity_bytes = 0
@@ -181,6 +193,7 @@ class TensorRTYoloXRuntimeSession:
         runtime_target: RuntimeTargetSnapshot,
         pinned_output_buffer_enabled: bool | None = None,
         pinned_output_buffer_max_bytes: int | None = None,
+        optimization_profile_index: int = 0,
     ) -> TensorRTYoloXRuntimeSession:
         """加载一次 TensorRT runtime session。
 
@@ -219,7 +232,9 @@ class TensorRTYoloXRuntimeSession:
             severity=tensorrt_module.Logger.WARNING,
         )
         runtime = tensorrt_module.Runtime(logger)
-        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        engine = runtime.deserialize_cuda_engine(
+            runtime_target.runtime_artifact_path.read_bytes()
+        )
         if engine is None:
             raise ServiceConfigurationError(
                 "TensorRT engine 反序列化失败",
@@ -239,6 +254,12 @@ class TensorRTYoloXRuntimeSession:
             operation_name="TensorRT runtime 创建复用 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = _ensure_cuda_success(
             imports.cudart.cudaEventCreate(),
             operation_name="TensorRT runtime 创建执行起点 event",
@@ -295,7 +316,9 @@ class TensorRTYoloXRuntimeSession:
 
         try:
             _release_cuda_resource(
-                self.imports.cudart.cudaSetDevice(_resolve_cuda_device_index(self.device_name))
+                self.imports.cudart.cudaSetDevice(
+                    _resolve_cuda_device_index(self.device_name)
+                )
             )
         except Exception:
             return
@@ -308,7 +331,9 @@ class TensorRTYoloXRuntimeSession:
             self.output_device_ptr = None
             self.output_capacity_bytes = 0
         if self.output_host_ptr is not None:
-            _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            _release_cuda_resource(
+                self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+            )
             self.output_host_ptr = None
             self.output_host_capacity_bytes = 0
             self.output_host_array = None
@@ -317,10 +342,14 @@ class TensorRTYoloXRuntimeSession:
             _release_cuda_resource(self.imports.cudart.cudaStreamDestroy(self.stream))
             self.stream = None
         if self.execute_start_event is not None:
-            _release_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_start_event))
+            _release_cuda_resource(
+                self.imports.cudart.cudaEventDestroy(self.execute_start_event)
+            )
             self.execute_start_event = None
         if self.execute_end_event is not None:
-            _release_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_end_event))
+            _release_cuda_resource(
+                self.imports.cudart.cudaEventDestroy(self.execute_end_event)
+            )
             self.execute_end_event = None
         self.output_host_array = None
 
@@ -335,7 +364,10 @@ class TensorRTYoloXRuntimeSession:
         if self.output_host_array is not None:
             output_host_buffer_bytes = int(self.output_host_array.nbytes)
         output_host_pinned_bytes = 0
-        if self.output_host_memory_kind == "pinned" and self.output_host_ptr is not None:
+        if (
+            self.output_host_memory_kind == "pinned"
+            and self.output_host_ptr is not None
+        ):
             output_host_pinned_bytes = int(self.output_host_capacity_bytes)
         return {
             "output_host_memory_kind": self.output_host_memory_kind,
@@ -345,7 +377,9 @@ class TensorRTYoloXRuntimeSession:
             "output_host_pinned_max_bytes": self.pinned_output_buffer_max_bytes,
         }
 
-    def predict(self, request: YoloXPredictionRequest) -> YoloXPredictionExecutionResult:
+    def predict(
+        self, request: YoloXPredictionRequest
+    ) -> YoloXPredictionExecutionResult:
         """使用当前常驻会话执行一次 TensorRT 单图预测。
 
         参数：
@@ -402,9 +436,13 @@ class TensorRTYoloXRuntimeSession:
         infer_set_device_ms = _measure_elapsed_ms(set_device_started_at)
 
         prepare_io_started_at = perf_counter()
-        engine_input_shape = _normalize_tensor_shape(self.engine.get_tensor_shape(self.input_name))
+        engine_input_shape = _normalize_tensor_shape(
+            self.engine.get_tensor_shape(self.input_name)
+        )
         if any(dim < 0 for dim in engine_input_shape):
-            shape_set_result = self.context.set_input_shape(self.input_name, requested_input_shape)
+            shape_set_result = self.context.set_input_shape(
+                self.input_name, requested_input_shape
+            )
             if shape_set_result is not True:
                 raise ServiceConfigurationError(
                     "TensorRT execution context 设置输入 shape 失败",
@@ -423,7 +461,9 @@ class TensorRTYoloXRuntimeSession:
                 },
             )
 
-        resolved_output_shape = _normalize_tensor_shape(self.context.get_tensor_shape(self.output_name))
+        resolved_output_shape = _normalize_tensor_shape(
+            self.context.get_tensor_shape(self.output_name)
+        )
         if not resolved_output_shape or any(dim <= 0 for dim in resolved_output_shape):
             raise ServiceConfigurationError(
                 "TensorRT execution context 返回了无效输出 shape",
@@ -450,17 +490,28 @@ class TensorRTYoloXRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT runtime 拷贝输入到显存",
-            details={"input_name": self.input_name, "byte_size": int(input_array.nbytes)},
+            details={
+                "input_name": self.input_name,
+                "byte_size": int(input_array.nbytes),
+            },
         )
         infer_enqueue_h2d_ms = _measure_elapsed_ms(enqueue_h2d_started_at)
 
         bind_tensor_started_at = perf_counter()
-        if self.context.set_tensor_address(self.input_name, int(self.input_device_ptr)) is not True:
+        if (
+            self.context.set_tensor_address(self.input_name, int(self.input_device_ptr))
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT execution context 绑定输入张量失败",
                 details={"input_name": self.input_name},
             )
-        if self.context.set_tensor_address(self.output_name, int(self.output_device_ptr)) is not True:
+        if (
+            self.context.set_tensor_address(
+                self.output_name, int(self.output_device_ptr)
+            )
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT execution context 绑定输出张量失败",
                 details={"output_name": self.output_name},
@@ -496,7 +547,10 @@ class TensorRTYoloXRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT runtime 拷贝输出到主存",
-            details={"output_name": self.output_name, "byte_size": int(output_array.nbytes)},
+            details={
+                "output_name": self.output_name,
+                "byte_size": int(output_array.nbytes),
+            },
         )
         infer_enqueue_d2h_host_ms = _measure_elapsed_ms(enqueue_d2h_started_at)
 
@@ -624,7 +678,9 @@ class TensorRTYoloXRuntimeSession:
         )
         if self.input_device_ptr is None or input_nbytes > self.input_capacity_bytes:
             if self.input_device_ptr is not None:
-                _release_cuda_resource(self.imports.cudart.cudaFree(self.input_device_ptr))
+                _release_cuda_resource(
+                    self.imports.cudart.cudaFree(self.input_device_ptr)
+                )
             self.input_device_ptr = _ensure_cuda_success(
                 self.imports.cudart.cudaMalloc(input_nbytes),
                 operation_name="TensorRT runtime 分配复用输入显存",
@@ -633,7 +689,9 @@ class TensorRTYoloXRuntimeSession:
             self.input_capacity_bytes = input_nbytes
         if self.output_device_ptr is None or output_nbytes > self.output_capacity_bytes:
             if self.output_device_ptr is not None:
-                _release_cuda_resource(self.imports.cudart.cudaFree(self.output_device_ptr))
+                _release_cuda_resource(
+                    self.imports.cudart.cudaFree(self.output_device_ptr)
+                )
             self.output_device_ptr = _ensure_cuda_success(
                 self.imports.cudart.cudaMalloc(output_nbytes),
                 operation_name="TensorRT runtime 分配复用输出显存",
@@ -641,9 +699,14 @@ class TensorRTYoloXRuntimeSession:
             )[0]
             self.output_capacity_bytes = output_nbytes
         if self._should_use_pinned_output_buffer(output_nbytes):
-            if self.output_host_ptr is None or output_nbytes > self.output_host_capacity_bytes:
+            if (
+                self.output_host_ptr is None
+                or output_nbytes > self.output_host_capacity_bytes
+            ):
                 if self.output_host_ptr is not None:
-                    _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+                    _release_cuda_resource(
+                        self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+                    )
                 self.output_host_ptr = _ensure_cuda_success(
                     self.imports.cudart.cudaMallocHost(output_nbytes),
                     operation_name="TensorRT runtime 分配 pinned 输出主存",
@@ -654,7 +717,8 @@ class TensorRTYoloXRuntimeSession:
             if (
                 self.output_host_array is None
                 or self.output_host_memory_kind != "pinned"
-                or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+                or tuple(int(dim) for dim in self.output_host_array.shape)
+                != resolved_output_shape
                 or self.output_host_array.dtype != output_dtype
             ):
                 self.output_host_array = _build_numpy_array_from_host_pointer(
@@ -668,17 +732,22 @@ class TensorRTYoloXRuntimeSession:
             return self.output_host_array
 
         if self.output_host_ptr is not None:
-            _release_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            _release_cuda_resource(
+                self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+            )
             self.output_host_ptr = None
             self.output_host_capacity_bytes = 0
             self.output_host_array = None
         if (
             self.output_host_array is None
             or self.output_host_memory_kind != "pageable"
-            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+            or tuple(int(dim) for dim in self.output_host_array.shape)
+            != resolved_output_shape
             or self.output_host_array.dtype != output_dtype
         ):
-            self.output_host_array = self.imports.np.empty(resolved_output_shape, dtype=output_dtype)
+            self.output_host_array = self.imports.np.empty(
+                resolved_output_shape, dtype=output_dtype
+            )
         self.output_host_memory_kind = "pageable"
         return self.output_host_array
 

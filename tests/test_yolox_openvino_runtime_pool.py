@@ -8,7 +8,13 @@ from backend.service.application.runtime.deployment.deployment_runtime_pool impo
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+    OpenVinoGpuRuntimeOptions,
+)
 from backend.service.domain.files.yolox_file_types import YOLOX_OPENVINO_IR_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
@@ -36,7 +42,9 @@ def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-openvino-runtime-pool-1",
         runtime_target=runtime_target,
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=OpenVinoGpuRuntimeOptions()
+        ),
     )
     request = DetectionPredictionRequest(
         score_threshold=0.1,
@@ -46,7 +54,7 @@ def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
     fake_session = FakePredictionSession(
         execution_result=build_test_execution_result(runtime_target=runtime_target)
     )
-    load_requests: list[tuple[object, object, object, object]] = []
+    load_requests: list[tuple[object, object, object]] = []
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
@@ -59,17 +67,29 @@ def test_runtime_pool_loads_openvino_session_once_and_reuses_warmed_instance(
     health = pool.get_health(config)
 
     assert len(load_requests) == 1
-    assert load_requests[0] == (dataset_storage, runtime_target, None, None)
+    assert load_requests[0] == (
+        dataset_storage,
+        runtime_target,
+        config.runtime_configuration,
+    )
     assert warmup_status.healthy_instance_count == 1
     assert warmup_status.warmed_instance_count == 1
     assert health.healthy_instance_count == 1
     assert health.warmed_instance_count == 1
     assert health.instances[0].busy is False
     assert fake_session.requests == [request]
-    assert execution.instance_id == "deployment-instance-openvino-runtime-pool-1:instance-0"
+    assert (
+        execution.instance_id
+        == "deployment-instance-openvino-runtime-pool-1:instance-0"
+    )
     assert execution.execution_result.runtime_session_info.backend_name == "openvino"
     assert execution.execution_result.runtime_session_info.device_name == "gpu"
-    assert execution.execution_result.runtime_session_info.metadata["runtime_execution_mode"] == (
-        "openvino:fp16:gpu"
+    assert execution.execution_result.runtime_session_info.metadata[
+        "runtime_execution_mode"
+    ] == ("openvino:fp16:gpu")
+    assert (
+        execution.execution_result.runtime_session_info.metadata[
+            "compiled_runtime_precision"
+        ]
+        == "fp16"
     )
-    assert execution.execution_result.runtime_session_info.metadata["compiled_runtime_precision"] == "fp16"

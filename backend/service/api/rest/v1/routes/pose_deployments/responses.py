@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-from backend.service.api.rest.v1.routes.pose_deployments.schemas import PoseDeploymentInstanceResponse
-from backend.service.application.deployments.pose_deployment_service import PoseDeploymentInstanceView
+from backend.service.api.rest.v1.routes.pose_deployments.schemas import (
+    PoseDeploymentInstanceResponse,
+)
+from backend.service.application.deployments.pose_deployment_service import (
+    PoseDeploymentInstanceView,
+)
+from backend.service.api.rest.v1.routes.task_deployments.runtime_configuration_schemas import (
+    DeploymentRuntimeConfigurationBody,
+)
 
 
-def build_pose_deployment_instance_response(instance: PoseDeploymentInstanceView) -> PoseDeploymentInstanceResponse:
+def build_pose_deployment_instance_response(
+    instance: PoseDeploymentInstanceView,
+) -> PoseDeploymentInstanceResponse:
     """把 pose DeploymentInstance view 转成 API response。"""
 
     return PoseDeploymentInstanceResponse(
@@ -26,7 +35,9 @@ def build_pose_deployment_instance_response(instance: PoseDeploymentInstanceView
         device_name=instance.device_name,
         runtime_precision=instance.runtime_precision,
         runtime_execution_mode=instance.runtime_execution_mode,
-        instance_count=instance.instance_count,
+        runtime_configuration=DeploymentRuntimeConfigurationBody.from_domain(
+            instance.runtime_configuration
+        ),
         input_size=instance.input_size,
         labels=instance.labels,
         process_status=getattr(instance, "process_status", None),

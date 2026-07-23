@@ -13,7 +13,7 @@
 - TensorRT engine 副本、execution context 和 CUDA stream
 - 同一进程内 session 隔离与独立进程故障隔离
 
-开发机器和现场机器的 CPU、GPU、NPU 型号也可能不同。把当前机器核心数直接保存成默认值，会让发布记录失去可移植性；反过来，用硬件资源预算拒绝启动，也不适合现场设备升级、降配和服务器迁移。
+开发机器和现场机器的 CPU、GPU、NPU 型号也可能不同。发布记录需要保存明确的 requested 值，同时不能用硬件资源预算拒绝启动，否则不适合现场设备升级、降配和服务器迁移。
 
 ## 决策
 
@@ -21,7 +21,7 @@
 
 1. 平台部署策略保存 `instance_count`、`isolation_level`、`overflow_policy`、`performance_goal` 和 `device_id`。
 2. OpenVINO CPU、GPU、NPU 和 TensorRT 分别使用后端专属 options，不建立一个包含所有低层字段的扁平通用表。
-3. 发布记录区分 requested 和 effective 配置；默认保存 `auto`，由目标机器在启动时解析。
+3. 发布记录区分 requested 和 effective 配置。OpenVINO CPU 新建发布默认使用创建时主机物理核心数，用户可显式选择 `auto`；硬件迁移后不自动改写 requested。
 4. CPU、GPU 和 NPU 的资源管理器只提供诊断、告警和 benchmark 上下文，不因估算出的超额订阅拒绝创建或启动。
 5. TensorRT engine 构建参数属于 `ModelBuild`，execution context、CUDA stream 和内存策略属于 deployment runtime。
 6. 默认保持工业同步推理和 `overflow_policy=reject`，不在本次配置扩展中引入内部等待队列或隐式 batching。
@@ -35,9 +35,9 @@
 
 未采用。`inference_num_threads` 只适用于 OpenVINO CPU，OpenVINO NPU 的 `num_streams` 当前是只读结果，TensorRT 也不使用 OpenVINO stream 语义。扁平字段会产生无效配置和错误前端。
 
-### 保存创建机器的物理核心数作为默认线程数
+### 只保存 `auto`，不提供明确的 CPU 默认线程数
 
-未采用。发布记录迁移到不同 CPU 后会保留错误的硬件假设。界面可以显示当前建议值，但持久化默认值使用 `auto`。
+未采用。工业现场需要复现发布时的节拍配置。OpenVINO CPU 默认保存创建时物理核心数，同时保留 `auto` 选项；换机后超额预算只告警，不拒绝运行。
 
 ### 按核心预算设置启动硬门槛
 
@@ -58,7 +58,7 @@
 - 运行时必须查询目标设备 capability，并返回 requested、effective 和 warnings。
 - TensorRT conversion report 需要补充 engine 构建摘要，deployment 页面只读展示这些内容。
 - benchmark 和 soak 结果必须记录目标硬件、驱动、runtime 版本和实际配置。
-- 现有 API 在正式增加字段时需要保持兼容，未填写的新字段按 `auto` 处理。
+- deployment API 一次性切换到完整 `runtime_configuration`，不接受旧扁平字段；旧 deployment 数据由迁移删除。
 
 ## 后续动作
 

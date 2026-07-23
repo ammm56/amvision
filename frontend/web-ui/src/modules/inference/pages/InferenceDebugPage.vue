@@ -47,7 +47,7 @@
         </div>
         <div>
           <span>{{ t('inferenceOps.fields.instances') }}</span>
-          <strong>{{ selectedDeployment.instance_count }}</strong>
+          <strong>{{ selectedDeployment.runtime_configuration.execution.instance_count }}</strong>
         </div>
       </div>
     </section>

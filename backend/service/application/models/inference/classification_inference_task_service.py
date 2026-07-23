@@ -29,8 +29,8 @@ from backend.service.domain.tasks.inference_task_specs import (
 from backend.service.application.runtime.targets.runtime_target import (
     serialize_runtime_target_snapshot,
 )
-from backend.service.application.models.inference.detection_inference_task_service import (
-    _serialize_process_runtime_behavior,
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    serialize_deployment_runtime_configuration,
 )
 
 
@@ -111,14 +111,15 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
             runtime_target_snapshot=serialize_runtime_target_snapshot(
                 process_config.runtime_target
             ),
-            runtime_behavior=_serialize_process_runtime_behavior(
-                process_config.runtime_behavior
+            runtime_configuration=serialize_deployment_runtime_configuration(
+                process_config.runtime_configuration
             ),
-            instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
 
-    def _serialize_task_spec(self, task_spec: ClassificationInferenceTaskSpec) -> dict[str, object]:
+    def _serialize_task_spec(
+        self, task_spec: ClassificationInferenceTaskSpec
+    ) -> dict[str, object]:
         """把 classification task_spec 序列化为稳定字典。"""
 
         return {
@@ -134,8 +135,7 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
             "save_result_image": task_spec.save_result_image,
             "return_preview_image_base64": task_spec.return_preview_image_base64,
             "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
-            "runtime_behavior": dict(task_spec.runtime_behavior),
-            "instance_count": task_spec.instance_count,
+            "runtime_configuration": dict(task_spec.runtime_configuration),
             "extra_options": dict(task_spec.extra_options),
         }
 
@@ -149,17 +149,23 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
         normalized_input = self._deserialize_normalized_input(task_spec)
         return ClassificationInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             model_type=self._read_optional_str(task_spec, "model_type"),
             input_file_id=normalized_input.input_file_id,
             input_uri=normalized_input.input_uri,
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             top_k=self._read_optional_int(task_spec, "top_k") or 5,
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 
@@ -196,8 +202,10 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
                 request=prediction_request,
                 owner_id=async_inference_owner_id,
             )
-            parsed = deserialize_classification_async_inference_execution_result_payload(
-                payload
+            parsed = (
+                deserialize_classification_async_inference_execution_result_payload(
+                    payload
+                )
             )
             return TaskNativeInferenceExecution(
                 instance_id=self._read_optional_str(parsed, "instance_id"),
@@ -279,7 +287,9 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
             "top_k": int(request.top_k),
             "save_result_image": bool(request.save_result_image),
             "return_preview_image_base64": bool(request.return_preview_image_base64),
-            "category_count": len(getattr(execution.execution_result, "categories", ())),
+            "category_count": len(
+                getattr(execution.execution_result, "categories", ())
+            ),
             "top_category": (
                 {
                     "class_id": top_category.class_id,
@@ -327,20 +337,32 @@ class SqlAlchemyClassificationInferenceTaskService(TaskNativeInferenceTaskServic
             self._build_request_from_task_record_fallback(task_spec)
         )
 
-    def _build_request_from_task_record_fallback(self, task_spec: dict[str, object]) -> ClassificationInferenceTaskRequest:
+    def _build_request_from_task_record_fallback(
+        self, task_spec: dict[str, object]
+    ) -> ClassificationInferenceTaskRequest:
         """在 normalized_input 缺失时构造回退请求对象。"""
 
         return ClassificationInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             input_file_id=self._read_optional_str(task_spec, "input_file_id"),
             input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
-            input_transport_mode=self._read_optional_str(task_spec, "input_transport_mode") or "storage",
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            input_source_kind=self._read_optional_str(task_spec, "input_source_kind")
+            or "input_uri",
+            input_transport_mode=self._read_optional_str(
+                task_spec, "input_transport_mode"
+            )
+            or "storage",
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             top_k=self._read_optional_int(task_spec, "top_k") or 5,
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 

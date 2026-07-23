@@ -11,21 +11,42 @@ from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )
-from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
+from backend.service.domain.files.detection_model_file_types import (
+    YOLOV8_DETECTION_FILE_TYPES,
+)
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_OPENVINO_IR_FILE,
     YOLOX_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.infrastructure.persistence.deployment_repository import SqlAlchemyDeploymentInstanceRepository
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.persistence.deployment_repository import (
+    SqlAlchemyDeploymentInstanceRepository,
+)
 from tests.api_test_support import build_test_headers
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
     seed_yolox_model_build,
     seed_yolox_model_version,
 )
+
+
+def _runtime_configuration(instance_count: int) -> dict[str, object]:
+    """构造默认 backend 的当前部署运行时配置。"""
+
+    return {
+        "execution": {
+            "instance_count": instance_count,
+            "isolation_level": "session",
+            "overflow_policy": "reject",
+            "performance_goal": "latency",
+        },
+        "lifecycle": {},
+        "backend_options": {"kind": "default"},
+    }
 
 
 def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> None:
@@ -38,6 +59,22 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
     )
     try:
         with client:
+            capabilities_response = client.get(
+                "/api/v1/models/deployment-runtime-capabilities"
+                "?runtime_backend=openvino&device_name=cpu",
+                headers=_build_headers(),
+            )
+            assert capabilities_response.status_code == 200
+            capabilities = capabilities_response.json()
+            physical_core_count = capabilities["hardware"]["cpu_physical_core_count"]
+            assert physical_core_count >= 1
+            assert (
+                capabilities["default_runtime_configuration"]["backend_options"][
+                    "inference_num_threads"
+                ]
+                == physical_core_count
+            )
+
             create_response = client.post(
                 "/api/v1/models/detection/deployment-instances",
                 headers=_build_headers(),
@@ -47,7 +84,7 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
                     "model_version_id": model_version_id,
                     "runtime_backend": "pytorch",
                     "device_name": "cpu",
-                    "instance_count": 3,
+                    "runtime_configuration": _runtime_configuration(3),
                     "display_name": "yolox bolt deployment",
                 },
             )
@@ -62,7 +99,7 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             assert payload["device_name"] == "cpu"
             assert payload["runtime_precision"] == "fp32"
             assert payload["runtime_execution_mode"] == "pytorch:fp32:cpu"
-            assert payload["instance_count"] == 3
+            assert payload["runtime_configuration"]["execution"]["instance_count"] == 3
             assert payload["input_size"] == [64, 64]
             assert payload["labels"] == ["bolt"]
 
@@ -92,20 +129,25 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             assert detail_payload["display_name"] == "yolox bolt deployment"
             assert detail_payload["model_name"] == "yolox-nano-deployment"
             assert detail_payload["status"] == "active"
-            assert detail_payload["instance_count"] == 3
+            assert (
+                detail_payload["runtime_configuration"]["execution"]["instance_count"]
+                == 3
+            )
             assert isinstance(detail_payload["metadata"], dict)
-            assert detail_payload["metadata"]["runtime_summary"]["model_type"] == "yolox"
+            assert (
+                detail_payload["metadata"]["runtime_summary"]["model_type"] == "yolox"
+            )
 
         session = session_factory.create_session()
         try:
-            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
-                deployment_instance_id
-            )
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(deployment_instance_id)
         finally:
             session.close()
 
         assert saved_instance is not None
-        assert saved_instance.instance_count == 3
+        assert saved_instance.runtime_configuration.execution.instance_count == 3
         snapshot = saved_instance.metadata.get("runtime_target_snapshot")
         assert isinstance(snapshot, dict)
         assert snapshot["model_version_id"] == model_version_id
@@ -116,7 +158,9 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
         session_factory.engine.dispose()
 
 
-def test_detection_deployment_events_api_and_websocket_stream_live_events(tmp_path: Path) -> None:
+def test_detection_deployment_events_api_and_websocket_stream_live_events(
+    tmp_path: Path,
+) -> None:
     """验证 deployment 事件支持历史读取并通过 WebSocket 推送实时事件。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -166,7 +210,9 @@ def test_detection_deployment_events_api_and_websocket_stream_live_events(tmp_pa
             assert events_response.status_code == 200
             events_payload = events_response.json()
             assert limited_events_response.status_code == 200
-            assert [item["event_type"] for item in limited_events_response.json()] == ["deployment.started"]
+            assert [item["event_type"] for item in limited_events_response.json()] == [
+                "deployment.started"
+            ]
             assert [item["event_type"] for item in events_payload] == [
                 "deployment.started",
                 "deployment.warmup.completed",
@@ -180,7 +226,9 @@ def test_detection_deployment_events_api_and_websocket_stream_live_events(tmp_pa
             with with_websocket as websocket:
                 connected_message = websocket.receive_json()
                 assert connected_message["event_type"] == "deployments.connected"
-                assert connected_message["payload"]["filters"]["runtime_mode"] == "async"
+                assert (
+                    connected_message["payload"]["filters"]["runtime_mode"] == "async"
+                )
 
                 async_start_response = client.post(
                     f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -201,12 +249,16 @@ def test_detection_deployment_events_api_and_websocket_stream_live_events(tmp_pa
                 headers=_build_headers(),
             )
             assert async_events_response.status_code == 200
-            assert [item["event_type"] for item in async_events_response.json()] == ["deployment.started"]
+            assert [item["event_type"] for item in async_events_response.json()] == [
+                "deployment.started"
+            ]
     finally:
         session_factory.engine.dispose()
 
 
-def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instances(tmp_path: Path) -> None:
+def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instances(
+    tmp_path: Path,
+) -> None:
     """验证 deployment 历史回放不依赖 sync 或 async supervisor 实例。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -243,8 +295,12 @@ def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instanc
                 headers=_build_headers(),
             )
             assert async_events_response.status_code == 200
-            assert [item["event_type"] for item in async_events_response.json()] == ["deployment.started"]
-            assert all(item["runtime_mode"] == "async" for item in async_events_response.json())
+            assert [item["event_type"] for item in async_events_response.json()] == [
+                "deployment.started"
+            ]
+            assert all(
+                item["runtime_mode"] == "async" for item in async_events_response.json()
+            )
 
             with client.websocket_connect(
                 f"/ws/v1/deployments/events?deployment_instance_id={deployment_instance_id}&runtime_mode=async",
@@ -265,7 +321,9 @@ def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instanc
         session_factory.engine.dispose()
 
 
-def test_create_detection_deployment_instance_uses_model_build_snapshot(tmp_path: Path) -> None:
+def test_create_detection_deployment_instance_uses_model_build_snapshot(
+    tmp_path: Path,
+) -> None:
     """验证 DeploymentInstance 绑定 ModelBuild 时会固化 build 文件快照。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -302,9 +360,9 @@ def test_create_detection_deployment_instance_uses_model_build_snapshot(tmp_path
 
         session = session_factory.create_session()
         try:
-            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
-                deployment_instance_id
-            )
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(deployment_instance_id)
         finally:
             session.close()
 
@@ -315,7 +373,10 @@ def test_create_detection_deployment_instance_uses_model_build_snapshot(tmp_path
         assert snapshot["runtime_backend"] == "onnxruntime"
         assert snapshot["runtime_precision"] == "fp32"
         assert snapshot["runtime_artifact_file_type"] == YOLOX_ONNX_FILE
-        assert snapshot["runtime_artifact_storage_uri"] == "projects/project-1/models/builds/build-1/yolox.onnx"
+        assert (
+            snapshot["runtime_artifact_storage_uri"]
+            == "projects/project-1/models/builds/build-1/yolox.onnx"
+        )
         assert snapshot["checkpoint_storage_uri"] == (
             "projects/project-1/models/deployment-source-1/artifacts/checkpoints/best_ckpt.pth"
         )
@@ -368,9 +429,9 @@ def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
 
         session = session_factory.create_session()
         try:
-            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
-                payload["deployment_instance_id"]
-            )
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(payload["deployment_instance_id"])
         finally:
             session.close()
 
@@ -422,7 +483,10 @@ def test_create_openvino_deployment_instance_rejects_fp16_on_auto_or_cpu(
             assert create_response.status_code == 400
             payload = create_response.json()["error"]
             assert payload["code"] == "invalid_request"
-            assert payload["message"] == "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32"
+            assert (
+                payload["message"]
+                == "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32"
+            )
             assert payload["details"] == {
                 "runtime_backend": "openvino",
                 "runtime_precision": "fp16",
@@ -474,9 +538,9 @@ def test_create_tensorrt_deployment_instance_defaults_to_engine_precision(
 
         session = session_factory.create_session()
         try:
-            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
-                payload["deployment_instance_id"]
-            )
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(payload["deployment_instance_id"])
         finally:
             session.close()
 
@@ -560,7 +624,7 @@ def test_sync_and_async_runtime_pools_are_isolated(
                     "project_id": "project-1",
                     "model_type": "yolox",
                     "model_version_id": model_version_id,
-                    "instance_count": 2,
+                    "runtime_configuration": _runtime_configuration(2),
                     "display_name": "managed deployment",
                 },
             )
@@ -687,7 +751,9 @@ def test_sync_and_async_runtime_pools_are_isolated(
         session_factory.engine.dispose()
 
 
-def test_yolov8_detection_deployment_sync_async_control_plane_smoke(tmp_path: Path) -> None:
+def test_yolov8_detection_deployment_sync_async_control_plane_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOv8 detection 可以走 deployment sync / async 控制面。"""
 
     client, session_factory, dataset_storage = _create_test_client(tmp_path)
@@ -762,9 +828,9 @@ def test_yolov8_detection_deployment_sync_async_control_plane_smoke(tmp_path: Pa
 
         session = session_factory.create_session()
         try:
-            saved_instance = SqlAlchemyDeploymentInstanceRepository(session).get_deployment_instance(
-                deployment_instance_id
-            )
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(deployment_instance_id)
         finally:
             session.close()
 
@@ -773,7 +839,10 @@ def test_yolov8_detection_deployment_sync_async_control_plane_smoke(tmp_path: Pa
         assert isinstance(snapshot, dict)
         assert snapshot["model_type"] == "yolov8"
         assert snapshot["task_type"] == "detection"
-        assert snapshot["runtime_artifact_file_type"] == YOLOV8_DETECTION_FILE_TYPES.checkpoint_file_type
+        assert (
+            snapshot["runtime_artifact_file_type"]
+            == YOLOV8_DETECTION_FILE_TYPES.checkpoint_file_type
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -843,7 +912,9 @@ def _seed_yolov8_model_version(
     """写入一个 YOLOv8 detection 测试用 ModelVersion。"""
 
     checkpoint_uri = "projects/project-1/models/yolov8-deployment-source/artifacts/checkpoints/best.pt"
-    labels_uri = "projects/project-1/models/yolov8-deployment-source/artifacts/labels.txt"
+    labels_uri = (
+        "projects/project-1/models/yolov8-deployment-source/artifacts/labels.txt"
+    )
     dataset_storage.write_bytes(checkpoint_uri, b"fake-yolov8-checkpoint")
     dataset_storage.write_text(labels_uri, "bolt\n")
 
@@ -872,5 +943,3 @@ def _build_headers() -> dict[str, str]:
     """构建具备 deployment API 所需 scope 的测试请求头。"""
 
     return build_test_headers(scopes="models:read,models:write")
-
-

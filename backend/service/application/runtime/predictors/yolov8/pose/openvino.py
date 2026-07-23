@@ -5,7 +5,16 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.predictors.yolov8.pose.backend import (
     build_yolov8_pose_openvino_compile_properties,
     import_yolov8_pose_openvino_module,
@@ -37,7 +46,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OpenVINOYoloV8PoseRuntimeSession:
@@ -82,6 +93,7 @@ class OpenVINOYoloV8PoseRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINOYoloV8PoseRuntimeSession":
         """加载一套 OpenVINO YOLOv8 pose 会话。"""
 
@@ -106,10 +118,12 @@ class OpenVINOYoloV8PoseRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_port = session.input(0)
         output_port = session.output(0)
@@ -119,8 +133,12 @@ class OpenVINOYoloV8PoseRuntimeSession:
             imports=imports,
             session=session,
             device_name=runtime_target.device_name,
-            input_name=resolve_yolov8_pose_openvino_port_name(input_port, fallback="images"),
-            output_name=resolve_yolov8_pose_openvino_port_name(output_port, fallback="predictions"),
+            input_name=resolve_yolov8_pose_openvino_port_name(
+                input_port, fallback="images"
+            ),
+            output_name=resolve_yolov8_pose_openvino_port_name(
+                output_port, fallback="predictions"
+            ),
             input_port=input_port,
             output_port=output_port,
             compiled_device_name=compiled_device_name,
@@ -130,7 +148,9 @@ class OpenVINOYoloV8PoseRuntimeSession:
             ),
         )
 
-    def predict(self, request: YoloV8PosePredictionRequest) -> YoloV8PosePredictionExecutionResult:
+    def predict(
+        self, request: YoloV8PosePredictionRequest
+    ) -> YoloV8PosePredictionExecutionResult:
         """执行一次 OpenVINO YOLOv8 pose 预测。"""
 
         decode_started_at = perf_counter()
@@ -162,7 +182,9 @@ class OpenVINOYoloV8PoseRuntimeSession:
             values = tuple(outputs.values())
             raw_output = values[0] if values else None
         if raw_output is None:
-            raise ServiceConfigurationError("OpenVINO pose session 缺少 predictions 输出")
+            raise ServiceConfigurationError(
+                "OpenVINO pose session 缺少 predictions 输出"
+            )
         postprocess_started_at = perf_counter()
         prediction_array = normalize_yolov8_pose_outputs_for_backend(
             outputs=[raw_output],
@@ -197,8 +219,15 @@ class OpenVINOYoloV8PoseRuntimeSession:
                 device_name=self.device_name,
                 input_spec=YoloV8PoseRuntimeTensorSpec(
                     name=self.input_name,
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
-                    dtype=resolve_yolov8_pose_openvino_port_dtype(self.input_port, fallback="float32"),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
+                    dtype=resolve_yolov8_pose_openvino_port_dtype(
+                        self.input_port, fallback="float32"
+                    ),
                 ),
                 output_specs=(
                     YoloV8PoseRuntimeTensorSpec(

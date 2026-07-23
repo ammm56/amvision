@@ -8,8 +8,8 @@ from backend.service.application.deployments.pose_deployment_service import (
     SqlAlchemyPoseDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.inference.detection_inference_task_service import (
-    _serialize_process_runtime_behavior,
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    serialize_deployment_runtime_configuration,
 )
 from backend.service.application.models.inference.pose_async_inference_gateway import (
     deserialize_pose_async_inference_execution_result_payload,
@@ -77,7 +77,9 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
         if score_threshold < 0 or score_threshold > 1:
             raise InvalidRequestError("score_threshold 必须位于 0 到 1 之间")
         if keypoint_threshold < 0 or keypoint_threshold > 1:
-            raise InvalidRequestError("keypoint_confidence_threshold 必须位于 0 到 1 之间")
+            raise InvalidRequestError(
+                "keypoint_confidence_threshold 必须位于 0 到 1 之间"
+            )
 
     def _build_deployment_service(self) -> SqlAlchemyPoseDeploymentService:
         return SqlAlchemyPoseDeploymentService(
@@ -85,7 +87,9 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             dataset_storage=self._require_dataset_storage(),
         )
 
-    def _build_task_spec(self, *, request: PoseInferenceTaskRequest, normalized_input, process_config) -> PoseInferenceTaskSpec:
+    def _build_task_spec(
+        self, *, request: PoseInferenceTaskRequest, normalized_input, process_config
+    ) -> PoseInferenceTaskSpec:
         return PoseInferenceTaskSpec(
             project_id=request.project_id,
             deployment_instance_id=request.deployment_instance_id,
@@ -102,14 +106,15 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             runtime_target_snapshot=serialize_runtime_target_snapshot(
                 process_config.runtime_target
             ),
-            runtime_behavior=_serialize_process_runtime_behavior(
-                process_config.runtime_behavior
+            runtime_configuration=serialize_deployment_runtime_configuration(
+                process_config.runtime_configuration
             ),
-            instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
 
-    def _serialize_task_spec(self, task_spec: PoseInferenceTaskSpec) -> dict[str, object]:
+    def _serialize_task_spec(
+        self, task_spec: PoseInferenceTaskSpec
+    ) -> dict[str, object]:
         return {
             "project_id": task_spec.project_id,
             "deployment_instance_id": task_spec.deployment_instance_id,
@@ -124,8 +129,7 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             "save_result_image": task_spec.save_result_image,
             "return_preview_image_base64": task_spec.return_preview_image_base64,
             "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
-            "runtime_behavior": dict(task_spec.runtime_behavior),
-            "instance_count": task_spec.instance_count,
+            "runtime_configuration": dict(task_spec.runtime_configuration),
             "extra_options": dict(task_spec.extra_options),
         }
 
@@ -134,22 +138,32 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
         normalized_input = self._deserialize_normalized_input(task_spec)
         return PoseInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             model_type=self._read_optional_str(task_spec, "model_type"),
             input_file_id=normalized_input.input_file_id,
             input_uri=normalized_input.input_uri,
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            keypoint_confidence_threshold=self._read_optional_float(task_spec, "keypoint_confidence_threshold"),
+            keypoint_confidence_threshold=self._read_optional_float(
+                task_spec, "keypoint_confidence_threshold"
+            ),
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 
-    def _build_prediction_request(self, *, normalized_input, request: PoseInferenceTaskRequest):
+    def _build_prediction_request(
+        self, *, normalized_input, request: PoseInferenceTaskRequest
+    ):
         return build_pose_prediction_request(
             normalized_input=normalized_input,
             score_threshold=self._resolve_score_threshold(request.score_threshold),
@@ -161,7 +175,14 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             extra_options=dict(request.extra_options),
         )
 
-    def _execute_task_inference(self, *, process_config, prediction_request, async_inference_owner_id: str, return_preview_image_base64: bool) -> TaskNativeInferenceExecution:
+    def _execute_task_inference(
+        self,
+        *,
+        process_config,
+        prediction_request,
+        async_inference_owner_id: str,
+        return_preview_image_base64: bool,
+    ) -> TaskNativeInferenceExecution:
         del return_preview_image_base64
         if self.async_inference_executor is not None:
             payload = self.async_inference_executor.execute_inference(
@@ -183,7 +204,17 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             execution_result=execution.execution_result,
         )
 
-    def _build_serialized_result_payload(self, *, task_id: str, request: PoseInferenceTaskRequest, normalized_input, runtime_target, execution: TaskNativeInferenceExecution, preview_image_uri: str | None, result_object_key: str | None) -> dict[str, object]:
+    def _build_serialized_result_payload(
+        self,
+        *,
+        task_id: str,
+        request: PoseInferenceTaskRequest,
+        normalized_input,
+        runtime_target,
+        execution: TaskNativeInferenceExecution,
+        preview_image_uri: str | None,
+        result_object_key: str | None,
+    ) -> dict[str, object]:
         return serialize_pose_inference_payload(
             build_pose_inference_payload(
                 request_id=task_id,
@@ -204,13 +235,25 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             )
         )
 
-    def _attach_serialize_timing(self, *, payload: dict[str, object], serialize_ms: float) -> dict[str, object]:
+    def _attach_serialize_timing(
+        self, *, payload: dict[str, object], serialize_ms: float
+    ) -> dict[str, object]:
         return attach_pose_inference_serialize_timing(
             payload=payload,
             serialize_ms=serialize_ms,
         )
 
-    def _build_result_summary(self, *, request: PoseInferenceTaskRequest, runtime_target, normalized_input, execution: TaskNativeInferenceExecution, output_object_prefix: str, result_object_key: str, preview_image_object_key: str | None) -> dict[str, object]:
+    def _build_result_summary(
+        self,
+        *,
+        request: PoseInferenceTaskRequest,
+        runtime_target,
+        normalized_input,
+        execution: TaskNativeInferenceExecution,
+        output_object_prefix: str,
+        result_object_key: str,
+        preview_image_object_key: str | None,
+    ) -> dict[str, object]:
         return {
             "deployment_instance_id": request.deployment_instance_id,
             "instance_id": execution.instance_id,
@@ -265,19 +308,33 @@ class SqlAlchemyPoseInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             self._build_request_from_task_record_fallback(task_spec)
         )
 
-    def _build_request_from_task_record_fallback(self, task_spec: dict[str, object]) -> PoseInferenceTaskRequest:
+    def _build_request_from_task_record_fallback(
+        self, task_spec: dict[str, object]
+    ) -> PoseInferenceTaskRequest:
         return PoseInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             input_file_id=self._read_optional_str(task_spec, "input_file_id"),
             input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
-            input_transport_mode=self._read_optional_str(task_spec, "input_transport_mode") or "storage",
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            input_source_kind=self._read_optional_str(task_spec, "input_source_kind")
+            or "input_uri",
+            input_transport_mode=self._read_optional_str(
+                task_spec, "input_transport_mode"
+            )
+            or "storage",
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            keypoint_confidence_threshold=self._read_optional_float(task_spec, "keypoint_confidence_threshold"),
+            keypoint_confidence_threshold=self._read_optional_float(
+                task_spec, "keypoint_confidence_threshold"
+            ),
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 

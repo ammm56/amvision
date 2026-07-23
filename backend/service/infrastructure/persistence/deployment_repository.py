@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.deployments.deployment_instance import DeploymentInstance
-from backend.service.infrastructure.persistence.deployment_orm import DeploymentInstanceRecord
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    deserialize_deployment_runtime_configuration,
+    serialize_deployment_runtime_configuration,
+)
+from backend.service.infrastructure.persistence.deployment_orm import (
+    DeploymentInstanceRecord,
+)
 
 
 class SqlAlchemyDeploymentInstanceRepository:
@@ -42,7 +48,11 @@ class SqlAlchemyDeploymentInstanceRepository:
             existing_record.runtime_profile_id = deployment_instance.runtime_profile_id
             existing_record.runtime_backend = deployment_instance.runtime_backend
             existing_record.device_name = deployment_instance.device_name
-            existing_record.instance_count = deployment_instance.instance_count
+            existing_record.runtime_configuration_json = (
+                serialize_deployment_runtime_configuration(
+                    deployment_instance.runtime_configuration
+                )
+            )
             existing_record.status = deployment_instance.status
             existing_record.display_name = deployment_instance.display_name
             existing_record.created_at = deployment_instance.created_at
@@ -55,7 +65,9 @@ class SqlAlchemyDeploymentInstanceRepository:
                 details={"error_type": error.__class__.__name__},
             ) from error
 
-    def get_deployment_instance(self, deployment_instance_id: str) -> DeploymentInstance | None:
+    def get_deployment_instance(
+        self, deployment_instance_id: str
+    ) -> DeploymentInstance | None:
         """按 id 读取一个 DeploymentInstance。"""
 
         try:
@@ -69,7 +81,9 @@ class SqlAlchemyDeploymentInstanceRepository:
             return None
         return self._to_domain(record)
 
-    def list_deployment_instances(self, project_id: str) -> tuple[DeploymentInstance, ...]:
+    def list_deployment_instances(
+        self, project_id: str
+    ) -> tuple[DeploymentInstance, ...]:
         """按 Project id 列出 DeploymentInstance。"""
 
         statement = (
@@ -117,7 +131,9 @@ class SqlAlchemyDeploymentInstanceRepository:
             runtime_profile_id=deployment_instance.runtime_profile_id,
             runtime_backend=deployment_instance.runtime_backend,
             device_name=deployment_instance.device_name,
-            instance_count=deployment_instance.instance_count,
+            runtime_configuration_json=serialize_deployment_runtime_configuration(
+                deployment_instance.runtime_configuration
+            ),
             status=deployment_instance.status,
             display_name=deployment_instance.display_name,
             created_at=deployment_instance.created_at,
@@ -139,7 +155,9 @@ class SqlAlchemyDeploymentInstanceRepository:
             runtime_profile_id=record.runtime_profile_id,
             runtime_backend=record.runtime_backend,
             device_name=record.device_name,
-            instance_count=record.instance_count,
+            runtime_configuration=deserialize_deployment_runtime_configuration(
+                record.runtime_configuration_json
+            ),
             status=record.status,
             display_name=record.display_name,
             created_at=record.created_at,

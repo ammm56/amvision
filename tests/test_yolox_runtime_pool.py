@@ -6,12 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentExecutionPolicy,
+    DeploymentRuntimeConfiguration,
+)
 from backend.service.domain.files.yolox_file_types import YOLOX_ONNX_OPTIMIZED_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
@@ -40,7 +49,7 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-1",
         runtime_target=runtime_target,
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
     request = DetectionPredictionRequest(
         score_threshold=0.1,
@@ -50,7 +59,7 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
     fake_session = FakePredictionSession(
         execution_result=build_test_execution_result(runtime_target=runtime_target)
     )
-    load_requests: list[tuple[object, object, object, object]] = []
+    load_requests: list[tuple[object, object, object]] = []
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
@@ -63,7 +72,11 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
     health = pool.get_health(config)
 
     assert len(load_requests) == 1
-    assert load_requests[0] == (dataset_storage, runtime_target, None, None)
+    assert load_requests[0] == (
+        dataset_storage,
+        runtime_target,
+        config.runtime_configuration,
+    )
     assert warmup_status.healthy_instance_count == 1
     assert warmup_status.warmed_instance_count == 1
     assert health.healthy_instance_count == 1
@@ -73,10 +86,15 @@ def test_runtime_pool_loads_onnxruntime_session_once_and_reuses_warmed_instance(
     assert execution.instance_id == "deployment-instance-runtime-pool-1:instance-0"
     assert execution.execution_result.runtime_session_info.backend_name == "onnxruntime"
     assert execution.execution_result.runtime_session_info.device_name == "cpu"
-    assert execution.execution_result.runtime_session_info.metadata["runtime_execution_mode"] == (
-        "onnxruntime:fp32:cpu"
+    assert execution.execution_result.runtime_session_info.metadata[
+        "runtime_execution_mode"
+    ] == ("onnxruntime:fp32:cpu")
+    assert (
+        execution.execution_result.runtime_session_info.metadata[
+            "compiled_runtime_precision"
+        ]
+        == "fp32"
     )
-    assert execution.execution_result.runtime_session_info.metadata["compiled_runtime_precision"] == "fp32"
 
 
 def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure(
@@ -96,7 +114,7 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-failure-1",
         runtime_target=runtime_target,
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
     request = DetectionPredictionRequest(
         score_threshold=0.1,
@@ -106,7 +124,9 @@ def test_runtime_pool_marks_onnxruntime_instance_unhealthy_after_predict_failure
 
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
-        model_runtime=build_failing_model_runtime(error_message="onnxruntime predict failed"),
+        model_runtime=build_failing_model_runtime(
+            error_message="onnxruntime predict failed"
+        ),
     )
 
     with pytest.raises(ServiceConfigurationError) as caught_error:
@@ -157,7 +177,9 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-runtime-pool-invalid-request-1",
         runtime_target=runtime_target,
-        instance_count=3,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=3)
+        ),
     )
     request = DetectionPredictionRequest(
         score_threshold=0.1,
@@ -165,7 +187,7 @@ def test_runtime_pool_keeps_instance_healthy_after_invalid_request_failure(
         input_image_bytes=b"broken-image-bytes",
     )
     invalid_session = InvalidRequestPredictionSession()
-    load_requests: list[tuple[object, object, object, object]] = []
+    load_requests: list[tuple[object, object, object]] = []
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(

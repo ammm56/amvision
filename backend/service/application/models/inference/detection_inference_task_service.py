@@ -10,7 +10,10 @@ from backend.queue import QueueBackend
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
@@ -34,10 +37,11 @@ from backend.service.application.models.inference.detection_inference_payloads i
     serialize_detection_inference_payload,
     serialize_detection_normalized_inference_input,
 )
-from backend.service.application.project_public_files import resolve_public_project_file_reference
+from backend.service.application.project_public_files import (
+    resolve_public_project_file_reference,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
-    DeploymentProcessRuntimeBehavior,
     DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
@@ -60,8 +64,14 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    deserialize_deployment_runtime_configuration,
+    serialize_deployment_runtime_configuration,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 DETECTION_INFERENCE_TASK_KIND = "detection-inference"
@@ -162,7 +172,8 @@ class SqlAlchemyDetectionInferenceTaskService:
         queue_backend: QueueBackend | None = None,
         deployment_process_supervisor: DeploymentProcessSupervisor | None = None,
         async_inference_executor: DetectionAsyncInferenceExecutor | None = None,
-        async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry | None = None,
+        async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry
+        | None = None,
     ) -> None:
         """初始化推理任务服务。"""
 
@@ -171,7 +182,9 @@ class SqlAlchemyDetectionInferenceTaskService:
         self.queue_backend = queue_backend
         self.deployment_process_supervisor = deployment_process_supervisor
         self.async_inference_executor = async_inference_executor
-        self.async_inference_gateway_dispatcher_registry = async_inference_gateway_dispatcher_registry
+        self.async_inference_gateway_dispatcher_registry = (
+            async_inference_gateway_dispatcher_registry
+        )
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def _resolve_task_spec_cls(self) -> type:
@@ -195,7 +208,9 @@ class SqlAlchemyDetectionInferenceTaskService:
         self._validate_request(request)
         queue_backend = self._require_queue_backend()
         deployment_service = self._build_deployment_service()
-        process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
+        process_config = deployment_service.resolve_process_config(
+            request.deployment_instance_id
+        )
         self._ensure_async_inference_gateway_dispatcher(process_config)
         normalized_input = self._build_normalized_input_from_request(request)
 
@@ -206,14 +221,21 @@ class SqlAlchemyDetectionInferenceTaskService:
             input_uri=normalized_input.input_uri,
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
-            normalized_input=serialize_detection_normalized_inference_input(normalized_input),
-            async_inference_owner_id=_normalize_optional_str(request.async_inference_owner_id),
+            normalized_input=serialize_detection_normalized_inference_input(
+                normalized_input
+            ),
+            async_inference_owner_id=_normalize_optional_str(
+                request.async_inference_owner_id
+            ),
             score_threshold=request.score_threshold,
             save_result_image=request.save_result_image,
             return_preview_image_base64=request.return_preview_image_base64,
-            runtime_target_snapshot=serialize_runtime_target_snapshot(process_config.runtime_target),
-            runtime_behavior=_serialize_process_runtime_behavior(process_config.runtime_behavior),
-            instance_count=process_config.instance_count,
+            runtime_target_snapshot=serialize_runtime_target_snapshot(
+                process_config.runtime_target
+            ),
+            runtime_configuration=serialize_deployment_runtime_configuration(
+                process_config.runtime_configuration
+            ),
             extra_options=dict(request.extra_options),
         )
         created_task = self.task_service.create_task(
@@ -236,8 +258,7 @@ class SqlAlchemyDetectionInferenceTaskService:
                     "save_result_image": task_spec.save_result_image,
                     "return_preview_image_base64": task_spec.return_preview_image_base64,
                     "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
-                    "runtime_behavior": dict(task_spec.runtime_behavior),
-                    "instance_count": task_spec.instance_count,
+                    "runtime_configuration": dict(task_spec.runtime_configuration),
                     "extra_options": dict(task_spec.extra_options),
                 },
                 worker_pool=DETECTION_INFERENCE_TASK_KIND,
@@ -352,7 +373,9 @@ class SqlAlchemyDetectionInferenceTaskService:
                 return_preview_image_base64=request.return_preview_image_base64,
                 extra_options=dict(request.extra_options),
             )
-            async_inference_owner_id = _normalize_optional_str(request.async_inference_owner_id)
+            async_inference_owner_id = _normalize_optional_str(
+                request.async_inference_owner_id
+            )
             if async_inference_owner_id is None:
                 raise InvalidRequestError("task_spec.async_inference_owner_id 不能为空")
             execution_result = self._execute_inference(
@@ -361,8 +384,13 @@ class SqlAlchemyDetectionInferenceTaskService:
                 async_inference_owner_id=async_inference_owner_id,
                 return_preview_image_base64=request.return_preview_image_base64,
             )
-            if preview_image_object_key is not None and execution_result.preview_image_bytes is not None:
-                dataset_storage.write_bytes(preview_image_object_key, execution_result.preview_image_bytes)
+            if (
+                preview_image_object_key is not None
+                and execution_result.preview_image_bytes is not None
+            ):
+                dataset_storage.write_bytes(
+                    preview_image_object_key, execution_result.preview_image_bytes
+                )
             serialize_started_at = perf_counter()
             raw_payload = serialize_detection_inference_payload(
                 build_detection_inference_payload(
@@ -468,9 +496,15 @@ class SqlAlchemyDetectionInferenceTaskService:
             raise InvalidRequestError("deployment_instance_id 不能为空")
         if _normalize_optional_str(request.async_inference_owner_id) is None:
             raise InvalidRequestError("async_inference_owner_id 不能为空")
-        input_transport_mode = self._normalize_input_transport_mode(request.input_transport_mode)
-        has_input_uri = isinstance(request.input_uri, str) and bool(request.input_uri.strip())
-        has_input_file_id = isinstance(request.input_file_id, str) and bool(request.input_file_id.strip())
+        input_transport_mode = self._normalize_input_transport_mode(
+            request.input_transport_mode
+        )
+        has_input_uri = isinstance(request.input_uri, str) and bool(
+            request.input_uri.strip()
+        )
+        has_input_file_id = isinstance(request.input_file_id, str) and bool(
+            request.input_file_id.strip()
+        )
         if input_transport_mode == DETECTION_INFERENCE_INPUT_TRANSPORT_MEMORY:
             if has_input_file_id:
                 raise InvalidRequestError(
@@ -479,7 +513,10 @@ class SqlAlchemyDetectionInferenceTaskService:
                 )
             if not has_input_uri:
                 raise InvalidRequestError("memory 模式推理任务缺少 input_uri")
-            if not isinstance(request.input_image_bytes, bytes) or not request.input_image_bytes:
+            if (
+                not isinstance(request.input_image_bytes, bytes)
+                or not request.input_image_bytes
+            ):
                 raise InvalidRequestError("memory 模式推理任务缺少 input_image_bytes")
             return
         if not has_input_uri and not has_input_file_id:
@@ -555,7 +592,9 @@ class SqlAlchemyDetectionInferenceTaskService:
     ) -> DetectionNormalizedInferenceInput:
         """根据提交请求构造统一输入规则。"""
 
-        input_transport_mode = self._normalize_input_transport_mode(request.input_transport_mode)
+        input_transport_mode = self._normalize_input_transport_mode(
+            request.input_transport_mode
+        )
         if input_transport_mode == DETECTION_INFERENCE_INPUT_TRANSPORT_MEMORY:
             return DetectionNormalizedInferenceInput(
                 input_uri=(request.input_uri or "").strip(),
@@ -605,17 +644,23 @@ class SqlAlchemyDetectionInferenceTaskService:
             )
         return task_record
 
-    def _build_request_from_task_record(self, task_record: TaskRecord) -> DetectionInferenceTaskRequest:
+    def _build_request_from_task_record(
+        self, task_record: TaskRecord
+    ) -> DetectionInferenceTaskRequest:
         """从 TaskRecord 反解析推理任务请求。"""
 
         task_spec = dict(task_record.task_spec)
         normalized_input_payload = task_spec.get("normalized_input")
         normalized_input = None
         if isinstance(normalized_input_payload, dict):
-            normalized_input = deserialize_detection_normalized_inference_input(normalized_input_payload)
+            normalized_input = deserialize_detection_normalized_inference_input(
+                normalized_input_payload
+            )
         return DetectionInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             input_file_id=(
                 normalized_input.input_file_id
                 if normalized_input is not None
@@ -629,7 +674,8 @@ class SqlAlchemyDetectionInferenceTaskService:
             input_source_kind=(
                 normalized_input.input_source_kind
                 if normalized_input is not None
-                else self._read_optional_str(task_spec, "input_source_kind") or "input_uri"
+                else self._read_optional_str(task_spec, "input_source_kind")
+                or "input_uri"
             ),
             input_transport_mode=(
                 normalized_input.input_transport_mode
@@ -642,10 +688,14 @@ class SqlAlchemyDetectionInferenceTaskService:
                 if normalized_input is not None
                 else None
             ),
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 
@@ -658,7 +708,9 @@ class SqlAlchemyDetectionInferenceTaskService:
         task_spec = dict(task_record.task_spec)
         normalized_input_payload = task_spec.get("normalized_input")
         if isinstance(normalized_input_payload, dict):
-            return deserialize_detection_normalized_inference_input(normalized_input_payload)
+            return deserialize_detection_normalized_inference_input(
+                normalized_input_payload
+            )
         return self._build_normalized_input_from_request(
             self._build_request_from_task_record(task_record)
         )
@@ -676,13 +728,15 @@ class SqlAlchemyDetectionInferenceTaskService:
             task_record=task_record,
             dataset_storage=dataset_storage,
         )
-        instance_count = self._read_optional_int(task_spec, "instance_count") or 1
         return DeploymentProcessConfig(
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             runtime_target=runtime_target,
             project_id=self._read_optional_str(task_spec, "project_id") or "",
-            instance_count=instance_count,
-            runtime_behavior=_deserialize_process_runtime_behavior(task_spec.get("runtime_behavior")),
+            runtime_configuration=deserialize_deployment_runtime_configuration(
+                task_spec.get("runtime_configuration")
+            ),
         )
 
     def _build_runtime_target_from_task_record(
@@ -706,7 +760,9 @@ class SqlAlchemyDetectionInferenceTaskService:
                 details={"task_id": task_record.task_id},
             ) from error
 
-    def _build_existing_result(self, task_record: TaskRecord) -> DetectionInferenceTaskResult | None:
+    def _build_existing_result(
+        self, task_record: TaskRecord
+    ) -> DetectionInferenceTaskResult | None:
         """从已完成 TaskRecord 中恢复推理结果。"""
 
         result = dict(task_record.result)
@@ -724,16 +780,21 @@ class SqlAlchemyDetectionInferenceTaskService:
             model_build_id=self._read_optional_str(result, "model_build_id"),
             output_object_prefix=self._require_str(result, "output_object_prefix"),
             result_object_key=result_object_key,
-            preview_image_object_key=self._read_optional_str(result, "preview_image_object_key"),
+            preview_image_object_key=self._read_optional_str(
+                result, "preview_image_object_key"
+            ),
             input_uri=self._require_str(result, "input_uri"),
-            input_source_kind=self._read_optional_str(result, "input_source_kind") or "input_uri",
+            input_source_kind=self._read_optional_str(result, "input_source_kind")
+            or "input_uri",
             input_file_id=self._read_optional_str(result, "input_file_id"),
             detection_count=detection_count,
             latency_ms=latency_ms,
             result_summary=self._read_dict(result, "result_summary"),
         )
 
-    def _serialize_task_result(self, task_result: DetectionInferenceTaskResult) -> dict[str, object]:
+    def _serialize_task_result(
+        self, task_result: DetectionInferenceTaskResult
+    ) -> dict[str, object]:
         """把推理任务处理结果序列化为结果快照。"""
 
         return {
@@ -788,7 +849,9 @@ class SqlAlchemyDetectionInferenceTaskService:
                 request=prediction_request,
                 owner_id=async_inference_owner_id,
             )
-            parsed_payload = deserialize_detection_async_inference_execution_result_payload(payload)
+            parsed_payload = (
+                deserialize_detection_async_inference_execution_result_payload(payload)
+            )
             execution_result = parsed_payload["execution_result"]
             return DetectionInferenceExecutionResult(
                 instance_id=self._read_optional_str(parsed_payload, "instance_id"),
@@ -801,7 +864,9 @@ class SqlAlchemyDetectionInferenceTaskService:
                 image_height=int(getattr(execution_result, "image_height", 0) or 0),
                 preview_image_bytes=(
                     getattr(execution_result, "preview_image_bytes", None)
-                    if isinstance(getattr(execution_result, "preview_image_bytes", None), bytes)
+                    if isinstance(
+                        getattr(execution_result, "preview_image_bytes", None), bytes
+                    )
                     else None
                 ),
                 runtime_session_info=serialize_runtime_session_info(
@@ -851,7 +916,9 @@ class SqlAlchemyDetectionInferenceTaskService:
         normalized_items: list[dict[str, object]] = []
         for item in detections:
             if isinstance(item, dict):
-                normalized_items.append({str(key): value for key, value in item.items()})
+                normalized_items.append(
+                    {str(key): value for key, value in item.items()}
+                )
         return tuple(normalized_items)
 
     @staticmethod
@@ -918,50 +985,6 @@ class SqlAlchemyDetectionInferenceTaskService:
                 details={"field": key},
             )
         return value
-
-
-def _serialize_process_runtime_behavior(
-    runtime_behavior: DeploymentProcessRuntimeBehavior,
-) -> dict[str, object]:
-    """把 deployment runtime behavior 序列化到任务快照。"""
-
-    warmup_dummy_image_size = runtime_behavior.warmup_dummy_image_size
-    return {
-        "warmup_dummy_inference_count": runtime_behavior.warmup_dummy_inference_count,
-        "warmup_dummy_image_size": list(warmup_dummy_image_size)
-        if warmup_dummy_image_size is not None
-        else None,
-        "keep_warm_enabled": runtime_behavior.keep_warm_enabled,
-        "keep_warm_interval_seconds": runtime_behavior.keep_warm_interval_seconds,
-        "tensorrt_pinned_output_buffer_enabled": runtime_behavior.tensorrt_pinned_output_buffer_enabled,
-        "tensorrt_pinned_output_buffer_max_bytes": runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
-    }
-
-
-def _deserialize_process_runtime_behavior(payload: object) -> DeploymentProcessRuntimeBehavior:
-    """从任务快照恢复 deployment runtime behavior。"""
-
-    if not isinstance(payload, dict):
-        return DeploymentProcessRuntimeBehavior()
-    warmup_dummy_image_size = payload.get("warmup_dummy_image_size")
-    resolved_warmup_dummy_image_size = None
-    if isinstance(warmup_dummy_image_size, list | tuple) and len(warmup_dummy_image_size) == 2:
-        resolved_warmup_dummy_image_size = (
-            int(warmup_dummy_image_size[0]),
-            int(warmup_dummy_image_size[1]),
-        )
-    return DeploymentProcessRuntimeBehavior(
-        warmup_dummy_inference_count=_read_optional_int_value(payload.get("warmup_dummy_inference_count")),
-        warmup_dummy_image_size=resolved_warmup_dummy_image_size,
-        keep_warm_enabled=_read_optional_bool_value(payload.get("keep_warm_enabled")),
-        keep_warm_interval_seconds=_read_optional_float_value(payload.get("keep_warm_interval_seconds")),
-        tensorrt_pinned_output_buffer_enabled=_read_optional_bool_value(
-            payload.get("tensorrt_pinned_output_buffer_enabled")
-        ),
-        tensorrt_pinned_output_buffer_max_bytes=_read_optional_int_value(
-            payload.get("tensorrt_pinned_output_buffer_max_bytes")
-        ),
-    )
 
 
 def _normalize_optional_str(value: object) -> str | None:
@@ -1032,7 +1055,11 @@ def run_detection_inference_task(
         request=DetectionPredictionRequest(
             input_uri=input_uri,
             input_image_bytes=input_image_bytes,
-            input_image_payload=(dict(input_image_payload) if isinstance(input_image_payload, dict) else None),
+            input_image_payload=(
+                dict(input_image_payload)
+                if isinstance(input_image_payload, dict)
+                else None
+            ),
             score_threshold=score_threshold,
             save_result_image=save_result_image or return_preview_image_base64,
             extra_options=dict(extra_options),
@@ -1040,12 +1067,16 @@ def run_detection_inference_task(
     )
     return DetectionInferenceExecutionResult(
         instance_id=execution.instance_id,
-        detections=tuple(serialize_detection(item) for item in execution.execution_result.detections),
+        detections=tuple(
+            serialize_detection(item) for item in execution.execution_result.detections
+        ),
         latency_ms=execution.execution_result.latency_ms,
         image_width=execution.execution_result.image_width,
         image_height=execution.execution_result.image_height,
         preview_image_bytes=execution.execution_result.preview_image_bytes,
-        runtime_session_info=serialize_runtime_session_info(execution.execution_result.runtime_session_info),
+        runtime_session_info=serialize_runtime_session_info(
+            execution.execution_result.runtime_session_info
+        ),
     )
 
 

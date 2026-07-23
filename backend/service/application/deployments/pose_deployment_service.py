@@ -7,17 +7,35 @@ from backend.service.application.deployments.deployment_instance_service import 
     DeploymentInstanceView as PoseDeploymentInstanceView,
     SqlAlchemyDeploymentInstanceService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_supported_platform_model_type,
 )
-from backend.service.application.pose_backend_registry import get_pose_backend_registration
-from backend.service.application.runtime.targets.yolo11 import SqlAlchemyYolo11RuntimeTargetResolver
-from backend.service.application.runtime.targets.yolo26 import SqlAlchemyYolo26RuntimeTargetResolver
-from backend.service.application.runtime.targets.yolov8 import SqlAlchemyYoloV8RuntimeTargetResolver
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetResolveRequest, RuntimeTargetSnapshot
+from backend.service.application.pose_backend_registry import (
+    get_pose_backend_registration,
+)
+from backend.service.application.runtime.targets.yolo11 import (
+    SqlAlchemyYolo11RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.yolo26 import (
+    SqlAlchemyYolo26RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.yolov8 import (
+    SqlAlchemyYoloV8RuntimeTargetResolver,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetResolveRequest,
+    RuntimeTargetSnapshot,
+)
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+
 
 @dataclass(frozen=True)
 class PoseDeploymentInstanceCreateRequest:
@@ -29,15 +47,17 @@ class PoseDeploymentInstanceCreateRequest:
     runtime_backend: str | None = None
     device_name: str | None = None
     runtime_precision: str | None = None
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration | None = None
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
+
 
 _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE = {
     "yolov8": SqlAlchemyYoloV8RuntimeTargetResolver,
     "yolo11": SqlAlchemyYolo11RuntimeTargetResolver,
     "yolo26": SqlAlchemyYolo26RuntimeTargetResolver,
 }
+
 
 class SqlAlchemyPoseDeploymentService(SqlAlchemyDeploymentInstanceService):
     """按模型分类分发 runtime target resolver 的 pose 部署服务。"""
@@ -81,15 +101,36 @@ class SqlAlchemyPoseDeploymentService(SqlAlchemyDeploymentInstanceService):
         rc = _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(n)
         if rc is None:
             reg = get_pose_backend_registration(n)
-            raise ServiceConfigurationError("当前 pose deployment 尚未接通指定模型分类", details={"model_type": n, "display_name": reg.display_name if reg else None})
-        rt = rc(session_factory=self.session_factory, dataset_storage=self.dataset_storage).resolve_target(RuntimeTargetResolveRequest(
-            project_id=request.project_id, model_version_id=request.model_version_id, model_build_id=request.model_build_id,
-            runtime_profile_id=request.runtime_profile_id, runtime_backend=request.runtime_backend,
-            device_name=request.device_name, runtime_precision=request.runtime_precision,
-        ))
+            raise ServiceConfigurationError(
+                "当前 pose deployment 尚未接通指定模型分类",
+                details={
+                    "model_type": n,
+                    "display_name": reg.display_name if reg else None,
+                },
+            )
+        rt = rc(
+            session_factory=self.session_factory, dataset_storage=self.dataset_storage
+        ).resolve_target(
+            RuntimeTargetResolveRequest(
+                project_id=request.project_id,
+                model_version_id=request.model_version_id,
+                model_build_id=request.model_build_id,
+                runtime_profile_id=request.runtime_profile_id,
+                runtime_backend=request.runtime_backend,
+                device_name=request.device_name,
+                runtime_precision=request.runtime_precision,
+            )
+        )
         if rt.model_type != n:
-            raise InvalidRequestError("请求中的 model_type 与来源模型记录不匹配", details={"requested_model_type": n, "resolved_model_type": rt.model_type})
+            raise InvalidRequestError(
+                "请求中的 model_type 与来源模型记录不匹配",
+                details={
+                    "requested_model_type": n,
+                    "resolved_model_type": rt.model_type,
+                },
+            )
         return rt
+
 
 def _match_pose_model_type(
     self: SqlAlchemyPoseDeploymentService,
@@ -99,8 +140,10 @@ def _match_pose_model_type(
     rt = self.resolve_inference_target(v.deployment_instance_id)
     return rt.model_type == n
 
+
 def _normalize_model_type(mt):
     return normalize_optional_platform_model_type(mt)
+
 
 def _require_model_type(mt):
     return require_supported_platform_model_type(

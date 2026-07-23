@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+
 
 @dataclass(frozen=True)
 class DeploymentInstance:
@@ -18,7 +22,7 @@ class DeploymentInstance:
     - runtime_profile_id：关联的 RuntimeProfile id。
     - runtime_backend：运行时 backend 名称。
     - device_name：部署默认 device 名称。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_configuration：平台执行策略、生命周期和 backend 专属运行时配置。
     - status：部署实例状态。
     - display_name：展示名称。
     - created_at：创建时间。
@@ -35,7 +39,9 @@ class DeploymentInstance:
     runtime_profile_id: str | None = None
     runtime_backend: str = "pytorch"
     device_name: str = "cpu"
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration = field(
+        default_factory=DeploymentRuntimeConfiguration
+    )
     status: str = "active"
     display_name: str = ""
     created_at: str = ""

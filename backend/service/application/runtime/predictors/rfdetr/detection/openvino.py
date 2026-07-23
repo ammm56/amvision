@@ -5,6 +5,12 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
@@ -36,7 +42,9 @@ from backend.service.application.runtime.support.detection import (
     resolve_openvino_device_name,
     resolve_openvino_port_name,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OpenVINORfdetrRuntimeSession:
@@ -79,6 +87,7 @@ class OpenVINORfdetrRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINORfdetrRuntimeSession":
         if runtime_target.runtime_backend != "openvino":
             raise InvalidRequestError(
@@ -104,16 +113,20 @@ class OpenVINORfdetrRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_name = resolve_openvino_port_name(session.input(0), fallback="images")
         output_names = resolve_rfdetr_runtime_output_names(
             task_type=runtime_target.task_type,
             output_names=tuple(
-                resolve_openvino_port_name(session.output(index), fallback=f"output-{index}")
+                resolve_openvino_port_name(
+                    session.output(index), fallback=f"output-{index}"
+                )
                 for index in range(len(session.outputs))
             ),
         )
@@ -141,7 +154,9 @@ class OpenVINORfdetrRuntimeSession:
             ),
         )
 
-    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
+    def predict(
+        self, request: DetectionPredictionRequest
+    ) -> DetectionPredictionExecutionResult:
         return _predict_openvino(self, request)
 
 

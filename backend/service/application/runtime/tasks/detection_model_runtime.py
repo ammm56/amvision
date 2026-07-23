@@ -46,14 +46,24 @@ from backend.service.application.runtime.predictors.yolov8.detection import (
     PyTorchYoloV8RuntimeSession,
     TensorRTYoloV8RuntimeSession,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.deployment.runtime_session_options import (
+    build_tensorrt_session_load_options,
+    require_tensorrt_runtime_options,
+    resolve_runtime_session_configuration,
 )
 
 
 DetectionRuntimeLoader = Callable[
-    [LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None],
+    [LocalDatasetStorage, RuntimeTargetSnapshot, DeploymentRuntimeConfiguration],
     "DetectionModelRuntimeSession",
 ]
 
@@ -77,8 +87,7 @@ class DetectionModelRuntime(Protocol):
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> DetectionModelRuntimeSession:
         """按运行时快照加载 detection 模型会话。"""
 
@@ -150,19 +159,21 @@ class DefaultDetectionModelRuntime:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> DetectionModelRuntimeSession:
         """按模型分类和 runtime backend 加载 detection 模型会话。"""
 
+        runtime_configuration = resolve_runtime_session_configuration(
+            runtime_target=runtime_target,
+            configuration=runtime_configuration,
+        )
         runtime_loader = self.runtime_registry.resolve_runtime_loader(
             runtime_target.model_type
         )
         return runtime_loader(
             dataset_storage,
             runtime_target,
-            pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes,
+            runtime_configuration,
         )
 
 
@@ -181,8 +192,7 @@ def build_default_detection_model_runtime_registry() -> DetectionModelRuntimeReg
 def _load_yolox_detection_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOX detection 会话。"""
 
@@ -200,13 +210,13 @@ def _load_yolox_detection_session(
         return OpenVINODetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTDetectionRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 
@@ -214,8 +224,7 @@ def _load_yolox_detection_session(
 def _load_yolov8_detection_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOv8 detection 会话。"""
 
@@ -233,13 +242,13 @@ def _load_yolov8_detection_session(
         return OpenVINOYoloV8RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYoloV8RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 
@@ -247,8 +256,7 @@ def _load_yolov8_detection_session(
 def _load_yolo11_detection_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO11 detection 会话。"""
 
@@ -266,13 +274,13 @@ def _load_yolo11_detection_session(
         return OpenVINOYolo11RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo11RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 
@@ -280,8 +288,7 @@ def _load_yolo11_detection_session(
 def _load_yolo26_detection_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO26 detection 会话。"""
 
@@ -299,13 +306,13 @@ def _load_yolo26_detection_session(
         return OpenVINOYolo26RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo26RuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(f"unsupported runtime backend: {runtime_target.runtime_backend}")
 
@@ -313,12 +320,10 @@ def _load_yolo26_detection_session(
 def _load_rfdetr_detection_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> DetectionModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 RF-DETR 会话。"""
 
-    del pinned_output_buffer_enabled, pinned_output_buffer_max_bytes
     if runtime_target.runtime_backend == "pytorch":
         return PyTorchRfdetrRuntimeSession.load(
             dataset_storage=dataset_storage, runtime_target=runtime_target
@@ -329,11 +334,17 @@ def _load_rfdetr_detection_session(
         )
     if runtime_target.runtime_backend == "openvino":
         return OpenVINORfdetrRuntimeSession.load(
-            dataset_storage=dataset_storage, runtime_target=runtime_target
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTRfdetrRuntimeSession.load(
-            dataset_storage=dataset_storage, runtime_target=runtime_target
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            optimization_profile_index=require_tensorrt_runtime_options(
+                runtime_configuration
+            ).optimization_profile_index,
         )
     raise ValueError(
         f"unsupported rfdetr runtime backend: {runtime_target.runtime_backend}"

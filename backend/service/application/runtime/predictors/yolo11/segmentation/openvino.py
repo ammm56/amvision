@@ -5,6 +5,12 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -88,6 +94,7 @@ class OpenVINOYolo11SegmentationRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINOYolo11SegmentationRuntimeSession":
         """加载一套 OpenVINO YOLO11 segmentation 会话。"""
 
@@ -112,10 +119,12 @@ class OpenVINOYolo11SegmentationRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_port = session.input(0)
         prediction_port = session.output(0)
@@ -178,9 +187,6 @@ class OpenVINOYolo11SegmentationRuntimeSession:
         infer_started_at = perf_counter()
         outputs = self.session.infer_new_request({self.input_port: input_tensor})
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
-
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
 
         postprocess_started_at = perf_counter()
         prediction_array, proto_array = (

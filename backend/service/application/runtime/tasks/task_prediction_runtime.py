@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TypeAlias
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.task_type_support import (
     require_supported_platform_task_type,
 )
@@ -36,7 +39,9 @@ from backend.service.application.runtime.serialization.detection.prediction impo
     serialize_detection,
     serialize_runtime_session_info,
 )
-from backend.service.application.runtime.tasks.obb_model_runtime import DefaultObbModelRuntime
+from backend.service.application.runtime.tasks.obb_model_runtime import (
+    DefaultObbModelRuntime,
+)
 from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
     ObbPredictionRequest,
@@ -47,7 +52,9 @@ from backend.service.application.runtime.serialization.obb.prediction import (
     serialize_obb_instance,
     serialize_obb_runtime_session_info,
 )
-from backend.service.application.runtime.tasks.pose_model_runtime import DefaultPoseModelRuntime
+from backend.service.application.runtime.tasks.pose_model_runtime import (
+    DefaultPoseModelRuntime,
+)
 from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionExecutionResult,
     PosePredictionRequest,
@@ -58,7 +65,9 @@ from backend.service.application.runtime.serialization.pose.prediction import (
     serialize_pose_instance,
     serialize_pose_runtime_session_info,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
 )
@@ -72,7 +81,12 @@ from backend.service.application.runtime.serialization.segmentation.prediction i
     serialize_segmentation_instance,
     serialize_segmentation_runtime_session_info,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 PredictionRequest: TypeAlias = (
@@ -96,8 +110,7 @@ def load_runtime_session(
     *,
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None = None,
-    pinned_output_buffer_max_bytes: int | None = None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> object:
     """按 task_type 与 model_type 加载正式 runtime session。"""
 
@@ -110,36 +123,31 @@ def load_runtime_session(
         return DefaultDetectionModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            runtime_configuration=runtime_configuration,
         )
     if task_type == "classification":
         return DefaultClassificationModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            runtime_configuration=runtime_configuration,
         )
     if task_type == "segmentation":
         return DefaultSegmentationModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            runtime_configuration=runtime_configuration,
         )
     if task_type == "pose":
         return DefaultPoseModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            runtime_configuration=runtime_configuration,
         )
     if task_type == "obb":
         return DefaultObbModelRuntime().load_session(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            runtime_configuration=runtime_configuration,
         )
     raise ServiceConfigurationError(
         "当前 deployment runtime 尚未接通该 task_type",
@@ -233,7 +241,9 @@ def serialize_prediction_request(
         "input_image_bytes_base64": _encode_optional_bytes(
             getattr(request, "input_image_bytes", None)
         ),
-        "input_image_payload": dict(getattr(request, "input_image_payload", None) or {}),
+        "input_image_payload": dict(
+            getattr(request, "input_image_payload", None) or {}
+        ),
         "extra_options": dict(getattr(request, "extra_options", {}) or {}),
     }
     if normalized_task_type == "detection":
@@ -459,7 +469,9 @@ def deserialize_prediction_execution_result(
     if normalized_task_type == "classification":
         return ClassificationPredictionExecutionResult(
             categories=deserialize_classification_categories(payload.get("categories")),
-            top_category=deserialize_classification_category(payload.get("top_category")),
+            top_category=deserialize_classification_category(
+                payload.get("top_category")
+            ),
             latency_ms=latency_ms,
             image_width=image_width,
             image_height=image_height,
@@ -565,7 +577,9 @@ def _read_optional_dict(
             "prediction payload 字段必须是对象",
             details={"field": key},
         )
-    return {str(current_key): current_value for current_key, current_value in value.items()}
+    return {
+        str(current_key): current_value for current_key, current_value in value.items()
+    }
 
 
 def _read_dict(payload: dict[str, object], key: str) -> dict[str, object]:

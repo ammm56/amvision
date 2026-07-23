@@ -5,7 +5,16 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
     resolve_rfdetr_runtime_input_size,
@@ -38,7 +47,9 @@ from backend.service.application.runtime.support.detection import (
     resolve_openvino_port_dtype,
     resolve_openvino_port_name,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OpenVINORfdetrSegmentationRuntimeSession:
@@ -85,6 +96,7 @@ class OpenVINORfdetrSegmentationRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINORfdetrSegmentationRuntimeSession":
         if runtime_target.runtime_backend != "openvino":
             raise InvalidRequestError(
@@ -109,13 +121,17 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_port = session.input(0)
-        all_output_ports = tuple(session.output(index) for index in range(len(session.outputs)))
+        all_output_ports = tuple(
+            session.output(index) for index in range(len(session.outputs))
+        )
         if len(all_output_ports) < 3:
             raise ServiceConfigurationError(
                 "OpenVINO RF-DETR segmentation 模型输出数量不足",
@@ -163,7 +179,9 @@ class OpenVINORfdetrSegmentationRuntimeSession:
             ),
         )
 
-    def predict(self, request: SegmentationPredictionRequest) -> SegmentationPredictionExecutionResult:
+    def predict(
+        self, request: SegmentationPredictionRequest
+    ) -> SegmentationPredictionExecutionResult:
         imports = self.imports
         image, decode_ms = load_rfdetr_runtime_input_image(
             cv2_module=imports.cv2,
@@ -233,13 +251,17 @@ class OpenVINORfdetrSegmentationRuntimeSession:
                 input_spec=SegmentationRuntimeTensorSpec(
                     name=self.input_name,
                     shape=(1, 3, self.input_size[0], self.input_size[1]),
-                    dtype=resolve_openvino_port_dtype(self.input_port, fallback="float32"),
+                    dtype=resolve_openvino_port_dtype(
+                        self.input_port, fallback="float32"
+                    ),
                 ),
                 output_specs=tuple(
                     SegmentationRuntimeTensorSpec(
                         name=self.output_names[index],
                         shape=tuple(int(item) for item in raw_tensors[index].shape),
-                        dtype=resolve_openvino_port_dtype(output_port, fallback="float32"),
+                        dtype=resolve_openvino_port_dtype(
+                            output_port, fallback="float32"
+                        ),
                     )
                     for index, output_port in enumerate(self.output_ports)
                 ),

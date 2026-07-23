@@ -14,8 +14,11 @@ import {
 } from '@/modules/models/services/model.service'
 import DeploymentOperationsPage from './DeploymentOperationsPage.vue'
 import {
+  getDeploymentRuntimeCapabilities,
   listTaskDeploymentEvents,
   listTaskDeployments,
+  type DeploymentRuntimeCapabilities,
+  type DeploymentRuntimeConfiguration,
   runTaskDeploymentHealthAction,
   runTaskDeploymentStatusAction,
   type DeploymentHealthAction,
@@ -29,6 +32,9 @@ import {
 
 vi.mock('../services/deployment.service', () => ({
   createTaskDeployment: vi.fn(),
+  deleteTaskDeployment: vi.fn(),
+  getDeploymentInstanceCount: (item: TaskDeploymentInstance) => item.runtime_configuration.execution.instance_count,
+  getDeploymentRuntimeCapabilities: vi.fn(),
   listTaskDeploymentEvents: vi.fn(),
   listTaskDeployments: vi.fn(),
   runTaskDeploymentHealthAction: vi.fn(),
@@ -39,6 +45,24 @@ vi.mock('@/modules/models/services/model.service', () => ({
   getDeploymentSourceModelDetail: vi.fn(),
   listDeploymentSourceModels: vi.fn(),
 }))
+
+function runtimeConfiguration(instanceCount: number): DeploymentRuntimeConfiguration {
+  return {
+    execution: {
+      instance_count: instanceCount,
+      isolation_level: 'session',
+      overflow_policy: 'reject',
+      performance_goal: 'latency',
+    },
+    lifecycle: {
+      warmup_dummy_inference_count: null,
+      warmup_dummy_image_size: null,
+      keep_warm_enabled: null,
+      keep_warm_interval_seconds: null,
+    },
+    backend_options: { kind: 'default' },
+  }
+}
 
 const deployment: TaskDeploymentInstance = {
   deployment_instance_id: 'deployment-1',
@@ -57,7 +81,7 @@ const deployment: TaskDeploymentInstance = {
   device_name: 'cuda',
   runtime_precision: 'fp16',
   runtime_execution_mode: 'sync',
-  instance_count: 2,
+  runtime_configuration: runtimeConfiguration(2),
   input_size: [640, 640],
   labels: ['barcode'],
   created_at: '2026-07-10T01:00:00Z',
@@ -74,7 +98,7 @@ const secondDeployment: TaskDeploymentInstance = {
   runtime_backend: 'openvino',
   device_name: 'cpu',
   runtime_precision: 'fp32',
-  instance_count: 1,
+  runtime_configuration: runtimeConfiguration(1),
   created_at: '2026-07-10T02:00:00Z',
   updated_at: '2026-07-10T02:00:00Z',
 }
@@ -105,6 +129,9 @@ const coldHealth: TaskDeploymentRuntimeHealth = {
   ],
   keep_warm: { enabled: true },
   local_buffer_broker: { pool_name: 'default' },
+  requested_runtime_configuration: {},
+  effective_runtime_configuration: {},
+  configuration_warnings: [],
 }
 
 const warmHealth: TaskDeploymentRuntimeHealth = {
@@ -121,6 +148,35 @@ const event: TaskDeploymentProcessEvent = {
   created_at: '2026-07-10T01:01:00Z',
   message: 'runtime process started',
   payload: {},
+}
+
+const runtimeCapabilities: DeploymentRuntimeCapabilities = {
+  runtime_backend: 'openvino',
+  device_name: 'cpu',
+  available: true,
+  hardware: {
+    cpu_physical_core_count: 8,
+    cpu_logical_processor_count: 16,
+  },
+  supported_backend_fields: [
+    'performance_hint',
+    'inference_num_threads',
+    'num_streams',
+  ],
+  read_only_properties: {},
+  default_runtime_configuration: {
+    ...runtimeConfiguration(1),
+    backend_options: {
+      kind: 'openvino-cpu',
+      performance_hint: 'latency',
+      inference_num_threads: 8,
+      num_streams: 1,
+      scheduling_core_type: 'auto',
+      enable_hyper_threading: 'auto',
+      enable_cpu_pinning: 'auto',
+    },
+  },
+  warnings: [],
 }
 
 const latestEvent: TaskDeploymentProcessEvent = {
@@ -211,6 +267,7 @@ describe('DeploymentOperationsPage', () => {
       }),
     )
     vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event])
+    vi.mocked(getDeploymentRuntimeCapabilities).mockResolvedValue(runtimeCapabilities)
   })
 
   afterEach(() => {

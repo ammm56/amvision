@@ -4,13 +4,20 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from backend.service.application.deployments.detection_deployment_service import DetectionDeploymentInstanceView
-from backend.service.application.runtime.deployment.deployment_events import DetectionDeploymentProcessEvent
+from backend.service.application.deployments.detection_deployment_service import (
+    DetectionDeploymentInstanceView,
+)
+from backend.service.application.runtime.deployment.deployment_events import (
+    DetectionDeploymentProcessEvent,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
     DeploymentProcessKeepWarmStatus,
     DeploymentProcessStatus,
+)
+from backend.service.api.rest.v1.routes.task_deployments.runtime_configuration_schemas import (
+    DeploymentRuntimeConfigurationBody,
 )
 
 
@@ -28,12 +35,16 @@ class DetectionDeploymentInstanceResponse(BaseModel):
     model_scale: str = Field(description="模型 scale")
     task_type: str = Field(description="任务类型")
     source_kind: str = Field(description="ModelVersion 来源类型")
-    runtime_profile_id: str | None = Field(default=None, description="RuntimeProfile id")
+    runtime_profile_id: str | None = Field(
+        default=None, description="RuntimeProfile id"
+    )
     runtime_backend: str = Field(description="运行时 backend")
     device_name: str = Field(description="默认 device 名称")
     runtime_precision: str = Field(description="运行时 precision")
-    runtime_execution_mode: str = Field(description="公开展示的 backend:precision:device 运行模式")
-    instance_count: int = Field(description="实例化数量")
+    runtime_execution_mode: str = Field(
+        description="公开展示的 backend:precision:device 运行模式"
+    )
+    runtime_configuration: DeploymentRuntimeConfigurationBody
     input_size: tuple[int, int] = Field(description="默认输入尺寸")
     labels: tuple[str, ...] = Field(description="类别列表")
     created_at: str = Field(description="创建时间")
@@ -55,17 +66,39 @@ class DetectionDeploymentRuntimeInstanceHealthResponse(BaseModel):
 class DetectionDeploymentProcessKeepWarmResponse(BaseModel):
     """描述 deployment 子进程内 keep-warm 的当前状态。"""
 
-    enabled: bool = Field(default=False, description="当前 deployment 是否启用 keep-warm")
-    activated: bool = Field(default=False, description="keep-warm 是否已经被 warmup 或真实推理激活")
-    paused: bool = Field(default=False, description="当前是否因为控制面动作或真实请求而暂停")
-    idle: bool = Field(default=True, description="当前是否没有 keep-warm dummy infer 正在执行")
-    interval_seconds: float = Field(default=0.0, description="keep-warm 连续 dummy infer 的最小间隔秒数")
-    yield_timeout_seconds: float = Field(default=0.0, description="真实请求等待 keep-warm 让出的最长秒数")
-    success_count: int = Field(default=0, description="keep-warm 成功次数当前安全整数窗口值")
-    success_count_rollover_count: int = Field(default=0, description="success_count rollover 次数")
-    error_count: int = Field(default=0, description="keep-warm 失败次数当前安全整数窗口值")
-    error_count_rollover_count: int = Field(default=0, description="error_count rollover 次数")
-    last_error: str | None = Field(default=None, description="最近一次 keep-warm 失败错误")
+    enabled: bool = Field(
+        default=False, description="当前 deployment 是否启用 keep-warm"
+    )
+    activated: bool = Field(
+        default=False, description="keep-warm 是否已经被 warmup 或真实推理激活"
+    )
+    paused: bool = Field(
+        default=False, description="当前是否因为控制面动作或真实请求而暂停"
+    )
+    idle: bool = Field(
+        default=True, description="当前是否没有 keep-warm dummy infer 正在执行"
+    )
+    interval_seconds: float = Field(
+        default=0.0, description="keep-warm 连续 dummy infer 的最小间隔秒数"
+    )
+    yield_timeout_seconds: float = Field(
+        default=0.0, description="真实请求等待 keep-warm 让出的最长秒数"
+    )
+    success_count: int = Field(
+        default=0, description="keep-warm 成功次数当前安全整数窗口值"
+    )
+    success_count_rollover_count: int = Field(
+        default=0, description="success_count rollover 次数"
+    )
+    error_count: int = Field(
+        default=0, description="keep-warm 失败次数当前安全整数窗口值"
+    )
+    error_count_rollover_count: int = Field(
+        default=0, description="error_count rollover 次数"
+    )
+    last_error: str | None = Field(
+        default=None, description="最近一次 keep-warm 失败错误"
+    )
 
 
 class DetectionDeploymentProcessStatusResponse(BaseModel):
@@ -79,19 +112,28 @@ class DetectionDeploymentProcessStatusResponse(BaseModel):
     process_id: int | None = Field(default=None, description="当前子进程 pid")
     auto_restart: bool = Field(description="是否启用崩溃自动拉起")
     restart_count: int = Field(description="已经发生的自动拉起次数当前安全整数窗口值")
-    restart_count_rollover_count: int = Field(default=0, description="restart_count rollover 次数")
+    restart_count_rollover_count: int = Field(
+        default=0, description="restart_count rollover 次数"
+    )
     last_exit_code: int | None = Field(default=None, description="最近一次退出码")
     last_error: str | None = Field(default=None, description="最近一次监督错误")
     instance_count: int = Field(description="实例数量")
 
 
-class DetectionDeploymentRuntimeHealthResponse(DetectionDeploymentProcessStatusResponse):
+class DetectionDeploymentRuntimeHealthResponse(
+    DetectionDeploymentProcessStatusResponse
+):
     """描述 detection deployment 子进程与实例池的详细健康视图。"""
 
     healthy_instance_count: int = Field(description="健康实例数量")
     warmed_instance_count: int = Field(description="已预热实例数量")
-    pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
-    instances: list[DetectionDeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
+    pinned_output_total_bytes: int = Field(
+        default=0,
+        description="当前所有已加载 session 的 pinned output host buffer 总字节数",
+    )
+    instances: list[DetectionDeploymentRuntimeInstanceHealthResponse] = Field(
+        default_factory=list, description="实例级健康状态列表"
+    )
     keep_warm: DetectionDeploymentProcessKeepWarmResponse = Field(
         default_factory=DetectionDeploymentProcessKeepWarmResponse,
         description="keep-warm 运行状态",
@@ -100,6 +142,9 @@ class DetectionDeploymentRuntimeHealthResponse(DetectionDeploymentProcessStatusR
         default_factory=dict,
         description="LocalBufferBroker 接入状态、输入计数和最近错误",
     )
+    requested_runtime_configuration: dict[str, object] = Field(default_factory=dict)
+    effective_runtime_configuration: dict[str, object] = Field(default_factory=dict)
+    configuration_warnings: list[str] = Field(default_factory=list)
 
 
 class DetectionDeploymentProcessEventResponse(BaseModel):
@@ -111,7 +156,9 @@ class DetectionDeploymentProcessEventResponse(BaseModel):
     event_type: str = Field(description="事件类型")
     created_at: str = Field(description="事件发生时间")
     message: str = Field(description="事件摘要消息")
-    payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
+    payload: dict[str, object] = Field(
+        default_factory=dict, description="结构化事件正文"
+    )
 
 
 def build_detection_deployment_instance_response(
@@ -136,7 +183,9 @@ def build_detection_deployment_instance_response(
         device_name=view.device_name,
         runtime_precision=view.runtime_precision,
         runtime_execution_mode=view.runtime_execution_mode,
-        instance_count=view.instance_count,
+        runtime_configuration=DeploymentRuntimeConfigurationBody.from_domain(
+            view.runtime_configuration
+        ),
         input_size=view.input_size,
         labels=view.labels,
         created_at=view.created_at,
@@ -192,9 +241,19 @@ def build_detection_runtime_health_response(
         healthy_instance_count=process_health.healthy_instance_count,
         warmed_instance_count=process_health.warmed_instance_count,
         pinned_output_total_bytes=process_health.pinned_output_total_bytes,
-        instances=[build_detection_runtime_instance_health_response(item) for item in process_health.instances],
+        instances=[
+            build_detection_runtime_instance_health_response(item)
+            for item in process_health.instances
+        ],
         keep_warm=build_detection_keep_warm_response(process_health.keep_warm),
         local_buffer_broker=dict(process_health.local_buffer_broker),
+        requested_runtime_configuration=dict(
+            process_health.requested_runtime_configuration
+        ),
+        effective_runtime_configuration=dict(
+            process_health.effective_runtime_configuration
+        ),
+        configuration_warnings=list(process_health.configuration_warnings),
     )
 
 

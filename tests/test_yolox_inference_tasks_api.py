@@ -11,8 +11,12 @@ import backend.service.application.models.inference.detection_inference_task_ser
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.object_store.object_key_layout import (
+    build_public_project_file_id,
+)
 from backend.workers.inference.detection_inference_queue_worker import (
     DetectionInferenceQueueWorker,
 )
@@ -23,7 +27,9 @@ from tests.yolox_test_support import (
 )
 
 
-_VALID_TEST_IMAGE_BASE64 = base64.b64encode(build_valid_test_png_bytes()).decode("ascii")
+_VALID_TEST_IMAGE_BASE64 = base64.b64encode(build_valid_test_png_bytes()).decode(
+    "ascii"
+)
 _PROJECT_INFERENCE_INPUT_URI = "projects/project-1/inputs/inference/inference-image.jpg"
 
 
@@ -33,7 +39,9 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
 ) -> None:
     """验证正式推理任务可以创建、执行，并返回 detail 与 result。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -65,8 +73,16 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
                 "backend_name": "pytorch",
                 "model_uri": "projects/project-1/models/deployment-source-1/artifacts/checkpoints/best_ckpt.pth",
                 "device_name": "cpu",
-                "input_spec": {"name": "images", "shape": [1, 3, 64, 64], "dtype": "float32"},
-                "output_spec": {"name": "detections", "shape": [-1, 7], "dtype": "float32"},
+                "input_spec": {
+                    "name": "images",
+                    "shape": [1, 3, 64, 64],
+                    "dtype": "float32",
+                },
+                "output_spec": {
+                    "name": "detections",
+                    "shape": [-1, 7],
+                    "dtype": "float32",
+                },
                 "metadata": {"model_version_id": model_version_id},
             },
         )
@@ -92,7 +108,9 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -117,13 +135,19 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             task_id = submission["task_id"]
             assert submission["input_source_kind"] == "input_uri"
 
-            task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=False)
-            runtime_target_snapshot = task_detail.task.task_spec.get("runtime_target_snapshot")
+            task_detail = SqlAlchemyTaskService(session_factory).get_task(
+                task_id, include_events=False
+            )
+            runtime_target_snapshot = task_detail.task.task_spec.get(
+                "runtime_target_snapshot"
+            )
             assert isinstance(runtime_target_snapshot, dict)
             assert runtime_target_snapshot["model_version_id"] == model_version_id
 
             def fail_if_resolve_inference_target(*_args, **_kwargs):
-                raise AssertionError("worker 不应在执行阶段重新解析 deployment runtime target")
+                raise AssertionError(
+                    "worker 不应在执行阶段重新解析 deployment runtime target"
+                )
 
             monkeypatch.setattr(
                 detection_inference_task_service_module.SqlAlchemyDetectionDeploymentService,
@@ -148,7 +172,9 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             detail_payload = detail_response.json()
             assert detail_payload["state"] == "succeeded"
             assert detail_payload["deployment_instance_id"] == deployment_instance_id
-            assert detail_payload["instance_id"] == "deployment-instance-test:instance-0"
+            assert (
+                detail_payload["instance_id"] == "deployment-instance-test:instance-0"
+            )
             assert detail_payload["detection_count"] == 1
             assert detail_payload["latency_ms"] == 8.5
 
@@ -159,14 +185,27 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             assert result_response.status_code == 200
             result_payload = result_response.json()
             assert result_payload["file_status"] == "ready"
-            assert result_payload["payload"]["instance_id"] == "deployment-instance-test:instance-0"
+            assert (
+                result_payload["payload"]["instance_id"]
+                == "deployment-instance-test:instance-0"
+            )
             assert result_payload["payload"]["detections"][0]["class_name"] == "bolt"
             assert result_payload["payload"]["input_source_kind"] == "input_uri"
-            assert result_payload["payload"]["preview_image_uri"].endswith("preview.jpg")
+            assert result_payload["payload"]["preview_image_uri"].endswith(
+                "preview.jpg"
+            )
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "detection inference started" for event in task_detail.events)
-        assert any(event.message == "detection inference completed" for event in task_detail.events)
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            task_id, include_events=True
+        )
+        assert any(
+            event.message == "detection inference started"
+            for event in task_detail.events
+        )
+        assert any(
+            event.message == "detection inference completed"
+            for event in task_detail.events
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -177,7 +216,9 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
 ) -> None:
     """验证正式推理任务可以直接消费 Project 公开文件 id。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -207,8 +248,16 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
                 "backend_name": "pytorch",
                 "model_uri": "projects/project-1/models/deployment-source-1/artifacts/checkpoints/best_ckpt.pth",
                 "device_name": "cpu",
-                "input_spec": {"name": "images", "shape": [1, 3, 64, 64], "dtype": "float32"},
-                "output_spec": {"name": "detections", "shape": [-1, 7], "dtype": "float32"},
+                "input_spec": {
+                    "name": "images",
+                    "shape": [1, 3, 64, 64],
+                    "dtype": "float32",
+                },
+                "output_spec": {
+                    "name": "detections",
+                    "shape": [-1, 7],
+                    "dtype": "float32",
+                },
                 "metadata": {"model_version_id": model_version_id},
             },
         )
@@ -234,7 +283,9 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -258,7 +309,9 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
             assert submission["input_source_kind"] == "input_file_id"
             assert submission["input_uri"] == input_object_key
 
-            task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=False)
+            task_detail = SqlAlchemyTaskService(session_factory).get_task(
+                task_id, include_events=False
+            )
             assert task_detail.task.task_spec["input_file_id"] == input_file_id
             assert task_detail.task.task_spec["input_uri"] == input_object_key
 
@@ -283,7 +336,9 @@ def test_async_inference_task_accepts_base64_input(
 ) -> None:
     """验证正式推理任务支持 image_base64 输入，并走 async runtime pool。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -309,7 +364,9 @@ def test_async_inference_task_accepts_base64_input(
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -355,7 +412,9 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
 ) -> None:
     """验证异步推理任务的 memory 模式会把 base64 图片字节跨进程传到 async deployment。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -379,18 +438,25 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
                     "model_type": "yolox",
                     "model_version_id": model_version_id,
                     "display_name": "yolox inference memory base64 deployment",
-                    "metadata": {
-                        "deployment_process": {
+                    "runtime_configuration": {
+                        "execution": {
+                            "instance_count": 1,
+                            "isolation_level": "session",
+                            "overflow_policy": "reject",
+                            "performance_goal": "latency",
+                        },
+                        "lifecycle": {
                             "keep_warm_enabled": True,
                             "keep_warm_interval_seconds": 0.1,
-                            "tensorrt_pinned_output_buffer_enabled": True,
-                            "tensorrt_pinned_output_buffer_max_bytes": 8388608,
-                        }
+                        },
+                        "backend_options": {"kind": "default"},
                     },
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -416,15 +482,19 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
             assert submission["input_source_kind"] == "image_base64"
             assert submission["input_uri"].startswith("memory://")
 
-            task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=False)
+            task_detail = SqlAlchemyTaskService(session_factory).get_task(
+                task_id, include_events=False
+            )
             assert task_detail.task.task_spec["input_transport_mode"] == "memory"
             assert (
                 task_detail.task.task_spec["async_inference_owner_id"]
                 == client.app.state.detection_async_inference_service_id
             )
-            runtime_behavior = task_detail.task.task_spec["runtime_behavior"]
-            assert runtime_behavior["keep_warm_enabled"] is True
-            assert runtime_behavior["keep_warm_interval_seconds"] == 0.1
+            runtime_configuration = task_detail.task.task_spec["runtime_configuration"]
+            assert runtime_configuration["lifecycle"]["keep_warm_enabled"] is True
+            assert (
+                runtime_configuration["lifecycle"]["keep_warm_interval_seconds"] == 0.1
+            )
             restored_process_config = detection_inference_task_service_module.SqlAlchemyDetectionInferenceTaskService(
                 session_factory=session_factory,
                 dataset_storage=dataset_storage,
@@ -432,8 +502,14 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
                 task_record=task_detail.task,
                 dataset_storage=dataset_storage,
             )
-            assert restored_process_config.runtime_behavior.keep_warm_enabled is True
-            assert restored_process_config.runtime_behavior.keep_warm_interval_seconds == 0.1
+            assert (
+                restored_process_config.runtime_configuration.lifecycle.keep_warm_enabled
+                is True
+            )
+            assert (
+                restored_process_config.runtime_configuration.lifecycle.keep_warm_interval_seconds
+                == 0.1
+            )
             normalized_input = task_detail.task.task_spec.get("normalized_input")
             assert isinstance(normalized_input, dict)
             assert normalized_input["input_transport_mode"] == "memory"
@@ -452,7 +528,10 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
         assert payload["input_uri"].startswith("memory://")
         assert payload["preview_image_base64"] is not None
         assert async_supervisor.inference_requests[-1].input_uri is None
-        assert async_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
+        assert (
+            async_supervisor.inference_requests[-1].input_image_bytes
+            == _build_valid_test_image_bytes()
+        )
         assert not runtime_input_dir.exists()
     finally:
         session_factory.engine.dispose()
@@ -463,7 +542,9 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
 ) -> None:
     """验证异步推理任务的 memory 模式可以直接处理 multipart 上传图片，而不会写临时输入文件。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -490,7 +571,9 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -508,7 +591,13 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
                     "input_transport_mode": "memory",
                     "return_preview_image_base64": "true",
                 },
-                files={"input_image": ("upload.png", _build_valid_test_image_bytes(), "image/png")},
+                files={
+                    "input_image": (
+                        "upload.png",
+                        _build_valid_test_image_bytes(),
+                        "image/png",
+                    )
+                },
             )
             assert create_response.status_code == 202
             submission = create_response.json()
@@ -529,7 +618,10 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
         assert payload["input_uri"].startswith("memory://")
         assert payload["preview_image_base64"] is not None
         assert async_supervisor.inference_requests[-1].input_uri is None
-        assert async_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
+        assert (
+            async_supervisor.inference_requests[-1].input_image_bytes
+            == _build_valid_test_image_bytes()
+        )
         assert not runtime_input_dir.exists()
     finally:
         session_factory.engine.dispose()
@@ -540,7 +632,9 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
 ) -> None:
     """验证同步直返推理支持 base64 输入，并按简单轮转选择实例。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -556,14 +650,28 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
                     "project_id": "project-1",
                     "model_type": "yolox",
                     "model_version_id": model_version_id,
-                    "instance_count": 2,
+                    "runtime_configuration": {
+                        "execution": {
+                            "instance_count": 2,
+                            "isolation_level": "session",
+                            "overflow_policy": "reject",
+                            "performance_goal": "latency",
+                        },
+                        "lifecycle": {},
+                        "backend_options": {"kind": "default"},
+                    },
                     "display_name": "direct inference deployment",
                 },
             )
             assert deployment_response.status_code == 201
             deployment_payload = deployment_response.json()
             deployment_instance_id = deployment_payload["deployment_instance_id"]
-            assert deployment_payload["instance_count"] == 2
+            assert (
+                deployment_payload["runtime_configuration"]["execution"][
+                    "instance_count"
+                ]
+                == 2
+            )
 
             start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -626,7 +734,9 @@ def test_direct_inference_accepts_base64_and_round_robins_instances(
 def test_direct_inference_accepts_public_project_file_id(tmp_path: Path) -> None:
     """验证同步直返推理可以直接消费 Project 公开文件 id。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -652,7 +762,9 @@ def test_direct_inference_accepts_public_project_file_id(tmp_path: Path) -> None
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -682,7 +794,9 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
 ) -> None:
     """验证同步推理的 memory 模式会直接把 base64 图片字节送入 deployment，而不会写输入文件或 raw-result。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -708,7 +822,9 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -736,7 +852,10 @@ def test_direct_inference_memory_transport_uses_in_memory_base64_bytes(
         assert payload["result_object_key"] is None
         assert payload["preview_image_base64"] is not None
         assert sync_supervisor.inference_requests[-1].input_uri is None
-        assert sync_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
+        assert (
+            sync_supervisor.inference_requests[-1].input_image_bytes
+            == _build_valid_test_image_bytes()
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -746,7 +865,9 @@ def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_bre
 ) -> None:
     """验证 data URI 形式可用，损坏图片会返回 invalid_request，且不会影响后续推理。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -765,7 +886,9 @@ def test_direct_inference_accepts_data_uri_and_rejects_invalid_image_without_bre
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -808,7 +931,9 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
 ) -> None:
     """验证同步推理的 memory 模式可以直接处理 multipart 上传图片，而不会写输入文件或 raw-result。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -834,7 +959,9 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -853,7 +980,13 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
                     "save_result_image": "false",
                     "return_preview_image_base64": "true",
                 },
-                files={"input_image": ("upload.png", _build_valid_test_image_bytes(), "image/png")},
+                files={
+                    "input_image": (
+                        "upload.png",
+                        _build_valid_test_image_bytes(),
+                        "image/png",
+                    )
+                },
             )
 
         assert response.status_code == 200
@@ -863,15 +996,22 @@ def test_direct_inference_memory_transport_accepts_multipart_without_input_disk_
         assert payload["result_object_key"] is None
         assert payload["preview_image_base64"] is not None
         assert sync_supervisor.inference_requests[-1].input_uri is None
-        assert sync_supervisor.inference_requests[-1].input_image_bytes == _build_valid_test_image_bytes()
+        assert (
+            sync_supervisor.inference_requests[-1].input_image_bytes
+            == _build_valid_test_image_bytes()
+        )
     finally:
         session_factory.engine.dispose()
 
 
-def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Path) -> None:
+def test_create_yolox_inference_task_requires_running_async_process(
+    tmp_path: Path,
+) -> None:
     """验证 inference task 创建前必须先启动 async deployment 子进程。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -891,7 +1031,9 @@ def test_create_yolox_inference_task_requires_running_async_process(tmp_path: Pa
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             create_response = client.post(
                 "/api/v1/models/detection/inference-tasks",
@@ -917,7 +1059,9 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
 ) -> None:
     """验证 multipart 推理任务使用独立的 async deployment 进程。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -945,7 +1089,9 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             sync_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
@@ -976,7 +1122,13 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
                     "deployment_instance_id": deployment_instance_id,
                     "return_preview_image_base64": "true",
                 },
-                files={"input_image": ("upload.png", _build_valid_test_image_bytes(), "image/png")},
+                files={
+                    "input_image": (
+                        "upload.png",
+                        _build_valid_test_image_bytes(),
+                        "image/png",
+                    )
+                },
             )
             assert create_response.status_code == 202
             submission = create_response.json()
@@ -1003,7 +1155,9 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
 def test_direct_inference_rejects_multiple_input_sources(tmp_path: Path) -> None:
     """验证同步推理会拒绝同时提供多个输入来源。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1020,7 +1174,9 @@ def test_direct_inference_rejects_multiple_input_sources(tmp_path: Path) -> None
                 },
             )
             assert deployment_response.status_code == 201
-            deployment_instance_id = deployment_response.json()["deployment_instance_id"]
+            deployment_instance_id = deployment_response.json()[
+                "deployment_instance_id"
+            ]
 
             response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/infer",
@@ -1047,7 +1203,12 @@ def _create_test_client(
         database_name="amvision-inference-api.db",
         attach_fake_deployment_supervisors=True,
     )
-    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
+    return (
+        context.client,
+        context.session_factory,
+        context.dataset_storage,
+        context.queue_backend,
+    )
 
 
 def _build_valid_test_image_bytes() -> bytes:
@@ -1097,4 +1258,3 @@ def _build_model_read_headers() -> dict[str, str]:
     """构建具备 models:read 的测试请求头。"""
 
     return build_test_headers(scopes="models:read")
-

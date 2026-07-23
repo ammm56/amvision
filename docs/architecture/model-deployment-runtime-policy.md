@@ -15,16 +15,23 @@
 
 ## 当前状态
 
-截至 2026-07-23，本文档描述的是目标设计和实施约束，不表示相关字段已经进入公开 API 或前端。
+截至 2026-07-23，第一阶段运行时配置已经进入公开 API、workflow service node、deployment 子进程、runtime adapter 和 Vue 3 发布界面。
 
-当前实现仍有下面这些限制：
+当前已经完成：
 
-- `DeploymentInstance` 主要通过 `instance_count` 表达实例数量。
-- deployment runtime pool 为每个实例分别延迟加载一个模型 session；同一 deployment 的这些 session 位于同一个 deployment 子进程中。
-- OpenVINO FP32 predictor 通常不传性能属性，由 OpenVINO 按设备和模型使用默认配置；FP16 路径主要传 `inference_precision`。
-- TensorRT session 当前分别反序列化 engine、创建一个 execution context 和一个 CUDA stream。
-- TensorRT 当前公开运行设置主要覆盖 pinned output host buffer，没有正式拆分 engine 副本、execution context、CUDA stream、CUDA Graph 和 optimization profile。
-- 当前实现不能把 `instance_count` 等同于进程数，也不能据此宣称单个实例崩溃不会影响同一 deployment 中的其他实例。
+- `DeploymentInstance.runtime_configuration` 已拆分 `execution`、`lifecycle` 和带 `kind` 判别字段的 `backend_options`。
+- 旧 `instance_count` 数据列和 metadata 中的 `deployment_process` 运行配置入口已经移除；迁移会删除旧 deployment 记录，不解释旧数据。
+- OpenVINO CPU、GPU、NPU、AUTO 通过统一 compile adapter 应用设备专属属性，并在 health 中返回 requested、effective 和 warnings。
+- TensorRT 通过统一 helper 校验并激活 `optimization_profile_index`，pinned output buffer 仍是明确的 session 运行参数。
+- capability API 按当前机器和 OpenVINO plugin 的 `SUPPORTED_PROPERTIES` 返回可用字段、设备信息和发布默认值。
+- 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。
+- 进程级 CPU device resource manager 汇总全部 supervisor 中正在运行的 OpenVINO CPU deployment；线程预算超出当前物理核心数时只告警，不拒绝创建、启动或运行。
+
+当前仍有下面这些限制：
+
+- `isolation_level` 当前只支持 `session`；一个 deployment 的多个 session 仍位于同一个 deployment 子进程中。
+- TensorRT 的 engine 共享、多 execution context、CUDA Graph 和 device memory 策略尚未作为独立字段进入公开配置。
+- 多个独立后端服务进程或 workflow worker 之间的机器级统一资源账本仍是后续工作；当前 manager 的全局边界是单个服务进程。
 
 后续实现必须先在共享 deployment/runtime contract 中形成统一边界，再由各模型 predictor 适配；不得只在单个 YOLO 或 RF-DETR predictor 中增加孤立字段。
 
@@ -38,7 +45,7 @@
 4. OpenVINO `num_streams` 在 CPU 和 GPU 上可配置；NPU 是否可写必须以目标机器插件返回的 `supported_properties` 为准，当前 OpenVINO NPU 文档将其列为只读结果。
 5. TensorRT 使用 engine、execution context 和 CUDA stream 表达运行并发，不能复用 OpenVINO 字段名掩盖不同语义。
 6. TensorRT engine 构建参数与部署运行参数必须分开保存；运行期不能假装修改已经固化到 engine 的构建选项。
-7. 默认配置使用 `auto` 或空值表达“在目标机器解析”，不能把开发机器物理核心数固化为跨机器默认值。
+7. OpenVINO CPU 新建发布的默认线程数取创建时主机物理核心数并作为 requested 值保存；`auto` 仍可显式选择。硬件变化只改变诊断结论，不构成启动失败条件。
 8. 运行状态同时返回请求值和实际生效值，现场性能分析不得只读取创建请求。
 9. CPU、GPU 或 NPU 的资源估算用于提示和诊断，不得仅因目标机器核心数或计算单元数量变化而拒绝创建、启动或运行。
 10. 工业同步推理默认保持立即执行、立即返回结果的调用边界；本规划不引入内部等待队列，不自动把 workflow 的多次同步调用合并成 list、batch 或隐藏队列，也不自动改写显式并行分支。
@@ -97,8 +104,8 @@ effective:
 
 从 16 核机器迁移到 6 核机器时：
 
-- `requested=auto` 保持不变
-- `effective` 在新机器重新解析
+- `requested=auto` 时由新机器重新解析
+- requested 为显式线程数时保持该值，并在超出新机器物理核心预算时返回告警
 - 不因核心数变化拒绝启动
 - 健康状态和诊断结果明确显示新的实际值
 
@@ -109,7 +116,7 @@ effective:
 | 参数或概念 | 所属层次 | OpenVINO CPU | OpenVINO GPU | OpenVINO NPU | TensorRT |
 | --- | --- | --- | --- | --- | --- |
 | `instance_count` | 平台部署策略 | 支持 | 支持 | 支持 | 支持 |
-| `isolation_level` | 平台部署策略 | 规划 | 规划 | 规划 | 规划 |
+| `isolation_level` | 平台部署策略 | `session` 已实现 | `session` 已实现 | `session` 已实现 | `session` 已实现 |
 | `performance_goal` | 平台通用意图 | 可映射 | 可映射 | 可映射 | 只能形成推荐配置 |
 | `performance_hint` | OpenVINO高层属性 | 支持 | 支持 | 支持 | 不适用 |
 | `inference_num_threads` | OpenVINO CPU低层属性 | 支持 | 不适用 | 不适用 | 不适用 |
@@ -140,7 +147,7 @@ OpenVINO CPU 的常用运行参数包括：
 - `scheduling_core_type` 用于 P-core / E-core 混合处理器。
 - `enable_hyper_threading` 和 `enable_cpu_pinning` 的默认行为与平台、核心类型和性能目标有关。
 
-CPU 发布表单可以提供“自动”和显式线程数，但默认保存值应为 `auto`。前端可以显示“自动，当前设备预计 8”，不能把探测值 8 当作可移植默认值落库。
+CPU 发布表单提供“自动”和显式线程数。新建发布默认填入当前机器物理核心数并落库，以便现场节拍测试具有明确 requested 值；需要跨硬件自动重算时可主动选择 `auto`。迁移到不同 CPU 后不自动改写已保存值，也不因此拒绝运行。
 
 下面的计算只能用于诊断：
 

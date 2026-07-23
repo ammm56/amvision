@@ -5,7 +5,13 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.predictors.yolov8.obb.backend import (
     ensure_yolov8_obb_cuda_success,
     get_yolov8_obb_tensorrt_logger,
@@ -49,7 +55,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.settings import get_backend_service_settings
 
 
@@ -84,7 +92,9 @@ class TensorRTYoloV8ObbRuntimeSession:
     ) -> None:
         """初始化 TensorRT YOLOv8 OBB 会话。"""
 
-        deployment_settings = get_backend_service_settings().deployment_process_supervisor
+        deployment_settings = (
+            get_backend_service_settings().deployment_process_supervisor
+        )
         if pinned_output_buffer_enabled is None:
             pinned_output_buffer_enabled = bool(
                 deployment_settings.tensorrt_pinned_output_buffer_enabled
@@ -110,7 +120,9 @@ class TensorRTYoloV8ObbRuntimeSession:
         self.execute_start_event = execute_start_event
         self.execute_end_event = execute_end_event
         self.pinned_output_buffer_enabled = bool(pinned_output_buffer_enabled)
-        self.pinned_output_buffer_max_bytes = max(0, int(pinned_output_buffer_max_bytes))
+        self.pinned_output_buffer_max_bytes = max(
+            0, int(pinned_output_buffer_max_bytes)
+        )
         self.input_device_ptr: int | None = None
         self.output_device_ptr: int | None = None
         self.input_capacity_bytes = 0
@@ -128,6 +140,7 @@ class TensorRTYoloV8ObbRuntimeSession:
         runtime_target: RuntimeTargetSnapshot,
         pinned_output_buffer_enabled: bool | None = None,
         pinned_output_buffer_max_bytes: int | None = None,
+        optimization_profile_index: int = 0,
     ) -> "TensorRTYoloV8ObbRuntimeSession":
         """加载一套 TensorRT YOLOv8 OBB 会话。"""
 
@@ -148,7 +161,9 @@ class TensorRTYoloV8ObbRuntimeSession:
             requested_device_name=runtime_target.device_name,
         )
         ensure_yolov8_obb_cuda_success(
-            imports.cudart.cudaSetDevice(resolve_yolov8_obb_cuda_device_index(device_name)),
+            imports.cudart.cudaSetDevice(
+                resolve_yolov8_obb_cuda_device_index(device_name)
+            ),
             operation_name="TensorRT OBB runtime 切换 CUDA device",
             details={"device_name": device_name},
         )
@@ -157,7 +172,9 @@ class TensorRTYoloV8ObbRuntimeSession:
             severity=tensorrt_module.Logger.WARNING,
         )
         runtime = tensorrt_module.Runtime(logger)
-        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        engine = runtime.deserialize_cuda_engine(
+            runtime_target.runtime_artifact_path.read_bytes()
+        )
         if engine is None:
             raise ServiceConfigurationError(
                 "TensorRT OBB engine 反序列化失败",
@@ -174,6 +191,12 @@ class TensorRTYoloV8ObbRuntimeSession:
             operation_name="TensorRT OBB runtime 创建复用 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = ensure_yolov8_obb_cuda_success(
             imports.cudart.cudaEventCreate(),
             operation_name="TensorRT OBB runtime 创建执行起点 event",
@@ -225,7 +248,9 @@ class TensorRTYoloV8ObbRuntimeSession:
             pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
         )
 
-    def predict(self, request: YoloV8ObbPredictionRequest) -> YoloV8ObbPredictionExecutionResult:
+    def predict(
+        self, request: YoloV8ObbPredictionRequest
+    ) -> YoloV8ObbPredictionExecutionResult:
         """执行一次 TensorRT YOLOv8 OBB 预测。"""
 
         decode_started_at = perf_counter()
@@ -262,7 +287,9 @@ class TensorRTYoloV8ObbRuntimeSession:
 
         infer_started_at = perf_counter()
         ensure_yolov8_obb_cuda_success(
-            self.imports.cudart.cudaSetDevice(resolve_yolov8_obb_cuda_device_index(self.device_name)),
+            self.imports.cudart.cudaSetDevice(
+                resolve_yolov8_obb_cuda_device_index(self.device_name)
+            ),
             operation_name="TensorRT OBB runtime 绑定 CUDA device",
             details={"device_name": self.device_name},
         )
@@ -281,7 +308,10 @@ class TensorRTYoloV8ObbRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT OBB runtime 拷贝输入到显存",
-            details={"input_name": self.input_name, "byte_size": int(input_array.nbytes)},
+            details={
+                "input_name": self.input_name,
+                "byte_size": int(input_array.nbytes),
+            },
         )
         self._bind_io_tensor_addresses()
         ensure_yolov8_obb_cuda_success(
@@ -308,7 +338,10 @@ class TensorRTYoloV8ObbRuntimeSession:
                 self.stream,
             ),
             operation_name="TensorRT OBB runtime 拷贝输出到主存",
-            details={"output_name": self.output_name, "byte_size": int(output_array.nbytes)},
+            details={
+                "output_name": self.output_name,
+                "byte_size": int(output_array.nbytes),
+            },
         )
         ensure_yolov8_obb_cuda_success(
             self.imports.cudart.cudaStreamSynchronize(self.stream),
@@ -401,27 +434,39 @@ class TensorRTYoloV8ObbRuntimeSession:
         except Exception:
             return
         if self.input_device_ptr is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaFree(self.input_device_ptr))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaFree(self.input_device_ptr)
+            )
             self.input_device_ptr = None
             self.input_capacity_bytes = 0
         if self.output_device_ptr is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaFree(self.output_device_ptr))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaFree(self.output_device_ptr)
+            )
             self.output_device_ptr = None
             self.output_capacity_bytes = 0
         if self.output_host_ptr is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+            )
             self.output_host_ptr = None
             self.output_host_capacity_bytes = 0
             self.output_host_array = None
         self.output_host_memory_kind = "pageable"
         if self.stream is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaStreamDestroy(self.stream))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaStreamDestroy(self.stream)
+            )
             self.stream = None
         if self.execute_start_event is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_start_event))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaEventDestroy(self.execute_start_event)
+            )
             self.execute_start_event = None
         if self.execute_end_event is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaEventDestroy(self.execute_end_event))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaEventDestroy(self.execute_end_event)
+            )
             self.execute_end_event = None
         self.output_host_array = None
 
@@ -432,7 +477,10 @@ class TensorRTYoloV8ObbRuntimeSession:
         if self.output_host_array is not None:
             output_host_buffer_bytes = int(self.output_host_array.nbytes)
         output_host_pinned_bytes = 0
-        if self.output_host_memory_kind == "pinned" and self.output_host_ptr is not None:
+        if (
+            self.output_host_memory_kind == "pinned"
+            and self.output_host_ptr is not None
+        ):
             output_host_pinned_bytes = int(self.output_host_capacity_bytes)
         return {
             "output_host_memory_kind": self.output_host_memory_kind,
@@ -442,14 +490,18 @@ class TensorRTYoloV8ObbRuntimeSession:
             "output_host_pinned_max_bytes": self.pinned_output_buffer_max_bytes,
         }
 
-    def _set_or_validate_input_shape(self, requested_input_shape: tuple[int, ...]) -> None:
+    def _set_or_validate_input_shape(
+        self, requested_input_shape: tuple[int, ...]
+    ) -> None:
         """设置或校验 TensorRT execution context 输入 shape。"""
 
         engine_input_shape = normalize_yolov8_obb_tensor_shape(
             self.engine.get_tensor_shape(self.input_name)
         )
         if any(dim < 0 for dim in engine_input_shape):
-            shape_set_result = self.context.set_input_shape(self.input_name, requested_input_shape)
+            shape_set_result = self.context.set_input_shape(
+                self.input_name, requested_input_shape
+            )
             if shape_set_result is not True:
                 raise ServiceConfigurationError(
                     "TensorRT OBB execution context 设置输入 shape 失败",
@@ -473,19 +525,36 @@ class TensorRTYoloV8ObbRuntimeSession:
         if not resolved_output_shape or any(dim <= 0 for dim in resolved_output_shape):
             raise ServiceConfigurationError(
                 "TensorRT OBB execution context 返回了无效输出 shape",
-                details={"output_name": self.output_name, "output_shape": list(resolved_output_shape)},
+                details={
+                    "output_name": self.output_name,
+                    "output_shape": list(resolved_output_shape),
+                },
             )
         return resolved_output_shape
 
     def _bind_io_tensor_addresses(self) -> None:
         """把输入和输出 tensor address 绑定到 TensorRT context。"""
 
-        if self.context.set_tensor_address(self.input_name, int(self.input_device_ptr)) is not True:
-            raise ServiceConfigurationError("TensorRT OBB execution context 绑定输入张量失败")
-        if self.context.set_tensor_address(self.output_name, int(self.output_device_ptr)) is not True:
-            raise ServiceConfigurationError("TensorRT OBB execution context 绑定输出张量失败")
+        if (
+            self.context.set_tensor_address(self.input_name, int(self.input_device_ptr))
+            is not True
+        ):
+            raise ServiceConfigurationError(
+                "TensorRT OBB execution context 绑定输入张量失败"
+            )
+        if (
+            self.context.set_tensor_address(
+                self.output_name, int(self.output_device_ptr)
+            )
+            is not True
+        ):
+            raise ServiceConfigurationError(
+                "TensorRT OBB execution context 绑定输出张量失败"
+            )
 
-    def _ensure_io_buffers(self, *, input_array: Any, resolved_output_shape: tuple[int, ...]) -> Any:
+    def _ensure_io_buffers(
+        self, *, input_array: Any, resolved_output_shape: tuple[int, ...]
+    ) -> Any:
         """按当前输入输出尺寸复用或扩容 TensorRT I/O 缓冲。"""
 
         output_dtype = resolve_yolov8_obb_numpy_dtype(
@@ -551,9 +620,14 @@ class TensorRTYoloV8ObbRuntimeSession:
     ) -> Any:
         """返回可复用的 pinned 输出主存数组。"""
 
-        if self.output_host_ptr is None or output_nbytes > self.output_host_capacity_bytes:
+        if (
+            self.output_host_ptr is None
+            or output_nbytes > self.output_host_capacity_bytes
+        ):
             if self.output_host_ptr is not None:
-                release_yolov8_obb_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+                release_yolov8_obb_cuda_resource(
+                    self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+                )
             self.output_host_ptr = ensure_yolov8_obb_cuda_success(
                 self.imports.cudart.cudaMallocHost(output_nbytes),
                 operation_name="TensorRT OBB runtime 分配 pinned 输出主存",
@@ -564,7 +638,8 @@ class TensorRTYoloV8ObbRuntimeSession:
         if (
             self.output_host_array is None
             or self.output_host_memory_kind != "pinned"
-            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+            or tuple(int(dim) for dim in self.output_host_array.shape)
+            != resolved_output_shape
             or self.output_host_array.dtype != output_dtype
         ):
             self.output_host_array = build_yolov8_obb_numpy_array_from_host_pointer(
@@ -586,17 +661,22 @@ class TensorRTYoloV8ObbRuntimeSession:
         """返回可复用的 pageable 输出主存数组。"""
 
         if self.output_host_ptr is not None:
-            release_yolov8_obb_cuda_resource(self.imports.cudart.cudaFreeHost(self.output_host_ptr))
+            release_yolov8_obb_cuda_resource(
+                self.imports.cudart.cudaFreeHost(self.output_host_ptr)
+            )
             self.output_host_ptr = None
             self.output_host_capacity_bytes = 0
             self.output_host_array = None
         if (
             self.output_host_array is None
             or self.output_host_memory_kind != "pageable"
-            or tuple(int(dim) for dim in self.output_host_array.shape) != resolved_output_shape
+            or tuple(int(dim) for dim in self.output_host_array.shape)
+            != resolved_output_shape
             or self.output_host_array.dtype != output_dtype
         ):
-            self.output_host_array = self.imports.np.empty(resolved_output_shape, dtype=output_dtype)
+            self.output_host_array = self.imports.np.empty(
+                resolved_output_shape, dtype=output_dtype
+            )
         self.output_host_memory_kind = "pageable"
         return self.output_host_array
 

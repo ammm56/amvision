@@ -20,18 +20,29 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
 
 
-def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path) -> None:
+def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
+    tmp_path: Path,
+) -> None:
     """验证 dispatcher 只通过 owner 与 deployment 专属 gateway 队列完成一次请求响应。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     process_config = _build_process_config(dataset_storage=dataset_storage)
     captured_deployment_ids: list[str] = []
 
@@ -84,14 +95,20 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(tmp_path: Path
     assert result["instance_id"] == "deployment-instance-1:instance-0"
     assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
-    assert dispatcher.request_queue_name == "inference-gateway-backend-service-owner-1-1"
+    assert (
+        dispatcher.request_queue_name == "inference-gateway-backend-service-owner-1-1"
+    )
 
 
 def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
     """验证 async gateway client 不允许写入无 owner 的全局请求队列。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     process_config = _build_process_config(dataset_storage=dataset_storage)
     client = QueueBackedDetectionAsyncInferenceClient(
         queue_backend=queue_backend,
@@ -115,11 +132,17 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
 
 
-def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path) -> None:
+def test_async_gateway_routes_multiple_service_ids_independently(
+    tmp_path: Path,
+) -> None:
     """验证多个 async inference service 通过各自 owner+deployment 队列独立消费。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     process_config = _build_process_config(dataset_storage=dataset_storage)
     captured_service_ids: list[str] = []
 
@@ -191,17 +214,27 @@ def test_async_gateway_routes_multiple_service_ids_independently(tmp_path: Path)
         dispatcher_a.stop()
         dispatcher_b.stop()
 
-    assert result_a["instance_id"] == "backend-service-a:deployment-instance-1:instance-0"
-    assert result_b["instance_id"] == "backend-service-b:deployment-instance-1:instance-0"
+    assert (
+        result_a["instance_id"] == "backend-service-a:deployment-instance-1:instance-0"
+    )
+    assert (
+        result_b["instance_id"] == "backend-service-b:deployment-instance-1:instance-0"
+    )
     assert captured_service_ids == ["backend-service-a", "backend-service-b"]
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
 
 
-def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_path: Path) -> None:
+def test_async_gateway_registry_routes_multiple_deployments_independently(
+    tmp_path: Path,
+) -> None:
     """验证同一 service 内多个 async deployment 拥有独立 gateway 队列和 dispatcher。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     captured_deployment_ids: list[str] = []
 
     def _execute(**kwargs: object) -> dict[str, object]:
@@ -231,8 +264,12 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(tmp_pa
     )
     registry.start()
     try:
-        dispatcher_1 = registry.ensure_dispatcher_for_deployment("deployment-instance-1")
-        dispatcher_2 = registry.ensure_dispatcher_for_deployment("deployment-instance-2")
+        dispatcher_1 = registry.ensure_dispatcher_for_deployment(
+            "deployment-instance-1"
+        )
+        dispatcher_2 = registry.ensure_dispatcher_for_deployment(
+            "deployment-instance-2"
+        )
         client = QueueBackedDetectionAsyncInferenceClient(
             queue_backend=queue_backend,
             request_timeout_seconds=2.0,
@@ -291,7 +328,7 @@ def _build_process_config(
     return DeploymentProcessConfig(
         deployment_instance_id=deployment_instance_id,
         project_id="project-1",
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
         runtime_target=RuntimeTargetSnapshot(
             project_id="project-1",
             model_id="model-1",

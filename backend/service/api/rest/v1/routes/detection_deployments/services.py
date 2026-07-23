@@ -14,12 +14,17 @@ from backend.service.application.deployments.detection_deployment_service import
     DetectionDeploymentInstanceView,
     SqlAlchemyDetectionDeploymentService,
 )
-from backend.service.application.errors import PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.errors import (
+    PermissionDeniedError,
+    ResourceNotFoundError,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 def create_detection_deployment_view(
@@ -50,7 +55,11 @@ def create_detection_deployment_view(
             runtime_backend=body.runtime_backend,
             runtime_precision=body.runtime_precision,
             device_name=body.device_name,
-            instance_count=body.instance_count,
+            runtime_configuration=(
+                body.runtime_configuration.to_domain()
+                if body.runtime_configuration is not None
+                else None
+            ),
             display_name=body.display_name,
             metadata=dict(body.metadata),
         ),
@@ -154,7 +163,11 @@ def resolve_detection_deployment_project_id(
     """根据主体权限和查询条件解析 Project id。"""
 
     visible_project_ids = tuple(principal.project_ids or ())
-    resolved_project_id = project_id.strip() if isinstance(project_id, str) and project_id.strip() else None
+    resolved_project_id = (
+        project_id.strip()
+        if isinstance(project_id, str) and project_id.strip()
+        else None
+    )
     if resolved_project_id is None:
         if not visible_project_ids:
             raise PermissionDeniedError("当前主体缺少可访问 Project 范围")

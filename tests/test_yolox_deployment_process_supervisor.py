@@ -7,19 +7,34 @@ from time import monotonic, sleep
 
 import pytest
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
-from backend.service.application.runtime.support.safe_counter import JSON_SAFE_INTEGER_MAX
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.support.safe_counter import (
+    JSON_SAFE_INTEGER_MAX,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentExecutionPolicy,
+    DeploymentRuntimeConfiguration,
+)
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from tests.deployment_process_fake_worker import fake_deployment_process_worker
 
 
-def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_path: Path) -> None:
+def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
+    tmp_path: Path,
+) -> None:
     """验证 deployment 进程监督器支持启动、推理、停止和崩溃自动拉起。"""
 
     runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
@@ -27,7 +42,9 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
     config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-supervisor-1",
         runtime_target=_build_runtime_target(runtime_artifact_path),
-        instance_count=2,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2)
+        ),
     )
     supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
@@ -84,7 +101,10 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         )
         assert execution_1.instance_id != execution_2.instance_id
         assert execution_1.execution_result.preview_image_bytes == b"preview-jpg"
-        assert execution_1.execution_result.runtime_session_info.metadata["input_uri"] == "runtime-inputs/image-1.jpg"
+        assert (
+            execution_1.execution_result.runtime_session_info.metadata["input_uri"]
+            == "runtime-inputs/image-1.jpg"
+        )
 
         state = supervisor._deployments[config.deployment_instance_id]
         assert state.process is not None
@@ -94,7 +114,9 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         state.process.terminate()
         state.process.join(timeout=1.0)
 
-        restarted_status = _wait_for_running_restart(supervisor, config, previous_process_id)
+        restarted_status = _wait_for_running_restart(
+            supervisor, config, previous_process_id
+        )
         assert restarted_status.restart_count == 1
         assert restarted_status.restart_count_rollover_count == 1
         assert restarted_status.process_id is not None
@@ -124,7 +146,9 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(tmp_p
         supervisor.stop()
 
 
-def test_deployment_process_supervisor_limits_running_processes_across_supervisors(tmp_path: Path) -> None:
+def test_deployment_process_supervisor_limits_running_processes_across_supervisors(
+    tmp_path: Path,
+) -> None:
     """验证运行中 deployment 子进程上限会跨 sync/async supervisor 生效。"""
 
     runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
@@ -132,12 +156,12 @@ def test_deployment_process_supervisor_limits_running_processes_across_superviso
     running_config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-running",
         runtime_target=_build_runtime_target(runtime_artifact_path),
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
     blocked_config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-blocked",
         runtime_target=_build_runtime_target(runtime_artifact_path),
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
     settings = BackendServiceDeploymentProcessSupervisorConfig(
         auto_restart=False,
@@ -224,7 +248,11 @@ def _wait_for_running_restart(
     deadline = monotonic() + 3.0
     while monotonic() < deadline:
         status = supervisor.get_status(config)
-        if status.process_state == "running" and status.process_id is not None and status.process_id != previous_process_id:
+        if (
+            status.process_state == "running"
+            and status.process_id is not None
+            and status.process_id != previous_process_id
+        ):
             return status
         sleep(0.05)
     raise AssertionError("deployment supervisor 未在预期时间内完成自动拉起")

@@ -5,12 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Thread
 
-from backend.service.application.deployments.deployment_instance_service import (
-    _resolve_process_runtime_behavior,
-)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
-    DeploymentProcessRuntimeBehavior,
 )
 from backend.service.application.runtime.support.safe_counter import (
     JSON_SAFE_INTEGER_MAX,
@@ -30,8 +26,18 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentExecutionPolicy,
+    DeploymentLifecycleOptions,
+    DeploymentRuntimeConfiguration,
+    TensorRtRuntimeOptions,
+)
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
 
@@ -94,42 +100,46 @@ def test_increment_safe_counter_normalizes_negative_value_and_rolls_over() -> No
     assert counter.rollover_count == 1
 
 
-def test_resolve_process_runtime_behavior_reads_deployment_metadata_namespace() -> None:
-    """验证 deployment_process metadata 可以解析 warmup 与 keep-warm 覆盖字段。"""
+def test_process_runtime_configuration_keeps_lifecycle_and_backend_options_explicit(
+    tmp_path: Path,
+) -> None:
+    """验证生命周期和 TensorRT 配置不再从 metadata 隐式读取。"""
 
-    behavior = _resolve_process_runtime_behavior(
-        {
-            "deployment_process": {
-                "warmup_dummy_inference_count": 12,
-                "warmup_dummy_image_size": [80, 48],
-                "keep_warm_enabled": True,
-                "keep_warm_interval_seconds": 0.2,
-                "tensorrt_pinned_output_buffer_enabled": False,
-                "tensorrt_pinned_output_buffer_max_bytes": 2097152,
-            }
-        }
+    runtime_configuration = _runtime_configuration(
+        lifecycle=DeploymentLifecycleOptions(
+            warmup_dummy_inference_count=12,
+            warmup_dummy_image_size=(80, 48),
+            keep_warm_enabled=True,
+            keep_warm_interval_seconds=0.2,
+        ),
+        backend_options=TensorRtRuntimeOptions(
+            pinned_output_buffer_enabled=False,
+            pinned_output_buffer_max_bytes=2_097_152,
+        ),
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-explicit-config",
+        runtime_target=_build_runtime_target(tmp_path),
+        runtime_configuration=runtime_configuration,
     )
 
-    assert behavior == DeploymentProcessRuntimeBehavior(
-        warmup_dummy_inference_count=12,
-        warmup_dummy_image_size=(80, 48),
-        keep_warm_enabled=True,
-        keep_warm_interval_seconds=0.2,
-        tensorrt_pinned_output_buffer_enabled=False,
-        tensorrt_pinned_output_buffer_max_bytes=2097152,
-    )
+    assert config.runtime_configuration == runtime_configuration
+    assert config.instance_count == 1
 
 
-def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overrides(tmp_path: Path) -> None:
+def test_resolve_warmup_behavior_merges_supervisor_defaults_and_deployment_overrides(
+    tmp_path: Path,
+) -> None:
     """验证 worker 会优先使用 deployment 覆盖值，并保留 supervisor 默认值。"""
 
     config = DeploymentProcessConfig(
         deployment_instance_id="deployment-instance-keep-warm-1",
         runtime_target=_build_runtime_target(tmp_path),
-        instance_count=1,
-        runtime_behavior=DeploymentProcessRuntimeBehavior(
-            warmup_dummy_inference_count=9,
-            keep_warm_enabled=True,
+        runtime_configuration=_runtime_configuration(
+            lifecycle=DeploymentLifecycleOptions(
+                warmup_dummy_inference_count=9,
+                keep_warm_enabled=True,
+            ),
         ),
     )
     behavior = _resolve_warmup_behavior(
@@ -159,7 +169,7 @@ def test_run_dummy_warmup_passes_executes_requested_count(tmp_path: Path) -> Non
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-warmup-1",
         runtime_target=_build_runtime_target(tmp_path),
-        instance_count=1,
+        runtime_configuration=_runtime_configuration(),
     )
     dummy_request = DetectionPredictionRequest(
         input_image_bytes=b"dummy-image-bytes",
@@ -195,7 +205,7 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-2",
         runtime_target=_build_runtime_target(tmp_path),
-        instance_count=1,
+        runtime_configuration=_runtime_configuration(),
     )
     behavior = _DeploymentWarmupBehavior(
         warmup_dummy_inference_count=0,
@@ -227,7 +237,9 @@ def test_keep_warm_loop_runs_after_activation_and_stops_cleanly(tmp_path: Path) 
     assert thread.is_alive() is False
 
 
-def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(tmp_path: Path) -> None:
+def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(
+    tmp_path: Path,
+) -> None:
     """验证 keep-warm 成功计数到达安全上限后会 rollover，并继续通过快照对外可观测。"""
 
     keep_warm_state = _KeepWarmState(
@@ -244,7 +256,7 @@ def test_keep_warm_loop_rolls_success_counter_and_exposes_rollover_count(tmp_pat
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-rollover-1",
         runtime_target=_build_runtime_target(tmp_path),
-        instance_count=1,
+        runtime_configuration=_runtime_configuration(),
     )
     behavior = _DeploymentWarmupBehavior(
         warmup_dummy_inference_count=0,
@@ -299,7 +311,7 @@ def test_snapshot_keep_warm_state_exposes_last_error(tmp_path: Path) -> None:
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-keep-warm-3",
         runtime_target=_build_runtime_target(tmp_path),
-        instance_count=1,
+        runtime_configuration=_runtime_configuration(),
     )
     behavior = _DeploymentWarmupBehavior(
         warmup_dummy_inference_count=0,
@@ -359,6 +371,21 @@ def test_snapshot_local_buffer_health_exposes_input_counts_and_recent_error() ->
     assert snapshot["frame_input_count"] == 1
     assert snapshot["error_count"] == 1
     assert snapshot["recent_error"] == "broker read failed"
+
+
+def _runtime_configuration(
+    *,
+    instance_count: int = 1,
+    lifecycle: DeploymentLifecycleOptions | None = None,
+    backend_options: TensorRtRuntimeOptions | None = None,
+) -> DeploymentRuntimeConfiguration:
+    """构造 TensorRT deployment 的显式运行时配置。"""
+
+    return DeploymentRuntimeConfiguration(
+        execution=DeploymentExecutionPolicy(instance_count=instance_count),
+        lifecycle=lifecycle or DeploymentLifecycleOptions(),
+        backend_options=backend_options or TensorRtRuntimeOptions(),
+    )
 
 
 def _build_runtime_target(tmp_path: Path) -> RuntimeTargetSnapshot:

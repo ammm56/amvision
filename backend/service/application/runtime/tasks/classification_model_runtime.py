@@ -31,14 +31,23 @@ from backend.service.application.runtime.predictors.yolov8.classification import
     PyTorchYoloV8ClassificationRuntimeSession,
     TensorRTYoloV8ClassificationRuntimeSession,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.deployment.runtime_session_options import (
+    build_tensorrt_session_load_options,
+    resolve_runtime_session_configuration,
 )
 
 
 ClassificationRuntimeLoader = Callable[
-    [LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None],
+    [LocalDatasetStorage, RuntimeTargetSnapshot, DeploymentRuntimeConfiguration],
     "ClassificationModelRuntimeSession",
 ]
 
@@ -62,8 +71,7 @@ class ClassificationModelRuntime(Protocol):
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> ClassificationModelRuntimeSession:
         """按运行时快照加载 classification 模型会话。"""
 
@@ -124,19 +132,21 @@ class DefaultClassificationModelRuntime:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration | None = None,
     ) -> ClassificationModelRuntimeSession:
         """按模型分类和 runtime backend 加载 classification 模型会话。"""
 
+        runtime_configuration = resolve_runtime_session_configuration(
+            runtime_target=runtime_target,
+            configuration=runtime_configuration,
+        )
         runtime_loader = self.runtime_registry.resolve_runtime_loader(
             runtime_target.model_type
         )
         return runtime_loader(
             dataset_storage,
             runtime_target,
-            pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes,
+            runtime_configuration,
         )
 
 
@@ -155,8 +165,7 @@ def build_default_classification_model_runtime_registry() -> (
 def _load_yolov8_classification_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLOv8 classification 会话。"""
 
@@ -174,13 +183,13 @@ def _load_yolov8_classification_session(
         return OpenVINOYoloV8ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYoloV8ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported classification runtime backend: {runtime_target.runtime_backend}"
@@ -190,8 +199,7 @@ def _load_yolov8_classification_session(
 def _load_yolo11_classification_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO11 classification 会话。"""
 
@@ -209,13 +217,13 @@ def _load_yolo11_classification_session(
         return OpenVINOYolo11ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo11ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported classification runtime backend: {runtime_target.runtime_backend}"
@@ -225,8 +233,7 @@ def _load_yolo11_classification_session(
 def _load_yolo26_classification_session(
     dataset_storage: LocalDatasetStorage,
     runtime_target: RuntimeTargetSnapshot,
-    pinned_output_buffer_enabled: bool | None,
-    pinned_output_buffer_max_bytes: int | None,
+    runtime_configuration: DeploymentRuntimeConfiguration,
 ) -> ClassificationModelRuntimeSession:
     """按 runtime backend 加载当前已接通的 YOLO26 classification 会话。"""
 
@@ -244,13 +251,13 @@ def _load_yolo26_classification_session(
         return OpenVINOYolo26ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
+            runtime_configuration=runtime_configuration,
         )
     if runtime_target.runtime_backend == "tensorrt":
         return TensorRTYolo26ClassificationRuntimeSession.load(
             dataset_storage=dataset_storage,
             runtime_target=runtime_target,
-            pinned_output_buffer_enabled=pinned_output_buffer_enabled,
-            pinned_output_buffer_max_bytes=pinned_output_buffer_max_bytes,
+            **build_tensorrt_session_load_options(runtime_configuration),
         )
     raise ValueError(
         f"unsupported classification runtime backend: {runtime_target.runtime_backend}"

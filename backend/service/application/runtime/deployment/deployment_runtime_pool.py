@@ -5,17 +5,35 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import Lock
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.support.resource_cleanup import (
     release_model_task_resources,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionExecutionResult,
     PredictionRequest,
     load_runtime_session,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+    TensorRtRuntimeOptions,
+    serialize_deployment_runtime_configuration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    get_openvino_runtime_diagnostics,
+)
+from backend.service.application.runtime.deployment.runtime_capabilities import (
+    evaluate_runtime_configuration_warnings,
+)
 
 
 @dataclass(frozen=True)
@@ -25,16 +43,20 @@ class DeploymentRuntimePoolConfig:
     字段：
     - deployment_instance_id：DeploymentInstance id。
     - runtime_target：当前 deployment 绑定的运行时快照。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
-    - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否启用 pinned memory；None 表示使用全局默认值。
-    - tensorrt_pinned_output_buffer_max_bytes：TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数；None 表示使用全局默认值。
+    - runtime_configuration：完整 deployment 运行时配置。
     """
 
     deployment_instance_id: str
     runtime_target: RuntimeTargetSnapshot
-    instance_count: int = 1
-    tensorrt_pinned_output_buffer_enabled: bool | None = None
-    tensorrt_pinned_output_buffer_max_bytes: int | None = None
+    runtime_configuration: DeploymentRuntimeConfiguration = field(
+        default_factory=DeploymentRuntimeConfiguration
+    )
+
+    @property
+    def instance_count(self) -> int:
+        """返回平台实例数。"""
+
+        return self.runtime_configuration.instance_count
 
 
 @dataclass(frozen=True)
@@ -92,6 +114,9 @@ class DeploymentRuntimePoolHealth:
     warmed_instance_count: int
     pinned_output_total_bytes: int
     instances: tuple[DeploymentRuntimeInstanceHealth, ...]
+    requested_runtime_configuration: dict[str, object] = field(default_factory=dict)
+    effective_runtime_configuration: dict[str, object] = field(default_factory=dict)
+    configuration_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -152,19 +177,25 @@ class DeploymentRuntimePool:
         self._deployments: dict[str, _DeploymentRuntimeState] = {}
         self._lock = Lock()
 
-    def ensure_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
+    def ensure_deployment(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> DeploymentRuntimePoolStatus:
         """确保指定 DeploymentInstance 的实例池已经初始化。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def get_status(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
+    def get_status(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> DeploymentRuntimePoolStatus:
         """返回指定 DeploymentInstance 当前的实例池状态。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def warmup_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolStatus:
+    def warmup_deployment(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> DeploymentRuntimePoolStatus:
         """尝试预热指定 DeploymentInstance 的所有推理实例。"""
 
         state = self._ensure_state(config)
@@ -175,13 +206,17 @@ class DeploymentRuntimePool:
                 self._mark_instance_unhealthy(instance=instance, error=error)
         return self.get_status(config)
 
-    def get_health(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolHealth:
+    def get_health(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> DeploymentRuntimePoolHealth:
         """返回指定 DeploymentInstance 的详细健康视图。"""
 
         state = self._ensure_state(config)
         return self._build_health(state)
 
-    def reset_deployment(self, config: DeploymentRuntimePoolConfig) -> DeploymentRuntimePoolHealth:
+    def reset_deployment(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> DeploymentRuntimePoolHealth:
         """重置指定 DeploymentInstance 的常驻推理实例。"""
 
         state = self._ensure_state(config)
@@ -189,7 +224,9 @@ class DeploymentRuntimePool:
             if any(instance.busy for instance in state.instances):
                 raise InvalidRequestError(
                     "当前 deployment 仍有运行中的推理请求，不能 reset",
-                    details={"deployment_instance_id": state.config.deployment_instance_id},
+                    details={
+                        "deployment_instance_id": state.config.deployment_instance_id
+                    },
                 )
             state.next_instance_index = 0
             instances = tuple(state.instances)
@@ -217,11 +254,15 @@ class DeploymentRuntimePool:
         for _ in range(len(state.instances)):
             instance = self._acquire_instance(state)
             try:
-                session = self._ensure_instance_session(config=config, instance=instance)
+                session = self._ensure_instance_session(
+                    config=config, instance=instance
+                )
                 execution_result = session.predict(request)
                 return DeploymentRuntimeExecution(
                     deployment_instance_id=config.deployment_instance_id,
-                    instance_id=_build_instance_id(config.deployment_instance_id, instance.instance_index),
+                    instance_id=_build_instance_id(
+                        config.deployment_instance_id, instance.instance_index
+                    ),
                     execution_result=execution_result,
                 )
             except InvalidRequestError:
@@ -240,16 +281,23 @@ class DeploymentRuntimePool:
             },
         )
 
-    def _ensure_state(self, config: DeploymentRuntimePoolConfig) -> _DeploymentRuntimeState:
+    def _ensure_state(
+        self, config: DeploymentRuntimePoolConfig
+    ) -> _DeploymentRuntimeState:
         """读取或初始化指定 DeploymentInstance 的当前实例池状态。"""
 
         self._validate_config(config)
         with self._lock:
             current_state = self._deployments.get(config.deployment_instance_id)
-            if current_state is None or _build_config_signature(current_state.config) != _build_config_signature(config):
+            if current_state is None or _build_config_signature(
+                current_state.config
+            ) != _build_config_signature(config):
                 current_state = _DeploymentRuntimeState(
                     config=config,
-                    instances=[_InferenceInstanceState(instance_index=index) for index in range(config.instance_count)],
+                    instances=[
+                        _InferenceInstanceState(instance_index=index)
+                        for index in range(config.instance_count)
+                    ],
                 )
                 self._deployments[config.deployment_instance_id] = current_state
             return current_state
@@ -274,43 +322,111 @@ class DeploymentRuntimePool:
             instance_states = tuple(state.instances)
         instance_health: list[DeploymentRuntimeInstanceHealth] = []
         pinned_output_total_bytes = 0
+        effective_runtime_configuration: dict[str, object] = {}
+        configuration_warnings = evaluate_runtime_configuration_warnings(
+            state.config.runtime_configuration
+        )
         for instance in instance_states:
             with instance.lock:
-                pinned_output_total_bytes += DeploymentRuntimePool._read_session_pinned_output_bytes(
-                    instance.session
+                pinned_output_total_bytes += (
+                    DeploymentRuntimePool._read_session_pinned_output_bytes(
+                        instance.session
+                    )
                 )
                 instance_health.append(
                     DeploymentRuntimeInstanceHealth(
-                        instance_id=_build_instance_id(state.config.deployment_instance_id, instance.instance_index),
+                        instance_id=_build_instance_id(
+                            state.config.deployment_instance_id, instance.instance_index
+                        ),
                         healthy=instance.healthy,
                         warmed=instance.session is not None,
                         busy=instance.busy,
                         last_error=instance.last_error,
                     )
                 )
+                if not effective_runtime_configuration and instance.session is not None:
+                    (
+                        effective_runtime_configuration,
+                        session_warnings,
+                    ) = DeploymentRuntimePool._read_effective_runtime_configuration(
+                        state.config,
+                        instance.session,
+                    )
+                    configuration_warnings = tuple(
+                        dict.fromkeys((*configuration_warnings, *session_warnings))
+                    )
         health_items = tuple(instance_health)
         return DeploymentRuntimePoolHealth(
             deployment_instance_id=state.config.deployment_instance_id,
             instance_count=state.config.instance_count,
-            healthy_instance_count=sum(1 for instance in health_items if instance.healthy),
-            warmed_instance_count=sum(1 for instance in health_items if instance.warmed),
+            healthy_instance_count=sum(
+                1 for instance in health_items if instance.healthy
+            ),
+            warmed_instance_count=sum(
+                1 for instance in health_items if instance.warmed
+            ),
             pinned_output_total_bytes=pinned_output_total_bytes,
             instances=health_items,
+            requested_runtime_configuration=serialize_deployment_runtime_configuration(
+                state.config.runtime_configuration
+            ),
+            effective_runtime_configuration=effective_runtime_configuration,
+            configuration_warnings=configuration_warnings,
         )
 
-    def _acquire_instance(self, state: _DeploymentRuntimeState) -> _InferenceInstanceState:
+    @staticmethod
+    def _read_effective_runtime_configuration(
+        config: DeploymentRuntimePoolConfig,
+        session: object,
+    ) -> tuple[dict[str, object], tuple[str, ...]]:
+        """读取已经加载 session 的 effective 配置。"""
+
+        if config.runtime_target.runtime_backend == "openvino":
+            compiled_model = getattr(session, "session", None)
+            diagnostics = get_openvino_runtime_diagnostics(compiled_model)
+            if diagnostics is None:
+                return {}, ("OpenVINO CompiledModel 缺少运行时配置诊断数据",)
+            return dict(diagnostics.effective), diagnostics.warnings
+        options = config.runtime_configuration.backend_options
+        if isinstance(options, TensorRtRuntimeOptions):
+            engine = getattr(session, "engine", None)
+            return {
+                "optimization_profile_index": options.optimization_profile_index,
+                "optimization_profile_count": int(
+                    getattr(engine, "num_optimization_profiles", 1) or 1
+                ),
+                "pinned_output_buffer_enabled": bool(
+                    getattr(session, "pinned_output_buffer_enabled", False)
+                ),
+                "pinned_output_buffer_max_bytes": int(
+                    getattr(session, "pinned_output_buffer_max_bytes", 0) or 0
+                ),
+            }, ()
+        return serialize_deployment_runtime_configuration(
+            config.runtime_configuration
+        ), ()
+
+    def _acquire_instance(
+        self, state: _DeploymentRuntimeState
+    ) -> _InferenceInstanceState:
         """按简单轮转规则选择一个空闲且健康的实例。"""
 
         with state.lock:
-            healthy_instances = [instance for instance in state.instances if instance.healthy]
+            healthy_instances = [
+                instance for instance in state.instances if instance.healthy
+            ]
             if not healthy_instances:
                 raise ServiceConfigurationError(
                     "当前 deployment 没有健康推理实例",
-                    details={"deployment_instance_id": state.config.deployment_instance_id},
+                    details={
+                        "deployment_instance_id": state.config.deployment_instance_id
+                    },
                 )
 
             for offset in range(len(state.instances)):
-                instance_index = (state.next_instance_index + offset) % len(state.instances)
+                instance_index = (state.next_instance_index + offset) % len(
+                    state.instances
+                )
                 instance = state.instances[instance_index]
                 if not instance.healthy or instance.busy:
                     continue
@@ -349,15 +465,13 @@ class DeploymentRuntimePool:
                     instance.session = self.model_runtime.load_session(
                         dataset_storage=self.dataset_storage,
                         runtime_target=config.runtime_target,
-                        pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
-                        pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
+                        runtime_configuration=config.runtime_configuration,
                     )
                 else:
                     instance.session = load_runtime_session(
                         dataset_storage=self.dataset_storage,
                         runtime_target=config.runtime_target,
-                        pinned_output_buffer_enabled=config.tensorrt_pinned_output_buffer_enabled,
-                        pinned_output_buffer_max_bytes=config.tensorrt_pinned_output_buffer_max_bytes,
+                        runtime_configuration=config.runtime_configuration,
                     )
             except ValueError as error:
                 raise InvalidRequestError(
@@ -372,7 +486,9 @@ class DeploymentRuntimePool:
             return instance.session
 
     @staticmethod
-    def _mark_instance_unhealthy(*, instance: _InferenceInstanceState, error: Exception) -> None:
+    def _mark_instance_unhealthy(
+        *, instance: _InferenceInstanceState, error: Exception
+    ) -> None:
         """在实例执行失败后把其标记为不健康。"""
 
         session_to_close = None
@@ -444,8 +560,7 @@ def _build_config_signature(config: DeploymentRuntimePoolConfig) -> tuple[object
         runtime_target.runtime_precision,
         runtime_target.input_size,
         runtime_target.labels,
-        config.tensorrt_pinned_output_buffer_enabled,
-        config.tensorrt_pinned_output_buffer_max_bytes,
+        repr(config.runtime_configuration),
     )
 
 

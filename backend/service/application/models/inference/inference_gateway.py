@@ -10,10 +10,17 @@ from uuid import uuid4
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.error_serialization import serialize_error
-from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+    ServiceError,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
-    DeploymentProcessRuntimeBehavior,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    deserialize_deployment_runtime_configuration,
+    serialize_deployment_runtime_configuration,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     deserialize_runtime_target_snapshot,
@@ -26,7 +33,9 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
     serialize_prediction_request,
     build_prediction_request_from_payload,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX = "inference-gateway"
@@ -250,11 +259,13 @@ class AsyncInferenceGatewayDispatcher:
         """处理一条 gateway 请求队列消息。"""
 
         try:
-            request_id, response_queue_name, process_config, request = _deserialize_gateway_request(
-                queue_message.payload,
-                dataset_storage=self._require_dataset_storage(),
-                expected_owner_id=self.service_id,
-                expected_deployment_instance_id=self.deployment_instance_id,
+            request_id, response_queue_name, process_config, request = (
+                _deserialize_gateway_request(
+                    queue_message.payload,
+                    dataset_storage=self._require_dataset_storage(),
+                    expected_owner_id=self.service_id,
+                    expected_deployment_instance_id=self.deployment_instance_id,
+                )
             )
         except Exception as error:
             self.queue_backend.fail(
@@ -315,7 +326,9 @@ class AsyncInferenceGatewayDispatcher:
         dataset_storage = getattr(self, "dataset_storage", None)
         if isinstance(dataset_storage, LocalDatasetStorage):
             return dataset_storage
-        raise InvalidRequestError("async inference gateway dispatcher 缺少 dataset storage")
+        raise InvalidRequestError(
+            "async inference gateway dispatcher 缺少 dataset storage"
+        )
 
     def _recover_expired_gateway_leases(self) -> None:
         """恢复当前 gateway 请求队列中超时的 leased 请求。"""
@@ -471,7 +484,9 @@ def normalize_async_inference_deployment_id(value: object) -> str:
 
     normalized_deployment_id = _normalize_owner_id(value)
     if normalized_deployment_id is None:
-        raise InvalidRequestError("async inference gateway deployment_instance_id 不能为空")
+        raise InvalidRequestError(
+            "async inference gateway deployment_instance_id 不能为空"
+        )
     if normalized_deployment_id.startswith("deployment-instance-"):
         return normalized_deployment_id.removeprefix("deployment-instance-")
     return normalized_deployment_id
@@ -567,7 +582,9 @@ def _deserialize_gateway_request(
         )
     request_payload = payload.get("prediction_request")
     if not isinstance(request_payload, dict):
-        raise InvalidRequestError("async inference gateway prediction_request 格式不合法")
+        raise InvalidRequestError(
+            "async inference gateway prediction_request 格式不合法"
+        )
     request = build_prediction_request_from_payload(
         task_type=process_config.runtime_target.task_type,
         payload=request_payload,
@@ -602,9 +619,12 @@ def _serialize_process_config(config: DeploymentProcessConfig) -> dict[str, obje
     return {
         "deployment_instance_id": config.deployment_instance_id,
         "project_id": config.project_id,
-        "instance_count": config.instance_count,
-        "runtime_target_snapshot": serialize_runtime_target_snapshot(config.runtime_target),
-        "runtime_behavior": _serialize_runtime_behavior(config.runtime_behavior),
+        "runtime_configuration": serialize_deployment_runtime_configuration(
+            config.runtime_configuration
+        ),
+        "runtime_target_snapshot": serialize_runtime_target_snapshot(
+            config.runtime_target
+        ),
     }
 
 
@@ -624,68 +644,10 @@ def _deserialize_process_config(
     return DeploymentProcessConfig(
         deployment_instance_id=_require_str(payload, "deployment_instance_id"),
         project_id=_read_optional_str(payload, "project_id") or "",
-        instance_count=_read_required_int(payload, "instance_count"),
+        runtime_configuration=deserialize_deployment_runtime_configuration(
+            payload.get("runtime_configuration")
+        ),
         runtime_target=runtime_target,
-        runtime_behavior=_deserialize_runtime_behavior(payload.get("runtime_behavior")),
-    )
-
-
-def _serialize_runtime_behavior(
-    runtime_behavior: DeploymentProcessRuntimeBehavior,
-) -> dict[str, object]:
-    """把 runtime behavior 转换为可持久化字典。"""
-
-    warmup_dummy_image_size = runtime_behavior.warmup_dummy_image_size
-    return {
-        "warmup_dummy_inference_count": runtime_behavior.warmup_dummy_inference_count,
-        "warmup_dummy_image_size": (
-            list(warmup_dummy_image_size)
-            if warmup_dummy_image_size is not None
-            else None
-        ),
-        "keep_warm_enabled": runtime_behavior.keep_warm_enabled,
-        "keep_warm_interval_seconds": runtime_behavior.keep_warm_interval_seconds,
-        "tensorrt_pinned_output_buffer_enabled": runtime_behavior.tensorrt_pinned_output_buffer_enabled,
-        "tensorrt_pinned_output_buffer_max_bytes": runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
-    }
-
-
-def _deserialize_runtime_behavior(payload: object) -> DeploymentProcessRuntimeBehavior:
-    """把持久化字典反解析为 runtime behavior。"""
-
-    if payload is None:
-        return DeploymentProcessRuntimeBehavior()
-    if not isinstance(payload, dict):
-        raise InvalidRequestError("async inference gateway runtime_behavior 格式不合法")
-    warmup_dummy_image_size = payload.get("warmup_dummy_image_size")
-    if warmup_dummy_image_size is not None:
-        if not isinstance(warmup_dummy_image_size, list | tuple) or len(warmup_dummy_image_size) != 2:
-            raise InvalidRequestError("runtime_behavior.warmup_dummy_image_size 格式不合法")
-        resolved_warmup_dummy_image_size = (
-            int(warmup_dummy_image_size[0]),
-            int(warmup_dummy_image_size[1]),
-        )
-    else:
-        resolved_warmup_dummy_image_size = None
-    return DeploymentProcessRuntimeBehavior(
-        warmup_dummy_inference_count=_read_optional_int(
-            payload,
-            "warmup_dummy_inference_count",
-        ),
-        warmup_dummy_image_size=resolved_warmup_dummy_image_size,
-        keep_warm_enabled=_read_optional_bool(payload, "keep_warm_enabled"),
-        keep_warm_interval_seconds=_read_optional_float(
-            payload,
-            "keep_warm_interval_seconds",
-        ),
-        tensorrt_pinned_output_buffer_enabled=_read_optional_bool(
-            payload,
-            "tensorrt_pinned_output_buffer_enabled",
-        ),
-        tensorrt_pinned_output_buffer_max_bytes=_read_optional_int(
-            payload,
-            "tensorrt_pinned_output_buffer_max_bytes",
-        ),
     )
 
 
@@ -705,7 +667,9 @@ def _serialize_error(error: Exception) -> dict[str, object]:
         "code": "service_error",
         "message": serialized.get("error_message", str(error)),
         "status_code": 500,
-        "details": {"error_type": serialized.get("error_type", error.__class__.__name__)},
+        "details": {
+            "error_type": serialized.get("error_type", error.__class__.__name__)
+        },
         "error_type": serialized.get("error_type", error.__class__.__name__),
     }
 
@@ -733,7 +697,9 @@ def _build_gateway_failure_metadata(
         metadata["status_code"] = error_payload["status_code"]
     if "details" in error_payload:
         metadata["error_details"] = error_payload["details"]
-    metadata.update({key: value for key, value in extra_metadata.items() if value is not None})
+    metadata.update(
+        {key: value for key, value in extra_metadata.items() if value is not None}
+    )
     return metadata
 
 
@@ -749,7 +715,9 @@ def _deserialize_error(payload: object, *, fallback_message: str) -> ServiceErro
     return ServiceError(
         code=_read_optional_str(payload, "code") or "service_error",
         message=_read_optional_str(payload, "message") or fallback_message,
-        status_code=_read_required_int_with_default(payload, "status_code", default=500),
+        status_code=_read_required_int_with_default(
+            payload, "status_code", default=500
+        ),
         details=_read_dict(payload, "details"),
     )
 
@@ -850,4 +818,6 @@ def _read_dict(payload: dict[str, object], key: str) -> dict[str, object]:
     value = payload.get(key)
     if not isinstance(value, dict):
         return {}
-    return {str(current_key): current_value for current_key, current_value in value.items()}
+    return {
+        str(current_key): current_value for current_key, current_value in value.items()
+    }

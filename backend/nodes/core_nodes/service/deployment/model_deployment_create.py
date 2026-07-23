@@ -24,19 +24,28 @@ from backend.nodes.core_nodes.support.service import (
     build_response_body_output,
     get_optional_bool_parameter,
     get_optional_dict_parameter,
-    get_optional_int_parameter,
     get_optional_str_parameter,
     overlay_parameters_from_object_input,
     require_str_parameter,
     require_workflow_service_node_runtime,
     resolve_created_by,
 )
-from backend.service.application.workflows.execution_cleanup import register_deployment_cleanup
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.execution_cleanup import (
+    register_deployment_cleanup,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+    deserialize_deployment_runtime_configuration,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 
 
-def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _model_deployment_create_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """调用正式平台 deployment 创建服务。
 
     参数：
@@ -63,13 +72,15 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
             model_type=model_type,
             model_version_id=get_optional_str_parameter(request, "model_version_id"),
             model_build_id=get_optional_str_parameter(request, "model_build_id"),
-            runtime_profile_id=get_optional_str_parameter(request, "runtime_profile_id"),
+            runtime_profile_id=get_optional_str_parameter(
+                request, "runtime_profile_id"
+            ),
             runtime_backend=get_optional_str_parameter(request, "runtime_backend"),
             device_name=get_optional_str_parameter(request, "device_name"),
             runtime_precision=get_optional_str_parameter(request, "runtime_precision"),
-            instance_count=get_optional_int_parameter(request, "instance_count") or 1,
+            runtime_configuration=_read_runtime_configuration(request),
             display_name=get_optional_str_parameter(request, "display_name") or "",
-            metadata=_build_request_metadata(request),
+            metadata=get_optional_dict_parameter(request, "metadata") or {},
         ),
         created_by=resolve_created_by(request),
     )
@@ -82,27 +93,15 @@ def _model_deployment_create_handler(request: WorkflowNodeExecutionRequest) -> d
     return build_response_body_output(view)
 
 
-def _build_request_metadata(request: WorkflowNodeExecutionRequest) -> dict[str, object] | None:
-    """构造 deployment create 节点最终提交的 metadata。
+def _read_runtime_configuration(
+    request: WorkflowNodeExecutionRequest,
+) -> DeploymentRuntimeConfiguration | None:
+    """读取完整运行时配置；未提供时交给 deployment service 生成设备默认值。"""
 
-    参数：
-    - request：当前 workflow 节点执行请求。
-
-    返回：
-    - dict[str, object] | None：合并显式参数后的 metadata；没有 metadata 时返回 None。
-    """
-
-    metadata = get_optional_dict_parameter(request, "metadata")
-    keep_warm_enabled = get_optional_bool_parameter(request, "keep_warm_enabled")
-    if keep_warm_enabled is None:
-        return metadata
-
-    normalized_metadata = dict(metadata) if metadata is not None else {}
-    raw_process_metadata = normalized_metadata.get("deployment_process")
-    process_metadata = dict(raw_process_metadata) if isinstance(raw_process_metadata, dict) else {}
-    process_metadata["keep_warm_enabled"] = keep_warm_enabled
-    normalized_metadata["deployment_process"] = process_metadata
-    return normalized_metadata
+    payload = get_optional_dict_parameter(request, "runtime_configuration")
+    if payload is None:
+        return None
+    return deserialize_deployment_runtime_configuration(payload)
 
 
 def _register_created_deployment_for_cleanup(
@@ -123,7 +122,10 @@ def _register_created_deployment_for_cleanup(
         if isinstance(view, dict)
         else getattr(view, "deployment_instance_id", None)
     )
-    if not isinstance(raw_deployment_instance_id, str) or not raw_deployment_instance_id.strip():
+    if (
+        not isinstance(raw_deployment_instance_id, str)
+        or not raw_deployment_instance_id.strip()
+    ):
         return
     register_deployment_cleanup(
         request.execution_metadata,
@@ -205,8 +207,16 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 "runtime_backend": {"type": "string"},
                 "device_name": {"type": "string"},
                 "runtime_precision": {"type": "string"},
-                "instance_count": {"type": "integer", "minimum": 1},
-                "keep_warm_enabled": {"type": "boolean"},
+                "runtime_configuration": {
+                    "type": "object",
+                    "properties": {
+                        "execution": {"type": "object"},
+                        "lifecycle": {"type": "object"},
+                        "backend_options": {"type": "object"},
+                    },
+                    "required": ["execution", "lifecycle", "backend_options"],
+                    "additionalProperties": False,
+                },
                 "display_name": {"type": "string"},
                 "metadata": {"type": "object"},
                 "cleanup_on_completion": {"type": "boolean"},
@@ -215,12 +225,15 @@ CORE_NODE_SPEC = CoreNodeSpec(
             "required": ["task_type", "model_type", "project_id"],
             "anyOf": [
                 {"required": ["model_version_id"]},
-                {"required": ["model_build_id"]}
+                {"required": ["model_build_id"]},
             ],
             "allOf": build_platform_task_model_type_schema_guards(),
         },
-        capability_tags=("service.model.deployment", "resource.create", "resource.control-plane"),
+        capability_tags=(
+            "service.model.deployment",
+            "resource.create",
+            "resource.control-plane",
+        ),
     ),
     handler=_model_deployment_create_handler,
 )
-

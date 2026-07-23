@@ -119,9 +119,17 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
 
     updated_training_task = task_service.get_task(training_submission["task_id"]).task
     assert updated_training_task.state == "succeeded"
-    assert updated_training_task.result["model_version_id"] == training_result["model_version_id"]
-    assert dataset_storage.resolve(training_result["checkpoint_object_key"]).is_file() is True
-    assert dataset_storage.resolve(training_result["labels_object_key"]).is_file() is True
+    assert (
+        updated_training_task.result["model_version_id"]
+        == training_result["model_version_id"]
+    )
+    assert (
+        dataset_storage.resolve(training_result["checkpoint_object_key"]).is_file()
+        is True
+    )
+    assert (
+        dataset_storage.resolve(training_result["labels_object_key"]).is_file() is True
+    )
 
     conversion_service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
@@ -141,7 +149,10 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
         worker_id="rfdetr-segmentation-conversion-smoke-worker",
     )
     assert claimed_conversion_queue_task is not None
-    assert claimed_conversion_queue_task.payload["task_id"] == conversion_submission.task_id
+    assert (
+        claimed_conversion_queue_task.payload["task_id"]
+        == conversion_submission.task_id
+    )
 
     conversion_result = conversion_service.process_conversion_task(
         conversion_submission.task_id
@@ -173,15 +184,19 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
     assert process_config.runtime_target.model_type == "rfdetr"
     assert process_config.runtime_target.task_type == "segmentation"
 
-    execution_result = DefaultSegmentationModelRuntime().load_session(
-        dataset_storage=dataset_storage,
-        runtime_target=process_config.runtime_target,
-    ).predict(
-        SegmentationPredictionRequest(
-            score_threshold=0.01,
-            mask_threshold=0.5,
-            save_result_image=False,
-            input_image_bytes=_build_test_image_bytes(),
+    execution_result = (
+        DefaultSegmentationModelRuntime()
+        .load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=process_config.runtime_target,
+        )
+        .predict(
+            SegmentationPredictionRequest(
+                score_threshold=0.01,
+                mask_threshold=0.5,
+                save_result_image=False,
+                input_image_bytes=_build_test_image_bytes(),
+            )
         )
     )
     assert execution_result.image_width == 64
@@ -197,7 +212,14 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
 ) -> None:
     """验证 segmentation runtime 注册表会把 RF-DETR 分发到 OpenVINO 与 TensorRT 会话。"""
 
-    from backend.service.application.runtime.tasks import segmentation_model_runtime as runtime_module
+    from backend.service.application.runtime.tasks import (
+        segmentation_model_runtime as runtime_module,
+    )
+    from backend.service.domain.deployments.deployment_runtime_configuration import (
+        DeploymentRuntimeConfiguration,
+        OpenVinoCpuRuntimeOptions,
+        TensorRtRuntimeOptions,
+    )
 
     dataset_storage = _create_dataset_storage(tmp_path)
     artifact_path = dataset_storage.resolve("artifacts/rfdetr-segmentation/model.xml")
@@ -208,7 +230,11 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
 
     class _FakeOpenVinoSession:
         @classmethod
-        def load(cls, *, dataset_storage, runtime_target):
+        def load(cls, *, dataset_storage, runtime_target, runtime_configuration):
+            assert isinstance(
+                runtime_configuration.backend_options,
+                OpenVinoCpuRuntimeOptions,
+            )
             captured_calls.append(("openvino", runtime_target.runtime_backend))
             return {"backend": "openvino", "model_type": runtime_target.model_type}
 
@@ -219,15 +245,13 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
             *,
             dataset_storage,
             runtime_target,
-            pinned_output_buffer_enabled=None,
-            pinned_output_buffer_max_bytes=None,
+            optimization_profile_index=0,
         ):
             captured_calls.append(("tensorrt", runtime_target.runtime_backend))
             return {
                 "backend": "tensorrt",
                 "model_type": runtime_target.model_type,
-                "pinned_output_buffer_enabled": pinned_output_buffer_enabled,
-                "pinned_output_buffer_max_bytes": pinned_output_buffer_max_bytes,
+                "optimization_profile_index": optimization_profile_index,
             }
 
     monkeypatch.setattr(
@@ -248,6 +272,9 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
             runtime_backend="openvino",
             artifact_path=artifact_path,
         ),
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=OpenVinoCpuRuntimeOptions()
+        ),
     )
     tensorrt_session = runtime.load_session(
         dataset_storage=dataset_storage,
@@ -255,14 +282,16 @@ def test_rfdetr_segmentation_runtime_registry_routes_openvino_and_tensorrt(
             runtime_backend="tensorrt",
             artifact_path=artifact_path,
         ),
-        pinned_output_buffer_enabled=True,
-        pinned_output_buffer_max_bytes=4096,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=TensorRtRuntimeOptions(
+                optimization_profile_index=1,
+            )
+        ),
     )
 
     assert openvino_session["backend"] == "openvino"
     assert tensorrt_session["backend"] == "tensorrt"
-    assert tensorrt_session["pinned_output_buffer_enabled"] is True
-    assert tensorrt_session["pinned_output_buffer_max_bytes"] == 4096
+    assert tensorrt_session["optimization_profile_index"] == 1
     assert captured_calls == [("openvino", "openvino"), ("tensorrt", "tensorrt")]
 
 
@@ -326,13 +355,14 @@ def test_rfdetr_segmentation_tensorrt_real_toolchain_smoke(
     assert execution_result.image_width == 64
     assert execution_result.image_height == 64
     _assert_rfdetr_segmentation_instances_are_valid(execution_result.instances)
-    assert (
-        execution_result.runtime_session_info.metadata["engine_output_names"]
-        == list(resolve_rfdetr_onnx_output_names("segmentation"))
-    )
+    assert execution_result.runtime_session_info.metadata[
+        "engine_output_names"
+    ] == list(resolve_rfdetr_onnx_output_names("segmentation"))
 
 
-def _assert_rfdetr_segmentation_instances_are_valid(instances: tuple[object, ...]) -> None:
+def _assert_rfdetr_segmentation_instances_are_valid(
+    instances: tuple[object, ...],
+) -> None:
     """验证 RF-DETR segmentation 工具链返回有效类别结果。"""
 
     assert instances
@@ -399,7 +429,9 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
         training_task_record,
         model_type="rfdetr",
     )
-    assert task_service.get_task(training_submission["task_id"]).task.state == "succeeded"
+    assert (
+        task_service.get_task(training_submission["task_id"]).task.state == "succeeded"
+    )
 
     conversion_service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
@@ -424,7 +456,9 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
     conversion_result = conversion_service.process_conversion_task(
         conversion_submission.task_id
     )
-    assert task_service.get_task(conversion_submission.task_id).task.state == "succeeded"
+    assert (
+        task_service.get_task(conversion_submission.task_id).task.state == "succeeded"
+    )
     target_build = next(
         build
         for build in conversion_result["builds"]
@@ -500,7 +534,9 @@ def _build_runtime_target_snapshot(
 
 
 def _create_session_factory() -> SessionFactory:
-    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
     Base.metadata.create_all(session_factory.engine)
     return session_factory
 

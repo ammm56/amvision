@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
-from backend.service.api.rest.v1.routes.obb_deployments.schemas import ObbDeploymentInstanceResponse
-from backend.service.application.deployments.obb_deployment_service import ObbDeploymentInstanceView
+from backend.service.api.rest.v1.routes.obb_deployments.schemas import (
+    ObbDeploymentInstanceResponse,
+)
+from backend.service.application.deployments.obb_deployment_service import (
+    ObbDeploymentInstanceView,
+)
+from backend.service.api.rest.v1.routes.task_deployments.runtime_configuration_schemas import (
+    DeploymentRuntimeConfigurationBody,
+)
 
 
-def build_obb_deployment_instance_response(instance: ObbDeploymentInstanceView) -> ObbDeploymentInstanceResponse:
+def build_obb_deployment_instance_response(
+    instance: ObbDeploymentInstanceView,
+) -> ObbDeploymentInstanceResponse:
     """把 OBB DeploymentInstance view 转成 API response。"""
 
     return ObbDeploymentInstanceResponse(
@@ -26,7 +35,9 @@ def build_obb_deployment_instance_response(instance: ObbDeploymentInstanceView) 
         device_name=instance.device_name,
         runtime_precision=instance.runtime_precision,
         runtime_execution_mode=instance.runtime_execution_mode,
-        instance_count=instance.instance_count,
+        runtime_configuration=DeploymentRuntimeConfigurationBody.from_domain(
+            instance.runtime_configuration
+        ),
         input_size=instance.input_size,
         labels=instance.labels,
         process_status=getattr(instance, "process_status", None),

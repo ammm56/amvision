@@ -5,6 +5,12 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.predictors.yolo11.classification.backend import (
     build_yolo11_classification_openvino_compile_properties,
@@ -85,6 +91,7 @@ class OpenVINOYolo11ClassificationRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINOYolo11ClassificationRuntimeSession":
         """加载一套 OpenVINO YOLO11 classification 会话。"""
 
@@ -109,10 +116,12 @@ class OpenVINOYolo11ClassificationRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_port = session.input(0)
         output_port = session.output(0)

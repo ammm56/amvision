@@ -12,11 +12,17 @@ from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+
 
 def create_test_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建 runtime pool 逻辑测试使用的本地文件存储。
@@ -28,7 +34,9 @@ def create_test_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     - LocalDatasetStorage：测试使用的本地文件存储。
     """
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
 
 
 def build_test_runtime_target(
@@ -54,7 +62,9 @@ def build_test_runtime_target(
     - RuntimeTargetSnapshot：可直接喂给 runtime pool 的最小运行时快照。
     """
 
-    storage_uri = f"projects/project-1/models/runtime-pool-builds/{runtime_artifact_file_name}"
+    storage_uri = (
+        f"projects/project-1/models/runtime-pool-builds/{runtime_artifact_file_name}"
+    )
     artifact_path = dataset_storage.resolve(storage_uri)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_bytes(b"fake-runtime-artifact")
@@ -113,8 +123,12 @@ def build_test_execution_result(
             backend_name=runtime_target.runtime_backend,
             model_uri=runtime_target.runtime_artifact_storage_uri,
             device_name=runtime_target.device_name,
-            input_spec=DetectionRuntimeTensorSpec(name="images", shape=(1, 3, 64, 64), dtype="float32"),
-            output_spec=DetectionRuntimeTensorSpec(name="predictions", shape=(1, 1, 6), dtype=output_dtype),
+            input_spec=DetectionRuntimeTensorSpec(
+                name="images", shape=(1, 3, 64, 64), dtype="float32"
+            ),
+            output_spec=DetectionRuntimeTensorSpec(
+                name="predictions", shape=(1, 1, 6), dtype=output_dtype
+            ),
             metadata={
                 "runtime_execution_mode": (
                     f"{runtime_target.runtime_backend}:{runtime_target.runtime_precision}:{runtime_target.device_name}"
@@ -140,7 +154,9 @@ class FakePredictionSession:
         self.pinned_output_buffer_enabled: bool | None = None
         self.pinned_output_buffer_max_bytes: int | None = None
 
-    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
+    def predict(
+        self, request: DetectionPredictionRequest
+    ) -> DetectionPredictionExecutionResult:
         """记录请求并返回固定执行结果。
 
         参数：
@@ -168,7 +184,9 @@ class FailingPredictionSession:
         self.pinned_output_buffer_enabled: bool | None = None
         self.pinned_output_buffer_max_bytes: int | None = None
 
-    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
+    def predict(
+        self, request: DetectionPredictionRequest
+    ) -> DetectionPredictionExecutionResult:
         """抛出固定错误，验证 runtime pool 的失败处理路径。
 
         参数：
@@ -240,7 +258,13 @@ def build_failing_session_loader(*, error_message: str) -> SimpleNamespace:
 
 def build_recording_model_runtime(
     *,
-    load_requests: list[tuple[LocalDatasetStorage, RuntimeTargetSnapshot, bool | None, int | None]],
+    load_requests: list[
+        tuple[
+            LocalDatasetStorage,
+            RuntimeTargetSnapshot,
+            DeploymentRuntimeConfiguration,
+        ]
+    ],
     session: FakePredictionSession,
 ) -> SimpleNamespace:
     """构造会记录 load_session 请求并返回固定 session 的 ModelRuntime stub。
@@ -257,19 +281,9 @@ def build_recording_model_runtime(
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> FakePredictionSession:
-        session.pinned_output_buffer_enabled = pinned_output_buffer_enabled
-        session.pinned_output_buffer_max_bytes = pinned_output_buffer_max_bytes
-        load_requests.append(
-            (
-                dataset_storage,
-                runtime_target,
-                pinned_output_buffer_enabled,
-                pinned_output_buffer_max_bytes,
-            )
-        )
+        load_requests.append((dataset_storage, runtime_target, runtime_configuration))
         return session
 
     return SimpleNamespace(load_session=load_session)
@@ -289,13 +303,11 @@ def build_failing_model_runtime(*, error_message: str) -> SimpleNamespace:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
-        pinned_output_buffer_enabled: bool | None = None,
-        pinned_output_buffer_max_bytes: int | None = None,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> FailingPredictionSession:
         del dataset_storage
         del runtime_target
-        del pinned_output_buffer_enabled
-        del pinned_output_buffer_max_bytes
+        del runtime_configuration
         return FailingPredictionSession(error_message=error_message)
 
     return SimpleNamespace(load_session=load_session)

@@ -5,7 +5,16 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.support.openvino_execution import (
+    compile_openvino_model,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.predictors.yolov8.segmentation.backend import (
     build_yolov8_segmentation_openvino_compile_properties,
     import_yolov8_segmentation_openvino_module,
@@ -36,7 +45,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
     describe_runtime_execution_mode,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class OpenVINOYoloV8SegmentationRuntimeSession:
@@ -83,6 +94,7 @@ class OpenVINOYoloV8SegmentationRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> "OpenVINOYoloV8SegmentationRuntimeSession":
         """加载一套 OpenVINO YOLOv8 segmentation 会话。"""
 
@@ -107,10 +119,12 @@ class OpenVINOYoloV8SegmentationRuntimeSession:
             runtime_precision=runtime_target.runtime_precision,
             requested_device_name=runtime_target.device_name,
         )
-        session = openvino_module.Core().compile_model(
-            str(runtime_target.runtime_artifact_path),
-            compiled_device_name,
-            compile_properties,
+        session = compile_openvino_model(
+            openvino_module=openvino_module,
+            model_path=str(runtime_target.runtime_artifact_path),
+            device_name=compiled_device_name,
+            base_properties=compile_properties,
+            runtime_configuration=runtime_configuration,
         )
         input_port = session.input(0)
         prediction_port = session.output(0)
@@ -129,7 +143,9 @@ class OpenVINOYoloV8SegmentationRuntimeSession:
             imports=imports,
             session=session,
             device_name=runtime_target.device_name,
-            input_name=resolve_yolov8_segmentation_openvino_port_name(input_port, fallback="images"),
+            input_name=resolve_yolov8_segmentation_openvino_port_name(
+                input_port, fallback="images"
+            ),
             output_names=(prediction_name, proto_name),
             input_port=input_port,
             prediction_port=prediction_port,
@@ -174,9 +190,11 @@ class OpenVINOYoloV8SegmentationRuntimeSession:
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
         postprocess_started_at = perf_counter()
-        prediction_array, proto_array = normalize_yolov8_segmentation_outputs_for_backend(
-            outputs=self._resolve_openvino_outputs(outputs),
-            np_module=self.imports.np,
+        prediction_array, proto_array = (
+            normalize_yolov8_segmentation_outputs_for_backend(
+                outputs=self._resolve_openvino_outputs(outputs),
+                np_module=self.imports.np,
+            )
         )
         instances = build_yolov8_segmentation_runtime_instances(
             cv2_module=self.imports.cv2,
@@ -212,7 +230,12 @@ class OpenVINOYoloV8SegmentationRuntimeSession:
                 device_name=self.device_name,
                 input_spec=YoloV8SegmentationRuntimeTensorSpec(
                     name=self.input_name,
-                    shape=(1, 3, self.runtime_target.input_size[0], self.runtime_target.input_size[1]),
+                    shape=(
+                        1,
+                        3,
+                        self.runtime_target.input_size[0],
+                        self.runtime_target.input_size[1],
+                    ),
                     dtype=resolve_yolov8_segmentation_openvino_port_dtype(
                         self.input_port,
                         fallback="float32",

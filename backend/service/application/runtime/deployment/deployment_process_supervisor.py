@@ -18,7 +18,10 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
     ServiceError,
 )
-from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
+from backend.service.application.local_buffers import (
+    LocalBufferBrokerClient,
+    LocalBufferBrokerEventChannel,
+)
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
     publish_project_summary_event,
@@ -26,6 +29,10 @@ from backend.service.application.project_summary import (
 )
 from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
+)
+from backend.service.application.runtime.deployment.cpu_device_resource_manager import (
+    CpuDeviceResourceManager,
+    get_global_cpu_device_resource_manager,
 )
 from backend.service.application.runtime.deployment.deployment_events import (
     DetectionDeploymentProcessEvent,
@@ -51,30 +58,16 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
     deserialize_prediction_execution_result,
     serialize_prediction_request,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
-
-@dataclass(frozen=True)
-class DeploymentProcessRuntimeBehavior:
-    """描述 deployment 预热与 keep-warm 的覆盖配置。
-
-    字段：
-    - warmup_dummy_inference_count：显式 warmup 时追加执行的 dummy infer 次数；None 表示使用 supervisor 默认值。
-    - warmup_dummy_image_size：dummy infer 使用的最小图片尺寸；None 表示使用 supervisor 默认值。
-    - keep_warm_enabled：是否启用 keep-warm 后台线程；None 表示使用 supervisor 默认值。
-    - keep_warm_interval_seconds：keep-warm dummy infer 的最小间隔秒数；None 表示使用 supervisor 默认值。
-    - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否启用 pinned memory；None 表示使用 supervisor 默认值。
-    - tensorrt_pinned_output_buffer_max_bytes：TensorRT 输出 host buffer 允许使用 pinned memory 的最大字节数；None 表示使用 supervisor 默认值。
-    """
-
-    warmup_dummy_inference_count: int | None = None
-    warmup_dummy_image_size: tuple[int, int] | None = None
-    keep_warm_enabled: bool | None = None
-    keep_warm_interval_seconds: float | None = None
-    tensorrt_pinned_output_buffer_enabled: bool | None = None
-    tensorrt_pinned_output_buffer_max_bytes: int | None = None
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 @dataclass(frozen=True)
@@ -85,17 +78,21 @@ class DeploymentProcessConfig:
     - deployment_instance_id：DeploymentInstance id。
     - runtime_target：当前 deployment 绑定的运行时快照。
     - project_id：所属 Project id；为空时表示当前调用方不关心项目级聚合事件。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
-    - runtime_behavior：当前 deployment 的预热与 keep-warm 覆盖配置。
+    - runtime_configuration：完整 deployment 运行时配置。
     """
 
     deployment_instance_id: str
     runtime_target: RuntimeTargetSnapshot
     project_id: str = ""
-    instance_count: int = 1
-    runtime_behavior: DeploymentProcessRuntimeBehavior = field(
-        default_factory=DeploymentProcessRuntimeBehavior
+    runtime_configuration: DeploymentRuntimeConfiguration = field(
+        default_factory=DeploymentRuntimeConfiguration
     )
+
+    @property
+    def instance_count(self) -> int:
+        """返回平台实例数。"""
+
+        return self.runtime_configuration.instance_count
 
 
 @dataclass(frozen=True)
@@ -212,6 +209,9 @@ class DeploymentProcessHealth:
     instances: tuple[DeploymentProcessInstanceHealth, ...] = ()
     keep_warm: DeploymentProcessKeepWarmStatus | None = None
     local_buffer_broker: dict[str, object] = field(default_factory=dict)
+    requested_runtime_configuration: dict[str, object] = field(default_factory=dict)
+    effective_runtime_configuration: dict[str, object] = field(default_factory=dict)
+    configuration_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -259,7 +259,9 @@ class _DeploymentProcessFleetLimiter:
         """初始化进程级 deployment 子进程上限计数器。"""
 
         self._lock = Lock()
-        self._supervisors: weakref.WeakSet[DeploymentProcessSupervisor] = weakref.WeakSet()
+        self._supervisors: weakref.WeakSet[DeploymentProcessSupervisor] = (
+            weakref.WeakSet()
+        )
 
     def register(self, supervisor: DeploymentProcessSupervisor) -> None:
         """登记一个 deployment supervisor 到进程级计数范围。"""
@@ -340,7 +342,11 @@ class DeploymentProcessSupervisor:
         session_factory: SessionFactory | None = None,
         dataset_storage: LocalDatasetStorage | None = None,
         local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
-        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
+        local_buffer_broker_event_channel_provider: Callable[
+            [], LocalBufferBrokerEventChannel | None
+        ]
+        | None = None,
+        cpu_device_resource_manager: CpuDeviceResourceManager | None = None,
         worker_target: Callable[..., None] = run_deployment_process_worker,
     ) -> None:
         """初始化 deployment 进程监督器。
@@ -354,6 +360,7 @@ class DeploymentProcessSupervisor:
         - dataset_storage：可选本地文件存储；提供后可发布项目级聚合事件。
         - local_buffer_broker_event_channel：固定的 broker 事件通道。
         - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
+        - cpu_device_resource_manager：全部 supervisor 共享的 CPU 预算管理器。
         - worker_target：子进程入口函数；测试时可替换为 fake worker。
         """
 
@@ -364,8 +371,14 @@ class DeploymentProcessSupervisor:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
-        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
+        self.local_buffer_broker_event_channel_provider = (
+            local_buffer_broker_event_channel_provider
+        )
         self.worker_target = worker_target
+        self.cpu_device_resource_manager = (
+            cpu_device_resource_manager or get_global_cpu_device_resource_manager()
+        )
+        self._resource_owner_id = uuid4().hex
         self._context = multiprocessing.get_context("spawn")
         self._deployments: dict[str, _DeploymentProcessState] = {}
         self._lock = Lock()
@@ -398,7 +411,9 @@ class DeploymentProcessSupervisor:
         self._monitor_stop_event.set()
         monitor_thread = self._monitor_thread
         if monitor_thread is not None:
-            monitor_thread.join(timeout=max(0.1, self.settings.shutdown_timeout_seconds))
+            monitor_thread.join(
+                timeout=max(0.1, self.settings.shutdown_timeout_seconds)
+            )
             if not monitor_thread.is_alive():
                 self._monitor_thread = None
         with self._lock:
@@ -407,14 +422,19 @@ class DeploymentProcessSupervisor:
             with state.lock:
                 state.desired_running = False
                 self._stop_process_locked(state)
+        self.cpu_device_resource_manager.deactivate_owner(self._resource_owner_id)
 
-    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def ensure_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """登记 deployment 配置但不主动启动子进程。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def start_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """显式启动指定 deployment 的子进程。"""
 
         state = self._ensure_state(config)
@@ -463,6 +483,12 @@ class DeploymentProcessSupervisor:
                     },
                 ) from error
             current_status = self._build_status(state)
+            self.cpu_device_resource_manager.activate(
+                owner_id=self._resource_owner_id,
+                deployment_instance_id=state.config.deployment_instance_id,
+                runtime_mode=self.runtime_mode,
+                runtime_configuration=state.config.runtime_configuration,
+            )
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
                 current_status,
@@ -486,9 +512,15 @@ class DeploymentProcessSupervisor:
             state.desired_running = False
             state.last_error = error_message
             self._stop_process_locked(state)
+            self.cpu_device_resource_manager.deactivate(
+                owner_id=self._resource_owner_id,
+                deployment_instance_id=state.config.deployment_instance_id,
+            )
             return self._build_status_from_locked_state(state)
 
-    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def stop_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """显式停止指定 deployment 的子进程。"""
 
         state = self._ensure_state(config)
@@ -497,6 +529,10 @@ class DeploymentProcessSupervisor:
             state.desired_running = False
             self._stop_process_locked(state)
             current_status = self._build_status_from_locked_state(state)
+        self.cpu_device_resource_manager.deactivate(
+            owner_id=self._resource_owner_id,
+            deployment_instance_id=state.config.deployment_instance_id,
+        )
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
                 current_status,
@@ -505,7 +541,9 @@ class DeploymentProcessSupervisor:
             )
         return current_status
 
-    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+    def warmup_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessHealth:
         """显式启动并预热指定 deployment 子进程。"""
 
         state = self._ensure_state(config)
@@ -601,7 +639,9 @@ class DeploymentProcessSupervisor:
         payload = self._send_request(state=state, action="health")
         return self._build_health(state, payload)
 
-    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+    def reset_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessHealth:
         """重置指定 deployment 子进程内的实例池。"""
 
         state = self._ensure_state(config)
@@ -668,7 +708,9 @@ class DeploymentProcessSupervisor:
         self._validate_config(config)
         with self._lock:
             state = self._deployments.get(config.deployment_instance_id)
-            if state is None or _build_config_signature(state.config) != _build_config_signature(config):
+            if state is None or _build_config_signature(
+                state.config
+            ) != _build_config_signature(config):
                 state = _DeploymentProcessState(config=config)
                 self._deployments[config.deployment_instance_id] = state
             return state
@@ -717,7 +759,9 @@ class DeploymentProcessSupervisor:
                 }
             )
         effective_timeout_seconds = (
-            self.settings.request_timeout_seconds if timeout_seconds is None else timeout_seconds
+            self.settings.request_timeout_seconds
+            if timeout_seconds is None
+            else timeout_seconds
         )
         wait_started_at = monotonic()
         completed = pending.event.wait(timeout=max(0.1, effective_timeout_seconds))
@@ -757,10 +801,16 @@ class DeploymentProcessSupervisor:
             if isinstance(payload_value, dict):
                 return payload_value
             return {}
-        error_payload = response.get("error") if isinstance(response.get("error"), dict) else {}
+        error_payload = (
+            response.get("error") if isinstance(response.get("error"), dict) else {}
+        )
         error_code = str(error_payload.get("code") or "service_configuration_error")
         error_message = str(error_payload.get("message") or "deployment 子进程执行失败")
-        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
+        error_details = (
+            error_payload.get("details")
+            if isinstance(error_payload.get("details"), dict)
+            else {}
+        )
         if error_code == "invalid_request":
             raise InvalidRequestError(error_message, details=error_details)
         raise ServiceConfigurationError(error_message, details=error_details)
@@ -781,9 +831,13 @@ class DeploymentProcessSupervisor:
             "operator_thread_count": self.settings.operator_thread_count,
             "supervisor_settings": self.settings.model_dump(mode="python"),
         }
-        local_buffer_broker_event_channel = self._resolve_local_buffer_broker_event_channel()
+        local_buffer_broker_event_channel = (
+            self._resolve_local_buffer_broker_event_channel()
+        )
         if local_buffer_broker_event_channel is not None:
-            worker_kwargs["local_buffer_broker_event_channel"] = local_buffer_broker_event_channel
+            worker_kwargs["local_buffer_broker_event_channel"] = (
+                local_buffer_broker_event_channel
+            )
         process = self._context.Process(
             target=self.worker_target,
             kwargs=worker_kwargs,
@@ -806,7 +860,9 @@ class DeploymentProcessSupervisor:
         )
         state.response_thread.start()
 
-    def _start_process_with_capacity_locked(self, state: _DeploymentProcessState) -> None:
+    def _start_process_with_capacity_locked(
+        self, state: _DeploymentProcessState
+    ) -> None:
         """在进程级运行数量上限内启动 deployment 子进程。"""
 
         self._validate_process_start_supported_locked(state)
@@ -816,7 +872,9 @@ class DeploymentProcessSupervisor:
             starter=lambda: self._start_process_locked(state),
         )
 
-    def _validate_process_start_supported_locked(self, state: _DeploymentProcessState) -> None:
+    def _validate_process_start_supported_locked(
+        self, state: _DeploymentProcessState
+    ) -> None:
         """在持有状态锁时校验当前 deployment 是否允许启动。"""
 
         try:
@@ -860,7 +918,9 @@ class DeploymentProcessSupervisor:
         state.process = None
         state.request_queue = None
         state.response_queue = None
-        _close_local_buffer_broker_event_channel(state.local_buffer_broker_event_channel)
+        _close_local_buffer_broker_event_channel(
+            state.local_buffer_broker_event_channel
+        )
         state.local_buffer_broker_event_channel = None
         state.response_thread = None
         state.started_at_monotonic = None
@@ -909,7 +969,9 @@ class DeploymentProcessSupervisor:
                             except InvalidRequestError:
                                 pass
                             else:
-                                restarted_status = self._build_status_from_locked_state(state)
+                                restarted_status = self._build_status_from_locked_state(
+                                    state
+                                )
                         if restarted_status is None:
                             continue
                     else:
@@ -923,9 +985,13 @@ class DeploymentProcessSupervisor:
                             try:
                                 self._start_process_with_capacity_locked(state)
                             except InvalidRequestError:
-                                restart_deferred_status = self._build_status_from_locked_state(state)
+                                restart_deferred_status = (
+                                    self._build_status_from_locked_state(state)
+                                )
                             else:
-                                restarted_status = self._build_status_from_locked_state(state)
+                                restarted_status = self._build_status_from_locked_state(
+                                    state
+                                )
                 if crashed_status is not None:
                     self._record_deployment_status_event(
                         crashed_status,
@@ -946,7 +1012,9 @@ class DeploymentProcessSupervisor:
                         message="deployment 进程自动拉起已延后",
                         payload={"restart_trigger": "process_exit"},
                     )
-            self._monitor_stop_event.wait(max(0.1, self.settings.monitor_interval_seconds))
+            self._monitor_stop_event.wait(
+                max(0.1, self.settings.monitor_interval_seconds)
+            )
 
     def _is_process_running(self, state: _DeploymentProcessState) -> bool:
         """返回指定 deployment 子进程当前是否存活。"""
@@ -955,7 +1023,9 @@ class DeploymentProcessSupervisor:
             process = state.process
             return process is not None and process.is_alive()
 
-    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
+    def _resolve_local_buffer_broker_event_channel(
+        self,
+    ) -> LocalBufferBrokerEventChannel | None:
         """返回当前应传给 deployment worker 的 broker 事件通道。"""
 
         if self.local_buffer_broker_event_channel_provider is not None:
@@ -1007,6 +1077,8 @@ class DeploymentProcessSupervisor:
         """根据监督状态和子进程返回构建健康视图。"""
 
         status = self._build_status(state)
+        cpu_resource_snapshot = self.cpu_device_resource_manager.snapshot()
+        cpu_resource_warnings = self.cpu_device_resource_manager.warnings()
         if payload is None:
             return DeploymentProcessHealth(
                 deployment_instance_id=status.deployment_instance_id,
@@ -1020,24 +1092,56 @@ class DeploymentProcessSupervisor:
                 restart_count_rollover_count=status.restart_count_rollover_count,
                 last_exit_code=status.last_exit_code,
                 last_error=status.last_error,
+                effective_runtime_configuration={
+                    "cpu_device_resource_manager": cpu_resource_snapshot
+                },
+                configuration_warnings=cpu_resource_warnings,
             )
-        keep_warm_payload = payload.get("keep_warm") if isinstance(payload.get("keep_warm"), dict) else None
-        local_buffer_broker_payload = (
-            payload.get("local_buffer_broker") if isinstance(payload.get("local_buffer_broker"), dict) else {}
+        keep_warm_payload = (
+            payload.get("keep_warm")
+            if isinstance(payload.get("keep_warm"), dict)
+            else None
         )
-        instances_payload = payload.get("instances") if isinstance(payload.get("instances"), list) else []
+        local_buffer_broker_payload = (
+            payload.get("local_buffer_broker")
+            if isinstance(payload.get("local_buffer_broker"), dict)
+            else {}
+        )
+        instances_payload = (
+            payload.get("instances")
+            if isinstance(payload.get("instances"), list)
+            else []
+        )
         instances = tuple(
             DeploymentProcessInstanceHealth(
                 instance_id=str(item.get("instance_id") or ""),
                 healthy=bool(item.get("healthy") is True),
                 warmed=bool(item.get("warmed") is True),
                 busy=bool(item.get("busy") is True),
-                last_error=str(item.get("last_error")) if item.get("last_error") is not None else None,
+                last_error=str(item.get("last_error"))
+                if item.get("last_error") is not None
+                else None,
             )
             for item in instances_payload
             if isinstance(item, dict)
         )
-        process_id = _read_response_optional_int(payload, "process_id") or status.process_id
+        process_id = (
+            _read_response_optional_int(payload, "process_id") or status.process_id
+        )
+        effective_runtime_configuration = _read_response_dict(
+            payload, "effective_runtime_configuration"
+        )
+        effective_runtime_configuration["cpu_device_resource_manager"] = (
+            cpu_resource_snapshot
+        )
+        configuration_warnings = tuple(
+            dict.fromkeys(
+                (
+                    *_read_response_string_tuple(payload, "configuration_warnings"),
+                    *cpu_resource_warnings,
+                )
+            )
+        )
         return DeploymentProcessHealth(
             deployment_instance_id=status.deployment_instance_id,
             runtime_mode=status.runtime_mode,
@@ -1050,12 +1154,26 @@ class DeploymentProcessSupervisor:
             restart_count_rollover_count=status.restart_count_rollover_count,
             last_exit_code=status.last_exit_code,
             last_error=status.last_error,
-            healthy_instance_count=_read_response_optional_int(payload, "healthy_instance_count") or 0,
-            warmed_instance_count=_read_response_optional_int(payload, "warmed_instance_count") or 0,
-            pinned_output_total_bytes=_read_response_optional_int(payload, "pinned_output_total_bytes") or 0,
+            healthy_instance_count=_read_response_optional_int(
+                payload, "healthy_instance_count"
+            )
+            or 0,
+            warmed_instance_count=_read_response_optional_int(
+                payload, "warmed_instance_count"
+            )
+            or 0,
+            pinned_output_total_bytes=_read_response_optional_int(
+                payload, "pinned_output_total_bytes"
+            )
+            or 0,
             instances=instances,
             keep_warm=_deserialize_keep_warm_status(keep_warm_payload),
             local_buffer_broker=dict(local_buffer_broker_payload),
+            requested_runtime_configuration=_read_response_dict(
+                payload, "requested_runtime_configuration"
+            ),
+            effective_runtime_configuration=effective_runtime_configuration,
+            configuration_warnings=configuration_warnings,
         )
 
     @staticmethod
@@ -1160,11 +1278,15 @@ class DeploymentProcessSupervisor:
                 events=tuple(existing_events),
             )
         if self.service_event_bus is not None:
-            self.service_event_bus.publish(build_deployment_process_service_event(event))
+            self.service_event_bus.publish(
+                build_deployment_process_service_event(event)
+            )
         self._publish_project_summary_event(event)
         return event
 
-    def _publish_project_summary_event(self, event: DetectionDeploymentProcessEvent) -> None:
+    def _publish_project_summary_event(
+        self, event: DetectionDeploymentProcessEvent
+    ) -> None:
         """按需为 deployment 生命周期事件发布项目级聚合更新。"""
 
         if not should_publish_project_summary_for_deployment_event(event.event_type):
@@ -1190,7 +1312,9 @@ class DeploymentProcessSupervisor:
             source_resource_id=event.deployment_instance_id,
         )
 
-    def _resolve_project_summary_state(self, deployment_instance_id: str) -> object | None:
+    def _resolve_project_summary_state(
+        self, deployment_instance_id: str
+    ) -> object | None:
         """按 deployment id 读取当前监督器内部的状态对象。"""
 
         deployments = getattr(self, "_deployments", None)
@@ -1204,7 +1328,9 @@ class DeploymentProcessSupervisor:
         return None
 
 
-def _close_local_buffer_broker_event_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+def _close_local_buffer_broker_event_channel(
+    channel: LocalBufferBrokerEventChannel | None,
+) -> None:
     """关闭 deployment worker 对应的 broker client channel。"""
 
     if channel is None:
@@ -1216,7 +1342,6 @@ def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ..
     """把 deployment 进程配置转换为稳定比较签名。"""
 
     runtime_target = config.runtime_target
-    runtime_behavior = config.runtime_behavior
     return (
         config.deployment_instance_id,
         config.instance_count,
@@ -1228,12 +1353,7 @@ def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ..
         runtime_target.device_name,
         runtime_target.input_size,
         runtime_target.labels,
-        runtime_behavior.warmup_dummy_inference_count,
-        runtime_behavior.warmup_dummy_image_size,
-        runtime_behavior.keep_warm_enabled,
-        runtime_behavior.keep_warm_interval_seconds,
-        runtime_behavior.tensorrt_pinned_output_buffer_enabled,
-        runtime_behavior.tensorrt_pinned_output_buffer_max_bytes,
+        repr(config.runtime_configuration),
     )
 
 
@@ -1330,11 +1450,16 @@ def _deserialize_keep_warm_status(
         interval_seconds=float(payload.get("interval_seconds") or 0.0),
         yield_timeout_seconds=float(payload.get("yield_timeout_seconds") or 0.0),
         success_count=int(payload.get("success_count") or 0),
-        success_count_rollover_count=int(payload.get("success_count_rollover_count") or 0),
+        success_count_rollover_count=int(
+            payload.get("success_count_rollover_count") or 0
+        ),
         error_count=int(payload.get("error_count") or 0),
         error_count_rollover_count=int(payload.get("error_count_rollover_count") or 0),
-        last_error=str(payload.get("last_error")) if payload.get("last_error") is not None else None,
+        last_error=str(payload.get("last_error"))
+        if payload.get("last_error") is not None
+        else None,
     )
+
 
 def _require_response_str(payload: dict[str, object], key: str) -> str:
     """从子进程响应中读取必填字符串字段。"""
@@ -1342,7 +1467,9 @@ def _require_response_str(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if isinstance(value, str) and value.strip():
         return value.strip()
-    raise ServiceConfigurationError("deployment 子进程返回缺少必要字符串字段", details={"field": key})
+    raise ServiceConfigurationError(
+        "deployment 子进程返回缺少必要字符串字段", details={"field": key}
+    )
 
 
 def _require_response_int(payload: dict[str, object], key: str) -> int:
@@ -1351,7 +1478,9 @@ def _require_response_int(payload: dict[str, object], key: str) -> int:
     value = payload.get(key)
     if isinstance(value, int):
         return value
-    raise ServiceConfigurationError("deployment 子进程返回缺少必要整数字段", details={"field": key})
+    raise ServiceConfigurationError(
+        "deployment 子进程返回缺少必要整数字段", details={"field": key}
+    )
 
 
 def _read_response_optional_int(payload: dict[str, object], key: str) -> int | None:
@@ -1379,3 +1508,24 @@ def _read_response_optional_bytes(payload: dict[str, object], key: str) -> bytes
     if isinstance(value, bytes):
         return value
     return None
+
+
+def _read_response_dict(payload: dict[str, object], key: str) -> dict[str, object]:
+    """读取响应中的对象字段。"""
+
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        return {}
+    return {str(item_key): item_value for item_key, item_value in value.items()}
+
+
+def _read_response_string_tuple(
+    payload: dict[str, object],
+    key: str,
+) -> tuple[str, ...]:
+    """读取响应中的字符串数组。"""
+
+    value = payload.get(key)
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(str(item) for item in value if isinstance(item, str))

@@ -8,11 +8,16 @@ from fastapi import Request
 from pydantic import BaseModel, Field
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
-from backend.service.application.runtime.deployment.deployment_events import DetectionDeploymentProcessEvent
+from backend.service.application.runtime.deployment.deployment_events import (
+    DetectionDeploymentProcessEvent,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
     DeploymentProcessInstanceHealth,
@@ -35,17 +40,39 @@ class DeploymentRuntimeInstanceHealthResponse(BaseModel):
 class DeploymentProcessKeepWarmResponse(BaseModel):
     """描述 deployment 子进程内 keep-warm 的当前状态。"""
 
-    enabled: bool = Field(default=False, description="当前 deployment 是否启用 keep-warm")
-    activated: bool = Field(default=False, description="keep-warm 是否已经被 warmup 或真实推理激活")
-    paused: bool = Field(default=False, description="当前是否因为控制面动作或真实请求而暂停")
-    idle: bool = Field(default=True, description="当前是否没有 keep-warm dummy infer 正在执行")
-    interval_seconds: float = Field(default=0.0, description="keep-warm 连续 dummy infer 的最小间隔秒数")
-    yield_timeout_seconds: float = Field(default=0.0, description="真实请求等待 keep-warm 让出的最长秒数")
-    success_count: int = Field(default=0, description="keep-warm 成功次数当前安全整数窗口值")
-    success_count_rollover_count: int = Field(default=0, description="success_count rollover 次数")
-    error_count: int = Field(default=0, description="keep-warm 失败次数当前安全整数窗口值")
-    error_count_rollover_count: int = Field(default=0, description="error_count rollover 次数")
-    last_error: str | None = Field(default=None, description="最近一次 keep-warm 失败错误")
+    enabled: bool = Field(
+        default=False, description="当前 deployment 是否启用 keep-warm"
+    )
+    activated: bool = Field(
+        default=False, description="keep-warm 是否已经被 warmup 或真实推理激活"
+    )
+    paused: bool = Field(
+        default=False, description="当前是否因为控制面动作或真实请求而暂停"
+    )
+    idle: bool = Field(
+        default=True, description="当前是否没有 keep-warm dummy infer 正在执行"
+    )
+    interval_seconds: float = Field(
+        default=0.0, description="keep-warm 连续 dummy infer 的最小间隔秒数"
+    )
+    yield_timeout_seconds: float = Field(
+        default=0.0, description="真实请求等待 keep-warm 让出的最长秒数"
+    )
+    success_count: int = Field(
+        default=0, description="keep-warm 成功次数当前安全整数窗口值"
+    )
+    success_count_rollover_count: int = Field(
+        default=0, description="success_count rollover 次数"
+    )
+    error_count: int = Field(
+        default=0, description="keep-warm 失败次数当前安全整数窗口值"
+    )
+    error_count_rollover_count: int = Field(
+        default=0, description="error_count rollover 次数"
+    )
+    last_error: str | None = Field(
+        default=None, description="最近一次 keep-warm 失败错误"
+    )
 
 
 class DeploymentProcessStatusResponse(BaseModel):
@@ -59,7 +86,9 @@ class DeploymentProcessStatusResponse(BaseModel):
     process_id: int | None = Field(default=None, description="当前子进程 pid")
     auto_restart: bool = Field(description="是否启用崩溃自动拉起")
     restart_count: int = Field(description="已经发生的自动拉起次数当前安全整数窗口值")
-    restart_count_rollover_count: int = Field(default=0, description="restart_count rollover 次数")
+    restart_count_rollover_count: int = Field(
+        default=0, description="restart_count rollover 次数"
+    )
     last_exit_code: int | None = Field(default=None, description="最近一次退出码")
     last_error: str | None = Field(default=None, description="最近一次监督错误")
     instance_count: int = Field(description="实例数量")
@@ -70,10 +99,33 @@ class DeploymentRuntimeHealthResponse(DeploymentProcessStatusResponse):
 
     healthy_instance_count: int = Field(description="健康实例数量")
     warmed_instance_count: int = Field(description="已预热实例数量")
-    pinned_output_total_bytes: int = Field(default=0, description="当前所有已加载 session 的 pinned output host buffer 总字节数")
-    instances: list[DeploymentRuntimeInstanceHealthResponse] = Field(default_factory=list, description="实例级健康状态列表")
-    keep_warm: DeploymentProcessKeepWarmResponse = Field(default_factory=DeploymentProcessKeepWarmResponse, description="keep-warm 运行状态")
-    local_buffer_broker: dict[str, object] = Field(default_factory=dict, description="LocalBufferBroker 接入状态、输入计数和最近错误")
+    pinned_output_total_bytes: int = Field(
+        default=0,
+        description="当前所有已加载 session 的 pinned output host buffer 总字节数",
+    )
+    instances: list[DeploymentRuntimeInstanceHealthResponse] = Field(
+        default_factory=list, description="实例级健康状态列表"
+    )
+    keep_warm: DeploymentProcessKeepWarmResponse = Field(
+        default_factory=DeploymentProcessKeepWarmResponse,
+        description="keep-warm 运行状态",
+    )
+    local_buffer_broker: dict[str, object] = Field(
+        default_factory=dict,
+        description="LocalBufferBroker 接入状态、输入计数和最近错误",
+    )
+    requested_runtime_configuration: dict[str, object] = Field(
+        default_factory=dict,
+        description="用户请求并持久化的运行时配置",
+    )
+    effective_runtime_configuration: dict[str, object] = Field(
+        default_factory=dict,
+        description="runtime 实际采用的配置",
+    )
+    configuration_warnings: list[str] = Field(
+        default_factory=list,
+        description="不阻止启动的配置告警",
+    )
 
 
 class DeploymentProcessEventResponse(BaseModel):
@@ -85,7 +137,9 @@ class DeploymentProcessEventResponse(BaseModel):
     event_type: str = Field(description="事件类型")
     created_at: str = Field(description="事件发生时间")
     message: str = Field(description="事件摘要消息")
-    payload: dict[str, object] = Field(default_factory=dict, description="结构化事件正文")
+    payload: dict[str, object] = Field(
+        default_factory=dict, description="结构化事件正文"
+    )
 
 
 def ensure_deployment_visible(
@@ -132,7 +186,9 @@ def require_running_deployment_process(
     raise InvalidRequestError(
         "当前 deployment 进程尚未启动，请先调用 start 或 warmup 接口",
         details={
-            "deployment_instance_id": getattr(process_config, "deployment_instance_id", None),
+            "deployment_instance_id": getattr(
+                process_config, "deployment_instance_id", None
+            ),
             "runtime_mode": runtime_mode,
             "process_state": status.process_state,
             "required_actions": [f"{runtime_mode}/start", f"{runtime_mode}/warmup"],
@@ -181,7 +237,10 @@ def delete_stopped_deployment_instance(
             details={
                 "deployment_instance_id": deployment_instance_id,
                 "runtime_states": running_states,
-                "required_state": {"desired_state": "stopped", "process_state": "stopped"},
+                "required_state": {
+                    "desired_state": "stopped",
+                    "process_state": "stopped",
+                },
             },
         )
     if not deployment_service.delete_deployment_instance(deployment_instance_id):
@@ -198,7 +257,9 @@ def read_async_inference_service_id(
 ) -> str | None:
     """读取当前 async inference service 稳定 id。"""
 
-    task_specific_value = getattr(request.app.state, f"{task_type}_async_inference_service_id", None)
+    task_specific_value = getattr(
+        request.app.state, f"{task_type}_async_inference_service_id", None
+    )
     if isinstance(task_specific_value, str) and task_specific_value.strip():
         return task_specific_value.strip()
     generic_value = getattr(request.app.state, "async_inference_service_id", None)
@@ -229,7 +290,9 @@ def run_deployment_process_status_action(
     if action == "start":
         process_status = supervisor.start_deployment(process_config)
         if runtime_mode == "async":
-            _ensure_async_dispatcher(gateway_dispatcher_registry, deployment_instance_id)
+            _ensure_async_dispatcher(
+                gateway_dispatcher_registry, deployment_instance_id
+            )
     elif action == "stop":
         process_status = supervisor.stop_deployment(process_config)
         if runtime_mode == "async":
@@ -241,7 +304,9 @@ def run_deployment_process_status_action(
             "未知的 deployment 状态动作",
             details={"action": action},
         )
-    return build_deployment_process_status_response(view=view, process_status=process_status, runtime_mode=runtime_mode)
+    return build_deployment_process_status_response(
+        view=view, process_status=process_status, runtime_mode=runtime_mode
+    )
 
 
 def run_deployment_process_health_action(
@@ -266,7 +331,9 @@ def run_deployment_process_health_action(
     if action == "warmup":
         process_health = supervisor.warmup_deployment(process_config)
         if runtime_mode == "async":
-            _ensure_async_dispatcher(gateway_dispatcher_registry, deployment_instance_id)
+            _ensure_async_dispatcher(
+                gateway_dispatcher_registry, deployment_instance_id
+            )
     elif action == "reset":
         process_health = supervisor.reset_deployment(process_config)
     elif action == "health":
@@ -276,7 +343,9 @@ def run_deployment_process_health_action(
             "未知的 deployment 健康动作",
             details={"action": action},
         )
-    return build_deployment_runtime_health_response(view=view, process_health=process_health, runtime_mode=runtime_mode)
+    return build_deployment_runtime_health_response(
+        view=view, process_health=process_health, runtime_mode=runtime_mode
+    )
 
 
 def build_deployment_process_status_response(
@@ -327,9 +396,19 @@ def build_deployment_runtime_health_response(
         healthy_instance_count=process_health.healthy_instance_count,
         warmed_instance_count=process_health.warmed_instance_count,
         pinned_output_total_bytes=process_health.pinned_output_total_bytes,
-        instances=[_build_runtime_instance_health_response(item) for item in process_health.instances],
+        instances=[
+            _build_runtime_instance_health_response(item)
+            for item in process_health.instances
+        ],
         keep_warm=_build_keep_warm_response(process_health.keep_warm),
         local_buffer_broker=dict(process_health.local_buffer_broker),
+        requested_runtime_configuration=dict(
+            process_health.requested_runtime_configuration
+        ),
+        effective_runtime_configuration=dict(
+            process_health.effective_runtime_configuration
+        ),
+        configuration_warnings=list(process_health.configuration_warnings),
     )
 
 
@@ -393,7 +472,9 @@ def _ensure_async_dispatcher(
 
     if gateway_dispatcher_registry is None:
         return
-    ensure_dispatcher = getattr(gateway_dispatcher_registry, "ensure_dispatcher_for_deployment", None)
+    ensure_dispatcher = getattr(
+        gateway_dispatcher_registry, "ensure_dispatcher_for_deployment", None
+    )
     if callable(ensure_dispatcher):
         ensure_dispatcher(deployment_instance_id)
 
@@ -406,6 +487,8 @@ def _stop_async_dispatcher(
 
     if gateway_dispatcher_registry is None:
         return
-    stop_dispatcher = getattr(gateway_dispatcher_registry, "stop_dispatcher_for_deployment", None)
+    stop_dispatcher = getattr(
+        gateway_dispatcher_registry, "stop_dispatcher_for_deployment", None
+    )
     if callable(stop_dispatcher):
         stop_dispatcher(deployment_instance_id)

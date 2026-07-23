@@ -5,7 +5,13 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.rfdetr_core.runtime import (
     build_rfdetr_runtime_postprocess_model,
     resolve_rfdetr_runtime_input_size,
@@ -45,7 +51,9 @@ from backend.service.application.runtime.support.detection import (
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 class TensorRTRfdetrRuntimeSession:
@@ -103,7 +111,9 @@ class TensorRTRfdetrRuntimeSession:
     def __del__(self) -> None:
         try:
             ensure_cuda_success(
-                self.imports.cudart.cudaSetDevice(resolve_cuda_device_index(self.device_name)),
+                self.imports.cudart.cudaSetDevice(
+                    resolve_cuda_device_index(self.device_name)
+                ),
                 operation_name="TensorRT RF-DETR runtime 释放前绑定 CUDA device",
                 details={"device_name": self.device_name},
             )
@@ -129,6 +139,7 @@ class TensorRTRfdetrRuntimeSession:
         *,
         dataset_storage: LocalDatasetStorage,
         runtime_target: RuntimeTargetSnapshot,
+        optimization_profile_index: int = 0,
     ) -> "TensorRTRfdetrRuntimeSession":
         if runtime_target.runtime_backend != "tensorrt":
             raise InvalidRequestError(
@@ -154,7 +165,9 @@ class TensorRTRfdetrRuntimeSession:
             severity=tensorrt_module.Logger.WARNING,
         )
         runtime = tensorrt_module.Runtime(logger)
-        engine = runtime.deserialize_cuda_engine(runtime_target.runtime_artifact_path.read_bytes())
+        engine = runtime.deserialize_cuda_engine(
+            runtime_target.runtime_artifact_path.read_bytes()
+        )
         if engine is None:
             raise ServiceConfigurationError(
                 "TensorRT RF-DETR engine 反序列化失败",
@@ -171,6 +184,12 @@ class TensorRTRfdetrRuntimeSession:
             operation_name="TensorRT RF-DETR runtime 创建 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = ensure_cuda_success(
             cuda_imports.cudart.cudaEventCreate(),
             operation_name="TensorRT RF-DETR runtime 创建执行起点 event",
@@ -256,7 +275,9 @@ class TensorRTRfdetrRuntimeSession:
             ),
         )
 
-    def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
+    def predict(
+        self, request: DetectionPredictionRequest
+    ) -> DetectionPredictionExecutionResult:
         return _predict_tensorrt(self, request)
 
 
@@ -278,7 +299,9 @@ def _predict_tensorrt(
         input_size=session_obj.input_size,
     )
     input_array = input_array.astype(
-        resolve_numpy_dtype(np_module=imports.np, dtype_name=session_obj.input_dtype_name),
+        resolve_numpy_dtype(
+            np_module=imports.np, dtype_name=session_obj.input_dtype_name
+        ),
         copy=False,
     )
     requested_input_shape = tuple(int(dim) for dim in input_array.shape)
@@ -289,7 +312,9 @@ def _predict_tensorrt(
     infer_started_at = perf_counter()
     try:
         ensure_cuda_success(
-            imports.cudart.cudaSetDevice(resolve_cuda_device_index(session_obj.device_name)),
+            imports.cudart.cudaSetDevice(
+                resolve_cuda_device_index(session_obj.device_name)
+            ),
             operation_name="TensorRT RF-DETR runtime 绑定 CUDA device",
             details={"device_name": session_obj.device_name},
         )
@@ -368,11 +393,16 @@ def _predict_tensorrt(
             output_device_ptr = ensure_cuda_success(
                 imports.cudart.cudaMalloc(int(output_array.nbytes)),
                 operation_name="TensorRT RF-DETR 分配输出显存",
-                details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+                details={
+                    "output_name": output_name,
+                    "byte_size": int(output_array.nbytes),
+                },
             )[0]
             output_device_ptrs.append(output_device_ptr)
             if (
-                session_obj.context.set_tensor_address(output_name, int(output_device_ptr))
+                session_obj.context.set_tensor_address(
+                    output_name, int(output_device_ptr)
+                )
                 is not True
             ):
                 raise ServiceConfigurationError(
@@ -388,7 +418,10 @@ def _predict_tensorrt(
             operation_name="TensorRT RF-DETR 记录执行起点 event",
             details={"device_name": session_obj.device_name},
         )
-        if session_obj.context.execute_async_v3(stream_handle=session_obj.stream) is not True:
+        if (
+            session_obj.context.execute_async_v3(stream_handle=session_obj.stream)
+            is not True
+        ):
             raise ServiceConfigurationError(
                 "TensorRT RF-DETR execution context 执行推理失败",
                 details={"model_build_id": session_obj.runtime_target.model_build_id},
@@ -416,7 +449,10 @@ def _predict_tensorrt(
                     session_obj.stream,
                 ),
                 operation_name="TensorRT RF-DETR 拷贝输出到主存",
-                details={"output_name": output_name, "byte_size": int(output_array.nbytes)},
+                details={
+                    "output_name": output_name,
+                    "byte_size": int(output_array.nbytes),
+                },
             )
         ensure_cuda_success(
             imports.cudart.cudaStreamSynchronize(session_obj.stream),
@@ -470,7 +506,9 @@ def _predict_tensorrt(
         output_specs=tuple(
             DetectionRuntimeTensorSpec(
                 name=output_name,
-                shape=tuple(int(item) for item in output_arrays_by_name[output_name].shape),
+                shape=tuple(
+                    int(item) for item in output_arrays_by_name[output_name].shape
+                ),
                 dtype=session_obj.output_dtype_names[index],
             )
             for index, output_name in enumerate(session_obj.output_names)
@@ -480,7 +518,8 @@ def _predict_tensorrt(
             "model_scale": session_obj.runtime_target.model_scale,
             "runtime_execution_mode": describe_runtime_execution_mode(
                 runtime_backend="tensorrt",
-                runtime_precision=session_obj.runtime_target.runtime_precision or "fp32",
+                runtime_precision=session_obj.runtime_target.runtime_precision
+                or "fp32",
                 device_name=session_obj.device_name,
             ),
             "infer_execute_gpu_ms": infer_execute_gpu_ms,

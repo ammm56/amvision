@@ -6,6 +6,9 @@ import sys
 from time import perf_counter
 from typing import Any
 
+from backend.service.application.runtime.support.tensorrt_execution import (
+    activate_tensorrt_optimization_profile,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -173,6 +176,7 @@ class TensorRTYolo11RuntimeSession:
         runtime_target: RuntimeTargetSnapshot,
         pinned_output_buffer_enabled: bool | None = None,
         pinned_output_buffer_max_bytes: int | None = None,
+        optimization_profile_index: int = 0,
     ) -> "TensorRTYolo11RuntimeSession":
         """加载一套 TensorRT YOLO11 detection 会话。"""
 
@@ -225,6 +229,12 @@ class TensorRTYolo11RuntimeSession:
             operation_name="TensorRT runtime 创建复用 CUDA stream",
             details={"device_name": device_name},
         )[0]
+        activate_tensorrt_optimization_profile(
+            engine=engine,
+            context=context,
+            stream=stream,
+            profile_index=optimization_profile_index,
+        )
         execute_start_event = ensure_cuda_success(
             imports.cudart.cudaEventCreate(),
             operation_name="TensorRT runtime 创建执行起点 event",

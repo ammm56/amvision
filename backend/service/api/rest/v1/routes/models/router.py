@@ -11,6 +11,7 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.rest.v1.routes.models.schemas import (
     DeploymentSourceModelDetailResponse,
     DeploymentSourceModelSummaryResponse,
+    DeploymentRuntimeCapabilitiesResponse,
     PlatformBaseModelDetailResponse,
     PlatformBaseModelSummaryResponse,
 )
@@ -21,9 +22,34 @@ from backend.service.api.rest.v1.routes.models.services import (
     list_platform_base_model_responses,
 )
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.application.runtime.deployment.runtime_capabilities import (
+    inspect_deployment_runtime_capabilities,
+)
 
 
 models_router = APIRouter(prefix="/models", tags=["models"])
+
+
+@models_router.get(
+    "/deployment-runtime-capabilities",
+    response_model=DeploymentRuntimeCapabilitiesResponse,
+)
+def get_deployment_runtime_capabilities(
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
+    runtime_backend: Annotated[str, Query(description="运行时 backend")],
+    device_name: Annotated[str, Query(description="目标 device")],
+) -> DeploymentRuntimeCapabilitiesResponse:
+    """返回发布表单与运行状态使用的当前 runtime 能力。"""
+
+    _ = principal
+    return DeploymentRuntimeCapabilitiesResponse.model_validate(
+        inspect_deployment_runtime_capabilities(
+            runtime_backend=runtime_backend,
+            device_name=device_name,
+        )
+    )
 
 
 @models_router.get(
@@ -31,7 +57,9 @@ models_router = APIRouter(prefix="/models", tags=["models"])
     response_model=list[PlatformBaseModelSummaryResponse],
 )
 def list_platform_base_models(
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     model_name: Annotated[str | None, Query(description="模型名筛选")] = None,
     model_scale: Annotated[str | None, Query(description="模型 scale 筛选")] = None,
@@ -55,7 +83,9 @@ def list_platform_base_models(
     response_model=list[DeploymentSourceModelSummaryResponse],
 )
 def list_deployment_source_models(
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     project_id: Annotated[str, Query(description="当前 Project id")],
     task_type: Annotated[str | None, Query(description="任务类型筛选")] = None,
@@ -78,7 +108,9 @@ def list_deployment_source_models(
 )
 def get_deployment_source_model_detail(
     model_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     project_id: Annotated[str, Query(description="当前 Project id")],
 ) -> DeploymentSourceModelDetailResponse:
@@ -98,7 +130,9 @@ def get_deployment_source_model_detail(
 )
 def get_platform_base_model_detail(
     model_id: str,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read"))],
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> PlatformBaseModelDetailResponse:
     """按 id 返回单个平台基础模型详情。"""

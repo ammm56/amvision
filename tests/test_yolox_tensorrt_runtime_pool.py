@@ -8,7 +8,14 @@ from backend.service.application.runtime.deployment.deployment_runtime_pool impo
     DeploymentRuntimePool,
     DeploymentRuntimePoolConfig,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentExecutionPolicy,
+    DeploymentRuntimeConfiguration,
+    TensorRtRuntimeOptions,
+)
 from backend.service.domain.files.yolox_file_types import YOLOX_TENSORRT_ENGINE_FILE
 from tests.runtime_pool_test_support import (
     FakePredictionSession,
@@ -61,7 +68,9 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-tensorrt-runtime-pool-1",
         runtime_target=runtime_target,
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=TensorRtRuntimeOptions()
+        ),
     )
     request = DetectionPredictionRequest(
         score_threshold=0.1,
@@ -69,9 +78,11 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
         input_image_bytes=b"fake-image-bytes",
     )
     fake_session = FakePredictionSession(
-        execution_result=build_test_execution_result(runtime_target=runtime_target, output_dtype="float16")
+        execution_result=build_test_execution_result(
+            runtime_target=runtime_target, output_dtype="float16"
+        )
     )
-    load_requests: list[tuple[object, object, object, object]] = []
+    load_requests: list[tuple[object, object, object]] = []
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(
@@ -84,20 +95,32 @@ def test_runtime_pool_loads_tensorrt_session_once_and_reuses_warmed_instance(
     health = pool.get_health(config)
 
     assert len(load_requests) == 1
-    assert load_requests[0] == (dataset_storage, runtime_target, None, None)
+    assert load_requests[0] == (
+        dataset_storage,
+        runtime_target,
+        config.runtime_configuration,
+    )
     assert warmup_status.healthy_instance_count == 1
     assert warmup_status.warmed_instance_count == 1
     assert health.healthy_instance_count == 1
     assert health.warmed_instance_count == 1
     assert health.instances[0].busy is False
     assert fake_session.requests == [request]
-    assert execution.instance_id == "deployment-instance-tensorrt-runtime-pool-1:instance-0"
+    assert (
+        execution.instance_id
+        == "deployment-instance-tensorrt-runtime-pool-1:instance-0"
+    )
     assert execution.execution_result.runtime_session_info.backend_name == "tensorrt"
     assert execution.execution_result.runtime_session_info.device_name == "cuda:0"
-    assert execution.execution_result.runtime_session_info.metadata["runtime_execution_mode"] == (
-        "tensorrt:fp16:cuda:0"
+    assert execution.execution_result.runtime_session_info.metadata[
+        "runtime_execution_mode"
+    ] == ("tensorrt:fp16:cuda:0")
+    assert (
+        execution.execution_result.runtime_session_info.metadata[
+            "compiled_runtime_precision"
+        ]
+        == "fp16"
     )
-    assert execution.execution_result.runtime_session_info.metadata["compiled_runtime_precision"] == "fp16"
 
 
 def test_runtime_pool_health_reports_total_pinned_output_bytes(
@@ -117,14 +140,19 @@ def test_runtime_pool_health_reports_total_pinned_output_bytes(
     config = DeploymentRuntimePoolConfig(
         deployment_instance_id="deployment-instance-tensorrt-runtime-pool-health-1",
         runtime_target=runtime_target,
-        instance_count=2,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2),
+            backend_options=TensorRtRuntimeOptions(),
+        ),
     )
     fake_session = _MemoryReportingPredictionSession(
-        execution_result=build_test_execution_result(runtime_target=runtime_target, output_dtype="float32"),
+        execution_result=build_test_execution_result(
+            runtime_target=runtime_target, output_dtype="float32"
+        ),
         output_host_memory_kind="pinned",
         output_host_pinned_bytes=524288,
     )
-    load_requests: list[tuple[object, object, object, object]] = []
+    load_requests: list[tuple[object, object, object]] = []
     pool = DeploymentRuntimePool(
         dataset_storage=dataset_storage,
         model_runtime=build_recording_model_runtime(

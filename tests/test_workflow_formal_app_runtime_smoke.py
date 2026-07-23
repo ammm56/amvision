@@ -9,7 +9,10 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    FlowApplication,
+    WorkflowGraphTemplate,
+)
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.deployments.deployment_instance_service import (
@@ -18,7 +21,12 @@ from backend.service.application.deployments.deployment_instance_service import 
 )
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.domain.deployments.deployment_instance import DeploymentInstance
-from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    build_default_runtime_configuration,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeRuntimeRegistry,
+)
 from backend.service.application.workflows.process_executor import (
     WorkflowApplicationExecutionRequest,
     WorkflowApplicationRuntimeExecutor,
@@ -26,8 +34,12 @@ from backend.service.application.workflows.process_executor import (
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 from tests.test_workflow_barcode_protocol_nodes import _build_barcode_test_png_bytes
 
@@ -60,7 +72,10 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
     def _warmup_handler(request) -> dict[str, object]:
         call_order.append("warmup")
         assert request.input_values["request"] == _build_deployment_request_payload()
-        assert request.input_values["dependency"]["deployment_instance_id"] == "deployment-instance-1"
+        assert (
+            request.input_values["dependency"]["deployment_instance_id"]
+            == "deployment-instance-1"
+        )
         return {
             "body": {
                 "deployment_instance_id": "deployment-instance-1",
@@ -89,7 +104,12 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
     def _health_handler(request) -> dict[str, object]:
         call_order.append("health")
         assert request.input_values["request"] == _build_deployment_request_payload()
-        assert request.input_values["dependency"]["items"][0]["bbox_xyxy"] == [0.0, 0.0, 1.0, 1.0]
+        assert request.input_values["dependency"]["items"][0]["bbox_xyxy"] == [
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+        ]
         return {
             "body": {
                 "deployment_instance_id": "deployment-instance-1",
@@ -99,17 +119,27 @@ def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_ex
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.model-deployment.start", _start_handler)
-    _override_python_handler(runtime_registry, "core.service.model-deployment.warmup", _warmup_handler)
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
-    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
+    _override_python_handler(
+        runtime_registry, "core.service.model-deployment.start", _start_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.model-deployment.warmup", _warmup_handler
+    )
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _detect_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.model-deployment.health", _health_handler
+    )
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(
+                    build_valid_test_png_bytes()
+                ),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": "smoke-sync-infer-health"},
@@ -163,7 +193,9 @@ def test_task_native_direct_model_app_runtime_smoke_executes_and_returns_ok_resu
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(
+                    build_valid_test_png_bytes()
+                ),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": f"smoke-{example_name}"},
@@ -176,7 +208,9 @@ def test_task_native_direct_model_app_runtime_smoke_executes_and_returns_ok_resu
     )
 
 
-def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp_path: Path) -> None:
+def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(
+    tmp_path: Path,
+) -> None:
     """验证第五类正式 app 会真实保存图片，并生成带 workflow_run_id 与时间戳的 object key。"""
 
     executor, workflow_service, dataset_storage, _ = _build_example_runtime(
@@ -192,7 +226,11 @@ def test_opencv_process_save_image_app_runtime_smoke_saves_unique_object_key(tmp
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
-            input_bindings={"request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes())},
+            input_bindings={
+                "request_image_base64": _build_image_base64_payload(
+                    build_valid_test_png_bytes()
+                )
+            },
             execution_metadata={"scenario": "smoke-opencv-save-image"},
         )
     )
@@ -262,15 +300,21 @@ def test_detection_deployment_infer_opencv_health_app_runtime_smoke_returns_heal
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
+    _override_python_handler(
+        runtime_registry, "core.service.model-deployment.health", _health_handler
+    )
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _detect_handler
+    )
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(
+                    build_valid_test_png_bytes()
+                ),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": "smoke-infer-opencv-health"},
@@ -338,15 +382,21 @@ def test_detection_deployment_infer_opencv_health_zeromq_app_runtime_smoke_retur
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.model-deployment.health", _health_handler)
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
+    _override_python_handler(
+        runtime_registry, "core.service.model-deployment.health", _health_handler
+    )
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _detect_handler
+    )
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                "request_image_base64": _build_image_base64_payload(build_valid_test_png_bytes()),
+                "request_image_base64": _build_image_base64_payload(
+                    build_valid_test_png_bytes()
+                ),
                 "deployment_request": _build_deployment_request_payload(),
             },
             execution_metadata={"scenario": "smoke-infer-opencv-health-zeromq"},
@@ -400,7 +450,9 @@ def test_detection_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_re
             }
         }
 
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _detect_handler
+    )
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
@@ -413,7 +465,7 @@ def test_detection_deployment_qr_crop_remap_app_runtime_smoke_decodes_qr_from_re
                         payload_text="qr-app-smoke",
                         barcode_format_name="QRCode",
                     )
-                )
+                ),
             },
             execution_metadata={"scenario": "smoke-qr-crop-remap"},
         )
@@ -453,14 +505,18 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
 
     def _submit_import_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         assert request_value["format_type"] == "coco"
         return {"body": {"task_id": "task-import-1", "status": "received"}}
 
     def _submit_export_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         assert request_value["format_id"] == "coco-detection-v1"
         return {
@@ -473,7 +529,9 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
 
     def _submit_training_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         assert request_value["model_type"] == "yolo11"
         assert request_value["recipe_id"] == "default"
@@ -490,7 +548,9 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
 
     def _task_wait_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         task_id = str(request_value["task_id"])
         waited_task_ids.append(task_id)
@@ -502,13 +562,15 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                 "result": {
                     "dataset_version_id": "dataset-version-1",
                 },
-                    "task_spec": {"dataset_id": "dataset-1"},
+                "task_spec": {"dataset_id": "dataset-1"},
                 "error_message": None,
             },
             "task-export-1": {
                 "task_id": "task-export-1",
                 "state": "succeeded",
-                "result": {"export_manifest_object_key": "exports/dataset-export-1/manifest.json"},
+                "result": {
+                    "export_manifest_object_key": "exports/dataset-export-1/manifest.json"
+                },
                 "error_message": None,
             },
             "task-training-1": {
@@ -529,7 +591,10 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                 "result": {
                     "model_build_id": "model-build-onnx-1",
                     "builds": [
-                        {"model_build_id": "model-build-onnx-1", "build_format": "onnx"},
+                        {
+                            "model_build_id": "model-build-onnx-1",
+                            "build_format": "onnx",
+                        },
                         {
                             "model_build_id": "model-build-optimized-1",
                             "build_format": "onnx-optimized",
@@ -547,7 +612,9 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
 
     def _detect_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         assert request_value["deployment_instance_id"] == "deployment-instance-1"
         return {
@@ -563,32 +630,55 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
             }
         }
 
-    _override_python_handler(runtime_registry, "core.service.dataset-import.submit", _submit_import_handler)
-    _override_python_handler(runtime_registry, "core.service.dataset-export.submit", _submit_export_handler)
-    _override_python_handler(runtime_registry, "core.service.model-training.submit", _submit_training_handler)
-    _override_python_handler(runtime_registry, "core.service.model-evaluation.submit", _submit_evaluation_handler)
-    _override_python_handler(runtime_registry, "core.service.model-conversion.submit", _submit_conversion_handler)
-    _override_python_handler(runtime_registry, "core.service.task.wait", _task_wait_handler)
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _detect_handler)
+    _override_python_handler(
+        runtime_registry, "core.service.dataset-import.submit", _submit_import_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.dataset-export.submit", _submit_export_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.model-training.submit", _submit_training_handler
+    )
+    _override_python_handler(
+        runtime_registry,
+        "core.service.model-evaluation.submit",
+        _submit_evaluation_handler,
+    )
+    _override_python_handler(
+        runtime_registry,
+        "core.service.model-conversion.submit",
+        _submit_conversion_handler,
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.task.wait", _task_wait_handler
+    )
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _detect_handler
+    )
 
     execution_result = executor.execute(
         WorkflowApplicationExecutionRequest(
             project_id="project-1",
             application_id=application.application_id,
             input_bindings={
-                    "import_request_payload": {
-                        "value": {
-                            "project_id": "project-1",
-                            "dataset_id": "dataset-1",
-                            "format_type": "coco",
-                            "task_type": "detection",
-                        }
-                    },
+                "import_request_payload": {
+                    "value": {
+                        "project_id": "project-1",
+                        "dataset_id": "dataset-1",
+                        "format_type": "coco",
+                        "task_type": "detection",
+                    }
+                },
                 "request_package": {
                     "package_file_name": "demo-dataset.zip",
                     "package_bytes": b"demo-zip",
                 },
-                "export_request_payload": {"value": {"project_id": "project-1", "format_id": "coco-detection-v1"}},
+                "export_request_payload": {
+                    "value": {
+                        "project_id": "project-1",
+                        "format_id": "coco-detection-v1",
+                    }
+                },
                 "training_request_payload": {
                     "value": {
                         "project_id": "project-1",
@@ -598,7 +688,9 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                         "output_model_name": "barcodeqrcode-detector-m",
                     }
                 },
-                "evaluation_request_payload": {"value": {"project_id": "project-1", "score_threshold": 0.25}},
+                "evaluation_request_payload": {
+                    "value": {"project_id": "project-1", "score_threshold": 0.25}
+                },
                 "conversion_request_payload": {
                     "value": {
                         "project_id": "project-1",
@@ -612,8 +704,19 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
                         "runtime_backend": "tensorrt",
                         "device_name": "cuda",
                         "runtime_precision": "fp16",
-                        "instance_count": 3,
-                        "keep_warm_enabled": True,
+                        "runtime_configuration": {
+                            "execution": {
+                                "instance_count": 3,
+                                "isolation_level": "session",
+                                "overflow_policy": "reject",
+                                "performance_goal": "latency",
+                            },
+                            "lifecycle": {"keep_warm_enabled": True},
+                            "backend_options": {
+                                "kind": "tensorrt",
+                                "optimization_profile_index": 0,
+                            },
+                        },
                     }
                 },
                 "inference_request_payload": {"value": {"score_threshold": 0.3}},
@@ -656,17 +759,33 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_smoke_returns_slim_stage
         "evaluation_task",
         "conversion_task",
     ]:
-        assert set(stages[stage_name]) == {"task_id", "state", "result", "error_message"}
+        assert set(stages[stage_name]) == {
+            "task_id",
+            "state",
+            "result",
+            "error_message",
+        }
         assert "events" not in stages[stage_name]
     assert stages["training_task"]["result"]["model_version_id"] == "model-version-1"
     assert stages["conversion_task"]["result"]["model_build_id"] == "model-build-onnx-1"
-    assert stages["conversion_task"]["result"]["builds"][-1]["model_build_id"] == "model-build-tensorrt-1"
+    assert (
+        stages["conversion_task"]["result"]["builds"][-1]["model_build_id"]
+        == "model-build-tensorrt-1"
+    )
     assert stages["deployment"]["deployment_instance_id"] == "deployment-instance-1"
     assert response_data["barcode_summary"]["count"] >= 1
     assert "qr-end-to-end-smoke" in response_data["barcode_summary"]["texts"]
-    assert tracked_deployment_service.create_requests[0]["request"].model_build_id == "model-build-tensorrt-1"
-    assert tracked_deployment_service.deleted_deployment_ids == ["deployment-instance-1"]
-    assert tracked_deployment_service.list_saved_deployment_ids(project_id="project-1") == ()
+    assert (
+        tracked_deployment_service.create_requests[0]["request"].model_build_id
+        == "model-build-tensorrt-1"
+    )
+    assert tracked_deployment_service.deleted_deployment_ids == [
+        "deployment-instance-1"
+    ]
+    assert (
+        tracked_deployment_service.list_saved_deployment_ids(project_id="project-1")
+        == ()
+    )
 
 
 def test_detection_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deployment_after_failure(
@@ -692,12 +811,16 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deploy
 
     def _failing_detect_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         assert request_value["deployment_instance_id"] == "deployment-instance-1"
         raise RuntimeError("forced detect failure")
 
-    _override_worker_task_handler(runtime_registry, "core.model.detection", _failing_detect_handler)
+    _override_worker_task_handler(
+        runtime_registry, "core.model.detection", _failing_detect_handler
+    )
 
     with pytest.raises(ServiceConfigurationError):
         executor.execute(
@@ -709,8 +832,13 @@ def test_detection_end_to_end_qr_crop_remap_app_runtime_cleans_up_created_deploy
             )
         )
 
-    assert tracked_deployment_service.deleted_deployment_ids == ["deployment-instance-1"]
-    assert tracked_deployment_service.list_saved_deployment_ids(project_id="project-1") == ()
+    assert tracked_deployment_service.deleted_deployment_ids == [
+        "deployment-instance-1"
+    ]
+    assert (
+        tracked_deployment_service.list_saved_deployment_ids(project_id="project-1")
+        == ()
+    )
 
 
 def _build_task_native_direct_model_smoke_output(
@@ -857,12 +985,18 @@ def _assert_task_native_direct_model_smoke_outputs(
     if example_name == "segmentation_deployment_sync_regions_gate":
         assert outputs["model_segments"]["items"][0]["class_name"] == "sealant"
         assert outputs["model_regions"]["items"][0]["class_name"] == "sealant"
-        assert inspection_result["metadata"]["inspection_kind"] == "segmentation-regions-gate"
+        assert (
+            inspection_result["metadata"]["inspection_kind"]
+            == "segmentation-regions-gate"
+        )
         assert inspection_result["metrics"]["area_ratio"] == 0.25
         return
     if example_name == "classification_deployment_sync_class_gate":
         assert outputs["model_categories"]["top_item"]["class_name"] == "ok-part"
-        assert inspection_result["metadata"]["inspection_kind"] == "classification-class-gate"
+        assert (
+            inspection_result["metadata"]["inspection_kind"]
+            == "classification-class-gate"
+        )
         assert inspection_result["metrics"]["top_class_name"] == "ok-part"
         assert inspection_result["metrics"]["top_probability"] == 0.93
         assert inspection_result["metrics"]["count"] == 2
@@ -924,7 +1058,12 @@ def _build_example_runtime(
         runtime_registry=runtime_registry_loader.get_runtime_registry(),
         runtime_context=runtime_context,
     )
-    return executor, workflow_service, dataset_storage, runtime_registry_loader.get_runtime_registry()
+    return (
+        executor,
+        workflow_service,
+        dataset_storage,
+        runtime_registry_loader.get_runtime_registry(),
+    )
 
 
 def _save_example_documents(
@@ -940,15 +1079,25 @@ def _save_example_documents(
     return template, application
 
 
-def _load_example_documents(example_name: str) -> tuple[WorkflowGraphTemplate, FlowApplication]:
+def _load_example_documents(
+    example_name: str,
+) -> tuple[WorkflowGraphTemplate, FlowApplication]:
     """读取指定名称的正式示例 template 与 application。"""
 
-    example_dir = Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
     template = WorkflowGraphTemplate.model_validate(
-        json.loads((example_dir / f"{example_name}.template.json").read_text(encoding="utf-8"))
+        json.loads(
+            (example_dir / f"{example_name}.template.json").read_text(encoding="utf-8")
+        )
     )
     application = FlowApplication.model_validate(
-        json.loads((example_dir / f"{example_name}.application.json").read_text(encoding="utf-8"))
+        json.loads(
+            (example_dir / f"{example_name}.application.json").read_text(
+                encoding="utf-8"
+            )
+        )
     )
     return template, application
 
@@ -1010,7 +1159,9 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
             "package_file_name": "demo-dataset.zip",
             "package_bytes": b"demo-zip",
         },
-        "export_request_payload": {"value": {"project_id": "project-1", "format_id": "coco-detection-v1"}},
+        "export_request_payload": {
+            "value": {"project_id": "project-1", "format_id": "coco-detection-v1"}
+        },
         "training_request_payload": {
             "value": {
                 "project_id": "project-1",
@@ -1020,7 +1171,9 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
                 "output_model_name": "barcodeqrcode-detector-m",
             }
         },
-        "evaluation_request_payload": {"value": {"project_id": "project-1", "score_threshold": 0.25}},
+        "evaluation_request_payload": {
+            "value": {"project_id": "project-1", "score_threshold": 0.25}
+        },
         "conversion_request_payload": {
             "value": {
                 "project_id": "project-1",
@@ -1034,8 +1187,19 @@ def _build_end_to_end_input_bindings() -> dict[str, object]:
                 "runtime_backend": "tensorrt",
                 "device_name": "cuda",
                 "runtime_precision": "fp16",
-                "instance_count": 3,
-                "keep_warm_enabled": True,
+                "runtime_configuration": {
+                    "execution": {
+                        "instance_count": 3,
+                        "isolation_level": "session",
+                        "overflow_policy": "reject",
+                        "performance_goal": "latency",
+                    },
+                    "lifecycle": {"keep_warm_enabled": True},
+                    "backend_options": {
+                        "kind": "tensorrt",
+                        "optimization_profile_index": 0,
+                    },
+                },
             }
         },
         "inference_request_payload": {"value": {"score_threshold": 0.3}},
@@ -1078,7 +1242,9 @@ def _install_end_to_end_submit_chain_runtime_overrides(
 
     def _task_wait_handler(request) -> dict[str, object]:
         request_payload = request.input_values.get("request")
-        request_value = request_payload.get("value") if isinstance(request_payload, dict) else None
+        request_value = (
+            request_payload.get("value") if isinstance(request_payload, dict) else None
+        )
         assert isinstance(request_value, dict)
         task_id = str(request_value["task_id"])
         waited_task_ids.append(task_id)
@@ -1090,13 +1256,15 @@ def _install_end_to_end_submit_chain_runtime_overrides(
                 "result": {
                     "dataset_version_id": "dataset-version-1",
                 },
-                    "task_spec": {"dataset_id": "dataset-1"},
+                "task_spec": {"dataset_id": "dataset-1"},
                 "error_message": None,
             },
             "task-export-1": {
                 "task_id": "task-export-1",
                 "state": "succeeded",
-                "result": {"export_manifest_object_key": "exports/dataset-export-1/manifest.json"},
+                "result": {
+                    "export_manifest_object_key": "exports/dataset-export-1/manifest.json"
+                },
                 "error_message": None,
             },
             "task-training-1": {
@@ -1117,7 +1285,10 @@ def _install_end_to_end_submit_chain_runtime_overrides(
                 "result": {
                     "model_build_id": "model-build-onnx-1",
                     "builds": [
-                        {"model_build_id": "model-build-onnx-1", "build_format": "onnx"},
+                        {
+                            "model_build_id": "model-build-onnx-1",
+                            "build_format": "onnx",
+                        },
                         {
                             "model_build_id": "model-build-optimized-1",
                             "build_format": "onnx-optimized",
@@ -1133,12 +1304,28 @@ def _install_end_to_end_submit_chain_runtime_overrides(
         }
         return {"body": task_payloads[task_id]}
 
-    _override_python_handler(runtime_registry, "core.service.dataset-import.submit", _submit_import_handler)
-    _override_python_handler(runtime_registry, "core.service.dataset-export.submit", _submit_export_handler)
-    _override_python_handler(runtime_registry, "core.service.model-training.submit", _submit_training_handler)
-    _override_python_handler(runtime_registry, "core.service.model-evaluation.submit", _submit_evaluation_handler)
-    _override_python_handler(runtime_registry, "core.service.model-conversion.submit", _submit_conversion_handler)
-    _override_python_handler(runtime_registry, "core.service.task.wait", _task_wait_handler)
+    _override_python_handler(
+        runtime_registry, "core.service.dataset-import.submit", _submit_import_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.dataset-export.submit", _submit_export_handler
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.model-training.submit", _submit_training_handler
+    )
+    _override_python_handler(
+        runtime_registry,
+        "core.service.model-evaluation.submit",
+        _submit_evaluation_handler,
+    )
+    _override_python_handler(
+        runtime_registry,
+        "core.service.model-conversion.submit",
+        _submit_conversion_handler,
+    )
+    _override_python_handler(
+        runtime_registry, "core.service.task.wait", _task_wait_handler
+    )
     return waited_task_ids
 
 
@@ -1179,15 +1366,24 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
         """保存一个最小 DeploymentInstance 记录，并返回固定 view。"""
 
         self.create_requests.append({"request": request, "created_by": created_by})
+        runtime_backend = request.runtime_backend or "tensorrt"
+        device_name = request.device_name or "cpu"
+        runtime_configuration = (
+            request.runtime_configuration
+            or build_default_runtime_configuration(
+                runtime_backend=runtime_backend,
+                device_name=device_name,
+            )
+        )
         deployment_instance = DeploymentInstance(
             deployment_instance_id="deployment-instance-1",
             project_id=request.project_id,
             model_id="model-1",
             model_version_id=request.model_version_id or "model-version-1",
             model_build_id=request.model_build_id or "model-build-tensorrt-1",
-            runtime_backend=request.runtime_backend or "tensorrt",
-            device_name=request.device_name or "cpu",
-            instance_count=request.instance_count,
+            runtime_backend=runtime_backend,
+            device_name=device_name,
+            runtime_configuration=runtime_configuration,
             status="active",
             display_name=request.display_name or "demo-deployment",
             created_at="2026-05-09T00:00:00+00:00",
@@ -1218,7 +1414,7 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
                 f"{deployment_instance.runtime_backend}:{request.runtime_precision or 'fp16'}:"
                 f"{deployment_instance.device_name}"
             ),
-            instance_count=deployment_instance.instance_count,
+            runtime_configuration=deployment_instance.runtime_configuration,
             input_size=(640, 640),
             labels=("qr",),
             created_at=deployment_instance.created_at,
@@ -1239,5 +1435,7 @@ class _TrackedDeploymentService(SqlAlchemyDeploymentInstanceService):
         with self._open_unit_of_work() as unit_of_work:
             return tuple(
                 item.deployment_instance_id
-                for item in unit_of_work.deployments.list_deployment_instances(project_id)
+                for item in unit_of_work.deployments.list_deployment_instances(
+                    project_id
+                )
             )

@@ -8,8 +8,8 @@ from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.inference.detection_inference_task_service import (
-    _serialize_process_runtime_behavior,
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    serialize_deployment_runtime_configuration,
 )
 from backend.service.application.models.inference.obb_async_inference_gateway import (
     deserialize_obb_async_inference_execution_result_payload,
@@ -78,7 +78,9 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             dataset_storage=self._require_dataset_storage(),
         )
 
-    def _build_task_spec(self, *, request: ObbInferenceTaskRequest, normalized_input, process_config) -> ObbInferenceTaskSpec:
+    def _build_task_spec(
+        self, *, request: ObbInferenceTaskRequest, normalized_input, process_config
+    ) -> ObbInferenceTaskSpec:
         return ObbInferenceTaskSpec(
             project_id=request.project_id,
             deployment_instance_id=request.deployment_instance_id,
@@ -94,14 +96,15 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             runtime_target_snapshot=serialize_runtime_target_snapshot(
                 process_config.runtime_target
             ),
-            runtime_behavior=_serialize_process_runtime_behavior(
-                process_config.runtime_behavior
+            runtime_configuration=serialize_deployment_runtime_configuration(
+                process_config.runtime_configuration
             ),
-            instance_count=process_config.instance_count,
             extra_options=dict(request.extra_options),
         )
 
-    def _serialize_task_spec(self, task_spec: ObbInferenceTaskSpec) -> dict[str, object]:
+    def _serialize_task_spec(
+        self, task_spec: ObbInferenceTaskSpec
+    ) -> dict[str, object]:
         return {
             "project_id": task_spec.project_id,
             "deployment_instance_id": task_spec.deployment_instance_id,
@@ -115,8 +118,7 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             "save_result_image": task_spec.save_result_image,
             "return_preview_image_base64": task_spec.return_preview_image_base64,
             "runtime_target_snapshot": dict(task_spec.runtime_target_snapshot),
-            "runtime_behavior": dict(task_spec.runtime_behavior),
-            "instance_count": task_spec.instance_count,
+            "runtime_configuration": dict(task_spec.runtime_configuration),
             "extra_options": dict(task_spec.extra_options),
         }
 
@@ -125,21 +127,29 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
         normalized_input = self._deserialize_normalized_input(task_spec)
         return ObbInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             model_type=self._read_optional_str(task_spec, "model_type"),
             input_file_id=normalized_input.input_file_id,
             input_uri=normalized_input.input_uri,
             input_source_kind=normalized_input.input_source_kind,
             input_transport_mode=normalized_input.input_transport_mode,
             input_image_bytes=normalized_input.input_image_bytes,
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 
-    def _build_prediction_request(self, *, normalized_input, request: ObbInferenceTaskRequest):
+    def _build_prediction_request(
+        self, *, normalized_input, request: ObbInferenceTaskRequest
+    ):
         return build_obb_prediction_request(
             normalized_input=normalized_input,
             score_threshold=self._resolve_score_threshold(request.score_threshold),
@@ -148,7 +158,14 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             extra_options=dict(request.extra_options),
         )
 
-    def _execute_task_inference(self, *, process_config, prediction_request, async_inference_owner_id: str, return_preview_image_base64: bool) -> TaskNativeInferenceExecution:
+    def _execute_task_inference(
+        self,
+        *,
+        process_config,
+        prediction_request,
+        async_inference_owner_id: str,
+        return_preview_image_base64: bool,
+    ) -> TaskNativeInferenceExecution:
         del return_preview_image_base64
         if self.async_inference_executor is not None:
             payload = self.async_inference_executor.execute_inference(
@@ -170,7 +187,17 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             execution_result=execution.execution_result,
         )
 
-    def _build_serialized_result_payload(self, *, task_id: str, request: ObbInferenceTaskRequest, normalized_input, runtime_target, execution: TaskNativeInferenceExecution, preview_image_uri: str | None, result_object_key: str | None) -> dict[str, object]:
+    def _build_serialized_result_payload(
+        self,
+        *,
+        task_id: str,
+        request: ObbInferenceTaskRequest,
+        normalized_input,
+        runtime_target,
+        execution: TaskNativeInferenceExecution,
+        preview_image_uri: str | None,
+        result_object_key: str | None,
+    ) -> dict[str, object]:
         return serialize_obb_inference_payload(
             build_obb_inference_payload(
                 request_id=task_id,
@@ -188,10 +215,24 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             )
         )
 
-    def _attach_serialize_timing(self, *, payload: dict[str, object], serialize_ms: float) -> dict[str, object]:
-        return attach_obb_inference_serialize_timing(payload=payload, serialize_ms=serialize_ms)
+    def _attach_serialize_timing(
+        self, *, payload: dict[str, object], serialize_ms: float
+    ) -> dict[str, object]:
+        return attach_obb_inference_serialize_timing(
+            payload=payload, serialize_ms=serialize_ms
+        )
 
-    def _build_result_summary(self, *, request: ObbInferenceTaskRequest, runtime_target, normalized_input, execution: TaskNativeInferenceExecution, output_object_prefix: str, result_object_key: str, preview_image_object_key: str | None) -> dict[str, object]:
+    def _build_result_summary(
+        self,
+        *,
+        request: ObbInferenceTaskRequest,
+        runtime_target,
+        normalized_input,
+        execution: TaskNativeInferenceExecution,
+        output_object_prefix: str,
+        result_object_key: str,
+        preview_image_object_key: str | None,
+    ) -> dict[str, object]:
         return {
             "deployment_instance_id": request.deployment_instance_id,
             "instance_id": execution.instance_id,
@@ -238,18 +279,30 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
             self._build_request_from_task_record_fallback(task_spec)
         )
 
-    def _build_request_from_task_record_fallback(self, task_spec: dict[str, object]) -> ObbInferenceTaskRequest:
+    def _build_request_from_task_record_fallback(
+        self, task_spec: dict[str, object]
+    ) -> ObbInferenceTaskRequest:
         return ObbInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(task_spec, "deployment_instance_id"),
+            deployment_instance_id=self._require_str(
+                task_spec, "deployment_instance_id"
+            ),
             input_file_id=self._read_optional_str(task_spec, "input_file_id"),
             input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind") or "input_uri",
-            input_transport_mode=self._read_optional_str(task_spec, "input_transport_mode") or "storage",
-            async_inference_owner_id=self._read_optional_str(task_spec, "async_inference_owner_id"),
+            input_source_kind=self._read_optional_str(task_spec, "input_source_kind")
+            or "input_uri",
+            input_transport_mode=self._read_optional_str(
+                task_spec, "input_transport_mode"
+            )
+            or "storage",
+            async_inference_owner_id=self._read_optional_str(
+                task_spec, "async_inference_owner_id"
+            ),
             score_threshold=self._read_optional_float(task_spec, "score_threshold"),
             save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(task_spec.get("return_preview_image_base64") is True),
+            return_preview_image_base64=bool(
+                task_spec.get("return_preview_image_base64") is True
+            ),
             extra_options=self._read_dict(task_spec, "extra_options"),
         )
 

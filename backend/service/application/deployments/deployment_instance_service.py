@@ -9,7 +9,11 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
 
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.postprocess.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
 )
@@ -18,7 +22,6 @@ from backend.service.application.runtime.deployment.deployment_events import (
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
-    DeploymentProcessRuntimeBehavior,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -29,14 +32,28 @@ from backend.service.application.runtime.targets.runtime_target import (
     serialize_runtime_target_snapshot,
 )
 from backend.service.domain.deployments.deployment_instance import DeploymentInstance
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DefaultRuntimeOptions,
+    DeploymentRuntimeConfiguration,
+    OpenVinoAutoRuntimeOptions,
+    OpenVinoCpuRuntimeOptions,
+    OpenVinoGpuRuntimeOptions,
+    OpenVinoNpuRuntimeOptions,
+    TensorRtRuntimeOptions,
+    validate_deployment_runtime_configuration,
+)
+from backend.service.application.runtime.deployment.runtime_capabilities import (
+    build_host_default_runtime_configuration,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 _ACTIVE_DEPLOYMENT_STATUS = "active"
 _RUNTIME_TARGET_SNAPSHOT_METADATA_KEY = "runtime_target_snapshot"
-_DEPLOYMENT_PROCESS_METADATA_KEY = "deployment_process"
 
 
 @dataclass(frozen=True)
@@ -51,7 +68,7 @@ class DeploymentInstanceCreateRequest:
     - runtime_backend：运行时 backend；绑定 ModelVersion 时默认 pytorch，绑定 ModelBuild 时按 build_format 推导。
     - device_name：默认 device 名称。
     - runtime_precision：运行时 precision；当前 pytorch 支持 fp32/fp16，其余 backend 默认 fp32。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_configuration：完整 deployment 执行、生命周期和 backend 配置。
     - display_name：可选展示名称。
     - metadata：附加元数据。
     """
@@ -63,7 +80,7 @@ class DeploymentInstanceCreateRequest:
     runtime_backend: str | None = None
     device_name: str | None = None
     runtime_precision: str | None = None
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration | None = None
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -89,7 +106,7 @@ class DeploymentInstanceView:
     - device_name：默认 device 名称。
     - runtime_precision：运行时 precision。
     - runtime_execution_mode：公开展示的 backend:precision:device 运行模式。
-    - instance_count：实例化数量；每个实例对应一个独立推理线程和模型会话。
+    - runtime_configuration：完整 deployment 执行、生命周期和 backend 配置。
     - input_size：输入尺寸。
     - labels：类别列表。
     - created_at：创建时间。
@@ -114,7 +131,7 @@ class DeploymentInstanceView:
     device_name: str
     runtime_precision: str
     runtime_execution_mode: str
-    instance_count: int
+    runtime_configuration: DeploymentRuntimeConfiguration
     input_size: tuple[int, int]
     labels: tuple[str, ...]
     created_at: str
@@ -126,7 +143,9 @@ class DeploymentInstanceView:
 class SqlAlchemyDeploymentInstanceService:
     """使用 SQLAlchemy 和本地文件存储实现最小 DeploymentInstance 服务。"""
 
-    def __init__(self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage) -> None:
+    def __init__(
+        self, *, session_factory: SessionFactory, dataset_storage: LocalDatasetStorage
+    ) -> None:
         """初始化部署实例服务。
 
         参数：
@@ -147,6 +166,18 @@ class SqlAlchemyDeploymentInstanceService:
 
         self._validate_create_request(request)
         runtime_target = self._resolve_create_target(request)
+        runtime_configuration = (
+            request.runtime_configuration
+            or build_host_default_runtime_configuration(
+                runtime_backend=runtime_target.runtime_backend,
+                device_name=runtime_target.device_name,
+            )
+        )
+        _validate_runtime_configuration(
+            runtime_configuration,
+            runtime_backend=runtime_target.runtime_backend,
+            device_name=runtime_target.device_name,
+        )
         now = _now_isoformat()
         deployment_instance = DeploymentInstance(
             deployment_instance_id=f"deployment-instance-{uuid4().hex}",
@@ -157,7 +188,7 @@ class SqlAlchemyDeploymentInstanceService:
             runtime_profile_id=runtime_target.runtime_profile_id,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
-            instance_count=request.instance_count,
+            runtime_configuration=runtime_configuration,
             status=_ACTIVE_DEPLOYMENT_STATUS,
             display_name=request.display_name.strip() or runtime_target.model_name,
             created_at=now,
@@ -174,7 +205,9 @@ class SqlAlchemyDeploymentInstanceService:
 
         return self._build_view(deployment_instance, runtime_target)
 
-    def get_deployment_instance(self, deployment_instance_id: str) -> DeploymentInstanceView:
+    def get_deployment_instance(
+        self, deployment_instance_id: str
+    ) -> DeploymentInstanceView:
         """按 id 读取 DeploymentInstance。"""
 
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
@@ -200,13 +233,21 @@ class SqlAlchemyDeploymentInstanceService:
             raise InvalidRequestError("limit 必须大于 0")
 
         with self._open_unit_of_work() as unit_of_work:
-            deployment_instances = unit_of_work.deployments.list_deployment_instances(project_id)
+            deployment_instances = unit_of_work.deployments.list_deployment_instances(
+                project_id
+            )
 
         matched = []
         for deployment_instance in deployment_instances:
-            if model_version_id is not None and deployment_instance.model_version_id != model_version_id:
+            if (
+                model_version_id is not None
+                and deployment_instance.model_version_id != model_version_id
+            ):
                 continue
-            if model_build_id is not None and deployment_instance.model_build_id != model_build_id:
+            if (
+                model_build_id is not None
+                and deployment_instance.model_build_id != model_build_id
+            ):
                 continue
             if status is not None and deployment_instance.status != status:
                 continue
@@ -238,17 +279,25 @@ class SqlAlchemyDeploymentInstanceService:
             if deleted:
                 unit_of_work.commit()
         if deleted:
-            events_object_key = build_deployment_events_object_key(normalized_deployment_instance_id)
-            self.dataset_storage.delete_tree(str(PurePosixPath(events_object_key).parent))
+            events_object_key = build_deployment_events_object_key(
+                normalized_deployment_instance_id
+            )
+            self.dataset_storage.delete_tree(
+                str(PurePosixPath(events_object_key).parent)
+            )
         return deleted
 
-    def resolve_inference_target(self, deployment_instance_id: str) -> RuntimeTargetSnapshot:
+    def resolve_inference_target(
+        self, deployment_instance_id: str
+    ) -> RuntimeTargetSnapshot:
         """把 DeploymentInstance 解析为内部推理快照。"""
 
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
         return self._resolve_target_from_instance(deployment_instance)
 
-    def resolve_process_config(self, deployment_instance_id: str) -> DeploymentProcessConfig:
+    def resolve_process_config(
+        self, deployment_instance_id: str
+    ) -> DeploymentProcessConfig:
         """把 DeploymentInstance 解析为 deployment 进程配置。"""
 
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
@@ -256,23 +305,22 @@ class SqlAlchemyDeploymentInstanceService:
             deployment_instance_id=deployment_instance.deployment_instance_id,
             runtime_target=self._resolve_target_from_instance(deployment_instance),
             project_id=deployment_instance.project_id,
-            instance_count=deployment_instance.instance_count,
-            runtime_behavior=_resolve_process_runtime_behavior(deployment_instance.metadata),
+            runtime_configuration=deployment_instance.runtime_configuration,
         )
 
-    def _validate_create_request(self, request: DeploymentInstanceCreateRequest) -> None:
+    def _validate_create_request(
+        self, request: DeploymentInstanceCreateRequest
+    ) -> None:
         """校验 DeploymentInstance 创建请求。"""
 
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
-        if not _normalize_optional_str(request.model_version_id) and not _normalize_optional_str(request.model_build_id):
-            raise InvalidRequestError("model_version_id 和 model_build_id 至少需要提供一个")
-        if request.instance_count <= 0:
+        if not _normalize_optional_str(
+            request.model_version_id
+        ) and not _normalize_optional_str(request.model_build_id):
             raise InvalidRequestError(
-                "instance_count 必须大于 0",
-                details={"instance_count": request.instance_count},
+                "model_version_id 和 model_build_id 至少需要提供一个"
             )
-        _validate_deployment_process_metadata(request.metadata)
 
     def _resolve_create_target(
         self,
@@ -295,11 +343,15 @@ class SqlAlchemyDeploymentInstanceService:
             )
         )
 
-    def _require_deployment_instance(self, deployment_instance_id: str) -> DeploymentInstance:
+    def _require_deployment_instance(
+        self, deployment_instance_id: str
+    ) -> DeploymentInstance:
         """按 id 读取并校验 DeploymentInstance。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            deployment_instance = unit_of_work.deployments.get_deployment_instance(deployment_instance_id)
+            deployment_instance = unit_of_work.deployments.get_deployment_instance(
+                deployment_instance_id
+            )
         if deployment_instance is None:
             raise ResourceNotFoundError(
                 "找不到指定的 DeploymentInstance",
@@ -313,7 +365,9 @@ class SqlAlchemyDeploymentInstanceService:
     ) -> RuntimeTargetSnapshot:
         """根据已保存的 DeploymentInstance 解析运行时快照。"""
 
-        payload = deployment_instance.metadata.get(_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY)
+        payload = deployment_instance.metadata.get(
+            _RUNTIME_TARGET_SNAPSHOT_METADATA_KEY
+        )
         try:
             return deserialize_runtime_target_snapshot(
                 payload=payload,
@@ -322,7 +376,9 @@ class SqlAlchemyDeploymentInstanceService:
         except InvalidRequestError as error:
             raise ServiceConfigurationError(
                 "DeploymentInstance 缺少合法的 runtime_target_snapshot",
-                details={"deployment_instance_id": deployment_instance.deployment_instance_id},
+                details={
+                    "deployment_instance_id": deployment_instance.deployment_instance_id
+                },
             ) from error
 
     def _build_internal_metadata(
@@ -334,7 +390,9 @@ class SqlAlchemyDeploymentInstanceService:
         """合并用户 metadata 与内部运行时快照。"""
 
         normalized_metadata = _normalize_metadata(user_metadata)
-        normalized_metadata[_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY] = serialize_runtime_target_snapshot(runtime_target)
+        normalized_metadata[_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY] = (
+            serialize_runtime_target_snapshot(runtime_target)
+        )
         return normalized_metadata
 
     @staticmethod
@@ -342,30 +400,32 @@ class SqlAlchemyDeploymentInstanceService:
         metadata: object,
         *,
         runtime_target: RuntimeTargetSnapshot,
-        instance_count: int,
+        runtime_configuration: DeploymentRuntimeConfiguration,
     ) -> dict[str, object]:
         """过滤仅用于内部执行的 metadata 字段。"""
 
         normalized_metadata = _normalize_metadata(metadata)
         normalized_metadata.pop(_RUNTIME_TARGET_SNAPSHOT_METADATA_KEY, None)
-        normalized_metadata["runtime_summary"] = build_detection_deployment_runtime_summary(
-            model_type=runtime_target.model_type,
-            model_version_id=runtime_target.model_version_id,
-            model_build_id=runtime_target.model_build_id,
-            model_name=runtime_target.model_name,
-            model_scale=runtime_target.model_scale,
-            task_type=runtime_target.task_type,
-            runtime_backend=runtime_target.runtime_backend,
-            runtime_precision=runtime_target.runtime_precision,
-            device_name=runtime_target.device_name,
-            runtime_execution_mode=describe_runtime_execution_mode(
+        normalized_metadata["runtime_summary"] = (
+            build_detection_deployment_runtime_summary(
+                model_type=runtime_target.model_type,
+                model_version_id=runtime_target.model_version_id,
+                model_build_id=runtime_target.model_build_id,
+                model_name=runtime_target.model_name,
+                model_scale=runtime_target.model_scale,
+                task_type=runtime_target.task_type,
                 runtime_backend=runtime_target.runtime_backend,
                 runtime_precision=runtime_target.runtime_precision,
                 device_name=runtime_target.device_name,
-            ),
-            input_size=runtime_target.input_size,
-            label_count=len(runtime_target.labels),
-            instance_count=instance_count,
+                runtime_execution_mode=describe_runtime_execution_mode(
+                    runtime_backend=runtime_target.runtime_backend,
+                    runtime_precision=runtime_target.runtime_precision,
+                    device_name=runtime_target.device_name,
+                ),
+                input_size=runtime_target.input_size,
+                label_count=len(runtime_target.labels),
+                instance_count=runtime_configuration.instance_count,
+            )
         )
         return normalized_metadata
 
@@ -397,7 +457,7 @@ class SqlAlchemyDeploymentInstanceService:
                 runtime_precision=runtime_target.runtime_precision,
                 device_name=runtime_target.device_name,
             ),
-            instance_count=deployment_instance.instance_count,
+            runtime_configuration=deployment_instance.runtime_configuration,
             input_size=runtime_target.input_size,
             labels=runtime_target.labels,
             created_at=deployment_instance.created_at,
@@ -406,7 +466,7 @@ class SqlAlchemyDeploymentInstanceService:
             metadata=SqlAlchemyDeploymentInstanceService._build_public_metadata(
                 deployment_instance.metadata,
                 runtime_target=runtime_target,
-                instance_count=deployment_instance.instance_count,
+                runtime_configuration=deployment_instance.runtime_configuration,
             ),
         )
 
@@ -437,159 +497,45 @@ def _normalize_metadata(metadata: object) -> dict[str, object]:
     return {str(key): value for key, value in metadata.items()}
 
 
-def _validate_deployment_process_metadata(metadata: object) -> None:
-    """校验 deployment_process metadata 中当前公开的控制字段。
+def _validate_runtime_configuration(
+    configuration: DeploymentRuntimeConfiguration,
+    *,
+    runtime_backend: str,
+    device_name: str,
+) -> None:
+    """校验平台执行策略与 backend 专属配置的边界。"""
 
-    参数：
-    - metadata：DeploymentInstance 创建请求里的 metadata 原始值。
-    """
+    try:
+        validate_deployment_runtime_configuration(configuration)
+    except ValueError as error:
+        raise InvalidRequestError(str(error)) from error
 
-    _resolve_process_runtime_behavior(metadata)
-
-
-def _resolve_process_runtime_behavior(metadata: object) -> DeploymentProcessRuntimeBehavior:
-    """从 DeploymentInstance metadata 中提取预热与 keep-warm 覆盖配置。
-
-    参数：
-    - metadata：DeploymentInstance 保存的 metadata。
-
-    返回：
-    - 供 deployment 子进程使用的预热与 keep-warm 覆盖配置。
-    """
-
-    normalized_metadata = _normalize_metadata(metadata)
-    process_metadata = normalized_metadata.get(_DEPLOYMENT_PROCESS_METADATA_KEY)
-    if process_metadata is None:
-        return DeploymentProcessRuntimeBehavior()
-    if not isinstance(process_metadata, dict):
+    normalized_backend = runtime_backend.strip().lower()
+    normalized_device = device_name.strip().lower()
+    options = configuration.backend_options
+    expected_types: tuple[type[object], ...]
+    if normalized_backend == "openvino":
+        if normalized_device.startswith("cpu"):
+            expected_types = (OpenVinoCpuRuntimeOptions,)
+        elif normalized_device.startswith("gpu"):
+            expected_types = (OpenVinoGpuRuntimeOptions,)
+        elif normalized_device.startswith("npu"):
+            expected_types = (OpenVinoNpuRuntimeOptions,)
+        else:
+            expected_types = (OpenVinoAutoRuntimeOptions,)
+    elif normalized_backend == "tensorrt":
+        expected_types = (TensorRtRuntimeOptions,)
+    else:
+        expected_types = (DefaultRuntimeOptions,)
+    if not isinstance(options, expected_types):
         raise InvalidRequestError(
-            "metadata.deployment_process 必须是对象",
-            details={"field": _DEPLOYMENT_PROCESS_METADATA_KEY},
+            "backend_options 与已解析的 runtime backend/device 不匹配",
+            details={
+                "runtime_backend": normalized_backend,
+                "device_name": normalized_device,
+                "backend_options_kind": options.kind,
+            },
         )
-    return DeploymentProcessRuntimeBehavior(
-        warmup_dummy_inference_count=_read_optional_non_negative_int(
-            process_metadata,
-            "warmup_dummy_inference_count",
-        ),
-        warmup_dummy_image_size=_read_optional_image_size(
-            process_metadata,
-            "warmup_dummy_image_size",
-        ),
-        keep_warm_enabled=_read_optional_bool(process_metadata, "keep_warm_enabled"),
-        keep_warm_interval_seconds=_read_optional_positive_float(
-            process_metadata,
-            "keep_warm_interval_seconds",
-        ),
-        tensorrt_pinned_output_buffer_enabled=_read_optional_bool(
-            process_metadata,
-            "tensorrt_pinned_output_buffer_enabled",
-        ),
-        tensorrt_pinned_output_buffer_max_bytes=_read_optional_non_negative_int(
-            process_metadata,
-            "tensorrt_pinned_output_buffer_max_bytes",
-        ),
-    )
-
-
-def _read_optional_non_negative_int(metadata: dict[str, object], key: str) -> int | None:
-    """读取 metadata 中可选的非负整数值。
-
-    参数：
-    - metadata：待解析的 metadata 对象。
-    - key：当前字段名。
-
-    返回：
-    - 解析后的整数；字段不存在时返回 None。
-    """
-
-    value = metadata.get(key)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise InvalidRequestError(
-            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是非负整数",
-            details={"field": key, "value": value},
-        )
-    return int(value)
-
-
-def _read_optional_positive_float(metadata: dict[str, object], key: str) -> float | None:
-    """读取 metadata 中可选的正浮点数值。
-
-    参数：
-    - metadata：待解析的 metadata 对象。
-    - key：当前字段名。
-
-    返回：
-    - 解析后的浮点数；字段不存在时返回 None。
-    """
-
-    value = metadata.get(key)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int | float) or float(value) <= 0.0:
-        raise InvalidRequestError(
-            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是大于 0 的数值",
-            details={"field": key, "value": value},
-        )
-    return float(value)
-
-
-def _read_optional_bool(metadata: dict[str, object], key: str) -> bool | None:
-    """读取 metadata 中可选的布尔值。
-
-    参数：
-    - metadata：待解析的 metadata 对象。
-    - key：当前字段名。
-
-    返回：
-    - 解析后的布尔值；字段不存在时返回 None。
-    """
-
-    value = metadata.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, bool):
-        raise InvalidRequestError(
-            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是布尔值",
-            details={"field": key, "value": value},
-        )
-    return value
-
-
-def _read_optional_image_size(metadata: dict[str, object], key: str) -> tuple[int, int] | None:
-    """读取 metadata 中可选的图片尺寸。
-
-    参数：
-    - metadata：待解析的 metadata 对象。
-    - key：当前字段名。
-
-    返回：
-    - 解析后的 width、height 二元组；字段不存在时返回 None。
-    """
-
-    value = metadata.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, list | tuple) or len(value) != 2:
-        raise InvalidRequestError(
-            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须是长度为 2 的数组",
-            details={"field": key, "value": value},
-        )
-    width, height = value[0], value[1]
-    if (
-        isinstance(width, bool)
-        or not isinstance(width, int)
-        or width <= 0
-        or isinstance(height, bool)
-        or not isinstance(height, int)
-        or height <= 0
-    ):
-        raise InvalidRequestError(
-            f"metadata.{_DEPLOYMENT_PROCESS_METADATA_KEY}.{key} 必须由两个正整数组成",
-            details={"field": key, "value": value},
-        )
-    return (int(width), int(height))
 
 
 def _now_isoformat() -> str:

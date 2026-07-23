@@ -77,7 +77,7 @@
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.modelBuildId') }}</span><strong>{{ selectedDeployment.model_build_id || '-' }}</strong></div>
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.runtime') }}</span><strong>{{ runtimeLabel(selectedDeployment) }}</strong></div>
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.executionMode') }}</span><strong>{{ selectedDeployment.runtime_execution_mode || '-' }}</strong></div>
-            <div><span>{{ t('workflowEditor.deploymentPicker.fields.instanceCount') }}</span><strong>{{ selectedDeployment.instance_count }}</strong></div>
+            <div><span>{{ t('workflowEditor.deploymentPicker.fields.instanceCount') }}</span><strong>{{ selectedDeployment.runtime_configuration.execution.instance_count }}</strong></div>
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.inputSize') }}</span><strong>{{ inputSizeLabel(selectedDeployment.input_size) }}</strong></div>
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.labelCount') }}</span><strong>{{ selectedDeployment.labels?.length ?? 0 }}</strong></div>
             <div><span>{{ t('workflowEditor.deploymentPicker.fields.updatedAt') }}</span><strong>{{ formatSystemDateTime(selectedDeployment.updated_at) }}</strong></div>

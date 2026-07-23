@@ -15,7 +15,10 @@ from backend.service.application.deployments.deployment_instance_service import 
     DeploymentInstanceView as ClassificationDeploymentInstanceView,
     SqlAlchemyDeploymentInstanceService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.targets.yolo11 import (
     SqlAlchemyYolo11RuntimeTargetResolver,
 )
@@ -30,6 +33,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 @dataclass(frozen=True)
@@ -44,7 +50,7 @@ class ClassificationDeploymentInstanceCreateRequest:
     runtime_backend: str | None = None
     device_name: str | None = None
     runtime_precision: str | None = None
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration | None = None
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -84,7 +90,9 @@ class SqlAlchemyClassificationDeploymentService(SqlAlchemyDeploymentInstanceServ
             status=status,
             limit=limit,
         )
-        views = tuple(item for item in views if item.task_type == CLASSIFICATION_TASK_TYPE)
+        views = tuple(
+            item for item in views if item.task_type == CLASSIFICATION_TASK_TYPE
+        )
         normalized_model_type = _normalize_model_type(model_type)
         if normalized_model_type is None:
             return views
@@ -102,12 +110,16 @@ class SqlAlchemyClassificationDeploymentService(SqlAlchemyDeploymentInstanceServ
         normalized_model_type = _require_model_type(request.model_type)
         resolver_cls = _RUNTIME_TARGET_RESOLVER_BY_MODEL_TYPE.get(normalized_model_type)
         if resolver_cls is None:
-            registration = get_classification_backend_registration(normalized_model_type)
+            registration = get_classification_backend_registration(
+                normalized_model_type
+            )
             raise ServiceConfigurationError(
                 "当前 classification deployment 尚未接通指定模型分类",
                 details={
                     "model_type": normalized_model_type,
-                    "display_name": registration.display_name if registration is not None else None,
+                    "display_name": registration.display_name
+                    if registration is not None
+                    else None,
                 },
             )
         runtime_target = resolver_cls(

@@ -1,7 +1,10 @@
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { TaskDeploymentInstance } from '@/modules/deployments/services/deployment.service'
+import {
+  type DeploymentRuntimeConfiguration,
+  type TaskDeploymentInstance,
+} from '@/modules/deployments/services/deployment.service'
 import type { WorkflowDeploymentPickerNodeView } from './useWorkflowDeploymentInstancePicker'
 
 const { listTaskDeployments } = vi.hoisted(() => ({
@@ -16,6 +19,24 @@ import {
   readModelInferenceTaskType,
   useWorkflowDeploymentInstancePicker,
 } from './useWorkflowDeploymentInstancePicker'
+
+function runtimeConfiguration(): DeploymentRuntimeConfiguration {
+  return {
+    execution: {
+      instance_count: 1,
+      isolation_level: 'session',
+      overflow_policy: 'reject',
+      performance_goal: 'latency',
+    },
+    lifecycle: {
+      warmup_dummy_inference_count: null,
+      warmup_dummy_image_size: null,
+      keep_warm_enabled: null,
+      keep_warm_interval_seconds: null,
+    },
+    backend_options: { kind: 'default' },
+  }
+}
 
 function createNode(capabilityTags: string[], deploymentInstanceId = ''): WorkflowDeploymentPickerNodeView {
   return {
@@ -56,7 +77,7 @@ function createDeployment(
     device_name: 'cpu',
     runtime_precision: 'fp32',
     runtime_execution_mode: 'sync',
-    instance_count: 1,
+    runtime_configuration: runtimeConfiguration(),
     input_size: [640, 640],
     labels: ['ok', 'ng'],
     created_at: '2026-07-18T00:00:00Z',

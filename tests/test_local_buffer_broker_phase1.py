@@ -37,13 +37,22 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
-from backend.service.application.runtime.deployment.deployment_process_settings import DeploymentProcessSupervisorConfig
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
+from backend.service.application.runtime.deployment.deployment_process_settings import (
+    DeploymentProcessSupervisorConfig,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.contracts.detection.prediction import DetectionPredictionRequest
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionRequest,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
@@ -57,14 +66,22 @@ from backend.service.application.workflows.execution.parallel_safety import (
     PARALLEL_NODE_LOCKS_KEY,
     prepare_parallel_execution_state,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest, WorkflowNodeRuntimeRegistry
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+    WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
 )
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.api.bootstrap import BackendServiceBootstrap
 from backend.service.settings import (
     BackendServiceDatabaseConfig,
@@ -73,14 +90,22 @@ from backend.service.settings import (
     BackendServiceSettings,
     BackendServiceTaskManagerConfig,
 )
-from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
-from tests.local_buffer_broker_fake_worker import fake_deployment_worker_records_broker_event_channel
+from backend.service.application.workflows.worker.manager import (
+    WorkflowRuntimeWorkerManager,
+)
+from tests.local_buffer_broker_fake_worker import (
+    fake_deployment_worker_records_broker_event_channel,
+)
 
 
-def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(tmp_path: Path) -> None:
+def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(
+    tmp_path: Path,
+) -> None:
     """验证 broker supervisor 能启动独立进程并通过 client 读写 BufferRef。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
 
     supervisor.start()
     try:
@@ -114,7 +139,9 @@ def test_local_buffer_broker_client_serializes_shared_response_channel(
 ) -> None:
     """验证同一个 client 被三路分支复用时不会交叉消费 broker 响应。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
     supervisor.start()
     try:
         client = supervisor.create_client()
@@ -131,10 +158,14 @@ def test_local_buffer_broker_client_serializes_shared_response_channel(
         supervisor.stop()
 
 
-def test_workflow_parent_cleanup_releases_registered_buffer_lease(tmp_path: Path) -> None:
+def test_workflow_parent_cleanup_releases_registered_buffer_lease(
+    tmp_path: Path,
+) -> None:
     """验证 worker 未执行 finally 时父进程可按 cleanup 元数据兜底释放 lease。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
     supervisor.start()
     try:
         client = supervisor.create_client()
@@ -152,7 +183,9 @@ def test_workflow_parent_cleanup_releases_registered_buffer_lease(tmp_path: Path
             pool_name=result.lease.pool_name,
         )
         manager = object.__new__(WorkflowRuntimeWorkerManager)
-        manager.local_buffer_broker_event_channel_provider = supervisor.get_event_channel
+        manager.local_buffer_broker_event_channel_provider = (
+            supervisor.get_event_channel
+        )
 
         assert manager.cleanup_parent_local_buffer_leases(metadata) == 1
         assert supervisor.get_status()["pools"][0]["free_count"] == 2
@@ -174,7 +207,10 @@ def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
     assert default_pool.slot_size_bytes >= 128 * 1024 * 1024
     assert default_pool.slot_size_bytes > raw_20mp_rgba_bytes
     assert default_pool.slot_count == 16
-    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * default_pool.slot_count
+    assert (
+        default_pool.file_size_bytes
+        == default_pool.slot_size_bytes * default_pool.slot_count
+    )
     assert default_pool.flush_on_write is False
     assert set(pools) == {"image-4k"}
 
@@ -207,12 +243,17 @@ def test_local_buffer_broker_builtin_pool_presets_are_selectable(
     assert set(pools) == {pool_name}
     assert selected_pool.slot_size_bytes >= minimum_slot_size_bytes
     assert selected_pool.slot_count == 16
-    assert selected_pool.file_size_bytes == selected_pool.slot_size_bytes * selected_pool.slot_count
+    assert (
+        selected_pool.file_size_bytes
+        == selected_pool.slot_size_bytes * selected_pool.slot_count
+    )
     assert selected_pool.flush_on_write is False
 
 
 @pytest.mark.parametrize("slot_count", (16, 8, 4))
-def test_local_buffer_broker_pool_settings_support_low_memory_slot_counts(slot_count: int) -> None:
+def test_local_buffer_broker_pool_settings_support_low_memory_slot_counts(
+    slot_count: int,
+) -> None:
     """验证现场配置可以把 pool 调整为 16、8 或 4 个槽位。"""
 
     settings = LocalBufferBrokerSettings(
@@ -234,7 +275,9 @@ def test_local_buffer_broker_pool_settings_support_low_memory_slot_counts(slot_c
 def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
     """验证 backend-service.json 默认创建多 pool 并选择 image-4k。"""
 
-    payload = json.loads(Path("config/backend-service.json").read_text(encoding="utf-8"))
+    payload = json.loads(
+        Path("config/backend-service.json").read_text(encoding="utf-8")
+    )
     settings = BackendServiceSettings.model_validate(payload)
     pool_names = {item.pool_name for item in settings.local_buffer_broker.pools}
 
@@ -277,10 +320,14 @@ def test_local_buffer_broker_rejects_legacy_default_pool_config() -> None:
         )
 
 
-def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Path) -> None:
+def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(
+    tmp_path: Path,
+) -> None:
     """验证 broker 控制面只分配和提交，客户端直接通过 mmap 读写大图 bytes。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
 
     supervisor.start()
     try:
@@ -321,16 +368,22 @@ def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(tmp_path: Pa
     assert supervisor.is_running is False
 
 
-def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(tmp_path: Path) -> None:
+def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(
+    tmp_path: Path,
+) -> None:
     """验证 broker client 可以通过 direct mmap 写入和读取 ring FrameRef。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path, slot_count=3))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path, slot_count=3)
+    )
 
     supervisor.start()
     try:
         client = supervisor.create_client()
         assert client is not None
-        channel = client.create_frame_channel(stream_id="line-a-camera-1", frame_capacity=2)
+        channel = client.create_frame_channel(
+            stream_id="line-a-camera-1", frame_capacity=2
+        )
         abandoned = client.allocate_frame(stream_id="line-a-camera-1", size=7)
         client.abort_frame(reservation=abandoned)
 
@@ -386,10 +439,14 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(t
     assert supervisor.is_running is False
 
 
-def test_local_buffer_broker_supervisor_isolates_multiple_client_response_queues(tmp_path: Path) -> None:
+def test_local_buffer_broker_supervisor_isolates_multiple_client_response_queues(
+    tmp_path: Path,
+) -> None:
     """验证 supervisor 会为多个 broker client 隔离响应队列。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
 
     supervisor.start()
     client_a = supervisor.create_client()
@@ -413,7 +470,9 @@ def test_local_buffer_broker_supervisor_isolates_multiple_client_response_queues
                     media_type="image/raw",
                 )
                 assert client.read_buffer_ref(write_result.buffer_ref) == content
-                client.release(write_result.lease.lease_id, pool_name=write_result.lease.pool_name)
+                client.release(
+                    write_result.lease.lease_id, pool_name=write_result.lease.pool_name
+                )
         except BaseException as exc:  # pragma: no cover - 线程异常通过主线程断言
             errors.append(exc)
 
@@ -438,7 +497,9 @@ def test_local_buffer_broker_supervisor_isolates_multiple_client_response_queues
 def test_local_buffer_broker_release_owner_keeps_other_runs(tmp_path: Path) -> None:
     """验证 owner 批量释放只影响匹配 workflow run 的 lease。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path, slot_count=3))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path, slot_count=3)
+    )
 
     supervisor.start()
     client = supervisor.create_client()
@@ -484,7 +545,9 @@ def test_workflow_parent_cleanup_releases_unregistered_run_owner_leases(
 ) -> None:
     """验证 worker 硬退出时父进程可按 run owner 前缀回收未登记 crop lease。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
     supervisor.start()
     manager = object.__new__(WorkflowRuntimeWorkerManager)
     manager.local_buffer_broker_event_channel_provider = supervisor.get_event_channel
@@ -506,9 +569,10 @@ def test_workflow_parent_cleanup_releases_unregistered_run_owner_leases(
             ttl_seconds=60,
         )
 
-        assert manager.cleanup_workflow_run_local_buffer_owner(
-            "workflow-run-hard-exit"
-        ) == 2
+        assert (
+            manager.cleanup_workflow_run_local_buffer_owner("workflow-run-hard-exit")
+            == 2
+        )
         assert supervisor.get_status()["pools"][0]["free_count"] == 2
     finally:
         manager._close_cleanup_local_buffer_client()
@@ -548,10 +612,14 @@ def test_workflow_cleanup_metadata_is_safe_across_process_boundary() -> None:
     assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
 
 
-def test_local_buffer_broker_status_reports_pool_counts_and_failures(tmp_path: Path) -> None:
+def test_local_buffer_broker_status_reports_pool_counts_and_failures(
+    tmp_path: Path,
+) -> None:
     """验证 broker status 会返回 pool 容量、占用和分配失败指标。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
 
     supervisor.start()
     client = supervisor.create_client()
@@ -589,7 +657,9 @@ def test_local_buffer_broker_status_reports_pool_counts_and_failures(tmp_path: P
         assert failed_status["allocation_failure_count"] == 1
         assert failed_status["pool_full_count"] == 1
 
-        client.release(first_result.lease.lease_id, pool_name=first_result.lease.pool_name)
+        client.release(
+            first_result.lease.lease_id, pool_name=first_result.lease.pool_name
+        )
         released_status = client.get_status()["pools"][0]
 
         assert released_status["active_count"] == 1
@@ -644,7 +714,9 @@ def test_local_buffer_broker_expire_loop_reclaims_ttl_lease(tmp_path: Path) -> N
 def test_local_buffer_broker_health_keeps_recent_control_error(tmp_path: Path) -> None:
     """验证 health 会保留最近一次 broker 控制错误。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
 
     supervisor.start()
     try:
@@ -661,26 +733,42 @@ def test_local_buffer_broker_health_keeps_recent_control_error(tmp_path: Path) -
         supervisor.stop()
 
 
-def test_snapshot_execution_releases_registered_local_buffer_lease(tmp_path: Path) -> None:
+def test_snapshot_execution_releases_registered_local_buffer_lease(
+    tmp_path: Path,
+) -> None:
     """验证 workflow 执行结束会释放节点登记的 broker lease。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(settings=_build_broker_settings(tmp_path))
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+    )
     template = _build_metadata_probe_template()
     application = _build_metadata_probe_application()
-    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
-    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    dataset_storage.write_json(
+        "workflow/application.json", application.model_dump(mode="json")
+    )
+    dataset_storage.write_json(
+        "workflow/template.json", template.model_dump(mode="json")
+    )
 
     supervisor.start()
     client = supervisor.create_client()
     assert client is not None
     try:
         runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(_build_metadata_probe_node(), _buffer_cleanup_probe_handler)
+        runtime_registry.register_python_callable(
+            _build_metadata_probe_node(), _buffer_cleanup_probe_handler
+        )
         execution_result = SnapshotExecutionService(
             dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())),
+            node_catalog_registry=NodeCatalogRegistry(
+                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
+            ),
             runtime_registry=runtime_registry,
             runtime_context=WorkflowServiceNodeRuntimeContext(
                 session_factory=session_factory,
@@ -696,7 +784,9 @@ def test_snapshot_execution_releases_registered_local_buffer_lease(tmp_path: Pat
                 input_bindings={"source_text": {"value": "ok"}},
             )
         )
-        buffer_ref = BufferRef.model_validate(execution_result.outputs["final_text"]["buffer_ref"])
+        buffer_ref = BufferRef.model_validate(
+            execution_result.outputs["final_text"]["buffer_ref"]
+        )
 
         with pytest.raises(InvalidRequestError):
             client.read_buffer_ref(buffer_ref)
@@ -706,23 +796,37 @@ def test_snapshot_execution_releases_registered_local_buffer_lease(tmp_path: Pat
         session_factory.engine.dispose()
 
 
-def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(tmp_path: Path) -> None:
+def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(
+    tmp_path: Path,
+) -> None:
     """验证 snapshot 执行会把 runtime context 中的 broker reader 注入节点元数据。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+    )
     marker_reader = _MarkerLocalBufferReader()
     template = _build_metadata_probe_template()
     application = _build_metadata_probe_application()
-    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
-    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    dataset_storage.write_json(
+        "workflow/application.json", application.model_dump(mode="json")
+    )
+    dataset_storage.write_json(
+        "workflow/template.json", template.model_dump(mode="json")
+    )
 
     try:
         runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(_build_metadata_probe_node(), _metadata_probe_handler)
+        runtime_registry.register_python_callable(
+            _build_metadata_probe_node(), _metadata_probe_handler
+        )
         execution_result = SnapshotExecutionService(
             dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())),
+            node_catalog_registry=NodeCatalogRegistry(
+                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
+            ),
             runtime_registry=runtime_registry,
             runtime_context=WorkflowServiceNodeRuntimeContext(
                 session_factory=session_factory,
@@ -739,25 +843,40 @@ def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(tmp_p
             )
         )
 
-        assert execution_result.outputs["final_text"] == {"value": "ok", "has_reader": True}
+        assert execution_result.outputs["final_text"] == {
+            "value": "ok",
+            "has_reader": True,
+        }
     finally:
         session_factory.engine.dispose()
 
 
-def test_snapshot_execution_clears_decoded_image_cache_after_each_run(tmp_path: Path) -> None:
+def test_snapshot_execution_clears_decoded_image_cache_after_each_run(
+    tmp_path: Path,
+) -> None:
     """验证长期驻留 SnapshotExecutionService 不会跨 Run 持有解码矩阵。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+    )
     template = _build_metadata_probe_template()
     application = _build_metadata_probe_application()
-    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
-    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    dataset_storage.write_json(
+        "workflow/application.json", application.model_dump(mode="json")
+    )
+    dataset_storage.write_json(
+        "workflow/template.json", template.model_dump(mode="json")
+    )
     image_registry = ExecutionImageRegistry()
 
     try:
         runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(_build_metadata_probe_node(), _image_cache_probe_handler)
+        runtime_registry.register_python_callable(
+            _build_metadata_probe_node(), _image_cache_probe_handler
+        )
         execution_result = SnapshotExecutionService(
             dataset_storage=dataset_storage,
             node_catalog_registry=NodeCatalogRegistry(
@@ -786,32 +905,50 @@ def test_snapshot_execution_clears_decoded_image_cache_after_each_run(tmp_path: 
         session_factory.engine.dispose()
 
 
-def test_snapshot_execution_clears_owned_image_registry_after_run(tmp_path: Path) -> None:
+def test_snapshot_execution_clears_owned_image_registry_after_run(
+    tmp_path: Path,
+) -> None:
     """验证服务内部创建的 registry 在 Run 结束时释放缓存和 memory handles。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}"))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+    )
     template = _build_metadata_probe_template()
     application = _build_metadata_probe_application()
-    dataset_storage.write_json("workflow/application.json", application.model_dump(mode="json"))
-    dataset_storage.write_json("workflow/template.json", template.model_dump(mode="json"))
+    dataset_storage.write_json(
+        "workflow/application.json", application.model_dump(mode="json")
+    )
+    dataset_storage.write_json(
+        "workflow/template.json", template.model_dump(mode="json")
+    )
     captured_registries: list[ExecutionImageRegistry] = []
     captured_handles: list[str] = []
 
-    def registry_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    def registry_probe_handler(
+        request: WorkflowNodeExecutionRequest,
+    ) -> dict[str, object]:
         """注册矩阵和解码缓存，并把 registry 暴露给测试断言。"""
 
         image_registry = request.execution_metadata["execution_image_registry"]
         assert isinstance(image_registry, ExecutionImageRegistry)
-        entry = image_registry.register_image_bytes(content=b"encoded", media_type="image/png")
-        image_registry.get_or_decode_matrix(cache_key="probe", decoder=lambda: bytearray(b"matrix"))
+        entry = image_registry.register_image_bytes(
+            content=b"encoded", media_type="image/png"
+        )
+        image_registry.get_or_decode_matrix(
+            cache_key="probe", decoder=lambda: bytearray(b"matrix")
+        )
         captured_registries.append(image_registry)
         captured_handles.append(entry.image_handle)
         return {"result": {"value": "ok"}}
 
     try:
         runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(_build_metadata_probe_node(), registry_probe_handler)
+        runtime_registry.register_python_callable(
+            _build_metadata_probe_node(), registry_probe_handler
+        )
         SnapshotExecutionService(
             dataset_storage=dataset_storage,
             node_catalog_registry=NodeCatalogRegistry(
@@ -841,12 +978,18 @@ def test_snapshot_execution_clears_owned_image_registry_after_run(tmp_path: Path
         session_factory.engine.dispose()
 
 
-def test_backend_service_runtime_starts_broker_and_binds_workflow_context(tmp_path: Path) -> None:
+def test_backend_service_runtime_starts_broker_and_binds_workflow_context(
+    tmp_path: Path,
+) -> None:
     """验证 backend-service 生命周期会启动 broker 并绑定 workflow context。"""
 
     settings = BackendServiceSettings(
-        database=BackendServiceDatabaseConfig(url=f"sqlite:///{(tmp_path / 'service.db').as_posix()}"),
-        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(tmp_path / "service-files")),
+        database=BackendServiceDatabaseConfig(
+            url=f"sqlite:///{(tmp_path / 'service.db').as_posix()}"
+        ),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(tmp_path / "service-files")
+        ),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "service-queue")),
         task_manager=BackendServiceTaskManagerConfig(enabled=False),
         local_buffer_broker=_build_broker_settings(tmp_path / "service-broker"),
@@ -861,14 +1004,22 @@ def test_backend_service_runtime_starts_broker_and_binds_workflow_context(tmp_pa
         broker_event_channel = runtime.workflow_runtime_worker_manager._resolve_local_buffer_broker_event_channel()
 
         assert status["state"] == "running"
-        assert runtime.workflow_service_node_runtime_context.local_buffer_reader is runtime.local_buffer_broker_supervisor
+        assert (
+            runtime.workflow_service_node_runtime_context.local_buffer_reader
+            is runtime.local_buffer_broker_supervisor
+        )
         assert broker_event_channel is not None
-        assert broker_event_channel.request_timeout_seconds == settings.local_buffer_broker.request_timeout_seconds
+        assert (
+            broker_event_channel.request_timeout_seconds
+            == settings.local_buffer_broker.request_timeout_seconds
+        )
     finally:
         bootstrap.stop_runtime(runtime)
 
 
-def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: Path) -> None:
+def test_deployment_supervisor_passes_broker_event_channel_to_worker(
+    tmp_path: Path,
+) -> None:
     """验证 deployment worker 子进程能收到 broker 事件通道。"""
 
     runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
@@ -882,7 +1033,7 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
     process_config = DeploymentProcessConfig(
         deployment_instance_id="deployment-with-broker",
         runtime_target=_build_runtime_target(runtime_artifact_path),
-        instance_count=1,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
     supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
@@ -910,7 +1061,12 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(tmp_path: P
             ),
         )
 
-        assert execution.execution_result.runtime_session_info.metadata["broker_timeout_seconds"] == 1.0
+        assert (
+            execution.execution_result.runtime_session_info.metadata[
+                "broker_timeout_seconds"
+            ]
+            == 1.0
+        )
     finally:
         supervisor.stop()
         broker_channel.request_queue.close()
@@ -972,7 +1128,11 @@ def _metadata_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
     """验证节点执行元数据中存在 LocalBufferBroker reader。"""
 
     raw_payload = request.input_values["text"]
-    raw_text = str(raw_payload.get("value") or "") if isinstance(raw_payload, dict) else str(raw_payload)
+    raw_text = (
+        str(raw_payload.get("value") or "")
+        if isinstance(raw_payload, dict)
+        else str(raw_payload)
+    )
     return {
         "result": {
             "value": raw_text,
@@ -981,7 +1141,9 @@ def _metadata_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
     }
 
 
-def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _buffer_cleanup_probe_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """写入 broker buffer 并登记执行结束清理。"""
 
     local_buffer_writer = request.execution_metadata["local_buffer_reader"]
@@ -999,12 +1161,16 @@ def _buffer_cleanup_probe_handler(request: WorkflowNodeExecutionRequest) -> dict
     return {"result": {"buffer_ref": write_result.buffer_ref.model_dump(mode="json")}}
 
 
-def _image_cache_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+def _image_cache_probe_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
     """在节点中写入一次解码缓存，供 Run finally 清理测试使用。"""
 
     image_registry = request.execution_metadata["execution_image_registry"]
     assert isinstance(image_registry, ExecutionImageRegistry)
-    image_registry.get_or_decode_matrix(cache_key="probe", decoder=lambda: bytearray(b"matrix"))
+    image_registry.get_or_decode_matrix(
+        cache_key="probe", decoder=lambda: bytearray(b"matrix")
+    )
     return {
         "result": {
             "value": "ok",
@@ -1048,8 +1214,16 @@ def _build_metadata_probe_node() -> NodeDefinition:
         description="检查执行元数据。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
-        input_ports=(NodePortDefinition(name="text", display_name="Text", payload_type_id="value.v1"),),
-        output_ports=(NodePortDefinition(name="result", display_name="Result", payload_type_id="value.v1"),),
+        input_ports=(
+            NodePortDefinition(
+                name="text", display_name="Text", payload_type_id="value.v1"
+            ),
+        ),
+        output_ports=(
+            NodePortDefinition(
+                name="result", display_name="Result", payload_type_id="value.v1"
+            ),
+        ),
         parameter_schema={"type": "object", "properties": {}},
     )
 
@@ -1061,7 +1235,9 @@ def _build_metadata_probe_template() -> WorkflowGraphTemplate:
         template_id="metadata-probe-template",
         template_version="1.0.0",
         display_name="Metadata Probe Template",
-        nodes=(WorkflowGraphNode(node_id="probe", node_type_id="core.test.metadata-probe"),),
+        nodes=(
+            WorkflowGraphNode(node_id="probe", node_type_id="core.test.metadata-probe"),
+        ),
         template_inputs=(
             WorkflowGraphInput(
                 input_id="source_text",

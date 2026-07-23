@@ -15,7 +15,10 @@ from backend.service.application.deployments.deployment_instance_service import 
     DeploymentInstanceView as DetectionDeploymentInstanceView,
     SqlAlchemyDeploymentInstanceService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
@@ -34,6 +37,9 @@ from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 @dataclass(frozen=True)
@@ -48,7 +54,7 @@ class DetectionDeploymentInstanceCreateRequest:
     runtime_backend: str | None = None
     device_name: str | None = None
     runtime_precision: str | None = None
-    instance_count: int = 1
+    runtime_configuration: DeploymentRuntimeConfiguration | None = None
     display_name: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -119,7 +125,9 @@ class SqlAlchemyDetectionDeploymentService(SqlAlchemyDeploymentInstanceService):
                 "当前 detection deployment 尚未接通指定模型分类",
                 details={
                     "model_type": normalized_model_type,
-                    "display_name": registration.display_name if registration is not None else None,
+                    "display_name": registration.display_name
+                    if registration is not None
+                    else None,
                 },
             )
         runtime_target = resolver_cls(

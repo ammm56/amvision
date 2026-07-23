@@ -19,6 +19,11 @@ from backend.service.application.runtime.targets.runtime_target import (
     deserialize_runtime_target_snapshot,
     serialize_runtime_target_snapshot,
 )
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+    OpenVinoCpuRuntimeOptions,
+    TensorRtRuntimeOptions,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -68,7 +73,9 @@ def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
 ) -> None:
     """验证默认 detection runtime 会把 YOLOv8 路由到自身加载器。"""
 
-    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "storage")))
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "storage"))
+    )
     runtime_target = _build_runtime_target(storage=storage, model_type="yolov8")
     sentinel_session = object()
 
@@ -86,6 +93,7 @@ def test_default_detection_model_runtime_routes_yolov8_to_yolov8_loader(
     resolved_session = DefaultDetectionModelRuntime().load_session(
         dataset_storage=storage,
         runtime_target=runtime_target,
+        runtime_configuration=DeploymentRuntimeConfiguration(),
     )
 
     assert resolved_session is sentinel_session
@@ -106,7 +114,9 @@ def test_default_detection_model_runtime_routes_yolov8_专用_backends(
 ) -> None:
     """验证默认 detection runtime 会把 YOLOv8 特定后端路由到对应加载器。"""
 
-    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "storage")))
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "storage"))
+    )
     runtime_target = _build_runtime_target(
         storage=storage,
         model_type="yolov8",
@@ -128,8 +138,16 @@ def test_default_detection_model_runtime_routes_yolov8_专用_backends(
     resolved_session = DefaultDetectionModelRuntime().load_session(
         dataset_storage=storage,
         runtime_target=runtime_target,
-        pinned_output_buffer_enabled=True,
-        pinned_output_buffer_max_bytes=1024,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            backend_options=(
+                OpenVinoCpuRuntimeOptions()
+                if runtime_backend == "openvino"
+                else TensorRtRuntimeOptions(
+                    pinned_output_buffer_enabled=True,
+                    pinned_output_buffer_max_bytes=1024,
+                )
+            )
+        ),
     )
 
     assert resolved_session is sentinel_session
@@ -138,7 +156,9 @@ def test_default_detection_model_runtime_routes_yolov8_专用_backends(
 def test_runtime_target_snapshot_serialization_preserves_model_type(tmp_path) -> None:
     """验证运行时快照在持久化往返后仍保留模型分类。"""
 
-    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "storage")))
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "storage"))
+    )
     snapshot = _build_runtime_target(storage=storage, model_type="yolov8")
 
     restored_snapshot = deserialize_runtime_target_snapshot(
@@ -147,7 +167,10 @@ def test_runtime_target_snapshot_serialization_preserves_model_type(tmp_path) ->
     )
 
     assert restored_snapshot.model_type == "yolov8"
-    assert restored_snapshot.runtime_artifact_storage_uri == snapshot.runtime_artifact_storage_uri
+    assert (
+        restored_snapshot.runtime_artifact_storage_uri
+        == snapshot.runtime_artifact_storage_uri
+    )
     assert restored_snapshot.checkpoint_storage_uri == snapshot.checkpoint_storage_uri
     assert restored_snapshot.labels_storage_uri == snapshot.labels_storage_uri
 

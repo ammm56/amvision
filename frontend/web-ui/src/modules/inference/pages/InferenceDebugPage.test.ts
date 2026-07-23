@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { i18n } from '@/platform/i18n'
-import { listTaskDeployments, type TaskDeploymentInstance } from '@/modules/deployments/services/deployment.service'
+import {
+  listTaskDeployments,
+  type DeploymentRuntimeConfiguration,
+  type TaskDeploymentInstance,
+} from '@/modules/deployments/services/deployment.service'
 import {
   inferTaskDeployment,
   listTaskInferenceTasks,
@@ -23,6 +27,24 @@ vi.mock('../services/inference.service', () => ({
   listTaskInferenceTasks: vi.fn(),
 }))
 
+function runtimeConfiguration(): DeploymentRuntimeConfiguration {
+  return {
+    execution: {
+      instance_count: 1,
+      isolation_level: 'session',
+      overflow_policy: 'reject',
+      performance_goal: 'latency',
+    },
+    lifecycle: {
+      warmup_dummy_inference_count: null,
+      warmup_dummy_image_size: null,
+      keep_warm_enabled: null,
+      keep_warm_interval_seconds: null,
+    },
+    backend_options: { kind: 'default' },
+  }
+}
+
 const deployment: TaskDeploymentInstance = {
   deployment_instance_id: 'deployment-1',
   project_id: 'project-1',
@@ -39,7 +61,7 @@ const deployment: TaskDeploymentInstance = {
   device_name: 'cpu',
   runtime_precision: 'fp32',
   runtime_execution_mode: 'sync',
-  instance_count: 1,
+  runtime_configuration: runtimeConfiguration(),
   input_size: [640, 640],
   labels: [],
   created_at: '2026-07-17T01:00:00Z',

@@ -22,7 +22,9 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.datasets.exports.delivery import DatasetExportPackage
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.evaluation.yolox_detection_task_service import YoloXEvaluationTaskPackage
+from backend.service.application.models.evaluation.yolox_detection_task_service import (
+    YoloXEvaluationTaskPackage,
+)
 from backend.service.application.models.inference.detection_inference_task_service import (
     DetectionInferenceExecutionResult,
 )
@@ -65,14 +67,20 @@ def test_runtime_registry_loader_registers_python_and_worker_handlers_from_entry
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="custom-text-pipeline",
         template_version="1.0.0",
         display_name="Custom Text Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="normalize", node_type_id="custom.text.normalize"),
-            WorkflowGraphNode(node_id="uppercase", node_type_id="custom.text.uppercase-worker"),
+            WorkflowGraphNode(
+                node_id="normalize", node_type_id="custom.text.normalize"
+            ),
+            WorkflowGraphNode(
+                node_id="uppercase", node_type_id="custom.text.uppercase-worker"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -150,13 +158,17 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
     dataset_storage.write_bytes("inputs/source.png", build_valid_test_png_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="core-basic-pipeline",
         template_version="1.0.0",
         display_name="Core Basic Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="save",
                 node_type_id="core.io.image-save",
@@ -285,8 +297,13 @@ def test_runtime_registry_loader_registers_core_service_nodes(
         node_definition = runtime_registry.get_node_definition(node_type_id)
         assert runtime_registry.has_registered_handler(node_definition=node_definition)
 
-    stop_node_definition = runtime_registry.get_node_definition("core.service.model-deployment.stop")
-    assert [port.name for port in stop_node_definition.input_ports] == ["request", "dependency"]
+    stop_node_definition = runtime_registry.get_node_definition(
+        "core.service.model-deployment.stop"
+    )
+    assert [port.name for port in stop_node_definition.input_ports] == [
+        "request",
+        "dependency",
+    ]
 
 
 def test_runtime_registry_loader_clears_custom_nodes_namespace_between_roots(
@@ -298,7 +315,9 @@ def test_runtime_registry_loader_clears_custom_nodes_namespace_between_roots(
     temporary_node_pack_loader = LocalNodePackLoader(temporary_custom_nodes_root_dir)
     temporary_node_pack_loader.refresh()
     temporary_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
-        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=temporary_node_pack_loader),
+        node_catalog_registry=NodeCatalogRegistry(
+            node_pack_loader=temporary_node_pack_loader
+        ),
         node_pack_loader=temporary_node_pack_loader,
     )
 
@@ -308,14 +327,18 @@ def test_runtime_registry_loader_clears_custom_nodes_namespace_between_roots(
     repository_node_pack_loader = LocalNodePackLoader(repository_custom_nodes_root_dir)
     repository_node_pack_loader.refresh()
     repository_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
-        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=repository_node_pack_loader),
+        node_catalog_registry=NodeCatalogRegistry(
+            node_pack_loader=repository_node_pack_loader
+        ),
         node_pack_loader=repository_node_pack_loader,
     )
 
     repository_runtime_registry_loader.refresh()
 
-    qr_crop_node_definition = repository_runtime_registry_loader.get_runtime_registry().get_node_definition(
-        QR_CROP_DECODE_REMAP_NODE_TYPE_ID
+    qr_crop_node_definition = (
+        repository_runtime_registry_loader.get_runtime_registry().get_node_definition(
+            QR_CROP_DECODE_REMAP_NODE_TYPE_ID
+        )
     )
     assert repository_runtime_registry_loader.get_runtime_registry().has_registered_handler(
         node_definition=qr_crop_node_definition
@@ -366,7 +389,9 @@ def test_core_training_service_node_uses_runtime_context(
         lambda self, **kwargs: _FakeTrainingService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
@@ -471,7 +496,9 @@ def test_core_dataset_export_package_service_node_uses_runtime_context_and_regis
         lambda self: _FakeDatasetExportDeliveryService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
@@ -514,10 +541,16 @@ def test_core_dataset_export_package_service_node_uses_runtime_context_and_regis
     assert captured["dataset_export_id"] == "dataset-export-1"
     assert captured["rebuild"] is False
     assert captured["persist_package_metadata"] is False
-    assert captured["package_object_key"] == "workflows/runtime/run-1/package/dataset-export-dataset-export-1.zip"
+    assert (
+        captured["package_object_key"]
+        == "workflows/runtime/run-1/package/dataset-export-dataset-export-1.zip"
+    )
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
     assert len(cleanup_items) == 1
-    assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    assert (
+        cleanup_items[0].resource_kind
+        == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    )
     assert cleanup_items[0].resource_id == captured["package_object_key"]
 
 
@@ -567,7 +600,9 @@ def test_core_model_evaluation_package_service_node_uses_runtime_context_and_reg
         _fake_package_evaluation_result,
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
@@ -617,7 +652,10 @@ def test_core_model_evaluation_package_service_node_uses_runtime_context_and_reg
     )
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
     assert len(cleanup_items) == 1
-    assert cleanup_items[0].resource_kind == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    assert (
+        cleanup_items[0].resource_kind
+        == WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT
+    )
     assert cleanup_items[0].resource_id == captured["package_object_key"]
 
 
@@ -689,9 +727,13 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
         "build_deployment_service",
         lambda self, **kwargs: _FakeDeploymentService(),
     )
-    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
+    _install_fake_published_inference_gateway(
+        monkeypatch, fake_supervisor_calls, class_name="defect"
+    )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -702,7 +744,9 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
         template_version="1.0.0",
         display_name="Detection Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="detect",
                 node_type_id="core.model.detection",
@@ -760,7 +804,10 @@ def test_core_yolox_detection_node_uses_sync_runtime_context(
     assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["inference_kwargs"]["input_uri"] == "inputs/source.jpg"
     assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.42
-    assert fake_supervisor_calls["ensure_config"].deployment_instance_id == "deployment-instance-1"
+    assert (
+        fake_supervisor_calls["ensure_config"].deployment_instance_id
+        == "deployment-instance-1"
+    )
 
 
 def test_core_yolox_detection_node_accepts_dynamic_request_payload(
@@ -789,7 +836,9 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
         def resolve_process_config(self, deployment_instance_id: str):
             """返回最小 process_config。"""
 
-            fake_supervisor_calls["resolved_deployment_instance_id"] = deployment_instance_id
+            fake_supervisor_calls["resolved_deployment_instance_id"] = (
+                deployment_instance_id
+            )
             return SimpleNamespace(deployment_instance_id=deployment_instance_id)
 
     class _FakeSyncSupervisor:
@@ -832,9 +881,13 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
         "build_deployment_service",
         lambda self, **kwargs: _FakeDeploymentService(),
     )
-    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="qr-region")
+    _install_fake_published_inference_gateway(
+        monkeypatch, fake_supervisor_calls, class_name="qr-region"
+    )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -902,7 +955,10 @@ def test_core_yolox_detection_node_accepts_dynamic_request_payload(
     detections = execution_result.outputs["detections"]
     assert detections["items"][0]["class_name"] == "qr-region"
     assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
-    assert fake_supervisor_calls["resolved_deployment_instance_id"] == "deployment-instance-dynamic-1"
+    assert (
+        fake_supervisor_calls["resolved_deployment_instance_id"]
+        == "deployment-instance-dynamic-1"
+    )
     assert fake_supervisor_calls["inference_kwargs"]["score_threshold"] == 0.55
 
 
@@ -981,9 +1037,13 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
         "build_deployment_service",
         lambda self, **kwargs: _FakeDeploymentService(),
     )
-    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
+    _install_fake_published_inference_gateway(
+        monkeypatch, fake_supervisor_calls, class_name="defect"
+    )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -994,7 +1054,9 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
         template_version="1.0.0",
         display_name="Detection Auto Start Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="detect",
                 node_type_id="core.model.detection",
@@ -1049,7 +1111,10 @@ def test_core_yolox_detection_node_auto_starts_sync_process(
 
     assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
     assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
-    assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
+    assert (
+        fake_supervisor_calls["start_config"].deployment_instance_id
+        == "deployment-instance-1"
+    )
 
 
 def test_core_image_base64_decode_node_outputs_memory_image_ref(tmp_path: Path) -> None:
@@ -1067,13 +1132,17 @@ def test_core_image_base64_decode_node_outputs_memory_image_ref(tmp_path: Path) 
 
     registry = ExecutionImageRegistry()
     source_bytes = build_valid_test_png_bytes()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="image-base64-decode-workflow",
         template_version="1.0.0",
         display_name="Image Base64 Decode Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="decode", node_type_id="core.io.image-base64-decode"),
+            WorkflowGraphNode(
+                node_id="decode", node_type_id="core.io.image-base64-decode"
+            ),
         ),
         template_inputs=(
             WorkflowGraphInput(
@@ -1187,9 +1256,13 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
         "build_deployment_service",
         lambda self, **kwargs: _FakeDeploymentService(),
     )
-    _install_fake_published_inference_gateway(monkeypatch, fake_supervisor_calls, class_name="defect")
+    _install_fake_published_inference_gateway(
+        monkeypatch, fake_supervisor_calls, class_name="defect"
+    )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
@@ -1200,7 +1273,9 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
         template_version="1.0.0",
         display_name="Detection Memory Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="detect",
                 node_type_id="core.model.detection",
@@ -1256,11 +1331,20 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
     assert execution_result.outputs["detections"]["items"][0]["class_name"] == "defect"
     assert fake_supervisor_calls["published_inference_request"].task_type == "detection"
     assert fake_supervisor_calls["inference_kwargs"]["input_uri"] is None
-    assert fake_supervisor_calls["inference_kwargs"]["input_image_bytes"] == source_bytes
+    assert (
+        fake_supervisor_calls["inference_kwargs"]["input_image_bytes"] == source_bytes
+    )
 
 
 @pytest.mark.parametrize(
-    ("node_type_id", "output_id", "payload_type_id", "task_type", "parameters", "expected_checks"),
+    (
+        "node_type_id",
+        "output_id",
+        "payload_type_id",
+        "task_type",
+        "parameters",
+        "expected_checks",
+    ),
     [
         (
             "core.model.segmentation",
@@ -1308,7 +1392,10 @@ def test_core_yolox_detection_node_accepts_memory_image_payload(
             "obbs",
             "obbs.v1",
             "obb",
-            {"deployment_instance_id": "deployment-instance-1", "score_threshold": 0.58},
+            {
+                "deployment_instance_id": "deployment-instance-1",
+                "score_threshold": 0.58,
+            },
             {
                 "count": 1,
                 "class_name": "tray",
@@ -1343,9 +1430,13 @@ def test_task_native_direct_model_nodes_use_explicit_task_type(
     runtime_registry_loader.refresh()
 
     calls: dict[str, object] = {}
-    _install_fake_published_inference_gateway(monkeypatch, calls, class_name=str(expected_checks["class_name"]))
+    _install_fake_published_inference_gateway(
+        monkeypatch, calls, class_name=str(expected_checks["class_name"])
+    )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -1355,7 +1446,9 @@ def test_task_native_direct_model_nodes_use_explicit_task_type(
         template_version="1.0.0",
         display_name=f"{task_type.title()} Direct Model Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="model",
                 node_type_id=node_type_id,
@@ -1415,9 +1508,15 @@ def test_task_native_direct_model_nodes_use_explicit_task_type(
     else:
         assert output_payload["items"][0]["class_name"] == expected_checks["class_name"]
     if "mask_threshold" in expected_checks:
-        assert calls["published_inference_request"].mask_threshold == expected_checks["mask_threshold"]
+        assert (
+            calls["published_inference_request"].mask_threshold
+            == expected_checks["mask_threshold"]
+        )
     if "score_threshold" in expected_checks:
-        assert calls["published_inference_request"].score_threshold == expected_checks["score_threshold"]
+        assert (
+            calls["published_inference_request"].score_threshold
+            == expected_checks["score_threshold"]
+        )
     if "keypoint_confidence_threshold" in expected_checks:
         assert (
             calls["published_inference_request"].keypoint_confidence_threshold
@@ -1516,7 +1615,9 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
         lambda self, **kwargs: _FakeInferenceTaskService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -1528,7 +1629,9 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
         template_version="1.0.0",
         display_name="Detection Inference Submit Auto Start Workflow",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="infer",
                 node_type_id="core.service.model-inference.submit",
@@ -1587,9 +1690,15 @@ def test_core_model_inference_submit_node_auto_starts_async_process(
 
     submission = execution_result.outputs["submission"]
     assert submission["task_id"] == "task-inference-1"
-    assert fake_supervisor_calls["start_config"].deployment_instance_id == "deployment-instance-1"
+    assert (
+        fake_supervisor_calls["start_config"].deployment_instance_id
+        == "deployment-instance-1"
+    )
     assert fake_supervisor_calls["request"].input_uri == "inputs/source.jpg"
-    assert fake_supervisor_calls["request"].async_inference_owner_id == "backend-service-main"
+    assert (
+        fake_supervisor_calls["request"].async_inference_owner_id
+        == "backend-service-main"
+    )
 
 
 def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
@@ -1631,7 +1740,9 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
         lambda self, **kwargs: _FakeDeploymentService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=_create_dataset_storage(tmp_path),
@@ -1673,20 +1784,29 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
         input_values={
             "request_payload": {
                 "value": {
-                        "project_id": "project-1",
-                        "task_type": "detection",
-                        "model_type": "yolox",
-                        "model_build_id": "model-build-dynamic-1",
+                    "project_id": "project-1",
+                    "task_type": "detection",
+                    "model_type": "yolox",
+                    "model_build_id": "model-build-dynamic-1",
                     "runtime_backend": "tensorrt",
                     "runtime_precision": "fp16",
-                    "instance_count": 3,
-                    "keep_warm_enabled": True,
-                    "metadata": {
-                        "deployment_process": {
-                            "warmup_dummy_inference_count": 6,
+                    "runtime_configuration": {
+                        "execution": {
+                            "instance_count": 3,
+                            "isolation_level": "session",
+                            "overflow_policy": "reject",
+                            "performance_goal": "latency",
                         },
-                        "request_source": "workflow-runtime",
+                        "lifecycle": {
+                            "warmup_dummy_inference_count": 6,
+                            "keep_warm_enabled": True,
+                        },
+                        "backend_options": {
+                            "kind": "tensorrt",
+                            "optimization_profile_index": 0,
+                        },
                     },
+                    "metadata": {"request_source": "workflow-runtime"},
                     "display_name": "dynamic deployment",
                     "created_by": "workflow-user",
                 }
@@ -1701,14 +1821,13 @@ def test_core_detection_deployment_create_node_accepts_dynamic_request_payload(
     assert captured["request"].model_build_id == "model-build-dynamic-1"
     assert captured["request"].runtime_backend == "tensorrt"
     assert captured["request"].runtime_precision == "fp16"
-    assert captured["request"].instance_count == 3
-    assert captured["request"].metadata == {
-        "deployment_process": {
-            "warmup_dummy_inference_count": 6,
-            "keep_warm_enabled": True,
-        },
-        "request_source": "workflow-runtime",
-    }
+    assert captured["request"].runtime_configuration.instance_count == 3
+    assert (
+        captured["request"].runtime_configuration.lifecycle.warmup_dummy_inference_count
+        == 6
+    )
+    assert captured["request"].runtime_configuration.lifecycle.keep_warm_enabled is True
+    assert captured["request"].metadata == {"request_source": "workflow-runtime"}
     assert captured["created_by"] == "workflow-user"
 
 
@@ -1761,7 +1880,9 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
         lambda self, **kwargs: _FakeDeploymentService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -1894,7 +2015,10 @@ def test_core_detection_deployment_lifecycle_nodes_drive_sync_supervisor(
     assert health_body["healthy_instance_count"] == 2
     assert reset_body["warmed_instance_count"] == 0
     assert stop_body["process_state"] == "stopped"
-    assert sync_supervisor.load_calls == ["artifacts/runtime/model.onnx", "artifacts/runtime/model.onnx"]
+    assert sync_supervisor.load_calls == [
+        "artifacts/runtime/model.onnx",
+        "artifacts/runtime/model.onnx",
+    ]
     assert async_supervisor.load_calls == []
 
 
@@ -1951,7 +2075,9 @@ def test_core_detection_deployment_health_node_uses_async_supervisor(
         lambda self, **kwargs: _FakeAsyncDeploymentService(),
     )
 
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=object(),
         dataset_storage=dataset_storage,
@@ -2031,13 +2157,17 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-filter-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Filter Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="blur",
                 node_type_id="custom.opencv.gaussian-blur",
@@ -2049,7 +2179,9 @@ def test_repository_opencv_node_pack_executes_filter_nodes(
                 parameters={"threshold": 120, "max_value": 255},
             ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -2155,7 +2287,9 @@ def test_repository_opencv_filter_nodes_accept_memory_image_payload(
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-filter-memory-pipeline",
         template_version="1.0.0",
@@ -2220,7 +2354,9 @@ def test_repository_opencv_filter_nodes_accept_memory_image_payload(
     image_payload = execution_result.outputs["result_image"]
     assert image_payload["transport_kind"] == "memory"
     assert image_payload["media_type"] == "image/png"
-    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def test_repository_opencv_node_pack_executes_draw_detections_node(
@@ -2240,20 +2376,30 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-draw-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Draw Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="draw",
                 node_type_id="custom.opencv.draw-detections",
-                parameters={"line_thickness": 2, "font_scale": 0.5, "draw_scores": True},
+                parameters={
+                    "line_thickness": 2,
+                    "font_scale": 0.5,
+                    "draw_scores": True,
+                },
             ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -2334,9 +2480,15 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     assert response_payload["status_code"] == 200
     assert response_payload["body"]["type"] == "image-preview"
     assert response_payload["body"]["image"]["transport_kind"] == "inline-base64"
-    assert response_payload["body"]["image"]["media_type"] in {"image/jpeg", "image/png"}
+    assert response_payload["body"]["image"]["media_type"] in {
+        "image/jpeg",
+        "image/png",
+    }
     assert response_payload["body"]["image"]["image_base64"]
-    assert any(record.node_type_id == "custom.opencv.draw-detections" for record in execution_result.node_records)
+    assert any(
+        record.node_type_id == "custom.opencv.draw-detections"
+        for record in execution_result.node_records
+    )
 
 
 def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_memory_input(
@@ -2362,7 +2514,9 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-draw-memory-pipeline",
         template_version="1.0.0",
@@ -2371,7 +2525,11 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
             WorkflowGraphNode(
                 node_id="draw",
                 node_type_id="custom.opencv.draw-detections",
-                parameters={"line_thickness": 2, "font_scale": 0.5, "draw_scores": True},
+                parameters={
+                    "line_thickness": 2,
+                    "font_scale": 0.5,
+                    "draw_scores": True,
+                },
             ),
         ),
         template_inputs=(
@@ -2432,7 +2590,10 @@ def test_repository_opencv_draw_detections_node_defaults_to_memory_output_with_m
     assert image_payload["pixel_format"] == "bgr24"
     assert image_payload["layout"] == "HWC"
     image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
-    assert len(image_bytes) == int(image_payload["width"]) * int(image_payload["height"]) * 3
+    assert (
+        len(image_bytes)
+        == int(image_payload["width"]) * int(image_payload["height"]) * 3
+    )
 
 
 def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_are_null(
@@ -2452,20 +2613,30 @@ def test_repository_opencv_draw_detections_node_uses_defaults_when_parameters_ar
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-draw-null-parameter-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Draw Null Parameter Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="draw",
                 node_type_id="custom.opencv.draw-detections",
-                parameters={"line_thickness": None, "font_scale": None, "draw_scores": None},
+                parameters={
+                    "line_thickness": None,
+                    "font_scale": None,
+                    "draw_scores": None,
+                },
             ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -2565,25 +2736,41 @@ def test_repository_opencv_node_pack_executes_morphology_and_canny_nodes(
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-edge-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Edge Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="morphology",
                 node_type_id="custom.opencv.morphology",
-                parameters={"operation": "close", "shape": "rect", "kernel_size": 3, "iterations": 1},
+                parameters={
+                    "operation": "close",
+                    "shape": "rect",
+                    "kernel_size": 3,
+                    "iterations": 1,
+                },
             ),
             WorkflowGraphNode(
                 node_id="canny",
                 node_type_id="custom.opencv.canny",
-                parameters={"threshold1": 20, "threshold2": 80, "aperture_size": 3, "l2_gradient": False},
+                parameters={
+                    "threshold1": 20,
+                    "threshold2": 80,
+                    "aperture_size": 3,
+                    "l2_gradient": False,
+                },
             ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -2689,7 +2876,9 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-edge-memory-pipeline",
         template_version="1.0.0",
@@ -2698,12 +2887,22 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
             WorkflowGraphNode(
                 node_id="morphology",
                 node_type_id="custom.opencv.morphology",
-                parameters={"operation": "close", "shape": "rect", "kernel_size": 3, "iterations": 1},
+                parameters={
+                    "operation": "close",
+                    "shape": "rect",
+                    "kernel_size": 3,
+                    "iterations": 1,
+                },
             ),
             WorkflowGraphNode(
                 node_id="canny",
                 node_type_id="custom.opencv.canny",
-                parameters={"threshold1": 20, "threshold2": 80, "aperture_size": 3, "l2_gradient": False},
+                parameters={
+                    "threshold1": 20,
+                    "threshold2": 80,
+                    "aperture_size": 3,
+                    "l2_gradient": False,
+                },
             ),
         ),
         edges=(
@@ -2754,7 +2953,9 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
     image_payload = execution_result.outputs["result_image"]
     assert image_payload["transport_kind"] == "memory"
     assert image_payload["media_type"] == "image/png"
-    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert image_registry.read_bytes(str(image_payload["image_handle"])).startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def test_repository_opencv_node_pack_executes_crop_export_node(
@@ -2774,17 +2975,25 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-crop-export-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Crop Export Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="crop",
                 node_type_id="custom.opencv.crop-export",
-                parameters={"box_padding": 2, "max_crops": 2, "output_dir": "workflow/crops"},
+                parameters={
+                    "box_padding": 2,
+                    "max_crops": 2,
+                    "output_dir": "workflow/crops",
+                },
             ),
         ),
         edges=(
@@ -2848,7 +3057,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
                         "bbox_xyxy": [30, 30, 40, 40],
                         "score": 0.7,
                         "class_name": "part-c",
-                    }
+                    },
                 ]
             },
         },
@@ -2893,7 +3102,9 @@ def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-crop-memory-pipeline",
         template_version="1.0.0",
@@ -2977,7 +3188,9 @@ def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory
         assert crop_item["media_type"] == "image/png"
         assert isinstance(crop_item["bbox_xyxy"], list)
         assert crop_item["crop_index"] >= 1
-        assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+        assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(
+            b"\x89PNG\r\n\x1a\n"
+        )
 
 
 def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_null(
@@ -3003,7 +3216,9 @@ def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_nu
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-crop-null-parameter-pipeline",
         template_version="1.0.0",
@@ -3072,7 +3287,9 @@ def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_nu
     crop_item = crops_payload["items"][0]
     assert crop_item["transport_kind"] == "memory"
     assert crop_item["media_type"] == "image/png"
-    assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(b"\x89PNG\r\n\x1a\n")
+    assert image_registry.read_bytes(str(crop_item["image_handle"])).startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
@@ -3092,17 +3309,25 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
     dataset_storage.write_bytes("inputs/contours.png", _build_contour_test_png_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-measure-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Measure Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="contour",
                 node_type_id="custom.opencv.contour",
-                parameters={"threshold": 127, "min_area": 20, "retrieval_mode": "external"},
+                parameters={
+                    "threshold": 127,
+                    "min_area": 20,
+                    "retrieval_mode": "external",
+                },
             ),
             WorkflowGraphNode(
                 node_id="measure",
@@ -3165,8 +3390,14 @@ def test_repository_opencv_node_pack_executes_contour_and_measure_nodes(
     measurements_payload = execution_result.outputs["measurement_result"]
     assert measurements_payload["count"] == 2
     assert measurements_payload["summary"]["total_area"] > 0
-    assert measurements_payload["items"][0]["area"] > measurements_payload["items"][1]["area"]
-    assert measurements_payload["items"][0]["width"] >= measurements_payload["items"][1]["width"]
+    assert (
+        measurements_payload["items"][0]["area"]
+        > measurements_payload["items"][1]["area"]
+    )
+    assert (
+        measurements_payload["items"][0]["width"]
+        >= measurements_payload["items"][1]["width"]
+    )
     assert [record.node_type_id for record in execution_result.node_records] == [
         "core.io.template-input.image",
         "custom.opencv.contour",
@@ -3191,30 +3422,42 @@ def test_repository_opencv_payload_to_value_node_supports_response_composition(
     dataset_storage.write_bytes("inputs/contours.png", _build_contour_test_png_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-payload-to-value-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Payload To Value Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="contour",
                 node_type_id="custom.opencv.contour",
-                parameters={"threshold": 127, "min_area": 20, "retrieval_mode": "external"},
+                parameters={
+                    "threshold": 127,
+                    "min_area": 20,
+                    "retrieval_mode": "external",
+                },
             ),
             WorkflowGraphNode(
                 node_id="measure",
                 node_type_id="custom.opencv.measure",
                 parameters={"sort_by": "area", "descending": True},
             ),
-            WorkflowGraphNode(node_id="to_value", node_type_id="custom.opencv.payload-to-value"),
+            WorkflowGraphNode(
+                node_id="to_value", node_type_id="custom.opencv.payload-to-value"
+            ),
             WorkflowGraphNode(
                 node_id="compose",
                 node_type_id="core.logic.object-create",
                 parameters={"fields": {"source": "opencv"}, "keys": ["measurements"]},
             ),
-            WorkflowGraphNode(node_id="envelope", node_type_id="core.output.response-envelope"),
+            WorkflowGraphNode(
+                node_id="envelope", node_type_id="core.output.response-envelope"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -3318,7 +3561,9 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
     )
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-measure-memory-pipeline",
         template_version="1.0.0",
@@ -3327,7 +3572,11 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
             WorkflowGraphNode(
                 node_id="contour",
                 node_type_id="custom.opencv.contour",
-                parameters={"threshold": 127, "min_area": 20, "retrieval_mode": "external"},
+                parameters={
+                    "threshold": 127,
+                    "min_area": 20,
+                    "retrieval_mode": "external",
+                },
             ),
             WorkflowGraphNode(
                 node_id="measure",
@@ -3384,7 +3633,10 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
     assert measurements_payload["count"] == 2
     assert measurements_payload["summary"]["total_area"] > 0
     assert measurements_payload["source_image"]["transport_kind"] == "memory"
-    assert measurements_payload["source_image"]["image_handle"] == source_image.image_handle
+    assert (
+        measurements_payload["source_image"]["image_handle"]
+        == source_image.image_handle
+    )
     assert "source_object_key" not in measurements_payload
 
 
@@ -3405,24 +3657,34 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
 
     runtime_registry_loader.refresh()
-    executor = WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    executor = WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
     template = WorkflowGraphTemplate(
         template_id="opencv-gallery-preview-pipeline",
         template_version="1.0.0",
         display_name="OpenCV Gallery Preview Pipeline",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="crop",
                 node_type_id="custom.opencv.crop-export",
-                parameters={"box_padding": 1, "max_crops": 2, "output_dir": "workflow/gallery"},
+                parameters={
+                    "box_padding": 1,
+                    "max_crops": 2,
+                    "output_dir": "workflow/gallery",
+                },
             ),
             WorkflowGraphNode(
                 node_id="gallery",
                 node_type_id="custom.opencv.gallery-preview",
                 parameters={"title": "Crop Gallery", "max_items": 2},
             ),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -3494,7 +3756,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
                         "bbox_xyxy": [20, 20, 52, 52],
                         "score": 0.8,
                         "class_name": "part-b",
-                    }
+                    },
                 ]
             },
         },
@@ -3510,7 +3772,10 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     assert response_payload["body"]["title"] == "Crop Gallery"
     assert response_payload["body"]["count"] == 2
     assert response_payload["body"]["total_count"] == 2
-    assert response_payload["body"]["items"][0]["image"]["transport_kind"] == "inline-base64"
+    assert (
+        response_payload["body"]["items"][0]["image"]["transport_kind"]
+        == "inline-base64"
+    )
     assert response_payload["body"]["items"][0]["image"]["media_type"] == "image/png"
     assert response_payload["body"]["items"][0]["image"]["image_base64"]
 
@@ -3556,7 +3821,9 @@ def register(context):
         "description": "测试用文本节点包。",
         "category": "custom-node-pack",
         "capabilities": ["pipeline.node"],
-        "entrypoints": {"backend": "custom_nodes.text_basic_nodes.backend.entry:register"},
+        "entrypoints": {
+            "backend": "custom_nodes.text_basic_nodes.backend.entry:register"
+        },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30},
         "enabledByDefault": True,
@@ -3768,7 +4035,9 @@ def register(context):
         "description": "测试 custom_nodes 命名空间隔离的同名节点包。",
         "category": "custom-node-pack",
         "capabilities": ["pipeline.node"],
-        "entrypoints": {"backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"},
+        "entrypoints": {
+            "backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"
+        },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30},
         "enabledByDefault": True,
@@ -3830,7 +4099,9 @@ def register(context):
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建 workflow 运行时测试使用的本地文件存储。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
 
 
 def _install_fake_published_inference_gateway(
@@ -3855,9 +4126,13 @@ def _install_fake_published_inference_gateway(
 
             calls["published_inference_request"] = request
             calls["resolved_deployment_instance_id"] = request.deployment_instance_id
-            calls["ensure_config"] = SimpleNamespace(deployment_instance_id=request.deployment_instance_id)
+            calls["ensure_config"] = SimpleNamespace(
+                deployment_instance_id=request.deployment_instance_id
+            )
             if request.auto_start_process:
-                calls["start_config"] = SimpleNamespace(deployment_instance_id=request.deployment_instance_id)
+                calls["start_config"] = SimpleNamespace(
+                    deployment_instance_id=request.deployment_instance_id
+                )
             calls["inference_kwargs"] = {
                 "input_uri": request.image_payload.get("object_key"),
                 "input_image_bytes": request.input_image_bytes,
@@ -4027,5 +4302,7 @@ def _build_fake_process_config(*, instance_count: int) -> SimpleNamespace:
     return SimpleNamespace(
         deployment_instance_id="deployment-instance-1",
         instance_count=instance_count,
-        runtime_target=SimpleNamespace(runtime_artifact_storage_uri="artifacts/runtime/model.onnx"),
+        runtime_target=SimpleNamespace(
+            runtime_artifact_storage_uri="artifacts/runtime/model.onnx"
+        ),
     )
