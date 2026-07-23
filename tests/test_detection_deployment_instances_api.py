@@ -49,6 +49,32 @@ def _runtime_configuration(instance_count: int) -> dict[str, object]:
     }
 
 
+def _openvino_gpu_runtime_configuration(
+    *,
+    inference_precision: str,
+) -> dict[str, object]:
+    """构造显式区分模型文件精度与 GPU 执行精度的配置。"""
+
+    return {
+        "execution": {
+            "instance_count": 1,
+            "isolation_level": "session",
+            "overflow_policy": "reject",
+            "performance_goal": "latency",
+        },
+        "lifecycle": {},
+        "backend_options": {
+            "kind": "openvino-gpu",
+            "performance_hint": "latency",
+            "num_streams": 1,
+            "num_requests": "auto",
+            "inference_precision": inference_precision,
+            "queue_priority": "auto",
+            "queue_throttle": "auto",
+        },
+    }
+
+
 def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> None:
     """验证 DeploymentInstance create、list 和 detail 可以闭环。"""
 
@@ -441,6 +467,73 @@ def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
         assert snapshot["runtime_backend"] == "openvino"
         assert snapshot["runtime_precision"] == "fp16"
         assert snapshot["runtime_artifact_file_type"] == YOLOX_OPENVINO_IR_FILE
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_create_openvino_gpu_deployment_keeps_fp32_artifact_with_fp16_execution_hint(
+    tmp_path: Path,
+) -> None:
+    """验证 FP32 IR 可独立选择 FP16 GPU 执行精度提示。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    model_build_id = _seed_model_build(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        model_version_id=model_version_id,
+        build_format="openvino-ir",
+        build_uri="projects/project-1/models/builds/build-1/yolox.openvino.xml",
+        runtime_precision="fp32",
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "model_build_id": model_build_id,
+                    "runtime_backend": "openvino",
+                    "runtime_precision": "fp32",
+                    "device_name": "gpu",
+                    "runtime_configuration": _openvino_gpu_runtime_configuration(
+                        inference_precision="f16",
+                    ),
+                    "display_name": "yolox fp32 artifact fp16 gpu execution",
+                },
+            )
+
+            assert create_response.status_code == 201
+            payload = create_response.json()
+            assert payload["runtime_precision"] == "fp32"
+            assert (
+                payload["runtime_configuration"]["backend_options"][
+                    "inference_precision"
+                ]
+                == "f16"
+            )
+
+        session = session_factory.create_session()
+        try:
+            saved_instance = SqlAlchemyDeploymentInstanceRepository(
+                session
+            ).get_deployment_instance(payload["deployment_instance_id"])
+        finally:
+            session.close()
+
+        assert saved_instance is not None
+        snapshot = saved_instance.metadata.get("runtime_target_snapshot")
+        assert isinstance(snapshot, dict)
+        assert snapshot["runtime_precision"] == "fp32"
+        assert (
+            saved_instance.runtime_configuration.backend_options.inference_precision
+            == "f16"
+        )
     finally:
         session_factory.engine.dispose()
 

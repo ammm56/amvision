@@ -64,7 +64,7 @@
               <strong>{{ selectedDeploymentSource.runtimeBackend || '-' }}</strong>
             </div>
             <div>
-              <span>Runtime precision</span>
+              <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
               <strong>{{ selectedDeploymentSource.runtimePrecision || '-' }}</strong>
             </div>
             <div>
@@ -145,20 +145,22 @@
           </div>
           <div v-if="isOpenVinoBackend && openvinoDeviceKind !== 'cpu' && supportedRuntimeField('num_requests')" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.openvinoInferRequests') }}</span>
-            <SelectField
-              :model-value="openvinoNumRequestsMode"
-              :options="openvinoNumRequestsModeOptions"
-              @update:model-value="setOpenvinoNumRequestsMode"
-            />
-            <input
-              v-if="openvinoNumRequestsMode === 'manual'"
-              v-model.number="openvinoNumRequests"
-              type="number"
-              min="1"
-              step="1"
-              :aria-label="t('deploymentOps.runtimeConfig.openvinoInferRequests')"
-              @blur="normalizeOpenvinoNumRequests"
-            />
+            <div class="field-control-row">
+              <SelectField
+                :model-value="openvinoNumRequestsMode"
+                :options="openvinoNumRequestsModeOptions"
+                @update:model-value="setOpenvinoNumRequestsMode"
+              />
+              <input
+                v-if="openvinoNumRequestsMode === 'manual'"
+                v-model.number="openvinoNumRequests"
+                type="number"
+                min="1"
+                step="1"
+                :aria-label="t('deploymentOps.runtimeConfig.openvinoInferRequests')"
+                @blur="normalizeOpenvinoNumRequests"
+              />
+            </div>
           </div>
           <div v-if="(openvinoDeviceKind === 'gpu' || openvinoDeviceKind === 'npu') && supportedRuntimeField('inference_precision')" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.inferencePrecision') }}</span>
@@ -178,21 +180,23 @@
           </div>
           <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('tiles')" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.npuTiles') }}</span>
-            <SelectField
-              :model-value="openvinoNpuTilesMode"
-              :options="autoManualOptions"
-              @update:model-value="setOpenvinoNpuTilesMode"
-            />
-            <input
-              v-if="openvinoNpuTilesMode === 'manual'"
-              v-model.number="openvinoNpuTiles"
-              type="number"
-              min="1"
-              :max="openvinoNpuMaxTiles ?? undefined"
-              step="1"
-              :aria-label="t('deploymentOps.runtimeConfig.npuTiles')"
-              @blur="normalizeOpenvinoNpuTiles"
-            />
+            <div class="field-control-row">
+              <SelectField
+                :model-value="openvinoNpuTilesMode"
+                :options="autoManualOptions"
+                @update:model-value="setOpenvinoNpuTilesMode"
+              />
+              <input
+                v-if="openvinoNpuTilesMode === 'manual'"
+                v-model.number="openvinoNpuTiles"
+                type="number"
+                min="1"
+                :max="openvinoNpuMaxTiles ?? undefined"
+                step="1"
+                :aria-label="t('deploymentOps.runtimeConfig.npuTiles')"
+                @blur="normalizeOpenvinoNpuTiles"
+              />
+            </div>
           </div>
           <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('compilation_mode_params')" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.npuCompilationModeParams') }}</span>
@@ -661,7 +665,7 @@ const serviceDefaultBooleanOptions = computed(() => [
   { label: t('deploymentOps.options.disabled'), value: 'false' },
 ])
 const openvinoInferencePrecisionOptions = computed(() => [
-  { label: t('deploymentOps.options.automatic'), value: 'auto' },
+  { label: t('deploymentOps.options.automaticRecommended'), value: 'auto' },
   { label: 'FP16', value: 'f16' },
   ...(openvinoDeviceKind.value === 'gpu' ? [{ label: 'FP32', value: 'f32' }] : []),
 ])
@@ -1704,6 +1708,17 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 
 .deployment-create-grid {
   gap: 10px;
+}
+
+.field-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.field-control-row > :only-child {
+  grid-column: 1 / -1;
 }
 
 .deployment-instances-panel,

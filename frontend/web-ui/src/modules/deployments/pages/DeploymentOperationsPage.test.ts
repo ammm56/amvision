@@ -204,6 +204,36 @@ const autoRuntimeCapabilities: DeploymentRuntimeCapabilities = {
   warnings: [],
 }
 
+const gpuRuntimeCapabilities: DeploymentRuntimeCapabilities = {
+  runtime_backend: 'openvino',
+  device_name: 'gpu',
+  available: true,
+  hardware: {
+    cpu_physical_core_count: 8,
+    cpu_logical_processor_count: 16,
+  },
+  supported_backend_fields: [
+    'performance_hint',
+    'num_streams',
+    'num_requests',
+    'inference_precision',
+  ],
+  read_only_properties: {},
+  default_runtime_configuration: {
+    ...runtimeConfiguration(1),
+    backend_options: {
+      kind: 'openvino-gpu',
+      performance_hint: 'latency',
+      num_streams: 1,
+      num_requests: 'auto',
+      inference_precision: 'auto',
+      queue_priority: 'auto',
+      queue_throttle: 'auto',
+    },
+  },
+  warnings: [],
+}
+
 const npuRuntimeCapabilities: DeploymentRuntimeCapabilities = {
   runtime_backend: 'openvino',
   device_name: 'npu',
@@ -353,6 +383,7 @@ describe('DeploymentOperationsPage', () => {
     vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event])
     vi.mocked(getDeploymentRuntimeCapabilities).mockImplementation(async (_backend, device) => {
       if (device === 'cpu') return runtimeCapabilities
+      if (device.startsWith('gpu')) return gpuRuntimeCapabilities
       if (device === 'npu') return npuRuntimeCapabilities
       return autoRuntimeCapabilities
     })
@@ -593,6 +624,7 @@ describe('DeploymentOperationsPage', () => {
     expect(manualOption, 'manual infer request option exists').toBeTruthy()
     await manualOption!.trigger('click')
     await nextTick()
+    expect(requestsField.find('.field-control-row').exists()).toBe(true)
     expect(requestsField.find('input').attributes('type')).toBe('number')
     expect(requestsField.find('input').attributes('min')).toBe('1')
 
@@ -641,6 +673,71 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.text()).toContain('배포 소스 모델')
   })
 
+  it('distinguishes FP32 model artifact precision from the OpenVINO GPU execution precision hint', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const sourcePrecision = wrapper.findAll('.deployment-source-summary__grid > div')
+      .find((item) => item.text().includes('模型文件精度'))
+    expect(sourcePrecision, 'model artifact precision exists').toBeTruthy()
+    expect(sourcePrecision!.text()).toContain('fp32')
+
+    const deviceField = findFieldByText(wrapper, 'Device')
+    await deviceField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const gpuOption = deviceField.findAll('.ui-select__option')
+      .find((item) => item.text().includes('OpenVINO GPU'))
+    expect(gpuOption, 'OpenVINO GPU option exists').toBeTruthy()
+    await gpuOption!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('OpenVINO streams')
+    const precisionField = findFieldByText(wrapper, 'OpenVINO 执行精度')
+    expect(precisionField.find('.ui-select__button').text()).toContain('自动（推荐）')
+    await precisionField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const precisionOptions = precisionField.findAll('.ui-select__option')
+    expect(precisionOptions.map((item) => item.text())).toEqual([
+      '自动（推荐）',
+      'FP16',
+      'FP32',
+    ])
+    await precisionOptions[1]!.trigger('click')
+
+    setI18nLocale('en-US')
+    await nextTick()
+    expect(wrapper.text()).toContain('Model Artifact Precision')
+    expect(wrapper.text()).toContain('OpenVINO Inference Precision')
+    setI18nLocale('ja-JP')
+    await nextTick()
+    expect(wrapper.text()).toContain('モデルファイル精度')
+    expect(wrapper.text()).toContain('OpenVINO 実行精度')
+    setI18nLocale('ko-KR')
+    await nextTick()
+    expect(wrapper.text()).toContain('모델 파일 정밀도')
+    expect(wrapper.text()).toContain('OpenVINO 실행 정밀도')
+
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+
+    expect(createTaskDeployment).toHaveBeenCalledTimes(1)
+    const createInput = vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+    expect(createInput?.runtimePrecision).toBe('fp32')
+    expect(createInput?.runtimeConfiguration.backend_options).toMatchObject({
+      kind: 'openvino-gpu',
+      inference_precision: 'f16',
+    })
+  })
+
   it('renders and submits the complete capability-driven OpenVINO NPU configuration', async () => {
     vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
     vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
@@ -664,12 +761,12 @@ describe('DeploymentOperationsPage', () => {
 
     expect(wrapper.text()).not.toContain('OpenVINO streams')
     expect(wrapper.text()).not.toContain('OpenVINO 推理线程数')
-    expect(wrapper.text()).toContain('OpenVINO inference precision')
+    expect(wrapper.text()).toContain('OpenVINO 执行精度')
     expect(wrapper.text()).toContain('NPU turbo')
     expect(wrapper.text()).toContain('NPU tiles')
     expect(wrapper.text()).toContain('NPU compilation mode params')
 
-    const precisionField = findFieldByText(wrapper, 'OpenVINO inference precision')
+    const precisionField = findFieldByText(wrapper, 'OpenVINO 执行精度')
     await precisionField.find('.ui-select__button').trigger('click')
     await nextTick()
     expect(precisionField.findAll('.ui-select__option')).toHaveLength(2)
