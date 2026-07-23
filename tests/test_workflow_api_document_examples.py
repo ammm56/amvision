@@ -2246,6 +2246,14 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
     )
     assert invoke_body["execution_metadata"]["trigger_source"] == "sync-api"
     if expected_trigger_source_input == "zeromq":
+        assert set(create_trigger_source_body["transport_config"]).isdisjoint(
+            {
+                "buffer_ttl_seconds",
+                "receive_hwm",
+                "send_hwm",
+                "max_message_size_bytes",
+            }
+        )
         assert (
             invoke_body["input_bindings"]["request_image_base64"]["media_type"]
             == "image/png"
