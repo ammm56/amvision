@@ -89,6 +89,8 @@ def test_yolov8_model_service_registers_yolov8_specific_file_types() -> None:
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="onnx",
+            runtime_backend="onnxruntime",
+            runtime_precision="fp32",
             build_file_id="build-file-1",
             build_file_uri="memory://runs/yolov8/model.onnx",
         )
@@ -166,6 +168,8 @@ def test_yolov8_runtime_target_resolver_returns_yolov8_snapshot(tmp_path: Path) 
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="onnx",
+            runtime_backend="onnxruntime",
+            runtime_precision="fp32",
             build_file_id="build-file-1",
             build_file_uri=build_object_key,
         )
@@ -184,6 +188,7 @@ def test_yolov8_runtime_target_resolver_returns_yolov8_snapshot(tmp_path: Path) 
 
     assert snapshot.model_type == "yolov8"
     assert snapshot.runtime_backend == "onnxruntime"
+    assert snapshot.runtime_precision == "fp32"
     assert snapshot.runtime_artifact_file_type == YOLOV8_DETECTION_FILE_TYPES.onnx_file_type
     assert snapshot.runtime_artifact_path == dataset_storage.resolve(build_object_key)
     assert snapshot.checkpoint_path == dataset_storage.resolve(checkpoint_object_key)

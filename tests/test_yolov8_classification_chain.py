@@ -170,6 +170,8 @@ def test_yolov8_classification_conversion_runner_exports_onnx_and_runtime_can_pr
             project_id="project-1",
             source_model_version_id=seeded["model_version_id"],
             build_format="onnx",
+            runtime_backend=onnx_output.runtime_backend,
+            runtime_precision=onnx_output.runtime_precision,
             build_file_id="build-file-yolov8-classification-1",
             build_file_uri=onnx_output.object_uri,
             metadata=dict(onnx_output.metadata),
@@ -197,6 +199,7 @@ def test_yolov8_classification_conversion_runner_exports_onnx_and_runtime_can_pr
 
     assert runtime_target.task_type == "classification"
     assert runtime_target.runtime_backend == "onnxruntime"
+    assert runtime_target.runtime_precision == "fp32"
     assert execution_result.top_category is not None
     assert len(execution_result.categories) == 3
     assert execution_result.runtime_session_info.output_spec.name == "probabilities"

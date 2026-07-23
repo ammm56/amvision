@@ -171,6 +171,8 @@ def test_yolov8_segmentation_conversion_runner_exports_onnx_and_runtime_can_pred
             project_id="project-1",
             source_model_version_id=seeded["model_version_id"],
             build_format="onnx",
+            runtime_backend=onnx_output.runtime_backend,
+            runtime_precision=onnx_output.runtime_precision,
             build_file_id="build-file-yolov8-segmentation-1",
             build_file_uri=onnx_output.object_uri,
             metadata=dict(onnx_output.metadata),
@@ -199,6 +201,7 @@ def test_yolov8_segmentation_conversion_runner_exports_onnx_and_runtime_can_pred
 
     assert runtime_target.task_type == "segmentation"
     assert runtime_target.runtime_backend == "onnxruntime"
+    assert runtime_target.runtime_precision == "fp32"
     assert len(execution_result.runtime_session_info.output_specs) == 2
     assert execution_result.runtime_session_info.output_specs[0].name == "predictions"
     assert execution_result.runtime_session_info.output_specs[1].name == "proto"
