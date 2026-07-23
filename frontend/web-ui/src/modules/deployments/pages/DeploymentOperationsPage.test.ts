@@ -207,6 +207,26 @@ const classificationSourceModel: DeploymentSourceModelSummary = {
   task_type: 'classification',
 }
 
+const openvinoSourceModelDetail: DeploymentSourceModelDetail = {
+  ...detectionSourceModel,
+  build_count: 1,
+  builds: [
+    {
+      model_build_id: 'openvino-build-1',
+      source_model_version_id: 'model-version-1',
+      build_format: 'openvino-ir',
+      runtime_backend: 'openvino',
+      runtime_precision: 'fp32',
+      runtime_profile_id: null,
+      conversion_task_id: 'conversion-task-1',
+      file_ids: [],
+      metadata: {},
+      files: [],
+    },
+  ],
+  versions: [],
+}
+
 function sourceModelDetail(model: DeploymentSourceModelSummary): DeploymentSourceModelDetail {
   return { ...model, versions: [], builds: [] }
 }
@@ -468,6 +488,61 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.text()).not.toContain('Detection model')
     expect(wrapper.text()).toContain('Classification model')
   })
+
+  it('renders guarded OpenVINO CPU controls with shared select components', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const requestsField = findFieldByText(wrapper, 'OpenVINO 并发推理请求数')
+    expect(requestsField.text()).toContain('不是部署实例数')
+    expect(requestsField.find('.ui-select__button').text()).toContain('自动（推荐）')
+    await requestsField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const manualOption = requestsField.findAll('.ui-select__option').find((item) => item.text().includes('手动指定'))
+    expect(manualOption, 'manual infer request option exists').toBeTruthy()
+    await manualOption!.trigger('click')
+    await nextTick()
+    expect(requestsField.find('input').attributes('type')).toBe('number')
+    expect(requestsField.find('input').attributes('min')).toBe('1')
+
+    const deviceField = findFieldByText(wrapper, 'Device')
+    await deviceField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const cpuOption = deviceField.findAll('.ui-select__option').find((item) => item.text().includes('OpenVINO CPU'))
+    expect(cpuOption, 'OpenVINO CPU option exists').toBeTruthy()
+    await cpuOption!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('平台性能目标')
+    expect(wrapper.text()).toContain('OpenVINO 性能策略')
+    expect(wrapper.text()).toContain('OpenVINO 推理线程数')
+    expect(wrapper.text()).toContain('可选范围 1–8')
+    expect(wrapper.findAll('select')).toHaveLength(0)
+
+    const threadsField = findFieldByText(wrapper, 'OpenVINO 推理线程数')
+    expect(threadsField.find('.ui-select__button').text()).toContain('8')
+    await threadsField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(threadsField.findAll('.ui-select__option')).toHaveLength(8)
+
+    const streamsInput = findFieldByText(wrapper, 'OpenVINO streams').find('input')
+    expect(streamsInput.attributes('type')).toBe('number')
+    expect(streamsInput.attributes('min')).toBe('1')
+    expect((streamsInput.element as HTMLInputElement).value).toBe('1')
+    await streamsInput.setValue('0')
+    await streamsInput.trigger('blur')
+    expect((streamsInput.element as HTMLInputElement).value).toBe('1')
+  })
 })
 
 async function clickButtonByText(wrapper: VueWrapper, text: string): Promise<void> {
@@ -480,4 +555,10 @@ function findDeploymentActionButton(wrapper: VueWrapper, deploymentId: string, a
   const button = wrapper.find(`[data-deployment-id="${deploymentId}"] [data-deployment-action="${action}"]`)
   expect(button.exists(), `${deploymentId} ${action} button exists`).toBe(true)
   return button
+}
+
+function findFieldByText(wrapper: VueWrapper, text: string) {
+  const field = wrapper.findAll('.field').find((item) => item.text().includes(text))
+  expect(field, `field ${text} exists`).toBeTruthy()
+  return field!
 }

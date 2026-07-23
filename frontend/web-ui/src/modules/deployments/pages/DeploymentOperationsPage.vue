@@ -84,78 +84,102 @@
           </label>
           <label class="field">
             <span>{{ t('deploymentOps.fields.instanceCount') }}</span>
-            <input v-model.number="instanceCount" type="number" min="1" />
+            <input
+              v-model.number="instanceCount"
+              type="number"
+              min="1"
+              max="64"
+              step="1"
+              @blur="normalizeInstanceCount"
+            />
           </label>
-          <label class="field">
-            <span>平台性能目标</span>
-            <select v-model="performanceGoal">
-              <option value="latency">latency</option>
-              <option value="balanced">balanced</option>
-              <option value="throughput">throughput</option>
-            </select>
-          </label>
-          <label v-if="isOpenVinoBackend" class="field">
-            <span>OpenVINO performance hint</span>
-            <select v-model="openvinoPerformanceHint">
-              <option value="latency">latency</option>
-              <option value="throughput">throughput</option>
-              <option value="cumulative_throughput">cumulative throughput</option>
-              <option value="none">不覆盖 plugin</option>
-            </select>
-          </label>
-          <label v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('inference_num_threads')" class="field">
-            <span>OpenVINO inference threads（空值 = auto）</span>
-            <input v-model="openvinoInferenceNumThreads" inputmode="numeric" placeholder="auto" />
-          </label>
+          <div v-if="isOpenVinoBackend" class="field">
+            <span>OpenVINO 性能策略</span>
+            <SelectField
+              :model-value="openvinoPerformanceHint"
+              :options="openvinoPerformanceHintOptions"
+              @update:model-value="setOpenvinoPerformanceHint"
+            />
+            <small>直接设置 OpenVINO PERFORMANCE_HINT；“运行时默认”表示不写入该属性。</small>
+          </div>
+          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('inference_num_threads')" class="field">
+            <span>OpenVINO 推理线程数</span>
+            <SelectField
+              :model-value="openvinoInferenceNumThreads"
+              :options="openvinoInferenceThreadOptions"
+              @update:model-value="setOpenvinoInferenceNumThreads"
+            />
+            <small>可选范围 1–{{ openvinoMaxInferenceThreads }}，上限来自后端检测到的本机物理核心数。</small>
+          </div>
           <label v-if="isOpenVinoBackend && openvinoDeviceKind !== 'npu' && supportedRuntimeField('num_streams')" class="field">
-            <span>OpenVINO streams（空值 = auto）</span>
-            <input v-model="openvinoNumStreams" inputmode="numeric" placeholder="auto" />
+            <span>OpenVINO streams</span>
+            <input
+              v-model.number="openvinoNumStreams"
+              type="number"
+              min="1"
+              step="1"
+              @blur="normalizeOpenvinoNumStreams"
+            />
+            <small>默认 1；表示每个模型实例内部并行执行的 stream 数量。</small>
           </label>
-          <label v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('scheduling_core_type')" class="field">
+          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('scheduling_core_type')" class="field">
             <span>CPU core 类型</span>
-            <select v-model="openvinoSchedulingCoreType">
-              <option value="auto">auto</option>
-              <option value="any_core">any core</option>
-              <option value="pcore_only">P-core only</option>
-              <option value="ecore_only">E-core only</option>
-            </select>
-          </label>
-          <label v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_hyper_threading')" class="field">
+            <SelectField
+              :model-value="openvinoSchedulingCoreType"
+              :options="openvinoSchedulingCoreTypeOptions"
+              @update:model-value="setOpenvinoSchedulingCoreType"
+            />
+          </div>
+          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_hyper_threading')" class="field">
             <span>Hyper-Threading</span>
-            <select v-model="openvinoHyperThreading">
-              <option value="auto">auto</option>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </label>
-          <label v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_cpu_pinning')" class="field">
+            <SelectField
+              :model-value="openvinoHyperThreading"
+              :options="autoBooleanOptions"
+              @update:model-value="setOpenvinoHyperThreading"
+            />
+          </div>
+          <div v-if="openvinoDeviceKind === 'cpu' && supportedRuntimeField('enable_cpu_pinning')" class="field">
             <span>CPU pinning</span>
-            <select v-model="openvinoCpuPinning">
-              <option value="auto">auto</option>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </label>
-          <label v-if="isOpenVinoBackend && openvinoDeviceKind !== 'cpu' && supportedRuntimeField('num_requests')" class="field">
-            <span>OpenVINO infer requests（空值 = auto）</span>
-            <input v-model="openvinoNumRequests" inputmode="numeric" placeholder="auto" />
-          </label>
-          <label v-if="openvinoDeviceKind === 'gpu' && supportedRuntimeField('inference_precision')" class="field">
+            <SelectField
+              :model-value="openvinoCpuPinning"
+              :options="autoBooleanOptions"
+              @update:model-value="setOpenvinoCpuPinning"
+            />
+          </div>
+          <div v-if="isOpenVinoBackend && openvinoDeviceKind !== 'cpu' && supportedRuntimeField('num_requests')" class="field">
+            <span>OpenVINO 并发推理请求数</span>
+            <SelectField
+              :model-value="openvinoNumRequestsMode"
+              :options="openvinoNumRequestsModeOptions"
+              @update:model-value="setOpenvinoNumRequestsMode"
+            />
+            <input
+              v-if="openvinoNumRequestsMode === 'manual'"
+              v-model.number="openvinoNumRequests"
+              type="number"
+              min="1"
+              step="1"
+              aria-label="OpenVINO 并发推理请求数"
+              @blur="normalizeOpenvinoNumRequests"
+            />
+            <small>这是性能策略的请求并发提示，不是部署实例数。建议保持自动，仅在压测后手动填写正整数。</small>
+          </div>
+          <div v-if="openvinoDeviceKind === 'gpu' && supportedRuntimeField('inference_precision')" class="field">
             <span>GPU inference precision</span>
-            <select v-model="openvinoInferencePrecision">
-              <option value="auto">auto</option>
-              <option value="f16">f16</option>
-              <option value="f32">f32</option>
-            </select>
-          </label>
-          <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('turbo')" class="field">
+            <SelectField
+              :model-value="openvinoInferencePrecision"
+              :options="openvinoInferencePrecisionOptions"
+              @update:model-value="setOpenvinoInferencePrecision"
+            />
+          </div>
+          <div v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('turbo')" class="field">
             <span>NPU turbo</span>
-            <select v-model="openvinoNpuTurbo">
-              <option value="auto">auto</option>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </label>
+            <SelectField
+              :model-value="openvinoNpuTurbo"
+              :options="autoBooleanOptions"
+              @update:model-value="setOpenvinoNpuTurbo"
+            />
+          </div>
           <label v-if="openvinoDeviceKind === 'npu' && supportedRuntimeField('tiles')" class="field">
             <span>NPU tiles（空值 = auto）</span>
             <input v-model="openvinoNpuTiles" inputmode="numeric" placeholder="auto" />
@@ -164,14 +188,14 @@
             <span>TensorRT optimization profile</span>
             <input v-model.number="tensorrtOptimizationProfileIndex" type="number" min="0" />
           </label>
-          <label v-if="isTensorRtBackend" class="field">
+          <div v-if="isTensorRtBackend" class="field">
             <span>TensorRT pinned output</span>
-            <select v-model="tensorrtPinnedOutput">
-              <option value="auto">使用服务默认值</option>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </label>
+            <SelectField
+              :model-value="tensorrtPinnedOutput"
+              :options="serviceDefaultBooleanOptions"
+              @update:model-value="setTensorrtPinnedOutput"
+            />
+          </div>
           <label class="field field--wide">
             <span>{{ t('deploymentOps.fields.displayName') }}</span>
             <input v-model="displayName" />
@@ -486,6 +510,37 @@ const runtimeModeOptions = [
   { label: 'sync', value: 'sync' },
   { label: 'async', value: 'async' },
 ]
+const openvinoPerformanceHintOptions = [
+  { label: '最低单次延迟', value: 'latency', description: '优先降低单次同步推理耗时' },
+  { label: '最大吞吐量', value: 'throughput', description: '优先提高持续并发处理能力' },
+  { label: '多设备累计吞吐量', value: 'cumulative_throughput', description: '用于 OpenVINO AUTO 等多设备场景' },
+  { label: '使用 OpenVINO 运行时默认', value: 'none', description: '不写入 PERFORMANCE_HINT 属性' },
+]
+const openvinoSchedulingCoreTypeOptions = [
+  { label: '自动选择', value: 'auto' },
+  { label: '任意核心', value: 'any_core' },
+  { label: '仅 P-core', value: 'pcore_only' },
+  { label: '仅 E-core', value: 'ecore_only' },
+]
+const autoBooleanOptions = [
+  { label: '自动', value: 'auto' },
+  { label: '启用', value: 'true' },
+  { label: '禁用', value: 'false' },
+]
+const serviceDefaultBooleanOptions = [
+  { label: '使用服务默认值', value: 'auto' },
+  { label: '启用', value: 'true' },
+  { label: '禁用', value: 'false' },
+]
+const openvinoInferencePrecisionOptions = [
+  { label: '自动', value: 'auto' },
+  { label: 'FP16', value: 'f16' },
+  { label: 'FP32', value: 'f32' },
+]
+const openvinoNumRequestsModeOptions = [
+  { label: '自动（推荐）', value: 'auto', description: '由 OpenVINO 根据设备和性能策略决定' },
+  { label: '手动指定', value: 'manual', description: '仅在压测确认后设置并发请求数' },
+]
 
 const RUNTIME_REFRESH_CONCURRENCY = 8
 
@@ -529,11 +584,11 @@ const modelBuildId = ref('')
 const runtimeProfileId = ref('')
 const deviceName = ref('')
 const instanceCount = ref(1)
-const performanceGoal = ref<'latency' | 'throughput' | 'balanced'>('latency')
 const openvinoPerformanceHint = ref<'latency' | 'throughput' | 'cumulative_throughput' | 'none'>('latency')
-const openvinoInferenceNumThreads = ref<string | number>('auto')
-const openvinoNumStreams = ref<string | number>(1)
-const openvinoNumRequests = ref<string | number>('auto')
+const openvinoInferenceNumThreads = ref(1)
+const openvinoNumStreams = ref(1)
+const openvinoNumRequestsMode = ref<'auto' | 'manual'>('auto')
+const openvinoNumRequests = ref(1)
 const openvinoSchedulingCoreType = ref<'auto' | 'any_core' | 'pcore_only' | 'ecore_only'>('auto')
 const openvinoHyperThreading = ref<'auto' | 'true' | 'false'>('auto')
 const openvinoCpuPinning = ref<'auto' | 'true' | 'false'>('auto')
@@ -582,6 +637,14 @@ const openvinoDeviceKind = computed<'cpu' | 'gpu' | 'npu' | 'auto'>(() => {
   if (device.startsWith('npu')) return 'npu'
   return 'auto'
 })
+const openvinoMaxInferenceThreads = computed(() => normalizePositiveInteger(
+  runtimeCapabilities.value?.hardware.cpu_physical_core_count,
+  1,
+))
+const openvinoInferenceThreadOptions = computed(() => Array.from(
+  { length: openvinoMaxInferenceThreads.value },
+  (_, index) => ({ label: String(index + 1), value: index + 1 }),
+))
 const runtimeCapabilityWarnings = computed(() => runtimeCapabilities.value?.warnings ?? [])
 
 let skipNextRuntimeModeRefresh = false
@@ -645,6 +708,73 @@ function setDeviceName(value: SelectValue): void {
   deviceName.value = selectValueToString(value)
 }
 
+function setOpenvinoPerformanceHint(value: SelectValue): void {
+  const normalized = selectValueToString(value)
+  if (['latency', 'throughput', 'cumulative_throughput', 'none'].includes(normalized)) {
+    openvinoPerformanceHint.value = normalized as typeof openvinoPerformanceHint.value
+  }
+}
+
+function setOpenvinoInferenceNumThreads(value: SelectValue): void {
+  openvinoInferenceNumThreads.value = normalizePositiveInteger(
+    value,
+    openvinoInferenceNumThreads.value,
+    openvinoMaxInferenceThreads.value,
+  )
+}
+
+function setOpenvinoSchedulingCoreType(value: SelectValue): void {
+  const normalized = selectValueToString(value)
+  if (['auto', 'any_core', 'pcore_only', 'ecore_only'].includes(normalized)) {
+    openvinoSchedulingCoreType.value = normalized as typeof openvinoSchedulingCoreType.value
+  }
+}
+
+function setAutoBoolean(
+  value: SelectValue,
+  assign: (normalized: 'auto' | 'true' | 'false') => void,
+): void {
+  const normalized = selectValueToString(value)
+  if (normalized === 'auto' || normalized === 'true' || normalized === 'false') {
+    assign(normalized)
+  }
+}
+
+function setOpenvinoHyperThreading(value: SelectValue): void {
+  setAutoBoolean(value, (normalized) => {
+    openvinoHyperThreading.value = normalized
+  })
+}
+
+function setOpenvinoCpuPinning(value: SelectValue): void {
+  setAutoBoolean(value, (normalized) => {
+    openvinoCpuPinning.value = normalized
+  })
+}
+
+function setOpenvinoNumRequestsMode(value: SelectValue): void {
+  openvinoNumRequestsMode.value = selectValueToString(value) === 'manual' ? 'manual' : 'auto'
+}
+
+function setOpenvinoInferencePrecision(value: SelectValue): void {
+  const normalized = selectValueToString(value)
+  if (normalized === 'auto' || normalized === 'f16' || normalized === 'f32') {
+    openvinoInferencePrecision.value = normalized
+  }
+}
+
+function setOpenvinoNpuTurbo(value: SelectValue): void {
+  setAutoBoolean(value, (normalized) => {
+    openvinoNpuTurbo.value = normalized
+  })
+}
+
+function setTensorrtPinnedOutput(value: SelectValue): void {
+  setAutoBoolean(value, (normalized) => {
+    tensorrtPinnedOutput.value = normalized
+  })
+}
+
 function supportedRuntimeField(fieldName: string): boolean {
   const capabilities = runtimeCapabilities.value
   return capabilities === null || capabilities.supported_backend_fields.includes(fieldName)
@@ -676,29 +806,32 @@ async function loadRuntimeCapabilities(): Promise<void> {
 function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilities): void {
   const configuration = capabilities.default_runtime_configuration
   instanceCount.value = configuration.execution.instance_count
-  performanceGoal.value = configuration.execution.performance_goal
   const options = configuration.backend_options
   if (options.kind === 'openvino-cpu') {
     openvinoPerformanceHint.value = options.performance_hint
-    openvinoInferenceNumThreads.value = options.inference_num_threads
-    openvinoNumStreams.value = options.num_streams
+    openvinoInferenceNumThreads.value = normalizePositiveInteger(
+      options.inference_num_threads,
+      openvinoMaxInferenceThreads.value,
+      openvinoMaxInferenceThreads.value,
+    )
+    openvinoNumStreams.value = normalizePositiveInteger(options.num_streams, 1)
     openvinoSchedulingCoreType.value = options.scheduling_core_type
     openvinoHyperThreading.value = formatAutoBoolean(options.enable_hyper_threading)
     openvinoCpuPinning.value = formatAutoBoolean(options.enable_cpu_pinning)
   } else if (options.kind === 'openvino-gpu') {
     openvinoPerformanceHint.value = options.performance_hint
-    openvinoNumStreams.value = options.num_streams
-    openvinoNumRequests.value = options.num_requests
+    openvinoNumStreams.value = normalizePositiveInteger(options.num_streams, 1)
+    applyOpenvinoNumRequestsDefault(options.num_requests)
     openvinoInferencePrecision.value = options.inference_precision
   } else if (options.kind === 'openvino-npu') {
     openvinoPerformanceHint.value = options.performance_hint
-    openvinoNumRequests.value = options.num_requests
+    applyOpenvinoNumRequestsDefault(options.num_requests)
     openvinoInferencePrecision.value = options.inference_precision
     openvinoNpuTurbo.value = formatAutoBoolean(options.turbo)
     openvinoNpuTiles.value = options.tiles
   } else if (options.kind === 'openvino-auto') {
     openvinoPerformanceHint.value = options.performance_hint
-    openvinoNumRequests.value = options.num_requests
+    applyOpenvinoNumRequestsDefault(options.num_requests)
   } else if (options.kind === 'tensorrt') {
     tensorrtOptimizationProfileIndex.value = options.optimization_profile_index
     tensorrtPinnedOutput.value = options.pinned_output_buffer_enabled === null
@@ -711,6 +844,29 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
 
 function formatAutoBoolean(value: boolean | 'auto'): 'auto' | 'true' | 'false' {
   return value === 'auto' ? 'auto' : value ? 'true' : 'false'
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number, maximum?: number): number {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback
+  return maximum === undefined ? parsed : Math.min(parsed, maximum)
+}
+
+function normalizeInstanceCount(): void {
+  instanceCount.value = normalizePositiveInteger(instanceCount.value, 1, 64)
+}
+
+function normalizeOpenvinoNumStreams(): void {
+  openvinoNumStreams.value = normalizePositiveInteger(openvinoNumStreams.value, 1)
+}
+
+function normalizeOpenvinoNumRequests(): void {
+  openvinoNumRequests.value = normalizePositiveInteger(openvinoNumRequests.value, 1)
+}
+
+function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
+  openvinoNumRequestsMode.value = value === 'auto' ? 'auto' : 'manual'
+  openvinoNumRequests.value = value === 'auto' ? 1 : normalizePositiveInteger(value, 1)
 }
 
 function parseAutoNumber(value: string | number): number | 'auto' {
@@ -743,8 +899,12 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'openvino-cpu',
       performance_hint: openvinoPerformanceHint.value,
-      inference_num_threads: parseAutoNumber(openvinoInferenceNumThreads.value),
-      num_streams: parseAutoNumber(openvinoNumStreams.value),
+      inference_num_threads: normalizePositiveInteger(
+        openvinoInferenceNumThreads.value,
+        1,
+        openvinoMaxInferenceThreads.value,
+      ),
+      num_streams: normalizePositiveInteger(openvinoNumStreams.value, 1),
       scheduling_core_type: openvinoSchedulingCoreType.value,
       enable_hyper_threading: parseAutoBoolean(openvinoHyperThreading.value),
       enable_cpu_pinning: parseAutoBoolean(openvinoCpuPinning.value),
@@ -754,8 +914,10 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'openvino-gpu',
       performance_hint: openvinoPerformanceHint.value,
-      num_streams: parseAutoNumber(openvinoNumStreams.value),
-      num_requests: parseAutoNumber(openvinoNumRequests.value),
+      num_streams: normalizePositiveInteger(openvinoNumStreams.value, 1),
+      num_requests: openvinoNumRequestsMode.value === 'auto'
+        ? 'auto'
+        : normalizePositiveInteger(openvinoNumRequests.value, 1),
       inference_precision: openvinoInferencePrecision.value,
       queue_priority: 'auto',
       queue_throttle: 'auto',
@@ -765,7 +927,9 @@ function buildBackendOptions(): DeploymentBackendOptions {
     return {
       kind: 'openvino-npu',
       performance_hint: openvinoPerformanceHint.value,
-      num_requests: parseAutoNumber(openvinoNumRequests.value),
+      num_requests: openvinoNumRequestsMode.value === 'auto'
+        ? 'auto'
+        : normalizePositiveInteger(openvinoNumRequests.value, 1),
       inference_precision: openvinoInferencePrecision.value === 'f32' ? 'auto' : openvinoInferencePrecision.value,
       turbo: parseAutoBoolean(openvinoNpuTurbo.value),
       tiles: parseAutoNumber(openvinoNpuTiles.value),
@@ -775,17 +939,19 @@ function buildBackendOptions(): DeploymentBackendOptions {
   return {
     kind: 'openvino-auto',
     performance_hint: openvinoPerformanceHint.value,
-    num_requests: parseAutoNumber(openvinoNumRequests.value),
+    num_requests: openvinoNumRequestsMode.value === 'auto'
+      ? 'auto'
+      : normalizePositiveInteger(openvinoNumRequests.value, 1),
   }
 }
 
 function buildRuntimeConfiguration(): DeploymentRuntimeConfiguration {
   return {
     execution: {
-      instance_count: Math.max(1, Math.trunc(instanceCount.value)),
+      instance_count: normalizePositiveInteger(instanceCount.value, 1, 64),
       isolation_level: 'session',
       overflow_policy: 'reject',
-      performance_goal: performanceGoal.value,
+      performance_goal: runtimeCapabilities.value?.default_runtime_configuration.execution.performance_goal ?? 'latency',
     },
     lifecycle: {
       warmup_dummy_inference_count: null,
@@ -1279,6 +1445,13 @@ async function submitDeployment(): Promise<void> {
   if (unavailableReason) {
     errorMessage.value = unavailableReason
     return
+  }
+  normalizeInstanceCount()
+  if (isOpenVinoBackend.value && openvinoDeviceKind.value !== 'npu') {
+    normalizeOpenvinoNumStreams()
+  }
+  if (isOpenVinoBackend.value && openvinoNumRequestsMode.value === 'manual') {
+    normalizeOpenvinoNumRequests()
   }
   creating.value = true
   errorMessage.value = null
