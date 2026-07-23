@@ -135,6 +135,7 @@
 - 文档总览： [docs/README.md](docs/README.md)
 - 平台整体框架、整体流程和功能总览： [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 - 项目结构、目录层级和模块关系总览： [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
+- 模型发布运行时配置、OpenVINO CPU / GPU / NPU 与 TensorRT 参数边界： [docs/architecture/model-deployment-runtime-policy.md](docs/architecture/model-deployment-runtime-policy.md)
 - 节点系统与节点扩展架构： [docs/architecture/node-system.md](docs/architecture/node-system.md)
 - AGENTS.md 保持简明，详细架构规划统一沉淀到 docs/architecture/ 下
 

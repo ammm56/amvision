@@ -289,6 +289,8 @@ evaluation task 不负责：
 
 DeploymentInstance 是模型发布后的正式运行单元。
 
+模型发布的实例数量、故障隔离、OpenVINO CPU / GPU / NPU 设备参数、TensorRT engine / execution context / CUDA stream 边界和硬件迁移规则，统一见 [模型发布运行时配置](model-deployment-runtime-policy.md)。本文件只固定资源和调用边界，不重复维护后端参数清单。
+
 它负责：
 
 - 绑定 `ModelBuild` 或可部署 `ModelVersion`
@@ -302,6 +304,8 @@ DeploymentInstance 是模型发布后的正式运行单元。
 - 评估
 - 数据集管理
 - workflow 模板保存
+
+`instance_count` 只表示平台期望的推理运行单元数量，不同时表示 OpenVINO stream、CPU 推理线程、TensorRT execution context、CUDA stream 或独立进程。workflow 只调用已发布服务，不负责拆分或推导这些运行资源参数。
 
 ### 推理调用的两条路径
 

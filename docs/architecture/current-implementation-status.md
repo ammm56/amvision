@@ -10,6 +10,8 @@
 
 训练参数这层“公开接口支持什么、执行层真正使用什么、前端当前已经暴露什么、还缺什么”，现单独整理在 [training-parameter-support.md](training-parameter-support.md)。
 
+模型发布时 `instance_count`、OpenVINO CPU / GPU / NPU 和 TensorRT 运行参数的当前缺口、目标边界与实施顺序，现单独整理在 [model-deployment-runtime-policy.md](model-deployment-runtime-policy.md)。
+
 ## 适用范围
 
 - backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
@@ -207,6 +209,7 @@
 ## 当前实现细节中需要明确的事实
 
 - 当前公开的 sync / async deployment 控制面已经包含 `start`、`status`、`stop`、`warmup`、`health` 和 `reset`，并公开 keep_warm、pinned output buffer、restart_count safe counter 等长期运行观测字段。
+- 当前模型 deployment 主要通过 `instance_count` 表达运行单元数量；OpenVINO 尚未公开 CPU / GPU / NPU 专属性能参数，TensorRT 也尚未正式拆分 engine 副本、execution context 和 CUDA stream。后续实现必须按 [模型发布运行时配置](model-deployment-runtime-policy.md) 先扩共享 contract 和 requested / effective 观测，不在单个 predictor 中孤立增加字段。
 - 当前 keep_warm 成功次数、失败次数和 deployment restart_count 都采用 JavaScript 安全整数窗口值加 rollover_count 的公开语义，避免长时间运行后的前端数值精度丢失。
 - 当前 `backend/workers/main.py` 已经以统一 registry 装配 dataset import、dataset export、training、conversion、evaluation 和 inference 六类消费者；backend-service 不再托管任何队列消费者。
 - 当前本地 auth 已拆成 session token、refresh token 和长期调用 user token 三类凭据，并通过 `/ws/v1/auth/events` 提供实时审计流；provider 目录里的在线 provider 当前只保留扩展边界。
