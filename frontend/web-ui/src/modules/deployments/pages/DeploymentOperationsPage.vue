@@ -222,6 +222,16 @@
               @update:model-value="setKeepWarmEnabled"
             />
           </div>
+          <label v-if="keepWarmEnabled === 'true'" class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.keepWarmInterval') }}</span>
+            <input
+              v-model.number="keepWarmIntervalSeconds"
+              type="number"
+              min="0.01"
+              step="0.01"
+              @blur="normalizeKeepWarmIntervalSeconds"
+            />
+          </label>
           <label class="field field--wide">
             <span>{{ t('deploymentOps.fields.displayName') }}</span>
             <input v-model="displayName" />
@@ -595,6 +605,7 @@ const openvinoNpuCompilationModeParams = ref('')
 const tensorrtOptimizationProfileIndex = ref(0)
 const tensorrtPinnedOutput = ref<'auto' | 'true' | 'false'>('auto')
 const keepWarmEnabled = ref<'true' | 'false'>('false')
+const keepWarmIntervalSeconds = ref(0.1)
 const runtimeCapabilities = ref<DeploymentRuntimeCapabilities | null>(null)
 const runtimeCapabilitiesLoading = ref(false)
 const displayName = ref('')
@@ -867,6 +878,9 @@ async function loadRuntimeCapabilities(): Promise<void> {
 function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilities): void {
   const configuration = capabilities.default_runtime_configuration
   instanceCount.value = configuration.execution.instance_count
+  keepWarmEnabled.value = configuration.lifecycle.keep_warm_enabled === true ? 'true' : 'false'
+  keepWarmIntervalSeconds.value = configuration.lifecycle.keep_warm_interval_seconds ?? 0.1
+  normalizeKeepWarmIntervalSeconds()
   const options = configuration.backend_options
   if (options.kind === 'openvino-cpu') {
     openvinoPerformanceHint.value = options.performance_hint
@@ -932,6 +946,13 @@ function normalizeOpenvinoNpuTiles(): void {
     1,
     openvinoNpuMaxTiles.value ?? undefined,
   )
+}
+
+function normalizeKeepWarmIntervalSeconds(): void {
+  const parsed = Number(keepWarmIntervalSeconds.value)
+  keepWarmIntervalSeconds.value = Number.isFinite(parsed) && parsed >= 0.01
+    ? parsed
+    : 0.1
 }
 
 function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
@@ -1020,6 +1041,7 @@ function buildBackendOptions(): DeploymentBackendOptions {
 }
 
 function buildRuntimeConfiguration(): DeploymentRuntimeConfiguration {
+  normalizeKeepWarmIntervalSeconds()
   return {
     execution: {
       instance_count: normalizePositiveInteger(instanceCount.value, 1, 64),
@@ -1031,7 +1053,7 @@ function buildRuntimeConfiguration(): DeploymentRuntimeConfiguration {
       warmup_dummy_inference_count: null,
       warmup_dummy_image_size: null,
       keep_warm_enabled: keepWarmEnabled.value === 'true',
-      keep_warm_interval_seconds: null,
+      keep_warm_interval_seconds: keepWarmIntervalSeconds.value,
     },
     backend_options: buildBackendOptions(),
   }

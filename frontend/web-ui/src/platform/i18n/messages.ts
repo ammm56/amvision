@@ -457,6 +457,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         tensorrtOptimizationProfile: 'TensorRT optimization profile',
         tensorrtPinnedOutput: 'TensorRT pinned output',
         keepWarm: '保持设备活跃',
+        keepWarmInterval: '设备保活间隔（秒）',
       },
       runtimeDiagnostics: {
         warnings: '运行时配置警告',
@@ -1758,6 +1759,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         tensorrtOptimizationProfile: 'TensorRT Optimization Profile',
         tensorrtPinnedOutput: 'TensorRT Pinned Output',
         keepWarm: 'Keep Device Active',
+        keepWarmInterval: 'Keep-Warm Interval (Seconds)',
       },
       runtimeDiagnostics: {
         warnings: 'Runtime Configuration Warnings',
@@ -3054,6 +3056,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         tensorrtOptimizationProfile: 'TensorRT optimization profile',
         tensorrtPinnedOutput: 'TensorRT pinned output',
         keepWarm: 'デバイスをアクティブに維持',
+        keepWarmInterval: 'デバイス維持間隔（秒）',
       },
       runtimeDiagnostics: {
         warnings: 'ランタイム設定の警告',
@@ -4350,6 +4353,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         tensorrtOptimizationProfile: 'TensorRT optimization profile',
         tensorrtPinnedOutput: 'TensorRT pinned output',
         keepWarm: '장치 활성 상태 유지',
+        keepWarmInterval: '장치 활성 유지 간격(초)',
       },
       runtimeDiagnostics: {
         warnings: '런타임 설정 경고',

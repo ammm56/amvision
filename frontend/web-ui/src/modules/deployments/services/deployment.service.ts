@@ -226,7 +226,7 @@ export function buildDefaultDeploymentRuntimeConfiguration(
       warmup_dummy_inference_count: null,
       warmup_dummy_image_size: null,
       keep_warm_enabled: false,
-      keep_warm_interval_seconds: null,
+      keep_warm_interval_seconds: 0.1,
     },
     backend_options: { kind: 'default' },
   }
