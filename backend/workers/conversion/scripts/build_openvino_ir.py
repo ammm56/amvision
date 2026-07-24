@@ -6,6 +6,13 @@ import os
 from pathlib import Path
 import sys
 
+from backend.service.application.models.model_artifact_metadata import (
+    attach_openvino_model_artifact_provenance,
+)
+from backend.service.domain.models.model_artifact_provenance import (
+    build_model_artifact_provenance,
+)
+
 
 def build_openvino_ir(*, source_path: Path, output_path: Path, build_precision: str) -> None:
     """把 ONNX 文件转换为 OpenVINO IR。
@@ -26,6 +33,13 @@ def build_openvino_ir(*, source_path: Path, output_path: Path, build_precision: 
     resolved_output_path = output_path.resolve()
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     openvino_model = convert_model(str(resolved_source_path))
+    attach_openvino_model_artifact_provenance(
+        openvino_model=openvino_model,
+        provenance=build_model_artifact_provenance(
+            artifact_kind="converted-model",
+            trace={"build_format": "openvino-ir"},
+        ),
+    )
     save_model(
         openvino_model,
         str(resolved_output_path),

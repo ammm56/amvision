@@ -28,6 +28,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.workers.conversion.model_conversion_common import (
+    attach_conversion_output_provenance,
     build_conversion_options_metadata,
     build_conversion_output_runtime_fields,
     build_output_base_name,
@@ -36,6 +37,7 @@ from backend.workers.conversion.model_conversion_common import (
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
     run_conversion_script,
+    write_conversion_onnx_provenance,
 )
 
 
@@ -117,6 +119,15 @@ class LocalYoloModelConversionRunner:
                     output_object_key=onnx_object_key,
                     export_plan=export_plan,
                 )
+                write_conversion_onnx_provenance(
+                    onnx_module=onnx_module,
+                    model_path=self.dataset_storage.resolve(onnx_object_key),
+                    conversion_task_id=request.conversion_task_id,
+                    source_model_version_id=(
+                        request.source_runtime_target.model_version_id
+                    ),
+                    target_format="onnx",
+                )
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="onnx",
                 )
@@ -167,6 +178,17 @@ class LocalYoloModelConversionRunner:
                     output_object_key=optimized_object_key,
                     onnx_module=onnx_module,
                     onnx_simplify=onnx_simplify,
+                )
+                write_conversion_onnx_provenance(
+                    onnx_module=onnx_module,
+                    model_path=self.dataset_storage.resolve(
+                        optimized_object_key
+                    ),
+                    conversion_task_id=request.conversion_task_id,
+                    source_model_version_id=(
+                        request.source_runtime_target.model_version_id
+                    ),
+                    target_format="onnx-optimized",
                 )
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="onnx-optimized",
@@ -267,9 +289,19 @@ class LocalYoloModelConversionRunner:
             outputs.append(openvino_output)
         if tensorrt_output is not None:
             outputs.append(tensorrt_output)
+        traced_outputs = tuple(
+            attach_conversion_output_provenance(
+                output,
+                conversion_task_id=request.conversion_task_id,
+                source_model_version_id=(
+                    request.source_runtime_target.model_version_id
+                ),
+            )
+            for output in outputs
+        )
         return YoloModelConversionRunResult(
             conversion_task_id=request.conversion_task_id,
-            outputs=tuple(outputs),
+            outputs=traced_outputs,
             metadata={
                 "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,

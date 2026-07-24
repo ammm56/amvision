@@ -22,6 +22,7 @@
 - [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md) 固定模型 core / runtime 之外的代码结构收口顺序和目标目录
 - [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md) 汇总模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/model-deployment-runtime-policy.md](architecture/model-deployment-runtime-policy.md) 固定模型发布的平台部署策略、OpenVINO CPU / GPU / NPU 和 TensorRT 参数边界、硬件迁移与实施顺序
+- [docs/architecture/model-artifact-provenance.md](architecture/model-artifact-provenance.md) 固定训练和转换模型产物的来源元数据、格式写入位置和证据链边界
 - [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md) 汇总 YOLOE 与 SAM3 custom node 的磁盘资产规则、manifest.json 字段和 payload 规则 约定
 - [docs/architecture/video-workflow-node-plan.md](architecture/video-workflow-node-plan.md) 汇总通用视频 payload 规则、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
 - [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md) 汇总工业现场单帧判定优先的规则节点、结果回传节点和输入接入节点分批规划

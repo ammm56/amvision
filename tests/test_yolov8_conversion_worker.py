@@ -25,6 +25,9 @@ from backend.service.domain.files.yolov8_file_types import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.domain.models.model_artifact_provenance import (
+    MODEL_ARTIFACT_PROVENANCE_KEY,
+)
 from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
 from backend.workers.conversion.yolov8_conversion_runner import (
     LocalYoloV8ConversionRunner,
@@ -138,6 +141,24 @@ def test_yolov8_conversion_queue_worker_executes_supported_targets(
 
     build_file_types: set[str] = set()
     for build_summary in result.builds:
+        provenance = build_summary.metadata[
+            MODEL_ARTIFACT_PROVENANCE_KEY
+        ]
+        assert provenance["producer"] == "amvision"
+        assert provenance["source_names"] == [
+            "amvar",
+            "amvar vision",
+            "amvision",
+        ]
+        assert provenance["trace"]["conversion_task_id"] == submission.task_id
+        model_build = model_service.get_model_build(
+            build_summary.model_build_id
+        )
+        assert model_build is not None
+        assert (
+            model_build.metadata[MODEL_ARTIFACT_PROVENANCE_KEY]["producer"]
+            == "amvision"
+        )
         build_file_types.update(
             item.file_type for item in model_service.list_model_files(model_build_id=build_summary.model_build_id)
         )

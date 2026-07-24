@@ -44,6 +44,9 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.runtime.targets.rfdetr import (
     SqlAlchemyRfdetrRuntimeTargetResolver,
 )
+from backend.service.domain.models.model_artifact_provenance import (
+    attach_model_artifact_provenance,
+)
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
 )
@@ -502,6 +505,19 @@ class SqlAlchemyRfdetrConversionTaskService:
         build_summaries: list[dict[str, object]] = []
         for output in outputs:
             build_file_id = self._next_id("model-file")
+            output_metadata = attach_model_artifact_provenance(
+                {
+                    "model_type": self.model_type,
+                    "task_type": task_type,
+                    **dict(output.metadata or {}),
+                },
+                artifact_kind="converted-model",
+                trace={
+                    "conversion_task_id": conversion_task_id,
+                    "source_model_version_id": source_model_version_id,
+                    "build_format": output.target_format,
+                },
+            )
             model_build_id = model_service.register_build(
                 RfdetrBuildRegistration(
                     project_id=project_id,
@@ -513,11 +529,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                     build_file_uri=output.object_uri,
                     runtime_profile_id=runtime_profile_id,
                     conversion_task_id=conversion_task_id,
-                    metadata={
-                        "model_type": self.model_type,
-                        "task_type": task_type,
-                        **dict(output.metadata or {}),
-                    },
+                    metadata=output_metadata,
                 )
             )
             build_summaries.append(
@@ -528,11 +540,7 @@ class SqlAlchemyRfdetrConversionTaskService:
                     "runtime_precision": output.runtime_precision,
                     "build_file_id": build_file_id,
                     "build_file_uri": output.object_uri,
-                    "metadata": {
-                        "model_type": self.model_type,
-                        "task_type": task_type,
-                        **dict(output.metadata or {}),
-                    },
+                    "metadata": output_metadata,
                 }
             )
         return build_summaries

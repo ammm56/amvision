@@ -25,6 +25,9 @@ from backend.service.domain.models.model_records import (
     ModelScopeKind,
     ModelVersion,
 )
+from backend.service.domain.models.model_artifact_provenance import (
+    attach_model_artifact_provenance,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.infrastructure.db.session import SessionFactory
@@ -458,6 +461,18 @@ class SqlAlchemyModelService:
         self._validate_model_scale(request.model_scale)
         with self._open_unit_of_work() as unit_of_work:
             self._validate_task_type(request.task_type)
+            model_version_id = request.model_version_id or self._next_id(
+                "model-version"
+            )
+            training_metadata = attach_model_artifact_provenance(
+                request.metadata,
+                artifact_kind="training-output",
+                trace={
+                    "model_version_id": model_version_id,
+                    "training_task_id": request.training_task_id,
+                    "dataset_version_id": request.dataset_version_id,
+                },
+            )
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
                 project_id=request.project_id,
@@ -466,9 +481,8 @@ class SqlAlchemyModelService:
                 model_scale=request.model_scale,
                 task_type=request.task_type,
                 labels_file_id=request.labels_file_id,
-                metadata=request.metadata,
+                metadata=training_metadata,
             )
-            model_version_id = request.model_version_id or self._next_id("model-version")
             file_ids = self._register_training_files(
                 unit_of_work=unit_of_work,
                 model_id=model.model_id,
@@ -483,6 +497,11 @@ class SqlAlchemyModelService:
                 labels_file_uri=request.labels_file_uri,
                 metrics_file_id=request.metrics_file_id,
                 metrics_file_uri=request.metrics_file_uri,
+                provenance_trace={
+                    "model_version_id": model_version_id,
+                    "training_task_id": request.training_task_id,
+                    "dataset_version_id": request.dataset_version_id,
+                },
             )
             model_version = ModelVersion(
                 model_version_id=model_version_id,
@@ -492,7 +511,7 @@ class SqlAlchemyModelService:
                 training_task_id=request.training_task_id,
                 parent_version_id=request.parent_version_id,
                 file_ids=file_ids,
-                metadata=request.metadata,
+                metadata=training_metadata,
             )
             unit_of_work.models.save_model_version(model_version)
             unit_of_work.commit()
@@ -529,6 +548,16 @@ class SqlAlchemyModelService:
                 raise ValueError(f"未知的 Model: {source_version.model_id}")
 
             model_build_id = self._next_id("model-build")
+            build_metadata = attach_model_artifact_provenance(
+                self._strip_deprecated_build_runtime_metadata(request.metadata),
+                artifact_kind="converted-model",
+                trace={
+                    "model_build_id": model_build_id,
+                    "source_model_version_id": request.source_model_version_id,
+                    "conversion_task_id": request.conversion_task_id,
+                    "build_format": build_format,
+                },
+            )
             build_file = self._create_model_file(
                 unit_of_work=unit_of_work,
                 file_id=request.build_file_id,
@@ -547,9 +576,17 @@ class SqlAlchemyModelService:
                     )
                 ),
                 storage_uri=request.build_file_uri or f"registered://{request.build_file_id}",
-                metadata={"build_format": build_format},
+                metadata=attach_model_artifact_provenance(
+                    {"build_format": build_format},
+                    artifact_kind="converted-model-file",
+                    trace={
+                        "model_build_id": model_build_id,
+                        "source_model_version_id": request.source_model_version_id,
+                        "conversion_task_id": request.conversion_task_id,
+                        "build_format": build_format,
+                    },
+                ),
             )
-            build_metadata = self._strip_deprecated_build_runtime_metadata(request.metadata)
             model_build = ModelBuild(
                 model_build_id=model_build_id,
                 model_id=model.model_id,
@@ -1173,6 +1210,7 @@ class SqlAlchemyModelService:
         labels_file_uri: str | None,
         metrics_file_id: str | None,
         metrics_file_uri: str | None,
+        provenance_trace: dict[str, object],
     ) -> tuple[str, ...]:
         """为训练输出创建最小 ModelFile 记录。
 
@@ -1189,6 +1227,7 @@ class SqlAlchemyModelService:
         - labels_file_uri：标签文件存储 URI。
         - metrics_file_id：指标文件 id。
         - metrics_file_uri：指标文件存储 URI。
+        - provenance_trace：训练输出来源追踪字段。
 
         返回：
         - 生成或登记的文件 id 列表。
@@ -1244,6 +1283,11 @@ class SqlAlchemyModelService:
                 file_type=file_type,
                 logical_name=logical_name,
                 storage_uri=storage_uri,
+                metadata=attach_model_artifact_provenance(
+                    {"artifact_role": file_type},
+                    artifact_kind="training-output-file",
+                    trace=provenance_trace,
+                ),
             )
             file_ids.append(file_id)
 

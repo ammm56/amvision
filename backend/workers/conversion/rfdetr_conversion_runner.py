@@ -39,12 +39,14 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.workers.conversion.model_conversion_common import (
+    attach_conversion_output_provenance,
     build_conversion_options_metadata,
     build_conversion_output_runtime_fields,
     build_output_base_name,
     resolve_conversion_phase,
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
+    write_conversion_onnx_provenance,
 )
 
 
@@ -135,6 +137,13 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     output_object_key=onnx_object_key,
                     output_names=export_context.output_names,
                 )
+                write_conversion_onnx_provenance(
+                    onnx_module=onnx_module,
+                    model_path=self.dataset_storage.resolve(onnx_object_key),
+                    conversion_task_id=request.conversion_task_id,
+                    source_model_version_id=runtime_target.model_version_id,
+                    target_format="onnx",
+                )
                 runtime_fields = build_conversion_output_runtime_fields(target_format="onnx")
                 onnx_output = RfdetrConversionOutput(
                     target_format="onnx",
@@ -180,6 +189,15 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     output_object_key=optimized_object_key,
                     onnx_module=onnx_module,
                     onnx_simplify=onnx_simplify,
+                )
+                write_conversion_onnx_provenance(
+                    onnx_module=onnx_module,
+                    model_path=self.dataset_storage.resolve(
+                        optimized_object_key
+                    ),
+                    conversion_task_id=request.conversion_task_id,
+                    source_model_version_id=runtime_target.model_version_id,
+                    target_format="onnx-optimized",
                 )
                 runtime_fields = build_conversion_output_runtime_fields(target_format="onnx-optimized")
                 optimized_output = RfdetrConversionOutput(
@@ -266,9 +284,17 @@ class LocalRfdetrConversionRunner(ConversionBackend):
             outputs.append(openvino_output)
         if tensorrt_output is not None:
             outputs.append(tensorrt_output)
+        traced_outputs = tuple(
+            attach_conversion_output_provenance(
+                output,
+                conversion_task_id=request.conversion_task_id,
+                source_model_version_id=runtime_target.model_version_id,
+            )
+            for output in outputs
+        )
         return RfdetrConversionRunResult(
             conversion_task_id=request.conversion_task_id,
-            outputs=tuple(outputs),
+            outputs=traced_outputs,
             metadata={
                 "phase": resolve_conversion_phase(request.target_formats),
                 "executed_step_kinds": executed_step_kinds,

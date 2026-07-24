@@ -14,6 +14,9 @@ from backend.service.application.runtime.support.tensorrt_runtime import (
 from backend.service.domain.models.tensorrt_engine_capabilities import (
     build_single_input_tensorrt_engine_capabilities,
 )
+from backend.service.domain.models.model_artifact_provenance import (
+    MODEL_ARTIFACT_ORIGIN_MARKER,
+)
 
 
 def build_tensorrt_engine(
@@ -55,6 +58,7 @@ def build_tensorrt_engine(
             str(parser.get_error(index)) for index in range(parser.num_errors)
         ]
         raise RuntimeError("failed to parse onnx: " + " | ".join(parser_errors))
+    network.name = MODEL_ARTIFACT_ORIGIN_MARKER
 
     input_tensor = network.get_input(0)
     if input_tensor is None:
@@ -105,6 +109,7 @@ def build_tensorrt_engine(
         "tensorrt_version": trt.__version__,
         "build_precision": normalized_precision,
         "platform": platform.system().lower(),
+        "engine_origin_marker": MODEL_ARTIFACT_ORIGIN_MARKER,
         "input_name": input_tensor.name,
         "input_shape": list(input_shape),
         **build_single_input_tensorrt_engine_capabilities(

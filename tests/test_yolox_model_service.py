@@ -12,6 +12,9 @@ from backend.service.application.models.registry.model_service import (
 )
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE, YOLOX_ONNX_FILE
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE, PROJECT_MODEL_SCOPE
+from backend.service.domain.models.model_artifact_provenance import (
+    MODEL_ARTIFACT_PROVENANCE_KEY,
+)
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.persistence.base import Base
 
@@ -99,20 +102,41 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     assert model_version.parent_version_id == "model-version-parent-1"
     assert model_version.metadata["dataset_export_id"] == "dataset-export-1"
     assert model_version.metadata["manifest_object_key"] == "memory://exports/dataset-export-1/manifest.json"
+    assert (
+        model_version.metadata[MODEL_ARTIFACT_PROVENANCE_KEY]["producer"]
+        == "amvision"
+    )
+    assert model_version.metadata[MODEL_ARTIFACT_PROVENANCE_KEY][
+        "source_names"
+    ] == ["amvar", "amvar vision", "amvision"]
     assert len(service.list_model_files(model_version_id=model_version_id)) == 3
 
     model_files = service.list_model_files(model_version_id=model_version_id)
     checkpoint_file = next(file for file in model_files if file.file_type == YOLOX_CHECKPOINT_FILE)
     assert checkpoint_file.storage_uri == "memory://runs/training-1/best_ckpt.pth"
+    assert (
+        checkpoint_file.metadata[MODEL_ARTIFACT_PROVENANCE_KEY][
+            "artifact_kind"
+        ]
+        == "training-output-file"
+    )
 
     assert model_build is not None
     assert model_build.source_model_version_id == model_version_id
     assert model_build.conversion_task_id == "conversion-1"
+    assert (
+        model_build.metadata[MODEL_ARTIFACT_PROVENANCE_KEY]["artifact_kind"]
+        == "converted-model"
+    )
     assert build_file is not None
     assert service.get_model(model_version.model_id).scope_kind == PROJECT_MODEL_SCOPE
     assert service.get_model(model_version.model_id).project_id == "project-1"
     assert build_file.file_type == YOLOX_ONNX_FILE
     assert build_file.model_build_id == model_build_id
+    assert (
+        build_file.metadata[MODEL_ARTIFACT_PROVENANCE_KEY]["producer"]
+        == "amvision"
+    )
 
 
 def test_register_pretrained_rejects_unsupported_model_scale() -> None:

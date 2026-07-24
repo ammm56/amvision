@@ -28,6 +28,9 @@ from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
 )
+from backend.service.domain.models.model_artifact_provenance import (
+    attach_model_artifact_provenance,
+)
 from backend.service.application.support.resource_cleanup import (
     model_task_resource_cleanup,
 )
@@ -674,6 +677,15 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         build_summaries: list[YoloConversionBuildSummary] = []
         for output in outputs:
             build_file_id = self._next_id("model-file")
+            output_metadata = attach_model_artifact_provenance(
+                output.metadata,
+                artifact_kind="converted-model",
+                trace={
+                    "conversion_task_id": conversion_task_id,
+                    "source_model_version_id": source_model_version_id,
+                    "build_format": output.target_format,
+                },
+            )
             model_build_id = model_service.register_build(
                 self._resolve_build_registration_cls()(
                     project_id=project_id,
@@ -685,7 +697,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     build_file_uri=output.object_uri,
                     runtime_profile_id=runtime_profile_id,
                     conversion_task_id=conversion_task_id,
-                    metadata=dict(output.metadata),
+                    metadata=output_metadata,
                 )
             )
             build_summaries.append(
@@ -696,7 +708,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     runtime_precision=output.runtime_precision,
                     build_file_id=build_file_id,
                     build_file_uri=output.object_uri,
-                    metadata=dict(output.metadata),
+                    metadata=output_metadata,
                 )
             )
         return tuple(build_summaries)

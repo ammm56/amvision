@@ -14,6 +14,9 @@ from backend.service.application.runtime.support.tensorrt_runtime import (
 from backend.service.domain.models.tensorrt_engine_capabilities import (
     build_single_input_tensorrt_engine_capabilities,
 )
+from backend.service.domain.models.model_artifact_provenance import (
+    MODEL_ARTIFACT_ORIGIN_MARKER,
+)
 
 logger = get_logger()
 
@@ -121,6 +124,7 @@ def build_tensorrt_engine(
     return {
         "build_precision": normalized_precision,
         "execution_mode": "rfdetr-core-trtexec",
+        "engine_origin_marker": MODEL_ARTIFACT_ORIGIN_MARKER,
         "input_name": input_name,
         "input_shape": list(input_shape),
         **build_single_input_tensorrt_engine_capabilities(

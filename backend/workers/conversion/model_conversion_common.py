@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import os
 import subprocess
 import sys
 
+from backend.service.application.backends import ConversionBackendOutput
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.models.model_artifact_metadata import (
+    write_onnx_model_artifact_provenance,
+)
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.domain.models.model_artifact_provenance import (
+    attach_model_artifact_provenance,
+    build_model_artifact_provenance,
+)
 
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
@@ -130,6 +139,67 @@ def build_output_base_name(runtime_target: RuntimeTargetSnapshot) -> str:
     model_name = runtime_target.model_name.replace(" ", "-").lower() or "model"
     model_scale = runtime_target.model_scale.strip().lower() or "unknown"
     return f"{model_name}-{model_scale}"
+
+
+def build_conversion_artifact_provenance(
+    *,
+    conversion_task_id: str,
+    source_model_version_id: str,
+    target_format: str,
+) -> dict[str, object]:
+    """构造单个转换产物的来源标识。"""
+
+    return build_model_artifact_provenance(
+        artifact_kind="converted-model",
+        trace={
+            "conversion_task_id": conversion_task_id,
+            "source_model_version_id": source_model_version_id,
+            "build_format": target_format,
+        },
+    )
+
+
+def attach_conversion_output_provenance(
+    output: ConversionBackendOutput,
+    *,
+    conversion_task_id: str,
+    source_model_version_id: str,
+) -> ConversionBackendOutput:
+    """把统一来源标识写入转换输出摘要。"""
+
+    return replace(
+        output,
+        metadata=attach_model_artifact_provenance(
+            output.metadata,
+            artifact_kind="converted-model",
+            trace={
+                "conversion_task_id": conversion_task_id,
+                "source_model_version_id": source_model_version_id,
+                "build_format": output.target_format,
+            },
+        ),
+    )
+
+
+def write_conversion_onnx_provenance(
+    *,
+    onnx_module: object,
+    model_path: Path,
+    conversion_task_id: str,
+    source_model_version_id: str,
+    target_format: str,
+) -> None:
+    """把转换任务来源标识内嵌到 ONNX 产物。"""
+
+    write_onnx_model_artifact_provenance(
+        onnx_module=onnx_module,
+        model_path=model_path,
+        provenance=build_conversion_artifact_provenance(
+            conversion_task_id=conversion_task_id,
+            source_model_version_id=source_model_version_id,
+            target_format=target_format,
+        ),
+    )
 
 
 def resolve_conversion_phase(target_formats: tuple[str, ...]) -> str:
