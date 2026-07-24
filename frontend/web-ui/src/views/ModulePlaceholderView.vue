@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('placeholders.kicker') }}</p>
         <h1>{{ t(titleKey) }}</h1>
       </div>
     </header>

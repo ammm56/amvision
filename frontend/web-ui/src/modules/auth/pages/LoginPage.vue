@@ -1,7 +1,6 @@
 <template>
   <form class="auth-form" @submit.prevent="submitLogin">
     <header>
-      <p class="page-kicker">{{ t('auth.localAuth') }}</p>
       <h1>{{ t('auth.login') }}</h1>
       <p>{{ t('auth.loginIntro') }}</p>
     </header>

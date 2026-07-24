@@ -144,7 +144,6 @@
     <TrainingDatasetExportPickerDialog
       :open="trainingDatasetExportPickerOpen"
       :loading="loading"
-      :kicker="t('modelOps.trainingKicker')"
       :title="t('modelOps.datasetExportPicker.title')"
       :description="t('modelOps.datasetExportPicker.description')"
       :close-label="t('modelOps.datasetExportPicker.close')"

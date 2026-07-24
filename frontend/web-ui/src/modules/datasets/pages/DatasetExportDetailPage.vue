@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">数据集导出详情</p>
         <h1>{{ datasetExportId }}</h1>
         <p class="page-description">查看数据集导出格式、下载包、运行磁盘数据和附加元数据。</p>
       </div>
@@ -57,7 +56,6 @@
     <section v-if="detail" class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">Summary</p>
           <h2>导出摘要</h2>
         </div>
         <StatusBadge :tone="statusTone(detail.status)">{{ detail.status }}</StatusBadge>
@@ -104,7 +102,6 @@
     <section v-if="detail" class="operation-grid">
       <article class="resource-section">
         <div>
-          <p class="page-kicker">Package</p>
           <h2>下载包</h2>
         </div>
         <div class="summary-list">
@@ -129,7 +126,6 @@
 
       <article class="resource-section">
         <div>
-          <p class="page-kicker">Runtime Data</p>
           <h2>运行磁盘数据</h2>
         </div>
         <div class="summary-list">
@@ -155,7 +151,6 @@
 
       <article class="resource-section">
         <div>
-          <p class="page-kicker">Splits</p>
           <h2>Split 列表</h2>
         </div>
         <pre class="json-view">{{ splitNamesJson }}</pre>
@@ -163,7 +158,6 @@
 
       <article class="resource-section">
         <div>
-          <p class="page-kicker">Categories</p>
           <h2>类别列表</h2>
         </div>
         <pre class="json-view">{{ categoryNamesJson }}</pre>
@@ -171,7 +165,6 @@
 
       <article class="resource-section">
         <div>
-          <p class="page-kicker">Metadata</p>
           <h2>附加元数据</h2>
         </div>
         <pre class="json-view">{{ metadataJson }}</pre>

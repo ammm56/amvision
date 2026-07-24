@@ -796,13 +796,6 @@ textarea:focus-visible {
   line-height: 1.2;
 }
 
-.page-kicker {
-  margin: 0 0 6px;
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
 .ui-button {
   display: inline-flex;
   align-items: center;

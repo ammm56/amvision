@@ -10,7 +10,6 @@
     >
       <header class="confirm-dialog__header">
         <div>
-          <p v-if="kicker" class="page-kicker">{{ kicker }}</p>
           <div class="confirm-dialog__title">
             <h2>{{ title }}</h2>
             <InfoHint v-if="details" :text="details" />
@@ -43,13 +42,11 @@ withDefaults(
     message: string
     confirmLabel: string
     cancelLabel: string
-    kicker?: string
     details?: string
     busy?: boolean
     confirmVariant?: 'primary' | 'danger'
   }>(),
   {
-    kicker: '',
     details: '',
     busy: false,
     confirmVariant: 'danger',

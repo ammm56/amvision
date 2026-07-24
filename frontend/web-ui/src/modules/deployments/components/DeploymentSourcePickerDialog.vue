@@ -1,5 +1,5 @@
 <template>
-  <ModelPickerDialogShell :open="open" :loading="loading" :kicker="t('deploymentOps.sourcePicker.kicker')" :title="t('deploymentOps.sourcePicker.title')" :description="t('deploymentOps.sourcePicker.description')" :close-label="t('deploymentOps.sourcePicker.close')" :task-type-label="t('deploymentOps.sourcePicker.taskType')" :task-type-options="taskTypeOptions" :selected-task-type="taskType" :list-title="t('deploymentOps.sourcePicker.modelList')" :list-count="models.length" :detail-title="t('deploymentOps.sourcePicker.modelDetail')" @close="$emit('close')" @change-task-type="emitTaskType">
+  <ModelPickerDialogShell :open="open" :loading="loading" :title="t('deploymentOps.sourcePicker.title')" :description="t('deploymentOps.sourcePicker.description')" :close-label="t('deploymentOps.sourcePicker.close')" :task-type-label="t('deploymentOps.sourcePicker.taskType')" :task-type-options="taskTypeOptions" :selected-task-type="taskType" :list-title="t('deploymentOps.sourcePicker.modelList')" :list-count="models.length" :detail-title="t('deploymentOps.sourcePicker.modelDetail')" @close="$emit('close')" @change-task-type="emitTaskType">
     <template #list>
 
           <EmptyState

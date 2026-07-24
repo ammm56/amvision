@@ -2,7 +2,6 @@
   <div class="workflow-graph-inspector-body">
     <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
       <div>
-        <p>Public IO</p>
         <h2>{{ title }}</h2>
       </div>
       <StatusBadge tone="info">{{ bindings.length }}</StatusBadge>

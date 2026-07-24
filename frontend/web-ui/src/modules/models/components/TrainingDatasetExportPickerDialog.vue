@@ -10,7 +10,6 @@
     >
       <header class="dataset-export-picker__header">
         <div>
-          <p class="page-kicker">{{ kicker }}</p>
           <h2>{{ title }}</h2>
           <p class="dataset-export-picker__description">{{ description }}</p>
         </div>
@@ -146,7 +145,6 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 const props = defineProps<{
   open: boolean
   loading: boolean
-  kicker: string
   title: string
   description: string
   closeLabel: string

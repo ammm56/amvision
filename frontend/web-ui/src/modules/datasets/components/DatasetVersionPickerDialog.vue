@@ -10,7 +10,6 @@
     >
       <header class="dataset-version-picker__header">
         <div>
-          <p class="page-kicker">{{ t('datasetOps.exportKicker') }}</p>
           <h2>{{ t('datasetOps.versionPicker.title') }}</h2>
           <p class="dataset-version-picker__description">{{ t('datasetOps.versionPicker.description') }}</p>
         </div>

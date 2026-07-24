@@ -11,7 +11,6 @@
     >
       <header class="model-picker-shell__header">
         <div>
-          <p v-if="kicker" class="page-kicker">{{ kicker }}</p>
           <h2>{{ title }}</h2>
           <p v-if="description" class="model-picker-shell__description">{{ description }}</p>
         </div>
@@ -58,7 +57,6 @@ defineProps<{
   open: boolean
   loading: boolean
   compact?: boolean
-  kicker?: string
   title: string
   description?: string
   closeLabel: string

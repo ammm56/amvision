@@ -2,7 +2,6 @@
   <div class="workflow-graph-new-app-panel">
     <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
       <div>
-        <p>Draft</p>
         <h2>首次保存</h2>
       </div>
       <StatusBadge :tone="saveBlocker ? 'warning' : 'success'">{{ saveBlocker ? '待完成' : '可保存' }}</StatusBadge>

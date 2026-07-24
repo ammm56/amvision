@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('datasetImportDetail.kicker') }}</p>
         <h1>{{ datasetImportId }}</h1>
         <p class="page-description">{{ t('datasetImportDetail.description') }}</p>
       </div>
@@ -39,7 +38,6 @@
     <section v-if="detail" class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('datasetImportDetail.summaryKicker') }}</p>
           <h2>{{ t('datasetImportDetail.summaryTitle') }}</h2>
         </div>
         <StatusBadge :tone="statusTone(detail.processing_state || detail.status)">{{ detail.processing_state || detail.status }}</StatusBadge>
@@ -86,28 +84,24 @@
     <section v-if="detail" class="operation-grid">
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('datasetImportDetail.validationKicker') }}</p>
           <h2>{{ t('datasetImportDetail.validationTitle') }}</h2>
         </div>
         <pre class="json-view">{{ validationReportJson }}</pre>
       </article>
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('datasetImportDetail.detectedKicker') }}</p>
           <h2>{{ t('datasetImportDetail.detectedTitle') }}</h2>
         </div>
         <pre class="json-view">{{ detectedProfileJson }}</pre>
       </article>
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('datasetImportDetail.classMapKicker') }}</p>
           <h2>{{ t('datasetImportDetail.classMapTitle') }}</h2>
         </div>
         <pre class="json-view">{{ classMapJson }}</pre>
       </article>
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('datasetImportDetail.metadataKicker') }}</p>
           <h2>{{ t('datasetImportDetail.metadataTitle') }}</h2>
         </div>
         <pre class="json-view">{{ metadataJson }}</pre>
@@ -116,7 +110,6 @@
 
     <section v-if="detail?.dataset_version" class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('datasetImportDetail.versionKicker') }}</p>
         <h2>{{ t('datasetImportDetail.versionTitle') }}</h2>
       </div>
       <div class="summary-grid">

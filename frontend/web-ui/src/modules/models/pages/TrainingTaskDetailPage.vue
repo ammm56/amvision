@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('trainingDetail.kicker') }}</p>
         <h1>{{ task?.display_name || taskId }}</h1>
         <p class="page-description">{{ t('trainingDetail.description') }}</p>
       </div>
@@ -39,7 +38,6 @@
     <section v-if="task" class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('trainingDetail.summaryKicker') }}</p>
           <h2>{{ t('trainingDetail.summaryTitle') }}</h2>
         </div>
         <StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge>
@@ -91,7 +89,6 @@
     <section v-if="task" class="resource-section training-progress-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('trainingDetail.progressKicker') }}</p>
           <h2>{{ t('trainingDetail.progressTitle') }}</h2>
         </div>
         <strong class="training-progress-percent">{{ progressPercentText }}</strong>
@@ -143,7 +140,6 @@
 
     <section v-if="task" class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('trainingDetail.outputsKicker') }}</p>
         <h2>{{ t('trainingDetail.outputsTitle') }}</h2>
       </div>
       <EmptyState v-if="!loading && outputFiles.length === 0" :title="t('trainingDetail.emptyOutputsTitle')" :description="t('trainingDetail.emptyOutputsDescription')" />

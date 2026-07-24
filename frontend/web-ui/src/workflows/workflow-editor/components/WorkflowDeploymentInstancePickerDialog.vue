@@ -2,7 +2,6 @@
   <ModelPickerDialogShell
     :open="open"
     :loading="loading"
-    :kicker="t('workflowEditor.deploymentPicker.kicker')"
     :title="t('workflowEditor.deploymentPicker.title')"
     :description="t('workflowEditor.deploymentPicker.description', { taskType: taskTypeLabel })"
     :close-label="t('workflowEditor.deploymentPicker.close')"

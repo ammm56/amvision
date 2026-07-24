@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('tasks.detailKicker') }}</p>
         <h1>{{ taskStore.selectedTask?.task_id || taskId }}</h1>
       </div>
       <div class="page-actions">

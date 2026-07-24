@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('conversionDetail.kicker') }}</p>
         <h1>{{ task?.display_name || taskId }}</h1>
         <p class="page-description">{{ t('conversionDetail.description') }}</p>
       </div>
@@ -39,7 +38,6 @@
     <section v-if="task" class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('conversionDetail.summaryKicker') }}</p>
           <h2>{{ t('conversionDetail.summaryTitle') }}</h2>
         </div>
         <StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge>
@@ -85,7 +83,6 @@
 
     <section v-if="task" class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('conversionDetail.buildsKicker') }}</p>
         <h2>{{ t('conversionDetail.buildsTitle') }}</h2>
       </div>
       <EmptyState
@@ -121,14 +118,12 @@
     <section v-if="task" class="operation-grid">
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('conversionDetail.resultKicker') }}</p>
           <h2>{{ t('conversionDetail.resultTitle') }}</h2>
         </div>
         <pre class="json-view">{{ resultJson }}</pre>
       </article>
       <article class="resource-section">
         <div>
-          <p class="page-kicker">{{ t('conversionDetail.specKicker') }}</p>
           <h2>{{ t('conversionDetail.specTitle') }}</h2>
         </div>
         <pre class="json-view">{{ taskSpecJson }}</pre>

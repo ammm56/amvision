@@ -1,7 +1,6 @@
 <template>
   <section class="resource-section">
     <div>
-      <p class="page-kicker">{{ t('modelOps.trainingHistoryKicker') }}</p>
       <h2>{{ t('modelOps.trainingHistoryTitle') }}</h2>
     </div>
     <EmptyState
