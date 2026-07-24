@@ -451,8 +451,8 @@ async function runDirectInference(): Promise<void> {
   inferenceRunning.value = true
   errorMessage.value = null
   try {
-    directInferenceResult.value = null
-    directInferenceResult.value = await inferTaskDeployment(buildInferenceInput())
+    const nextResult = await inferTaskDeployment(buildInferenceInput())
+    directInferenceResult.value = nextResult
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {

@@ -13,6 +13,7 @@ import {
 import {
   inferTaskDeployment,
   listTaskInferenceTasks,
+  type TaskInferencePayload,
 } from '../services/inference.service'
 import InferenceDebugPage from './InferenceDebugPage.vue'
 
@@ -69,6 +70,29 @@ const deployment: TaskDeploymentInstance = {
   metadata: {},
 }
 
+function inferencePayload(requestId: string, latencyMs: number): TaskInferencePayload {
+  return {
+    request_id: requestId,
+    deployment_instance_id: deployment.deployment_instance_id,
+    model_version_id: deployment.model_version_id,
+    model_build_id: deployment.model_build_id,
+    input_uri: 'memory://input.jpg',
+    input_source_kind: 'memory',
+    score_threshold: 0.3,
+    save_result_image: false,
+    return_preview_image_base64: true,
+    image_width: 640,
+    image_height: 640,
+    detection_count: 1,
+    latency_ms: latencyMs,
+    labels: ['part'],
+    detections: [],
+    runtime_session_info: {},
+    preview_image_base64: null,
+    result_object_key: null,
+  }
+}
+
 describe('InferenceDebugPage', () => {
   let pinia: Pinia
 
@@ -117,5 +141,46 @@ describe('InferenceDebugPage', () => {
       saveResultImage: false,
       returnPreviewImageBase64: true,
     }))
+  })
+
+  it('keeps the previous result mounted until the next inference completes', async () => {
+    const firstResult = inferencePayload('request-1', 31.435)
+    let resolveSecondResult!: (value: TaskInferencePayload) => void
+    const secondResultPromise = new Promise<TaskInferencePayload>((resolve) => {
+      resolveSecondResult = resolve
+    })
+    vi.mocked(inferTaskDeployment)
+      .mockResolvedValueOnce(firstResult)
+      .mockReturnValueOnce(secondResultPromise)
+
+    const wrapper = mount(InferenceDebugPage, {
+      global: {
+        plugins: [pinia, i18n],
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="project/files/image.jpg"]').setValue('project/files/input.jpg')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const findResultSection = () => wrapper.findAll('section.resource-section')
+      .find((section) => section.find('h2').text() === '同步推理结果')
+    const firstResultSection = findResultSection()
+
+    expect(firstResultSection?.text()).toContain('31.435')
+    const resultElement = firstResultSection?.element
+
+    await wrapper.find('form').trigger('submit')
+
+    expect(findResultSection()?.element).toBe(resultElement)
+    expect(findResultSection()?.text()).toContain('31.435')
+
+    resolveSecondResult(inferencePayload('request-2', 28.125))
+    await flushPromises()
+
+    expect(findResultSection()?.element).toBe(resultElement)
+    expect(findResultSection()?.text()).toContain('28.125')
   })
 })
