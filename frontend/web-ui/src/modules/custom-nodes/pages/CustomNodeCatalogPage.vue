@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('customNodes.title') }}</h1>
-        <p class="page-description">{{ t('customNodes.description') }}</p>
       </div>
       <div class="page-actions">
         <label v-if="activeTab === 'nodes'" class="segmented-field custom-node-catalog__runtime-filter">

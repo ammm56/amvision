@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('settingsDiagnostics.title') }}</h1>
-        <p class="page-description">{{ t('settingsDiagnostics.description') }}</p>
       </div>
       <div class="page-actions">
         <Button variant="secondary" :disabled="loading" @click="loadDiagnostics">

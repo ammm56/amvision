@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('datasetOps.title') }}</h1>
-        <p class="page-description">{{ t('datasetOps.description') }}</p>
       </div>
       <div class="page-actions">
         <Button variant="secondary" :disabled="loading" @click="refreshPage">

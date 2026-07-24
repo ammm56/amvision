@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('inferenceOps.title') }}</h1>
-        <p class="page-description">{{ t('inferenceOps.description') }}</p>
       </div>
       <div class="page-actions">
         <label class="segmented-field">

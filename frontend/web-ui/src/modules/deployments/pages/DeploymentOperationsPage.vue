@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('deploymentOps.title') }}</h1>
-        <p class="page-description">{{ t('deploymentOps.description') }}</p>
       </div>
       <div class="page-actions">
         <label class="segmented-field">

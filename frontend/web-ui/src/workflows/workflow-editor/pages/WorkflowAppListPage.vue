@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ t('workflowEditor.applications.title') }}</h1>
-        <p class="page-description">{{ t('workflowEditor.applications.description') }}</p>
       </div>
       <div class="page-actions">
         <Button v-if="canWriteWorkflows" variant="primary" @click="openNewGraph">
