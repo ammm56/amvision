@@ -141,9 +141,9 @@
 
     <ConfirmDialog
       v-if="detail && deleteDialogOpen"
-      :kicker="t('datasetImportDetail.deleteDialog.kicker')"
       :title="t('datasetImportDetail.deleteDialog.title')"
-      :message="deleteDialogMessage"
+      :message="t('common.confirmDelete')"
+      :details="deleteDialogDetails"
       :confirm-label="t('datasetImportDetail.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="deleting"
@@ -187,10 +187,9 @@ const canDeleteCurrentImport = computed(() => {
   const normalized = String(detail.value.processing_state || detail.value.status || '').toLowerCase()
   return normalized === 'completed' || normalized === 'failed'
 })
-const deleteDialogMessage = computed(() => {
+const deleteDialogDetails = computed(() => {
   if (!detail.value) return ''
   return t('datasetImportDetail.messages.confirmDelete')
-    .replace('{datasetImportId}', detail.value.dataset_import_id)
     .replace('{datasetVersionId}', detail.value.dataset_version_id || '-')
 })
 const validationReportJson = computed(() => JSON.stringify(detail.value?.validation_report ?? {}, null, 2))

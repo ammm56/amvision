@@ -12,6 +12,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       appName: 'amvision',
       tagline: 'Local Vision Workbench',
       cancel: '取消',
+      confirmDelete: '确认删除？',
       noValue: '-',
       none: 'none',
       ready: '就绪',
@@ -254,9 +255,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         deleteImportFailed: '数据集导入删除失败',
         deleteExportFailed: '数据集导出删除失败',
         confirmDeleteImport:
-          '确认删除导入记录 {datasetImportId}？这会删除关联任务记录和运行磁盘数据，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
+          '这会删除关联任务记录和运行磁盘数据，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
         confirmDeleteExport:
-          '确认删除导出记录 {datasetExportId}？这会删除关联任务记录和运行磁盘数据，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
+          '这会删除关联任务记录、导出运行磁盘数据和下载包，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
         importSubmitted: '导入任务已提交：',
         exportSubmitted: '导出任务已提交：',
         selectDatasetVersion: '请先选择一个可导出的 DatasetVersion',
@@ -527,7 +528,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         modelInputRequired: 'ModelVersion id 和 ModelBuild id 至少填写一个',
         createFailed: '部署实例创建失败',
         actionFailed: '运行时操作失败',
-        deleteConfirm: '确认删除部署实例 {displayName}（{deploymentId}）？请先停止 sync 和 async runtime。此操作只删除部署实例配置和部署事件，不删除 ModelVersion 或 ModelBuild。',
+        deleteConfirm: '请先停止 sync 和 async runtime。此操作只删除部署实例配置和部署事件，不删除 ModelVersion 或 ModelBuild。',
         deleteFailed: '部署实例删除失败',
         deleteRequiresStopped: '停止 sync 和 async runtime 后才能删除部署实例',
         eventsFailed: '部署事件加载失败',
@@ -658,7 +659,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         registerFailed: '登记 ModelVersion 失败',
         outputFailed: '训练输出文件加载失败',
         noOutputContent: '当前输出文件暂无可预览内容。',
-        confirmDelete: '确认删除训练任务 {taskId}？训练任务记录、事件和训练运行磁盘数据会一起删除。若训练结果已经登记或被使用，后端会按规则拒绝。',
+        confirmDelete: '训练任务记录、事件和训练运行磁盘数据会一起删除。若训练结果已经登记或被使用，后端会按规则拒绝。',
       },
       deleteDialog: {
         kicker: '删除',
@@ -708,7 +709,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: '转换任务详情加载失败',
         deleteFailed: '转换任务删除失败',
         confirmDelete:
-          '确认删除转换任务 {taskId}？任务记录、事件、conversion task-runs 运行磁盘数据，以及本任务生成且未被部署实例使用的 {buildCount} 个 ModelBuild/ModelFile 会一起删除。若任何 ModelBuild 已被部署使用，后端会拒绝删除。此操作不可撤销。',
+          '任务记录、事件、conversion task-runs 运行磁盘数据，以及本任务生成且未被部署实例使用的 {buildCount} 个 ModelBuild/ModelFile 会一起删除。若任何 ModelBuild 已被部署使用，后端会拒绝删除。此操作不可撤销。',
       },
     },
     datasetImportDetail: {
@@ -752,7 +753,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: '数据集导入详情加载失败',
         deleteFailed: '数据集导入删除失败',
         confirmDelete:
-          '确认删除导入记录 {datasetImportId}？这会删除关联任务记录和运行磁盘数据，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
+          '这会删除关联任务记录和运行磁盘数据，不会删除 DatasetVersion {datasetVersionId}。此操作不可撤销。',
       },
     },
     workflowEditor: {
@@ -1312,6 +1313,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       appName: 'amvision',
       tagline: 'Local Vision Workbench',
       cancel: 'Cancel',
+      confirmDelete: 'Confirm deletion?',
       noValue: '-',
       none: 'none',
       ready: 'ready',
@@ -1554,9 +1556,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         deleteImportFailed: 'Failed to delete dataset import',
         deleteExportFailed: 'Failed to delete dataset export',
         confirmDeleteImport:
-          'Delete import record {datasetImportId}? This removes the linked task record and runtime disk data, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
+          'Removes the linked task record and runtime disk data, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
         confirmDeleteExport:
-          'Delete export record {datasetExportId}? This removes the linked task record and runtime disk data, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
+          'Removes the linked task record, export runtime disk data, and download package, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
         importSubmitted: 'Import task submitted:',
         exportSubmitted: 'Export task submitted:',
         selectDatasetVersion: 'Select an exportable DatasetVersion first',
@@ -1827,7 +1829,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         modelInputRequired: 'Enter either ModelVersion id or ModelBuild id',
         createFailed: 'Failed to create deployment instance',
         actionFailed: 'Runtime action failed',
-        deleteConfirm: 'Delete deployment instance {displayName} ({deploymentId})? Stop both sync and async runtimes first. This only deletes the deployment instance config and deployment events, not the ModelVersion or ModelBuild.',
+        deleteConfirm: 'Stop both sync and async runtimes first. This only deletes the deployment instance config and deployment events, not the ModelVersion or ModelBuild.',
         deleteFailed: 'Failed to delete deployment instance',
         deleteRequiresStopped: 'Stop both sync and async runtimes before deleting this deployment instance',
         eventsFailed: 'Failed to load deployment events',
@@ -1959,7 +1961,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         outputFailed: 'Failed to load training output file',
         noOutputContent: 'This output file has no previewable content.',
         confirmDelete:
-          'Delete training task {taskId}? The task record, events, and training runtime disk data will be removed together. If the training result has already been registered or is in use, the backend will reject the deletion.',
+          'The task record, events, and training runtime disk data will be removed together. If the training result has already been registered or is in use, the backend will reject the deletion.',
       },
       deleteDialog: {
         kicker: 'Delete',
@@ -2009,7 +2011,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: 'Failed to load conversion task detail',
         deleteFailed: 'Failed to delete conversion task',
         confirmDelete:
-          'Delete conversion task {taskId}? The task record, events, conversion task-runs runtime disk data, and {buildCount} ModelBuild/ModelFile records generated by this task will be removed if they are not used by deployment instances. If any ModelBuild is deployed, the backend will reject the deletion. This cannot be undone.',
+          'The task record, events, conversion task-runs runtime disk data, and {buildCount} ModelBuild/ModelFile records generated by this task will be removed if they are not used by deployment instances. If any ModelBuild is deployed, the backend will reject the deletion. This cannot be undone.',
       },
     },
     datasetImportDetail: {
@@ -2053,7 +2055,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: 'Failed to load dataset import detail',
         deleteFailed: 'Failed to delete dataset import',
         confirmDelete:
-          'Delete import record {datasetImportId}? This removes the linked task record and runtime disk data, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
+          'Removes the linked task record and runtime disk data, but keeps DatasetVersion {datasetVersionId}. This cannot be undone.',
       },
     },
     workflowEditor: {
@@ -2612,6 +2614,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     common: {
       appName: 'amvision',
       cancel: 'キャンセル',
+      confirmDelete: '削除しますか？',
       noValue: '-',
       none: 'none',
       ready: '準備完了',
@@ -2849,9 +2852,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         deleteImportFailed: 'データセットインポートの削除に失敗しました',
         deleteExportFailed: 'データセットエクスポートの削除に失敗しました',
         confirmDeleteImport:
-          'インポート記録 {datasetImportId} を削除しますか？関連タスク記録と実行ディスクデータを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
+          '関連タスク記録と実行ディスクデータを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
         confirmDeleteExport:
-          'エクスポート記録 {datasetExportId} を削除しますか？関連タスク記録と実行ディスクデータを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
+          '関連タスク記録、エクスポート実行ディスクデータ、ダウンロードパッケージを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
         importSubmitted: 'インポートタスクを送信しました:',
         exportSubmitted: 'エクスポートタスクを送信しました:',
         selectDatasetVersion: '先にエクスポート対象の DatasetVersion を選択してください',
@@ -3122,7 +3125,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         modelInputRequired: 'ModelVersion id または ModelBuild id を入力してください',
         createFailed: 'DeploymentInstance の作成に失敗しました',
         actionFailed: 'ランタイム操作に失敗しました',
-        deleteConfirm: 'DeploymentInstance {displayName}（{deploymentId}）を削除しますか？sync と async の runtime を先に停止してください。この操作は deployment 設定とイベントだけを削除し、ModelVersion や ModelBuild は削除しません。',
+        deleteConfirm: 'sync と async の runtime を先に停止してください。この操作は deployment 設定とイベントだけを削除し、ModelVersion や ModelBuild は削除しません。',
         deleteFailed: 'DeploymentInstance の削除に失敗しました',
         deleteRequiresStopped: 'sync と async の runtime を停止してから DeploymentInstance を削除してください',
         eventsFailed: 'デプロイイベントの読み込みに失敗しました',
@@ -3254,7 +3257,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         outputFailed: '学習出力ファイルの読み込みに失敗しました',
         noOutputContent: 'この出力ファイルにはプレビュー可能な内容がありません。',
         confirmDelete:
-          '学習タスク {taskId} を削除しますか？タスク記録、イベント、学習 runtime のディスクデータを一緒に削除します。学習結果が登録済みまたは使用中の場合、backend が削除を拒否します。',
+          'タスク記録、イベント、学習 runtime のディスクデータを一緒に削除します。学習結果が登録済みまたは使用中の場合、backend が削除を拒否します。',
       },
       deleteDialog: {
         kicker: '削除',
@@ -3304,7 +3307,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: '変換タスク詳細の読み込みに失敗しました',
         deleteFailed: '変換タスクの削除に失敗しました',
         confirmDelete:
-          '変換タスク {taskId} を削除しますか？タスク記録、イベント、conversion task-runs runtime ディスクデータ、このタスクが生成した未デプロイの {buildCount} 個の ModelBuild/ModelFile を一緒に削除します。ModelBuild がデプロイで使われている場合、backend が削除を拒否します。この操作は元に戻せません。',
+          'タスク記録、イベント、conversion task-runs runtime ディスクデータ、このタスクが生成した未デプロイの {buildCount} 個の ModelBuild/ModelFile を一緒に削除します。ModelBuild がデプロイで使われている場合、backend が削除を拒否します。この操作は元に戻せません。',
       },
     },
     datasetImportDetail: {
@@ -3348,7 +3351,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: 'データセットインポート詳細の読み込みに失敗しました',
         deleteFailed: 'データセットインポートの削除に失敗しました',
         confirmDelete:
-          'インポート記録 {datasetImportId} を削除しますか？関連タスク記録と実行ディスクデータを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
+          '関連タスク記録と実行ディスクデータを削除しますが、DatasetVersion {datasetVersionId} は削除しません。この操作は元に戻せません。',
       },
     },
     workflowEditor: {
@@ -3907,6 +3910,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     common: {
       appName: 'amvision',
       cancel: '취소',
+      confirmDelete: '삭제할까요?',
       noValue: '-',
       none: 'none',
       ready: '준비됨',
@@ -4144,9 +4148,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         deleteImportFailed: '데이터셋 가져오기 삭제 실패',
         deleteExportFailed: '데이터셋 내보내기 삭제 실패',
         confirmDeleteImport:
-          '가져오기 기록 {datasetImportId} 을 삭제할까요? 연결된 작업 기록과 실행 디스크 데이터를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
+          '연결된 작업 기록과 실행 디스크 데이터를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
         confirmDeleteExport:
-          '내보내기 기록 {datasetExportId} 을 삭제할까요? 연결된 작업 기록과 실행 디스크 데이터를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
+          '연결된 작업 기록, 내보내기 실행 디스크 데이터, 다운로드 패키지를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
         importSubmitted: '가져오기 작업 제출됨:',
         exportSubmitted: '내보내기 작업 제출됨:',
         selectDatasetVersion: '먼저 내보낼 DatasetVersion 을 선택하세요',
@@ -4417,7 +4421,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         modelInputRequired: 'ModelVersion id 또는 ModelBuild id 를 입력하세요',
         createFailed: 'DeploymentInstance 생성 실패',
         actionFailed: '런타임 작업 실패',
-        deleteConfirm: 'DeploymentInstance {displayName}({deploymentId}) 을 삭제할까요? 먼저 sync 와 async runtime 을 중지하세요. 이 작업은 deployment 설정과 이벤트만 삭제하며 ModelVersion 또는 ModelBuild 는 삭제하지 않습니다.',
+        deleteConfirm: '먼저 sync 와 async runtime 을 중지하세요. 이 작업은 deployment 설정과 이벤트만 삭제하며 ModelVersion 또는 ModelBuild 는 삭제하지 않습니다.',
         deleteFailed: 'DeploymentInstance 삭제 실패',
         deleteRequiresStopped: 'sync 와 async runtime 을 중지한 뒤 DeploymentInstance 를 삭제하세요',
         eventsFailed: '배포 이벤트를 불러오지 못했습니다',
@@ -4549,7 +4553,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         outputFailed: '학습 출력 파일을 불러오지 못했습니다',
         noOutputContent: '현재 출력 파일에는 미리보기 가능한 내용이 없습니다.',
         confirmDelete:
-          '학습 작업 {taskId} 을 삭제할까요? 작업 기록, 이벤트, 학습 runtime 디스크 데이터가 함께 삭제됩니다. 학습 결과가 이미 등록되었거나 사용 중이면 backend 가 삭제를 거부합니다.',
+          '작업 기록, 이벤트, 학습 runtime 디스크 데이터가 함께 삭제됩니다. 학습 결과가 이미 등록되었거나 사용 중이면 backend 가 삭제를 거부합니다.',
       },
       deleteDialog: {
         kicker: '삭제',
@@ -4599,7 +4603,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: '변환 작업 상세를 불러오지 못했습니다',
         deleteFailed: '변환 작업 삭제 실패',
         confirmDelete:
-          '변환 작업 {taskId} 을 삭제할까요? 작업 기록, 이벤트, conversion task-runs runtime 디스크 데이터, 이 작업이 생성했고 배포 인스턴스가 사용하지 않는 {buildCount} 개 ModelBuild/ModelFile 이 함께 삭제됩니다. ModelBuild 가 배포에 사용 중이면 backend 가 삭제를 거부합니다. 이 작업은 되돌릴 수 없습니다.',
+          '작업 기록, 이벤트, conversion task-runs runtime 디스크 데이터, 이 작업이 생성했고 배포 인스턴스가 사용하지 않는 {buildCount} 개 ModelBuild/ModelFile 이 함께 삭제됩니다. ModelBuild 가 배포에 사용 중이면 backend 가 삭제를 거부합니다. 이 작업은 되돌릴 수 없습니다.',
       },
     },
     datasetImportDetail: {
@@ -4643,7 +4647,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         loadFailed: '데이터셋 가져오기 상세를 불러오지 못했습니다',
         deleteFailed: '데이터셋 가져오기 삭제 실패',
         confirmDelete:
-          '가져오기 기록 {datasetImportId} 을 삭제할까요? 연결된 작업 기록과 실행 디스크 데이터를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
+          '연결된 작업 기록과 실행 디스크 데이터를 삭제하지만 DatasetVersion {datasetVersionId} 은 유지합니다. 이 작업은 되돌릴 수 없습니다.',
       },
     },
     workflowEditor: {

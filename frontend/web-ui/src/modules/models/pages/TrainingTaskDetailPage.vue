@@ -185,9 +185,9 @@
 
     <ConfirmDialog
       v-if="deleteDialogOpen"
-      :kicker="t('trainingDetail.deleteDialog.kicker')"
       :title="t('trainingDetail.deleteDialog.title')"
-      :message="t('trainingDetail.messages.confirmDelete').replace('{taskId}', taskId)"
+      :message="t('common.confirmDelete')"
+      :details="t('trainingDetail.messages.confirmDelete')"
       :confirm-label="t('trainingDetail.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="actionRunning === 'delete'"

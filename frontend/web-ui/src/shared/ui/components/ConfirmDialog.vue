@@ -11,7 +11,10 @@
       <header class="confirm-dialog__header">
         <div>
           <p v-if="kicker" class="page-kicker">{{ kicker }}</p>
-          <h2>{{ title }}</h2>
+          <div class="confirm-dialog__title">
+            <h2>{{ title }}</h2>
+            <InfoHint v-if="details" :text="details" />
+          </div>
         </div>
         <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" @click="emit('cancel')">
           <X :size="16" />
@@ -32,6 +35,7 @@
 import { X } from '@lucide/vue'
 
 import Button from './Button.vue'
+import InfoHint from './InfoHint.vue'
 
 withDefaults(
   defineProps<{
@@ -40,11 +44,13 @@ withDefaults(
     confirmLabel: string
     cancelLabel: string
     kicker?: string
+    details?: string
     busy?: boolean
     confirmVariant?: 'primary' | 'danger'
   }>(),
   {
     kicker: '',
+    details: '',
     busy: false,
     confirmVariant: 'danger',
   },
@@ -88,6 +94,12 @@ const emit = defineEmits<{
 .confirm-dialog__header h2,
 .confirm-dialog__message {
   margin: 0;
+}
+
+.confirm-dialog__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .confirm-dialog__message {

@@ -137,9 +137,9 @@
 
     <ConfirmDialog
       v-if="task && deleteDialogOpen"
-      :kicker="t('conversionDetail.deleteDialog.kicker')"
       :title="t('conversionDetail.deleteDialog.title')"
-      :message="deleteDialogMessage"
+      :message="t('common.confirmDelete')"
+      :details="deleteDialogDetails"
       :confirm-label="t('conversionDetail.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="deleting"
@@ -193,10 +193,9 @@ const canWriteTasks = computed(() => sessionStore.hasScopes(['models:write', 'ta
 const canDeleteCurrentTask = computed(() => task.value ? isTerminalTask(task.value.state) : false)
 const resultJson = computed(() => JSON.stringify(task.value?.result ?? {}, null, 2))
 const taskSpecJson = computed(() => JSON.stringify(task.value?.task_spec ?? {}, null, 2))
-const deleteDialogMessage = computed(() => {
+const deleteDialogDetails = computed(() => {
   if (!task.value) return ''
   return t('conversionDetail.messages.confirmDelete')
-    .replace('{taskId}', task.value.task_id)
     .replace('{buildCount}', String(task.value.builds.length))
 })
 

@@ -180,10 +180,10 @@
 
     <ConfirmDialog
       v-if="detail && deleteDialogOpen"
-      kicker="删除"
-      title="删除导出记录"
-      :message="deleteDialogMessage"
-      confirm-label="删除导出记录"
+      :title="t('datasetOps.deleteDialog.exportTitle')"
+      :message="t('common.confirmDelete')"
+      :details="deleteDialogDetails"
+      :confirm-label="t('datasetOps.deleteDialog.exportTitle')"
       :cancel-label="t('common.cancel')"
       :busy="deleting"
       confirm-variant="danger"
@@ -234,9 +234,10 @@ const canDeleteCurrentExport = computed(() => {
   const normalized = String(detail.value.status || '').toLowerCase()
   return normalized === 'completed' || normalized === 'failed'
 })
-const deleteDialogMessage = computed(() => {
+const deleteDialogDetails = computed(() => {
   if (!detail.value) return ''
-  return `确认删除导出记录 ${detail.value.dataset_export_id}？这会删除关联任务记录、导出运行磁盘数据和下载包，不会删除 DatasetVersion ${detail.value.dataset_version_id}。此操作不可撤销。`
+  return t('datasetOps.messages.confirmDeleteExport')
+    .replace('{datasetVersionId}', detail.value.dataset_version_id)
 })
 const splitNamesJson = computed(() => JSON.stringify(detail.value?.split_names ?? [], null, 2))
 const categoryNamesJson = computed(() => JSON.stringify(detail.value?.category_names ?? [], null, 2))

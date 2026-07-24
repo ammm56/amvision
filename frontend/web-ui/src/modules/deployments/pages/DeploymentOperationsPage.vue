@@ -371,7 +371,8 @@
     <ConfirmDialog
       v-if="pendingDeleteDeployment"
       :title="t('deploymentOps.actions.delete')"
-      :message="deleteDeploymentDialogMessage"
+      :message="t('common.confirmDelete')"
+      :details="deleteDeploymentDialogDetails"
       :confirm-label="t('deploymentOps.actions.delete')"
       :cancel-label="t('common.cancel')"
       :busy="isDeleteActionBusy(pendingDeleteDeployment.deployment_instance_id)"
@@ -612,13 +613,8 @@ const pendingDeleteDeployment = computed(() => {
   const deploymentId = pendingDeleteDeploymentId.value
   return deploymentId ? deployments.value.find((item) => item.deployment_instance_id === deploymentId) ?? null : null
 })
-const deleteDeploymentDialogMessage = computed(() => {
-  const deployment = pendingDeleteDeployment.value
-  if (!deployment) return ''
-  return t('deploymentOps.messages.deleteConfirm', {
-    deploymentId: deployment.deployment_instance_id,
-    displayName: deployment.display_name || deployment.deployment_instance_id,
-  })
+const deleteDeploymentDialogDetails = computed(() => {
+  return pendingDeleteDeployment.value ? t('deploymentOps.messages.deleteConfirm') : ''
 })
 const deploymentDeviceLabels = computed(() => ({
   automaticDefault: t('deploymentOps.options.automaticDefault'),
