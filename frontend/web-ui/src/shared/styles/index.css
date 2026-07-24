@@ -371,6 +371,10 @@ a:hover {
   flex-wrap: wrap;
 }
 
+.page-actions {
+  justify-content: flex-end;
+}
+
 .app-bottom-panel {
   justify-content: space-between;
   gap: 12px;
@@ -1960,7 +1964,7 @@ a:hover {
 
 .event-timeline li {
   display: grid;
-  grid-template-columns: minmax(160px, 180px) minmax(120px, 200px) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 180px) minmax(88px, 112px) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   padding: 10px 0;
