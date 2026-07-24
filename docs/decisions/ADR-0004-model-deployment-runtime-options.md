@@ -26,6 +26,7 @@
 5. TensorRT engine 构建参数属于 `ModelBuild`，execution context、CUDA stream 和内存策略属于 deployment runtime。
 6. 默认保持工业同步推理和 `overflow_policy=reject`，不在本次配置扩展中引入内部等待队列或隐式 batching。
 7. 同一进程内多个 session 不表述为进程级故障隔离；需要故障隔离时显式使用 `isolation_level=process`。
+8. TensorRT optimization profile 的前端形态和部署校验只读取所选 `ModelBuild` 的 engine capability 元数据，不按模型系列或任务类型维护条件分支；静态 engine 固定 profile 0，动态多 profile 才允许选择。
 
 详细字段、设备矩阵和实施顺序见 [模型发布运行时配置](../architecture/model-deployment-runtime-policy.md)。
 
@@ -56,7 +57,7 @@
 - deployment schema、runtime target、predictor loader、健康状态和前端表单需要共同扩展。
 - OpenVINO compile properties 需要从各模型 predictor 中抽到共享 adapter。
 - 运行时必须查询目标设备 capability，并返回 requested、effective 和 warnings。
-- TensorRT conversion report 需要补充 engine 构建摘要，deployment 页面只读展示这些内容。
+- TensorRT conversion report 和 `ModelBuild.metadata` 记录 engine shape/profile 摘要；deployment 页面按静态、动态单 profile、动态多 profile 三种能力分别隐藏、只读展示或提供受限选择。
 - benchmark 和 soak 结果必须记录目标硬件、驱动、runtime 版本和实际配置。
 - deployment API 一次性切换到完整 `runtime_configuration`，不接受旧扁平字段；旧 deployment 数据由迁移删除。
 

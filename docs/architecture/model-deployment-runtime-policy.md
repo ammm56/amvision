@@ -23,6 +23,7 @@
 - 旧 `instance_count` 数据列和 metadata 中的 `deployment_process` 运行配置入口已经移除；迁移会删除旧 deployment 记录，不解释旧数据。
 - OpenVINO CPU、GPU、NPU、AUTO 通过统一 compile adapter 应用设备专属属性，并在 health 中返回 requested、effective 和 warnings。
 - TensorRT 通过统一 helper 校验并激活 `optimization_profile_index`，pinned output buffer 仍是明确的 session 运行参数。
+- TensorRT conversion 会把 `input_shape_mode`、`optimization_profile_count` 和每个 profile 的输入名及 `min/opt/max shape` 写入具体 `ModelBuild.metadata`；部署表单和后端校验都读取所选 build 的能力，不按模型名或任务类型猜测。
 - capability API 按当前机器和 OpenVINO plugin 的 `SUPPORTED_PROPERTIES` 返回可用字段、设备信息和发布默认值。
 - 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。
 - 进程级 CPU device resource manager 汇总全部 supervisor 中正在运行的 OpenVINO CPU deployment；线程预算超出当前物理核心数时只告警，不拒绝创建、启动或运行。
@@ -262,6 +263,32 @@ serialized engine
 
 发布页面应只读展示 engine 的构建摘要。需要修改这些值时，应重新创建 `ModelBuild`，不能修改 deployment metadata 后假装 engine 已改变。
 
+TensorRT engine 的 shape/profile 能力使用下面的标准 `ModelBuild.metadata` 结构：
+
+```json
+{
+  "input_shape_mode": "dynamic",
+  "optimization_profile_count": 2,
+  "optimization_profiles": [
+    {
+      "index": 0,
+      "inputs": [
+        {
+          "input_name": "images",
+          "min_shape": [1, 3, 320, 320],
+          "opt_shape": [1, 3, 640, 640],
+          "max_shape": [4, 3, 640, 640]
+        }
+      ]
+    }
+  ]
+}
+```
+
+静态 engine 也登记 profile 0 和固定 shape，但部署页面不显示可编辑项。动态 engine 只有一个 profile 时只读显示范围；存在多个 profile 时才允许从 build 已声明的 profile 列表中选择。后端按同一份 metadata 校验请求，engine 加载后仍按 `engine.num_optimization_profiles` 做最终校验。
+
+当前 YOLOX、YOLOv8、YOLO11、YOLO26 和 RF-DETR 的正式转换入口仍生成固定 batch、固定分辨率的静态 engine。现有 builder 遇到动态 batch ONNX 时只创建一个 `min=opt=max=1` 的 profile，因此会如实登记为“动态、单 profile”，但不宣称具备真正的动态 batch 范围。后续开放动态 batch、动态分辨率或多输入 profile 时，必须在 conversion request/build contract 中正式定义每个 profile，再由 builder 逐项创建并回写上述元数据。
+
 ### 部署运行期参数
 
 TensorRT deployment runtime 后续可以控制：
@@ -364,6 +391,7 @@ backend_options:
 - OpenVINO GPU 高级区显示 stream、请求数、队列和精度控制。
 - OpenVINO NPU 高级区显示插件实际支持的属性；turbo、tiles 和编译器参数默认折叠。
 - TensorRT 分开显示 engine 构建摘要和可编辑的 deployment runtime 参数。
+- TensorRT optimization profile 控件由所选 `ModelBuild.metadata` 驱动：静态隐藏，动态单 profile 只读，多 profile 使用 Vue 下拉框展示索引及每个输入的 `min/opt/max shape`。
 
 所有 `auto` 字段同时显示当前设备的预估或实际值，例如：
 

@@ -7,23 +7,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
 )
-from backend.service.application.models.registry.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import (
+    SqlAlchemyModelService,
+)
 from backend.service.domain.files.model_file import ModelFile
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 _DEFAULT_RUNTIME_BACKEND = "pytorch"
 _DEFAULT_DEVICE_NAME = "cpu"
 _DEFAULT_RUNTIME_PRECISION = "fp32"
 _DEFAULT_INPUT_SIZE = (640, 640)
-_SUPPORTED_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt", "rknn"})
+_SUPPORTED_RUNTIME_BACKENDS = frozenset(
+    {"pytorch", "onnxruntime", "openvino", "tensorrt", "rknn"}
+)
 _SUPPORTED_RUNTIME_PRECISIONS = frozenset({"fp16", "fp32"})
 _DEFAULT_DEVICE_NAME_BY_BACKEND = {
     "pytorch": "cpu",
@@ -93,6 +102,7 @@ class RuntimeTargetSnapshot:
     - checkpoint_path：来源 ModelVersion 的 checkpoint 本地绝对路径。
     - labels_storage_uri：labels 文件存储 URI。
     - model_config：模型运行时必要配置，例如 pose kpt_shape。
+    - model_build_metadata：当前 ModelBuild 固化的运行时能力元数据。
     """
 
     project_id: str
@@ -119,9 +129,12 @@ class RuntimeTargetSnapshot:
     checkpoint_path: Path | None = None
     labels_storage_uri: str | None = None
     model_config: dict[str, object] = field(default_factory=dict)
+    model_build_metadata: dict[str, object] = field(default_factory=dict)
 
 
-def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[str, object]:
+def serialize_runtime_target_snapshot(
+    snapshot: RuntimeTargetSnapshot,
+) -> dict[str, object]:
     """把 RuntimeTargetSnapshot 序列化为可持久化字典。
 
     参数：
@@ -154,6 +167,7 @@ def serialize_runtime_target_snapshot(snapshot: RuntimeTargetSnapshot) -> dict[s
         "checkpoint_storage_uri": snapshot.checkpoint_storage_uri,
         "labels_storage_uri": snapshot.labels_storage_uri,
         "model_config": dict(snapshot.model_config),
+        "model_build_metadata": dict(snapshot.model_build_metadata),
     }
 
 
@@ -175,14 +189,18 @@ def deserialize_runtime_target_snapshot(
     if not isinstance(payload, dict):
         raise InvalidRequestError("runtime_target_snapshot 格式不合法")
 
-    runtime_artifact_storage_uri = _require_payload_str(payload, "runtime_artifact_storage_uri")
+    runtime_artifact_storage_uri = _require_payload_str(
+        payload, "runtime_artifact_storage_uri"
+    )
     labels_storage_uri = _read_payload_optional_str(payload, "labels_storage_uri")
     runtime_artifact_path = resolve_local_file_path(
         dataset_storage=dataset_storage,
         storage_uri=runtime_artifact_storage_uri,
         field_name="runtime_artifact_storage_uri",
     )
-    checkpoint_storage_uri = _read_payload_optional_str(payload, "checkpoint_storage_uri")
+    checkpoint_storage_uri = _read_payload_optional_str(
+        payload, "checkpoint_storage_uri"
+    )
     checkpoint_path = None
     if checkpoint_storage_uri is not None:
         checkpoint_path = resolve_local_file_path(
@@ -208,7 +226,9 @@ def deserialize_runtime_target_snapshot(
         task_type=_require_payload_str(payload, "task_type"),
         source_kind=_require_payload_str(payload, "source_kind"),
         runtime_profile_id=_read_payload_optional_str(payload, "runtime_profile_id"),
-        runtime_backend=normalize_runtime_backend(_require_payload_str(payload, "runtime_backend")),
+        runtime_backend=normalize_runtime_backend(
+            _require_payload_str(payload, "runtime_backend")
+        ),
         device_name=normalize_device_name(
             _require_payload_str(payload, "device_name"),
             runtime_backend=_require_payload_str(payload, "runtime_backend"),
@@ -220,15 +240,20 @@ def deserialize_runtime_target_snapshot(
         ),
         input_size=_require_payload_input_size(payload),
         labels=_require_payload_labels(payload),
-        runtime_artifact_file_id=_require_payload_str(payload, "runtime_artifact_file_id"),
+        runtime_artifact_file_id=_require_payload_str(
+            payload, "runtime_artifact_file_id"
+        ),
         runtime_artifact_storage_uri=runtime_artifact_storage_uri,
         runtime_artifact_path=runtime_artifact_path,
-        runtime_artifact_file_type=_require_payload_str(payload, "runtime_artifact_file_type"),
+        runtime_artifact_file_type=_require_payload_str(
+            payload, "runtime_artifact_file_type"
+        ),
         checkpoint_file_id=_read_payload_optional_str(payload, "checkpoint_file_id"),
         checkpoint_storage_uri=checkpoint_storage_uri,
         checkpoint_path=checkpoint_path,
         labels_storage_uri=labels_storage_uri,
         model_config=_read_payload_dict(payload, "model_config"),
+        model_build_metadata=_read_payload_dict(payload, "model_build_metadata"),
     )
 
 
@@ -242,7 +267,8 @@ class SqlAlchemyRuntimeTargetResolver:
         dataset_storage: LocalDatasetStorage,
         file_types: DetectionModelFileTypes = YOLOX_DETECTION_FILE_TYPES,
         supported_task_types: tuple[str, ...] = (DETECTION_TASK_TYPE,),
-        model_service_factory: Callable[[SessionFactory], SqlAlchemyModelService] | None = None,
+        model_service_factory: Callable[[SessionFactory], SqlAlchemyModelService]
+        | None = None,
     ) -> None:
         """初始化运行时快照解析服务。
 
@@ -268,7 +294,9 @@ class SqlAlchemyRuntimeTargetResolver:
             )
         )
 
-    def resolve_target(self, request: RuntimeTargetResolveRequest) -> RuntimeTargetSnapshot:
+    def resolve_target(
+        self, request: RuntimeTargetResolveRequest
+    ) -> RuntimeTargetSnapshot:
         """解析一次运行时快照。
 
         参数：
@@ -280,13 +308,19 @@ class SqlAlchemyRuntimeTargetResolver:
 
         if not request.project_id.strip():
             raise InvalidRequestError("project_id 不能为空")
-        if not _normalize_optional_str(request.model_version_id) and not _normalize_optional_str(request.model_build_id):
-            raise InvalidRequestError("model_version_id 和 model_build_id 至少需要提供一个")
+        if not _normalize_optional_str(
+            request.model_version_id
+        ) and not _normalize_optional_str(request.model_build_id):
+            raise InvalidRequestError(
+                "model_version_id 和 model_build_id 至少需要提供一个"
+            )
 
         model_service = self.model_service_factory(self.session_factory)
         model_build = None
         if _normalize_optional_str(request.model_build_id) is not None:
-            model_build = model_service.get_model_build(_normalize_optional_str(request.model_build_id) or "")
+            model_build = model_service.get_model_build(
+                _normalize_optional_str(request.model_build_id) or ""
+            )
             if model_build is None:
                 raise ResourceNotFoundError(
                     "指定的 ModelBuild 不存在",
@@ -298,7 +332,8 @@ class SqlAlchemyRuntimeTargetResolver:
             resolved_model_version_id = model_build.source_model_version_id
             if (
                 _normalize_optional_str(request.model_version_id) is not None
-                and _normalize_optional_str(request.model_version_id) != resolved_model_version_id
+                and _normalize_optional_str(request.model_version_id)
+                != resolved_model_version_id
             ):
                 raise InvalidRequestError(
                     "model_build_id 与 model_version_id 不匹配",
@@ -311,7 +346,8 @@ class SqlAlchemyRuntimeTargetResolver:
             if (
                 _normalize_optional_str(request.runtime_profile_id) is not None
                 and model_build.runtime_profile_id is not None
-                and _normalize_optional_str(request.runtime_profile_id) != model_build.runtime_profile_id
+                and _normalize_optional_str(request.runtime_profile_id)
+                != model_build.runtime_profile_id
             ):
                 raise InvalidRequestError(
                     "runtime_profile_id 与 ModelBuild 记录不一致",
@@ -352,7 +388,9 @@ class SqlAlchemyRuntimeTargetResolver:
                 },
             )
 
-        model_files = model_service.list_model_files(model_version_id=model_version.model_version_id)
+        model_files = model_service.list_model_files(
+            model_version_id=model_version.model_version_id
+        )
         checkpoint_file = find_model_file(
             model_files=model_files,
             file_type=self.file_types.checkpoint_file_type,
@@ -371,7 +409,9 @@ class SqlAlchemyRuntimeTargetResolver:
             )
         else:
             runtime_artifact_file = require_model_file(
-                model_files=model_service.list_model_files(model_build_id=model_build.model_build_id),
+                model_files=model_service.list_model_files(
+                    model_build_id=model_build.model_build_id
+                ),
                 file_type=resolve_model_build_file_type(
                     build_format=model_build.build_format,
                     file_types=self.file_types,
@@ -386,14 +426,18 @@ class SqlAlchemyRuntimeTargetResolver:
             field_name="runtime_artifact_storage_uri",
         )
         checkpoint_path = None
-        checkpoint_storage_uri = checkpoint_file.storage_uri if checkpoint_file is not None else None
+        checkpoint_storage_uri = (
+            checkpoint_file.storage_uri if checkpoint_file is not None else None
+        )
         if checkpoint_storage_uri is not None:
             checkpoint_path = resolve_local_file_path(
                 dataset_storage=self.dataset_storage,
                 storage_uri=checkpoint_storage_uri,
                 field_name="checkpoint_storage_uri",
             )
-        labels_storage_uri = labels_file.storage_uri if labels_file is not None else None
+        labels_storage_uri = (
+            labels_file.storage_uri if labels_file is not None else None
+        )
         if labels_storage_uri is not None:
             resolve_local_file_path(
                 dataset_storage=self.dataset_storage,
@@ -403,8 +447,12 @@ class SqlAlchemyRuntimeTargetResolver:
 
         resolved_runtime_backend = resolve_runtime_backend(
             runtime_backend=request.runtime_backend,
-            model_build_format=model_build.build_format if model_build is not None else None,
-            model_build_runtime_backend=model_build.runtime_backend if model_build is not None else None,
+            model_build_format=model_build.build_format
+            if model_build is not None
+            else None,
+            model_build_runtime_backend=model_build.runtime_backend
+            if model_build is not None
+            else None,
         )
         resolved_device_name = normalize_device_name(
             request.device_name,
@@ -420,8 +468,10 @@ class SqlAlchemyRuntimeTargetResolver:
             runtime_backend=resolved_runtime_backend,
             device_name=resolved_device_name,
         )
-        if model_build is not None and resolved_runtime_precision != normalize_runtime_precision(
-            model_build.runtime_precision
+        if (
+            model_build is not None
+            and resolved_runtime_precision
+            != normalize_runtime_precision(model_build.runtime_precision)
         ):
             raise InvalidRequestError(
                 "runtime_precision 与 ModelBuild 记录不一致",
@@ -437,7 +487,9 @@ class SqlAlchemyRuntimeTargetResolver:
             model_id=model.model_id,
             model_type=model.model_type,
             model_version_id=model_version.model_version_id,
-            model_build_id=model_build.model_build_id if model_build is not None else None,
+            model_build_id=model_build.model_build_id
+            if model_build is not None
+            else None,
             model_name=model.model_name,
             model_scale=model.model_scale,
             task_type=model.task_type,
@@ -458,15 +510,22 @@ class SqlAlchemyRuntimeTargetResolver:
             runtime_artifact_storage_uri=runtime_artifact_file.storage_uri,
             runtime_artifact_path=runtime_artifact_path,
             runtime_artifact_file_type=runtime_artifact_file.file_type,
-            checkpoint_file_id=checkpoint_file.file_id if checkpoint_file is not None else None,
+            checkpoint_file_id=checkpoint_file.file_id
+            if checkpoint_file is not None
+            else None,
             checkpoint_storage_uri=checkpoint_storage_uri,
             checkpoint_path=checkpoint_path,
             labels_storage_uri=labels_storage_uri,
             model_config=resolve_model_config(model_version.metadata),
+            model_build_metadata=resolve_model_build_runtime_metadata(
+                model_build.metadata if model_build is not None else {}
+            ),
         )
 
 
-def find_model_file(*, model_files: list[ModelFile], file_type: str) -> ModelFile | None:
+def find_model_file(
+    *, model_files: list[ModelFile], file_type: str
+) -> ModelFile | None:
     """返回首个匹配 file_type 的 ModelFile。
 
     参数：
@@ -508,7 +567,11 @@ def require_model_file(
     if model_file is None:
         raise InvalidRequestError(
             missing_message,
-            details={"owner_kind": owner_kind, "owner_id": owner_id, "file_type": file_type},
+            details={
+                "owner_kind": owner_kind,
+                "owner_id": owner_id,
+                "file_type": file_type,
+            },
         )
     return model_file
 
@@ -548,7 +611,11 @@ def resolve_labels(
 
     metadata_labels = model_version_metadata.get("category_names")
     if isinstance(metadata_labels, list):
-        labels = tuple(item.strip() for item in metadata_labels if isinstance(item, str) and item.strip())
+        labels = tuple(
+            item.strip()
+            for item in metadata_labels
+            if isinstance(item, str) and item.strip()
+        )
         if labels:
             return labels
 
@@ -572,14 +639,20 @@ def resolve_input_size(model_version_metadata: dict[str, object]) -> tuple[int, 
         model_version_metadata.get("input_size"),
         _read_nested_value(model_version_metadata, "training_config", "input_size"),
     ):
-        if isinstance(candidate, list) and len(candidate) == 2 and all(isinstance(item, int) for item in candidate):
+        if (
+            isinstance(candidate, list)
+            and len(candidate) == 2
+            and all(isinstance(item, int) for item in candidate)
+        ):
             resolved = (int(candidate[0]), int(candidate[1]))
             if resolved[0] > 0 and resolved[1] > 0:
                 return resolved
     return _DEFAULT_INPUT_SIZE
 
 
-def resolve_model_config(model_version_metadata: dict[str, object]) -> dict[str, object]:
+def resolve_model_config(
+    model_version_metadata: dict[str, object],
+) -> dict[str, object]:
     """从 ModelVersion metadata 中解析模型运行时配置。"""
 
     model_config: dict[str, object] = {}
@@ -596,6 +669,23 @@ def resolve_model_config(model_version_metadata: dict[str, object]) -> dict[str,
                 model_config["kpt_shape"] = keypoint_shape
                 break
     return model_config
+
+
+def resolve_model_build_runtime_metadata(
+    model_build_metadata: dict[str, object],
+) -> dict[str, object]:
+    """提取部署运行时需要固化的 ModelBuild 能力字段。"""
+
+    runtime_keys = (
+        "input_shape_mode",
+        "optimization_profile_count",
+        "optimization_profiles",
+    )
+    return {
+        key: model_build_metadata[key]
+        for key in runtime_keys
+        if key in model_build_metadata
+    }
 
 
 def resolve_local_file_path(
@@ -628,12 +718,19 @@ def resolve_local_file_path(
         )
     else:
         candidate_path = Path(storage_uri)
-        resolved_path = candidate_path if candidate_path.is_absolute() else dataset_storage.resolve(storage_uri)
+        resolved_path = (
+            candidate_path
+            if candidate_path.is_absolute()
+            else dataset_storage.resolve(storage_uri)
+        )
 
     if not resolved_path.is_file():
         raise InvalidRequestError(
             f"{field_name} 对应的本地文件不存在",
-            details={field_name: storage_uri, "resolved_path": resolved_path.as_posix()},
+            details={
+                field_name: storage_uri,
+                "resolved_path": resolved_path.as_posix(),
+            },
         )
     return resolved_path
 
@@ -648,7 +745,9 @@ def normalize_runtime_backend(runtime_backend: str | None) -> str:
     - str：归一后的 backend 名称。
     """
 
-    normalized_backend = _normalize_optional_str(runtime_backend) or _DEFAULT_RUNTIME_BACKEND
+    normalized_backend = (
+        _normalize_optional_str(runtime_backend) or _DEFAULT_RUNTIME_BACKEND
+    )
     if normalized_backend not in _SUPPORTED_RUNTIME_BACKENDS:
         raise InvalidRequestError(
             "runtime_backend 不受支持",
@@ -676,13 +775,17 @@ def resolve_runtime_backend(
         return resolved_backend
 
     expected_backend = resolve_model_build_runtime_backend(model_build_format)
-    normalized_model_build_backend = _normalize_optional_str(model_build_runtime_backend)
+    normalized_model_build_backend = _normalize_optional_str(
+        model_build_runtime_backend
+    )
     if normalized_model_build_backend is None:
         raise InvalidRequestError(
             "ModelBuild 缺少 runtime_backend",
             details={"build_format": model_build_format},
         )
-    resolved_model_build_backend = normalize_runtime_backend(normalized_model_build_backend)
+    resolved_model_build_backend = normalize_runtime_backend(
+        normalized_model_build_backend
+    )
     if resolved_model_build_backend != expected_backend:
         raise InvalidRequestError(
             "ModelBuild runtime_backend 与 build_format 不一致",
@@ -692,7 +795,11 @@ def resolve_runtime_backend(
                 "expected_runtime_backend": expected_backend,
             },
         )
-    if normalized_backend is not None and normalize_runtime_backend(normalized_backend) != resolved_model_build_backend:
+    if (
+        normalized_backend is not None
+        and normalize_runtime_backend(normalized_backend)
+        != resolved_model_build_backend
+    ):
         raise InvalidRequestError(
             "runtime_backend 与 ModelBuild 记录不一致",
             details={
@@ -733,7 +840,9 @@ def resolve_model_build_runtime_backend(build_format: str) -> str:
     return _MODEL_BUILD_RUNTIME_BACKEND_MAP[build_format]
 
 
-def normalize_device_name(device_name: str | None, *, runtime_backend: str | None = None) -> str:
+def normalize_device_name(
+    device_name: str | None, *, runtime_backend: str | None = None
+) -> str:
     """按 runtime backend 归一化默认 device 名称。
 
     参数：
@@ -744,7 +853,11 @@ def normalize_device_name(device_name: str | None, *, runtime_backend: str | Non
     - str：归一后的 device 名称。
     """
 
-    normalized_backend = normalize_runtime_backend(runtime_backend) if runtime_backend is not None else None
+    normalized_backend = (
+        normalize_runtime_backend(runtime_backend)
+        if runtime_backend is not None
+        else None
+    )
     default_device_name = _DEFAULT_DEVICE_NAME_BY_BACKEND.get(
         normalized_backend or _DEFAULT_RUNTIME_BACKEND,
         _DEFAULT_DEVICE_NAME,
@@ -758,46 +871,66 @@ def normalize_device_name(device_name: str | None, *, runtime_backend: str | Non
             return normalized_device
         raise InvalidRequestError(
             "pytorch device_name 必须是 cpu、cuda 或 cuda:<index>",
-            details={"runtime_backend": normalized_backend or "pytorch", "device_name": normalized_device},
+            details={
+                "runtime_backend": normalized_backend or "pytorch",
+                "device_name": normalized_device,
+            },
         )
     if normalized_backend == "onnxruntime":
         if normalized_device == "cpu":
             return normalized_device
         raise InvalidRequestError(
             "onnxruntime 当前仅支持 cpu device_name",
-            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+            details={
+                "runtime_backend": normalized_backend,
+                "device_name": normalized_device,
+            },
         )
     if normalized_backend == "openvino":
         if normalized_device in {"auto", "cpu", "gpu", "npu"}:
             return normalized_device
         raise InvalidRequestError(
             "openvino device_name 必须是 auto、cpu、gpu 或 npu",
-            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+            details={
+                "runtime_backend": normalized_backend,
+                "device_name": normalized_device,
+            },
         )
     if normalized_backend == "tensorrt":
         if normalized_device.startswith("cuda:"):
             return normalized_device
         raise InvalidRequestError(
             "tensorrt device_name 必须是 cuda 或 cuda:<index>",
-            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+            details={
+                "runtime_backend": normalized_backend,
+                "device_name": normalized_device,
+            },
         )
     if normalized_backend == "rknn":
         if normalized_device == "npu":
             return normalized_device
         raise InvalidRequestError(
             "rknn device_name 必须是 npu",
-            details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+            details={
+                "runtime_backend": normalized_backend,
+                "device_name": normalized_device,
+            },
         )
     raise InvalidRequestError(
         "device_name 不受支持",
-        details={"runtime_backend": normalized_backend, "device_name": normalized_device},
+        details={
+            "runtime_backend": normalized_backend,
+            "device_name": normalized_device,
+        },
     )
 
 
 def normalize_runtime_precision(runtime_precision: str | None) -> str:
     """归一化运行时 precision。"""
 
-    normalized_precision = _normalize_optional_str(runtime_precision) or _DEFAULT_RUNTIME_PRECISION
+    normalized_precision = (
+        _normalize_optional_str(runtime_precision) or _DEFAULT_RUNTIME_PRECISION
+    )
     if normalized_precision not in _SUPPORTED_RUNTIME_PRECISIONS:
         raise InvalidRequestError(
             "runtime_precision 必须是 fp16 或 fp32",
@@ -806,14 +939,20 @@ def normalize_runtime_precision(runtime_precision: str | None) -> str:
     return normalized_precision
 
 
-def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend: str, device_name: str) -> str:
+def resolve_runtime_precision(
+    *, runtime_precision: str | None, runtime_backend: str, device_name: str
+) -> str:
     """按 runtime backend 与 device 解析最终 precision。"""
 
     normalized_backend = normalize_runtime_backend(runtime_backend)
-    normalized_device_name = normalize_device_name(device_name, runtime_backend=normalized_backend)
+    normalized_device_name = normalize_device_name(
+        device_name, runtime_backend=normalized_backend
+    )
     normalized_precision = normalize_runtime_precision(runtime_precision)
     if normalized_backend == "pytorch":
-        if normalized_precision == "fp16" and not normalized_device_name.startswith("cuda"):
+        if normalized_precision == "fp16" and not normalized_device_name.startswith(
+            "cuda"
+        ):
             raise InvalidRequestError(
                 "pytorch fp16 仅支持 CUDA device",
                 details={
@@ -824,7 +963,10 @@ def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend:
             )
         return normalized_precision
     if normalized_backend == "openvino":
-        if normalized_precision == "fp16" and normalized_device_name not in {"gpu", "npu"}:
+        if normalized_precision == "fp16" and normalized_device_name not in {
+            "gpu",
+            "npu",
+        }:
             raise InvalidRequestError(
                 "openvino fp16 仅支持 gpu 或 npu device_name；auto/cpu 仍要求 fp32",
                 details={
@@ -848,7 +990,9 @@ def resolve_runtime_precision(*, runtime_precision: str | None, runtime_backend:
     return normalized_precision
 
 
-def describe_runtime_execution_mode(*, runtime_backend: str, runtime_precision: str, device_name: str) -> str:
+def describe_runtime_execution_mode(
+    *, runtime_backend: str, runtime_precision: str, device_name: str
+) -> str:
     """返回用于公开展示的运行时执行模式字符串。"""
 
     return ":".join(
@@ -902,7 +1046,11 @@ def _require_payload_input_size(payload: dict[str, object]) -> tuple[int, int]:
     """从快照字典中读取必填输入尺寸。"""
 
     value = payload.get("input_size")
-    if not isinstance(value, list) or len(value) != 2 or not all(isinstance(item, int) for item in value):
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or not all(isinstance(item, int) for item in value)
+    ):
         raise InvalidRequestError(
             "runtime_target_snapshot 的 input_size 不合法",
             details={"input_size": value},
@@ -922,13 +1070,17 @@ def _require_payload_labels(payload: dict[str, object]) -> tuple[str, ...]:
     value = payload.get("labels")
     if not isinstance(value, list):
         raise InvalidRequestError("runtime_target_snapshot 的 labels 不合法")
-    labels = tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+    labels = tuple(
+        item.strip() for item in value if isinstance(item, str) and item.strip()
+    )
     if not labels:
         raise InvalidRequestError("runtime_target_snapshot 缺少有效 labels")
     return labels
 
 
-def _read_nested_value(payload: dict[str, object], parent_key: str, child_key: str) -> object:
+def _read_nested_value(
+    payload: dict[str, object], parent_key: str, child_key: str
+) -> object:
     """从嵌套字典中读取某个可选字段。"""
 
     parent_value = payload.get(parent_key)

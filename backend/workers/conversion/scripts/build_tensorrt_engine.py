@@ -11,6 +11,9 @@ import sys
 from backend.service.application.runtime.support.tensorrt_runtime import (
     prepare_tensorrt_python_runtime,
 )
+from backend.service.domain.models.tensorrt_engine_capabilities import (
+    build_single_input_tensorrt_engine_capabilities,
+)
 
 
 def build_tensorrt_engine(
@@ -48,7 +51,9 @@ def build_tensorrt_engine(
     with resolved_source_path.open("rb") as handle:
         parsed = parser.parse(handle.read())
     if not parsed:
-        parser_errors = [str(parser.get_error(index)) for index in range(parser.num_errors)]
+        parser_errors = [
+            str(parser.get_error(index)) for index in range(parser.num_errors)
+        ]
         raise RuntimeError("failed to parse onnx: " + " | ".join(parser_errors))
 
     input_tensor = network.get_input(0)
@@ -58,7 +63,10 @@ def build_tensorrt_engine(
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)
-    optimization_profile_shapes: dict[str, list[int]] | None = None
+    input_shape_mode = "static"
+    minimum_input_shape = input_shape
+    optimum_input_shape = input_shape
+    maximum_input_shape = input_shape
     if any(dim <= 0 for dim in input_shape):
         if len(input_shape) != 4:
             raise RuntimeError(f"dynamic input shape is not supported: {input_shape}")
@@ -78,11 +86,10 @@ def build_tensorrt_engine(
                 f"failed to create optimization profile for dynamic input shape: {input_shape}"
             )
         config.add_optimization_profile(profile)
-        optimization_profile_shapes = {
-            "min": list(fixed_input_shape),
-            "opt": list(fixed_input_shape),
-            "max": list(fixed_input_shape),
-        }
+        input_shape_mode = "dynamic"
+        minimum_input_shape = fixed_input_shape
+        optimum_input_shape = fixed_input_shape
+        maximum_input_shape = fixed_input_shape
     if normalized_precision == "fp16":
         if not builder.platform_has_fast_fp16:
             raise RuntimeError("current TensorRT platform does not support fast fp16")
@@ -100,7 +107,13 @@ def build_tensorrt_engine(
         "platform": platform.system().lower(),
         "input_name": input_tensor.name,
         "input_shape": list(input_shape),
-        "optimization_profile_shapes": optimization_profile_shapes,
+        **build_single_input_tensorrt_engine_capabilities(
+            input_shape_mode=input_shape_mode,
+            input_name=input_tensor.name,
+            min_shape=minimum_input_shape,
+            opt_shape=optimum_input_shape,
+            max_shape=maximum_input_shape,
+        ),
         "workspace_bytes": 1 << 30,
         "engine_file_bytes": resolved_output_path.stat().st_size,
     }

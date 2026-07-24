@@ -11,6 +11,9 @@ from backend.service.application.runtime.support.tensorrt_runtime import (
     build_tensorrt_process_environment,
     resolve_trtexec_path,
 )
+from backend.service.domain.models.tensorrt_engine_capabilities import (
+    build_single_input_tensorrt_engine_capabilities,
+)
 
 logger = get_logger()
 
@@ -21,11 +24,11 @@ def run_command(
     dry_run: bool = False,
 ) -> "subprocess.CompletedProcess[str]":
     """执行 `run_command`。
-    
+
     参数：
     - `command`：传入的 `command` 参数。
     - `dry_run`：传入的 `dry_run` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -59,7 +62,7 @@ def build_tensorrt_engine(
     profile: bool = False,
 ) -> dict[str, Any]:
     """执行 `build_tensorrt_engine`。
-    
+
     参数：
     - `onnx_path`：传入的 `onnx_path` 参数。
     - `engine_path`：传入的 `engine_path` 参数。
@@ -67,18 +70,21 @@ def build_tensorrt_engine(
     - `dry_run`：传入的 `dry_run` 参数。
     - `verbose`：传入的 `verbose` 参数。
     - `profile`：传入的 `profile` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
 
     normalized_precision = build_precision.strip().lower()
     if normalized_precision not in {"fp32", "fp16"}:
-        raise ValueError(f"TensorRT build_precision 必须是 fp32 或 fp16，当前为 {build_precision!r}")
+        raise ValueError(
+            f"TensorRT build_precision 必须是 fp32 或 fp16，当前为 {build_precision!r}"
+        )
 
     onnx_file = Path(onnx_path)
     engine_file = Path(engine_path)
     engine_file.parent.mkdir(parents=True, exist_ok=True)
+    input_name, input_shape = _read_static_onnx_input(onnx_file)
 
     trt_command = [
         str(resolve_trtexec_path()),
@@ -115,10 +121,50 @@ def build_tensorrt_engine(
     return {
         "build_precision": normalized_precision,
         "execution_mode": "rfdetr-core-trtexec",
+        "input_name": input_name,
+        "input_shape": list(input_shape),
+        **build_single_input_tensorrt_engine_capabilities(
+            input_shape_mode="static",
+            input_name=input_name,
+            min_shape=input_shape,
+            opt_shape=input_shape,
+            max_shape=input_shape,
+        ),
         "trtexec_stats": stats,
         "trtexec_stdout": output.stdout,
         "trtexec_stderr": output.stderr,
     }
+
+
+def _read_static_onnx_input(onnx_path: Path) -> tuple[str, tuple[int, ...]]:
+    """读取 RF-DETR ONNX 主输入，并确保当前 trtexec 路径只接收静态 shape。"""
+
+    import onnx
+
+    model = onnx.load(str(onnx_path), load_external_data=False)
+    initializer_names = {initializer.name for initializer in model.graph.initializer}
+    inputs = [
+        value_info
+        for value_info in model.graph.input
+        if value_info.name not in initializer_names
+    ]
+    if len(inputs) != 1:
+        raise RuntimeError(
+            f"RF-DETR TensorRT 构建要求一个模型输入，当前为 {len(inputs)} 个"
+        )
+    input_value = inputs[0]
+    dimensions: list[int] = []
+    for dimension in input_value.type.tensor_type.shape.dim:
+        if dimension.HasField("dim_value") and int(dimension.dim_value) > 0:
+            dimensions.append(int(dimension.dim_value))
+            continue
+        raise RuntimeError(
+            "RF-DETR TensorRT 构建检测到动态输入，但当前 trtexec 路径未定义 "
+            "optimization profile"
+        )
+    if not input_value.name or not dimensions:
+        raise RuntimeError("RF-DETR ONNX 主输入缺少名称或 shape")
+    return input_value.name, tuple(dimensions)
 
 
 def trtexec(onnx_dir: str, args: argparse.Namespace) -> None:
@@ -160,12 +206,12 @@ def trtexec(onnx_dir: str, args: argparse.Namespace) -> None:
 
 def parse_trtexec_output(output_text: str) -> dict[str, Any]:
     logger.info(output_text)
-    gpu_compute_pattern = (
-        r"GPU Compute Time: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms, median = (\d+\.\d+) ms"
-    )
+    gpu_compute_pattern = r"GPU Compute Time: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms, median = (\d+\.\d+) ms"
     h2d_pattern = r"Host to Device Transfer Time: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms"
     d2h_pattern = r"Device to Host Transfer Time: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms"
-    latency_pattern = r"Latency: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms"
+    latency_pattern = (
+        r"Latency: min = (\d+\.\d+) ms, max = (\d+\.\d+) ms, mean = (\d+\.\d+) ms"
+    )
     throughput_pattern = r"Throughput: (\d+\.\d+) qps"
 
     stats: dict[str, Any] = {}
@@ -211,5 +257,3 @@ def parse_trtexec_output(output_text: str) -> dict[str, Any]:
         stats["throughput_qps"] = float(match.group(1))
 
     return stats
-
-

@@ -780,7 +780,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - openvino-ir
   - tensorrt-engine
 - 当前 `openvino-ir` 构建链会先产出 optimized ONNX，再通过隔离子进程执行 OpenVINO `convert_model/save_model` 写出 xml/bin 产物
-- 当前 `tensorrt-engine` 构建链会先产出 `onnx` 与 `onnx-optimized`，再通过 TensorRT Python API 构建 engine，并在 `ModelBuild.metadata` 中回写 `build_precision` 与 `tensorrt_version`
+- 当前 `tensorrt-engine` 构建链会先产出 `onnx` 与 `onnx-optimized`，再通过 TensorRT Python API 构建 engine，并在 `ModelBuild.metadata` 中回写 `build_precision`、`tensorrt_version`、`input_shape_mode`、`optimization_profile_count` 和逐 profile 的输入 `min/opt/max shape`
 - 当前响应会返回：
   - task_id
   - status
@@ -1004,6 +1004,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 当前 create 会在提交阶段校验 checkpoint 和 labels 的本地可读性
 - 当前运行方式矩阵已经显式公开：`pytorch fp32/fp16 cpu/cuda`、`onnxruntime fp32 cpu`、`openvino fp32 auto/cpu/gpu/npu + fp16 gpu/npu`、`tensorrt fp32/fp16 cuda`
 - 当前 `tensorrt` deployment 只接受 `device_name=cuda|cuda:0`，create 响应会统一归一化为 `cuda:0`；`runtime_precision` 必须与 engine `build_precision` 一致
+- `runtime_configuration.backend_options.optimization_profile_index` 会按所选 `ModelBuild.metadata` 中的 profile 列表校验；静态 engine 只能使用 0，动态 engine 只能使用 build 已声明的索引，engine 加载后还会按 `engine.num_optimization_profiles` 再校验
 - 当前 `instance_count` 默认为 1；每个 instance 对应一个独立推理线程和模型会话
 - 当前响应会返回：
   - deployment_instance_id

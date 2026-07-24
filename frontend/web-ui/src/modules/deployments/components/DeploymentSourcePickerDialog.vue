@@ -206,6 +206,7 @@ function buildSelection(build: DeploymentSourceModelBuild): DeploymentSourceSele
     runtimeProfileId: build.runtime_profile_id ?? '',
     runtimeBackend: build.runtime_backend,
     runtimePrecision: build.runtime_precision,
+    buildMetadata: { ...build.metadata },
   }
 }
 
@@ -263,6 +264,7 @@ function versionSelection(version: DeploymentSourceModelVersionDetail): Deployme
     runtimeProfileId: '',
     runtimeBackend: 'pytorch',
     runtimePrecision: 'fp32',
+    buildMetadata: {},
   }
 }
 </script>

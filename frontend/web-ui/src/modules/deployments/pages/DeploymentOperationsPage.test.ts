@@ -274,6 +274,28 @@ const npuRuntimeCapabilities: DeploymentRuntimeCapabilities = {
   warnings: [],
 }
 
+const tensorrtRuntimeCapabilities: DeploymentRuntimeCapabilities = {
+  runtime_backend: 'tensorrt',
+  device_name: 'cuda:0',
+  available: true,
+  hardware: {},
+  supported_backend_fields: [
+    'optimization_profile_index',
+    'pinned_output_buffer_enabled',
+  ],
+  read_only_properties: {},
+  default_runtime_configuration: {
+    ...runtimeConfiguration(1),
+    backend_options: {
+      kind: 'tensorrt',
+      optimization_profile_index: 0,
+      pinned_output_buffer_enabled: null,
+      pinned_output_buffer_max_bytes: null,
+    },
+  },
+  warnings: [],
+}
+
 const latestEvent: TaskDeploymentProcessEvent = {
   ...event,
   sequence: 2,
@@ -322,6 +344,30 @@ const openvinoSourceModelDetail: DeploymentSourceModelDetail = {
   versions: [],
 }
 
+function tensorrtSourceModelDetail(
+  metadata: Record<string, unknown>,
+): DeploymentSourceModelDetail {
+  return {
+    ...detectionSourceModel,
+    build_count: 1,
+    builds: [
+      {
+        model_build_id: 'tensorrt-build-1',
+        source_model_version_id: 'model-version-1',
+        build_format: 'tensorrt-engine',
+        runtime_backend: 'tensorrt',
+        runtime_precision: 'fp16',
+        runtime_profile_id: null,
+        conversion_task_id: 'conversion-task-1',
+        file_ids: [],
+        metadata,
+        files: [],
+      },
+    ],
+    versions: [],
+  }
+}
+
 function sourceModelDetail(model: DeploymentSourceModelSummary): DeploymentSourceModelDetail {
   return { ...model, versions: [], builds: [] }
 }
@@ -363,6 +409,9 @@ describe('DeploymentOperationsPage', () => {
           installed: true,
           available_devices: ['CPU', 'GPU.0', 'NPU'],
         },
+        tensorrt: {
+          installed: true,
+        },
       },
     } as never
 
@@ -387,7 +436,8 @@ describe('DeploymentOperationsPage', () => {
       }),
     )
     vi.mocked(listTaskDeploymentEvents).mockResolvedValue([event])
-    vi.mocked(getDeploymentRuntimeCapabilities).mockImplementation(async (_backend, device) => {
+    vi.mocked(getDeploymentRuntimeCapabilities).mockImplementation(async (backend, device) => {
+      if (backend === 'tensorrt') return tensorrtRuntimeCapabilities
       if (device === 'cpu') return runtimeCapabilities
       if (device.startsWith('gpu')) return gpuRuntimeCapabilities
       if (device === 'npu') return npuRuntimeCapabilities
@@ -893,6 +943,144 @@ describe('DeploymentOperationsPage', () => {
       tiles: 2,
       compilation_mode_params: 'optimization-level=1',
     })
+  })
+
+  it('hides TensorRT profile controls for a static engine and submits profile zero', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(tensorrtSourceModelDetail({
+      input_shape_mode: 'static',
+      optimization_profile_count: 1,
+      optimization_profiles: [
+        {
+          index: 0,
+          inputs: [
+            {
+              input_name: 'images',
+              min_shape: [1, 3, 640, 640],
+              opt_shape: [1, 3, 640, 640],
+              max_shape: [1, 3, 640, 640],
+            },
+          ],
+        },
+      ],
+    }))
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('TensorRT optimization profile')
+    expect(wrapper.text()).not.toContain('TensorRT 输入范围')
+
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+    expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+      .runtimeConfiguration.backend_options).toMatchObject({
+        kind: 'tensorrt',
+        optimization_profile_index: 0,
+      })
+  })
+
+  it('shows one dynamic TensorRT profile range as read-only information', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(tensorrtSourceModelDetail({
+      input_shape_mode: 'dynamic',
+      optimization_profile_count: 1,
+      optimization_profiles: [
+        {
+          index: 0,
+          inputs: [
+            {
+              input_name: 'images',
+              min_shape: [1, 3, 320, 320],
+              opt_shape: [1, 3, 640, 640],
+              max_shape: [4, 3, 1280, 1280],
+            },
+          ],
+        },
+      ],
+    }))
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const rangeField = findFieldByText(wrapper, 'TensorRT 输入范围')
+    expect(rangeField.text()).toContain('images')
+    expect(rangeField.text()).toContain('1 × 3 × 320 × 320')
+    expect(rangeField.text()).toContain('4 × 3 × 1280 × 1280')
+    expect(rangeField.find('input').exists()).toBe(false)
+    expect(rangeField.find('.ui-select').exists()).toBe(false)
+  })
+
+  it('selects a declared TensorRT profile from a capability-driven Vue select', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(tensorrtSourceModelDetail({
+      input_shape_mode: 'dynamic',
+      optimization_profile_count: 2,
+      optimization_profiles: [
+        {
+          index: 0,
+          inputs: [
+            {
+              input_name: 'images',
+              min_shape: [1, 3, 320, 320],
+              opt_shape: [1, 3, 640, 640],
+              max_shape: [4, 3, 640, 640],
+            },
+          ],
+        },
+        {
+          index: 1,
+          inputs: [
+            {
+              input_name: 'images',
+              min_shape: [1, 3, 640, 640],
+              opt_shape: [2, 3, 960, 960],
+              max_shape: [8, 3, 1280, 1280],
+            },
+          ],
+        },
+      ],
+    }))
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const profileField = findFieldByText(wrapper, 'TensorRT optimization profile')
+    expect(profileField.find('input').exists()).toBe(false)
+    expect(profileField.find('.ui-select__button').text()).toContain('Profile 0')
+    await profileField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const profileOne = profileField.findAll('.ui-select__option')
+      .find((item) => item.text().includes('Profile 1'))
+    expect(profileOne, 'TensorRT profile 1 option exists').toBeTruthy()
+    expect(profileOne!.text()).toContain('8 × 3 × 1280 × 1280')
+    await profileOne!.trigger('click')
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+
+    expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+      .runtimeConfiguration.backend_options).toMatchObject({
+        kind: 'tensorrt',
+        optimization_profile_index: 1,
+      })
   })
 })
 

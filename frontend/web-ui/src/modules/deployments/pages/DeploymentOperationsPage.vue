@@ -202,10 +202,28 @@
             <span>{{ t('deploymentOps.runtimeConfig.npuCompilationModeParams') }}</span>
             <input v-model="openvinoNpuCompilationModeParams" />
           </label>
-          <label v-if="isTensorRtBackend" class="field">
+          <div
+            v-if="showTensorRtSingleProfileRange"
+            class="field"
+          >
+            <span>{{ t('deploymentOps.runtimeConfig.tensorrtProfileRange') }}</span>
+            <div class="deployment-profile-summary">
+              <span
+                v-for="line in tensorRtSingleProfileRangeLines"
+                :key="line"
+              >
+                {{ line }}
+              </span>
+            </div>
+          </div>
+          <div v-if="showTensorRtProfileSelector" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.tensorrtOptimizationProfile') }}</span>
-            <input v-model.number="tensorrtOptimizationProfileIndex" type="number" min="0" />
-          </label>
+            <SelectField
+              :model-value="tensorrtOptimizationProfileIndex"
+              :options="tensorRtOptimizationProfileOptions"
+              @update:model-value="setTensorrtOptimizationProfileIndex"
+            />
+          </div>
           <div v-if="isTensorRtBackend" class="field">
             <span>{{ t('deploymentOps.runtimeConfig.tensorrtPinnedOutput') }}</span>
             <SelectField
@@ -511,6 +529,11 @@ import DeploymentSourcePickerDialog from '../components/DeploymentSourcePickerDi
 import type { DeploymentSourceSelection } from '../components/deployment-source.types'
 import { buildDeploymentDeviceOptions, hasCudaDevice } from '../deployment-device-support'
 import {
+  formatTensorRtShape,
+  parseTensorRtEngineCapabilities,
+  type TensorRtOptimizationProfile,
+} from '../tensorrt-engine-capabilities'
+import {
   getDeploymentSourceModelDetail,
   listDeploymentSourceModels,
   type DeploymentSourceModelDetail,
@@ -640,6 +663,32 @@ const deploymentDeviceOptions = computed(() => buildDeploymentDeviceOptions(
 const selectedRuntimeBackend = computed(() => selectedDeploymentSource.value?.runtimeBackend.trim().toLowerCase() ?? '')
 const isOpenVinoBackend = computed(() => selectedRuntimeBackend.value === 'openvino')
 const isTensorRtBackend = computed(() => selectedRuntimeBackend.value === 'tensorrt')
+const tensorRtEngineCapabilities = computed(() => parseTensorRtEngineCapabilities(
+  selectedDeploymentSource.value?.buildMetadata ?? {},
+))
+const showTensorRtSingleProfileRange = computed(() => (
+  isTensorRtBackend.value
+  && tensorRtEngineCapabilities.value?.inputShapeMode === 'dynamic'
+  && tensorRtEngineCapabilities.value.optimizationProfiles.length === 1
+))
+const showTensorRtProfileSelector = computed(() => (
+  isTensorRtBackend.value
+  && tensorRtEngineCapabilities.value?.inputShapeMode === 'dynamic'
+  && tensorRtEngineCapabilities.value.optimizationProfiles.length > 1
+))
+const tensorRtSingleProfileRangeLines = computed(() => {
+  const profile = tensorRtEngineCapabilities.value?.optimizationProfiles[0]
+  return profile ? formatTensorRtProfileRangeLines(profile) : []
+})
+const tensorRtOptimizationProfileOptions = computed(() => (
+  tensorRtEngineCapabilities.value?.optimizationProfiles.map((profile) => ({
+    label: t('deploymentOps.runtimeConfig.tensorrtProfileIndex', {
+      index: profile.index,
+    }),
+    value: profile.index,
+    description: formatTensorRtProfileRangeLines(profile).join(' · '),
+  })) ?? []
+))
 const openvinoDeviceKind = computed<'cpu' | 'gpu' | 'npu' | 'auto'>(() => {
   const device = deviceName.value.trim().toLowerCase()
   if (device.startsWith('cpu')) return 'cpu'
@@ -843,6 +892,14 @@ function setTensorrtPinnedOutput(value: SelectValue): void {
   })
 }
 
+function setTensorrtOptimizationProfileIndex(value: SelectValue): void {
+  const parsed = Number(value)
+  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map(
+    (profile) => profile.index,
+  ) ?? []
+  tensorrtOptimizationProfileIndex.value = validIndices.includes(parsed) ? parsed : 0
+}
+
 function setKeepWarmEnabled(value: SelectValue): void {
   keepWarmEnabled.value = selectValueToString(value) === 'true' ? 'true' : 'false'
 }
@@ -909,7 +966,7 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
     openvinoPerformanceHint.value = options.performance_hint
     applyOpenvinoNumRequestsDefault(options.num_requests)
   } else if (options.kind === 'tensorrt') {
-    tensorrtOptimizationProfileIndex.value = options.optimization_profile_index
+    setTensorrtOptimizationProfileIndex(options.optimization_profile_index)
     tensorrtPinnedOutput.value = options.pinned_output_buffer_enabled === null
       ? 'auto'
       : options.pinned_output_buffer_enabled
@@ -976,7 +1033,7 @@ function buildBackendOptions(): DeploymentBackendOptions {
   if (isTensorRtBackend.value) {
     return {
       kind: 'tensorrt',
-      optimization_profile_index: Math.max(0, Math.trunc(tensorrtOptimizationProfileIndex.value)),
+      optimization_profile_index: resolveTensorRtOptimizationProfileIndex(),
       pinned_output_buffer_enabled: tensorrtPinnedOutput.value === 'auto'
         ? null
         : tensorrtPinnedOutput.value === 'true',
@@ -1131,6 +1188,7 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
 
 function applyDeploymentSource(selection: DeploymentSourceSelection): void {
   selectedDeploymentSource.value = selection
+  tensorrtOptimizationProfileIndex.value = 0
   selectedSourceModelId.value = selection.modelId
   modelType.value = selection.modelType
   modelVersionId.value = selection.modelVersionId
@@ -1150,6 +1208,28 @@ function applyDeploymentSource(selection: DeploymentSourceSelection): void {
     displayName.value = `${selection.modelName} ${sourceLabel}`
   }
   deploymentSourcePickerOpen.value = false
+}
+
+function resolveTensorRtOptimizationProfileIndex(): number {
+  if (!showTensorRtProfileSelector.value) return 0
+  const validIndices = tensorRtEngineCapabilities.value?.optimizationProfiles.map(
+    (profile) => profile.index,
+  ) ?? []
+  return validIndices.includes(tensorrtOptimizationProfileIndex.value)
+    ? tensorrtOptimizationProfileIndex.value
+    : 0
+}
+
+function formatTensorRtProfileRangeLines(profile: TensorRtOptimizationProfile): string[] {
+  return profile.inputs.map((input) => t(
+    'deploymentOps.runtimeConfig.tensorrtProfileInputRange',
+    {
+      input: input.inputName,
+      min: formatTensorRtShape(input.minShape),
+      opt: formatTensorRtShape(input.optShape),
+      max: formatTensorRtShape(input.maxShape),
+    },
+  ))
 }
 
 function deploymentSourceUnavailableReason(selection: DeploymentSourceSelection): string {
@@ -1757,6 +1837,22 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 
 .field-control-row > :only-child {
   grid-column: 1 / -1;
+}
+
+.deployment-profile-summary {
+  display: grid;
+  gap: 4px;
+  min-height: 34px;
+  align-content: center;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.deployment-profile-summary span {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .deployment-instances-panel,

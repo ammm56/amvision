@@ -42,6 +42,10 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
     TensorRtRuntimeOptions,
     validate_deployment_runtime_configuration,
 )
+from backend.service.domain.models.tensorrt_engine_capabilities import (
+    parse_tensorrt_engine_capabilities,
+    validate_tensorrt_optimization_profile_index,
+)
 from backend.service.application.runtime.deployment.runtime_capabilities import (
     build_host_default_runtime_configuration,
 )
@@ -177,6 +181,7 @@ class SqlAlchemyDeploymentInstanceService:
             runtime_configuration,
             runtime_backend=runtime_target.runtime_backend,
             device_name=runtime_target.device_name,
+            model_build_metadata=runtime_target.model_build_metadata,
         )
         now = _now_isoformat()
         deployment_instance = DeploymentInstance(
@@ -502,6 +507,7 @@ def _validate_runtime_configuration(
     *,
     runtime_backend: str,
     device_name: str,
+    model_build_metadata: object = None,
 ) -> None:
     """校验平台执行策略与 backend 专属配置的边界。"""
 
@@ -536,6 +542,25 @@ def _validate_runtime_configuration(
                 "backend_options_kind": options.kind,
             },
         )
+    if normalized_backend == "tensorrt":
+        if not isinstance(options, TensorRtRuntimeOptions):
+            raise InvalidRequestError(
+                "TensorRT deployment 缺少 TensorRT backend_options"
+            )
+        try:
+            capabilities = parse_tensorrt_engine_capabilities(model_build_metadata)
+            validate_tensorrt_optimization_profile_index(
+                capabilities=capabilities,
+                profile_index=options.optimization_profile_index,
+            )
+        except ValueError as error:
+            raise InvalidRequestError(
+                str(error),
+                details={
+                    "optimization_profile_index": options.optimization_profile_index,
+                    "model_build_metadata": model_build_metadata,
+                },
+            ) from error
 
 
 def _now_isoformat() -> str:

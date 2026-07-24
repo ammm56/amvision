@@ -15,4 +15,5 @@ export interface DeploymentSourceSelection {
   runtimeProfileId: string
   runtimeBackend: string
   runtimePrecision: string
+  buildMetadata: Record<string, unknown>
 }
