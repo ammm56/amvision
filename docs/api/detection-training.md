@@ -867,7 +867,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 - `runtime_configuration.lifecycle.warmup_dummy_inference_count`：覆盖默认 warmup 的 dummy infer 次数
 - `runtime_configuration.lifecycle.warmup_dummy_image_size`：覆盖 dummy infer 使用的最小输入图片尺寸，格式为 `[width, height]`
-- `runtime_configuration.lifecycle.keep_warm_enabled`：启用 deployment 子进程内的 keep-warm 后台线程
+- `runtime_configuration.lifecycle.keep_warm_enabled`：DeploymentInstance 独立的 keep-warm 开关，默认 `false`；显式设为 `true` 并执行 warmup 后才启动后台保活线程
 - `runtime_configuration.lifecycle.keep_warm_interval_seconds`：覆盖 keep-warm 连续 dummy infer 的最小间隔秒数
 - TensorRT pinned output 配置位于 `runtime_configuration.backend_options`
 

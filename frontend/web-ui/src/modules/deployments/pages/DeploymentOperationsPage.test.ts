@@ -672,6 +672,7 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.text()).not.toContain('平台性能目标')
     expect(wrapper.text()).toContain('OpenVINO 性能策略')
     expect(wrapper.text()).toContain('OpenVINO 推理线程数')
+    expect(wrapper.text()).toContain('保持设备活跃')
     expect(wrapper.findAll('select')).toHaveLength(0)
     expect(wrapper.find('.deployment-create-grid').findAll('small')).toHaveLength(0)
 
@@ -693,17 +694,54 @@ describe('DeploymentOperationsPage', () => {
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO Performance Hint')
     expect(wrapper.text()).toContain('OpenVINO Inference Threads')
+    expect(wrapper.text()).toContain('Keep Device Active')
     expect(wrapper.text()).not.toContain('OpenVINO 性能策略')
 
     setI18nLocale('ja-JP')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO パフォーマンス戦略')
     expect(wrapper.text()).toContain('デプロイ元モデル')
+    expect(wrapper.text()).toContain('デバイスをアクティブに維持')
 
     setI18nLocale('ko-KR')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO 성능 전략')
     expect(wrapper.text()).toContain('배포 소스 모델')
+    expect(wrapper.text()).toContain('장치 활성 상태 유지')
+  })
+
+  it('disables device keep-warm by default and submits an explicit per-deployment override', async () => {
+    vi.mocked(listDeploymentSourceModels).mockResolvedValue([detectionSourceModel])
+    vi.mocked(getDeploymentSourceModelDetail).mockResolvedValue(openvinoSourceModelDetail)
+
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: { plugins: [pinia, i18n] },
+    })
+    await flushPromises()
+    await clickButtonByText(wrapper, '选择部署来源')
+    await flushPromises()
+    await clickButtonByText(wrapper, '使用构建')
+    await flushPromises()
+
+    const keepWarmField = findFieldByText(wrapper, '保持设备活跃')
+    expect(keepWarmField.find('.ui-select__button').text()).toContain('禁用')
+
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+    expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+      .runtimeConfiguration.lifecycle.keep_warm_enabled).toBe(false)
+
+    await keepWarmField.find('.ui-select__button').trigger('click')
+    await nextTick()
+    const enabledOption = keepWarmField.findAll('.ui-select__option')
+      .find((item) => item.text().includes('启用'))
+    expect(enabledOption, 'keep-warm enabled option exists').toBeTruthy()
+    await enabledOption!.trigger('click')
+    await wrapper.find('.deployment-create-panel').trigger('submit')
+    await flushPromises()
+
+    expect(vi.mocked(createTaskDeployment).mock.calls.at(-1)?.[0]
+      .runtimeConfiguration.lifecycle.keep_warm_enabled).toBe(true)
   })
 
   it('distinguishes FP32 model artifact precision from the OpenVINO GPU execution precision hint', async () => {

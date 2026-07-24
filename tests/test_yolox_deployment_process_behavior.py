@@ -44,6 +44,14 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 
 
+def test_deployment_keep_warm_is_disabled_by_default() -> None:
+    """验证未显式配置时不会启动设备保活。"""
+
+    settings = BackendServiceDeploymentProcessSupervisorConfig()
+
+    assert settings.keep_warm_enabled is False
+
+
 class _FakeRuntimePool:
     """提供最小计数能力的 fake runtime pool。"""
 

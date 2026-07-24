@@ -214,6 +214,14 @@
               @update:model-value="setTensorrtPinnedOutput"
             />
           </div>
+          <div class="field">
+            <span>{{ t('deploymentOps.runtimeConfig.keepWarm') }}</span>
+            <SelectField
+              :model-value="keepWarmEnabled"
+              :options="enabledDisabledOptions"
+              @update:model-value="setKeepWarmEnabled"
+            />
+          </div>
           <label class="field field--wide">
             <span>{{ t('deploymentOps.fields.displayName') }}</span>
             <input v-model="displayName" />
@@ -585,6 +593,7 @@ const openvinoNpuTiles = ref(1)
 const openvinoNpuCompilationModeParams = ref('')
 const tensorrtOptimizationProfileIndex = ref(0)
 const tensorrtPinnedOutput = ref<'auto' | 'true' | 'false'>('auto')
+const keepWarmEnabled = ref<'true' | 'false'>('false')
 const runtimeCapabilities = ref<DeploymentRuntimeCapabilities | null>(null)
 const runtimeCapabilitiesLoading = ref(false)
 const displayName = ref('')
@@ -663,6 +672,10 @@ const serviceDefaultBooleanOptions = computed(() => [
   { label: t('deploymentOps.options.serviceDefault'), value: 'auto' },
   { label: t('deploymentOps.options.enabled'), value: 'true' },
   { label: t('deploymentOps.options.disabled'), value: 'false' },
+])
+const enabledDisabledOptions = computed(() => [
+  { label: t('deploymentOps.options.disabled'), value: 'false' },
+  { label: t('deploymentOps.options.enabled'), value: 'true' },
 ])
 const openvinoInferencePrecisionOptions = computed(() => [
   { label: t('deploymentOps.options.automaticRecommended'), value: 'auto' },
@@ -821,6 +834,10 @@ function setTensorrtPinnedOutput(value: SelectValue): void {
   setAutoBoolean(value, (normalized) => {
     tensorrtPinnedOutput.value = normalized
   })
+}
+
+function setKeepWarmEnabled(value: SelectValue): void {
+  keepWarmEnabled.value = selectValueToString(value) === 'true' ? 'true' : 'false'
 }
 
 function supportedRuntimeField(fieldName: string): boolean {
@@ -1017,7 +1034,7 @@ function buildRuntimeConfiguration(): DeploymentRuntimeConfiguration {
     lifecycle: {
       warmup_dummy_inference_count: null,
       warmup_dummy_image_size: null,
-      keep_warm_enabled: null,
+      keep_warm_enabled: keepWarmEnabled.value === 'true',
       keep_warm_interval_seconds: null,
     },
     backend_options: buildBackendOptions(),

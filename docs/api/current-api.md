@@ -1083,7 +1083,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有同步推理实例
 - 当前 warmup 会先加载全部实例会话，再按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer
-- `keep_warm_enabled=true` 时，有限预热完成后会激活 keep-warm 后台线程；普通 start 和真实推理不会隐式开启设备保活
+- `runtime_configuration.lifecycle.keep_warm_enabled` 是 DeploymentInstance 级开关，默认 `false`；显式设为 `true` 时，有限预热完成后会激活 keep-warm 后台线程，普通 start 和真实推理不会隐式开启设备保活
 - 当前响应会返回：
   - deployment_instance_id
   - display_name
@@ -1188,7 +1188,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 需要 models:read 和 models:write
 - 显式启动并预热指定 deployment 的所有异步推理实例
 - 当前 warmup 会先加载全部实例会话，再按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer
-- `keep_warm_enabled=true` 时，有限预热完成后会激活 keep-warm 后台线程；普通 start 和真实推理不会隐式开启设备保活
+- `runtime_configuration.lifecycle.keep_warm_enabled` 是 DeploymentInstance 级开关，默认 `false`；显式设为 `true` 时，有限预热完成后会激活 keep-warm 后台线程，普通 start 和真实推理不会隐式开启设备保活
 - 当前响应会返回与 sync/warmup 相同的 keep_warm 状态字段，以及 `pinned_output_total_bytes`，可直接判断 keep-warm 是否启用、是否激活，以及当前已加载 session 持有的 pinned output 总量
 
 ### GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/health

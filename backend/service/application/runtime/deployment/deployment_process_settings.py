@@ -34,7 +34,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     operator_thread_count: int = 1
     warmup_dummy_inference_count: int = Field(default=6, ge=0)
     warmup_dummy_image_size: tuple[int, int] = (64, 64)
-    keep_warm_enabled: bool = True
+    keep_warm_enabled: bool = False
     keep_warm_interval_seconds: float = Field(default=0.1, gt=0.0)
     keep_warm_yield_timeout_seconds: float = Field(default=1.0, gt=0.0)
     tensorrt_pinned_output_buffer_enabled: bool = True
