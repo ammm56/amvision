@@ -3,7 +3,6 @@
     <section class="resource-section diagnostic-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.accountsKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.accounts') }}</h2>
         </div>
         <Button variant="secondary" :disabled="usersLoading" @click="loadUsers">
@@ -116,7 +115,6 @@
     <section v-if="selectedUser" class="resource-section diagnostic-section settings-account-detail">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.accountsKicker') }}</p>
           <h2>{{ selectedUser.display_name || selectedUser.username }}</h2>
         </div>
         <StatusPill :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />

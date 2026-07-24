@@ -143,6 +143,18 @@ describe('InferenceDebugPage', () => {
     }))
   })
 
+  it('omits redundant section kicker labels', async () => {
+    const wrapper = mount(InferenceDebugPage, {
+      global: {
+        plugins: [pinia, i18n],
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.page-kicker').exists()).toBe(false)
+  })
+
   it('keeps the previous result mounted until the next inference completes', async () => {
     const firstResult = inferencePayload('request-1', 31.435)
     let resolveSecondResult!: (value: TaskInferencePayload) => void

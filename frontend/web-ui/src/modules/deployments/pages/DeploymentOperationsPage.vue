@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('deploymentOps.kicker') }}</p>
         <h1>{{ t('deploymentOps.title') }}</h1>
         <p class="page-description">{{ t('deploymentOps.description') }}</p>
       </div>
@@ -23,13 +22,11 @@
     <div class="operation-grid deployment-workspace-grid">
       <form class="form-panel deployment-create-panel" @submit.prevent="submitDeployment">
         <div>
-          <p class="page-kicker">{{ t('deploymentOps.createKicker') }}</p>
           <h2>{{ t('deploymentOps.createTitle') }}</h2>
         </div>
         <section class="deployment-source-summary">
           <div class="section-heading">
             <div>
-              <p class="page-kicker">{{ t('deploymentOps.source.kicker') }}</p>
               <h3>{{ t('deploymentOps.source.title') }}</h3>
             </div>
             <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
@@ -269,7 +266,6 @@
       <section class="resource-section deployment-instances-panel">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">{{ t('deploymentOps.listKicker') }}</p>
             <h2>{{ t('deploymentOps.listTitle') }}</h2>
           </div>
           <StatusBadge tone="info">{{ deployments.length }}</StatusBadge>
@@ -413,7 +409,6 @@
       <section class="resource-section deployment-runtime-panel">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">{{ t('deploymentOps.runtimeKicker') }}</p>
             <h2>{{ t('deploymentOps.runtimeTitle') }}</h2>
             <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>
@@ -481,7 +476,6 @@
       <section class="resource-section deployment-events-panel">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">{{ t('deploymentOps.eventsKicker') }}</p>
             <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
             <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>

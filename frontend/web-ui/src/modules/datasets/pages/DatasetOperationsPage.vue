@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('datasetOps.kicker') }}</p>
         <h1>{{ t('datasetOps.title') }}</h1>
         <p class="page-description">{{ t('datasetOps.description') }}</p>
       </div>

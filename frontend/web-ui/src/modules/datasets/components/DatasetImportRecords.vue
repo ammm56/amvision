@@ -2,7 +2,6 @@
   <section class="resource-section">
     <div class="section-heading">
       <div>
-        <p class="page-kicker">{{ t('datasetOps.importHistoryKicker') }}</p>
         <h2>{{ t('datasetOps.importHistoryTitle') }}</h2>
       </div>
     </div>

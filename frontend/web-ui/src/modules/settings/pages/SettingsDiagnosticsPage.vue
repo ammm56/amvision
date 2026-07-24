@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('settingsDiagnostics.kicker') }}</p>
         <h1>{{ t('settingsDiagnostics.title') }}</h1>
         <p class="page-description">{{ t('settingsDiagnostics.description') }}</p>
       </div>
@@ -54,7 +53,6 @@
     <section v-if="activeCategory === 'preferences'" class="settings-category-panel">
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.preferencesKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.preferences') }}</h2>
         </div>
         <div class="settings-control-grid">
@@ -88,7 +86,6 @@
     <section v-else-if="activeCategory === 'services'" class="settings-category-panel">
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.servicesKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.services') }}</h2>
         </div>
         <div class="summary-grid">
@@ -107,7 +104,6 @@
 
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.capabilitiesKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.capabilities') }}</h2>
         </div>
         <dl class="settings-info-list">
@@ -125,7 +121,6 @@
     <section v-else-if="activeCategory === 'security'" class="settings-category-panel">
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.securityKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.security') }}</h2>
         </div>
         <dl class="settings-info-list">
@@ -148,7 +143,6 @@
 
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.projectsKicker') }}</p>
           <h2 class="heading-with-hint">
             {{ t('settingsDiagnostics.sections.projects') }}
             <InfoHint :text="t('settingsDiagnostics.sections.projectsHint')" />
@@ -193,7 +187,6 @@
 
       <section class="resource-section diagnostic-section">
         <div>
-          <p class="page-kicker">{{ t('settingsDiagnostics.sections.providersKicker') }}</p>
           <h2>{{ t('settingsDiagnostics.sections.providers') }}</h2>
         </div>
         <div class="resource-table diagnostic-section__table">
@@ -243,7 +236,6 @@
         <section id="settings-about" class="resource-section diagnostic-section">
           <div class="section-heading">
             <div>
-              <p class="page-kicker">{{ t('settingsDiagnostics.sections.aboutKicker') }}</p>
               <h2>{{ t('settingsDiagnostics.sections.about') }}</h2>
             </div>
             <StatusBadge tone="info">{{ stringValue(about.app_version) }}</StatusBadge>
@@ -269,7 +261,6 @@
 
         <section id="settings-runtime" class="resource-section diagnostic-section">
           <div>
-            <p class="page-kicker">{{ t('settingsDiagnostics.sections.runtimeKicker') }}</p>
             <h2>{{ t('settingsDiagnostics.sections.runtime') }}</h2>
           </div>
           <div class="summary-grid">
@@ -302,7 +293,6 @@
 
         <section id="settings-system" class="resource-section diagnostic-section">
           <div>
-            <p class="page-kicker">{{ t('settingsDiagnostics.sections.systemKicker') }}</p>
             <h2>{{ t('settingsDiagnostics.sections.system') }}</h2>
           </div>
           <dl class="settings-info-list">
@@ -339,7 +329,6 @@
 
         <section id="settings-python" class="resource-section diagnostic-section">
           <div>
-            <p class="page-kicker">{{ t('settingsDiagnostics.sections.pythonKicker') }}</p>
             <h2>{{ t('settingsDiagnostics.sections.python') }}</h2>
           </div>
           <dl class="settings-info-list">
@@ -374,7 +363,6 @@
 
         <section id="settings-devices" class="resource-section diagnostic-section">
           <div>
-            <p class="page-kicker">{{ t('settingsDiagnostics.sections.devicesKicker') }}</p>
             <h2>{{ t('settingsDiagnostics.sections.devices') }}</h2>
           </div>
           <div class="summary-grid">
@@ -408,7 +396,6 @@
 
         <section id="settings-services" class="resource-section diagnostic-section">
           <div>
-            <p class="page-kicker">{{ t('settingsDiagnostics.sections.servicesKicker') }}</p>
             <h2>{{ t('settingsDiagnostics.sections.services') }}</h2>
           </div>
           <div class="summary-grid">

@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('modelOps.kicker') }}</p>
         <h1>{{ t('modelOps.title') }}</h1>
         <p class="page-description">{{ t('modelOps.description') }}</p>
       </div>

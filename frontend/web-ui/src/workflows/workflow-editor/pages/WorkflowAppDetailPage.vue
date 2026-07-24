@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Workflow App</p>
         <h1>{{ application?.display_name || applicationId }}</h1>
         <p class="page-description">{{ application?.description || '查看应用合同、HTTP 调用、runtime 和触发入口。' }}</p>
       </div>
@@ -31,7 +30,6 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">Summary</p>
             <h2>应用摘要</h2>
           </div>
           <StatusBadge :tone="selectedRuntime?.observed_state === 'running' ? 'success' : 'neutral'">
@@ -61,7 +59,6 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">Contract</p>
             <h2>App Contract</h2>
           </div>
           <StatusBadge tone="neutral">{{ bindings.length }} bindings</StatusBadge>
@@ -98,7 +95,6 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">Runtime</p>
             <h2>运行时</h2>
           </div>
           <div class="table-actions table-actions--wrap">
@@ -243,7 +239,6 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">HTTP</p>
             <h2>HTTP 调用</h2>
           </div>
           <StatusBadge :tone="selectedRuntime ? 'info' : 'neutral'">{{ selectedRuntime?.workflow_runtime_id ?? 'select-runtime' }}</StatusBadge>
@@ -281,7 +276,6 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">Run Receipt</p>
             <h2>最近调用回执</h2>
           </div>
           <div class="table-actions table-actions--wrap">
@@ -327,7 +321,6 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">Integrations</p>
             <h2>触发入口</h2>
           </div>
           <Button

@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('projects.kicker') }}</p>
         <h1>{{ t('projects.title') }}</h1>
       </div>
       <div class="page-actions">
@@ -35,7 +34,6 @@
     <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
     <section v-if="sdkConfigPackagePreview" class="resource-section sdk-config-preview-panel">
       <div>
-        <p class="page-kicker">{{ t('projects.sdkConfigPackage.kicker') }}</p>
         <h2>{{ t('projects.sdkConfigPackage.title') }}</h2>
       </div>
       <div class="summary-grid">
@@ -63,7 +61,6 @@
 
     <section v-if="showCreateProject" class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('projects.createKicker') }}</p>
         <h2>{{ t('projects.createTitle') }}</h2>
       </div>
       <div class="form-grid">

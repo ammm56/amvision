@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">Integrations</p>
         <div class="heading-with-hint">
           <h1>TriggerSource</h1>
           <InfoHint text="从 WorkflowAppRuntime 创建外部协议入口，把协议事件映射到 Workflow App input bindings。" />
@@ -26,7 +25,6 @@
     <form class="form-panel" @submit.prevent="submitTriggerSource">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">Create</p>
           <h2>添加触发入口</h2>
         </div>
         <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime">
@@ -104,10 +102,9 @@
           </label>
         </div>
 
-        <div>
+        <div class="trigger-source-inference">
           <div class="section-heading">
             <div>
-              <p class="page-kicker">Inference</p>
               <div class="heading-with-hint">
                 <h2>自动推断</h2>
                 <InfoHint text="自动推断会优先使用 metadata 标记。常见双入口图会同时启用 request_image_base64 和 request_image_ref；ZeroMQ 图片 bytes 默认写入 LocalBuffer，再通过 payload.request_image_ref 映射到 request_image_ref。" />
@@ -135,94 +132,93 @@
           </div>
         </div>
 
-        <details>
-          <summary class="section-heading">
-            <span>
-              <span class="page-kicker">Advanced</span>
-              <strong>高级设置与手动 mapping</strong>
-            </span>
+        <details class="trigger-source-advanced">
+          <summary class="section-heading trigger-source-advanced__summary">
+            <strong>高级设置与手动 mapping</strong>
             <Settings2 :size="16" />
           </summary>
 
-          <div class="form-grid">
-            <label class="field">
-              <span class="field-label">
-                submit_mode
-                <InfoHint text="sync 会等待 WorkflowRun 完成并把结果写入协议回包；async 只创建 run，结果需要之后按 workflow_run_id 查询。" />
-              </span>
-              <SelectField :model-value="submitMode" :options="submitModeOptions" @update:model-value="setSubmitMode" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                result_mode
-                <InfoHint text="sync-reply 直接返回 result_binding 的输出；accepted-then-query 返回 run id 让调用方查询；event-only 不返回 workflow 输出。" />
-              </span>
-              <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                ack_policy
-                <InfoHint text="声明协议层确认时机；当前实际等待主要由 submit_mode 决定。同步回包通常使用 ack-after-run-finished。" />
-              </span>
-              <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" @update:model-value="setAckPolicy" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                reply_timeout_seconds
-                <InfoHint text="同步等待 workflow 结果的最长秒数；需要大于 WinForms/SDK 的 ZeroMQ 等待超时。" />
-              </span>
-              <input v-model="replyTimeoutSeconds" inputmode="numeric" placeholder="空表示默认" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                debounce_window_ms
-                <InfoHint text="保存同一触发源短时间重复事件的去抖窗口配置，后续可由 adapter 或调度层执行；空表示不启用。" />
-              </span>
-              <input v-model="debounceWindowMs" inputmode="numeric" placeholder="空表示不启用" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                idempotency_key_path
-                <InfoHint text="从事件中读取幂等键，例如 payload.request_id；同一键可用于避免重复提交。" />
-              </span>
-              <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                WorkflowRun 记录
-                <InfoHint text="full 保留完整运行记录；minimal 只写最小状态记录；none 不写 WorkflowRun 数据库记录，仅适合同步高速触发。" />
-              </span>
-              <SelectField :model-value="workflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setWorkflowRunRecordMode" />
-            </label>
-            <label class="field">
-              <span class="field-label">
-                返回诊断数据
-                <InfoHint text="关闭时不在调用结果中返回 timings 和 node_timings；生产高帧率触发建议关闭，排查问题时再开启。" />
-              </span>
-              <SelectField :model-value="returnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setReturnDiagnostics" />
-            </label>
-          </div>
-
-          <div class="trigger-mapping-list">
-            <article v-for="row in mappingRows" :key="row.bindingId" class="trigger-mapping-row">
-              <div class="trigger-mapping-row__target">
-                <strong>{{ row.bindingId }}</strong>
-                <span>{{ row.payloadTypeId || 'unknown' }} / {{ row.required ? '必填' : '可选' }} / {{ row.inferred ? '已推断' : '手动' }}</span>
-              </div>
+          <div class="trigger-source-advanced__content">
+            <div class="form-grid">
               <label class="field">
-                <span>映射方式</span>
-                <SelectField :model-value="row.mode" :options="mappingModeOptions" @update:model-value="setMappingMode(row, $event)" />
+                <span class="field-label">
+                  submit_mode
+                  <InfoHint text="sync 会等待 WorkflowRun 完成并把结果写入协议回包；async 只创建 run，结果需要之后按 workflow_run_id 查询。" />
+                </span>
+                <SelectField :model-value="submitMode" :options="submitModeOptions" @update:model-value="setSubmitMode" />
               </label>
-              <label v-if="row.mode === 'source'" class="field trigger-mapping-row__source">
-                <span>source path</span>
-                <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
+              <label class="field">
+                <span class="field-label">
+                  result_mode
+                  <InfoHint text="sync-reply 直接返回 result_binding 的输出；accepted-then-query 返回 run id 让调用方查询；event-only 不返回 workflow 输出。" />
+                </span>
+                <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
               </label>
-              <label v-else-if="row.mode === 'static'" class="field trigger-mapping-row__source">
-                <span>固定值</span>
-                <input v-model="row.staticValue" placeholder="按字符串、数字或布尔值提交" />
+              <label class="field">
+                <span class="field-label">
+                  ack_policy
+                  <InfoHint text="声明协议层确认时机；当前实际等待主要由 submit_mode 决定。同步回包通常使用 ack-after-run-finished。" />
+                </span>
+                <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" @update:model-value="setAckPolicy" />
               </label>
-              <p v-else class="trigger-mapping-row__hint">该 binding 不参与当前 TriggerSource。</p>
-            </article>
+              <label class="field">
+                <span class="field-label">
+                  reply_timeout_seconds
+                  <InfoHint text="同步等待 workflow 结果的最长秒数；需要大于 WinForms/SDK 的 ZeroMQ 等待超时。" />
+                </span>
+                <input v-model="replyTimeoutSeconds" inputmode="numeric" placeholder="空表示默认" />
+              </label>
+              <label class="field">
+                <span class="field-label">
+                  debounce_window_ms
+                  <InfoHint text="保存同一触发源短时间重复事件的去抖窗口配置，后续可由 adapter 或调度层执行；空表示不启用。" />
+                </span>
+                <input v-model="debounceWindowMs" inputmode="numeric" placeholder="空表示不启用" />
+              </label>
+              <label class="field">
+                <span class="field-label">
+                  idempotency_key_path
+                  <InfoHint text="从事件中读取幂等键，例如 payload.request_id；同一键可用于避免重复提交。" />
+                </span>
+                <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
+              </label>
+              <label class="field">
+                <span class="field-label">
+                  WorkflowRun 记录
+                  <InfoHint text="full 保留完整运行记录；minimal 只写最小状态记录；none 不写 WorkflowRun 数据库记录，仅适合同步高速触发。" />
+                </span>
+                <SelectField :model-value="workflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setWorkflowRunRecordMode" />
+              </label>
+              <label class="field">
+                <span class="field-label">
+                  返回诊断数据
+                  <InfoHint text="关闭时不在调用结果中返回 timings 和 node_timings；生产高帧率触发建议关闭，排查问题时再开启。" />
+                </span>
+                <SelectField :model-value="returnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setReturnDiagnostics" />
+              </label>
+            </div>
+
+            <div class="trigger-mapping-list">
+              <article v-for="row in mappingRows" :key="row.bindingId" class="trigger-mapping-row">
+                <div class="trigger-mapping-row__target">
+                  <strong>{{ row.bindingId }}</strong>
+                  <span>{{ row.payloadTypeId || 'unknown' }} / {{ row.required ? '必填' : '可选' }} / {{ row.inferred ? '已推断' : '手动' }}</span>
+                </div>
+                <label class="field">
+                  <span>映射方式</span>
+                  <SelectField :model-value="row.mode" :options="mappingModeOptions" @update:model-value="setMappingMode(row, $event)" />
+                </label>
+                <label v-if="row.mode === 'source'" class="field trigger-mapping-row__source">
+                  <span>source path</span>
+                  <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
+                </label>
+                <label v-else-if="row.mode === 'static'" class="field trigger-mapping-row__source">
+                  <span>固定值</span>
+                  <input v-model="row.staticValue" placeholder="按字符串、数字或布尔值提交" />
+                </label>
+                <p v-else class="trigger-mapping-row__hint">该 binding 不参与当前 TriggerSource。</p>
+              </article>
+            </div>
           </div>
         </details>
       </template>
@@ -231,7 +227,6 @@
     <section class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">Existing</p>
           <h2>已有 TriggerSource</h2>
         </div>
         <StatusBadge tone="neutral">{{ totalTriggerSourceCount }}</StatusBadge>
@@ -1162,6 +1157,39 @@ watch(
 </script>
 
 <style scoped>
+.trigger-source-inference {
+  display: grid;
+  gap: 12px;
+}
+
+.trigger-source-advanced {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--summary-bg);
+}
+
+.trigger-source-advanced__summary {
+  min-height: 42px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.trigger-source-advanced__summary::-webkit-details-marker {
+  display: none;
+}
+
+.trigger-source-advanced[open] .trigger-source-advanced__summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.trigger-source-advanced__content {
+  display: grid;
+  gap: 16px;
+  padding: 14px 12px 12px;
+}
+
 .trigger-source-page__pagination {
   margin-top: 16px;
 }

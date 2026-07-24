@@ -459,6 +459,22 @@ describe('DeploymentOperationsPage', () => {
     vi.clearAllMocks()
   })
 
+  it('omits redundant section kicker labels from the deployment page', async () => {
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.page-header .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-create-panel > div .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-source-summary .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-instances-panel .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-runtime-panel .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-events-panel .page-kicker').exists()).toBe(false)
+  })
+
   it('renders deployment runtime health and dispatches runtime actions', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {

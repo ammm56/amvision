@@ -1,7 +1,6 @@
 <template>
   <form class="form-panel dataset-export-panel" @submit.prevent="$emit('submit')">
     <div>
-      <p class="page-kicker">{{ t('datasetOps.exportKicker') }}</p>
       <h2>{{ t('datasetOps.exportTitle') }}</h2>
     </div>
     <div class="form-grid">

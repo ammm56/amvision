@@ -1,7 +1,6 @@
 <template>
   <form class="form-panel model-ops-form" @submit.prevent="$emit('submit')">
     <div>
-      <p class="page-kicker">{{ t('modelOps.trainingKicker') }}</p>
       <h2>{{ t('modelOps.trainingTitle') }}</h2>
     </div>
     <div class="form-grid model-ops-form__grid">
@@ -100,7 +99,6 @@
       <section class="training-parameter-section field field--wide">
         <div class="training-parameter-section__header">
           <div>
-            <p class="page-kicker">COMMON</p>
             <h3>通用参数</h3>
           </div>
         </div>
@@ -175,7 +173,6 @@
       <section v-if="trainingModelParameterFields.length > 0" class="training-parameter-section field field--wide">
         <div class="training-parameter-section__header">
           <div>
-            <p class="page-kicker">MODEL TYPE</p>
             <h3>{{ trainingModelParameterSectionTitle }}</h3>
           </div>
           <span class="training-parameter-section__hint">已按当前模型预填默认值，可按需修改</span>
@@ -214,7 +211,6 @@
       >
         <div class="training-parameter-section__header">
           <div>
-            <p class="page-kicker">AUGMENTATION</p>
             <h3>数据增强参数</h3>
           </div>
           <label class="training-augmentation-switch">

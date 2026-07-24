@@ -1,7 +1,6 @@
 <template>
   <form class="form-panel model-ops-form" @submit.prevent="$emit('submit')">
     <div>
-      <p class="page-kicker">{{ t('modelOps.conversionKicker') }}</p>
       <h2>{{ t('modelOps.conversionTitle') }}</h2>
     </div>
     <div class="form-grid model-ops-form__grid">

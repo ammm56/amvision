@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('inferenceOps.kicker') }}</p>
         <h1>{{ t('inferenceOps.title') }}</h1>
         <p class="page-description">{{ t('inferenceOps.description') }}</p>
       </div>
@@ -22,7 +21,6 @@
 
     <section class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('inferenceOps.targetKicker') }}</p>
         <h2>{{ t('inferenceOps.targetTitle') }}</h2>
       </div>
       <EmptyState v-if="!loading && deployments.length === 0" :title="t('inferenceOps.emptyDeploymentsTitle')" :description="t('inferenceOps.emptyDeploymentsDescription')" />
@@ -54,7 +52,6 @@
 
     <form class="form-panel" @submit.prevent="runDirectInference">
       <div>
-        <p class="page-kicker">{{ t('inferenceOps.requestKicker') }}</p>
         <h2>{{ t('inferenceOps.requestTitle') }}</h2>
       </div>
       <div class="form-grid">
@@ -124,7 +121,6 @@
 
     <section v-if="directInferenceResult" class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('inferenceOps.resultKicker') }}</p>
         <h2>{{ t('inferenceOps.resultTitle') }}</h2>
       </div>
       <div class="summary-grid">
@@ -154,7 +150,6 @@
     <section class="resource-section">
       <div class="section-heading">
         <div>
-          <p class="page-kicker">{{ t('inferenceOps.tasksKicker') }}</p>
           <h2>{{ t('inferenceOps.tasksTitle') }}</h2>
         </div>
         <Button variant="secondary" size="sm" :disabled="inferenceTasksLoading" @click="loadInferenceTasks">
@@ -200,7 +195,6 @@
       <div v-if="selectedInferenceTaskResult" class="result-detail">
         <div class="section-heading">
           <div>
-            <p class="page-kicker">{{ t('inferenceOps.asyncResultKicker') }}</p>
             <h2>{{ t('inferenceOps.asyncResultTitle') }}</h2>
           </div>
           <Button size="sm" variant="secondary" @click="collapseInferenceTaskResult">

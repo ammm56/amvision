@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('workflowEditor.applications.kicker') }}</p>
         <h1>{{ t('workflowEditor.applications.title') }}</h1>
         <p class="page-description">{{ t('workflowEditor.applications.description') }}</p>
       </div>
@@ -22,7 +21,6 @@
 
     <section class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('workflowEditor.runtime.kicker') }}</p>
         <h2>{{ t('workflowEditor.runtime.title') }}</h2>
       </div>
       <div class="summary-grid">
@@ -47,7 +45,6 @@
 
     <section class="resource-section">
       <div>
-        <p class="page-kicker">{{ t('workflowEditor.applications.listKicker') }}</p>
         <h2>{{ t('workflowEditor.applications.listTitle') }}</h2>
       </div>
       <EmptyState v-if="!loading && workflowApps.length === 0" :title="t('workflowEditor.applications.emptyTitle')" :description="t('workflowEditor.applications.emptyDescription')" />

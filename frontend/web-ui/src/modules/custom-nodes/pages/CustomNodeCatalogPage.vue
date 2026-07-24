@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('customNodes.kicker') }}</p>
         <h1>{{ t('customNodes.title') }}</h1>
         <p class="page-description">{{ t('customNodes.description') }}</p>
       </div>
@@ -139,7 +138,6 @@
         <section v-if="activeNodePackManifest" class="node-pack-summary">
           <div class="section-heading">
             <div>
-              <p class="page-kicker">{{ t('customNodes.detail.nodePackManifest') }}</p>
               <h2>{{ activeNodePackDisplayName }}</h2>
               <p class="node-pack-summary__description">{{ activeNodePackDescription }}</p>
             </div>
@@ -207,7 +205,6 @@
             <template v-if="selectedNode">
               <div class="node-detail-panel__header">
                 <div>
-                  <p class="page-kicker">{{ t('customNodes.detailKicker') }}</p>
                   <h2>{{ readNodeDisplayName(selectedNode) || selectedNode.node_type_id }}</h2>
                   <p>{{ readNodeDescription(selectedNode) || t('common.noValue') }}</p>
                 </div>
@@ -303,7 +300,6 @@
         <template v-if="selectedNodePackRow">
           <div class="node-detail-panel__header">
             <div>
-              <p class="page-kicker">{{ t('customNodes.detail.nodePackManifest') }}</p>
               <h2>{{ selectedNodePackRow.displayName }}</h2>
               <p>{{ selectedNodePackRow.description }}</p>
             </div>

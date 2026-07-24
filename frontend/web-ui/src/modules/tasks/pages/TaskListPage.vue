@@ -2,7 +2,6 @@
   <section class="page-stack">
     <header class="page-header">
       <div>
-        <p class="page-kicker">{{ t('tasks.kicker') }}</p>
         <h1>{{ t('tasks.title') }}</h1>
       </div>
       <Button variant="secondary" :disabled="taskStore.loading" @click="refreshTasks">

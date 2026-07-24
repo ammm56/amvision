@@ -1,7 +1,6 @@
 <template>
   <form class="form-panel" @submit.prevent="$emit('submit')">
     <div>
-      <p class="page-kicker">{{ t('datasetOps.importKicker') }}</p>
       <h2>{{ t('datasetOps.importTitle') }}</h2>
     </div>
     <div class="form-grid">
