@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ task?.display_name || taskId }}</h1>
-        <p class="page-description">{{ t('trainingDetail.description') }}</p>
       </div>
       <div class="page-actions">
         <ButtonLink to="/models">

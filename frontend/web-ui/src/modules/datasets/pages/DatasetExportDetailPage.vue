@@ -3,7 +3,6 @@
     <header class="page-header">
       <div>
         <h1>{{ datasetExportId }}</h1>
-        <p class="page-description">查看数据集导出格式、下载包、运行磁盘数据和附加元数据。</p>
       </div>
       <div class="page-actions">
         <ButtonLink to="/datasets">
