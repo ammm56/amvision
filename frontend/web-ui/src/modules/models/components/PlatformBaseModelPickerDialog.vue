@@ -563,6 +563,13 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   }
 }
 
+@media (max-width: 960px) {
+  .platform-model-selection,
+  .platform-model-detail__versions {
+    overflow: visible;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .platform-model-detail__spinner {
     animation: none;

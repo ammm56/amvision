@@ -20,30 +20,32 @@
         </button>
       </header>
 
-      <div class="model-picker-shell__toolbar">
-        <span v-if="taskTypeLabel" class="model-picker-shell__label">{{ taskTypeLabel }}</span>
-        <div class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel || title">
-          <button v-for="option in taskTypeOptions" :key="option.value" type="button" role="tab" class="model-picker-shell__tab" :class="{ 'is-active': option.value === selectedTaskType }" :aria-selected="option.value === selectedTaskType" @click.stop="$emit('change-task-type', option.value)">
-            {{ option.label }}
-          </button>
+      <div class="model-picker-shell__content">
+        <div class="model-picker-shell__toolbar">
+          <span v-if="taskTypeLabel" class="model-picker-shell__label">{{ taskTypeLabel }}</span>
+          <div class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel || title">
+            <button v-for="option in taskTypeOptions" :key="option.value" type="button" role="tab" class="model-picker-shell__tab" :class="{ 'is-active': option.value === selectedTaskType }" :aria-selected="option.value === selectedTaskType" @click.stop="$emit('change-task-type', option.value)">
+              {{ option.label }}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div class="model-picker-shell__body" :aria-busy="loading">
-        <section class="model-picker-shell__column">
-          <header class="model-picker-shell__section-heading">
-            <strong>{{ listTitle }}</strong>
-            <span class="model-picker-shell__heading-meta">
-              <LoaderCircle v-if="loading" class="model-picker-shell__spinner" :size="16" aria-label="正在更新" />
-              <span class="model-picker-shell__count">{{ listCount }}</span>
-            </span>
-          </header>
-          <slot name="list" />
-        </section>
-        <section class="model-picker-shell__column">
-          <header class="model-picker-shell__section-heading"><strong>{{ detailTitle }}</strong></header>
-          <slot name="detail" />
-        </section>
+        <div class="model-picker-shell__body" :aria-busy="loading">
+          <section class="model-picker-shell__column">
+            <header class="model-picker-shell__section-heading">
+              <strong>{{ listTitle }}</strong>
+              <span class="model-picker-shell__heading-meta">
+                <LoaderCircle v-if="loading" class="model-picker-shell__spinner" :size="16" aria-label="正在更新" />
+                <span class="model-picker-shell__count">{{ listCount }}</span>
+              </span>
+            </header>
+            <slot name="list" />
+          </section>
+          <section class="model-picker-shell__column">
+            <header class="model-picker-shell__section-heading"><strong>{{ detailTitle }}</strong></header>
+            <slot name="detail" />
+          </section>
+        </div>
       </div>
     </div>
   </div>
@@ -73,10 +75,11 @@ defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
 
 <style scoped>
 .model-picker-shell__backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: rgb(16 20 24 / 0.38); }
-.model-picker-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; width: min(1120px, calc(100vw - 36px)); height: min(820px, calc(100vh - 36px)); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 24px 48px rgb(0 0 0 / 0.18); }
+.model-picker-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; width: min(1120px, calc(100vw - 36px)); height: min(820px, calc(100vh - 36px)); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 24px 48px rgb(0 0 0 / 0.18); }
 .model-picker-shell.is-compact { height: min(680px, calc(100vh - 36px)); }
 .model-picker-shell__header, .model-picker-shell__toolbar, .model-picker-shell__section-heading, .model-picker-shell__heading-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .model-picker-shell__header { align-items: flex-start; }
+.model-picker-shell__content { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
 .model-picker-shell__section-heading { min-height: 24px; }
 .model-picker-shell__section-heading > strong { line-height: 24px; }
 .model-picker-shell__header h2, .model-picker-shell__header p { margin: 0; }
@@ -91,6 +94,32 @@ defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
 .model-picker-shell__count { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 24px; padding: 0 8px; border-radius: 999px; color: var(--muted); background: var(--button-secondary-bg); font-size: 12px; font-weight: 700; }
 .model-picker-shell__spinner { color: var(--accent); animation: model-picker-shell-spin .8s linear infinite; }
 @keyframes model-picker-shell-spin { to { transform: rotate(360deg); } }
-@media (max-width: 960px) { .model-picker-shell, .model-picker-shell.is-compact { width: min(100%, calc(100vw - 24px)); height: min(820px, calc(100vh - 24px)); } .model-picker-shell__body { grid-template-columns: 1fr; } }
+@media (max-width: 960px) {
+  .model-picker-shell,
+  .model-picker-shell.is-compact {
+    width: min(100%, calc(100vw - 24px));
+    height: min(820px, calc(100vh - 24px));
+    overflow: hidden;
+  }
+
+  .model-picker-shell__content {
+    display: block;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .model-picker-shell__body {
+    margin-top: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .model-picker-shell__column {
+    grid-template-rows: auto auto;
+    min-height: auto;
+    overflow: visible;
+  }
+}
 @media (prefers-reduced-motion: reduce) { .model-picker-shell__spinner { animation: none; } }
 </style>
