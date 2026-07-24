@@ -321,8 +321,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       picker: {
         trainingTitle: '选择训练基础模型',
         conversionTitle: '选择转换来源版本',
-        trainingDescription: '先选择模型名称和参数量，再决定是否选择预训练版本作为继续训练起点。',
-        conversionDescription: '先选择模型名称和参数量，再选择需要转换的来源版本。',
         close: '关闭基础模型面板',
         modelSelectionTitle: '模型选择',
         modelNameTitle: '模型名称',
@@ -1609,8 +1607,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       picker: {
         trainingTitle: 'Choose training base model',
         conversionTitle: 'Choose conversion source version',
-        trainingDescription: 'Choose a model name and parameter size, then decide whether to continue training from a pretrained version.',
-        conversionDescription: 'Choose a model name and parameter size, then select the source version to convert.',
         close: 'Close base model picker',
         modelSelectionTitle: 'Model selection',
         modelNameTitle: 'Model name',
@@ -2892,8 +2888,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       picker: {
         trainingTitle: '学習基礎モデルを選択',
         conversionTitle: '変換元バージョンを選択',
-        trainingDescription: 'モデル名とパラメータ量を選択し、事前学習済みバージョンから継続学習するか決定します。',
-        conversionDescription: 'モデル名とパラメータ量を選択し、変換元バージョンを選びます。',
         close: '基礎モデルパネルを閉じる',
         modelSelectionTitle: 'モデル選択',
         modelNameTitle: 'モデル名',
@@ -4175,8 +4169,6 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       picker: {
         trainingTitle: '학습 기본 모델 선택',
         conversionTitle: '변환 원본 버전 선택',
-        trainingDescription: '모델 이름과 파라미터 크기를 선택한 뒤 사전 학습 버전에서 이어 학습할지 결정합니다.',
-        conversionDescription: '모델 이름과 파라미터 크기를 선택한 뒤 변환할 원본 버전을 선택합니다.',
         close: '기본 모델 패널 닫기',
         modelSelectionTitle: '모델 선택',
         modelNameTitle: '모델 이름',

@@ -55,9 +55,7 @@ function mountDialog(overrides: Record<string, unknown> = {}) {
       detailLoading: false,
       mode: 'training',
       title: '选择训练基础模型',
-      description: '先选择模型名称和参数量',
       closeLabel: '关闭',
-      taskTypeLabel: '任务类型',
       taskTypeOptions: [{ label: 'detection', value: 'detection' }],
       selectedTaskType: 'detection',
       modelListTitle: '模型选择',
@@ -87,6 +85,13 @@ function mountDialog(overrides: Record<string, unknown> = {}) {
 }
 
 describe('PlatformBaseModelPickerDialog', () => {
+  it('keeps the dialog header compact without description or task type label', () => {
+    const wrapper = mountDialog()
+
+    expect(wrapper.find('.model-picker-shell__description').exists()).toBe(false)
+    expect(wrapper.find('.model-picker-shell__label').exists()).toBe(false)
+  })
+
   it('groups platform models by model name before showing parameter sizes', () => {
     const wrapper = mountDialog()
 

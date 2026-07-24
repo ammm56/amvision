@@ -4,9 +4,7 @@
     :loading="loading"
     compact
     :title="title"
-    :description="description"
     :close-label="closeLabel"
-    :task-type-label="taskTypeLabel"
     :task-type-options="taskTypeOptions"
     :selected-task-type="selectedTaskType"
     :list-title="modelListTitle"
@@ -212,9 +210,7 @@ const props = defineProps<{
   detailLoading: boolean
   mode: 'training' | 'conversion'
   title: string
-  description: string
   closeLabel: string
-  taskTypeLabel: string
   taskTypeOptions: TaskTypeOption[]
   selectedTaskType: string
   modelListTitle: string

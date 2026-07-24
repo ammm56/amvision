@@ -13,7 +13,7 @@
         <div>
           <p v-if="kicker" class="page-kicker">{{ kicker }}</p>
           <h2>{{ title }}</h2>
-          <p class="model-picker-shell__description">{{ description }}</p>
+          <p v-if="description" class="model-picker-shell__description">{{ description }}</p>
         </div>
         <button type="button" class="model-picker-shell__close" :title="closeLabel" :aria-label="closeLabel" @click="$emit('close')">
           <X :size="16" />
@@ -21,8 +21,8 @@
       </header>
 
       <div class="model-picker-shell__toolbar">
-        <span class="model-picker-shell__label">{{ taskTypeLabel }}</span>
-        <div class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel">
+        <span v-if="taskTypeLabel" class="model-picker-shell__label">{{ taskTypeLabel }}</span>
+        <div class="model-picker-shell__tabs" role="tablist" :aria-label="taskTypeLabel || title">
           <button v-for="option in taskTypeOptions" :key="option.value" type="button" role="tab" class="model-picker-shell__tab" :class="{ 'is-active': option.value === selectedTaskType }" :aria-selected="option.value === selectedTaskType" @click.stop="$emit('change-task-type', option.value)">
             {{ option.label }}
           </button>
@@ -58,9 +58,9 @@ defineProps<{
   compact?: boolean
   kicker?: string
   title: string
-  description: string
+  description?: string
   closeLabel: string
-  taskTypeLabel: string
+  taskTypeLabel?: string
   taskTypeOptions: Array<{ label: string; value: string }>
   selectedTaskType: string
   listTitle: string
@@ -77,6 +77,8 @@ defineEmits<{ close: []; 'change-task-type': [taskType: string] }>()
 .model-picker-shell.is-compact { height: min(680px, calc(100vh - 36px)); }
 .model-picker-shell__header, .model-picker-shell__toolbar, .model-picker-shell__section-heading, .model-picker-shell__heading-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .model-picker-shell__header { align-items: flex-start; }
+.model-picker-shell__section-heading { min-height: 24px; }
+.model-picker-shell__section-heading > strong { line-height: 24px; }
 .model-picker-shell__header h2, .model-picker-shell__header p { margin: 0; }
 .model-picker-shell__description { margin-top: 8px !important; color: var(--muted); }
 .model-picker-shell__close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text); background: var(--button-secondary-bg); cursor: pointer; }
