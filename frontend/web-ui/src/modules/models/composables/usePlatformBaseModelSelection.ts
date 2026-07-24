@@ -25,6 +25,8 @@ export function usePlatformBaseModelSelection(options: {
   detailFailedMessage: () => string
 }) {
   const selectedModelDetail = ref<PlatformBaseModelDetail | null>(null)
+  const selectedModelBrowseId = ref('')
+  const selectedModelDetailLoading = ref(false)
   const baseModelPickerOpen = ref(false)
   const baseModelPickerMode = ref<'training' | 'conversion'>('training')
   const trainingSelectedModelId = ref('')
@@ -32,6 +34,7 @@ export function usePlatformBaseModelSelection(options: {
   const conversionModelType = ref('')
   const conversionSourceModelVersionId = ref('')
   const warmStartModelVersionId = ref('')
+  let detailRequestSerial = 0
 
   const trainingSelectedModelSummary = computed(
     () => options.baseModels.value.find((model) => model.model_id === trainingSelectedModelId.value) ?? null,
@@ -90,10 +93,23 @@ export function usePlatformBaseModelSelection(options: {
   })
 
   async function selectBaseModel(modelId: string): Promise<void> {
+    const requestSerial = ++detailRequestSerial
+    selectedModelBrowseId.value = modelId
+    selectedModelDetailLoading.value = true
+    selectedModelDetail.value = null
     try {
-      selectedModelDetail.value = await getPlatformBaseModelDetail(modelId)
+      const detail = await getPlatformBaseModelDetail(modelId)
+      if (requestSerial === detailRequestSerial && selectedModelBrowseId.value === modelId) {
+        selectedModelDetail.value = detail
+      }
     } catch (error) {
-      options.onError(error instanceof Error ? error.message : options.detailFailedMessage())
+      if (requestSerial === detailRequestSerial) {
+        options.onError(error instanceof Error ? error.message : options.detailFailedMessage())
+      }
+    } finally {
+      if (requestSerial === detailRequestSerial) {
+        selectedModelDetailLoading.value = false
+      }
     }
   }
 
@@ -104,8 +120,8 @@ export function usePlatformBaseModelSelection(options: {
       return
     }
     const preferredModelId = mode === 'training'
-      ? trainingSelectedModelId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
-      : conversionSelectedModelId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
+      ? trainingSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
+      : conversionSelectedModelId.value || selectedModelBrowseId.value || selectedModelDetail.value?.model_id || options.baseModels.value[0].model_id
     if (preferredModelId && selectedModelDetail.value?.model_id !== preferredModelId) {
       await selectBaseModel(preferredModelId)
     }
@@ -142,7 +158,10 @@ export function usePlatformBaseModelSelection(options: {
   }
 
   function resetPlatformBaseModelSelection(options: ResetPlatformBaseModelSelectionOptions = {}): void {
+    detailRequestSerial += 1
     selectedModelDetail.value = null
+    selectedModelBrowseId.value = ''
+    selectedModelDetailLoading.value = false
     if (options.keepPickerOpen !== true) {
       baseModelPickerOpen.value = false
     }
@@ -154,16 +173,21 @@ export function usePlatformBaseModelSelection(options: {
   }
 
   function ensureSelectedModelStillVisible(): void {
-    const selectedModelId = selectedModelDetail.value?.model_id ?? null
-    const selectedModelStillVisible = selectedModelId !== null
+    const selectedModelId = selectedModelBrowseId.value || selectedModelDetail.value?.model_id || ''
+    const selectedModelStillVisible = selectedModelId !== ''
       && options.baseModels.value.some((model) => model.model_id === selectedModelId)
     if (!selectedModelStillVisible) {
+      detailRequestSerial += 1
+      selectedModelBrowseId.value = ''
       selectedModelDetail.value = null
+      selectedModelDetailLoading.value = false
     }
   }
 
   return {
     selectedModelDetail,
+    selectedModelBrowseId,
+    selectedModelDetailLoading,
     baseModelPickerOpen,
     baseModelPickerMode,
     trainingSelectedModelId,

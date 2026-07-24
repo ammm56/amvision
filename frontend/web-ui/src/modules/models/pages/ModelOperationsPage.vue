@@ -104,24 +104,26 @@
     <PlatformBaseModelPickerDialog
       :open="baseModelPickerOpen"
       :loading="loading"
+      :detail-loading="selectedModelDetailLoading"
       :mode="baseModelPickerMode"
-      :kicker="t('modelOps.baseKicker')"
       :title="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingTitle') : t('modelOps.picker.conversionTitle')"
       :description="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingDescription') : t('modelOps.picker.conversionDescription')"
       :close-label="t('modelOps.picker.close')"
       :task-type-label="t('modelOps.fields.taskType')"
       :task-type-options="taskTypeOptions"
       :selected-task-type="selectedTaskType"
-      :model-list-title="t('modelOps.baseTitle')"
+      :model-list-title="t('modelOps.picker.modelSelectionTitle')"
+      :model-name-label="t('modelOps.picker.modelNameTitle')"
       :detail-title="t('modelOps.picker.detailTitle')"
+      :detail-loading-label="t('modelOps.picker.detailLoading')"
+      :current-selection-label="t('modelOps.picker.currentSelectionTitle')"
+      :version-selection-label="baseModelPickerMode === 'training' ? t('modelOps.picker.trainingVersionSelectionTitle') : t('modelOps.picker.conversionVersionSelectionTitle')"
       :versions-title="t('modelOps.availableVersionsTitle')"
       :extra-versions-title="t('modelOps.picker.projectTrainingVersionsTitle')"
-      :versions-label="t('modelOps.columns.versions')"
-      :builds-label="t('modelOps.columns.builds')"
-      :scale-label="t('modelOps.columns.scale')"
+      :scale-label="t('modelOps.picker.modelScaleTitle')"
       :apply-model-label="t('modelOps.picker.applyModel')"
-      :apply-training-version-label="t('modelOps.actions.useWarmStart')"
-      :apply-conversion-version-label="t('modelOps.actions.useConversionSource')"
+      :apply-training-version-label="t('modelOps.picker.selectTrainingVersion')"
+      :apply-conversion-version-label="t('modelOps.picker.selectConversionVersion')"
       :empty-title="t('modelOps.emptyModelsTitle')"
       :empty-description="t('modelOps.emptyModelsDescription')"
       :detail-empty-title="t('modelOps.picker.detailEmptyTitle')"
@@ -129,7 +131,7 @@
       :empty-versions-title="t('modelOps.picker.emptyVersionsTitle')"
       :empty-versions-description="t('modelOps.picker.emptyVersionsDescription')"
       :models="baseModels"
-      :selected-model-id="selectedModelDetail?.model_id ?? null"
+      :selected-model-id="selectedModelBrowseId || null"
       :selected-model-detail="selectedModelDetail"
       :extra-versions="selectedModelDerivedTrainingVersions"
       :selected-version-id="baseModelPickerMode === 'training' ? warmStartModelVersionId : conversionSourceModelVersionId"
@@ -246,6 +248,7 @@ const selectedTaskType = ref<ModelTaskType>('detection')
 const conversionTarget = ref<ConversionTargetKey>('onnx')
 const conversionRuntimeProfileId = ref('')
 const conversionDisplayName = ref('')
+let pageRequestSerial = 0
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -312,6 +315,8 @@ function setErrorMessage(message: string | null): void {
 
 const {
   selectedModelDetail,
+  selectedModelBrowseId,
+  selectedModelDetailLoading,
   baseModelPickerOpen,
   baseModelPickerMode,
   conversionModelType,
@@ -463,8 +468,13 @@ async function setTaskType(value: SelectValue): Promise<void> {
   resetPlatformBaseModelSelection({ keepPickerOpen: baseModelPickerOpen.value })
   resetTrainingDatasetExportSelection()
   resetSuggestedOutputModelName()
-  await refreshPage()
-  if (baseModelPickerOpen.value && baseModels.value.length > 0) {
+  const refreshed = await refreshPage()
+  if (
+    refreshed
+    && selectedTaskType.value === nextValue
+    && baseModelPickerOpen.value
+    && baseModels.value.length > 0
+  ) {
     await selectBaseModel(baseModels.value[0].model_id)
   }
 }
@@ -473,25 +483,41 @@ function setConversionTarget(value: SelectValue): void {
   conversionTarget.value = (normalizeSelectValue(value) || 'onnx') as ConversionTargetKey
 }
 
-async function refreshPage(): Promise<void> {
+async function refreshPage(): Promise<boolean> {
+  const requestSerial = ++pageRequestSerial
+  const taskType = selectedTaskType.value
+  const projectId = selectedProjectId.value
   loading.value = true
   errorMessage.value = null
   try {
     const [models, datasetExports] = await Promise.all([
-      listPlatformBaseModels(selectedTaskType.value),
-      selectedProjectId.value
-        ? listProjectDatasetExports(selectedProjectId.value, selectedTaskType.value, 'completed')
+      listPlatformBaseModels(taskType),
+      projectId
+        ? listProjectDatasetExports(projectId, taskType, 'completed')
         : Promise.resolve<DatasetExportSummary[]>([]),
       refreshTaskLists(),
     ])
+    if (
+      requestSerial !== pageRequestSerial
+      || selectedTaskType.value !== taskType
+      || selectedProjectId.value !== projectId
+    ) {
+      return false
+    }
     baseModels.value = models
     trainingDatasetExports.value = datasetExports
     ensureSelectedModelStillVisible()
     ensureTrainingDatasetExportSelectionVisible()
+    return true
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
+    if (requestSerial === pageRequestSerial) {
+      errorMessage.value = error instanceof Error ? error.message : t('modelOps.messages.loadFailed')
+    }
+    return false
   } finally {
-    loading.value = false
+    if (requestSerial === pageRequestSerial) {
+      loading.value = false
+    }
   }
 }
 

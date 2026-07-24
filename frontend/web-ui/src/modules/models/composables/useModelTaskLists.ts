@@ -14,22 +14,54 @@ export function useModelTaskLists(
 ) {
   const trainingTasks = ref<ModelTrainingTaskSummary[]>([])
   const conversionTasks = ref<ModelConversionTaskSummary[]>([])
+  let trainingRequestSerial = 0
+  let conversionRequestSerial = 0
 
   async function refreshTrainingTasks(): Promise<void> {
-    trainingTasks.value = await listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value)
+    const requestSerial = ++trainingRequestSerial
+    const taskType = selectedTaskType.value
+    const projectId = selectedProjectId.value
+    const tasks = await listModelTrainingTasks(taskType, projectId)
+    if (
+      requestSerial === trainingRequestSerial
+      && selectedTaskType.value === taskType
+      && selectedProjectId.value === projectId
+    ) {
+      trainingTasks.value = tasks
+    }
   }
 
   async function refreshConversionTasks(): Promise<void> {
-    conversionTasks.value = await listModelConversionTasks(selectedTaskType.value, selectedProjectId.value)
+    const requestSerial = ++conversionRequestSerial
+    const taskType = selectedTaskType.value
+    const projectId = selectedProjectId.value
+    const tasks = await listModelConversionTasks(taskType, projectId)
+    if (
+      requestSerial === conversionRequestSerial
+      && selectedTaskType.value === taskType
+      && selectedProjectId.value === projectId
+    ) {
+      conversionTasks.value = tasks
+    }
   }
 
   async function refreshTaskLists(): Promise<void> {
+    const trainingSerial = ++trainingRequestSerial
+    const conversionSerial = ++conversionRequestSerial
+    const taskType = selectedTaskType.value
+    const projectId = selectedProjectId.value
     const [training, conversion] = await Promise.all([
-      listModelTrainingTasks(selectedTaskType.value, selectedProjectId.value),
-      listModelConversionTasks(selectedTaskType.value, selectedProjectId.value),
+      listModelTrainingTasks(taskType, projectId),
+      listModelConversionTasks(taskType, projectId),
     ])
-    trainingTasks.value = training
-    conversionTasks.value = conversion
+    const selectionStillCurrent = selectedTaskType.value === taskType
+      && selectedProjectId.value === projectId
+    if (selectionStillCurrent && trainingSerial === trainingRequestSerial) {
+      trainingTasks.value = training
+    }
+    if (selectionStillCurrent && conversionSerial === conversionRequestSerial) {
+      conversionTasks.value = conversion
+    }
   }
 
   return {
