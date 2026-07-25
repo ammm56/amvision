@@ -473,6 +473,8 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.find('.deployment-instances-panel .page-kicker').exists()).toBe(false)
     expect(wrapper.find('.deployment-runtime-panel .page-kicker').exists()).toBe(false)
     expect(wrapper.find('.deployment-events-panel .page-kicker').exists()).toBe(false)
+    expect(wrapper.find('.deployment-runtime-panel .section-heading .page-description').exists()).toBe(false)
+    expect(wrapper.find('.deployment-events-panel .section-heading .page-description').exists()).toBe(false)
   })
 
   it('renders deployment runtime health and dispatches runtime actions', async () => {

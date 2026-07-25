@@ -404,7 +404,6 @@
         <div class="section-heading">
           <div>
             <h2>{{ t('deploymentOps.runtimeTitle') }}</h2>
-            <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>
         </div>
         <div class="summary-grid deployment-runtime-summary">
@@ -471,7 +470,6 @@
         <div class="section-heading">
           <div>
             <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
-            <p class="page-description">{{ selectedDeployment.deployment_instance_id }}</p>
           </div>
         </div>
         <EmptyState v-if="!eventsLoading && deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
