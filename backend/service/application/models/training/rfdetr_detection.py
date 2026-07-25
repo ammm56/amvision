@@ -10,6 +10,9 @@ from backend.service.application.models.rfdetr_core.training.platform_runner imp
     RfdetrPlatformTrainingRequest,
     run_rfdetr_platform_training,
 )
+from backend.service.application.models.rfdetr_core.factory import (
+    resolve_rfdetr_full_core_default_input_size,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -18,9 +21,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 RFDETR_IMPL_MODE = "rfdetr-full-core-detection"
 
-_RF_DEFAULT_INPUT_SIZE = (384, 384)
 _RF_DEFAULT_BATCH_SIZE = 2
-_RF_DEFAULT_MAX_EPOCHS = 1
+_RF_DEFAULT_MAX_EPOCHS = 100
 
 
 @dataclass(frozen=True)
@@ -126,7 +128,11 @@ def run_rfdetr_training(
             model_scale=request.model_scale,
             batch_size=request.batch_size,
             max_epochs=request.max_epochs,
-            input_size=request.input_size or _RF_DEFAULT_INPUT_SIZE,
+            input_size=request.input_size
+            or resolve_rfdetr_full_core_default_input_size(
+                task_type=DETECTION_TASK_TYPE,
+                model_scale=request.model_scale,
+            ),
             precision=request.precision,
             resume_checkpoint_path=request.resume_checkpoint_path,
             warm_start_checkpoint_path=request.warm_start_checkpoint_path,

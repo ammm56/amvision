@@ -209,3 +209,15 @@ class PyTorchRfdetrSegmentationRuntimeSession:
                 },
             ),
         )
+
+    def close(self) -> None:
+        """在 runtime pool 回收会话时主动释放模型引用。"""
+
+        model = getattr(self, "model", None)
+        if model is not None and str(getattr(self, "device_name", "")).startswith("cuda"):
+            try:
+                model.to("cpu")
+            except Exception:
+                pass
+        self.model = None
+        self.postprocess_model = None

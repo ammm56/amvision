@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import csv
+import logging
 from pathlib import Path
 from typing import Any
 
 import torch
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core.config import TrainConfig
+from backend.service.application.models.rfdetr_core.training.checkpoint import (
+    convert_legacy_checkpoint,
+)
 from backend.service.domain.models.model_task_types import (
     ModelTaskType,
     SEGMENTATION_TASK_TYPE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def prepare_pretrain_checkpoint(
@@ -36,6 +43,54 @@ def prepare_pretrain_checkpoint(
         torch.save(normalized_payload, normalized_path)
         return str(normalized_path)
     return str(checkpoint_path)
+
+
+def prepare_resume_checkpoint(
+    checkpoint_path: Path | None,
+    temporary_dir: Path,
+) -> str | None:
+    """校验并归一平台 resume checkpoint，保留 Lightning 训练状态。"""
+
+    if checkpoint_path is None:
+        return None
+    if not checkpoint_path.is_file():
+        raise InvalidRequestError(
+            "RF-DETR resume checkpoint 不存在",
+            details={"checkpoint_path": str(checkpoint_path)},
+        )
+
+    checkpoint = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+    if not isinstance(checkpoint, dict):
+        raise InvalidRequestError("RF-DETR resume checkpoint 格式无效")
+    if "state_dict" in checkpoint:
+        if not checkpoint.get("optimizer_states"):
+            logger.warning(
+                "RF-DETR resume checkpoint 不包含 optimizer state，将兼容恢复模型、epoch 和 global_step；"
+                "优化器会重新初始化。"
+            )
+        return str(checkpoint_path)
+
+    normalized_path = temporary_dir / "normalized-resume.ckpt"
+    if "model_state_dict" in checkpoint:
+        checkpoint = {
+            "model": checkpoint["model_state_dict"],
+            "args": checkpoint.get("args", {}),
+            "epoch": checkpoint.get("epoch", 0),
+            "global_step": checkpoint.get("global_step", 0),
+        }
+        legacy_path = temporary_dir / "legacy-resume.pth"
+        torch.save(checkpoint, legacy_path)
+        convert_legacy_checkpoint(str(legacy_path), str(normalized_path))
+    elif "model" in checkpoint:
+        convert_legacy_checkpoint(str(checkpoint_path), str(normalized_path))
+    else:
+        raise InvalidRequestError(
+            "RF-DETR resume checkpoint 缺少 state_dict、model 或 model_state_dict"
+        )
+    logger.warning(
+        "RF-DETR legacy checkpoint 已转换为兼容 resume 格式；缺失的优化器和 scheduler 状态会重新初始化。"
+    )
+    return str(normalized_path)
 
 
 def read_or_build_checkpoint_bytes(

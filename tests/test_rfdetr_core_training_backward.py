@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 import warnings
 
 import pytest
 import torch
+from pytorch_lightning import LightningModule
 
 from backend.service.application.models.rfdetr_core.config import (
     PretrainWeightsCompatibilityWarning,
@@ -98,6 +101,42 @@ def test_rfdetr_tiny_loss_backward(
 
     grad_abs_sum = _sum_gradient_abs(module.model)
     assert grad_abs_sum > 0.0
+
+
+def test_rfdetr_training_step_returns_unscaled_loss_for_lightning_accumulation() -> None:
+    """Lightning 负责梯度累积缩放，RF-DETR training_step 返回原始 loss。"""
+
+    class _StubModel(torch.nn.Module):
+        def forward(self, samples, targets):
+            _ = targets
+            return {"prediction": samples}
+
+    class _StubCriterion:
+        weight_dict = {"loss": 2.0}
+
+        def __call__(self, outputs, targets):
+            _ = targets
+            return {"loss": outputs["prediction"].sum()}
+
+    module = object.__new__(RFDETRModelModule)
+    LightningModule.__init__(module)
+    module.model = _StubModel()
+    module.criterion = _StubCriterion()
+    module.train_config = SimpleNamespace(
+        train_log_sync_dist=False,
+        train_log_on_step=False,
+    )
+    module._trainer = SimpleNamespace(accumulate_grad_batches=4)
+    module.log = Mock()
+    module.log_dict = Mock()
+    module.optimizers = Mock(return_value=SimpleNamespace(param_groups=[]))
+
+    loss = module.training_step(
+        (torch.tensor([3.0], requires_grad=True), [{}]),
+        batch_idx=0,
+    )
+
+    assert float(loss.detach()) == pytest.approx(6.0)
 
 
 def _build_tiny_batch(

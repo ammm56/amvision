@@ -16,6 +16,7 @@ from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_namespace,
     is_rfdetr_full_core_input_size_aligned,
     normalize_rfdetr_full_core_scale,
+    resolve_rfdetr_full_core_default_input_size,
     resolve_rfdetr_full_core_input_divisor,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
@@ -77,6 +78,33 @@ def test_rfdetr_full_core_input_divisor_matches_backbone_config() -> None:
         )
         == 12
     )
+
+
+@pytest.mark.parametrize(
+    ("task_type", "model_scale", "expected_size"),
+    (
+        (DETECTION_TASK_TYPE, "nano", (384, 384)),
+        (DETECTION_TASK_TYPE, "s", (512, 512)),
+        (DETECTION_TASK_TYPE, "m", (576, 576)),
+        (DETECTION_TASK_TYPE, "l", (704, 704)),
+        (SEGMENTATION_TASK_TYPE, "nano", (312, 312)),
+        (SEGMENTATION_TASK_TYPE, "s", (384, 384)),
+        (SEGMENTATION_TASK_TYPE, "m", (432, 432)),
+        (SEGMENTATION_TASK_TYPE, "l", (504, 504)),
+        (SEGMENTATION_TASK_TYPE, "x", (624, 624)),
+    ),
+)
+def test_rfdetr_full_core_default_input_size_matches_scale_resolution(
+    task_type: str,
+    model_scale: str,
+    expected_size: tuple[int, int],
+) -> None:
+    """每个公开 scale 默认使用自身的原生 resolution。"""
+
+    assert resolve_rfdetr_full_core_default_input_size(
+        task_type=task_type,
+        model_scale=model_scale,
+    ) == expected_size
 
 
 @pytest.mark.parametrize(

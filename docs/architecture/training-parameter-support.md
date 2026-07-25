@@ -134,9 +134,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight` |
+| 执行层真正使用 | `warm_start_model_version_id`、resume checkpoint、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`lr_scheduler`、`grad_accum_steps`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight`、`evaluation_max_detections`、`use_ema` / `ema`、`multi_scale`、`expanded_scales` 和增强配置 |
 | 当前前端已暴露 | 通用层字段 + warm start 选择 + RF-DETR detection 高级参数面 |
-| 当前缺口 | `warm_start_model_version_id`、`evaluation_interval` 当前没有真正进入执行；公开接口说明里的 `weight_decay` 当前执行层也没有按请求值切换；多 GPU 训练当前不支持 |
+| 当前缺口 | 多 GPU 训练当前不支持；`gpu_count` 只保留空值或 `1` |
 
 ### classification
 
@@ -178,7 +178,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight`、`mask_ce_weight`、`mask_dice_weight` |
+| 执行层真正使用 | resume checkpoint、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`lr_scheduler`、`grad_accum_steps`、`evaluation_interval`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight`、`mask_ce_weight`、`mask_dice_weight`、`evaluation_max_detections`、`use_ema` / `ema`、`multi_scale`、`expanded_scales` 和增强配置 |
 | 当前前端已暴露 | 通用层字段 + segmentation / RF-DETR 高级参数面 |
 | 当前缺口 | 公开接口仍是原始 `extra_options`，没有分割任务下按 `model_type` 区分的正式参数 schema |
 

@@ -130,7 +130,6 @@ class RFDETRModelModule(LightningModule):
         loss_dict = self.criterion(outputs, targets)
         weight_dict = self.criterion.weight_dict
         loss = sum(loss_dict[k] * weight_dict[k] for k in loss_dict if k in weight_dict)
-        loss_scaled = loss / self.trainer.accumulate_grad_batches
         train_log_sync_dist = bool(self.train_config.train_log_sync_dist)
         train_log_on_step = bool(self.train_config.train_log_on_step)
         self.log_dict(
@@ -160,7 +159,9 @@ class RFDETRModelModule(LightningModule):
             self.log("train/lr", base_lr, prog_bar=True, on_step=True, on_epoch=False)
             self.log("train/lr_min", min_lr, prog_bar=True, on_step=True, on_epoch=False)
             self.log("train/lr_max", max_lr, prog_bar=True, on_step=True, on_epoch=False)
-        return loss_scaled
+        # Lightning 的自动优化循环会按 accumulate_grad_batches 缩放 loss；
+        # 此处必须返回原始 loss，避免累积训练时重复缩放梯度。
+        return loss
 
     def validation_step(self, batch: Tuple, batch_idx: int) -> Dict[str, Any]:
         """执行 `validation_step`。

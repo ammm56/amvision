@@ -107,8 +107,17 @@ class TensorRTRfdetrRuntimeSession:
         self.execute_end_event = execute_end_event
         self.postprocess_model = postprocess_model
         self.input_size = input_size
+        self._closed = False
 
     def __del__(self) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """幂等释放 TensorRT session 持有的 CUDA 与 engine 资源。"""
+
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         try:
             ensure_cuda_success(
                 self.imports.cudart.cudaSetDevice(
@@ -118,20 +127,28 @@ class TensorRTRfdetrRuntimeSession:
                 details={"device_name": self.device_name},
             )
         except Exception:
-            return
+            cuda_device_bound = False
+        else:
+            cuda_device_bound = True
         for event_name in ("execute_start_event", "execute_end_event"):
             event = getattr(self, event_name, None)
-            if event is not None:
+            if event is not None and cuda_device_bound:
                 try:
                     self.imports.cudart.cudaEventDestroy(event)
                 except Exception:
                     pass
+            setattr(self, event_name, None)
         stream = getattr(self, "stream", None)
-        if stream is not None:
+        if stream is not None and cuda_device_bound:
             try:
                 self.imports.cudart.cudaStreamDestroy(stream)
             except Exception:
                 pass
+        self.stream = None
+        self.context = None
+        self.engine = None
+        self.runtime = None
+        self.postprocess_model = None
 
     @classmethod
     def load(

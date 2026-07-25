@@ -38,7 +38,8 @@
 ### RF-DETR
 
 - detection / segmentation 建议以前端单个 `resolution` 概念展示；如果页面继续显示宽高，必须要求宽高一致。
-- detection 默认按当前 checkpoint scale 的方形 resolution 校验。
+- 未显式指定时，detection 按 scale 使用 `nano=384`、`s=512`、`m=576`、`l=704` 的方形 resolution；segmentation 使用 `nano=312`、`s=384`、`m=432`、`l=504`、`x=624`。
+- 平台收到矩形或未对齐尺寸时，先按当前 full core 的约束向上对齐，再取较长边作为实际 `resolution`，最终训练尺寸始终登记为 `resolution x resolution`。
 - segmentation 必须按所选模型的 `patch_size * num_windows` 校验，不能只做 32 倍数的通用判断。
 
 ### YOLOv8 / YOLO11 / YOLO26

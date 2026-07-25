@@ -282,3 +282,11 @@ class OpenVINORfdetrSegmentationRuntimeSession:
                 },
             ),
         )
+
+    def close(self) -> None:
+        """释放 OpenVINO compiled model、ports 和后处理模型引用。"""
+
+        self.session = None
+        self.input_port = None
+        self.output_ports = ()
+        self.postprocess_model = None

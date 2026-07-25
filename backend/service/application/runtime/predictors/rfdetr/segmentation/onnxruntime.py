@@ -216,3 +216,9 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
                 },
             ),
         )
+
+    def close(self) -> None:
+        """释放 ONNX Runtime session 和后处理模型引用。"""
+
+        self.session = None
+        self.postprocess_model = None

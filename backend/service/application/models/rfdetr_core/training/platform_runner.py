@@ -13,6 +13,9 @@ from backend.service.application.models.training.device_selection import (
     SingleTrainingDeviceSelection,
     resolve_single_training_device,
 )
+from backend.service.application.support.resource_cleanup import (
+    release_model_task_resources,
+)
 from backend.service.application.models.rfdetr_core.config import (
     SegmentationTrainConfig,
     TrainConfig,
@@ -31,6 +34,7 @@ from backend.service.application.models.rfdetr_core.training.platform_artifacts 
     build_metrics_payload,
     build_validation_metrics_payload,
     prepare_pretrain_checkpoint,
+    prepare_resume_checkpoint,
     read_or_build_checkpoint_bytes,
     resolve_best_metric,
 )
@@ -91,7 +95,7 @@ def run_rfdetr_platform_training(
         )
 
     extra_options = dict(request.extra_options or {})
-    aligned_input_size = align_rfdetr_full_core_input_size(
+    aligned_input_size = resolve_rfdetr_platform_training_input_size(
         task_type=request.task_type,
         model_scale=request.model_scale,
         input_size=request.input_size,
@@ -102,90 +106,146 @@ def run_rfdetr_platform_training(
 
     temp_root = request.dataset_storage.root_dir / ".tmp" / "rfdetr-core-training"
     temp_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix="run-",
-        dir=str(temp_root),
-    ) as temporary_dir_name:
-        temporary_dir = Path(temporary_dir_name)
-        prepared_dataset = prepare_roboflow_coco_dataset(
-            dataset_storage=request.dataset_storage,
-            manifest_payload=request.manifest_payload,
-            dataset_dir=temporary_dir / "dataset",
-            task_type=request.task_type,
-        )
-        output_dir = temporary_dir / "output"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        pretrain_checkpoint_path = (
-            request.resume_checkpoint_path or request.warm_start_checkpoint_path
-        )
-        warm_start_summary = _build_warm_start_summary(
-            warm_start_checkpoint_path=request.warm_start_checkpoint_path,
-            source_summary=request.warm_start_source_summary,
-            resume_checkpoint_path=request.resume_checkpoint_path,
-        )
-
-        model_config = build_rfdetr_full_core_config(
-            task_type=request.task_type,
-            model_scale=request.model_scale,
-            num_classes=len(prepared_dataset.labels),
-            pretrained_path=prepare_pretrain_checkpoint(
-                pretrain_checkpoint_path,
+    module = None
+    data_module = None
+    trainer = None
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="run-",
+            dir=str(temp_root),
+        ) as temporary_dir_name:
+            temporary_dir = Path(temporary_dir_name)
+            prepared_dataset = prepare_roboflow_coco_dataset(
+                dataset_storage=request.dataset_storage,
+                manifest_payload=request.manifest_payload,
+                dataset_dir=temporary_dir / "dataset",
+                task_type=request.task_type,
+            )
+            output_dir = temporary_dir / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            resume_checkpoint_path = prepare_resume_checkpoint(
+                request.resume_checkpoint_path,
                 temporary_dir,
-            ),
-            device=device_name,
-        )
-        model_config.resolution = resolution
-        model_config.amp = _precision_enables_amp(request.precision)
+            )
+            warm_start_checkpoint_path = (
+                None if resume_checkpoint_path is not None else request.warm_start_checkpoint_path
+            )
+            pretrain_checkpoint_path = prepare_pretrain_checkpoint(
+                warm_start_checkpoint_path,
+                temporary_dir,
+            )
+            warm_start_summary = _build_warm_start_summary(
+                warm_start_checkpoint_path=request.warm_start_checkpoint_path,
+                source_summary=request.warm_start_source_summary,
+                resume_checkpoint_path=request.resume_checkpoint_path,
+            )
 
-        train_config = _build_train_config(
-            request=request,
-            dataset_dir=prepared_dataset.dataset_dir,
-            output_dir=output_dir,
-            labels=prepared_dataset.labels,
-            extra_options=extra_options,
-            device_selection=device_selection,
-        )
-        RFDETRDataModule, RFDETRModelModule, build_trainer = (
-            _load_rfdetr_lightning_training_components()
-        )
-        module = RFDETRModelModule(model_config, train_config)
-        data_module = RFDETRDataModule(model_config, train_config)
-        trainer = build_trainer(
-            train_config,
-            model_config,
-            accelerator=device_selection.lightning_accelerator,
-            num_sanity_val_steps=0,
-            enable_model_summary=False,
-        )
-        trainer.fit(module, datamodule=data_module)
+            model_config = build_rfdetr_full_core_config(
+                task_type=request.task_type,
+                model_scale=request.model_scale,
+                num_classes=len(prepared_dataset.labels),
+                pretrained_path=pretrain_checkpoint_path,
+                device=device_name,
+            )
+            model_config.resolution = resolution
+            model_config.amp = _precision_enables_amp(request.precision)
 
-        latest_checkpoint_bytes = read_or_build_checkpoint_bytes(
-            output_dir=output_dir,
+            train_config = _build_train_config(
+                request=request,
+                dataset_dir=prepared_dataset.dataset_dir,
+                output_dir=output_dir,
+                labels=prepared_dataset.labels,
+                extra_options=extra_options,
+                device_selection=device_selection,
+                resume_checkpoint_path=resume_checkpoint_path,
+            )
+            RFDETRDataModule, RFDETRModelModule, build_trainer = (
+                _load_rfdetr_lightning_training_components()
+            )
+            module = RFDETRModelModule(model_config, train_config)
+            data_module = RFDETRDataModule(model_config, train_config)
+            trainer = build_trainer(
+                train_config,
+                model_config,
+                accelerator=device_selection.lightning_accelerator,
+                num_sanity_val_steps=0,
+                enable_model_summary=False,
+            )
+            trainer.fit(
+                module,
+                datamodule=data_module,
+                ckpt_path=train_config.resume or None,
+            )
+
+            latest_checkpoint_bytes = read_or_build_checkpoint_bytes(
+                output_dir=output_dir,
+                module=module,
+                model_config=model_config,
+                train_config=train_config,
+                trainer=trainer,
+            )
+            metrics_payload = build_metrics_payload(
+                output_dir=output_dir,
+                trainer=trainer,
+                aligned_input_size=aligned_input_size,
+            )
+            validation_metrics_payload = build_validation_metrics_payload(trainer)
+            best_metric_name, best_metric_value = resolve_best_metric(
+                task_type=request.task_type,
+                validation_metrics=validation_metrics_payload,
+            )
+            return RfdetrPlatformTrainingResult(
+                best_metric_value=best_metric_value,
+                best_metric_name=best_metric_name,
+                latest_checkpoint_bytes=latest_checkpoint_bytes,
+                metrics_payload=metrics_payload,
+                validation_metrics_payload=validation_metrics_payload,
+                labels=prepared_dataset.labels,
+                aligned_input_size=aligned_input_size,
+                warm_start_summary=warm_start_summary,
+            )
+    finally:
+        _release_rfdetr_training_resources(
             module=module,
-            model_config=model_config,
-            train_config=train_config,
+            data_module=data_module,
             trainer=trainer,
         )
-        metrics_payload = build_metrics_payload(
-            output_dir=output_dir,
-            trainer=trainer,
-            aligned_input_size=aligned_input_size,
-        )
-        validation_metrics_payload = build_validation_metrics_payload(trainer)
-        best_metric_name, best_metric_value = resolve_best_metric(
-            task_type=request.task_type,
-            validation_metrics=validation_metrics_payload,
-        )
-        return RfdetrPlatformTrainingResult(
-            best_metric_value=best_metric_value,
-            best_metric_name=best_metric_name,
-            latest_checkpoint_bytes=latest_checkpoint_bytes,
-            metrics_payload=metrics_payload,
-            validation_metrics_payload=validation_metrics_payload,
-            labels=prepared_dataset.labels,
-            aligned_input_size=aligned_input_size,
-            warm_start_summary=warm_start_summary,
-        )
+
+
+def resolve_rfdetr_platform_training_input_size(
+    *,
+    task_type: ModelTaskType,
+    model_scale: str,
+    input_size: tuple[int, int],
+) -> tuple[int, int]:
+    """将平台输入尺寸收敛为 RF-DETR 实际训练使用的方形尺寸。"""
+
+    aligned_height, aligned_width = align_rfdetr_full_core_input_size(
+        task_type=task_type,
+        model_scale=model_scale,
+        input_size=input_size,
+    )
+    resolution = max(aligned_height, aligned_width)
+    return resolution, resolution
+
+
+def _release_rfdetr_training_resources(
+    *,
+    module: object | None,
+    data_module: object | None,
+    trainer: object | None,
+) -> None:
+    """在成功、失败和取消路径统一释放 RF-DETR 训练资源。"""
+
+    model = getattr(module, "model", None)
+    original_model = getattr(model, "_orig_mod", model)
+    move_to = getattr(original_model, "to", None)
+    if callable(move_to):
+        try:
+            move_to("cpu")
+        except Exception:
+            pass
+    release_model_task_resources(trainer, data_module, module)
 
 
 def _load_rfdetr_lightning_training_components():
@@ -242,6 +302,7 @@ def _build_train_config(
     labels: tuple[str, ...],
     extra_options: dict[str, object],
     device_selection: SingleTrainingDeviceSelection,
+    resume_checkpoint_path: str | None = None,
 ) -> TrainConfig:
     """把平台训练参数转换成 RF-DETR core 训练配置。"""
 
@@ -256,30 +317,73 @@ def _build_train_config(
         if request.task_type == SEGMENTATION_TASK_TYPE
         else TrainConfig
     )
+    lr_scheduler = str(
+        extra_options.get(
+            "lr_scheduler",
+            "cosine" if "min_lr_ratio" in extra_options else "step",
+        )
+    ).strip().lower()
+    if lr_scheduler not in {"step", "cosine"}:
+        raise InvalidRequestError(
+            "RF-DETR lr_scheduler 只支持 step 或 cosine",
+            details={"lr_scheduler": lr_scheduler},
+        )
+
+    config_options: dict[str, object] = {
+        "dataset_file": "roboflow",
+        "dataset_dir": str(dataset_dir),
+        "output_dir": str(output_dir),
+        "class_names": list(labels),
+        "batch_size": max(1, int(request.batch_size)),
+        "grad_accum_steps": max(1, int(extra_options.get("grad_accum_steps", 4))),
+        "epochs": max(1, int(request.max_epochs)),
+        "resume": resume_checkpoint_path,
+        "lr": float(extra_options.get("learning_rate", 1e-4)),
+        "weight_decay": float(extra_options.get("weight_decay", 1e-4)),
+        "lr_scheduler": lr_scheduler,
+        "lr_min_factor": float(extra_options.get("min_lr_ratio", 0.0)),
+        "set_cost_class": float(extra_options.get("class_cost", 2.0)),
+        "set_cost_bbox": float(extra_options.get("bbox_cost", 5.0)),
+        "set_cost_giou": float(extra_options.get("giou_cost", 2.0)),
+        "cls_loss_coef": float(
+            extra_options.get(
+                "class_loss_weight",
+                5.0 if request.task_type == SEGMENTATION_TASK_TYPE else 1.0,
+            )
+        ),
+        "bbox_loss_coef": float(extra_options.get("bbox_loss_weight", 5.0)),
+        "giou_loss_coef": float(extra_options.get("giou_loss_weight", 2.0)),
+        "eval_interval": max(1, int(extra_options.get("evaluation_interval", 1))),
+        "eval_max_dets": max(100, int(extra_options.get("evaluation_max_detections", 500))),
+        "accelerator": device_selection.lightning_accelerator,
+        "devices": device_selection.lightning_devices,
+        "num_workers": max(0, int(extra_options.get("num_workers", 0))),
+        "progress_bar": None,
+        "tensorboard": False,
+        "use_ema": _read_bool_option(
+            extra_options,
+            "use_ema",
+            extra_options.get("ema", True),
+        ),
+        "multi_scale": _read_bool_option(extra_options, "multi_scale", True),
+        "expanded_scales": _read_bool_option(extra_options, "expanded_scales", True),
+        "square_resize_div_64": True,
+        "checkpoint_interval": 1,
+        "run_test": False,
+        "log_per_class_metrics": False,
+        "aug_config": _resolve_rfdetr_aug_config(extra_options),
+        "augmentation_backend": _resolve_rfdetr_augmentation_backend(extra_options),
+    }
+    if request.task_type == SEGMENTATION_TASK_TYPE:
+        config_options.update(
+            {
+                "mask_ce_loss_coef": float(extra_options.get("mask_ce_weight", 5.0)),
+                "mask_dice_loss_coef": float(extra_options.get("mask_dice_weight", 5.0)),
+            }
+        )
+
     return config_cls(
-        dataset_file="roboflow",
-        dataset_dir=str(dataset_dir),
-        output_dir=str(output_dir),
-        class_names=list(labels),
-        batch_size=max(1, int(request.batch_size)),
-        epochs=max(1, int(request.max_epochs)),
-        lr=float(extra_options.get("learning_rate", 1e-4)),
-        weight_decay=float(extra_options.get("weight_decay", 1e-4)),
-        eval_interval=max(1, int(extra_options.get("evaluation_interval", 1))),
-        accelerator=device_selection.lightning_accelerator,
-        devices=device_selection.lightning_devices,
-        num_workers=max(0, int(extra_options.get("num_workers", 0))),
-        progress_bar=None,
-        tensorboard=False,
-        use_ema=bool(extra_options.get("use_ema", False)),
-        multi_scale=bool(extra_options.get("multi_scale", False)),
-        expanded_scales=bool(extra_options.get("expanded_scales", False)),
-        square_resize_div_64=True,
-        checkpoint_interval=1,
-        run_test=False,
-        log_per_class_metrics=False,
-        aug_config=_resolve_rfdetr_aug_config(extra_options),
-        augmentation_backend=_resolve_rfdetr_augmentation_backend(extra_options),
+        **config_options,
     )
 
 

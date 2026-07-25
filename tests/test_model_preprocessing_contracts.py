@@ -86,9 +86,10 @@ def test_rfdetr_runtime_preprocess_keeps_reference_fixed_resize() -> None:
     )
 
     assert input_array.shape == (1, 3, 640, 640)
+    assert input_array.dtype == np.float32
     assert preprocess_ms >= 0
     assert input_array[0, :, 0, 0].tolist() == pytest.approx([
-        30.0 / 255.0,
-        20.0 / 255.0,
-        10.0 / 255.0,
+        (30.0 / 255.0 - 0.485) / 0.229,
+        (20.0 / 255.0 - 0.456) / 0.224,
+        (10.0 / 255.0 - 0.406) / 0.225,
     ])

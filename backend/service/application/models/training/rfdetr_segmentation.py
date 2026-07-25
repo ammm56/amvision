@@ -11,6 +11,9 @@ from backend.service.application.models.rfdetr_core.training.platform_runner imp
     RfdetrPlatformTrainingResult,
     run_rfdetr_platform_training,
 )
+from backend.service.application.models.rfdetr_core.factory import (
+    resolve_rfdetr_full_core_default_input_size,
+)
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -19,9 +22,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 RFDETR_SEGMENTATION_IMPLEMENTATION_MODE = "rfdetr-full-core-segmentation"
 
-_RF_SEG_DEFAULT_INPUT = (384, 384)
 _RF_SEG_DEFAULT_BATCH_SIZE = 1
-_RF_SEG_DEFAULT_EPOCHS = 1
+_RF_SEG_DEFAULT_EPOCHS = 100
 
 
 @dataclass(frozen=True)
@@ -117,7 +119,11 @@ def run_rfdetr_segmentation_training(
             model_scale=request.model_scale,
             batch_size=request.batch_size,
             max_epochs=request.max_epochs,
-            input_size=request.input_size or _RF_SEG_DEFAULT_INPUT,
+            input_size=request.input_size
+            or resolve_rfdetr_full_core_default_input_size(
+                task_type=SEGMENTATION_TASK_TYPE,
+                model_scale=request.model_scale,
+            ),
             precision=request.precision,
             resume_checkpoint_path=request.resume_checkpoint_path,
             warm_start_checkpoint_path=request.warm_start_checkpoint_path,

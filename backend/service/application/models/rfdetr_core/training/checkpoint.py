@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import logging
+from importlib.metadata import version
 from typing import Any
 
 import torch
+
+from backend.service.application.models.rfdetr_core.utilities.state_dict import (
+    _make_fit_loop_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +42,17 @@ def convert_legacy_checkpoint(old_path: str, new_path: str) -> None:
             )
             hyper_parameters = {}
 
+    epoch = int(old.get("epoch", 0))
     new: dict[str, Any] = {
         "state_dict": {"model." + k: v for k, v in old["model"].items()},
-        "epoch": old.get("epoch", 0),
-        "global_step": 0,
+        "epoch": epoch,
+        "global_step": int(old.get("global_step", 0)),
         "hyper_parameters": hyper_parameters,
         "legacy_checkpoint_format": True,
+        "pytorch-lightning_version": version("pytorch-lightning"),
+        "loops": {"fit_loop": _make_fit_loop_state(epoch)},
+        "optimizer_states": [],
+        "lr_schedulers": [],
     }
 
     if "ema_model" in old:

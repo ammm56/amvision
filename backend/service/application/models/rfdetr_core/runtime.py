@@ -10,6 +10,7 @@ from backend.service.application.models.rfdetr_core.detection import (
 )
 from backend.service.application.models.rfdetr_core.factory import (
     align_rfdetr_full_core_input_size,
+    resolve_rfdetr_full_core_default_input_size,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
     build_rfdetr_segmentation_postprocess,
@@ -19,21 +20,6 @@ from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
     ModelTaskType,
 )
-
-_DETECTION_INPUT_SIZES = {
-    "nano": 384,
-    "s": 512,
-    "m": 576,
-    "l": 704,
-}
-_SEGMENTATION_INPUT_SIZES = {
-    "nano": 384,
-    "s": 512,
-    "m": 576,
-    "l": 704,
-    "x": 768,
-}
-
 
 def resolve_rfdetr_runtime_input_size(
     *,
@@ -283,14 +269,17 @@ def _resolve_default_input_edge(*, task_type: str, model_scale: str) -> int:
     - 当前函数的执行结果。
     """
 
-    if task_type == DETECTION_TASK_TYPE:
-        return _DETECTION_INPUT_SIZES.get(model_scale, 384)
-    if task_type == SEGMENTATION_TASK_TYPE:
-        return _SEGMENTATION_INPUT_SIZES.get(model_scale, 384)
-    raise ServiceConfigurationError(
-        "RF-DETR runtime 输入尺寸不支持指定任务分类",
-        details={"task_type": task_type},
-    )
+    try:
+        input_size = resolve_rfdetr_full_core_default_input_size(
+            task_type=task_type,
+            model_scale=model_scale,
+        )
+    except ValueError as exc:
+        raise ServiceConfigurationError(
+            "RF-DETR runtime 输入尺寸不支持指定任务或 scale",
+            details={"task_type": task_type, "model_scale": model_scale},
+        ) from exc
+    return input_size[0]
 
 
 def _resolve_preferred_output_names(

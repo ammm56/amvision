@@ -10,6 +10,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 
+RFDETR_IMAGENET_MEAN: tuple[float, float, float] = (0.485, 0.456, 0.406)
+RFDETR_IMAGENET_STD: tuple[float, float, float] = (0.229, 0.224, 0.225)
+
 
 def load_rfdetr_runtime_input_image(
     *,
@@ -38,7 +41,7 @@ def build_rfdetr_input_array(
     image: Any,
     input_size: tuple[int, int],
 ) -> tuple[Any, float]:
-    """把 BGR 图片整理成 RF-DETR runtime 使用的 NCHW float32 输入。"""
+    """把 BGR 图片整理成 RF-DETR runtime 使用的 ImageNet 归一化 NCHW 输入。"""
 
     preprocess_started_at = perf_counter()
     input_height, input_width = input_size
@@ -50,5 +53,8 @@ def build_rfdetr_input_array(
     input_array = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
     input_array = input_array / 255.0
     input_array = np_module.expand_dims(input_array, axis=0)
+    mean = np_module.asarray(RFDETR_IMAGENET_MEAN, dtype=np_module.float32).reshape(1, 3, 1, 1)
+    std = np_module.asarray(RFDETR_IMAGENET_STD, dtype=np_module.float32).reshape(1, 3, 1, 1)
+    input_array = (input_array - mean) / std
     preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
     return input_array, preprocess_ms

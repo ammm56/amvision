@@ -14,6 +14,7 @@ from backend.service.application.models.rfdetr_core.factory import (
     is_rfdetr_full_core_input_size_aligned,
     normalize_rfdetr_full_core_scale,
     resolve_rfdetr_full_core_config_class,
+    resolve_rfdetr_full_core_default_input_size,
     resolve_rfdetr_full_core_input_divisor,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
@@ -41,5 +42,6 @@ __all__ = [
     "is_rfdetr_full_core_input_size_aligned",
     "normalize_rfdetr_full_core_scale",
     "resolve_rfdetr_full_core_config_class",
+    "resolve_rfdetr_full_core_default_input_size",
     "resolve_rfdetr_full_core_input_divisor",
 ]

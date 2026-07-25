@@ -499,6 +499,11 @@ class TrainConfig(BaseModel):
     group_detr: int = 13
     ia_bce_loss: bool = True
     cls_loss_coef: float = 1.0
+    set_cost_class: float = Field(default=2.0, ge=0.0)
+    set_cost_bbox: float = Field(default=5.0, ge=0.0)
+    set_cost_giou: float = Field(default=2.0, ge=0.0)
+    bbox_loss_coef: float = Field(default=5.0, ge=0.0)
+    giou_loss_coef: float = Field(default=2.0, ge=0.0)
     num_select: int = 300
     dataset_file: Literal["coco", "o365", "roboflow", "yolo"] = "roboflow"
     square_resize_div_64: bool = True

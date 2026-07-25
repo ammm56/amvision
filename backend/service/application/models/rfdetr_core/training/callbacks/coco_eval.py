@@ -38,13 +38,19 @@ class COCOEvalCallback(Callback):
         log_per_class_metrics: bool = True,
     ) -> None:
         super().__init__()
-        self._max_dets = max_dets
+        self._max_dets = int(max_dets)
+        if self._max_dets < 100:
+            raise ValueError("RF-DETR COCO 评估的 max_dets 必须大于等于标准 AP 使用的 100")
         self._segmentation = segmentation
         self._eval_interval = max(1, int(eval_interval))
         self._log_per_class_metrics = bool(log_per_class_metrics)
         self._class_names: list[str] = []
         self._cat_id_to_name: dict[int, str] = {}
         self._f1_local: dict[int, dict[str, Any]] = init_matching_accumulator()
+        self.map_metric: Any = None
+        self.map_metric_max_dets: Any = None
+        self.map_metric_ema: Any = None
+        self.map_metric_ema_max_dets: Any = None
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
@@ -60,13 +66,32 @@ class COCOEvalCallback(Callback):
         返回：
         - 当前函数的执行结果。
         """
-        iou_type: Any = ["bbox", "segm"] if self._segmentation else "bbox"
-        kwargs: dict[str, Any] = dict(
-            class_metrics=True,
-            max_detection_thresholds=[1, 10, self._max_dets],
+        self.map_metric = self._build_map_metric(max_dets=100)
+        self.map_metric_max_dets = (
+            self._build_map_metric(max_dets=self._max_dets)
+            if self._max_dets > 100
+            else None
         )
-        self.map_metric = MeanAveragePrecision(iou_type=iou_type, **kwargs)
-        self.map_metric_ema: Any = None
+        self.map_metric_ema = None
+        self.map_metric_ema_max_dets = None
+
+    def teardown(self, trainer: Any, pl_module: Any, stage: str) -> None:
+        """释放评估器持有的预测、目标和 EMA 累积状态。"""
+
+        _ = trainer, pl_module, stage
+        for metric in (
+            self.map_metric,
+            self.map_metric_max_dets,
+            self.map_metric_ema,
+            self.map_metric_ema_max_dets,
+        ):
+            if metric is not None:
+                metric.reset()
+        self.map_metric = None
+        self.map_metric_max_dets = None
+        self.map_metric_ema = None
+        self.map_metric_ema_max_dets = None
+        self._f1_local = init_matching_accumulator()
 
     def on_fit_start(self, trainer: Any, pl_module: Any) -> None:
         """执行 `on_fit_start`。
@@ -122,6 +147,8 @@ class COCOEvalCallback(Callback):
         targets = self._convert_targets(outputs["targets"])
 
         self.map_metric.update(preds, targets)
+        if self.map_metric_max_dets is not None:
+            self.map_metric_max_dets.update(preds, targets)
 
         iou_type = "segm" if self._segmentation else "bbox"
         batch_matching = build_matching_data(preds, targets, iou_threshold=0.5, iou_type=iou_type)
@@ -130,21 +157,23 @@ class COCOEvalCallback(Callback):
         ema_cb = self._get_ema_callback(trainer)
         if ema_cb is not None and ema_cb._average_model is not None:
             if self.map_metric_ema is None:
-                ema_iou_type: Any = ["bbox", "segm"] if self._segmentation else "bbox"
-                self.map_metric_ema = MeanAveragePrecision(
-                    iou_type=ema_iou_type,
-                    class_metrics=True,
-                    max_detection_thresholds=[1, 10, self._max_dets],
-                ).to(pl_module.device)
+                self.map_metric_ema = self._build_map_metric(max_dets=100).to(pl_module.device)
+                self.map_metric_ema_max_dets = (
+                    self._build_map_metric(max_dets=self._max_dets).to(pl_module.device)
+                    if self._max_dets > 100
+                    else None
+                )
             samples, _ = batch
             orig_sizes = torch.stack([t["orig_size"] for t in outputs["targets"]]).to(pl_module.device)
             ema_underlying = ema_cb._average_model.module.model
             with torch.no_grad():
                 ema_underlying.eval()
                 ema_outputs = ema_underlying(samples)
-                ema_results = pl_module.postprocess(ema_outputs, orig_sizes)
+            ema_results = pl_module.postprocess(ema_outputs, orig_sizes)
             ema_preds = self._convert_preds(ema_results)
             self.map_metric_ema.update(ema_preds, targets)
+            if self.map_metric_ema_max_dets is not None:
+                self.map_metric_ema_max_dets.update(ema_preds, targets)
 
     def on_validation_epoch_end(self, trainer: Any, pl_module: Any) -> None:
         """执行 `on_validation_epoch_end`。
@@ -162,8 +191,12 @@ class COCOEvalCallback(Callback):
             is_last_epoch = isinstance(max_epochs, int) and max_epochs > 0 and current_epoch >= max_epochs
             if current_epoch % self._eval_interval != 0 and not is_last_epoch:
                 self.map_metric.reset()
+                if self.map_metric_max_dets is not None:
+                    self.map_metric_max_dets.reset()
                 if self.map_metric_ema is not None:
                     self.map_metric_ema.reset()
+                if self.map_metric_ema_max_dets is not None:
+                    self.map_metric_ema_max_dets.reset()
                 self._f1_local = init_matching_accumulator()
                 return
         self._compute_and_log(trainer, pl_module, "val")
@@ -194,6 +227,8 @@ class COCOEvalCallback(Callback):
         targets = self._convert_targets(outputs["targets"])
 
         self.map_metric.update(preds, targets)
+        if self.map_metric_max_dets is not None:
+            self.map_metric_max_dets.update(preds, targets)
 
         iou_type = "segm" if self._segmentation else "bbox"
         batch_matching = build_matching_data(preds, targets, iou_threshold=0.5, iou_type=iou_type)
@@ -226,6 +261,11 @@ class COCOEvalCallback(Callback):
         - 当前函数的执行结果。
         """
         metrics = self.map_metric.compute()
+        recall_metrics = (
+            self.map_metric_max_dets.compute()
+            if self.map_metric_max_dets is not None
+            else metrics
+        )
 
         pfx = "bbox_" if self._segmentation else ""
         mar_key = f"{pfx}mar_{self._max_dets}"
@@ -234,33 +274,40 @@ class COCOEvalCallback(Callback):
             "mAP 50:95": float(metrics[f"{pfx}map"]),
             "mAP 50": float(metrics[f"{pfx}map_50"]),
             "mAP 75": float(metrics[f"{pfx}map_75"]),
-            f"mAR @{self._max_dets}": float(metrics[mar_key]),
+            f"mAR @{self._max_dets}": float(recall_metrics[mar_key]),
         }
 
         pl_module.log(f"{split}/mAP_50_95", metrics[f"{pfx}map"], prog_bar=True)
         pl_module.log(f"{split}/mAP_50", metrics[f"{pfx}map_50"], prog_bar=True)
         pl_module.log(f"{split}/mAP_75", metrics[f"{pfx}map_75"])
-        pl_module.log(f"{split}/mAR", metrics[mar_key])
+        pl_module.log(f"{split}/mAR", recall_metrics[mar_key])
 
         trainer.callback_metrics[f"{split}/mAP_50_95"] = metrics[f"{pfx}map"].detach().cpu()
         trainer.callback_metrics[f"{split}/mAP_50"] = metrics[f"{pfx}map_50"].detach().cpu()
         trainer.callback_metrics[f"{split}/mAP_75"] = metrics[f"{pfx}map_75"].detach().cpu()
-        trainer.callback_metrics[f"{split}/mAR"] = metrics[mar_key].detach().cpu()
+        trainer.callback_metrics[f"{split}/mAR"] = recall_metrics[mar_key].detach().cpu()
 
         if self.map_metric_ema is not None:
             ema_metrics = self.map_metric_ema.compute()
+            ema_recall_metrics = (
+                self.map_metric_ema_max_dets.compute()
+                if self.map_metric_ema_max_dets is not None
+                else ema_metrics
+            )
             pl_module.log(f"{split}/ema_mAP_50_95", ema_metrics[f"{pfx}map"], prog_bar=True)
             pl_module.log(f"{split}/ema_mAP_50", ema_metrics[f"{pfx}map_50"])
-            pl_module.log(f"{split}/ema_mAR", ema_metrics[mar_key])
+            pl_module.log(f"{split}/ema_mAR", ema_recall_metrics[mar_key])
             trainer.callback_metrics[f"{split}/ema_mAP_50_95"] = ema_metrics[f"{pfx}map"].detach().cpu()
             trainer.callback_metrics[f"{split}/ema_mAP_50"] = ema_metrics[f"{pfx}map_50"].detach().cpu()
-            trainer.callback_metrics[f"{split}/ema_mAR"] = ema_metrics[mar_key].detach().cpu()
+            trainer.callback_metrics[f"{split}/ema_mAR"] = ema_recall_metrics[mar_key].detach().cpu()
             if self._segmentation:
                 pl_module.log(f"{split}/ema_segm_mAP_50_95", ema_metrics["segm_map"])
                 pl_module.log(f"{split}/ema_segm_mAP_50", ema_metrics["segm_map_50"])
                 trainer.callback_metrics[f"{split}/ema_segm_mAP_50_95"] = ema_metrics["segm_map"].detach().cpu()
                 trainer.callback_metrics[f"{split}/ema_segm_mAP_50"] = ema_metrics["segm_map_50"].detach().cpu()
             self.map_metric_ema.reset()
+            if self.map_metric_ema_max_dets is not None:
+                self.map_metric_ema_max_dets.reset()
 
         if self._segmentation:
             overall["segm mAP 50:95"] = float(metrics["segm_map"])
@@ -313,8 +360,17 @@ class COCOEvalCallback(Callback):
 
         ar_pc_key = f"{pfx}mar_{self._max_dets}_per_class"
         ar_by_cid: dict[int, float] = {}
-        if ar_pc_key in metrics and "classes" in metrics:
-            for class_id, ar in zip(metrics["classes"], metrics[ar_pc_key]):
+        if ar_pc_key in recall_metrics and "classes" in recall_metrics:
+            recall_classes = recall_metrics["classes"]
+            recall_per_class = recall_metrics[ar_pc_key]
+            if recall_classes.ndim == 0:
+                recall_classes = recall_classes.unsqueeze(0)
+            if recall_per_class.ndim == 0:
+                recall_per_class = recall_per_class.unsqueeze(0)
+            for class_id, ar in zip(
+                recall_classes,
+                recall_per_class,
+            ):
                 ar_by_cid[int(class_id)] = float(ar)
 
         per_class = self._build_per_class_rows(
@@ -323,7 +379,24 @@ class COCOEvalCallback(Callback):
 
         self._print_metrics_tables(trainer, split, overall, per_class)
         self.map_metric.reset()
+        if self.map_metric_max_dets is not None:
+            self.map_metric_max_dets.reset()
         self._f1_local = init_matching_accumulator()
+
+    def _build_map_metric(self, *, max_dets: int) -> MeanAveragePrecision:
+        """按指定上限构建 COCO evaluator。"""
+
+        iou_type: Any = ["bbox", "segm"] if self._segmentation else "bbox"
+        thresholds = [1, 10, 100] if max_dets == 100 else [1, 100, max_dets]
+        metric = MeanAveragePrecision(
+            iou_type=iou_type,
+            class_metrics=True,
+            max_detection_thresholds=thresholds,
+        )
+        # RF-DETR 固定产生较多 queries；标准 AP evaluator 截断到 100 是预期行为，
+        # 密集目标的额外召回由独立 maxDets evaluator 负责。
+        metric.warn_on_many_detections = False
+        return metric
 
     def _get_ema_callback(self, trainer: Any) -> Any:
         """执行 `_get_ema_callback`。

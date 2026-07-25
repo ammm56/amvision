@@ -122,6 +122,12 @@ class OnnxRuntimeRfdetrRuntimeSession:
     def predict(self, request: DetectionPredictionRequest) -> DetectionPredictionExecutionResult:
         return _predict_onnx(self, request)
 
+    def close(self) -> None:
+        """释放 ONNX Runtime session 和后处理模型引用。"""
+
+        self.session = None
+        self.postprocess_model = None
+
 
 def _predict_onnx(
     session_obj: OnnxRuntimeRfdetrRuntimeSession,

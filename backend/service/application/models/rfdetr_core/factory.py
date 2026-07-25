@@ -152,6 +152,21 @@ def resolve_rfdetr_full_core_input_divisor(
     return patch_size * num_windows
 
 
+def resolve_rfdetr_full_core_default_input_size(
+    *,
+    task_type: ModelTaskType,
+    model_scale: str,
+) -> tuple[int, int]:
+    """返回指定任务和 scale 的原生方形训练输入尺寸。"""
+
+    config_cls = resolve_rfdetr_full_core_config_class(
+        task_type=task_type,
+        model_scale=model_scale,
+    )
+    resolution = _read_int_config_default(config_cls, "resolution")
+    return resolution, resolution
+
+
 def align_rfdetr_full_core_input_size(
     *,
     task_type: ModelTaskType,

@@ -26,7 +26,7 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from backend.service.application.models.rfdetr_core.utilities.logger import get_logger
 from backend.service.application.models.rfdetr_core.utilities.package import get_version
-from backend.service.application.models.rfdetr_core.utilities.state_dict import _make_fit_loop_state, strip_checkpoint
+from backend.service.application.models.rfdetr_core.utilities.state_dict import _make_fit_loop_state
 
 logger = get_logger()
 
@@ -72,8 +72,9 @@ class BestModelCallback(ModelCheckpoint):
         args_dict: object,
         trainer: Trainer,
         model_name: str | None = None,
+        resume_model_state_dict: dict[str, torch.Tensor] | None = None,
     ) -> dict[str, object]:
-        """执行 `_build_checkpoint_payload`。
+        """构建同时支持部署加载与 Lightning 完整 resume 的 checkpoint。
         
         参数：
         - `model_state_dict`：传入的 `model_state_dict` 参数。
@@ -84,17 +85,40 @@ class BestModelCallback(ModelCheckpoint):
         返回：
         - 当前函数的执行结果。
         """
-        payload: dict[str, object] = {
-            "model": model_state_dict,
-            "args": args_dict,
-            "epoch": trainer.current_epoch,
-            "state_dict": {f"model.{k}": v for k, v in model_state_dict.items()},
-            "global_step": trainer.global_step,
-            "pytorch-lightning_version": ptl_version,
-            "loops": {"fit_loop": _make_fit_loop_state(trainer.current_epoch)},
-            "optimizer_states": [],
-            "lr_schedulers": [],
-        }
+        resume_state_dict = resume_model_state_dict or model_state_dict
+        connector = getattr(trainer, "_checkpoint_connector", None)
+        dump_checkpoint = getattr(connector, "dump_checkpoint", None)
+        if callable(dump_checkpoint):
+            payload = dict(dump_checkpoint(weights_only=False))
+        else:
+            # 测试替身和旧版 Lightning 的兼容路径；正常训练会走上面的完整状态导出。
+            payload = {
+                "epoch": trainer.current_epoch,
+                "global_step": trainer.global_step,
+                "pytorch-lightning_version": ptl_version,
+                "loops": {"fit_loop": _make_fit_loop_state(trainer.current_epoch)},
+                "optimizer_states": [
+                    optimizer.state_dict()
+                    for optimizer in getattr(trainer, "optimizers", [])
+                ],
+                "lr_schedulers": [
+                    config.scheduler.state_dict()
+                    for config in getattr(trainer, "lr_scheduler_configs", [])
+                ],
+            }
+        payload.setdefault("epoch", int(getattr(trainer, "current_epoch", 0)))
+        payload.setdefault("global_step", int(getattr(trainer, "global_step", 0)))
+        payload.setdefault("pytorch-lightning_version", ptl_version)
+        payload.update(
+            {
+                "model": model_state_dict,
+                "args": args_dict,
+                "state_dict": {
+                    f"model.{key}": value
+                    for key, value in resume_state_dict.items()
+                },
+            }
+        )
         if model_name is not None:
             payload["model_name"] = model_name
         version = get_version()
@@ -203,12 +227,9 @@ class BestModelCallback(ModelCheckpoint):
             )
         pth_path = Path(filepath)
         pth_path.parent.mkdir(parents=True, exist_ok=True)
-        if self._monitor_ema is not None:
-            model_state_dict = self._get_ema_model_state_dict(trainer, pl_module)
-        else:
-            _orig = getattr(pl_module.model, "_orig_mod", None)
-            raw = _orig if isinstance(_orig, torch.nn.Module) else pl_module.model
-            model_state_dict = raw.state_dict()
+        _orig = getattr(pl_module.model, "_orig_mod", None)
+        raw = _orig if isinstance(_orig, torch.nn.Module) else pl_module.model
+        model_state_dict = raw.state_dict()
         train_config = pl_module.train_config
         dataset_class_names = getattr(trainer.datamodule, "class_names", None)
         if (
@@ -249,6 +270,9 @@ class BestModelCallback(ModelCheckpoint):
             self._best_ema = ema_val
             self._output_dir.mkdir(parents=True, exist_ok=True)
             ema_state_dict = self._get_ema_model_state_dict(trainer, pl_module)
+            _orig = getattr(pl_module.model, "_orig_mod", None)
+            raw = _orig if isinstance(_orig, torch.nn.Module) else pl_module.model
+            resume_model_state_dict = raw.state_dict()
             ema_train_config = pl_module.train_config
             dataset_class_names = getattr(trainer.datamodule, "class_names", None)
             if (
@@ -262,7 +286,13 @@ class BestModelCallback(ModelCheckpoint):
             )
             ema_model_name = self._resolve_model_name(pl_module)
             torch.save(
-                self._build_checkpoint_payload(ema_state_dict, ema_args_dict, trainer, model_name=ema_model_name),
+                self._build_checkpoint_payload(
+                    ema_state_dict,
+                    ema_args_dict,
+                    trainer,
+                    model_name=ema_model_name,
+                    resume_model_state_dict=resume_model_state_dict,
+                ),
                 self._output_dir / "checkpoint_best_ema.pth",
             )
             logger.info(
@@ -294,7 +324,6 @@ class BestModelCallback(ModelCheckpoint):
 
         if best_path and best_path.exists():
             shutil.copy2(best_path, total_path)
-            strip_checkpoint(total_path)
             logger.info(
                 "Best total checkpoint saved from %s (regular=%.4f, ema=%.4f)",
                 "EMA" if best_is_ema else "regular",

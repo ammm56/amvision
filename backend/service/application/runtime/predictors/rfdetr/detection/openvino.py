@@ -159,6 +159,12 @@ class OpenVINORfdetrRuntimeSession:
     ) -> DetectionPredictionExecutionResult:
         return _predict_openvino(self, request)
 
+    def close(self) -> None:
+        """释放 OpenVINO compiled model 和后处理模型引用。"""
+
+        self.session = None
+        self.postprocess_model = None
+
 
 def _predict_openvino(
     session_obj: OpenVINORfdetrRuntimeSession,

@@ -242,7 +242,7 @@ class WindowedDinov2WithRegistersEmbeddings(nn.Module):
             size=(torch_int(height), torch_int(width)),
             mode="bicubic",
             align_corners=False,
-            antialias=False,
+            antialias=patch_pos_embed.device.type != "mps",
         ).to(dtype=target_dtype)
 
         if not torch.jit.is_tracing():
