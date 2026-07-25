@@ -280,6 +280,13 @@
                 <span>{{ item.deployment_instance_id }}</span>
               </div>
               <div class="deployment-instance-card__states">
+                <StatusBadge
+                  v-if="item.runtime_configuration?.lifecycle?.keep_warm_enabled === true"
+                  class="deployment-instance-card__keep-warm"
+                  tone="info"
+                >
+                  {{ deploymentKeepWarmLabel(item) }}
+                </StatusBadge>
                 <StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge>
                 <StatusBadge :tone="runtimeProcessTone(item)">{{ runtimeProcessLabel(item) }}</StatusBadge>
               </div>
@@ -557,6 +564,7 @@ const runtimeModeOptions = [
   { label: 'async', value: 'async' },
 ]
 const RUNTIME_REFRESH_CONCURRENCY = 8
+const DEFAULT_KEEP_WARM_INTERVAL_SECONDS = 0.1
 
 const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
 
@@ -615,7 +623,7 @@ const openvinoNpuCompilationModeParams = ref('')
 const tensorrtOptimizationProfileIndex = ref(0)
 const tensorrtPinnedOutput = ref<'auto' | 'true' | 'false'>('auto')
 const keepWarmEnabled = ref<'true' | 'false'>('false')
-const keepWarmIntervalSeconds = ref(0.1)
+const keepWarmIntervalSeconds = ref(DEFAULT_KEEP_WARM_INTERVAL_SECONDS)
 const runtimeCapabilities = ref<DeploymentRuntimeCapabilities | null>(null)
 const runtimeCapabilitiesLoading = ref(false)
 const displayName = ref('')
@@ -923,7 +931,7 @@ function applyRuntimeCapabilityDefaults(capabilities: DeploymentRuntimeCapabilit
   const configuration = capabilities.default_runtime_configuration
   instanceCount.value = configuration.execution.instance_count
   keepWarmEnabled.value = configuration.lifecycle.keep_warm_enabled === true ? 'true' : 'false'
-  keepWarmIntervalSeconds.value = configuration.lifecycle.keep_warm_interval_seconds ?? 0.1
+  keepWarmIntervalSeconds.value = configuration.lifecycle.keep_warm_interval_seconds ?? DEFAULT_KEEP_WARM_INTERVAL_SECONDS
   normalizeKeepWarmIntervalSeconds()
   const options = configuration.backend_options
   if (options.kind === 'openvino-cpu') {
@@ -996,7 +1004,7 @@ function normalizeKeepWarmIntervalSeconds(): void {
   const parsed = Number(keepWarmIntervalSeconds.value)
   keepWarmIntervalSeconds.value = Number.isFinite(parsed) && parsed >= 0.01
     ? parsed
-    : 0.1
+    : DEFAULT_KEEP_WARM_INTERVAL_SECONDS
 }
 
 function applyOpenvinoNumRequestsDefault(value: number | 'auto'): void {
@@ -1380,6 +1388,17 @@ function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success'
 
 function runtimeProcessLabel(item: TaskDeploymentInstance): string {
   return deploymentRuntimeStatus(item.deployment_instance_id)?.process_state || t('deploymentOps.states.notInspected')
+}
+
+function deploymentKeepWarmLabel(item: TaskDeploymentInstance): string {
+  const configuredInterval = item.runtime_configuration?.lifecycle?.keep_warm_interval_seconds
+  const interval = typeof configuredInterval === 'number'
+    && Number.isFinite(configuredInterval)
+    && configuredInterval >= 0.01
+    ? configuredInterval
+    : DEFAULT_KEEP_WARM_INTERVAL_SECONDS
+  const label = t('deploymentOps.runtimeConfig.keepWarm')
+  return `${label} · ${interval} s`
 }
 
 function setDeploymentRunningAction(deploymentId: string, action: string | null): void {

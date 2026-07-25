@@ -47,7 +47,10 @@ vi.mock('@/modules/models/services/model.service', () => ({
   listDeploymentSourceModels: vi.fn(),
 }))
 
-function runtimeConfiguration(instanceCount: number): DeploymentRuntimeConfiguration {
+function runtimeConfiguration(
+  instanceCount: number,
+  lifecycleOverrides: Partial<DeploymentRuntimeConfiguration['lifecycle']> = {},
+): DeploymentRuntimeConfiguration {
   return {
     execution: {
       instance_count: instanceCount,
@@ -60,6 +63,7 @@ function runtimeConfiguration(instanceCount: number): DeploymentRuntimeConfigura
       warmup_dummy_image_size: null,
       keep_warm_enabled: null,
       keep_warm_interval_seconds: null,
+      ...lifecycleOverrides,
     },
     backend_options: { kind: 'default' },
   }
@@ -99,7 +103,10 @@ const secondDeployment: TaskDeploymentInstance = {
   runtime_backend: 'openvino',
   device_name: 'cpu',
   runtime_precision: 'fp32',
-  runtime_configuration: runtimeConfiguration(1),
+  runtime_configuration: runtimeConfiguration(1, {
+    keep_warm_enabled: true,
+    keep_warm_interval_seconds: null,
+  }),
   created_at: '2026-07-10T02:00:00Z',
   updated_at: '2026-07-10T02:00:00Z',
 }
@@ -503,6 +510,33 @@ describe('DeploymentOperationsPage', () => {
     await clickButtonByText(wrapper, '停止')
     await flushPromises()
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
+  })
+
+  it('shows configured or default keep-warm intervals only on enabled deployment cards', async () => {
+    const explicitIntervalDeployment: TaskDeploymentInstance = {
+      ...secondDeployment,
+      deployment_instance_id: 'deployment-3',
+      runtime_configuration: runtimeConfiguration(1, {
+        keep_warm_enabled: true,
+        keep_warm_interval_seconds: 0.02,
+      }),
+    }
+    vi.mocked(listTaskDeployments).mockImplementation(async (taskType: ModelTaskType) => (
+      taskType === 'detection' ? [deployment, secondDeployment, explicitIntervalDeployment] : []
+    ))
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const enabledCard = wrapper.find('[data-deployment-id="deployment-2"]')
+    const explicitIntervalCard = wrapper.find('[data-deployment-id="deployment-3"]')
+    const disabledCard = wrapper.find('[data-deployment-id="deployment-1"]')
+    expect(enabledCard.find('.deployment-instance-card__keep-warm').text()).toBe('保持设备活跃 · 0.1 s')
+    expect(explicitIntervalCard.find('.deployment-instance-card__keep-warm').text()).toBe('保持设备活跃 · 0.02 s')
+    expect(disabledCard.find('.deployment-instance-card__keep-warm').exists()).toBe(false)
   })
 
   it('keeps warmup available when sessions are loaded but device keep-warm is inactive', async () => {
