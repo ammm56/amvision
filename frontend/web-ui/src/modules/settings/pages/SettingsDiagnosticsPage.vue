@@ -552,7 +552,7 @@ const serviceRows = computed(() => [
   buildStatusRow('backend_service', 'backend-service', recordValue(services.value, 'backend_service', 'status')),
   buildStatusRow('worker', 'backend-worker', recordValue(services.value, 'backend_worker', 'health')),
   buildStatusRow('websocket', 'WebSocket', recordValue(services.value, 'websocket', 'status')),
-  buildStatusRow('zeromq', 'ZeroMQ', recordValue(services.value, 'zeromq', 'available') === true ? 'available' : 'missing'),
+  buildStatusRow('zeromq', 'ZeroMQ', recordValue(services.value, 'zeromq', 'status')),
   buildStatusRow('database', 'Database', recordValue(services.value, 'database', 'database')),
   buildStatusRow('local_buffer_broker', 'LocalBufferBroker', recordValue(services.value, 'local_buffer_broker', 'state')),
 ])
@@ -696,13 +696,19 @@ function formatProjectVisibility(value: string[] | undefined): string {
 
 function formatServiceStatus(value: string): string {
   const normalized = value.toLowerCase().trim()
+  if (normalized === 'missing') return t('settingsDiagnostics.status.missing')
   if (normalized === 'available') return t('settingsDiagnostics.status.available')
   if (normalized === 'unavailable') return t('settingsDiagnostics.status.unavailable')
   if (normalized === 'enabled') return t('settingsDiagnostics.status.enabled')
   if (normalized === 'disabled') return t('settingsDiagnostics.status.disabled')
+  if (normalized === 'degraded') return t('settingsDiagnostics.status.degraded')
+  if (normalized === 'not_configured') return t('settingsDiagnostics.status.notConfigured')
+  if (normalized === 'misconfigured') return t('settingsDiagnostics.status.misconfigured')
   if (normalized === 'ok') return t('settingsDiagnostics.status.ok')
+  if (normalized === 'error') return t('settingsDiagnostics.status.error')
   if (normalized === 'configured') return t('settingsDiagnostics.status.configured')
   if (normalized === 'reachable') return t('settingsDiagnostics.status.reachable')
+  if (normalized === 'unreachable') return t('settingsDiagnostics.status.unreachable')
   if (normalized === 'running') return t('settingsDiagnostics.status.running')
   if (normalized === 'stale') return t('settingsDiagnostics.status.stale')
   if (normalized === 'offline') return t('settingsDiagnostics.status.offline')

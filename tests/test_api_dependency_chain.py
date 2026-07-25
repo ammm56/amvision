@@ -221,6 +221,9 @@ def test_diagnostics_route_requires_auth_read_and_returns_system_summary(
     assert payload["system"]["working_directory"]
     assert payload["python_runtime"]["executable"]
     assert payload["services"]["database"]["status"] == "ok"
+    assert payload["services"]["zeromq"]["status"] == "available"
+    assert payload["services"]["zeromq"]["available"] is True
+    assert payload["services"]["zeromq"]["adapter_configured"] is True
     assert payload["services"]["local_buffer_broker"]["enabled"] is False
     assert "amvision-default-user-token" not in json.dumps(payload)
 

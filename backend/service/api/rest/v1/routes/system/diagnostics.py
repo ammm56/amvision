@@ -314,10 +314,19 @@ def _build_zeromq_service_summary(trigger_source_supervisor: object) -> dict[str
     adapters = getattr(trigger_source_supervisor, "adapters", {})
     adapter_keys = sorted(adapters.keys()) if isinstance(adapters, dict) else []
     dependency = _build_dependency_status("pyzmq", "zmq")
+    dependency_installed = dependency["installed"] is True
+    adapter_configured = "zeromq-topic" in adapter_keys
+    if not dependency_installed:
+        status = "missing"
+    elif not adapter_configured:
+        status = "not_configured"
+    else:
+        status = "available"
     return {
-        "available": dependency["installed"],
+        "status": status,
+        "available": dependency_installed and adapter_configured,
         "dependency": dependency,
-        "adapter_configured": "zeromq-topic" in adapter_keys,
+        "adapter_configured": adapter_configured,
         "adapter_keys": adapter_keys,
     }
 

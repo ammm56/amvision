@@ -239,9 +239,14 @@ def _resolve_backend_worker_group_health(workers: list[dict[str, object]]) -> st
     if not workers:
         return "offline"
     worker_healths = {
-        str(worker.get("health") or "unknown").strip().lower()
+        str(worker.get("effective_health") or worker.get("health") or "unknown")
+        .strip()
+        .lower()
         for worker in workers
+        if worker.get("effective_health") != "superseded"
     }
+    if not worker_healths:
+        return "offline"
     if worker_healths == {"running"}:
         return "running"
     if "running" in worker_healths:
@@ -253,6 +258,51 @@ def _resolve_backend_worker_group_health(workers: list[dict[str, object]]) -> st
     if "unknown" in worker_healths:
         return "unknown"
     return sorted(worker_healths)[0] if worker_healths else "unknown"
+
+
+def _mark_superseded_worker_health(
+    workers: list[dict[str, object]],
+) -> None:
+    """标记已被当前 running worker 完整覆盖的历史心跳。
+
+    同一个 queue 根目录可能先运行拆分 profile，之后切换为单一全功能
+    worker。旧 profile 文件不会随进程退出自动消失，继续把这些过期文件
+    视为当前拓扑会导致正常 worker 被误判为 degraded。
+
+    这里只忽略 consumer 能力已被新鲜 running worker 完整覆盖的
+    stale/stopped 心跳；未覆盖的 profile、损坏文件和无 consumer 信息的
+    心跳仍参与聚合，避免掩盖真实的部分故障。
+    """
+
+    running_consumer_kinds: set[str] = set()
+    for worker in workers:
+        if worker.get("health") != "running":
+            continue
+        running_consumer_kinds.update(_read_consumer_kinds(worker))
+
+    for worker in workers:
+        worker["effective_health"] = worker.get("health") or "unknown"
+        if worker.get("health") not in {"stale", "stopped"}:
+            continue
+        consumer_kinds = _read_consumer_kinds(worker)
+        if not consumer_kinds or not consumer_kinds.issubset(running_consumer_kinds):
+            continue
+        worker["effective_health"] = "superseded"
+        worker["reason"] = "consumer_coverage_superseded"
+        worker["covered_consumer_kinds"] = sorted(consumer_kinds)
+
+
+def _read_consumer_kinds(worker: dict[str, object]) -> set[str]:
+    """从 worker 心跳读取规范化 consumer kind 集合。"""
+
+    value = worker.get("enabled_consumer_kinds")
+    if not isinstance(value, list):
+        return set()
+    return {
+        item.strip()
+        for item in value
+        if isinstance(item, str) and item.strip()
+    }
 
 
 def read_backend_worker_health_summary(
@@ -293,10 +343,14 @@ def read_backend_worker_health_summary(
         )
         for health_path in heartbeat_paths
     ]
+    _mark_superseded_worker_health(workers)
     health = _resolve_backend_worker_group_health(workers)
     running_workers = [worker for worker in workers if worker.get("health") == "running"]
     stale_workers = [worker for worker in workers if worker.get("health") == "stale"]
     stopped_workers = [worker for worker in workers if worker.get("health") == "stopped"]
+    superseded_workers = [
+        worker for worker in workers if worker.get("effective_health") == "superseded"
+    ]
     unreadable_workers = [
         worker for worker in workers if worker.get("reason") == "heartbeat_unreadable"
     ]
@@ -314,6 +368,7 @@ def read_backend_worker_health_summary(
         "running_count": len(running_workers),
         "stale_count": len(stale_workers),
         "stopped_count": len(stopped_workers),
+        "superseded_count": len(superseded_workers),
         "unreadable_count": len(unreadable_workers),
         "health_files": [str(path) for path in heartbeat_paths],
         "workers": workers,

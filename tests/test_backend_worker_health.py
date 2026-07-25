@@ -115,3 +115,109 @@ def test_worker_health_summary_marks_old_heartbeat_stale(tmp_path) -> None:
 
     assert summary["health"] == "stale"
     assert summary["reported_health"] == "running"
+
+
+def test_worker_health_summary_ignores_stale_profile_covered_by_running_worker(
+    tmp_path,
+) -> None:
+    """旧 profile 的 consumer 已被当前 worker 覆盖时不应误报 degraded。"""
+
+    stale_path = build_backend_worker_profile_health_path(
+        tmp_path,
+        worker_name="amvision dataset import worker",
+    )
+    stale_path.parent.mkdir(parents=True)
+    stale_path.write_text(
+        json.dumps(
+            {
+                "health": "running",
+                "app_name": "amvision dataset import worker",
+                "heartbeat_at": (
+                    datetime.now(UTC) - timedelta(seconds=60)
+                ).isoformat(),
+                "enabled_consumer_kinds": ["dataset-import"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    current_worker = BackendWorkerHeartbeat(
+        info=BackendWorkerHeartbeatInfo(
+            app_name="amvision worker",
+            app_version="0.1.3",
+            workspace_dir=tmp_path / "worker",
+            queue_root_dir=tmp_path,
+            enabled_consumer_kinds=("dataset-import", "dataset-export"),
+            max_concurrent_tasks=2,
+            poll_interval_seconds=1.0,
+        )
+    )
+
+    current_worker.start()
+    try:
+        summary = read_backend_worker_health_summary(
+            queue_root_dir=tmp_path,
+            stale_after_seconds=5,
+        )
+    finally:
+        current_worker.stop()
+
+    assert summary["health"] == "running"
+    assert summary["running_count"] == 1
+    assert summary["stale_count"] == 1
+    assert summary["superseded_count"] == 1
+    stale_worker = next(
+        worker
+        for worker in summary["workers"]
+        if worker["app_name"] == "amvision dataset import worker"
+    )
+    assert stale_worker["health"] == "stale"
+    assert stale_worker["effective_health"] == "superseded"
+    assert stale_worker["reason"] == "consumer_coverage_superseded"
+
+
+def test_worker_health_summary_keeps_uncovered_stale_profile_degraded(tmp_path) -> None:
+    """running worker 未覆盖的旧 profile 仍应报告部分故障。"""
+
+    stale_path = build_backend_worker_profile_health_path(
+        tmp_path,
+        worker_name="amvision dataset import worker",
+    )
+    stale_path.parent.mkdir(parents=True)
+    stale_path.write_text(
+        json.dumps(
+            {
+                "health": "running",
+                "app_name": "amvision dataset import worker",
+                "heartbeat_at": (
+                    datetime.now(UTC) - timedelta(seconds=60)
+                ).isoformat(),
+                "enabled_consumer_kinds": ["dataset-import"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    current_worker = BackendWorkerHeartbeat(
+        info=BackendWorkerHeartbeatInfo(
+            app_name="amvision export worker",
+            app_version="0.1.3",
+            workspace_dir=tmp_path / "worker",
+            queue_root_dir=tmp_path,
+            enabled_consumer_kinds=("dataset-export",),
+            max_concurrent_tasks=1,
+            poll_interval_seconds=1.0,
+        )
+    )
+
+    current_worker.start()
+    try:
+        summary = read_backend_worker_health_summary(
+            queue_root_dir=tmp_path,
+            stale_after_seconds=5,
+        )
+    finally:
+        current_worker.stop()
+
+    assert summary["health"] == "degraded"
+    assert summary["running_count"] == 1
+    assert summary["stale_count"] == 1
+    assert summary["superseded_count"] == 0
