@@ -708,7 +708,7 @@ describe('DeploymentOperationsPage', () => {
 
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const initialDeviceField = findFieldByText(wrapper, 'Device')
@@ -768,14 +768,14 @@ describe('DeploymentOperationsPage', () => {
     setI18nLocale('ja-JP')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO パフォーマンス戦略')
-    expect(wrapper.text()).toContain('デプロイ元モデル')
+    expect(wrapper.text()).toContain('デプロイ元を変更')
     expect(wrapper.text()).toContain('デバイスをアクティブに維持')
     expect(wrapper.text()).not.toContain('デバイス維持間隔（秒）')
 
     setI18nLocale('ko-KR')
     await nextTick()
     expect(wrapper.text()).toContain('OpenVINO 성능 전략')
-    expect(wrapper.text()).toContain('배포 소스 모델')
+    expect(wrapper.text()).toContain('배포 소스 변경')
     expect(wrapper.text()).toContain('장치 활성 상태 유지')
     expect(wrapper.text()).not.toContain('장치 활성 유지 간격(초)')
   })
@@ -790,7 +790,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const keepWarmField = findFieldByText(wrapper, '保持设备活跃')
@@ -841,7 +841,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const sourcePrecision = wrapper.findAll('.deployment-source-summary__grid > div')
@@ -906,7 +906,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const deviceField = findFieldByText(wrapper, 'Device')
@@ -987,7 +987,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('TensorRT optimization profile')
@@ -1028,7 +1028,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const rangeField = findFieldByText(wrapper, 'TensorRT 输入范围')
@@ -1076,7 +1076,7 @@ describe('DeploymentOperationsPage', () => {
     await flushPromises()
     await clickButtonByText(wrapper, '选择部署来源')
     await flushPromises()
-    await clickButtonByText(wrapper, '使用构建')
+    await clickButtonByText(wrapper, '用于部署')
     await flushPromises()
 
     const profileField = findFieldByText(wrapper, 'TensorRT optimization profile')

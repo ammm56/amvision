@@ -20,59 +20,54 @@
 
     <div class="operation-grid deployment-workspace-grid">
       <form class="form-panel deployment-create-panel" @submit.prevent="submitDeployment">
-        <div>
-          <h2>{{ t('deploymentOps.createTitle') }}</h2>
+        <div class="section-heading deployment-create-panel__heading">
+          <div>
+            <h2>{{ t('deploymentOps.createTitle') }}</h2>
+          </div>
+          <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
+            {{ selectedDeploymentSource ? t('deploymentOps.source.change') : t('deploymentOps.source.choose') }}
+          </Button>
         </div>
-        <section class="deployment-source-summary">
-          <div class="section-heading">
-            <div>
-              <h3>{{ t('deploymentOps.source.title') }}</h3>
-            </div>
-            <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
-              {{ selectedDeploymentSource ? t('deploymentOps.source.change') : t('deploymentOps.source.choose') }}
-            </Button>
+        <div v-if="selectedDeploymentSource" class="summary-grid deployment-source-summary__grid">
+          <div>
+            <span>{{ t('deploymentOps.columns.model') }}</span>
+            <strong>{{ selectedDeploymentSource.modelName }}</strong>
           </div>
-          <div v-if="selectedDeploymentSource" class="summary-grid deployment-source-summary__grid">
-            <div>
-              <span>{{ t('deploymentOps.columns.model') }}</span>
-              <strong>{{ selectedDeploymentSource.modelName }}</strong>
-            </div>
-            <div>
-              <span>model_type</span>
-              <strong>{{ selectedDeploymentSource.modelType }}</strong>
-            </div>
-            <div>
-              <span>{{ t('deploymentOps.source.kind') }}</span>
-              <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
-            </div>
-            <div>
-              <span>{{ t('deploymentOps.source.id') }}</span>
-              <strong>
-                {{ selectedDeploymentSource.modelBuildId || selectedDeploymentSource.modelVersionId }}
-              </strong>
-            </div>
-            <div>
-              <span>Build format</span>
-              <strong>{{ selectedDeploymentSource.buildFormat || '-' }}</strong>
-            </div>
-            <div>
-              <span>Runtime backend</span>
-              <strong>{{ selectedDeploymentSource.runtimeBackend || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
-              <strong>{{ selectedDeploymentSource.runtimePrecision || '-' }}</strong>
-            </div>
-            <div>
-              <span>RuntimeProfile id</span>
-              <strong>{{ selectedDeploymentSource.runtimeProfileId || '-' }}</strong>
-            </div>
+          <div>
+            <span>model_type</span>
+            <strong>{{ selectedDeploymentSource.modelType }}</strong>
           </div>
-          <div v-else class="source-empty-card">
-            <strong>{{ t('deploymentOps.source.emptyTitle') }}</strong>
-            <span>{{ t('deploymentOps.source.emptyDescription') }}</span>
+          <div>
+            <span>{{ t('deploymentOps.source.kind') }}</span>
+            <strong>{{ selectedDeploymentSource.sourceKind === 'model-build' ? 'ModelBuild' : 'ModelVersion' }}</strong>
           </div>
-        </section>
+          <div>
+            <span>{{ t('deploymentOps.source.id') }}</span>
+            <strong>
+              {{ selectedDeploymentSource.modelBuildId || selectedDeploymentSource.modelVersionId }}
+            </strong>
+          </div>
+          <div>
+            <span>Build format</span>
+            <strong>{{ selectedDeploymentSource.buildFormat || '-' }}</strong>
+          </div>
+          <div>
+            <span>Runtime backend</span>
+            <strong>{{ selectedDeploymentSource.runtimeBackend || '-' }}</strong>
+          </div>
+          <div>
+            <span>{{ t('deploymentOps.fields.runtimePrecision') }}</span>
+            <strong>{{ selectedDeploymentSource.runtimePrecision || '-' }}</strong>
+          </div>
+          <div>
+            <span>RuntimeProfile id</span>
+            <strong>{{ selectedDeploymentSource.runtimeProfileId || '-' }}</strong>
+          </div>
+        </div>
+        <div v-else class="source-empty-card">
+          <strong>{{ t('deploymentOps.source.emptyTitle') }}</strong>
+          <span>{{ t('deploymentOps.source.emptyDescription') }}</span>
+        </div>
         <div class="form-grid deployment-create-grid">
           <label class="field">
             <span>{{ t('deploymentOps.fields.deviceName') }}</span>
@@ -377,12 +372,12 @@
     <DeploymentSourcePickerDialog
       :open="deploymentSourcePickerOpen"
       :loading="sourceModelsLoading"
+      :detail-loading="sourceModelDetailLoading"
       :task-type="selectedTaskType"
       :task-type-options="taskTypeOptions"
       :models="sourceModels"
       :selected-model-id="selectedSourceModelId"
       :selected-model-detail="selectedSourceModelDetail"
-      :selected-version-id="modelVersionId"
       :selected-build-id="modelBuildId"
       :devices="sessionStore.bootstrap?.devices ?? null"
       @close="deploymentSourcePickerOpen = false"
@@ -581,6 +576,7 @@ const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const deploymentSourcePickerOpen = ref(false)
 const sourceModelsLoading = ref(false)
+const sourceModelDetailLoading = ref(false)
 const sourceModels = ref<DeploymentSourceModelSummary[]>([])
 const selectedSourceModelId = ref('')
 const selectedSourceModelDetail = ref<DeploymentSourceModelDetail | null>(null)
@@ -1135,16 +1131,20 @@ async function loadDeploymentSourceModels(): Promise<void> {
   sourceModelDetailSequence += 1
   const taskType = selectedTaskType.value
   sourceModelsLoading.value = true
+  sourceModelDetailLoading.value = false
   errorMessage.value = null
   try {
     const models = await listDeploymentSourceModels(selectedProjectId.value, taskType)
     if (loadSequence !== sourceModelLoadSequence) return
+    const projectModels = models.filter((model) => model.scope_kind === 'project')
     const candidateModelIds = [
       selectedSourceModelId.value,
       selectedDeploymentSource.value?.taskType === taskType ? selectedDeploymentSource.value.modelId : '',
-      models[0]?.model_id ?? '',
+      projectModels[0]?.model_id ?? '',
     ]
-    const preferredModelId = candidateModelIds.find((modelId) => models.some((model) => model.model_id === modelId)) ?? ''
+    const preferredModelId = candidateModelIds.find(
+      (modelId) => projectModels.some((model) => model.model_id === modelId),
+    ) ?? ''
     const modelDetail = preferredModelId
       ? await getDeploymentSourceModelDetail(selectedProjectId.value, preferredModelId)
       : null
@@ -1168,6 +1168,7 @@ async function loadDeploymentSourceModels(): Promise<void> {
 async function selectDeploymentSourceModel(modelId: string): Promise<void> {
   const detailSequence = ++sourceModelDetailSequence
   selectedSourceModelId.value = modelId
+  sourceModelDetailLoading.value = true
   errorMessage.value = null
   try {
     const modelDetail = await getDeploymentSourceModelDetail(selectedProjectId.value, modelId)
@@ -1176,6 +1177,10 @@ async function selectDeploymentSourceModel(modelId: string): Promise<void> {
   } catch (error) {
     if (detailSequence !== sourceModelDetailSequence || selectedSourceModelId.value !== modelId) return
     errorMessage.value = error instanceof Error ? error.message : t('deploymentOps.messages.sourceModelDetailFailed')
+  } finally {
+    if (detailSequence === sourceModelDetailSequence && selectedSourceModelId.value === modelId) {
+      sourceModelDetailLoading.value = false
+    }
   }
 }
 
@@ -1771,17 +1776,8 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 </script>
 
 <style scoped>
-.deployment-source-summary {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--summary-bg);
-}
-
-.deployment-source-summary h3 {
-  margin: 0;
+.deployment-create-panel__heading {
+  align-items: center;
 }
 
 .deployment-source-summary__grid {
