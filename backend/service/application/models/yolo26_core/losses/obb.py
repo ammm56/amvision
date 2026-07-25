@@ -18,7 +18,9 @@ from backend.service.application.models.yolo26_core.assigners import (
     resolve_yolo26_tal_candidate_box_sizes,
 )
 from backend.service.application.models.yolo26_core.losses.detection import (
+    resolve_yolo26_input_size_hw,
     yolo26_distribution_focal_loss,
+    yolo26_ltrb_l1_loss,
 )
 from backend.service.application.models.yolo26_core.targets import (
     yolo26_decode_distances_to_rboxes,
@@ -54,7 +56,7 @@ def compute_yolo26_obb_loss(
     distances = (
         obb_head.dfl(raw_boxes)
         if reg_max > 1
-        else torch.nn.functional.softplus(raw_boxes)
+        else raw_boxes
     )
     angle_decode_mode = getattr(
         obb_head,
@@ -260,6 +262,11 @@ def _compute_yolo26_obb_image_loss(
         foreground_gt_rboxes_pixel=foreground_gt_rboxes_pixel,
         foreground_anchor_points=anchor_points[foreground_mask],
         foreground_stride=foreground_stride,
+        input_size_hw=resolve_yolo26_input_size_hw(
+            torch_module=torch_module,
+            anchor_points=anchor_points,
+            stride_tensor=stride_tensor,
+        ),
         quality_scores=quality_scores,
         reg_max=reg_max,
     )
@@ -292,6 +299,7 @@ def _compute_yolo26_obb_dfl_loss(
     foreground_gt_rboxes_pixel: Any,
     foreground_anchor_points: Any,
     foreground_stride: Any,
+    input_size_hw: Any,
     quality_scores: Any,
     reg_max: int,
 ) -> Any:
@@ -315,12 +323,14 @@ def _compute_yolo26_obb_dfl_loss(
         )
         return (dfl_loss * quality_scores).sum()
     foreground_distance_logits = distance_logits[foreground_mask].view(-1, 4)
-    dfl_loss = torch_module.nn.functional.smooth_l1_loss(
-        torch_module.nn.functional.softplus(foreground_distance_logits),
-        target_distances,
-        reduction="none",
+    dfl_loss = yolo26_ltrb_l1_loss(
+        torch_module=torch_module,
+        prediction=foreground_distance_logits,
+        target=target_distances,
+        stride_tensor=foreground_stride,
+        input_size_hw=input_size_hw,
     )
-    return (dfl_loss.mean(dim=1) * quality_scores).sum()
+    return (dfl_loss * quality_scores).sum()
 
 
 def _normalize_yolo26_obb_angle_tensor(

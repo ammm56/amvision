@@ -8,7 +8,9 @@ from backend.service.application.models.yolo26_core.assigners.detection import (
     yolo26_box_iou_aligned,
 )
 from backend.service.application.models.yolo26_core.losses.detection import (
+    resolve_yolo26_input_size_hw,
     yolo26_distribution_focal_loss,
+    yolo26_ltrb_l1_loss,
 )
 from backend.service.application.models.yolo26_core.targets import (
     yolo26_bbox_xyxy_to_distances,
@@ -60,11 +62,12 @@ def compute_yolo26_segmentation_detection_loss(
         stride_tensor=stride_tensor,
     )
     target_boxes = assignment.box_targets.to(prediction.device)
+    foreground_stride = stride_tensor[foreground_mask].view(-1, 1)
     iou = yolo26_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=pred_boxes[foreground_mask],
-        boxes2=target_boxes[foreground_mask],
-    ).clamp(0.0, 1.0)
+        boxes1=pred_boxes[foreground_mask] / foreground_stride,
+        boxes2=target_boxes[foreground_mask] / foreground_stride,
+    )
     foreground_scores = target_scores[foreground_mask]
     box_loss = (
         ((1.0 - iou) * foreground_scores).sum() / target_score_sum
@@ -92,14 +95,18 @@ def compute_yolo26_segmentation_detection_loss(
             dfl_loss = (raw_dfl_loss * foreground_scores).sum() / target_score_sum
         else:
             foreground_distance_logits = distance_logits[foreground_mask].view(-1, 4)
-            raw_dfl_loss = torch_module.nn.functional.smooth_l1_loss(
-                torch_module.nn.functional.softplus(foreground_distance_logits),
-                target_distances,
-                reduction="none",
+            raw_dfl_loss = yolo26_ltrb_l1_loss(
+                torch_module=torch_module,
+                prediction=foreground_distance_logits,
+                target=target_distances,
+                stride_tensor=stride_tensor[foreground_mask],
+                input_size_hw=resolve_yolo26_input_size_hw(
+                    torch_module=torch_module,
+                    anchor_points=anchor_points,
+                    stride_tensor=stride_tensor,
+                ),
             )
-            dfl_loss = (
-                raw_dfl_loss.mean(dim=1) * foreground_scores
-            ).sum() / target_score_sum
+            dfl_loss = (raw_dfl_loss * foreground_scores).sum() / target_score_sum
     return class_loss, box_loss, dfl_loss
 
 

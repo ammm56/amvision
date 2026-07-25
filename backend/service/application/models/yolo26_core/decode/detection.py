@@ -93,7 +93,7 @@ def decode_yolo26_detection_training_predictions(
     if int(getattr(detect_head, "reg_max")) > 1:
         distances = detect_head.dfl(raw_outputs["boxes"])
     else:
-        distances = torch_module.nn.functional.softplus(raw_outputs["boxes"])
+        distances = raw_outputs["boxes"]
     anchor_points, stride_tensor = make_anchors(
         feature_maps=raw_outputs["feats"],
         strides=tuple(int(item) for item in getattr(detect_head, "strides")),

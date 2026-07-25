@@ -60,11 +60,12 @@ def compute_yolo11_segmentation_detection_loss(
         stride_tensor=stride_tensor,
     )
     target_boxes = assignment.box_targets.to(prediction.device)
+    foreground_stride = stride_tensor[foreground_mask].view(-1, 1)
     iou = yolo11_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=pred_boxes[foreground_mask],
-        boxes2=target_boxes[foreground_mask],
-    ).clamp(0.0, 1.0)
+        boxes1=pred_boxes[foreground_mask] / foreground_stride,
+        boxes2=target_boxes[foreground_mask] / foreground_stride,
+    )
     foreground_scores = target_scores[foreground_mask]
     box_loss = (
         ((1.0 - iou) * foreground_scores).sum() / target_score_sum

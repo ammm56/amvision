@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 
 import torch
 from torch import nn
@@ -77,6 +78,35 @@ class Detect(nn.Module):
         if self.end2end:
             self.one2one_cv2 = copy.deepcopy(self.cv2)
             self.one2one_cv3 = copy.deepcopy(self.cv3)
+
+    def bias_init(self) -> None:
+        """按输入尺度先验初始化 box 和 class 输出 bias。"""
+
+        self._initialize_branch_biases(box_head=self.cv2, class_head=self.cv3)
+        if self.end2end:
+            self._initialize_branch_biases(
+                box_head=self.one2one_cv2,
+                class_head=self.one2one_cv3,
+            )
+
+    def _initialize_branch_biases(
+        self,
+        *,
+        box_head: nn.ModuleList,
+        class_head: nn.ModuleList,
+    ) -> None:
+        """初始化一个 Detect 分支的输出层 bias。"""
+
+        for stride, box_branch, class_branch in zip(
+            self.strides,
+            box_head,
+            class_head,
+            strict=True,
+        ):
+            box_branch[-1].bias.data.fill_(2.0)
+            class_branch[-1].bias.data[: self.nc].fill_(
+                math.log(5.0 / self.nc / (640.0 / stride) ** 2)
+            )
 
     def _build_class_head(
         self,

@@ -141,6 +141,55 @@ def yolo26_distribution_focal_loss(
     return combined.view(-1, 4).sum(dim=1)
 
 
+def resolve_yolo26_input_size_hw(
+    *,
+    torch_module: Any,
+    anchor_points: Any,
+    stride_tensor: Any,
+) -> Any:
+    """从完整 anchor 网格恢复输入图片的 height/width。"""
+
+    stride = stride_tensor.reshape(-1)
+    image_width = ((anchor_points[:, 0] + 0.5) * stride).amax()
+    image_height = ((anchor_points[:, 1] + 0.5) * stride).amax()
+    return torch_module.stack((image_height, image_width))
+
+
+def yolo26_ltrb_l1_loss(
+    *,
+    torch_module: Any,
+    prediction: Any,
+    target: Any,
+    stride_tensor: Any,
+    input_size_hw: Any,
+) -> Any:
+    """按 YOLO26 reg_max=1 规则计算归一化 LTRB L1。"""
+
+    stride = stride_tensor.reshape(-1, 1).to(
+        device=prediction.device,
+        dtype=prediction.dtype,
+    )
+    input_size_hw = input_size_hw.to(
+        device=prediction.device,
+        dtype=prediction.dtype,
+    )
+    scale = torch_module.stack(
+        (
+            input_size_hw[1],
+            input_size_hw[0],
+            input_size_hw[1],
+            input_size_hw[0],
+        )
+    ).clamp_min(1.0)
+    normalized_prediction = prediction * stride / scale
+    normalized_target = target * stride / scale
+    return torch_module.nn.functional.l1_loss(
+        normalized_prediction,
+        normalized_target,
+        reduction="none",
+    ).mean(dim=-1)
+
+
 def _compute_yolo26_image_detection_loss(
     *,
     torch_module: Any,
@@ -201,13 +250,14 @@ def _compute_yolo26_image_detection_loss(
     quality_scores = assignment["quality_scores"][foreground_mask]
     target_scores[foreground_mask, gt_classes[assigned_gt_indices]] = quality_scores
 
+    foreground_stride = stride_tensor[foreground_mask].view(-1, 1)
     foreground_pred_boxes = image_pred_boxes[foreground_mask]
     foreground_gt_boxes = gt_boxes[assigned_gt_indices]
     iou_values = yolo26_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=foreground_pred_boxes,
-        boxes2=foreground_gt_boxes,
-    ).clamp(0.0, 1.0)
+        boxes1=foreground_pred_boxes / foreground_stride,
+        boxes2=foreground_gt_boxes / foreground_stride,
+    )
     box_loss = ((1.0 - iou_values) * quality_scores).sum()
     target_score = quality_scores.sum()
 
@@ -230,12 +280,18 @@ def _compute_yolo26_image_detection_loss(
         dfl_loss = (dfl_loss * quality_scores).sum()
     else:
         foreground_distance_logits = distance_logits[foreground_mask].view(-1, 4)
-        dfl_loss = torch_module.nn.functional.smooth_l1_loss(
-            torch_module.nn.functional.softplus(foreground_distance_logits),
-            target_distances,
-            reduction="none",
+        dfl_loss = yolo26_ltrb_l1_loss(
+            torch_module=torch_module,
+            prediction=foreground_distance_logits,
+            target=target_distances,
+            stride_tensor=stride_tensor[foreground_mask],
+            input_size_hw=resolve_yolo26_input_size_hw(
+                torch_module=torch_module,
+                anchor_points=anchor_points,
+                stride_tensor=stride_tensor,
+            ),
         )
-        dfl_loss = (dfl_loss.mean(dim=1) * quality_scores).sum()
+        dfl_loss = (dfl_loss * quality_scores).sum()
 
     return {
         "box_loss": box_loss,

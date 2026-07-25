@@ -11,14 +11,16 @@ MODEL_RUNTIME_DIRS = (
     REPO_ROOT / "backend/service/application/models",
     REPO_ROOT / "backend/service/application/runtime",
 )
+PROJECT_MODEL_CODE_DIRS = (*MODEL_RUNTIME_DIRS, REPO_ROOT / "tests")
 DISALLOWED_IMPORT_ROOTS = {"ultralytics", "rfdetr"}
+DISALLOWED_REFERENCE_TREE_NAME = "project" + "src"
 
 
 def test_model_runtime_does_not_import_external_model_packages() -> None:
     """模型运行时代码不能直接导入官方模型包。"""
 
     violations: list[str] = []
-    for source_path in _iter_python_files(MODEL_RUNTIME_DIRS):
+    for source_path in _iter_python_files(PROJECT_MODEL_CODE_DIRS):
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -34,13 +36,13 @@ def test_model_runtime_does_not_import_external_model_packages() -> None:
     assert violations == []
 
 
-def test_model_runtime_does_not_reference_projectsrc() -> None:
-    """模型运行时代码不能依赖 projectsrc 参考目录。"""
+def test_project_model_code_does_not_reference_development_source_tree() -> None:
+    """模型代码和测试不能依赖开发期参考源码目录。"""
 
     violations: list[str] = []
-    for source_path in _iter_python_files(MODEL_RUNTIME_DIRS):
+    for source_path in _iter_python_files(PROJECT_MODEL_CODE_DIRS):
         text = source_path.read_text(encoding="utf-8")
-        if "projectsrc" in text:
+        if DISALLOWED_REFERENCE_TREE_NAME in text:
             violations.append(str(source_path.relative_to(REPO_ROOT)))
 
     assert violations == []

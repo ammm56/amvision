@@ -36,14 +36,14 @@ def probiou_aligned(torch_module: Any, obb1: Any, obb2: Any) -> Any:
 
     bd = (mean_term + cross_term + scale_term).clamp(eps, 100.0)
     hd = (1.0 - (-bd).exp() + eps).sqrt()
-    return (1.0 - hd).clamp(0.0, 1.0).squeeze(-1)
+    return (1.0 - hd).squeeze(-1)
 
 
 def _build_obb_covariance(rboxes: Any) -> tuple[Any, Any, Any]:
     """把 ``xywhr`` 旋转框转换为概率 IoU 使用的协方差三元组。"""
 
-    width = rboxes[..., 2:3].clamp_min(1e-3)
-    height = rboxes[..., 3:4].clamp_min(1e-3)
+    width = rboxes[..., 2:3]
+    height = rboxes[..., 3:4]
     angle = rboxes[..., 4:5]
     a = width.pow(2) / 12.0
     b = height.pow(2) / 12.0

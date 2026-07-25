@@ -49,7 +49,10 @@ def decode_yolov8_pose_keypoints_xy(
 ) -> Any:
     """把 YOLOv8 pose 训练分支的关键点偏移解码为输入图坐标。"""
 
-    return anchors_xy.unsqueeze(1) + pred_xy * strides.unsqueeze(1) * 2.0
+    anchor_points = anchors_xy / strides
+    return (
+        (pred_xy * 2.0) + anchor_points.unsqueeze(1) - 0.5
+    ) * strides.unsqueeze(1)
 
 
 __all__ = [

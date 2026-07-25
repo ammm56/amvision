@@ -29,6 +29,9 @@ from backend.service.application.models.yolo_core_common.layers import (
     Conv,
     make_divisible,
 )
+from backend.service.application.models.yolo_core_common.initialization import (
+    initialize_yolo_graph_model,
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,7 @@ class Yolo26Model(nn.Module):
             model_config=model_config,
             input_channels=input_channels,
         )
+        initialize_yolo_graph_model(torch_module=torch, model=self)
 
     def forward(self, x: torch.Tensor) -> Any:
         """按配置层级关系执行前向，并处理跨层引用。"""

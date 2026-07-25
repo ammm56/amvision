@@ -230,11 +230,12 @@ def _compute_yolo11_pose_image_loss(
     target_scores[foreground_mask, gt_classes[assigned_indices]] = quality_scores
     foreground_pred_boxes = image_pred_boxes[foreground_mask]
     foreground_gt_boxes = gt_boxes[assigned_indices]
+    foreground_stride = stride_tensor[foreground_mask]
     iou_values = yolo11_pose_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=foreground_pred_boxes,
-        boxes2=foreground_gt_boxes,
-    ).clamp(0.0, 1.0)
+        boxes1=foreground_pred_boxes / foreground_stride.view(-1, 1),
+        boxes2=foreground_gt_boxes / foreground_stride.view(-1, 1),
+    )
     box_loss = ((1.0 - iou_values) * quality_scores).sum()
     dfl_loss = _compute_yolo11_pose_dfl_loss(
         torch_module=torch_module,
@@ -242,7 +243,7 @@ def _compute_yolo11_pose_image_loss(
         foreground_mask=foreground_mask,
         foreground_gt_boxes=foreground_gt_boxes,
         foreground_anchor_points=anchor_points[foreground_mask],
-        foreground_stride=stride_tensor[foreground_mask],
+        foreground_stride=foreground_stride,
         quality_scores=quality_scores,
         reg_max=reg_max,
     )

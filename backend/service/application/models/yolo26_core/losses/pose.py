@@ -13,7 +13,9 @@ from backend.service.application.models.yolo26_core.decode import (
     decode_yolo26_detection_training_predictions,
 )
 from backend.service.application.models.yolo26_core.losses.detection import (
+    resolve_yolo26_input_size_hw,
     yolo26_distribution_focal_loss,
+    yolo26_ltrb_l1_loss,
 )
 from backend.service.application.models.yolo26_core.targets import (
     normalize_yolo26_gt_keypoints_tensor,
@@ -279,11 +281,12 @@ def _compute_yolo26_pose_image_loss(
     target_scores[foreground_mask, gt_classes[assigned_indices]] = quality_scores
     foreground_pred_boxes = image_pred_boxes[foreground_mask]
     foreground_gt_boxes = gt_boxes[assigned_indices]
+    foreground_stride = stride_tensor[foreground_mask]
     iou_values = yolo26_pose_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=foreground_pred_boxes,
-        boxes2=foreground_gt_boxes,
-    ).clamp(0.0, 1.0)
+        boxes1=foreground_pred_boxes / foreground_stride.view(-1, 1),
+        boxes2=foreground_gt_boxes / foreground_stride.view(-1, 1),
+    )
     box_loss = ((1.0 - iou_values) * quality_scores).sum()
     dfl_loss = _compute_yolo26_pose_dfl_loss(
         torch_module=torch_module,
@@ -291,7 +294,12 @@ def _compute_yolo26_pose_image_loss(
         foreground_mask=foreground_mask,
         foreground_gt_boxes=foreground_gt_boxes,
         foreground_anchor_points=anchor_points[foreground_mask],
-        foreground_stride=stride_tensor[foreground_mask],
+        foreground_stride=foreground_stride,
+        input_size_hw=resolve_yolo26_input_size_hw(
+            torch_module=torch_module,
+            anchor_points=anchor_points,
+            stride_tensor=stride_tensor,
+        ),
         quality_scores=quality_scores,
         reg_max=reg_max,
     )
@@ -344,6 +352,7 @@ def _compute_yolo26_pose_dfl_loss(
     foreground_gt_boxes: Any,
     foreground_anchor_points: Any,
     foreground_stride: Any,
+    input_size_hw: Any,
     quality_scores: Any,
     reg_max: int,
 ) -> Any:
@@ -367,12 +376,14 @@ def _compute_yolo26_pose_dfl_loss(
         )
         return (dfl_loss * quality_scores).sum()
     foreground_distance_logits = distance_logits[foreground_mask].view(-1, 4)
-    dfl_loss = torch_module.nn.functional.smooth_l1_loss(
-        torch_module.nn.functional.softplus(foreground_distance_logits),
-        target_distances,
-        reduction="none",
+    dfl_loss = yolo26_ltrb_l1_loss(
+        torch_module=torch_module,
+        prediction=foreground_distance_logits,
+        target=target_distances,
+        stride_tensor=foreground_stride,
+        input_size_hw=input_size_hw,
     )
-    return (dfl_loss.mean(dim=1) * quality_scores).sum()
+    return (dfl_loss * quality_scores).sum()
 
 
 def _compute_yolo26_pose_keypoint_losses(

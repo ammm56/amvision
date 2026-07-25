@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.assigners.task_aligned import (
+    finalize_task_aligned_assignment,
+)
 from backend.service.application.models.yolov8_core.targets import (
     yolov8_anchor_in_rotated_box,
     yolov8_xywhr_to_corners,
@@ -85,41 +88,22 @@ def assign_yolov8_obb_targets(
         num_gt=num_gt,
         num_anchors=num_anchors,
     )
-    candidate_weight = candidate_mask.to(alignment_metric.dtype)
-    matched_metric = alignment_metric * candidate_weight
-    matched_iou = pair_iou * candidate_weight
-    selection_metric = torch_module.where(
-        candidate_mask,
-        matched_metric,
-        matched_metric.new_full(matched_metric.shape, -1.0),
+    assignment = finalize_task_aligned_assignment(
+        torch_module=torch_module,
+        candidate_mask=candidate_mask,
+        alignment_metric=alignment_metric,
+        overlaps=pair_iou,
+        topk=topk,
+        topk2=None,
     )
-    _, assigned_gt_indices = selection_metric.max(dim=0)
-    foreground_mask = candidate_mask.any(dim=0)
-    quality_scores = matched_metric.gather(0, assigned_gt_indices.unsqueeze(0)).squeeze(0)
-    quality_scores = quality_scores.where(
-        foreground_mask,
-        torch_module.zeros_like(quality_scores),
-    )
-    if bool(foreground_mask.any()):
-        matched_gt_indices = assigned_gt_indices[foreground_mask]
-        max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
-        max_iou_per_gt = matched_iou.max(dim=1).values.clamp(0.0, 1.0)
-        normalized_scores = (
-            quality_scores[foreground_mask]
-            * max_iou_per_gt[matched_gt_indices]
-            / max_metric_per_gt[matched_gt_indices]
-        )
-        quality_scores = quality_scores.clone()
-        quality_scores[foreground_mask] = normalized_scores.clamp(0.0, 1.0)
-    assigned_gt_indices = assigned_gt_indices.to(dtype=torch_module.long)
-    assigned_gt_indices = assigned_gt_indices.where(
-        foreground_mask,
-        torch_module.full_like(assigned_gt_indices, -1),
+    matched_metric = (
+        alignment_metric
+        * assignment["candidate_mask"].to(alignment_metric.dtype)
     )
     return {
-        "foreground_mask": foreground_mask,
-        "assigned_gt_indices": assigned_gt_indices,
-        "quality_scores": quality_scores,
+        "foreground_mask": assignment["foreground_mask"],
+        "assigned_gt_indices": assignment["assigned_gt_indices"],
+        "quality_scores": assignment["quality_scores"],
         "matched_metric": matched_metric,
     }
 

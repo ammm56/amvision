@@ -11,7 +11,7 @@ def yolov8_anchor_in_rotated_box(
     anchor_points: Any,
     corners: Any,
 ) -> Any:
-    """判断 YOLOv8 anchor 是否位于旋转框轴对齐包围范围内。"""
+    """判断 YOLOv8 anchor 是否位于旋转框内部。"""
 
     num_gt = int(corners.shape[0])
     num_anchors = int(anchor_points.shape[0])
@@ -23,15 +23,21 @@ def yolov8_anchor_in_rotated_box(
             device=anchor_points.device,
         )
 
-    min_xy = corners.min(dim=1).values
-    max_xy = corners.max(dim=1).values
-    anchor_x = anchor_points[:, 0].unsqueeze(0)
-    anchor_y = anchor_points[:, 1].unsqueeze(0)
+    point_a = corners[:, 0:1, :]
+    point_b = corners[:, 1:2, :]
+    point_d = corners[:, 3:4, :]
+    vector_ab = point_b - point_a
+    vector_ad = point_d - point_a
+    vector_ap = anchor_points.view(1, -1, 2) - point_a
+    norm_ab = (vector_ab * vector_ab).sum(dim=-1).clamp_min(1e-9)
+    norm_ad = (vector_ad * vector_ad).sum(dim=-1).clamp_min(1e-9)
+    dot_ab = (vector_ap * vector_ab).sum(dim=-1)
+    dot_ad = (vector_ap * vector_ad).sum(dim=-1)
     return (
-        (anchor_x >= min_xy[:, 0:1])
-        & (anchor_x <= max_xy[:, 0:1])
-        & (anchor_y >= min_xy[:, 1:2])
-        & (anchor_y <= max_xy[:, 1:2])
+        (dot_ab >= 0)
+        & (dot_ab <= norm_ab)
+        & (dot_ad >= 0)
+        & (dot_ad <= norm_ad)
     )
 
 
@@ -47,7 +53,7 @@ def yolov8_decode_distances_to_rboxes(
     left_top, right_bottom = pred_dist.chunk(2, dim=-1)
     cos_angle = pred_angle.cos()
     sin_angle = pred_angle.sin()
-    x_forward, y_forward = (right_bottom - left_top).chunk(2, dim=-1)
+    x_forward, y_forward = ((right_bottom - left_top) / 2.0).chunk(2, dim=-1)
     x = x_forward * cos_angle - y_forward * sin_angle
     y = x_forward * sin_angle + y_forward * cos_angle
     xy = torch_module.cat([x, y], dim=-1) + anchor_points

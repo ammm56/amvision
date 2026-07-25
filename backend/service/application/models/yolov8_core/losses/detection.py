@@ -186,13 +186,14 @@ def _compute_yolov8_image_detection_loss(
     quality_scores = assignment["quality_scores"][foreground_mask]
     target_scores[foreground_mask, gt_classes[assigned_gt_indices]] = quality_scores
 
+    foreground_stride = stride_tensor[foreground_mask].view(-1, 1)
     foreground_pred_boxes = image_pred_boxes[foreground_mask]
     foreground_gt_boxes = gt_boxes[assigned_gt_indices]
     iou_values = yolov8_box_iou_aligned(
         torch_module=torch_module,
-        boxes1=foreground_pred_boxes,
-        boxes2=foreground_gt_boxes,
-    ).clamp(0.0, 1.0)
+        boxes1=foreground_pred_boxes / foreground_stride,
+        boxes2=foreground_gt_boxes / foreground_stride,
+    )
     box_loss = ((1.0 - iou_values) * quality_scores).sum()
     target_score = quality_scores.sum()
 

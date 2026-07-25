@@ -142,15 +142,15 @@ def compute_yolov8_pose_loss(
 
                 foreground_pred_boxes = image_pred_boxes[foreground_mask]
                 foreground_gt_boxes = gt_boxes[assigned_indices]
+                foreground_stride = stride_tensor[foreground_mask]
                 iou_values = yolov8_pose_box_iou_aligned(
                     torch_module=torch,
-                    boxes1=foreground_pred_boxes,
-                    boxes2=foreground_gt_boxes,
-                ).clamp(0.0, 1.0)
+                    boxes1=foreground_pred_boxes / foreground_stride.view(-1, 1),
+                    boxes2=foreground_gt_boxes / foreground_stride.view(-1, 1),
+                )
                 total_box_loss = total_box_loss + ((1.0 - iou_values) * quality_scores).sum()
 
                 foreground_anchor_points = anchor_points[foreground_mask]
-                foreground_stride = stride_tensor[foreground_mask]
                 target_distances = yolov8_bbox_xyxy_to_distances(
                     torch_module=torch,
                     boxes_xyxy=foreground_gt_boxes,

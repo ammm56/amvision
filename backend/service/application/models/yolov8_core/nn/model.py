@@ -10,6 +10,9 @@ from torch import nn
 
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.models.yolo_core_common import Conv, make_divisible
+from backend.service.application.models.yolo_core_common.initialization import (
+    initialize_yolo_graph_model,
+)
 from backend.service.application.models.yolov8_core.heads import YOLOV8_HEAD_MODULES
 from backend.service.application.models.yolov8_core.nn.modules import C2f, Concat, SPPF
 from backend.service.application.models.yolov8_core.nn.tasks import Classify
@@ -51,6 +54,7 @@ class YoloV8Model(nn.Module):
             model_config=model_config,
             input_channels=input_channels,
         )
+        initialize_yolo_graph_model(torch_module=torch, model=self)
 
     def forward(self, x: torch.Tensor) -> Any:
         """按配置层级关系执行前向，并处理跨层引用。"""

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.assigners.task_aligned import (
+    finalize_task_aligned_assignment,
+)
 from backend.service.application.models.yolo11_core.targets import (
     yolo11_anchor_in_rotated_box,
     yolo11_xywhr_to_corners,
@@ -91,44 +94,25 @@ def assign_yolo11_obb_targets(
         gt_rboxes=candidate_gt_rboxes,
         anchor_centers_xy=anchor_centers_xy,
         topk=topk,
-        topk2=topk2,
         gt_count=gt_count,
         anchor_count=anchor_count,
     )
-    matched_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-    matched_iou = pair_iou * candidate_mask.to(pair_iou.dtype)
-    selection_metric = torch_module.where(
-        candidate_mask,
-        matched_metric,
-        matched_metric.new_full(matched_metric.shape, -1.0),
+    assignment = finalize_task_aligned_assignment(
+        torch_module=torch_module,
+        candidate_mask=candidate_mask,
+        alignment_metric=alignment_metric,
+        overlaps=pair_iou,
+        topk=topk,
+        topk2=topk2,
     )
-    _, assigned_gt_indices = selection_metric.max(dim=0)
-    foreground_mask = candidate_mask.any(dim=0)
-    quality_scores = matched_metric.gather(0, assigned_gt_indices.unsqueeze(0)).squeeze(0)
-    quality_scores = quality_scores.where(
-        foreground_mask,
-        torch_module.zeros_like(quality_scores),
-    )
-    if bool(foreground_mask.any()):
-        matched_gt_indices = assigned_gt_indices[foreground_mask]
-        max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
-        max_iou_per_gt = matched_iou.max(dim=1).values.clamp(0.0, 1.0)
-        normalized_scores = (
-            quality_scores[foreground_mask]
-            * max_iou_per_gt[matched_gt_indices]
-            / max_metric_per_gt[matched_gt_indices]
-        )
-        quality_scores = quality_scores.clone()
-        quality_scores[foreground_mask] = normalized_scores.clamp(0.0, 1.0)
-    assigned_gt_indices = assigned_gt_indices.to(dtype=torch_module.long)
-    assigned_gt_indices = assigned_gt_indices.where(
-        foreground_mask,
-        torch_module.full_like(assigned_gt_indices, -1),
+    matched_metric = (
+        alignment_metric
+        * assignment["candidate_mask"].to(alignment_metric.dtype)
     )
     return {
-        "foreground_mask": foreground_mask,
-        "assigned_gt_indices": assigned_gt_indices,
-        "quality_scores": quality_scores,
+        "foreground_mask": assignment["foreground_mask"],
+        "assigned_gt_indices": assignment["assigned_gt_indices"],
+        "quality_scores": assignment["quality_scores"],
         "matched_metric": matched_metric,
     }
 
@@ -141,7 +125,6 @@ def _select_yolo11_obb_candidates(
     gt_rboxes: Any,
     anchor_centers_xy: Any,
     topk: int,
-    topk2: int | None,
     gt_count: int,
     anchor_count: int,
 ) -> Any:
@@ -161,47 +144,7 @@ def _select_yolo11_obb_candidates(
         )
         candidate_mask[gt_index, topk_indices] = True
 
-    candidate_mask = candidate_mask & inside_mask
-
-    if topk2 is None or int(topk2) == int(topk):
-        return candidate_mask
-    return _refine_yolo11_obb_candidate_mask(
-        torch_module=torch_module,
-        candidate_mask=candidate_mask,
-        alignment_metric=alignment_metric,
-        topk2=int(topk2),
-        anchor_count=anchor_count,
-    )
-
-
-def _refine_yolo11_obb_candidate_mask(
-    *,
-    torch_module: Any,
-    candidate_mask: Any,
-    alignment_metric: Any,
-    topk2: int,
-    anchor_count: int,
-) -> Any:
-    """对 YOLO11 OBB 初始 topk 候选执行二次精选。"""
-
-    refined_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-    refined_mask = torch_module.zeros_like(candidate_mask)
-    refined_count = min(max(1, topk2), anchor_count)
-    for gt_index in range(int(candidate_mask.shape[0])):
-        valid_indices = torch_module.nonzero(
-            refined_metric[gt_index] > 0,
-            as_tuple=False,
-        ).squeeze(1)
-        if int(valid_indices.numel()) == 0:
-            refined_mask[gt_index] = candidate_mask[gt_index]
-            continue
-        selected_count = min(refined_count, int(valid_indices.numel()))
-        _, topk_indices = torch_module.topk(
-            refined_metric[gt_index][valid_indices],
-            k=selected_count,
-        )
-        refined_mask[gt_index, valid_indices[topk_indices]] = True
-    return refined_mask
+    return candidate_mask & inside_mask
 
 
 def _build_yolo11_obb_candidate_boxes(

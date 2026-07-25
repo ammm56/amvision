@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any
+
+from backend.service.application.models.yolo_core_common.assigners.task_aligned import (
+    finalize_task_aligned_assignment,
+)
+from backend.service.application.models.yolo_core_common.losses.box import (
+    bbox_ciou_matrix,
+)
 
 
 def assign_yolo11_detection_targets(
@@ -76,52 +82,18 @@ def assign_yolo11_detection_targets(
 
     candidate_mask = candidate_mask & inside_mask
 
-    if topk2 is not None and topk2 != topk:
-        candidate_mask = _refine_yolo11_candidate_mask(
-            torch_module=torch_module,
-            candidate_mask=candidate_mask,
-            alignment_metric=alignment_metric,
-            topk2=topk2,
-            num_anchors=num_anchors,
-            num_gt=num_gt,
-        )
-        alignment_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-
-    candidate_weight = candidate_mask.to(alignment_metric.dtype)
-    matched_metric = alignment_metric * candidate_weight
-    matched_iou = pair_iou * candidate_weight
-    selection_metric = torch_module.where(
-        candidate_mask,
-        matched_metric,
-        matched_metric.new_full(matched_metric.shape, -1.0),
-    )
-    _, assigned_gt_indices = selection_metric.max(dim=0)
-    foreground_mask = candidate_mask.any(dim=0)
-    quality_scores = matched_metric.gather(0, assigned_gt_indices.unsqueeze(0)).squeeze(0)
-    quality_scores = quality_scores.where(
-        foreground_mask,
-        torch_module.zeros_like(quality_scores),
-    )
-    if bool(foreground_mask.any()):
-        matched_gt_indices = assigned_gt_indices[foreground_mask]
-        max_metric_per_gt = matched_metric.max(dim=1).values.clamp_min(1e-6)
-        max_iou_per_gt = matched_iou.max(dim=1).values.clamp(0.0, 1.0)
-        normalized_scores = (
-            quality_scores[foreground_mask]
-            * max_iou_per_gt[matched_gt_indices]
-            / max_metric_per_gt[matched_gt_indices]
-        )
-        quality_scores = quality_scores.clone()
-        quality_scores[foreground_mask] = normalized_scores.clamp(0.0, 1.0)
-    assigned_gt_indices = assigned_gt_indices.to(dtype=torch_module.long)
-    assigned_gt_indices = assigned_gt_indices.where(
-        foreground_mask,
-        torch_module.full_like(assigned_gt_indices, -1),
+    assignment = finalize_task_aligned_assignment(
+        torch_module=torch_module,
+        candidate_mask=candidate_mask,
+        alignment_metric=alignment_metric,
+        overlaps=pair_iou,
+        topk=topk,
+        topk2=topk2,
     )
     return {
-        "foreground_mask": foreground_mask,
-        "assigned_gt_indices": assigned_gt_indices,
-        "quality_scores": quality_scores,
+        "foreground_mask": assignment["foreground_mask"],
+        "assigned_gt_indices": assignment["assigned_gt_indices"],
+        "quality_scores": assignment["quality_scores"],
     }
 
 
@@ -172,46 +144,13 @@ def _yolo11_box_ciou_matrix(
     boxes1: Any,
     boxes2: Any,
 ) -> Any:
-    """按 xyxy bbox 计算 CIoU 矩阵。"""
+    """按 Ultralytics xyxy bbox 规则计算 CIoU 矩阵。"""
 
-    top_left = torch_module.maximum(boxes1[:, None, 0:2], boxes2[None, :, 0:2])
-    bottom_right = torch_module.minimum(boxes1[:, None, 2:4], boxes2[None, :, 2:4])
-    overlap = (bottom_right - top_left).clamp_min(0.0)
-    intersection = overlap[..., 0] * overlap[..., 1]
-
-    box1_size = (boxes1[:, 2:4] - boxes1[:, 0:2]).clamp_min(0.0)
-    box2_size = (boxes2[:, 2:4] - boxes2[:, 0:2]).clamp_min(0.0)
-    area1 = (box1_size[:, 0] * box1_size[:, 1]).unsqueeze(1)
-    area2 = (box2_size[:, 0] * box2_size[:, 1]).unsqueeze(0)
-    union = (area1 + area2 - intersection).clamp_min(1e-6)
-    iou = intersection / union
-
-    box1_center = (boxes1[:, 0:2] + boxes1[:, 2:4]) * 0.5
-    box2_center = (boxes2[:, 0:2] + boxes2[:, 2:4]) * 0.5
-    center_distance = ((box1_center[:, None, :] - box2_center[None, :, :]) ** 2).sum(
-        dim=-1
+    return bbox_ciou_matrix(
+        torch_module=torch_module,
+        boxes1=boxes1,
+        boxes2=boxes2,
     )
-
-    enclosing_top_left = torch_module.minimum(
-        boxes1[:, None, 0:2], boxes2[None, :, 0:2]
-    )
-    enclosing_bottom_right = torch_module.maximum(
-        boxes1[:, None, 2:4], boxes2[None, :, 2:4]
-    )
-    enclosing_size = (enclosing_bottom_right - enclosing_top_left).clamp_min(0.0)
-    enclosing_distance = (enclosing_size**2).sum(dim=-1).clamp_min(1e-6)
-
-    box1_width = box1_size[:, 0].clamp_min(1e-6).unsqueeze(1)
-    box1_height = box1_size[:, 1].clamp_min(1e-6).unsqueeze(1)
-    box2_width = box2_size[:, 0].clamp_min(1e-6).unsqueeze(0)
-    box2_height = box2_size[:, 1].clamp_min(1e-6).unsqueeze(0)
-    aspect_delta = torch_module.atan(box2_width / box2_height) - torch_module.atan(
-        box1_width / box1_height
-    )
-    aspect_penalty = (4.0 / math.pi**2) * aspect_delta.pow(2)
-    with torch_module.no_grad():
-        aspect_weight = aspect_penalty / (aspect_penalty - iou + 1.0 + 1e-6)
-    return iou - (center_distance / enclosing_distance + aspect_weight * aspect_penalty)
 
 
 def _build_yolo11_anchor_inside_mask(
@@ -262,29 +201,3 @@ def _expand_yolo11_tiny_gt_boxes_for_assignment(
     )
     half_sizes = expanded_sizes * 0.5
     return torch_module.cat((centers - half_sizes, centers + half_sizes), dim=1)
-
-
-def _refine_yolo11_candidate_mask(
-    *,
-    torch_module: Any,
-    candidate_mask: Any,
-    alignment_metric: Any,
-    topk2: int,
-    num_anchors: int,
-    num_gt: int,
-) -> Any:
-    """对初始 topk 候选执行二次精选。"""
-
-    refined_metric = alignment_metric * candidate_mask.to(alignment_metric.dtype)
-    refined_mask = torch_module.zeros_like(candidate_mask)
-    refine_count = min(max(1, topk2), num_anchors)
-    for gt_index in range(num_gt):
-        valid_indices = torch_module.nonzero(
-            refined_metric[gt_index] > 0, as_tuple=False
-        ).squeeze(1)
-        if int(valid_indices.numel()) == 0:
-            continue
-        topk_count = min(refine_count, int(valid_indices.numel()))
-        _, topk_indices = torch_module.topk(refined_metric[gt_index], k=topk_count)
-        refined_mask[gt_index, topk_indices] = True
-    return refined_mask

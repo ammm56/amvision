@@ -6,6 +6,9 @@ import math
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.geometry import make_anchors
+from backend.service.application.models.yolo_core_common.losses.obb import (
+    probiou_aligned,
+)
 from backend.service.application.models.yolov8_core.losses.detection import (
     yolov8_distribution_focal_loss,
 )
@@ -220,41 +223,11 @@ def _normalize_yolov8_obb_angle_tensor(
 def yolov8_probiou_aligned(torch_module: Any, obb1: Any, obb2: Any) -> Any:
     """计算 YOLOv8 OBB 一一对应旋转框 probiou。"""
 
-    eps = 1e-7
-    x1, y1 = obb1[..., :2].split(1, dim=-1)
-    x2, y2 = obb2[..., :2].split(1, dim=-1)
-    a1, b1, c1 = _build_yolov8_obb_covariance(obb1)
-    a2, b2, c2 = _build_yolov8_obb_covariance(obb2)
-
-    denominator = (a1 + a2) * (b1 + b2) - (c1 + c2).pow(2) + eps
-    mean_term = (
-        ((a1 + a2) * (y1 - y2).pow(2) + (b1 + b2) * (x1 - x2).pow(2))
-        / denominator
-    ) * 0.25
-    cross_term = (((c1 + c2) * (x2 - x1) * (y1 - y2)) / denominator) * 0.5
-    det1 = (a1 * b1 - c1.pow(2)).clamp_min(0.0)
-    det2 = (a2 * b2 - c2.pow(2)).clamp_min(0.0)
-    det_sum = (a1 + a2) * (b1 + b2) - (c1 + c2).pow(2)
-    scale_term = (det_sum / (4.0 * (det1 * det2).sqrt() + eps) + eps).log() * 0.5
-
-    bd = (mean_term + cross_term + scale_term).clamp(eps, 100.0)
-    hd = (1.0 - (-bd).exp() + eps).sqrt()
-    return (1.0 - hd).clamp(0.0, 1.0).squeeze(-1)
-
-
-def _build_yolov8_obb_covariance(rboxes: Any) -> tuple[Any, Any, Any]:
-    """把 YOLOv8 xywhr 旋转框转换为 probiou 协方差三元组。"""
-
-    width = rboxes[..., 2:3].clamp_min(1e-3)
-    height = rboxes[..., 3:4].clamp_min(1e-3)
-    angle = rboxes[..., 4:5]
-    a = width.pow(2) / 12.0
-    b = height.pow(2) / 12.0
-    cos = angle.cos()
-    sin = angle.sin()
-    cos2 = cos.pow(2)
-    sin2 = sin.pow(2)
-    return a * cos2 + b * sin2, a * sin2 + b * cos2, (a - b) * cos * sin
+    return probiou_aligned(
+        torch_module=torch_module,
+        obb1=obb1,
+        obb2=obb2,
+    )
 
 
 def compute_yolov8_obb_angle_loss(
