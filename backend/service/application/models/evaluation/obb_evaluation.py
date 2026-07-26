@@ -14,6 +14,7 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
 )
 from backend.service.application.runtime.contracts.obb.prediction import ObbPredictionRequest
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -53,9 +54,11 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     from backend.service.application.runtime.tasks.obb_model_runtime import DefaultObbModelRuntime
 
     model_runtime = DefaultObbModelRuntime()
-    session = model_runtime.load_session(
-        dataset_storage=dataset_storage,
-        runtime_target=request.runtime_target,
+    session = RuntimeSessionLease(
+        model_runtime.load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=request.runtime_target,
+        )
     )
 
     started_at = datetime.now(timezone.utc)
@@ -147,6 +150,7 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     }
     dataset_storage.write_json(report_key, report)
 
+    session.close()
     return ObbEvaluationResult(
         sample_count=processed_count,
         map50=obb_metrics.ap50,

@@ -19,6 +19,7 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
 from backend.service.application.runtime.tasks.pose_model_runtime import DefaultPoseModelRuntime
 from backend.service.application.runtime.contracts.pose.prediction import PosePredictionRequest
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -56,9 +57,11 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
 
     model_runtime = DefaultPoseModelRuntime()
-    session = model_runtime.load_session(
-        dataset_storage=dataset_storage,
-        runtime_target=request.runtime_target,
+    session = RuntimeSessionLease(
+        model_runtime.load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=request.runtime_target,
+        )
     )
 
     started_at = datetime.now(timezone.utc)
@@ -155,6 +158,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     }
     dataset_storage.write_json(report_key, report)
 
+    session.close()
     return PoseEvaluationResult(
         sample_count=processed_count,
         oks_ap50=oks_metrics.ap50,

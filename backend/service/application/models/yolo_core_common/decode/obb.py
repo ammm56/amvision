@@ -50,10 +50,11 @@ def build_obb_prediction(
         angle_logits=raw_outputs["angle"],
         mode=angle_decode_mode,
     )
-    anchor_points = make_anchors(
+    anchor_points, stride_tensor = make_anchors(
         feature_maps=raw_outputs["feats"],
         strides=strides,
-    )[0]
+    )
     rotated_boxes = dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
+    rotated_boxes = rotated_boxes * stride_tensor.transpose(0, 1).unsqueeze(0)
     class_scores = raw_outputs["scores"].sigmoid()
     return torch.cat((rotated_boxes, class_scores, angle), dim=1)

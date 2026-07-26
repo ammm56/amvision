@@ -14,6 +14,10 @@ from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    YoloUltralyticsOptimizerStep,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
@@ -188,51 +192,97 @@ def run_yolov8_obb_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
             source_summary=request.warm_start_source_summary,
         )
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-
     extra = dict(request.extra_options or {})
-    lr = float(extra.get("learning_rate", 1e-3))
-    weight_decay = float(extra.get("weight_decay", 1e-4))
+    lr = float(extra.get("learning_rate", 1e-2))
+    weight_decay = float(extra.get("weight_decay", 5e-4))
     bs = max(1, int(extra.get("batch_size", request.batch_size)))
     max_epochs = max(1, int(extra.get("max_epochs", request.max_epochs)))
     yolov8_augmentation_options = build_yolov8_task_augmentation_options(extra)
 
-    optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+    min_lr_ratio = float(extra.get("min_lr_ratio", 0.01))
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=num_classes,
+        batch_size=bs,
+        train_sample_count=len(train_annotations),
+        max_epochs=max_epochs,
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        learning_rate=lr,
+        weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=bool(extra.get("cos_lr", False)),
+    )
     iterations_per_epoch = max(1, (len(train_annotations) + bs - 1) // bs)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=max_epochs * iterations_per_epoch,
-        eta_min=lr * 0.01,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=torch,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
 
     # 恢复训练
     start_epoch = 0
+    resume_payload: dict[str, object] | None = None
     if request.resume_checkpoint_path and request.resume_checkpoint_path.is_file():
         ckpt = torch.load(
             str(request.resume_checkpoint_path),
             map_location=device,
             weights_only=False,
         )
+        resume_payload = ckpt
         model.load_state_dict(ckpt["model_state_dict"])
         if "optimizer_state_dict" in ckpt:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in ckpt:
             scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        if scaler is not None and ckpt.get("scaler_state_dict") is not None:
+            scaler.load_state_dict(ckpt["scaler_state_dict"])
         start_epoch = int(ckpt.get("epoch", 0))
 
-    best_metric_value = 0.0
-    best_metric_name = "val_loss"
-    metrics_history: list[dict[str, object]] = []
-    global_iteration = 0
+    best_metric_value = float(
+        resume_payload.get("best_metric_value", 0.0) if resume_payload else 0.0
+    )
+    best_metric_name = str(
+        resume_payload.get("best_metric_name", "val_map50_95")
+        if resume_payload
+        else "val_map50_95"
+    )
+    metrics_history: list[dict[str, object]] = list(
+        resume_payload.get("metrics_history", []) if resume_payload else []
+    )
+    global_iteration = int(
+        resume_payload.get("global_iteration", 0) if resume_payload else 0
+    )
     total_iterations = max_epochs * iterations_per_epoch
     ckpt_bytes = b""
-    validation_history: list[dict[str, object]] = []
+    validation_history: list[dict[str, object]] = list(
+        resume_payload.get("validation_history", []) if resume_payload else []
+    )
+    ema = YoloModelEMA(
+        model=model,
+        updates=int(resume_payload.get("ema_updates", 0)) if resume_payload else 0,
+    )
+    if resume_payload and isinstance(resume_payload.get("ema_state_dict"), dict):
+        ema.load_state_dict(resume_payload["ema_state_dict"], strict=False)
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=float(extra.get("grad_clip_norm", 10.0)),
+        initial_iteration=global_iteration,
+    )
     dataloader_plan = resolve_yolo_task_dataloader_plan(
         extra_options=dict(request.extra_options or {}),
         device=device,
@@ -263,7 +313,8 @@ def run_yolov8_obb_training(
             load_imports=load_yolo_task_dataloader_imports,
             resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
         )
-        for cpu_batch in train_dataloader:
+        max_iterations = max(1, len(train_dataloader))
+        for iteration, cpu_batch in enumerate(train_dataloader, start=1):
             if cpu_batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -276,6 +327,12 @@ def run_yolov8_obb_training(
                 continue
             images = batch.images
             targets = batch.targets
+            global_iteration += 1
+            optimizer_step.prepare_batch(
+                iteration_index=global_iteration,
+                epoch=epoch + 1,
+                batch_size=len(targets),
+            )
 
             autocast_ctx = (
                 torch.amp.autocast("cuda", enabled=use_amp)
@@ -300,16 +357,13 @@ def run_yolov8_obb_training(
             total_loss = loss_dict["loss"]
             if not total_loss.requires_grad:
                 total_loss = _build_obb_zero_grad_loss(raw_for_loss, torch)
-            optimizer.zero_grad()
-            if scaler is not None:
-                scaler.scale(total_loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                total_loss.backward()
-                optimizer.step()
-            scheduler.step()
-            global_iteration += 1
+            optimizer_step.backward_and_step(
+                loss=total_loss,
+                iteration_index=global_iteration,
+                is_last_batch=(
+                    epoch + 1 == max_epochs and iteration == max_iterations
+                ),
+            )
 
             for k, v in loss_dict.items():
                 epoch_losses[k] = epoch_losses.get(k, 0.0) + float(v.item())
@@ -369,7 +423,7 @@ def run_yolov8_obb_training(
         )
         if should_evaluate:
             val_metrics = evaluate_yolov8_obb_samples(
-                model=model,
+                model=ema.model,
                 samples=val_annotations,
                 labels=labels,
                 input_size=input_size,
@@ -387,16 +441,23 @@ def run_yolov8_obb_training(
                 best_metric_value = current_metric
                 best_metric_name = "val_map50_95"
 
+        scheduler.step()
         # 保存 checkpoint
         buf = io.BytesIO()
         torch.save(
             {
                 "epoch": epoch + 1,
                 "model_state_dict": model.state_dict(),
+                "ema_state_dict": ema.state_dict(),
+                "ema_updates": ema.updates,
                 "optimizer_state_dict": optimizer.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
+                "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
                 "metrics_history": metrics_history,
                 "validation_history": validation_history,
+                "best_metric_value": best_metric_value,
+                "best_metric_name": best_metric_name,
+                "global_iteration": global_iteration,
             },
             buf,
         )

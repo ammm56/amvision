@@ -18,6 +18,8 @@ class Yolo11PoseResumeState:
     optimizer_state_dict: dict[str, object]
     scheduler_state_dict: dict[str, object] | None
     scaler_state_dict: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
     best_metric_value: float
@@ -62,6 +64,8 @@ def load_yolo11_pose_resume_state(
         optimizer_state_dict=checkpoint.get("optimizer_state_dict", {}),
         scheduler_state_dict=checkpoint.get("scheduler_state_dict"),
         scaler_state_dict=checkpoint.get("scaler_state_dict"),
+        ema_state_dict=checkpoint.get("ema_state_dict"),
+        ema_updates=max(0, int(checkpoint.get("ema_updates", 0))),
         metrics_history=checkpoint.get("metrics_history", []),
         validation_history=checkpoint.get("validation_history", []),
         best_metric_value=float(checkpoint.get("best_metric_value", 0)),
@@ -186,6 +190,8 @@ def build_yolo11_pose_checkpoint_bytes(
     epoch: int,
     global_iteration: int,
     model: Any,
+    ema_model: Any | None = None,
+    ema_updates: int = 0,
     optimizer: Any,
     scheduler: Any,
     scaler: Any | None,
@@ -218,6 +224,8 @@ def build_yolo11_pose_checkpoint_bytes(
         "epoch": epoch + 1,
         "global_iteration": global_iteration,
         "model_state_dict": model.state_dict(),
+        "ema_state_dict": (ema_model or model).state_dict(),
+        "ema_updates": max(0, int(ema_updates)),
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
         "scaler_state_dict": scaler.state_dict() if scaler is not None else None,

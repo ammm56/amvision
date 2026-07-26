@@ -11,6 +11,9 @@ from backend.service.application.models.yolo_core_common.training.ultralytics_sc
 from backend.service.application.models.yolo_core_common.training.ema import (
     YoloModelEMA,
 )
+from backend.service.application.models.yolo_core_common.training.optimizer_step import (
+    YoloUltralyticsOptimizerStep,
+)
 from backend.service.application.models.yolo_core_common.training.infinite_dataloader import (
     YoloInfiniteDataLoader,
     resolve_yolo_dataloader_batch_size,
@@ -40,6 +43,7 @@ __all__ = [
     "YoloInfiniteDataLoader",
     "YoloClassificationDataLoaderPlan",
     "YoloModelEMA",
+    "YoloUltralyticsOptimizerStep",
     "YoloTaskDataLoaderPlan",
     "YoloUltralyticsTrainingSchedule",
     "apply_yolo_ultralytics_warmup",

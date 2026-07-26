@@ -53,6 +53,7 @@ def load_yolov8_checkpoint_file(
     checkpoint_path: Path,
     minimum_loadable_ratio: float = 1.0,
     strict_shape: bool = True,
+    restore_checkpoint_attributes: bool = True,
 ) -> YoloStateDictLoadResult:
     """读取并加载 YOLOv8 checkpoint 文件，返回覆盖率报告。"""
 
@@ -62,4 +63,5 @@ def load_yolov8_checkpoint_file(
         checkpoint_path=checkpoint_path,
         minimum_loadable_ratio=minimum_loadable_ratio,
         strict_shape=strict_shape,
+        restore_checkpoint_attributes=restore_checkpoint_attributes,
     )

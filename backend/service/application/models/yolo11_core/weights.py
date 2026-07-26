@@ -55,6 +55,7 @@ def load_yolo11_checkpoint_file(
     checkpoint_path: Path,
     minimum_loadable_ratio: float = 1.0,
     strict_shape: bool = True,
+    restore_checkpoint_attributes: bool = True,
 ) -> YoloStateDictLoadResult:
     """读取并加载 YOLO11 checkpoint 文件，返回覆盖率报告。"""
 
@@ -65,6 +66,7 @@ def load_yolo11_checkpoint_file(
         minimum_loadable_ratio=minimum_loadable_ratio,
         strict_shape=strict_shape,
         pickle_class_binders=(_bind_yolo11_pickle_checkpoint_classes,),
+        restore_checkpoint_attributes=restore_checkpoint_attributes,
     )
 
 

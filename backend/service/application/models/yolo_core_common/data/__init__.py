@@ -4,10 +4,14 @@ from backend.service.application.models.yolo_core_common.data.classification_aug
     YoloClassificationAugmentationOptions,
     apply_yolo_classification_augmentation,
     build_yolo_classification_augmentation_options,
+    normalize_yolo_classification_image,
+    prepare_yolo_classification_image,
 )
 
 __all__ = [
     "YoloClassificationAugmentationOptions",
     "apply_yolo_classification_augmentation",
     "build_yolo_classification_augmentation_options",
+    "normalize_yolo_classification_image",
+    "prepare_yolo_classification_image",
 ]

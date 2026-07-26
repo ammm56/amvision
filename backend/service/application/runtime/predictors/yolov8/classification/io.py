@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.data import (
+    normalize_yolo_classification_image,
+    prepare_yolo_classification_image,
+)
 from backend.service.application.runtime.predictors.yolov8.detection.io import (
     load_yolov8_detection_prediction_image,
 )
@@ -36,15 +40,17 @@ def preprocess_yolov8_classification_image(
 ) -> Any:
     """按 YOLOv8 classification 推理规则构造输入张量。"""
 
-    target_height, target_width = input_size
-    resized_image = cv2_module.resize(
-        image,
-        (int(target_width), int(target_height)),
-        interpolation=cv2_module.INTER_LINEAR,
+    resized_image = prepare_yolo_classification_image(
+        image=image,
+        input_size=input_size,
+        training=False,
+        cv2_module=cv2_module,
     )
-    tensor = resized_image[:, :, ::-1].transpose(2, 0, 1)
-    tensor = np_module.ascontiguousarray(tensor, dtype=np_module.float32)
-    return tensor / 255.0
+    return normalize_yolo_classification_image(
+        image=resized_image,
+        options=None,
+        np_module=np_module,
+    )
 
 
 __all__ = [

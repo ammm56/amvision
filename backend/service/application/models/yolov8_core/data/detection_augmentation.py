@@ -310,10 +310,10 @@ def _apply_random_hsv(*, imports: Any, image: Any, hsv_prob: float) -> Any:
     if hsv_prob <= 0.0 or random.random() >= hsv_prob:
         return image
     hsv_image = imports.cv2.cvtColor(image, imports.cv2.COLOR_BGR2HSV).astype(imports.np.float32)
-    hue_gain = 1.0 + random.uniform(-0.015, 0.015)
+    hue_offset = random.uniform(-0.015, 0.015) * 180.0
     saturation_gain = 1.0 + random.uniform(-0.7, 0.7)
     value_gain = 1.0 + random.uniform(-0.4, 0.4)
-    hsv_image[..., 0] = (hsv_image[..., 0] * hue_gain) % 180.0
+    hsv_image[..., 0] = (hsv_image[..., 0] + hue_offset) % 180.0
     hsv_image[..., 1] = imports.np.clip(hsv_image[..., 1] * saturation_gain, 0.0, 255.0)
     hsv_image[..., 2] = imports.np.clip(hsv_image[..., 2] * value_gain, 0.0, 255.0)
     return imports.cv2.cvtColor(hsv_image.astype(imports.np.uint8), imports.cv2.COLOR_HSV2BGR)

@@ -38,6 +38,7 @@ class YoloUltralyticsTrainingSchedule:
     warmup_bias_lr: float
     final_lr_ratio: float
     max_epochs: int
+    cosine_schedule: bool
 
 
 def resolve_yolo_ultralytics_accumulate(
@@ -67,6 +68,7 @@ def build_yolo_ultralytics_optimizer(
     warmup_epochs: float = YOLO_ULTRALYTICS_DEFAULT_WARMUP_EPOCHS,
     warmup_momentum: float = YOLO_ULTRALYTICS_DEFAULT_WARMUP_MOMENTUM,
     warmup_bias_lr: float = YOLO_ULTRALYTICS_DEFAULT_WARMUP_BIAS_LR,
+    cosine_schedule: bool = False,
 ) -> tuple[Any, YoloUltralyticsTrainingSchedule]:
     """构建对齐 Ultralytics 训练策略的 optimizer 和调度摘要。"""
 
@@ -83,13 +85,13 @@ def build_yolo_ultralytics_optimizer(
         * float(accumulate)
         / float(resolved_nominal_batch_size)
     )
-    iterations = (
-        math.ceil(
+    iterations = max(
+        1,
+        round(
             max(1, int(train_sample_count))
             / float(max(resolved_batch_size, resolved_nominal_batch_size))
-        )
-        * resolved_max_epochs
-    )
+        ),
+    ) * resolved_max_epochs
     resolved_optimizer_name, resolved_lr, resolved_momentum, resolved_warmup_bias_lr = (
         _resolve_yolo_optimizer_auto(
             optimizer_name=optimizer_name,
@@ -135,14 +137,20 @@ def build_yolo_ultralytics_optimizer(
         warmup_bias_lr=float(resolved_warmup_bias_lr),
         final_lr_ratio=float(final_lr_ratio),
         max_epochs=resolved_max_epochs,
+        cosine_schedule=bool(cosine_schedule),
     )
     return optimizer, schedule
 
 
 def build_yolo_ultralytics_scheduler(
-    *, torch_module: Any, optimizer: Any, max_epochs: int, final_lr_ratio: float
+    *,
+    torch_module: Any,
+    optimizer: Any,
+    max_epochs: int,
+    final_lr_ratio: float,
+    cosine_schedule: bool = False,
 ) -> Any:
-    """构建 Ultralytics 默认的 cosine LambdaLR scheduler。"""
+    """构建 Ultralytics 默认 linear 或显式启用的 cosine LambdaLR。"""
 
     return torch_module.optim.lr_scheduler.LambdaLR(
         optimizer,
@@ -150,21 +158,36 @@ def build_yolo_ultralytics_scheduler(
             epoch=epoch,
             max_epochs=max_epochs,
             final_lr_ratio=final_lr_ratio,
+            cosine_schedule=cosine_schedule,
         ),
     )
 
 
 def compute_yolo_ultralytics_lr_factor(
-    *, epoch: int, max_epochs: int, final_lr_ratio: float
+    *,
+    epoch: int,
+    max_epochs: int,
+    final_lr_ratio: float,
+    cosine_schedule: bool = False,
 ) -> float:
-    """计算 Ultralytics one-cycle cosine 学习率倍率。"""
+    """计算 Ultralytics 学习率倍率；默认使用参考配置的 linear schedule。"""
 
     resolved_max_epochs = max(1, int(max_epochs))
     progress = max(0.0, min(float(epoch), float(resolved_max_epochs)))
+    if cosine_schedule:
+        return (
+            max(
+                (1.0 - math.cos(progress * math.pi / float(resolved_max_epochs)))
+                / 2.0,
+                0.0,
+            )
+            * (float(final_lr_ratio) - 1.0)
+            + 1.0
+        )
     return (
-        max((1.0 - math.cos(progress * math.pi / float(resolved_max_epochs))) / 2.0, 0.0)
-        * (float(final_lr_ratio) - 1.0)
-        + 1.0
+        max(1.0 - progress / float(resolved_max_epochs), 0.0)
+        * (1.0 - float(final_lr_ratio))
+        + float(final_lr_ratio)
     )
 
 
@@ -193,6 +216,7 @@ def apply_yolo_ultralytics_warmup(
         epoch=max(0, int(epoch) - 1),
         max_epochs=schedule.max_epochs,
         final_lr_ratio=schedule.final_lr_ratio,
+        cosine_schedule=schedule.cosine_schedule,
     )
     for param_group in optimizer.param_groups:
         initial_lr = float(param_group.get("initial_lr", schedule.initial_lr))

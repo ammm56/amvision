@@ -71,7 +71,7 @@
 - `YOLOv8 / YOLO11 / YOLO26` 的 `detection / segmentation / pose / obb` 按 Ultralytics `LetterBox(center=True, scale_fill=False)` 语义处理非正方形图片。训练、验证、导出和 runtime 必须共享同一套中心 padding、gain、pad_left、pad_top 和原图坐标反算规则，禁止再回到直接拉伸到正方形后用 `scale_x / scale_y` 反算 bbox、mask、keypoint 或 rotated box。
 - `YOLOX detection` 保持 YOLOX 参考实现的左上角 padding 预处理：按最小缩放比 resize 后写入输入画布左上角，其余区域填充 `114`。训练、validation、evaluation 和 runtime 必须统一使用这套 `resize_ratio` 规则，不为了项目表面一致性强行改成 center LetterBox。
 - `RF-DETR detection / segmentation` 保持 RF-DETR 参考实现的固定尺寸 resize 和归一化输入规则。RF-DETR 内部可使用 normalized `cxcywh` 或固定输入尺寸坐标，runtime 和 export 后处理必须在边界处转换为任务原生结果：detection 输出原图 detection box，segmentation 输出原图 mask / polygon / instance result。
-- `classification` 任务没有 bbox 坐标反算，允许按模型参考实现使用 resize / crop / normalize，但训练、验证、转换和 runtime 的输入规则必须一致。
+- `YOLOv8 / YOLO11 / YOLO26 classification` 训练使用 RandomResizedCrop、默认 RandAugment、水平翻转和 Normalize 后 RandomErasing；验证与 runtime 使用等比例 resize、center crop 和 ImageNet Normalize。转换后的模型继续接收已经完成该预处理的 tensor，训练、验证、转换和 runtime 不允许分别维护不同输入规则。
 - `mask / proto / heatmap / preview` 的 resize 是任务后处理或显示步骤，不等同于输入几何拉伸错误；它们仍必须明确输入尺寸、原图尺寸和坐标系。
 
 对外公开结果按任务原生语义输出，不强行把所有任务压成 `xyxy`：
@@ -112,11 +112,20 @@
 
 - 本项目不直接复制 `projectsrc/ultralytics/ultralytics` 作为运行时代码。参考仓库只作为行为核对来源，项目内仍按 `yolov8_core / yolo11_core / yolo26_core` 的分层边界重新实现，避免后续商业版本产生授权和维护风险。
 - 普通 YOLO 的 `detection / classification / segmentation / pose / obb` 训练当前已经修正 CPU tensor 到 CUDA 设备的搬运方式：batch tensor 统一在 batch 维度 stack 后再搬到训练设备，CUDA 训练使用 pinned memory 和 non-blocking transfer，避免每个 sample 单独阻塞式 `.to(device)` 造成额外同步。
-- 这次修复只处理数据搬运阻塞问题，不改变模型结构、loss、assigner、target、坐标格式、数据增强语义或公开输出 schema。
+- 该轮修复只处理数据搬运阻塞问题，没有改变模型结构、loss、assigner、target、坐标格式、数据增强语义或公开输出 schema。
 - `YOLOv8 / YOLO11 / YOLO26 detection` 已建立正式 PyTorch Dataset / DataLoader 入口。训练 batch、validation loss 和 COCO mAP batch 已使用各自 core 的 collate、中心 LetterBox、target 构建和主进程设备搬运规则，不再由训练 epoch loop 直接同步拼 batch。
 - 三代普通 YOLO detection 的 DataLoader 已支持 `num_workers / prefetch_factor / pin_memory / persistent_workers`。当前默认仍保持 `num_workers=0`，避免突然改变所有开发机和现场环境的训练行为；真实训练确认稳定后，再决定是否提高默认 worker 数。
 - 三代普通 YOLO detection 的 EMA 更新位置继续保持在 `optimizer.step()` 之后，validation 和 checkpoint 仍由当前 single-GPU trainer 执行，行为不引入 DDP 或 DataParallel。
-- 当前仍需继续对齐的核心差距是 `InfiniteDataLoader` 风格的长期 iterator 复用，以及 `classification / segmentation / pose / obb` 的 task-specific DataLoader、target 同步和 validator 汇总。非 detection 任务不能直接套 detection DataLoader，必须分别处理分类标签、mask、keypoint 和 rotated box 的几何同步。
+- `classification / segmentation / pose / obb` 保持各自 task-specific batch、target 同步和 validator 汇总，不直接复用 detection target。长期 iterator 复用属于吞吐优化，不能改变任务训练语义。
+
+## 2026-07-26 普通 YOLO full-core 修复复核
+
+- `YOLOv8 / YOLO11 / YOLO26` 五类任务统一采用参数分组 optimizer、3 epoch warmup、nominal batch size 64 梯度累积、按有效 batch 缩放 weight decay、默认 linear scheduler 和 ModelEMA；`cos_lr=true` 时才切换 cosine。
+- classification 默认训练配方使用 `optimizer=auto`、`lr0=0.01`、`weight_decay=0.0005`、RandAugment 和 `erasing=0.4`。训练和部署输入统一执行 ImageNet Normalize，旧的直接拉伸和仅 `/255` 路径不再使用。
+- segmentation 修正 batch 大于 1 时的重复 loss 缩放；pose AP 使用仅由 GT visibility 决定 mask 的 COCO OKS；OBB 共享解码同时应用中心偏移 `/2` 和 anchor stride。
+- detection 独立评估把模型零基 class index 映射到 manifest 的真实 category id；普通 NMS 与 COCO 评估统一使用 `max_det=300`。
+- 直接推理和转换加载完整 checkpoint 时恢复 activation 以及 BatchNorm `eps/momentum`；训练 warm-start 显式保留当前模型训练语义，只加载可兼容 tensor。
+- evaluation runtime session 使用统一幂等释放代理。测试不得导入 `projectsrc`；参考仓库只用于开发期行为核对。
 
 ## 残留关键词分类
 

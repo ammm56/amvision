@@ -17,6 +17,7 @@ from backend.service.application.runtime.contracts.classification.prediction imp
     ClassificationPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -68,9 +69,11 @@ def run_yolov8_classification_evaluation(
         )
 
     runtime = DefaultClassificationModelRuntime()
-    session = runtime.load_session(
-        dataset_storage=dataset_storage,
-        runtime_target=runtime_target,
+    session = RuntimeSessionLease(
+        runtime.load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
     )
 
     started = time.monotonic()
@@ -148,6 +151,7 @@ def run_yolov8_classification_evaluation(
         "per_class_metrics": per_class,
     }
 
+    session.close()
     return ClassificationEvaluationResult(
         split_name=split_name, sample_count=total, duration_seconds=duration,
         top1_accuracy=top1_acc, top5_accuracy=top5_acc,

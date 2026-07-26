@@ -10,6 +10,8 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.data import (
     YoloClassificationAugmentationOptions,
     apply_yolo_classification_augmentation,
+    normalize_yolo_classification_image,
+    prepare_yolo_classification_image,
 )
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
@@ -92,18 +94,23 @@ def load_yolo26_classification_image(
         raise InvalidRequestError(
             f"无法读取 YOLO26 classification 训练图片: {image_path}"
         )
-    image = apply_yolo_classification_augmentation(
+    resized = prepare_yolo_classification_image(
         image=image,
+        input_size=input_size,
+        training=augmentation_options is not None,
+        cv2_module=cv2_module,
+    )
+    resized = apply_yolo_classification_augmentation(
+        image=resized,
         options=augmentation_options,
         cv2_module=cv2_module,
         np_module=np_module,
     )
-    resized = cv2_module.resize(
-        image,
-        (int(input_size[1]), int(input_size[0])),
-        interpolation=cv2_module.INTER_LINEAR,
+    return normalize_yolo_classification_image(
+        image=resized,
+        options=augmentation_options,
+        np_module=np_module,
     )
-    return resized[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32) / 255.0
 
 
 __all__ = [

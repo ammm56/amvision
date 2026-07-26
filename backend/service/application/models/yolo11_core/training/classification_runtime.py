@@ -10,6 +10,11 @@ from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
     resolve_torch_amp_device_type,
 )
+from backend.service.application.models.yolo_core_common.training import (
+    YoloUltralyticsTrainingSchedule,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,7 @@ class Yolo11ClassificationTrainingRuntime:
     iterations_per_epoch: int
     total_iterations: int
     autocast_context: Callable[[], Any]
+    training_schedule: YoloUltralyticsTrainingSchedule
 
 
 def resolve_yolo11_classification_training_device(
@@ -49,23 +55,35 @@ def build_yolo11_classification_training_runtime(
     train_sample_count: int,
     device_name: str,
     precision: str,
+    num_classes: int = 1,
+    optimizer_name: str = "auto",
+    cosine_schedule: bool = False,
 ) -> Yolo11ClassificationTrainingRuntime:
     """构建 YOLO11 classification optimizer、scheduler、GradScaler 和 autocast。"""
 
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch_module.optim.AdamW(
-        trainable_params,
-        lr=learning_rate,
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch_module,
+        model=model,
+        num_classes=num_classes,
+        batch_size=batch_size,
+        train_sample_count=train_sample_count,
+        max_epochs=max_epochs,
+        optimizer_name=optimizer_name,
+        learning_rate=learning_rate,
         weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=cosine_schedule,
     )
     iterations_per_epoch = max(
         1, (int(train_sample_count) + int(batch_size) - 1) // int(batch_size)
     )
     total_iterations = max(1, int(max_epochs) * iterations_per_epoch)
-    scheduler = torch_module.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=total_iterations,
-        eta_min=learning_rate * min_lr_ratio,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=torch_module,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
     scaler = (
         torch_module.GradScaler(
@@ -86,6 +104,7 @@ def build_yolo11_classification_training_runtime(
             precision=precision,
             device_name=device_name,
         ),
+        training_schedule=training_schedule,
     )
 
 
@@ -114,10 +133,7 @@ def move_yolo11_classification_optimizer_state_to_device(
     for state in optimizer.state.values():
         for key, value in state.items():
             if hasattr(value, "to") and hasattr(value, "device"):
-                try:
-                    state[key] = value.to(device_name)
-                except Exception:
-                    pass
+                state[key] = value.to(device_name)
 
 
 __all__ = [

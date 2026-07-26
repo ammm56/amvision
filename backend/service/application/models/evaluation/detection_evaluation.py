@@ -18,6 +18,7 @@ from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -69,12 +70,18 @@ def run_detection_evaluation(
             map50=0.0, map50_95=0.0,
         )
 
-    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories)
+    category_ids = tuple(int(category["id"]) for category in categories)
+    category_name_by_id = {
+        int(category["id"]): str(category.get("name", category["id"]))
+        for category in categories
+    }
 
     runtime = DefaultDetectionModelRuntime()
-    session = runtime.load_session(
-        dataset_storage=dataset_storage,
-        runtime_target=runtime_target,
+    session = RuntimeSessionLease(
+        runtime.load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
     )
 
     started = time.monotonic()
@@ -117,9 +124,18 @@ def run_detection_evaluation(
             continue
 
         for det in result.detections:
+            class_index = int(det.class_id)
+            category_id = _resolve_detection_category_id(
+                class_index=class_index,
+                category_ids=category_ids,
+            )
+            if category_id is None:
+                continue
             all_pred.append({
                 "image_id": img_idx,
-                "category_id": det.class_id,
+                # 模型输出始终是零基 class index；评估数据必须使用 manifest
+                # 中的真实 category id，COCO 数据集的 id 不保证连续。
+                "category_id": category_id,
                 "bbox_xyxy": det.bbox_xyxy,
                 "score": det.score,
             })
@@ -172,7 +188,7 @@ def run_detection_evaluation(
         precision_list.append(cat_precision)
         recall_list.append(cat_recall)
 
-        name = label_names[cat_id] if 0 <= cat_id < len(label_names) else str(cat_id)
+        name = category_name_by_id.get(cat_id, str(cat_id))
         per_class.append({
             "class_id": cat_id,
             "class_name": name,
@@ -207,6 +223,7 @@ def run_detection_evaluation(
         "per_class_metrics": per_class,
     }
 
+    session.close()
     return DetectionEvaluationResult(
         split_name=split_name, sample_count=total_images, duration_seconds=duration,
         map50=map50, map50_95=map50_95,
@@ -214,6 +231,18 @@ def run_detection_evaluation(
         per_class_metrics=per_class, report_payload=report,
         detections_payload=predictions_out,
     )
+
+
+def _resolve_detection_category_id(
+    *,
+    class_index: int,
+    category_ids: tuple[int, ...],
+) -> int | None:
+    """把模型零基 class index 映射到 manifest 的真实 category id。"""
+
+    if class_index < 0 or class_index >= len(category_ids):
+        return None
+    return int(category_ids[class_index])
 
 
 def _parse_detection_manifest(

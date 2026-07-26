@@ -219,13 +219,13 @@ def compute_object_keypoint_similarity(
     for keypoint_index in range(keypoint_count):
         base_index = keypoint_index * 3
         gt_visibility = float(gt_keypoints[base_index + 2])
-        pred_visibility = float(pred_keypoints[base_index + 2])
-        if gt_visibility <= 0.0 or pred_visibility <= 0.0:
+        if gt_visibility <= 0.0:
             continue
         dx = float(gt_keypoints[base_index]) - float(pred_keypoints[base_index])
         dy = float(gt_keypoints[base_index + 1]) - float(pred_keypoints[base_index + 1])
         sigma = resolved_sigmas[keypoint_index] if keypoint_index < len(resolved_sigmas) else 0.05
-        denominator = 2.0 * (sigma ** 2) * max(float(area), 1.0)
+        # COCO OKS: exp(-d² / (((2 * sigma)²) * area * 2))。
+        denominator = 8.0 * (sigma ** 2) * max(float(area), 1.0)
         oks_sum += math.exp(-((dx * dx + dy * dy) / max(denominator, 1e-8)))
         visible_count += 1
     if visible_count <= 0:

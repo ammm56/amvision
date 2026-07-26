@@ -14,6 +14,8 @@ from backend.service.application.models.yolo_core_common.data import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloClassificationDataLoaderPlan,
+    YoloUltralyticsOptimizerStep,
+    YoloUltralyticsTrainingSchedule,
     build_yolo_classification_training_dataloader,
     load_yolo_classification_dataloader_imports,
     move_yolo_classification_batch_to_device,
@@ -120,6 +122,9 @@ def run_yolo11_classification_training_loop(
     validation_history: list[dict[str, float]],
     best_metric_value: float,
     best_metric_name: str,
+    training_schedule: YoloUltralyticsTrainingSchedule,
+    ema: Any,
+    grad_clip_norm: float = 10.0,
     epoch_callback: Callable[
         [Yolo11ClassificationTrainingEpochProgress],
         Yolo11ClassificationTrainingControlCommand | None,
@@ -137,6 +142,16 @@ def run_yolo11_classification_training_loop(
             extra_options={},
             device=device_name,
         )
+    )
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=imports.torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=grad_clip_norm,
+        initial_iteration=global_iteration,
     )
     for epoch in range(start_epoch, max_epochs):
         model.train()
@@ -157,7 +172,8 @@ def run_yolo11_classification_training_loop(
             build_batch=build_yolo11_classification_training_batch,
             load_imports=load_yolo_classification_dataloader_imports,
         )
-        for cpu_batch in train_dataloader:
+        max_iterations = max(1, len(train_dataloader))
+        for iteration, cpu_batch in enumerate(train_dataloader, start=1):
             if cpu_batch is None:
                 continue
             batch = move_yolo_classification_batch_to_device(
@@ -168,6 +184,12 @@ def run_yolo11_classification_training_loop(
             )
             if batch is None:
                 continue
+            global_iteration += 1
+            optimizer_step.prepare_batch(
+                iteration_index=global_iteration,
+                epoch=epoch + 1,
+                batch_size=int(batch.targets.size(0)),
+            )
             with autocast_context():
                 outputs = model(batch.images)
                 loss, probabilities = compute_yolo11_classification_loss(
@@ -175,20 +197,17 @@ def run_yolo11_classification_training_loop(
                     outputs=outputs,
                     targets=batch.targets,
                 )
-            optimizer.zero_grad(set_to_none=True)
-            if scaler is not None:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
-            scheduler.step()
+            optimizer_step.backward_and_step(
+                loss=loss,
+                iteration_index=global_iteration,
+                is_last_batch=(
+                    epoch + 1 == max_epochs and iteration == max_iterations
+                ),
+            )
             _, predicted = imports.torch.max(probabilities, 1)
             train_correct += int((predicted == batch.targets).sum().item())
             train_total += int(batch.targets.size(0))
             train_loss_sum += float(loss.item()) * int(batch.targets.size(0))
-            global_iteration += 1
 
         train_accuracy = train_correct / max(1, train_total)
         train_loss = train_loss_sum / max(1, train_total)
@@ -203,7 +222,7 @@ def run_yolo11_classification_training_loop(
         ) or epoch == max_epochs - 1
         if should_evaluate:
             val_metrics = evaluate_yolo11_classification_samples(
-                model=model,
+                model=ema.model,
                 samples=val_annotations,
                 labels=labels,
                 batch_size=batch_size,
@@ -224,10 +243,13 @@ def run_yolo11_classification_training_loop(
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
 
+        scheduler.step()
         checkpoint_bytes = build_yolo11_classification_checkpoint_bytes(
             epoch=epoch,
             global_iteration=global_iteration,
             model=model,
+            ema_model=ema.model,
+            ema_updates=ema.updates,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -255,7 +277,10 @@ def run_yolo11_classification_training_loop(
             train_metrics_snapshot={
                 "final_metrics": metrics_history[-1] if metrics_history else {},
                 "epoch_history": [dict(item) for item in metrics_history],
-                "scheduler": "CosineAnnealingLR",
+                "scheduler": "LambdaLR",
+                "optimizer": training_schedule.optimizer_name,
+                "accumulate": training_schedule.accumulate,
+                "scaled_weight_decay": training_schedule.scaled_weight_decay,
             },
             validation_metrics_snapshot={
                 "final_metrics": validation_history[-1] if validation_history else {},

@@ -12,6 +12,7 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
+from backend.service.application.models.yolo_core_common.training import YoloModelEMA
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
 )
@@ -156,6 +157,7 @@ def run_yolo26_classification_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
@@ -220,6 +222,9 @@ def run_yolo26_classification_training(
         train_sample_count=len(train_annotations),
         device_name=device_name,
         precision=precision,
+        num_classes=len(labels),
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        cosine_schedule=bool(extra.get("cos_lr", False)),
     )
 
     start_epoch = 0
@@ -249,6 +254,12 @@ def run_yolo26_classification_training(
         best_metric_name = resume_state.best_metric_name
         start_epoch = resume_state.epoch
         global_iteration = resume_state.global_iteration
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume_state.ema_updates if resume_state is not None else 0,
+    )
+    if resume_state is not None and resume_state.ema_state_dict is not None:
+        ema.load_state_dict(resume_state.ema_state_dict, strict=False)
 
     try:
         loop_result = run_yolo26_classification_training_loop(
@@ -278,6 +289,9 @@ def run_yolo26_classification_training(
             validation_history=validation_history,
             best_metric_value=best_metric_value,
             best_metric_name=best_metric_name,
+            training_schedule=runtime.training_schedule,
+            ema=ema,
+            grad_clip_norm=float(extra.get("grad_clip_norm", 10.0)),
             epoch_callback=request.epoch_callback,
             savepoint_callback=request.savepoint_callback,
         )
@@ -303,7 +317,10 @@ def run_yolo26_classification_training(
                 else {}
             ),
             "epoch_history": loop_result.metrics_history,
-            "scheduler": "CosineAnnealingLR",
+            "scheduler": "LambdaLR",
+            "optimizer": runtime.training_schedule.optimizer_name,
+            "accumulate": runtime.training_schedule.accumulate,
+            "scaled_weight_decay": runtime.training_schedule.scaled_weight_decay,
             "implementation_mode": YOLO26_CLASSIFICATION_IMPLEMENTATION_MODE,
         },
         validation_metrics_payload={

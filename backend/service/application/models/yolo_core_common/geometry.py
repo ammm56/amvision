@@ -305,7 +305,9 @@ def dist2rbox(
     left_top, right_bottom = pred_dist.split(2, dim=dim)
     cos_angle = torch.cos(pred_angle)
     sin_angle = torch.sin(pred_angle)
-    xf, yf = (right_bottom - left_top).chunk(2, dim=dim)
+    # Ultralytics 的旋转框中心偏移是两侧距离差的一半。这里不能复用
+    # axis-aligned box 的边角坐标语义，否则中心会沿旋转轴偏移一倍。
+    xf, yf = ((right_bottom - left_top) / 2).chunk(2, dim=dim)
     x = xf * cos_angle - yf * sin_angle
     y = xf * sin_angle + yf * cos_angle
     xy = torch.cat([x, y], dim=dim)

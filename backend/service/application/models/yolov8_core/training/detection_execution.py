@@ -1744,6 +1744,7 @@ def _evaluate_detection_model_once(
     with redirect_stdout(io.StringIO()):
         coco_detections = ground_truth.loadRes(detections)
         coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
+        coco_evaluator.params.maxDets = [1, 10, 300]
         coco_evaluator.evaluate()
         coco_evaluator.accumulate()
         coco_evaluator.summarize()

@@ -25,6 +25,7 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -74,8 +75,11 @@ def run_segmentation_evaluation(
         )
 
     runtime = DefaultSegmentationModelRuntime()
-    session = runtime.load_session(
-        dataset_storage=dataset_storage, runtime_target=runtime_target,
+    session = RuntimeSessionLease(
+        runtime.load_session(
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+        )
     )
 
     started = time.monotonic()
@@ -205,6 +209,7 @@ def run_segmentation_evaluation(
         "per_class_metrics": per_class_metrics,
     }
 
+    session.close()
     return SegmentationEvaluationResult(
         split_name=split_name, sample_count=total_images, duration_seconds=duration,
         map50=bbox_metrics.ap50, map50_95=bbox_metrics.ap50_95,

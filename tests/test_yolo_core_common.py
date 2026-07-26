@@ -760,7 +760,7 @@ def test_common_rotated_bbox_decode_preserves_axis_aligned_width_height() -> Non
     assert decoded.shape == (1, 4, 1)
     assert torch.allclose(
         decoded,
-        torch.tensor([[[12.0], [22.0], [4.0], [6.0]]]),
+        torch.tensor([[[11.0], [21.0], [4.0], [6.0]]]),
     )
 
 

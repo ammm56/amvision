@@ -14,6 +14,10 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    YoloUltralyticsOptimizerStep,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
@@ -77,8 +81,8 @@ YOLO11_SEGMENTATION_DEFAULT_DFL_LOSS = 1.5
 YOLO11_SEGMENTATION_DEFAULT_MASK_LOSS = 1.0
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_BETA = 6.0
-YOLO11_SEGMENTATION_DEFAULT_LR = 1e-3
-YOLO11_SEGMENTATION_DEFAULT_WEIGHT_DECAY = 1e-4
+YOLO11_SEGMENTATION_DEFAULT_LR = 1e-2
+YOLO11_SEGMENTATION_DEFAULT_WEIGHT_DECAY = 5e-4
 YOLO11_SEGMENTATION_DEFAULT_MIN_LR = 0.01
 YOLO11_SEGMENTATION_DEFAULT_GRAD_CLIP = 10.0
 
@@ -209,6 +213,7 @@ def run_yolo11_segmentation_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
@@ -294,27 +299,30 @@ def run_yolo11_segmentation_training(
         )
 
     model.to(device)
-    trainable = [
-        parameter for parameter in model.parameters() if parameter.requires_grad
-    ]
-    optimizer = imports.torch.optim.AdamW(
-        trainable,
-        lr=learning_rate,
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=imports.torch,
+        model=model,
+        num_classes=len(labels),
+        batch_size=batch_size,
+        train_sample_count=len(train_annotations),
+        max_epochs=max_epochs,
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        learning_rate=learning_rate,
         weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=bool(extra.get("cos_lr", False)),
     )
     scaler = (
         imports.torch.amp.GradScaler(device, enabled=precision == "fp16")
         if hasattr(imports.torch, "amp") and hasattr(imports.torch.amp, "GradScaler")
         else None
     )
-    total_iterations = max_epochs * max(
-        1,
-        (len(train_annotations) + batch_size - 1) // batch_size,
-    )
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=total_iterations,
-        eta_min=learning_rate * min_lr_ratio,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=imports.torch,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
 
     start_epoch = 0
@@ -339,6 +347,22 @@ def run_yolo11_segmentation_training(
         best_metric_name = resume.best_metric_name
         start_epoch = resume.epoch
         global_iteration = resume.global_iteration
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume.ema_updates if resume is not None else 0,
+    )
+    if resume is not None and resume.ema_state_dict is not None:
+        ema.load_state_dict(resume.ema_state_dict, strict=False)
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=imports.torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=grad_clip,
+        initial_iteration=global_iteration,
+    )
 
     stride_values = model.stride if hasattr(model, "stride") else (8, 16, 32)
     num_classes = len(labels)
@@ -352,9 +376,8 @@ def run_yolo11_segmentation_training(
             imports=imports,
             model=model,
             optimizer=optimizer,
-            scheduler=scheduler,
             scaler=scaler,
-            trainable_parameters=trainable,
+            optimizer_step=optimizer_step,
             train_annotations=train_annotations,
             batch_size=batch_size,
             base_input_size=input_size,
@@ -373,7 +396,6 @@ def run_yolo11_segmentation_training(
             box_loss_weight=box_loss_weight,
             dfl_loss_weight=dfl_loss_weight,
             mask_loss_weight=mask_loss_weight,
-            grad_clip=grad_clip,
             dataloader_plan=replace_yolo_task_dataloader_plan_seed(
                 plan=dataloader_plan,
                 seed=epoch,
@@ -397,7 +419,7 @@ def run_yolo11_segmentation_training(
 
         val_metrics = _run_yolo11_segmentation_validation(
             imports=imports,
-            model=model,
+            model=ema.model,
             val_annotations=val_annotations,
             labels=labels,
             input_size=input_size,
@@ -416,10 +438,13 @@ def run_yolo11_segmentation_training(
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
 
+        scheduler.step()
         latest_checkpoint_bytes = build_yolo11_segmentation_checkpoint_bytes(
             epoch=epoch,
             global_iteration=global_iteration,
             model=model,
+            ema_model=ema.model,
+            ema_updates=ema.updates,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -468,7 +493,10 @@ def run_yolo11_segmentation_training(
         metrics_payload={
             "final_metrics": metrics_history[-1] if metrics_history else {},
             "epoch_history": metrics_history,
-            "scheduler": "CosineAnnealingLR",
+            "scheduler": "LambdaLR",
+            "optimizer": training_schedule.optimizer_name,
+            "accumulate": training_schedule.accumulate,
+            "scaled_weight_decay": training_schedule.scaled_weight_decay,
         },
         validation_metrics_payload={
             "final_metrics": final_validation,
@@ -484,9 +512,8 @@ def _run_yolo11_segmentation_epoch(
     imports: Any,
     model: Any,
     optimizer: Any,
-    scheduler: Any,
     scaler: Any | None,
-    trainable_parameters: list[Any],
+    optimizer_step: YoloUltralyticsOptimizerStep,
     train_annotations: list[Any],
     batch_size: int,
     base_input_size: tuple[int, int],
@@ -505,7 +532,6 @@ def _run_yolo11_segmentation_epoch(
     box_loss_weight: float,
     dfl_loss_weight: float,
     mask_loss_weight: float,
-    grad_clip: float,
     dataloader_plan: Any,
 ) -> tuple[dict[str, float], int]:
     """执行 YOLO11 segmentation 单轮训练。"""
@@ -533,7 +559,8 @@ def _run_yolo11_segmentation_epoch(
         load_imports=load_yolo_task_dataloader_imports,
         resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
     )
-    for cpu_batch in train_dataloader:
+    max_iterations = max(1, len(train_dataloader))
+    for iteration, cpu_batch in enumerate(train_dataloader, start=1):
         if cpu_batch is None:
             continue
         batch = move_yolo_task_batch_to_device(
@@ -544,6 +571,12 @@ def _run_yolo11_segmentation_epoch(
         )
         if batch is None:
             continue
+        global_iteration += 1
+        optimizer_step.prepare_batch(
+            iteration_index=global_iteration,
+            epoch=epoch + 1,
+            batch_size=len(batch.targets),
+        )
         with build_yolo11_segmentation_autocast_context(
             torch_module=imports.torch,
             precision=precision,
@@ -572,30 +605,19 @@ def _run_yolo11_segmentation_epoch(
             + dfl_loss_weight * loss_payload["dfl_loss"]
             + mask_loss_weight * loss_payload["mask_loss"]
         )
-        total_loss = total_loss * max(1, len(batch.targets))
         if not total_loss.requires_grad:
             total_loss = loss_payload["fallback_tensor"].sum() * 0.0
-        optimizer.zero_grad()
-        if scaler is not None:
-            scaler.scale(total_loss).backward()
-            if grad_clip > 0:
-                scaler.unscale_(optimizer)
-                imports.torch.nn.utils.clip_grad_norm_(trainable_parameters, grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            total_loss.backward()
-            if grad_clip > 0:
-                imports.torch.nn.utils.clip_grad_norm_(trainable_parameters, grad_clip)
-            optimizer.step()
-        scheduler.step()
+        optimizer_step.backward_and_step(
+            loss=total_loss,
+            iteration_index=global_iteration,
+            is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
+        )
         total_loss_sum += float(total_loss.item())
         class_loss_sum += float(loss_payload["class_loss"].item())
         box_loss_sum += float(loss_payload["box_loss"].item())
         dfl_loss_sum += float(loss_payload["dfl_loss"].item())
         mask_loss_sum += float(loss_payload["mask_loss"].item())
         iteration_count += 1
-        global_iteration += 1
 
     divisor = max(1, iteration_count)
     return (

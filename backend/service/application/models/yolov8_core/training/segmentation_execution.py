@@ -22,6 +22,10 @@ from backend.service.application.models.training.device_selection import (
     resolve_torch_amp_device_type,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    YoloUltralyticsOptimizerStep,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
@@ -76,8 +80,8 @@ _SEG_DEFAULT_DFL_LOSS = 1.5
 _SEG_DEFAULT_MASK_LOSS = 1.0
 _SEG_DEFAULT_ASSIGN_ALPHA = 0.5
 _SEG_DEFAULT_ASSIGN_BETA = 6.0
-_SEG_DEFAULT_LR = 1e-3
-_SEG_DEFAULT_WEIGHT_DECAY = 1e-4
+_SEG_DEFAULT_LR = 1e-2
+_SEG_DEFAULT_WEIGHT_DECAY = 5e-4
 _SEG_DEFAULT_MIN_LR = 0.01
 _SEG_DEFAULT_GRAD_CLIP = 10.0
 
@@ -136,6 +140,8 @@ class _SegResumedState:
     optimizer_state_dict: dict[str, object]
     scheduler_state_dict: dict[str, object] | None
     scaler_state_dict: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
     best_metric_value: float
@@ -253,6 +259,7 @@ def run_yolov8_segmentation_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
@@ -310,8 +317,19 @@ def run_yolov8_segmentation_training(
         )
 
     model.to(device)
-    trainable = [p for p in model.parameters() if p.requires_grad]
-    optimizer = imports.torch.optim.AdamW(trainable, lr=lr, weight_decay=wd)
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=imports.torch,
+        model=model,
+        num_classes=len(labels),
+        batch_size=bs,
+        train_sample_count=len(train_anns),
+        max_epochs=me,
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        learning_rate=lr,
+        weight_decay=wd,
+        final_lr_ratio=min_lr,
+        cosine_schedule=bool(extra.get("cos_lr", False)),
+    )
     scaler = (
         imports.torch.amp.GradScaler(
             resolve_torch_amp_device_type(device),
@@ -320,11 +338,12 @@ def run_yolov8_segmentation_training(
         if hasattr(imports.torch, "amp") and hasattr(imports.torch.amp, "GradScaler")
         else None
     )
-    total_iters = me * max(1, (len(train_anns) + bs - 1) // bs)
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=total_iters,
-        eta_min=lr * min_lr,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=imports.torch,
+        optimizer=optimizer,
+        max_epochs=me,
+        final_lr_ratio=min_lr,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
 
     start_epoch = 0
@@ -338,6 +357,22 @@ def run_yolov8_segmentation_training(
         best_val, best_name = resume.best_metric_value, resume.best_metric_name
         start_epoch = resume.epoch
         g_iter = resume.global_iteration
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume.ema_updates if resume is not None else 0,
+    )
+    if resume is not None and resume.ema_state_dict is not None:
+        ema.load_state_dict(resume.ema_state_dict, strict=False)
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=imports.torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=grad_clip,
+        initial_iteration=g_iter,
+    )
 
     nc = len(labels)
     strides = model.stride if hasattr(model, "stride") else (8, 16, 32)
@@ -371,7 +406,8 @@ def run_yolov8_segmentation_training(
             load_imports=load_yolo_task_dataloader_imports,
             resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
         )
-        for cpu_batch in train_dataloader:
+        max_iterations = max(1, len(train_dataloader))
+        for iteration, cpu_batch in enumerate(train_dataloader, start=1):
             if cpu_batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -383,6 +419,12 @@ def run_yolov8_segmentation_training(
             if batch is None:
                 continue
             images, targets_list = batch.images, batch.targets
+            g_iter += 1
+            optimizer_step.prepare_batch(
+                iteration_index=g_iter,
+                epoch=epoch + 1,
+                batch_size=len(targets_list),
+            )
             with _seg_autocast(imports, precision, device):
                 outputs = model(images)
                 if isinstance(outputs, dict) and "one2many" in outputs:
@@ -472,30 +514,21 @@ def run_yolov8_segmentation_training(
                 + dfl_w * loss_dfl
                 + mask_w * loss_mask_t
             )
-            total_loss = total_loss * max(1, len(targets_list))
             if not total_loss.requires_grad:
                 total_loss = raw_scores.sum() * 0.0
-            optimizer.zero_grad()
-            if scaler is not None:
-                scaler.scale(total_loss).backward()
-                if grad_clip > 0:
-                    scaler.unscale_(optimizer)
-                    imports.torch.nn.utils.clip_grad_norm_(trainable, grad_clip)
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                total_loss.backward()
-                if grad_clip > 0:
-                    imports.torch.nn.utils.clip_grad_norm_(trainable, grad_clip)
-                optimizer.step()
-            scheduler.step()
+            optimizer_step.backward_and_step(
+                loss=total_loss,
+                iteration_index=g_iter,
+                is_last_batch=(
+                    epoch + 1 == me and iteration == max_iterations
+                ),
+            )
             ep_loss += float(total_loss.item())
             ep_cls_loss += float(loss_cls.item())
             ep_box_loss += float(loss_box.item())
             ep_dfl_loss += float(loss_dfl.item())
             ep_mask_loss += float(loss_mask_t.item())
             ep_iters += 1
-            g_iter += 1
 
         if ep_iters > 0:
             ep_loss /= ep_iters
@@ -532,7 +565,7 @@ def run_yolov8_segmentation_training(
             len(val_anns) > 0 and epoch > 0 and epoch % eval_interval == 0
         ) or epoch == me - 1:
             val_metrics = evaluate_yolov8_segmentation_samples(
-                model=model,
+                model=ema.model,
                 samples=val_anns,
                 labels=labels,
                 input_size=input_size,
@@ -548,10 +581,12 @@ def run_yolov8_segmentation_training(
             best_val = current_val
             best_name = "val_map50_95"
 
+        scheduler.step()
         latest_checkpoint_bytes = _seg_build_checkpoint(
             epoch=epoch,
             g_iter=g_iter,
             model=model,
+            ema=ema,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -600,7 +635,10 @@ def run_yolov8_segmentation_training(
         metrics_payload={
             "final_metrics": m_hist[-1] if m_hist else {},
             "epoch_history": m_hist,
-            "scheduler": "CosineAnnealingLR",
+            "scheduler": "LambdaLR",
+            "optimizer": training_schedule.optimizer_name,
+            "accumulate": training_schedule.accumulate,
+            "scaled_weight_decay": training_schedule.scaled_weight_decay,
         },
         validation_metrics_payload={
             "final_metrics": final_v,
@@ -831,6 +869,8 @@ def _seg_load_resume(request, imports) -> _SegResumedState | None:
         optimizer_state_dict=ckpt.get("optimizer_state_dict", {}),
         scheduler_state_dict=ckpt.get("scheduler_state_dict"),
         scaler_state_dict=ckpt.get("scaler_state_dict"),
+        ema_state_dict=ckpt.get("ema_state_dict"),
+        ema_updates=max(0, int(ckpt.get("ema_updates", 0))),
         metrics_history=ckpt.get("metrics_history", []),
         validation_history=ckpt.get("validation_history", []),
         best_metric_value=float(ckpt.get("best_metric_value", 0)),
@@ -919,6 +959,7 @@ def _seg_build_checkpoint(
     epoch,
     g_iter,
     model,
+    ema,
     optimizer,
     scheduler,
     scaler,
@@ -948,6 +989,8 @@ def _seg_build_checkpoint(
         "epoch": epoch + 1,
         "global_iteration": g_iter,
         "model_state_dict": model.state_dict(),
+        "ema_state_dict": ema.state_dict(),
+        "ema_updates": ema.updates,
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
         "scaler_state_dict": scaler.state_dict() if scaler else None,

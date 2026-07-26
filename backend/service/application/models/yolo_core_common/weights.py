@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 import sys
@@ -162,6 +163,7 @@ def load_yolo_checkpoint_file(
     minimum_loadable_ratio: float = 1.0,
     strict_shape: bool = True,
     pickle_class_binders: tuple[Callable[..., None], ...] = (),
+    restore_checkpoint_attributes: bool = True,
 ) -> YoloStateDictLoadResult:
     """读取 checkpoint 文件、提取 state_dict 并加载到 YOLO 模型。"""
 
@@ -177,6 +179,11 @@ def load_yolo_checkpoint_file(
         minimum_loadable_ratio=minimum_loadable_ratio,
         strict_shape=strict_shape,
     )
+    if restore_checkpoint_attributes:
+        restore_yolo_checkpoint_module_attributes(
+            model=model,
+            checkpoint_payload=checkpoint_payload,
+        )
     return YoloStateDictLoadResult(
         coverage=load_result.coverage,
         loaded_keys=load_result.loaded_keys,
@@ -185,6 +192,65 @@ def load_yolo_checkpoint_file(
         shape_mismatch_keys=load_result.shape_mismatch_keys,
         checkpoint_path=str(checkpoint_path),
     )
+
+
+def restore_yolo_checkpoint_module_attributes(
+    *,
+    model: nn.Module,
+    checkpoint_payload: object,
+) -> int:
+    """恢复 checkpoint 模型中不属于 state_dict 的推理语义。
+
+    PyTorch 的 activation 类型以及 BatchNorm ``eps``、``momentum`` 不会写入
+    state_dict。完整模型 checkpoint 若丢失这些属性，即使张量覆盖率为 100%，
+    推理和转换结果仍可能明显偏离原模型。训练 warm-start 应使用当前训练配方，
+    因此调用方可通过 ``restore_checkpoint_attributes=False`` 显式禁用。
+    """
+
+    source_model = _resolve_yolo_checkpoint_model(checkpoint_payload)
+    if source_model is None:
+        return 0
+    source_modules = dict(source_model.named_modules())
+    restored_count = 0
+    for module_name, target_module in model.named_modules():
+        source_module = source_modules.get(module_name)
+        if source_module is None:
+            source_module = source_modules.get(f"model.{module_name}")
+        if source_module is None:
+            continue
+        if isinstance(target_module, nn.modules.batchnorm._BatchNorm) and isinstance(
+            source_module,
+            nn.modules.batchnorm._BatchNorm,
+        ):
+            target_module.eps = float(source_module.eps)
+            target_module.momentum = (
+                None
+                if source_module.momentum is None
+                else float(source_module.momentum)
+            )
+            restored_count += 2
+        source_activation = getattr(source_module, "act", None)
+        target_activation = getattr(target_module, "act", None)
+        if isinstance(source_activation, nn.Module) and isinstance(
+            target_activation,
+            nn.Module,
+        ):
+            target_module.act = deepcopy(source_activation)
+            restored_count += 1
+    return restored_count
+
+
+def _resolve_yolo_checkpoint_model(checkpoint_payload: object) -> nn.Module | None:
+    """从完整 checkpoint 中读取保留模块属性的模型对象。"""
+
+    if isinstance(checkpoint_payload, dict):
+        for key in ("ema", "model"):
+            candidate = checkpoint_payload.get(key)
+            if isinstance(candidate, nn.Module):
+                return candidate
+    if isinstance(checkpoint_payload, nn.Module):
+        return checkpoint_payload
+    return None
 
 
 def load_yolo_checkpoint_payload(

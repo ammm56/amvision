@@ -101,6 +101,7 @@ describe('training parameter augmentation support', () => {
       expect(augmentationFieldKeys('classification', modelType)).toEqual([
         'flip_prob',
         'hsv_prob',
+        'auto_augment',
         'random_erasing_prob',
       ])
     }
@@ -191,6 +192,7 @@ describe('training parameter augmentation support', () => {
     ).toMatchObject({
       flip_prob: 0,
       hsv_prob: 0,
+      auto_augment: 'none',
       random_erasing_prob: 0,
       disable_augmentation: true,
     })

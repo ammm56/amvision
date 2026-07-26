@@ -26,6 +26,10 @@ from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    YoloUltralyticsOptimizerStep,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
     build_yolo_classification_training_dataloader,
     load_yolo_classification_dataloader_imports,
     move_yolo_classification_batch_to_device,
@@ -55,8 +59,8 @@ YOLOV8_CLASSIFICATION_DEFAULT_INPUT_SIZE = (224, 224)
 YOLOV8_CLASSIFICATION_DEFAULT_BATCH_SIZE = 16
 YOLOV8_CLASSIFICATION_DEFAULT_MAX_EPOCHS = 30
 YOLOV8_CLASSIFICATION_DEFAULT_EVALUATION_INTERVAL = 1
-YOLOV8_CLASSIFICATION_DEFAULT_LR = 1e-3
-YOLOV8_CLASSIFICATION_DEFAULT_WEIGHT_DECAY = 1e-4
+YOLOV8_CLASSIFICATION_DEFAULT_LR = 1e-2
+YOLOV8_CLASSIFICATION_DEFAULT_WEIGHT_DECAY = 5e-4
 YOLOV8_CLASSIFICATION_DEFAULT_MIN_LR_RATIO = 0.01
 
 
@@ -123,6 +127,8 @@ class _LoadedClassificationResumeState:
     optimizer_state_dict: dict[str, object]
     scheduler_state_dict: dict[str, object] | None
     scaler_state_dict: dict[str, object] | None
+    ema_state_dict: dict[str, object] | None
+    ema_updates: int
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
     best_metric_value: float
@@ -230,6 +236,7 @@ def run_yolov8_classification_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
@@ -283,11 +290,18 @@ def run_yolov8_classification_training(
         )
 
     model.to(device_name)
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = imports.torch.optim.AdamW(
-        trainable_params,
-        lr=learning_rate,
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=imports.torch,
+        model=model,
+        num_classes=len(labels),
+        batch_size=batch_size,
+        train_sample_count=len(train_annotations),
+        max_epochs=max_epochs,
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        learning_rate=learning_rate,
         weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=bool(extra.get("cos_lr", False)),
     )
     scaler = (
         imports.torch.GradScaler(
@@ -297,15 +311,12 @@ def run_yolov8_classification_training(
         if hasattr(imports.torch, "GradScaler")
         else None
     )
-    iterations_per_epoch = max(
-        1,
-        (len(train_annotations) + batch_size - 1) // batch_size,
-    )
-    total_iterations = max_epochs * iterations_per_epoch
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=total_iterations,
-        eta_min=learning_rate * min_lr_ratio,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=imports.torch,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
 
     start_epoch = 0
@@ -329,6 +340,22 @@ def run_yolov8_classification_training(
         best_metric_name = resume_state.best_metric_name
         start_epoch = resume_state.epoch
         global_iteration = resume_state.global_iteration
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume_state.ema_updates if resume_state is not None else 0,
+    )
+    if resume_state is not None and resume_state.ema_state_dict is not None:
+        ema.load_state_dict(resume_state.ema_state_dict, strict=False)
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=imports.torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=float(extra.get("grad_clip_norm", 10.0)),
+        initial_iteration=global_iteration,
+    )
 
     for epoch in range(start_epoch, max_epochs):
         model.train()
@@ -349,7 +376,8 @@ def run_yolov8_classification_training(
             build_batch=build_yolov8_classification_training_batch,
             load_imports=load_yolo_classification_dataloader_imports,
         )
-        for cpu_batch in train_dataloader:
+        max_iterations = max(1, len(train_dataloader))
+        for iteration, cpu_batch in enumerate(train_dataloader, start=1):
             if cpu_batch is None:
                 continue
             batch = move_yolo_classification_batch_to_device(
@@ -362,7 +390,12 @@ def run_yolov8_classification_training(
                 continue
             batch_images = batch.images
             batch_targets = batch.targets
-            optimizer.zero_grad(set_to_none=True)
+            global_iteration += 1
+            optimizer_step.prepare_batch(
+                iteration_index=global_iteration,
+                epoch=epoch + 1,
+                batch_size=int(batch_targets.size(0)),
+            )
             with _autocast_context(imports, precision, device_name):
                 outputs = model(batch_images)
                 loss, probabilities = compute_yolov8_classification_loss(
@@ -370,19 +403,17 @@ def run_yolov8_classification_training(
                     outputs=outputs,
                     targets=batch_targets,
                 )
-            if scaler is not None:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
-            scheduler.step()
+            optimizer_step.backward_and_step(
+                loss=loss,
+                iteration_index=global_iteration,
+                is_last_batch=(
+                    epoch + 1 == max_epochs and iteration == max_iterations
+                ),
+            )
             _, predicted = imports.torch.max(probabilities, 1)
             train_correct += int((predicted == batch_targets).sum().item())
             train_total += int(batch_targets.size(0))
             train_loss_sum += float(loss.item()) * int(batch_targets.size(0))
-            global_iteration += 1
         train_accuracy = train_correct / max(1, train_total)
         train_loss = train_loss_sum / max(1, train_total)
         epoch_metrics = {
@@ -396,7 +427,7 @@ def run_yolov8_classification_training(
         ) or epoch == max_epochs - 1
         if should_evaluate:
             val_metrics = evaluate_yolov8_classification_samples(
-                model=model,
+                model=ema.model,
                 samples=val_annotations,
                 labels=labels,
                 batch_size=batch_size,
@@ -416,10 +447,12 @@ def run_yolov8_classification_training(
         if is_best:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
+        scheduler.step()
         checkpoint_bytes = _build_checkpoint_bytes(
             epoch=epoch,
             global_iteration=global_iteration,
             model=model,
+            ema=ema,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -447,7 +480,10 @@ def run_yolov8_classification_training(
             train_metrics_snapshot={
                 "final_metrics": metrics_history[-1] if metrics_history else {},
                 "epoch_history": [dict(item) for item in metrics_history],
-                "scheduler": "CosineAnnealingLR",
+                "scheduler": "LambdaLR",
+                "optimizer": training_schedule.optimizer_name,
+                "accumulate": training_schedule.accumulate,
+                "scaled_weight_decay": training_schedule.scaled_weight_decay,
             },
             validation_metrics_snapshot={
                 "final_metrics": validation_history[-1] if validation_history else {},
@@ -492,7 +528,10 @@ def run_yolov8_classification_training(
                 else {}
             ),
             "epoch_history": metrics_history,
-            "scheduler": "CosineAnnealingLR",
+            "scheduler": "LambdaLR",
+            "optimizer": training_schedule.optimizer_name,
+            "accumulate": training_schedule.accumulate,
+            "scaled_weight_decay": training_schedule.scaled_weight_decay,
         },
         validation_metrics_payload={
             "final_metrics": final_val_metrics,
@@ -628,6 +667,7 @@ def _build_checkpoint_bytes(
     epoch: int,
     global_iteration: int,
     model: Any,
+    ema: YoloModelEMA,
     optimizer: Any,
     scheduler: Any,
     scaler: Any | None,
@@ -647,6 +687,8 @@ def _build_checkpoint_bytes(
         "epoch": epoch + 1,
         "global_iteration": global_iteration,
         "model_state_dict": model.state_dict(),
+        "ema_state_dict": ema.state_dict(),
+        "ema_updates": ema.updates,
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
         "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
@@ -680,6 +722,8 @@ def _load_resume_state(
         optimizer_state_dict=checkpoint.get("optimizer_state_dict", {}),
         scheduler_state_dict=checkpoint.get("scheduler_state_dict"),
         scaler_state_dict=checkpoint.get("scaler_state_dict"),
+        ema_state_dict=checkpoint.get("ema_state_dict"),
+        ema_updates=max(0, int(checkpoint.get("ema_updates", 0))),
         metrics_history=checkpoint.get("metrics_history", []),
         validation_history=checkpoint.get("validation_history", []),
         best_metric_value=float(checkpoint.get("best_metric_value", 0.0)),

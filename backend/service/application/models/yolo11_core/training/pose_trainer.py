@@ -8,6 +8,8 @@ from typing import Any
 
 from backend.service.application.models.yolo_core_common.training import (
     YoloTaskDataLoaderPlan,
+    YoloUltralyticsOptimizerStep,
+    YoloUltralyticsTrainingSchedule,
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
@@ -89,7 +91,8 @@ def run_yolo11_pose_training_loop(
     optimizer: Any,
     scheduler: Any,
     scaler: Any | None,
-    trainable_parameters: list[Any],
+    training_schedule: YoloUltralyticsTrainingSchedule,
+    ema: Any,
     autocast_context: Callable[[], Any],
     labels: tuple[str, ...],
     train_annotations: list[Any],
@@ -138,15 +141,24 @@ def run_yolo11_pose_training_loop(
         extra_options={},
         device=device_name,
     )
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=imports.torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        schedule=training_schedule,
+        ema=ema,
+        grad_clip_norm=grad_clip_norm,
+        initial_iteration=global_iteration,
+    )
     for epoch in range(start_epoch, max_epochs):
         model.train()
         epoch_metrics, global_iteration = _run_yolo11_pose_epoch(
             imports=imports,
             model=model,
             optimizer=optimizer,
-            scheduler=scheduler,
             scaler=scaler,
-            trainable_parameters=trainable_parameters,
+            optimizer_step=optimizer_step,
             train_annotations=train_annotations,
             batch_size=batch_size,
             base_input_size=input_size,
@@ -165,7 +177,6 @@ def run_yolo11_pose_training_loop(
             assign_alpha=assign_alpha,
             assign_beta=assign_beta,
             assign_topk2=assign_topk2,
-            grad_clip_norm=grad_clip_norm,
             autocast_context=autocast_context,
             dataloader_plan=replace_yolo_task_dataloader_plan_seed(
                 plan=resolved_dataloader_plan,
@@ -186,7 +197,7 @@ def run_yolo11_pose_training_loop(
 
         validation_metrics = _run_yolo11_pose_validation(
             imports=imports,
-            model=model,
+            model=ema.model,
             val_annotations=val_annotations,
             labels=labels,
             input_size=input_size,
@@ -207,10 +218,13 @@ def run_yolo11_pose_training_loop(
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
 
+        scheduler.step()
         checkpoint_bytes = build_yolo11_pose_checkpoint_bytes(
             epoch=epoch,
             global_iteration=global_iteration,
             model=model,
+            ema_model=ema.model,
+            ema_updates=ema.updates,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -266,9 +280,8 @@ def _run_yolo11_pose_epoch(
     imports: Any,
     model: Any,
     optimizer: Any,
-    scheduler: Any,
     scaler: Any | None,
-    trainable_parameters: list[Any],
+    optimizer_step: YoloUltralyticsOptimizerStep,
     train_annotations: list[Any],
     batch_size: int,
     base_input_size: tuple[int, int],
@@ -287,7 +300,6 @@ def _run_yolo11_pose_epoch(
     assign_alpha: float,
     assign_beta: float,
     assign_topk2: int | None,
-    grad_clip_norm: float,
     autocast_context: Callable[[], Any],
     dataloader_plan: YoloTaskDataLoaderPlan,
 ) -> tuple[dict[str, float], int]:
@@ -312,7 +324,8 @@ def _run_yolo11_pose_epoch(
         load_imports=load_yolo_task_dataloader_imports,
         resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
     )
-    for cpu_batch in train_dataloader:
+    max_iterations = max(1, len(train_dataloader))
+    for iteration, cpu_batch in enumerate(train_dataloader, start=1):
         if cpu_batch is None:
             continue
         batch = move_yolo_task_batch_to_device(
@@ -323,6 +336,12 @@ def _run_yolo11_pose_epoch(
         )
         if batch is None:
             continue
+        global_iteration += 1
+        optimizer_step.prepare_batch(
+            iteration_index=global_iteration,
+            epoch=epoch + 1,
+            batch_size=len(batch.targets),
+        )
         with autocast_context():
             raw_outputs = model(batch.images)
             raw_for_loss = (
@@ -349,25 +368,11 @@ def _run_yolo11_pose_epoch(
         total_loss = loss_payload["loss"]
         if not total_loss.requires_grad:
             total_loss = _build_zero_grad_loss(raw_for_loss, imports.torch)
-        optimizer.zero_grad()
-        if scaler is not None:
-            scaler.scale(total_loss).backward()
-            if grad_clip_norm > 0:
-                scaler.unscale_(optimizer)
-                imports.torch.nn.utils.clip_grad_norm_(
-                    trainable_parameters, grad_clip_norm
-                )
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            total_loss.backward()
-            if grad_clip_norm > 0:
-                imports.torch.nn.utils.clip_grad_norm_(
-                    trainable_parameters, grad_clip_norm
-                )
-            optimizer.step()
-        scheduler.step()
-        global_iteration += 1
+        optimizer_step.backward_and_step(
+            loss=total_loss,
+            iteration_index=global_iteration,
+            is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
+        )
         iteration_count += 1
         for key, value in loss_payload.items():
             epoch_losses[key] = epoch_losses.get(key, 0.0) + float(value.item())

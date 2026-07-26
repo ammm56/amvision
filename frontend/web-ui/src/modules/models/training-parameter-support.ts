@@ -31,6 +31,13 @@ const boolOptions: TrainingParameterFieldOption[] = [
   { label: '关闭', value: 'false' },
 ]
 
+const classificationAutoAugmentOptions: TrainingParameterFieldOption[] = [
+  { label: 'RandAugment（默认）', value: 'randaugment' },
+  { label: 'AutoAugment', value: 'autoaugment' },
+  { label: 'AugMix', value: 'augmix' },
+  { label: '关闭', value: 'none' },
+]
+
 export function buildTrainingDeviceOptions(
   devices: Record<string, unknown> | null | undefined,
 ): TrainingParameterFieldOption[] {
@@ -91,8 +98,8 @@ const rfdetrAugmentationPresetOptions: TrainingParameterFieldOption[] = [
 
 const yoloDetectionDefaultLearningRate = '0.01'
 const yoloDetectionDefaultWeightDecay = '0.0005'
-const yoloTaskAdamWDefaultLearningRate = '0.001'
-const yoloTaskAdamWDefaultWeightDecay = '0.0001'
+const yoloTaskDefaultLearningRate = '0.01'
+const yoloTaskDefaultWeightDecay = '0.0005'
 
 function withTrainingParameterGroup(
   fields: TrainingParameterField[],
@@ -235,8 +242,11 @@ const detectionYoloXAugmentationFields: TrainingParameterField[] = withTrainingP
 
 const classificationYoloAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
   numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
-  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
-  numberField('random_erasing_prob', '随机擦除概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
+  numberField('hsv_prob', 'HSV 增强概率（关闭自动增强时）', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  selectField('auto_augment', '自动增强策略', classificationAutoAugmentOptions, {
+    defaultValue: 'randaugment',
+  }),
+  numberField('random_erasing_prob', '随机擦除概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.4' }),
 ], 'augmentation')
 
 const rfdetrAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
@@ -287,15 +297,15 @@ const detectionRfdetrFields: TrainingParameterField[] = [
 ]
 
 const classificationFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...classificationYoloAugmentationFields,
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
@@ -325,8 +335,8 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
 ]
 
 const poseFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
   numberField('keypoint_confidence_threshold', '关键点置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.25' }),
@@ -342,8 +352,8 @@ const poseFields: TrainingParameterField[] = [
 ]
 
 const obbFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultLearningRate }),
-  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskAdamWDefaultWeightDecay }),
+  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   ...obbYoloEvaluationThresholdFields,
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
@@ -530,7 +540,7 @@ export function buildTrainingExtraOptions(
   }
 
   const assignClassificationAugmentationValues = (): void => {
-    for (const key of ['flip_prob', 'hsv_prob', 'random_erasing_prob']) {
+    for (const key of ['flip_prob', 'hsv_prob', 'auto_augment', 'random_erasing_prob']) {
       assignValue(key)
     }
   }
@@ -538,6 +548,7 @@ export function buildTrainingExtraOptions(
   const disableClassificationAugmentationValues = (): void => {
     result.flip_prob = 0
     result.hsv_prob = 0
+    result.auto_augment = 'none'
     result.random_erasing_prob = 0
     result.disable_augmentation = true
   }

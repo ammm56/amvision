@@ -1797,8 +1797,7 @@ def test_yolo_classification_training_loop_updates_model_weights(
 
     source = inspect.getsource(training_loop)
 
-    assert ".backward()" in source
-    assert "optimizer.step()" in source
+    assert "optimizer_step.backward_and_step(" in source
     assert "scheduler.step()" in source
 
 

@@ -41,6 +41,9 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    build_yolo_ultralytics_optimizer,
+    build_yolo_ultralytics_scheduler,
     resolve_yolo_task_dataloader_plan,
 )
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
@@ -54,8 +57,8 @@ YOLO11_OBB_DEFAULT_INPUT_SIZE = (640, 640)
 YOLO11_OBB_DEFAULT_BATCH_SIZE = 1
 YOLO11_OBB_DEFAULT_MAX_EPOCHS = 1
 YOLO11_OBB_DEFAULT_EVAL_INTERVAL = 5
-YOLO11_OBB_DEFAULT_LR = 1e-3
-YOLO11_OBB_DEFAULT_WEIGHT_DECAY = 1e-4
+YOLO11_OBB_DEFAULT_LR = 1e-2
+YOLO11_OBB_DEFAULT_WEIGHT_DECAY = 5e-4
 YOLO11_OBB_DEFAULT_MIN_LR_RATIO = 0.01
 YOLO11_OBB_DEFAULT_EVAL_CONF = 0.01
 YOLO11_OBB_DEFAULT_EVAL_NMS = 0.7
@@ -141,6 +144,7 @@ def run_yolo11_obb_training(
             checkpoint_path=request.warm_start_checkpoint_path,
             minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
             strict_shape=False,
+            restore_checkpoint_attributes=False,
         )
         warm_start_summary = build_yolo_warm_start_summary(
             load_result=load_result,
@@ -190,22 +194,25 @@ def run_yolo11_obb_training(
         )
 
     model.to(device_name)
-    trainable_parameters = [
-        parameter for parameter in model.parameters() if parameter.requires_grad
-    ]
-    optimizer = imports.torch.optim.AdamW(
-        trainable_parameters,
-        lr=learning_rate,
+    optimizer, training_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=imports.torch,
+        model=model,
+        num_classes=len(labels),
+        batch_size=batch_size,
+        train_sample_count=len(manifest.train_annotations),
+        max_epochs=max_epochs,
+        optimizer_name=str(extra.get("optimizer", "auto")),
+        learning_rate=learning_rate,
         weight_decay=weight_decay,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=bool(extra.get("cos_lr", False)),
     )
-    iterations_per_epoch = max(
-        1,
-        (len(manifest.train_annotations) + batch_size - 1) // batch_size,
-    )
-    scheduler = imports.torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=max_epochs * iterations_per_epoch,
-        eta_min=learning_rate * min_lr_ratio,
+    scheduler = build_yolo_ultralytics_scheduler(
+        torch_module=imports.torch,
+        optimizer=optimizer,
+        max_epochs=max_epochs,
+        final_lr_ratio=min_lr_ratio,
+        cosine_schedule=training_schedule.cosine_schedule,
     )
     scaler = (
         imports.torch.amp.GradScaler("cuda", enabled=True)
@@ -234,6 +241,12 @@ def run_yolo11_obb_training(
         best_metric_name = resume_state.best_metric_name
         start_epoch = resume_state.epoch
         global_iteration = resume_state.global_iteration
+    ema = YoloModelEMA(
+        model=model,
+        updates=resume_state.ema_updates if resume_state is not None else 0,
+    )
+    if resume_state is not None and resume_state.ema_state_dict is not None:
+        ema.load_state_dict(resume_state.ema_state_dict, strict=False)
 
     loop_result = run_yolo11_obb_training_loop(
         imports=imports,
@@ -241,7 +254,8 @@ def run_yolo11_obb_training(
         optimizer=optimizer,
         scheduler=scheduler,
         scaler=scaler,
-        trainable_parameters=trainable_parameters,
+        training_schedule=training_schedule,
+        ema=ema,
         autocast_context=lambda: build_yolo11_obb_autocast_context(
             torch_module=imports.torch,
             precision=precision,

@@ -92,6 +92,7 @@ def postprocess_detection_prediction_array(
                 nms_threshold=nms_threshold,
                 np_module=np_module,
             )
+            keep_indices = keep_indices[:resolved_max_detections]
         else:
             raise InvalidRequestError(
                 "当前 detection 后处理模式不受支持",

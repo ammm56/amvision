@@ -647,6 +647,7 @@ def _resolve_yolo11_warm_start_summary(
         checkpoint_path=request.warm_start_checkpoint_path,
         minimum_loadable_ratio=YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
         strict_shape=False,
+        restore_checkpoint_attributes=False,
     )
     return build_yolo_warm_start_summary(
         load_result=load_result,
@@ -1014,6 +1015,7 @@ def _evaluate_yolo11_detection_model_once(
     with redirect_stdout(io.StringIO()):
         coco_detections = ground_truth.loadRes(detections)
         coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
+        coco_evaluator.params.maxDets = [1, 10, 300]
         coco_evaluator.evaluate()
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
