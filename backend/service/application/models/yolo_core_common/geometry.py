@@ -19,8 +19,12 @@ class YoloLetterboxTransform:
     gain: float
     pad_left: int
     pad_top: int
+    pad_right: int
+    pad_bottom: int
     resized_width: int
     resized_height: int
+    scaleup: bool
+    centered: bool
 
     @property
     def source_size(self) -> tuple[int, int]:
@@ -41,8 +45,17 @@ def build_yolo_letterbox_transform(
     source_height: int,
     input_size: tuple[int, int],
     center: bool = True,
+    scaleup: bool = True,
+    auto: bool = False,
+    stride: int = 32,
+    scale_gain: float = 1.0,
 ) -> YoloLetterboxTransform:
-    """按 Ultralytics LetterBox 规则计算缩放 gain 和 padding。"""
+    """按 Ultralytics LetterBox 规则计算缩放 gain 和四边 padding。
+
+    ``input_size`` 明确使用 ``(height, width)``。validation 应传入
+    ``scaleup=False``；训练和普通预测使用 ``scaleup=True``。``auto`` 只适合
+    PyTorch 或支持动态空间 shape 的运行时，静态构建必须保持 ``False``。
+    """
 
     target_height, target_width = int(input_size[0]), int(input_size[1])
     resolved_source_width = max(1, int(source_width))
@@ -53,23 +66,43 @@ def build_yolo_letterbox_transform(
         float(resolved_target_height) / float(resolved_source_height),
         float(resolved_target_width) / float(resolved_source_width),
     )
+    if not scaleup:
+        gain = min(gain, 1.0)
+    gain *= max(0.01, float(scale_gain))
     resized_width = max(1, int(round(float(resolved_source_width) * gain)))
     resized_height = max(1, int(round(float(resolved_source_height) * gain)))
-    pad_width = float(resolved_target_width - resized_width)
-    pad_height = float(resolved_target_height - resized_height)
+    pad_width = resolved_target_width - resized_width
+    pad_height = resolved_target_height - resized_height
+    if auto:
+        resolved_stride = max(1, int(stride))
+        pad_width %= resolved_stride
+        pad_height %= resolved_stride
+        resolved_target_width = resized_width + pad_width
+        resolved_target_height = resized_height + pad_height
     if center:
-        pad_width /= 2.0
-        pad_height /= 2.0
+        pad_left = int(round(float(pad_width) / 2.0 - 0.1))
+        pad_right = int(round(float(pad_width) / 2.0 + 0.1))
+        pad_top = int(round(float(pad_height) / 2.0 - 0.1))
+        pad_bottom = int(round(float(pad_height) / 2.0 + 0.1))
+    else:
+        pad_left = 0
+        pad_top = 0
+        pad_right = int(pad_width)
+        pad_bottom = int(pad_height)
     return YoloLetterboxTransform(
         source_width=resolved_source_width,
         source_height=resolved_source_height,
         target_width=resolved_target_width,
         target_height=resolved_target_height,
         gain=float(gain),
-        pad_left=int(round(pad_width - 0.1)),
-        pad_top=int(round(pad_height - 0.1)),
+        pad_left=pad_left,
+        pad_top=pad_top,
+        pad_right=pad_right,
+        pad_bottom=pad_bottom,
         resized_width=resized_width,
         resized_height=resized_height,
+        scaleup=bool(scaleup),
+        centered=bool(center),
     )
 
 
@@ -81,6 +114,10 @@ def letterbox_yolo_image(
     input_size: tuple[int, int],
     fill_value: int = 114,
     center: bool = True,
+    scaleup: bool = True,
+    auto: bool = False,
+    stride: int = 32,
+    scale_gain: float = 1.0,
 ) -> tuple[Any, YoloLetterboxTransform]:
     """把 BGR 图片按 YOLO LetterBox 规则缩放并填充到模型输入尺寸。"""
 
@@ -90,27 +127,76 @@ def letterbox_yolo_image(
         source_height=source_height,
         input_size=input_size,
         center=center,
+        scaleup=scaleup,
+        auto=auto,
+        stride=stride,
+        scale_gain=scale_gain,
     )
-    resized_image = cv2_module.resize(
-        image,
-        (transform.resized_width, transform.resized_height),
-        interpolation=cv2_module.INTER_LINEAR,
-    )
+    if (
+        transform.resized_width == source_width
+        and transform.resized_height == source_height
+    ):
+        resized_image = image
+    else:
+        resized_image = cv2_module.resize(
+            image,
+            (transform.resized_width, transform.resized_height),
+            interpolation=cv2_module.INTER_LINEAR,
+        )
     canvas = np_module.full(
         (transform.target_height, transform.target_width, 3),
         int(fill_value),
         dtype=np_module.uint8,
     )
-    bottom = min(transform.target_height, transform.pad_top + transform.resized_height)
-    right = min(transform.target_width, transform.pad_left + transform.resized_width)
-    copy_height = max(0, bottom - transform.pad_top)
-    copy_width = max(0, right - transform.pad_left)
+    source_x = max(0, -transform.pad_left)
+    source_y = max(0, -transform.pad_top)
+    target_x = max(0, transform.pad_left)
+    target_y = max(0, transform.pad_top)
+    copy_width = max(
+        0,
+        min(
+            transform.resized_width - source_x,
+            transform.target_width - target_x,
+        ),
+    )
+    copy_height = max(
+        0,
+        min(
+            transform.resized_height - source_y,
+            transform.target_height - target_y,
+        ),
+    )
     if copy_height > 0 and copy_width > 0:
         canvas[
-            transform.pad_top:bottom,
-            transform.pad_left:right,
-        ] = resized_image[:copy_height, :copy_width]
+            target_y : target_y + copy_height,
+            target_x : target_x + copy_width,
+        ] = resized_image[
+            source_y : source_y + copy_height,
+            source_x : source_x + copy_width,
+        ]
     return canvas, transform
+
+
+def letterbox_yolo_image_to_canvas(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    image: Any,
+    input_size: tuple[int, int],
+    scale_gain: float = 1.0,
+    scaleup: bool = True,
+) -> tuple[Any, float, tuple[int, int]]:
+    """生成 LetterBox 画布和可直接变换标注的 gain/pad 参数。"""
+
+    canvas, transform = letterbox_yolo_image(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        image=image,
+        input_size=input_size,
+        scaleup=scaleup,
+        scale_gain=scale_gain,
+    )
+    return canvas, transform.gain, (transform.pad_left, transform.pad_top)
 
 
 def clip_yolo_xyxy_box(

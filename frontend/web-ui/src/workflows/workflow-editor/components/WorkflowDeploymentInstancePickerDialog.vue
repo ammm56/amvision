@@ -153,9 +153,9 @@ function runtimeLabel(deployment: TaskDeploymentInstance): string {
   return `${backend} / ${precision} / ${device}`
 }
 
-function inputSizeLabel(inputSize: [number, number] | null | undefined): string {
-  if (!Array.isArray(inputSize) || inputSize.length < 2) return '-'
-  return `${inputSize[0]} × ${inputSize[1]}`
+function inputSizeLabel(inputSize: { width: number; height: number } | null | undefined): string {
+  if (!inputSize) return '-'
+  return `${inputSize.width} × ${inputSize.height}`
 }
 </script>
 

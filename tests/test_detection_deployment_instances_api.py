@@ -126,7 +126,7 @@ def test_create_list_and_get_detection_deployment_instance(tmp_path: Path) -> No
             assert payload["runtime_precision"] == "fp32"
             assert payload["runtime_execution_mode"] == "pytorch:fp32:cpu"
             assert payload["runtime_configuration"]["execution"]["instance_count"] == 3
-            assert payload["input_size"] == [64, 64]
+            assert payload["input_size"] == {"width": 64, "height": 64}
             assert payload["labels"] == ["bolt"]
 
             list_response = client.get(
@@ -1025,8 +1025,10 @@ def _seed_yolov8_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["bolt"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
+                "input_size": {"width": 64, "height": 64},
+                "training_config": {
+                    "input_size": {"width": 64, "height": 64}
+                },
             },
         )
     )

@@ -11,6 +11,7 @@ from backend.service.application.models.training.yolo_detection_training_control
 )
 from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 def build_yolo_detection_training_queue_failed_event(
@@ -438,7 +439,7 @@ def build_yolo_detection_training_batch_progress_event(
                 "max_iterations": progress.max_iterations,
                 "global_iteration": progress.global_iteration,
                 "total_iterations": progress.total_iterations,
-                "input_size": list(progress.input_size),
+                "input_size": serialize_spatial_size_hw(progress.input_size),
                 "learning_rate": progress.learning_rate,
                 "train_metrics": dict(progress.train_metrics),
                 "percent": percent,

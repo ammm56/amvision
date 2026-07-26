@@ -76,7 +76,7 @@ def submit_classification_training_task(
             warm_start_model_version_id=body.warm_start_model_version_id,
             max_epochs=body.max_epochs,
             batch_size=body.batch_size,
-            input_size=body.input_size,
+            input_size=body.input_size.hw if body.input_size is not None else None,
             precision=body.precision,
             extra_options=dict(body.extra_options),
             display_name=body.display_name,

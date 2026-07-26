@@ -31,6 +31,7 @@ def prepare_yolov8_detection_sample_without_augmentation(
     imports: Any,
     sample: YoloV8DetectionTrainingSample,
     input_size: tuple[int, int],
+    scaleup: bool = False,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
     """按 YOLO LetterBox 规则准备单张 YOLOv8 detection 样本。"""
 
@@ -40,6 +41,7 @@ def prepare_yolov8_detection_sample_without_augmentation(
         image=image,
         annotations=sample.annotations,
         output_size=input_size,
+        scaleup=scaleup,
     )
 
 
@@ -66,6 +68,7 @@ def prepare_yolov8_detection_sample_with_augmentation(
             imports=imports,
             sample=primary_sample,
             input_size=input_size,
+            scaleup=True,
         )
 
     if (
@@ -262,6 +265,7 @@ def _letterbox_detection_sample_to_size(
     image: Any,
     annotations: tuple[YoloV8DetectionTrainingAnnotation, ...],
     output_size: tuple[int, int],
+    scaleup: bool,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
     """把单张 YOLOv8 detection 样本按 LetterBox 映射到目标尺寸。"""
 
@@ -270,6 +274,7 @@ def _letterbox_detection_sample_to_size(
         np_module=imports.np,
         image=image,
         input_size=output_size,
+        scaleup=scaleup,
     )
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []

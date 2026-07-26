@@ -206,6 +206,10 @@ class LocalYoloModelConversionRunner:
                     metadata={
                         **optimize_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata[
+                            "model_input_spec"
+                        ],
+                        "input_tensor": onnx_output.metadata["input_tensor"],
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -238,6 +242,10 @@ class LocalYoloModelConversionRunner:
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata[
+                            "model_input_spec"
+                        ],
+                        "input_tensor": onnx_output.metadata["input_tensor"],
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -270,6 +278,10 @@ class LocalYoloModelConversionRunner:
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata[
+                            "model_input_spec"
+                        ],
+                        "input_tensor": onnx_output.metadata["input_tensor"],
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },

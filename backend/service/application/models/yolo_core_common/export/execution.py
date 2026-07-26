@@ -54,7 +54,11 @@ def export_yolo_onnx(
         "stage": "export-onnx",
         "object_uri": output_object_key,
         "opset_version": export_plan.onnx_opset_version,
-        "input_size": list(session.runtime_target.input_size),
+        "model_input_spec": _require_model_input_spec_payload(session=session),
+        "input_tensor": _build_input_tensor_payload(
+            session=session,
+            input_name=export_plan.input_names[0],
+        ),
         "exporter_mode": export_plan.exporter_mode,
         "input_names": list(export_plan.input_names),
         "output_names": list(export_plan.output_names),
@@ -381,6 +385,33 @@ def _build_dummy_input(*, session: object) -> object:
         device=session.device_name,
         dtype=session.imports.torch.float32,
     )
+
+
+def _require_model_input_spec_payload(*, session: object) -> dict[str, object]:
+    """返回导出源模型的必填输入契约。"""
+
+    input_spec = session.runtime_target.model_input_spec
+    if input_spec is None:
+        raise ServiceConfigurationError("YOLO 导出缺少 model_input_spec")
+    return input_spec.to_payload()
+
+
+def _build_input_tensor_payload(
+    *,
+    session: object,
+    input_name: str,
+) -> dict[str, object]:
+    """构建 ONNX 输入张量摘要。"""
+
+    input_spec = session.runtime_target.model_input_spec
+    if input_spec is None:
+        raise ServiceConfigurationError("YOLO 导出缺少 model_input_spec")
+    return {
+        "name": input_name,
+        "layout": input_spec.layout,
+        "shape": list(input_spec.tensor_shape),
+        "dtype": input_spec.dtype,
+    }
 
 
 def _validate_task_export_outputs(*, task_type: str, outputs: list[object]) -> None:

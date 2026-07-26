@@ -22,7 +22,9 @@ def test_yolo_letterbox_transform_matches_wide_image_padding() -> None:
     assert transform.resized_width == 640
     assert transform.resized_height == 360
     assert transform.pad_left == 0
+    assert transform.pad_right == 0
     assert transform.pad_top == 140
+    assert transform.pad_bottom == 140
     assert transform.target_size == (640, 640)
     assert transform.source_size == (720, 1280)
 
@@ -38,7 +40,9 @@ def test_yolo_letterbox_transform_matches_tall_image_padding() -> None:
     assert transform.resized_width == 360
     assert transform.resized_height == 640
     assert transform.pad_left == 140
+    assert transform.pad_right == 140
     assert transform.pad_top == 0
+    assert transform.pad_bottom == 0
     assert transform.target_size == (640, 640)
     assert transform.source_size == (1280, 720)
 
@@ -87,3 +91,40 @@ def test_yolo_letterbox_point_and_xywh_roundtrip_use_width_height_order() -> Non
     assert point == pytest.approx((960.0, 540.0))
     assert box_xywh is not None
     assert box_xywh == pytest.approx((960.0, 540.0, 480.0, 240.0))
+
+
+def test_yolo_letterbox_validation_does_not_scale_up_small_image() -> None:
+    transform = build_yolo_letterbox_transform(
+        source_width=200,
+        source_height=100,
+        input_size=(384, 640),
+        scaleup=False,
+    )
+
+    assert transform.gain == pytest.approx(1.0)
+    assert transform.resized_width == 200
+    assert transform.resized_height == 100
+    assert transform.pad_left == 220
+    assert transform.pad_right == 220
+    assert transform.pad_top == 142
+    assert transform.pad_bottom == 142
+    assert transform.target_size == (384, 640)
+
+
+def test_yolo_letterbox_auto_uses_stride_aligned_dynamic_canvas() -> None:
+    transform = build_yolo_letterbox_transform(
+        source_width=500,
+        source_height=300,
+        input_size=(640, 640),
+        auto=True,
+        stride=32,
+    )
+
+    assert transform.target_height % 32 == 0
+    assert transform.target_width % 32 == 0
+    assert transform.resized_height + transform.pad_top + transform.pad_bottom == (
+        transform.target_height
+    )
+    assert transform.resized_width + transform.pad_left + transform.pad_right == (
+        transform.target_width
+    )

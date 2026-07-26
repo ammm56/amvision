@@ -141,8 +141,10 @@ def _seed_source_model_version(
             task_type=task_type,
             metadata={
                 "category_names": ["ok", "ng"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
+                "input_size": {"width": 64, "height": 64},
+                "training_config": {
+                    "input_size": {"width": 64, "height": 64}
+                },
             },
         )
     )

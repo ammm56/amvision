@@ -5,6 +5,7 @@ from __future__ import annotations
 from backend.service.api.rest.v1.routes.classification_deployments.schemas import (
     ClassificationDeploymentInstanceResponse,
 )
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 from backend.service.application.deployments.classification_deployment_service import (
     ClassificationDeploymentInstanceView,
 )
@@ -38,7 +39,7 @@ def build_classification_deployment_instance_response(
         runtime_configuration=DeploymentRuntimeConfigurationBody.from_domain(
             instance.runtime_configuration
         ),
-        input_size=instance.input_size,
+        input_size=SpatialSizeResponse.from_hw(instance.input_size),
         labels=instance.labels,
         process_status=getattr(instance, "process_status", None),
         metadata=dict(instance.metadata),

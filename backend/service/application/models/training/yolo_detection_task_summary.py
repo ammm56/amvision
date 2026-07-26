@@ -14,6 +14,7 @@ from backend.service.application.models.training.yolo_detection_training_executi
     YoloDetectionTrainingExecutionResult,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 def build_yolo_detection_training_summary(
@@ -89,6 +90,10 @@ def build_yolo_detection_training_summary(
         training_config=training_config,
         validation_summary=validation_summary,
         warm_start_summary=dict(execution_result.warm_start_summary),
+    )
+    summary["input_size"] = serialize_spatial_size_hw(execution_result.input_size)
+    summary["training_config"]["input_size"] = serialize_spatial_size_hw(
+        request.input_size
     )
     summary["training_config"]["resolved_extra_options"] = (
         build_yolo_detection_resolved_extra_options_payload(

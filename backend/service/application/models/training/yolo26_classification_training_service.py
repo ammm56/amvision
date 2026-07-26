@@ -69,6 +69,10 @@ from backend.service.domain.files.detection_model_file_types import (
     YOLO26_DETECTION_FILE_TYPES,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -689,7 +693,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
                 payload.get("evaluation_interval")
                 or YOLO26_CLASSIFICATION_DEFAULT_EVALUATION_INTERVAL
             ),
-            "input_size": list(input_size) if input_size is not None else None,
+            "input_size": serialize_spatial_size_hw(input_size),
             "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
@@ -716,7 +720,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             "dataset_version_id": dataset_export.dataset_version_id,
             "format_id": dataset_export.format_id,
             "category_names": list(execution_result.labels),
-            "input_size": list(input_size) if input_size is not None else None,
+            "input_size": serialize_spatial_size_hw(input_size),
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
             "implementation_mode": self._resolve_implementation_mode(model_type),
@@ -879,9 +883,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
     def _read_input_size(self, value: object) -> tuple[int, int] | None:
         """把输入尺寸负载解析为二元组。"""
 
-        if isinstance(value, list | tuple) and len(value) == 2:
-            return (int(value[0]), int(value[1]))
-        return None
+        return deserialize_spatial_size_hw(value)
 
     def _read_optional_str(self, value: object) -> str | None:
         """读取可选字符串字段。"""

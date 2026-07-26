@@ -97,6 +97,7 @@ from backend.service.application.models.yolo11_core.postprocess.detection import
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 YOLO11_IMPLEMENTATION_MODE = YOLO11_DETECTION_CORE_IMPLEMENTATION_MODE
@@ -1319,7 +1320,7 @@ def _build_yolo11_metrics_payload(
         "batch_size": batch_size,
         "max_epochs": max_epochs,
         "evaluation_interval": evaluation_interval,
-        "input_size": list(input_size),
+        "input_size": serialize_spatial_size_hw(input_size),
         "train_split_name": train_split_name,
         "validation_split_name": validation_split_name,
         "sample_count": sum(split.sample_count for split in resolved_splits),

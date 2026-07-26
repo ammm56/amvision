@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.platform_model_support import build_platform_model_type_field_description
 
@@ -34,7 +35,10 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
         default=None,
         description="请求使用的训练 precision；未指定时由具体 detection training backend 解析默认值",
     )
-    input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
+    input_size: SpatialSizeRequest | None = Field(
+        default=None,
+        description="训练输入尺寸，使用明确的 width/height 字段",
+    )
     extra_options: "DetectionTrainingExtraOptionsRequest" = Field(
         default_factory=lambda: DetectionTrainingExtraOptionsRequest(),
         description="附加训练选项；当前 OpenAPI 会展开 detection 训练公开字段说明，其余 backend 专用字段仍允许透传",

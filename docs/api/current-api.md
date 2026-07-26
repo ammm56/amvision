@@ -1480,7 +1480,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - display_name
 - 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 detection 训练队列
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
-- 当前 input_size 未指定时，真实训练默认使用 [640, 640]。
+- 当前 input_size 固定使用 `{"width": <integer>, "height": <integer>}` 对象，不再接受二元素数组；未指定时真实训练默认宽高均为 640。
 - 当前 Swagger/OpenAPI 已把 training create 的 extra_options 展开为具名字段，公开键包括 seed、num_workers、device、max_labels、flip_prob、hsv_prob、mosaic_prob、mixup_prob、enable_mixup、multiscale_range、ema、warmup_epochs、no_aug_epochs、min_lr_ratio、evaluation_confidence_threshold、evaluation_nms_threshold 等。
 - 当前 extra_options 默认关闭 flip、hsv、mosaic、mixup 和多尺度训练；EMA 默认保持启用。完整字段说明见 [docs/api/detection-training.md](detection-training.md)。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证；只是速度会明显变慢。

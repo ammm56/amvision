@@ -28,6 +28,12 @@ from backend.service.domain.models.model_records import (
 from backend.service.domain.models.model_artifact_provenance import (
     attach_model_artifact_provenance,
 )
+from backend.service.domain.models.model_input_spec import (
+    ModelInputSpec,
+    SpatialSize,
+    build_yolo_model_input_spec,
+    resolve_yolo_default_spatial_size,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.infrastructure.db.session import SessionFactory
@@ -48,6 +54,7 @@ _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT = {
     "tensorrt-engine": frozenset({"fp32", "fp16"}),
     "rknn": frozenset({"fp32"}),
 }
+_YOLO_MAINLINE_MODEL_TYPES = frozenset({"yolov8", "yolo11", "yolo26"})
 
 
 @dataclass(frozen=True)
@@ -405,7 +412,10 @@ class SqlAlchemyModelService:
         with self._open_unit_of_work() as unit_of_work:
             model_version_id = request.model_version_id or self._next_id("model-version")
             checkpoint_file_id = request.checkpoint_file_id or self._next_id("model-file")
-            pretrained_metadata = self._build_pretrained_metadata(request.metadata)
+            pretrained_metadata = self._build_pretrained_metadata(
+                request.metadata,
+                task_type=request.task_type,
+            )
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
                 project_id=None,
@@ -464,8 +474,13 @@ class SqlAlchemyModelService:
             model_version_id = request.model_version_id or self._next_id(
                 "model-version"
             )
-            training_metadata = attach_model_artifact_provenance(
+            normalized_training_metadata = self._normalize_yolo_version_input_metadata(
                 request.metadata,
+                task_type=request.task_type,
+                allow_default=False,
+            )
+            training_metadata = attach_model_artifact_provenance(
+                normalized_training_metadata,
                 artifact_kind="training-output",
                 trace={
                     "model_version_id": model_version_id,
@@ -548,8 +563,12 @@ class SqlAlchemyModelService:
                 raise ValueError(f"未知的 Model: {source_version.model_id}")
 
             model_build_id = self._next_id("model-build")
+            normalized_build_metadata = self._normalize_yolo_build_input_metadata(
+                source_version_metadata=source_version.metadata,
+                build_metadata=request.metadata,
+            )
             build_metadata = attach_model_artifact_provenance(
-                self._strip_deprecated_build_runtime_metadata(request.metadata),
+                self._strip_deprecated_build_runtime_metadata(normalized_build_metadata),
                 artifact_kind="converted-model",
                 trace={
                     "model_build_id": model_build_id,
@@ -998,7 +1017,12 @@ class SqlAlchemyModelService:
             )
         return normalized_precision
 
-    def _build_pretrained_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
+    def _build_pretrained_metadata(
+        self,
+        metadata: dict[str, object],
+        *,
+        task_type: str,
+    ) -> dict[str, object]:
         """构建平台级预训练模型登记元数据。
 
         参数：
@@ -1008,9 +1032,135 @@ class SqlAlchemyModelService:
         - 已补齐平台级预训练标记的元数据。
         """
 
-        pretrained_metadata = dict(metadata)
+        pretrained_metadata = self._normalize_yolo_version_input_metadata(
+            metadata,
+            task_type=task_type,
+            allow_default=True,
+        )
         pretrained_metadata.setdefault("source_kind", "pretrained-reference")
         return pretrained_metadata
+
+    def _normalize_yolo_version_input_metadata(
+        self,
+        metadata: dict[str, object],
+        *,
+        task_type: str,
+        allow_default: bool,
+    ) -> dict[str, object]:
+        """把 YOLO 主线 ModelVersion 输入信息收敛为唯一显式契约。"""
+
+        normalized = dict(metadata)
+        if self.spec.model_name not in _YOLO_MAINLINE_MODEL_TYPES:
+            return normalized
+
+        raw_input_size = normalized.get("input_size")
+        if raw_input_size is None:
+            training_config = normalized.get("training_config")
+            if isinstance(training_config, dict):
+                raw_input_size = training_config.get("input_size")
+        if raw_input_size is None:
+            if not allow_default:
+                raise InvalidRequestError(
+                    "YOLO 训练输出缺少 input_size，无法登记 ModelVersion",
+                    details={"model_type": self.spec.model_name, "task_type": task_type},
+                )
+            spatial_size = resolve_yolo_default_spatial_size(task_type=task_type)
+        else:
+            spatial_size = self._parse_explicit_spatial_size(
+                raw_input_size,
+                field_name="input_size",
+            )
+
+        input_spec = build_yolo_model_input_spec(
+            spatial_size=spatial_size,
+            task_type=task_type,
+        )
+        normalized["input_size"] = spatial_size.to_payload()
+        normalized["model_input_spec"] = input_spec.to_payload()
+        training_config = normalized.get("training_config")
+        if isinstance(training_config, dict):
+            normalized_training_config = dict(training_config)
+            normalized_training_config["input_size"] = spatial_size.to_payload()
+            normalized["training_config"] = normalized_training_config
+        return normalized
+
+    def _normalize_yolo_build_input_metadata(
+        self,
+        *,
+        source_version_metadata: dict[str, object],
+        build_metadata: dict[str, object],
+    ) -> dict[str, object]:
+        """继承并校验 YOLO 主线 ModelBuild 的实际输入张量契约。"""
+
+        normalized = dict(build_metadata)
+        if self.spec.model_name not in _YOLO_MAINLINE_MODEL_TYPES:
+            return normalized
+        try:
+            input_spec = ModelInputSpec.from_payload(
+                source_version_metadata.get("model_input_spec")
+            )
+        except ValueError as error:
+            raise InvalidRequestError(
+                "YOLO 来源 ModelVersion 缺少有效 model_input_spec"
+            ) from error
+
+        actual_shape = self._read_build_input_shape(normalized)
+        if actual_shape is not None:
+            expected_shape = input_spec.tensor_shape
+            if len(actual_shape) != 4 or any(
+                actual > 0 and actual != expected
+                for actual, expected in zip(actual_shape, expected_shape, strict=True)
+            ):
+                raise InvalidRequestError(
+                    "ModelBuild 实际输入张量与来源 ModelVersion 不一致",
+                    details={
+                        "actual_input_shape": list(actual_shape),
+                        "expected_input_shape": list(expected_shape),
+                    },
+                )
+        normalized["input_size"] = input_spec.spatial_size.to_payload()
+        normalized["model_input_spec"] = input_spec.to_payload()
+        normalized["input_tensor"] = {
+            "layout": input_spec.layout,
+            "shape": list(actual_shape or input_spec.tensor_shape),
+            "dtype": input_spec.dtype,
+        }
+        return normalized
+
+    def _parse_explicit_spatial_size(
+        self,
+        value: object,
+        *,
+        field_name: str,
+    ) -> SpatialSize:
+        """解析公开 width/height 对象，不接受有顺序歧义的数组。"""
+
+        try:
+            return SpatialSize.from_payload(value, field_name=field_name)
+        except ValueError as error:
+            raise InvalidRequestError(str(error)) from error
+
+    def _read_build_input_shape(
+        self,
+        metadata: dict[str, object],
+    ) -> tuple[int, ...] | None:
+        """读取转换器报告的 NCHW 输入形状。"""
+
+        candidates = [metadata.get("input_shape"), metadata.get("tensor_shape")]
+        input_tensor = metadata.get("input_tensor")
+        if isinstance(input_tensor, dict):
+            candidates.append(input_tensor.get("shape"))
+        for value in candidates:
+            if (
+                isinstance(value, list | tuple)
+                and value
+                and all(
+                    isinstance(item, int) and not isinstance(item, bool)
+                    for item in value
+                )
+            ):
+                return tuple(int(item) for item in value)
+        return None
 
     def _build_platform_base_model_summary(
         self,

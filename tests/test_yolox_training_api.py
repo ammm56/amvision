@@ -290,14 +290,16 @@ def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Pa
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bad-input-size",
-                    "input_size": [0, 640],
+                    "input_size": {"width": 640, "height": 0},
                 },
             )
 
-        assert response.status_code == 400
+        assert response.status_code == 422
         payload = response.json()
-        assert payload["error"]["code"] == "invalid_request"
-        assert payload["error"]["message"] == "input_size 必须大于 0"
+        assert payload["error"]["code"] == "request_validation_failed"
+        validation_error = payload["error"]["details"]["errors"][0]
+        assert validation_error["loc"][-2:] == ["input_size", "height"]
+        assert validation_error["type"] == "greater_than"
     finally:
         session_factory.engine.dispose()
 
@@ -452,7 +454,7 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
                     "max_epochs": 1,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
 
@@ -514,7 +516,7 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
                     "max_epochs": 1,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
 
@@ -592,7 +594,7 @@ def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_pa
                     "max_epochs": 1,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
 
@@ -654,7 +656,7 @@ def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: P
                     "max_epochs": 1,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
 
@@ -903,7 +905,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
                     "max_epochs": 1,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
 
@@ -1051,7 +1053,7 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1194,7 +1196,7 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1354,7 +1356,7 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1462,7 +1464,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
         "task_type": "detection",
         "implementation_mode": "rfdetr-detection-core",
         "category_names": ["bolt"],
-        "input_size": [384, 384],
+        "input_size": {"width": 384, "height": 384},
         "training_config": {
             "recipe_id": "default",
             "model_scale": "nano",
@@ -1470,7 +1472,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
             "batch_size": 1,
             "max_epochs": 1,
             "precision": "fp32",
-            "input_size": [384, 384],
+            "input_size": {"width": 384, "height": 384},
             "extra_options": {},
         },
         "metrics_summary": {"best_metric_name": "map50", "best_metric_value": 0.72},
@@ -1508,7 +1510,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
                     "batch_size": 1,
                     "max_epochs": 1,
                     "precision": "fp32",
-                    "input_size": [384, 384],
+                    "input_size": {"width": 384, "height": 384},
                     "extra_options": {},
                 },
                 metadata={
@@ -1645,7 +1647,7 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1736,7 +1738,7 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1844,7 +1846,7 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -1940,7 +1942,7 @@ def test_terminate_and_delete_yolox_training_task(
                     "max_epochs": 4,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -2088,7 +2090,7 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
                     "batch_size": 1,
                     "evaluation_interval": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -2221,7 +2223,7 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
                     "batch_size": 1,
                     "evaluation_interval": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -2358,7 +2360,7 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
                     "max_epochs": 3,
                     "batch_size": 1,
                     "precision": "fp32",
-                    "input_size": [64, 64],
+                    "input_size": {"width": 64, "height": 64},
                 },
             )
             assert create_response.status_code == 202
@@ -2412,7 +2414,7 @@ def _build_fake_epoch_progress(
             "batch_size": 1,
             "max_epochs": max_epochs,
             "evaluation_interval": 1,
-            "input_size": [64, 64],
+            "input_size": {"width": 64, "height": 64},
             "train_split_name": "train",
             "validation_split_name": "val",
             "sample_count": 2,
@@ -2712,7 +2714,7 @@ def _build_fake_execution_result(
             "batch_size": 1,
             "max_epochs": max_epochs,
             "evaluation_interval": 1,
-            "input_size": [64, 64],
+            "input_size": {"width": 64, "height": 64},
             "train_split_name": "train",
             "validation_split_name": "val",
             "sample_count": 2,

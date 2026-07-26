@@ -183,61 +183,6 @@ def resolve_yolo11_task_batch_input_size(
     return height, width
 
 
-def resize_yolo11_image_to_canvas(
-    *,
-    imports: Any,
-    image: Any,
-    output_size: tuple[int, int],
-    scale_gain: float = 1.0,
-) -> tuple[Any, float, tuple[int, int]]:
-    """把图像缩放、裁剪或填充到指定画布。
-
-    ``output_size`` 使用 ``(width, height)``。返回的 ``resize_scale`` 和
-    ``pad_xy`` 可直接用于 bbox、polygon、keypoint 和 OBB 同步变换。
-    """
-
-    output_width, output_height = int(output_size[0]), int(output_size[1])
-    source_height, source_width = int(image.shape[0]), int(image.shape[1])
-    base_scale = min(
-        float(output_width) / max(1.0, float(source_width)),
-        float(output_height) / max(1.0, float(source_height)),
-    )
-    resize_scale = max(1e-6, base_scale * max(0.01, float(scale_gain)))
-    resized_width = max(1, int(round(source_width * resize_scale)))
-    resized_height = max(1, int(round(source_height * resize_scale)))
-    resized_image = imports.cv2.resize(
-        image,
-        (resized_width, resized_height),
-        interpolation=imports.cv2.INTER_LINEAR,
-    )
-    canvas = imports.np.full(
-        (output_height, output_width, 3), 114, dtype=imports.np.uint8
-    )
-    if resized_width > output_width:
-        source_x = random.randint(0, resized_width - output_width)
-        target_x = 0
-        copy_width = output_width
-    else:
-        source_x = 0
-        target_x = random.randint(0, output_width - resized_width)
-        copy_width = resized_width
-    if resized_height > output_height:
-        source_y = random.randint(0, resized_height - output_height)
-        target_y = 0
-        copy_height = output_height
-    else:
-        source_y = 0
-        target_y = random.randint(0, output_height - resized_height)
-        copy_height = resized_height
-    canvas[target_y : target_y + copy_height, target_x : target_x + copy_width] = (
-        resized_image[
-            source_y : source_y + copy_height,
-            source_x : source_x + copy_width,
-        ]
-    )
-    return canvas, resize_scale, (target_x - source_x, target_y - source_y)
-
-
 def blend_yolo11_mixup_images(*, imports: Any, image: Any, other_image: Any) -> Any:
     """按 YOLO11 MixUp 权重混合两张同尺寸图片。"""
 
@@ -941,7 +886,6 @@ __all__ = [
     "resolve_yolo11_pose_flip_indices",
     "resolve_yolo11_task_augmentation_for_epoch",
     "resolve_yolo11_task_batch_input_size",
-    "resize_yolo11_image_to_canvas",
     "select_yolo11_items_by_indices",
     "should_apply_yolo11_horizontal_flip",
     "should_apply_yolo11_random_affine",

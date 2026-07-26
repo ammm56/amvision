@@ -6,6 +6,10 @@ import math
 from dataclasses import dataclass
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 
 
 @dataclass(frozen=True)
@@ -111,16 +115,18 @@ def _validate_yolo11_resume_input_config(
     """校验 input size、batch size、epoch 和 precision。"""
 
     checkpoint_input_size = checkpoint_payload.get("input_size")
-    if (
-        not isinstance(checkpoint_input_size, list)
-        or len(checkpoint_input_size) != 2
-        or tuple(int(item) for item in checkpoint_input_size) != request.input_size
-    ):
+    try:
+        resolved_checkpoint_input_size = deserialize_spatial_size_hw(
+            checkpoint_input_size
+        )
+    except ValueError:
+        resolved_checkpoint_input_size = None
+    if resolved_checkpoint_input_size != request.input_size:
         raise InvalidRequestError(
             "YOLO11 resume checkpoint 的 input_size 与当前训练请求不一致",
             details={
                 "checkpoint_input_size": checkpoint_input_size,
-                "expected_input_size": list(request.input_size),
+                "expected_input_size": serialize_spatial_size_hw(request.input_size),
             },
         )
     _assert_yolo11_resume_int_matches(

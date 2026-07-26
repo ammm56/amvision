@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 
 from backend.service.api.rest.v1.routes.task_validation.services import (
     build_tensor_spec_payload,
@@ -84,7 +85,7 @@ class PoseValidationSessionDetailResponse(BaseModel):
     score_threshold: float
     keypoint_confidence_threshold: float
     save_result_image: bool
-    input_size: tuple[int, int]
+    input_size: SpatialSizeResponse
     labels: list[str] = Field(default_factory=list)
     runtime_artifact_file_id: str
     runtime_artifact_storage_uri: str
@@ -142,7 +143,7 @@ def build_pose_validation_session_response(
         score_threshold=session_view.score_threshold,
         keypoint_confidence_threshold=session_view.keypoint_confidence_threshold,
         save_result_image=session_view.save_result_image,
-        input_size=session_view.input_size,
+        input_size=SpatialSizeResponse.from_hw(session_view.input_size),
         labels=list(session_view.labels),
         runtime_artifact_file_id=session_view.runtime_artifact_file_id,
         runtime_artifact_storage_uri=session_view.runtime_artifact_storage_uri,
@@ -232,4 +233,3 @@ def build_pose_validation_prediction_summary_response(
         raw_result_uri=summary.raw_result_uri,
         latency_ms=summary.latency_ms,
     )
-

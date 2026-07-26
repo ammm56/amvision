@@ -48,6 +48,10 @@ from backend.service.domain.files.detection_model_file_types import (
 )
 from backend.service.application.models.catalog.rfdetr import RFDETR_MODEL_FILE_TYPES
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -582,7 +586,7 @@ def _serialize_session(session: DetectionValidationSessionView) -> dict[str, obj
         "runtime_precision": session.runtime_precision,
         "score_threshold": session.score_threshold,
         "save_result_image": session.save_result_image,
-        "input_size": [session.input_size[0], session.input_size[1]],
+        "input_size": serialize_spatial_size_hw(session.input_size),
         "labels": list(session.labels),
         "runtime_artifact_file_id": session.runtime_artifact_file_id,
         "runtime_artifact_storage_uri": session.runtime_artifact_storage_uri,
@@ -602,11 +606,11 @@ def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidati
     """从 session JSON 载荷恢复 session 视图。"""
 
     raw_input_size = payload.get("input_size")
-    if (
-        not isinstance(raw_input_size, list)
-        or len(raw_input_size) != 2
-        or not all(isinstance(item, int) for item in raw_input_size)
-    ):
+    try:
+        resolved_input_size = deserialize_spatial_size_hw(raw_input_size)
+    except ValueError:
+        resolved_input_size = None
+    if resolved_input_size is None:
         raise ResourceNotFoundError("validation session 的 input_size 无效")
 
     runtime_backend = _require_payload_str(payload, "runtime_backend")
@@ -644,7 +648,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidati
         ),
         score_threshold=float(payload.get("score_threshold", _DEFAULT_SCORE_THRESHOLD)),
         save_result_image=bool(payload.get("save_result_image", True)),
-        input_size=(int(raw_input_size[0]), int(raw_input_size[1])),
+        input_size=resolved_input_size,
         labels=tuple(_read_str_list(payload.get("labels"))),
         runtime_artifact_file_id=runtime_artifact_file_id,
         runtime_artifact_storage_uri=runtime_artifact_storage_uri,

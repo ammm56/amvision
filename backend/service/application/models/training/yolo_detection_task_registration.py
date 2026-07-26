@@ -15,6 +15,10 @@ from backend.service.application.models.training.yolo_detection_training_executi
     YoloDetectionTrainingExecutionResult,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 
@@ -64,17 +68,20 @@ def register_yolo_detection_training_output_model_version(
                 task_record.task_id, "metrics"
             ),
             metrics_file_uri=output_files.metrics_object_key,
-            metadata=build_detection_training_model_version_metadata(
-                dataset_export_id=dataset_export.dataset_export_id,
-                manifest_object_key=dataset_export.manifest_object_key,
-                category_names=execution_result.category_names,
+            metadata=_normalize_yolo_detection_metadata_input_size(
+                build_detection_training_model_version_metadata(
+                    dataset_export_id=dataset_export.dataset_export_id,
+                    manifest_object_key=dataset_export.manifest_object_key,
+                    category_names=execution_result.category_names,
+                    input_size=execution_result.input_size,
+                    training_config=dict(summary["training_config"]),
+                    runtime_summary=runtime_summary,
+                    warm_start_summary=dict(execution_result.warm_start_summary),
+                    registration_kind="best-checkpoint",
+                    output_files=output_files,
+                    metrics_summary=metrics_summary,
+                ),
                 input_size=execution_result.input_size,
-                training_config=dict(summary["training_config"]),
-                runtime_summary=runtime_summary,
-                warm_start_summary=dict(execution_result.warm_start_summary),
-                registration_kind="best-checkpoint",
-                output_files=output_files,
-                metrics_summary=metrics_summary,
             ),
         )
     )
@@ -198,6 +205,12 @@ def _build_yolo_detection_checkpoint_metadata(
         extra_options=request.extra_options,
     )
     effective_input_size = summary.get("input_size")
+    try:
+        resolved_effective_input_size = deserialize_spatial_size_hw(
+            effective_input_size
+        )
+    except ValueError:
+        resolved_effective_input_size = None
     runtime_summary = build_detection_runtime_summary_payload(
         device=_read_optional_str(summary, "device"),
         gpu_count=_read_optional_int(summary, "gpu_count"),
@@ -217,15 +230,11 @@ def _build_yolo_detection_checkpoint_metadata(
         best_metric_name=task_result.best_metric_name,
         best_metric_value=task_result.best_metric_value,
     )
-    return build_detection_training_model_version_metadata(
+    metadata = build_detection_training_model_version_metadata(
         dataset_export_id=dataset_export.dataset_export_id,
         manifest_object_key=dataset_export.manifest_object_key,
         category_names=_read_str_tuple(summary.get("category_names")),
-        input_size=(
-            effective_input_size
-            if isinstance(effective_input_size, list | tuple)
-            else training_config["input_size"]
-        ),
+        input_size=resolved_effective_input_size or request.input_size,
         training_config=training_config,
         runtime_summary=runtime_summary,
         warm_start_summary=dict(summary.get("warm_start") or {}),
@@ -233,6 +242,29 @@ def _build_yolo_detection_checkpoint_metadata(
         output_files=output_files,
         metrics_summary=metrics_summary,
     )
+    return _normalize_yolo_detection_metadata_input_size(
+        metadata,
+        input_size=resolved_effective_input_size or request.input_size,
+    )
+
+
+def _normalize_yolo_detection_metadata_input_size(
+    metadata: dict[str, object],
+    *,
+    input_size: tuple[int, int] | None,
+) -> dict[str, object]:
+    """把 detection 公共 metadata 中的尺寸收敛成显式对象。"""
+
+    normalized = dict(metadata)
+    normalized["input_size"] = serialize_spatial_size_hw(input_size)
+    training_config = normalized.get("training_config")
+    if isinstance(training_config, dict):
+        normalized_training_config = dict(training_config)
+        normalized_training_config["input_size"] = serialize_spatial_size_hw(
+            input_size
+        )
+        normalized["training_config"] = normalized_training_config
+    return normalized
 
 
 def _read_optional_str(payload: dict[str, object], key: str) -> str | None:

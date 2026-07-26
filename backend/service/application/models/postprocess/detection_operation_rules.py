@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 @dataclass(frozen=True)
 class DetectionConversionOutputFiles:
@@ -74,7 +75,9 @@ def build_detection_conversion_report_summary(
         "source_checkpoint_uri": source_checkpoint_uri,
         "model_name": model_name,
         "model_scale": model_scale,
-        "input_size": [int(item) for item in input_size],
+        "input_size": serialize_spatial_size_hw(
+            (int(input_size[0]), int(input_size[1]))
+        ),
         "label_count": int(label_count),
         "requested_target_formats": [str(item) for item in requested_target_formats],
         "planned_target_formats": [str(item) for item in planned_target_formats],
@@ -149,7 +152,9 @@ def build_detection_deployment_runtime_summary(
         "runtime_precision": runtime_precision,
         "device_name": device_name,
         "runtime_execution_mode": runtime_execution_mode,
-        "input_size": [int(item) for item in input_size],
+        "input_size": serialize_spatial_size_hw(
+            (int(input_size[0]), int(input_size[1]))
+        ),
         "label_count": int(label_count),
         "instance_count": int(instance_count),
     }

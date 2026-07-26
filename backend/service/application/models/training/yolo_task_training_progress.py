@@ -8,6 +8,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
 )
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -78,7 +79,7 @@ def build_yolo_task_train_metrics_payload(
         "epoch": current_epoch,
         "epoch_index": progress.epoch,
         "max_epochs": progress.max_epochs,
-        "input_size": list(progress.input_size),
+        "input_size": serialize_spatial_size_hw(progress.input_size),
         "learning_rate": progress.learning_rate,
         "final_metrics": dict(progress.train_metrics),
         "epoch_history": [train_metrics],
@@ -111,7 +112,7 @@ def build_yolo_task_epoch_progress_event(
         "epoch_index": progress.epoch,
         "max_epochs": progress.max_epochs,
         "percent": percent,
-        "input_size": list(progress.input_size),
+        "input_size": serialize_spatial_size_hw(progress.input_size),
         "learning_rate": progress.learning_rate,
         "train_metrics": dict(progress.train_metrics),
     }

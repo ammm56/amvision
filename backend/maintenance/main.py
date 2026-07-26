@@ -18,6 +18,11 @@ from backend.maintenance.pycache_maintenance import (
     build_pycache_request,
     rebuild_pycache,
 )
+from backend.maintenance.development_model_reset import (
+    DEVELOPMENT_MODEL_RESET_COMMAND,
+    DevelopmentModelResetRequest,
+    reset_development_model_state,
+)
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
     WORKFLOW_PREVIEW_RUN_STORAGE_ROOT,
@@ -86,6 +91,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "sync-extension-pretrained-manifests",
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
+            DEVELOPMENT_MODEL_RESET_COMMAND,
         ),
         help="要执行的 maintenance 命令",
     )
@@ -151,6 +157,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="rebuild-pycache 只重新编译，不删除已有 __pycache__",
     )
+    parser.add_argument(
+        "--confirm-reset",
+        action="store_true",
+        help="确认执行 reset-development-model-state；省略时只输出预览",
+    )
     return parser
 
 
@@ -169,6 +180,7 @@ def run_command(
     clean_only: bool = False,
     compile_only: bool = False,
     backend_service_settings: object | None = None,
+    confirm_reset: bool = False,
 ) -> dict[str, object]:
     """执行指定 maintenance 命令。
 
@@ -390,6 +402,15 @@ def run_command(
             now_iso=now_iso,
             retention_hours=retention_hours,
         )
+    if command == DEVELOPMENT_MODEL_RESET_COMMAND:
+        from backend.service.settings import get_backend_service_settings
+
+        return reset_development_model_state(
+            request=DevelopmentModelResetRequest(confirm=confirm_reset),
+            backend_service_settings=(
+                backend_service_settings or get_backend_service_settings()
+            ),
+        )
     raise ValueError(f"unsupported maintenance command: {command}")
 
 
@@ -603,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
         python_packages=args.python_package,
         clean_only=args.clean_only,
         compile_only=args.compile_only,
+        confirm_reset=args.confirm_reset,
     )
     if args.output == "text":
         print(format_text_output(payload))

@@ -8,11 +8,16 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
-from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_import import DatasetImport
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.object_store.object_key_layout import (
+    build_public_project_file_id,
+)
 from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
@@ -482,6 +487,7 @@ def _create_project_resources_test_client(
     )
     application = create_app(
         settings=BackendServiceSettings(
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             projects=BackendServiceProjectsConfig(
                 items=(
                     project_items
@@ -526,7 +532,7 @@ def _build_validation_session_payload(*, project_id: str, status: str) -> dict[s
         "runtime_precision": "fp32",
         "score_threshold": 0.3,
         "save_result_image": True,
-        "input_size": [640, 640],
+        "input_size": {"width": 640, "height": 640},
         "labels": ["bolt"],
         "checkpoint_file_id": "checkpoint-1",
         "checkpoint_storage_uri": "projects/project-1/models/checkpoint.pt",

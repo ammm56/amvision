@@ -19,6 +19,7 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
 )
 from backend.service.domain.files.model_file import ModelFile
+from backend.service.domain.models.model_input_spec import ModelInputSpec, SpatialSize
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -48,6 +49,7 @@ _MODEL_BUILD_RUNTIME_BACKEND_MAP = {
     "tensorrt-engine": "tensorrt",
     "rknn": "rknn",
 }
+_YOLO_MAINLINE_MODEL_TYPES = frozenset({"yolov8", "yolo11", "yolo26"})
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,7 @@ class RuntimeTargetSnapshot:
     labels_storage_uri: str | None = None
     model_config: dict[str, object] = field(default_factory=dict)
     model_build_metadata: dict[str, object] = field(default_factory=dict)
+    model_input_spec: ModelInputSpec | None = None
 
 
 def serialize_runtime_target_snapshot(
@@ -158,7 +161,15 @@ def serialize_runtime_target_snapshot(
         "runtime_backend": snapshot.runtime_backend,
         "device_name": snapshot.device_name,
         "runtime_precision": snapshot.runtime_precision,
-        "input_size": [snapshot.input_size[0], snapshot.input_size[1]],
+        "input_size": SpatialSize(
+            width=snapshot.input_size[1],
+            height=snapshot.input_size[0],
+        ).to_payload(),
+        "model_input_spec": (
+            snapshot.model_input_spec.to_payload()
+            if snapshot.model_input_spec is not None
+            else None
+        ),
         "labels": list(snapshot.labels),
         "runtime_artifact_file_id": snapshot.runtime_artifact_file_id,
         "runtime_artifact_storage_uri": snapshot.runtime_artifact_storage_uri,
@@ -215,6 +226,16 @@ def deserialize_runtime_target_snapshot(
             field_name="labels_storage_uri",
         )
 
+    input_size = _require_payload_input_size(payload)
+    model_input_spec = _read_payload_model_input_spec(payload)
+    if (
+        model_input_spec is not None
+        and model_input_spec.spatial_size.hw != input_size
+    ):
+        raise InvalidRequestError(
+            "runtime_target_snapshot 的 input_size 与 model_input_spec 不一致"
+        )
+
     return RuntimeTargetSnapshot(
         project_id=_require_payload_str(payload, "project_id"),
         model_id=_require_payload_str(payload, "model_id"),
@@ -238,7 +259,7 @@ def deserialize_runtime_target_snapshot(
             runtime_backend=_require_payload_str(payload, "runtime_backend"),
             device_name=_require_payload_str(payload, "device_name"),
         ),
-        input_size=_require_payload_input_size(payload),
+        input_size=input_size,
         labels=_require_payload_labels(payload),
         runtime_artifact_file_id=_require_payload_str(
             payload, "runtime_artifact_file_id"
@@ -254,6 +275,7 @@ def deserialize_runtime_target_snapshot(
         labels_storage_uri=labels_storage_uri,
         model_config=_read_payload_dict(payload, "model_config"),
         model_build_metadata=_read_payload_dict(payload, "model_build_metadata"),
+        model_input_spec=model_input_spec,
     )
 
 
@@ -482,6 +504,14 @@ class SqlAlchemyRuntimeTargetResolver:
                 },
             )
 
+        model_input_spec = resolve_model_input_spec(
+            model_type=model.model_type,
+            model_version_metadata=model_version.metadata,
+            model_build_metadata=model_build.metadata
+            if model_build is not None
+            else None,
+        )
+
         return RuntimeTargetSnapshot(
             project_id=request.project_id,
             model_id=model.model_id,
@@ -499,7 +529,11 @@ class SqlAlchemyRuntimeTargetResolver:
             runtime_backend=resolved_runtime_backend,
             device_name=resolved_device_name,
             runtime_precision=resolved_runtime_precision,
-            input_size=resolve_input_size(model_version.metadata),
+            input_size=(
+                model_input_spec.spatial_size.hw
+                if model_input_spec is not None
+                else resolve_input_size(model_version.metadata)
+            ),
             labels=resolve_labels(
                 dataset_storage=self.dataset_storage,
                 model_version_metadata=model_version.metadata,
@@ -520,6 +554,7 @@ class SqlAlchemyRuntimeTargetResolver:
             model_build_metadata=resolve_model_build_runtime_metadata(
                 model_build.metadata if model_build is not None else {}
             ),
+            model_input_spec=model_input_spec,
         )
 
 
@@ -650,6 +685,60 @@ def resolve_input_size(model_version_metadata: dict[str, object]) -> tuple[int, 
     return _DEFAULT_INPUT_SIZE
 
 
+def resolve_model_input_spec(
+    *,
+    model_type: str,
+    model_version_metadata: dict[str, object],
+    model_build_metadata: dict[str, object] | None,
+) -> ModelInputSpec | None:
+    """解析 YOLO 主线唯一输入契约，并校验 ModelBuild 继承关系。"""
+
+    if model_type not in _YOLO_MAINLINE_MODEL_TYPES:
+        return None
+    try:
+        version_spec = ModelInputSpec.from_payload(
+            model_version_metadata.get("model_input_spec")
+        )
+    except ValueError as error:
+        raise InvalidRequestError(
+            "YOLO ModelVersion 缺少有效 model_input_spec",
+            details={"model_type": model_type},
+        ) from error
+    if model_build_metadata is None:
+        return version_spec
+    try:
+        build_spec = ModelInputSpec.from_payload(
+            model_build_metadata.get("model_input_spec")
+        )
+    except ValueError as error:
+        raise InvalidRequestError(
+            "YOLO ModelBuild 缺少有效 model_input_spec",
+            details={"model_type": model_type},
+        ) from error
+    if build_spec != version_spec:
+        raise InvalidRequestError(
+            "YOLO ModelBuild 与来源 ModelVersion 的输入契约不一致",
+            details={"model_type": model_type},
+        )
+    input_tensor = model_build_metadata.get("input_tensor")
+    if not isinstance(input_tensor, dict):
+        raise InvalidRequestError("YOLO ModelBuild 缺少 input_tensor")
+    shape = input_tensor.get("shape")
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 4
+        or any(not isinstance(item, int) or isinstance(item, bool) for item in shape)
+        or any(
+            actual > 0 and actual != expected
+            for actual, expected in zip(shape, build_spec.tensor_shape, strict=True)
+        )
+    ):
+        raise InvalidRequestError(
+            "YOLO ModelBuild input_tensor.shape 与 model_input_spec 不一致"
+        )
+    return build_spec
+
+
 def resolve_model_config(
     model_version_metadata: dict[str, object],
 ) -> dict[str, object]:
@@ -677,6 +766,9 @@ def resolve_model_build_runtime_metadata(
     """提取部署运行时需要固化的 ModelBuild 能力字段。"""
 
     runtime_keys = (
+        "input_size",
+        "model_input_spec",
+        "input_tensor",
         "input_shape_mode",
         "optimization_profile_count",
         "optimization_profiles",
@@ -1046,22 +1138,32 @@ def _require_payload_input_size(payload: dict[str, object]) -> tuple[int, int]:
     """从快照字典中读取必填输入尺寸。"""
 
     value = payload.get("input_size")
-    if (
-        not isinstance(value, list)
-        or len(value) != 2
-        or not all(isinstance(item, int) for item in value)
-    ):
+    try:
+        return SpatialSize.from_payload(
+            value,
+            field_name="runtime_target_snapshot.input_size",
+        ).hw
+    except ValueError as error:
         raise InvalidRequestError(
             "runtime_target_snapshot 的 input_size 不合法",
             details={"input_size": value},
-        )
-    resolved = (int(value[0]), int(value[1]))
-    if resolved[0] <= 0 or resolved[1] <= 0:
+        ) from error
+
+
+def _read_payload_model_input_spec(
+    payload: dict[str, object],
+) -> ModelInputSpec | None:
+    """读取可选的模型输入契约。"""
+
+    value = payload.get("model_input_spec")
+    if value is None:
+        return None
+    try:
+        return ModelInputSpec.from_payload(value)
+    except ValueError as error:
         raise InvalidRequestError(
-            "runtime_target_snapshot 的 input_size 必须大于 0",
-            details={"input_size": value},
-        )
-    return resolved
+            "runtime_target_snapshot 的 model_input_spec 不合法"
+        ) from error
 
 
 def _require_payload_labels(payload: dict[str, object]) -> tuple[str, ...]:

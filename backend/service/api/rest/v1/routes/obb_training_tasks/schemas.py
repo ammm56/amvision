@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
 from backend.service.domain.models.platform_model_support import (
     build_platform_model_type_field_description,
@@ -32,7 +33,10 @@ class ObbTrainingTaskCreateRequestBody(BaseModel):
     )
     max_epochs: int | None = Field(default=None, ge=1, description="最大训练轮数")
     batch_size: int | None = Field(default=None, ge=1, description="batch size")
-    input_size: tuple[int, int] | None = Field(default=None, description="训练输入尺寸")
+    input_size: SpatialSizeRequest | None = Field(
+        default=None,
+        description="训练输入尺寸，使用明确的 width/height 字段",
+    )
     precision: str | None = Field(default=None, description="训练 precision")
     extra_options: dict[str, object] = Field(
         default_factory=dict, description="附加训练选项"

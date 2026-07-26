@@ -6,6 +6,7 @@ from typing import Protocol
 
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.domain.tasks.task_records import TaskRecord
 
 
@@ -44,7 +45,7 @@ def build_yolo26_segmentation_task_spec(
         "evaluation_interval": request.evaluation_interval,
         "max_epochs": request.max_epochs,
         "batch_size": request.batch_size,
-        "input_size": list(request.input_size) if request.input_size else None,
+        "input_size": serialize_spatial_size_hw(request.input_size),
         "precision": request.precision,
         "extra_options": dict(request.extra_options),
         "model_type": model_type,

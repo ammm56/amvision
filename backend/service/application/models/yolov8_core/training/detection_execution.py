@@ -19,6 +19,7 @@ from backend.service.application.models.postprocess.detection_postprocess import
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device,
 )
@@ -877,7 +878,7 @@ def run_yolov8_detection_training(
         "batch_size": batch_size,
         "max_epochs": max_epochs,
         "evaluation_interval": evaluation_interval,
-        "input_size": list(input_size),
+        "input_size": serialize_spatial_size_hw(input_size),
         "train_split_name": train_split.name,
         "validation_split_name": validation_split.name
         if validation_split is not None

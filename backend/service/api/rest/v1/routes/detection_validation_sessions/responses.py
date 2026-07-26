@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 
 from backend.service.api.rest.v1.routes.task_validation.services import (
     build_tensor_spec_payload,
@@ -95,7 +96,7 @@ class DetectionValidationSessionDetailResponse(BaseModel):
     runtime_precision: str = Field(description="运行时 precision")
     score_threshold: float = Field(description="默认预测 score threshold")
     save_result_image: bool = Field(description="默认是否输出预览图")
-    input_size: tuple[int, int] = Field(description="推理输入尺寸")
+    input_size: SpatialSizeResponse = Field(description="推理输入尺寸")
     labels: list[str] = Field(default_factory=list, description="类别列表")
     runtime_artifact_file_id: str = Field(description="当前运行实际加载的模型文件 id")
     runtime_artifact_storage_uri: str = Field(
@@ -172,7 +173,7 @@ def build_detection_validation_session_response(
         runtime_precision=session_view.runtime_precision,
         score_threshold=session_view.score_threshold,
         save_result_image=session_view.save_result_image,
-        input_size=session_view.input_size,
+        input_size=SpatialSizeResponse.from_hw(session_view.input_size),
         labels=list(session_view.labels),
         runtime_artifact_file_id=session_view.runtime_artifact_file_id,
         runtime_artifact_storage_uri=session_view.runtime_artifact_storage_uri,
@@ -262,4 +263,3 @@ def build_detection_validation_detection_response(
         class_id=detection.class_id,
         class_name=detection.class_name,
     )
-

@@ -4,6 +4,11 @@ export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'p
 export type AutoNumber = number | 'auto'
 export type AutoBoolean = boolean | 'auto'
 
+export interface SpatialSize {
+  width: number
+  height: number
+}
+
 export interface DeploymentExecutionPolicy {
   instance_count: number
   isolation_level: 'session'
@@ -83,7 +88,7 @@ export interface TaskDeploymentInstance {
   runtime_precision: string
   runtime_execution_mode: string
   runtime_configuration: DeploymentRuntimeConfiguration
-  input_size: [number, number]
+  input_size: SpatialSize
   labels: string[]
   created_at: string
   updated_at: string

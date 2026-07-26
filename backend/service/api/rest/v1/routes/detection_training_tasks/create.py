@@ -59,7 +59,7 @@ def create_detection_training_task(
             batch_size=body.batch_size,
             gpu_count=body.gpu_count,
             precision=body.precision,
-            input_size=body.input_size,
+            input_size=body.input_size.hw if body.input_size is not None else None,
             extra_options=body.extra_options.model_dump(exclude_none=True),
         ),
         created_by=principal.principal_id,

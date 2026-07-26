@@ -63,7 +63,7 @@ def submit_obb_training_task(
             evaluation_interval=body.evaluation_interval,
             max_epochs=body.max_epochs,
             batch_size=body.batch_size,
-            input_size=body.input_size,
+            input_size=body.input_size.hw if body.input_size is not None else None,
             precision=body.precision,
             extra_options=dict(body.extra_options),
             display_name=body.display_name,

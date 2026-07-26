@@ -29,6 +29,10 @@ from backend.service.application.runtime.targets.runtime_target import (
     resolve_runtime_precision,
 )
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -377,7 +381,7 @@ def _serialize_session(session: SegmentationValidationSessionView) -> dict[str, 
         "runtime_profile_id": session.runtime_profile_id, "runtime_backend": session.runtime_backend,
         "device_name": session.device_name, "runtime_precision": session.runtime_precision,
         "score_threshold": session.score_threshold, "mask_threshold": session.mask_threshold,
-        "save_result_image": session.save_result_image, "input_size": list(session.input_size), "labels": list(session.labels),
+        "save_result_image": session.save_result_image, "input_size": serialize_spatial_size_hw(session.input_size), "labels": list(session.labels),
         "runtime_artifact_file_id": session.runtime_artifact_file_id,
         "runtime_artifact_storage_uri": session.runtime_artifact_storage_uri,
         "runtime_artifact_file_type": session.runtime_artifact_file_type,
@@ -395,7 +399,11 @@ def _serialize_summary(s: SegmentationValidationPredictionSummary | None) -> dic
 
 def _build_session_from_payload(payload: dict[str, object]) -> SegmentationValidationSessionView:
     raw_is = payload.get("input_size")
-    if not isinstance(raw_is, list) or len(raw_is) != 2:
+    try:
+        resolved_input_size = deserialize_spatial_size_hw(raw_is)
+    except ValueError:
+        resolved_input_size = None
+    if resolved_input_size is None:
         raise ResourceNotFoundError("validation session 的 input_size 无效")
     rb = _require_payload_str(payload, "runtime_backend")
     dn = _require_payload_str(payload, "device_name")
@@ -414,7 +422,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> SegmentationValid
         score_threshold=float(payload.get("score_threshold", _DEFAULT_SCORE_THRESHOLD)),
         mask_threshold=float(payload.get("mask_threshold", _DEFAULT_MASK_THRESHOLD)),
         save_result_image=bool(payload.get("save_result_image", True)),
-        input_size=(int(raw_is[0]), int(raw_is[1])), labels=tuple(_read_str_list(payload.get("labels"))),
+        input_size=resolved_input_size, labels=tuple(_read_str_list(payload.get("labels"))),
         runtime_artifact_file_id=runtime_artifact_file_id,
         runtime_artifact_storage_uri=runtime_artifact_storage_uri,
         runtime_artifact_file_type=runtime_artifact_file_type,

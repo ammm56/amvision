@@ -87,7 +87,7 @@ const deployment: TaskDeploymentInstance = {
   runtime_precision: 'fp16',
   runtime_execution_mode: 'sync',
   runtime_configuration: runtimeConfiguration(2),
-  input_size: [640, 640],
+  input_size: { width: 640, height: 640 },
   labels: ['barcode'],
   created_at: '2026-07-10T01:00:00Z',
   updated_at: '2026-07-10T01:00:00Z',

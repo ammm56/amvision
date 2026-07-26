@@ -38,6 +38,10 @@ from backend.service.application.runtime.targets.runtime_target import (
     resolve_runtime_precision,
 )
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -492,7 +496,7 @@ def _serialize_session(session: PoseValidationSessionView) -> dict[str, object]:
         "score_threshold": session.score_threshold,
         "keypoint_confidence_threshold": session.keypoint_confidence_threshold,
         "save_result_image": session.save_result_image,
-        "input_size": [session.input_size[0], session.input_size[1]],
+        "input_size": serialize_spatial_size_hw(session.input_size),
         "labels": list(session.labels),
         "runtime_artifact_file_id": session.runtime_artifact_file_id,
         "runtime_artifact_storage_uri": session.runtime_artifact_storage_uri,
@@ -524,7 +528,11 @@ def _serialize_summary(s: PoseValidationPredictionSummary | None) -> dict[str, o
 
 def _build_session_from_payload(payload: dict[str, object]) -> PoseValidationSessionView:
     raw_input_size = payload.get("input_size")
-    if not isinstance(raw_input_size, list) or len(raw_input_size) != 2 or not all(isinstance(item, int) for item in raw_input_size):
+    try:
+        resolved_input_size = deserialize_spatial_size_hw(raw_input_size)
+    except ValueError:
+        resolved_input_size = None
+    if resolved_input_size is None:
         raise ResourceNotFoundError("validation session 的 input_size 无效")
     runtime_backend = _require_payload_str(payload, "runtime_backend")
     device_name = _require_payload_str(payload, "device_name")
@@ -554,7 +562,7 @@ def _build_session_from_payload(payload: dict[str, object]) -> PoseValidationSes
         score_threshold=float(payload.get("score_threshold", _DEFAULT_SCORE_THRESHOLD)),
         keypoint_confidence_threshold=float(payload.get("keypoint_confidence_threshold", _DEFAULT_KEYPOINT_CONFIDENCE_THRESHOLD)),
         save_result_image=bool(payload.get("save_result_image", True)),
-        input_size=(int(raw_input_size[0]), int(raw_input_size[1])),
+        input_size=resolved_input_size,
         labels=tuple(_read_str_list(payload.get("labels"))),
         runtime_artifact_file_id=runtime_artifact_file_id,
         runtime_artifact_storage_uri=runtime_artifact_storage_uri,

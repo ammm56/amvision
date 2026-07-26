@@ -13,6 +13,9 @@ from backend.service.application.models.yolo_core_common.data.mosaic import (
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    letterbox_yolo_image_to_canvas,
+)
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     pin_yolo_task_value,
 )
@@ -22,7 +25,6 @@ from backend.service.application.models.yolo26_core.data.augmentation import (
     apply_yolo26_random_hsv,
     blend_yolo26_mixup_images,
     flip_yolo26_image_horizontally,
-    resize_yolo26_image_to_canvas,
     select_yolo26_items_by_indices,
     should_apply_yolo26_horizontal_flip,
     transform_yolo26_boxes_xyxy,
@@ -71,7 +73,7 @@ def build_yolo26_segmentation_training_batch(
 
     images: list[Any] = []
     targets: list[dict[str, Any]] = []
-    target_width, target_height = input_size
+    target_height, target_width = input_size
     resolved_available_samples = tuple(available_samples or samples)
     for sample in samples:
         prepared = _prepare_yolo26_segmentation_sample_with_mix(
@@ -147,6 +149,7 @@ def _prepare_yolo26_segmentation_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
+            scaleup=augmentation_options is not None,
         )
     if prepared is None:
         return None
@@ -214,6 +217,7 @@ def _prepare_yolo26_segmentation_mixup_sample(
         sample=sample,
         output_size=(target_width, target_height),
         scale_gain=random.uniform(*augmentation_options.mixup_scale),
+        scaleup=True,
     )
 
 
@@ -283,6 +287,7 @@ def _prepare_yolo26_segmentation_single_sample(
     sample: Any,
     output_size: tuple[int, int],
     scale_gain: float,
+    scaleup: bool,
 ) -> tuple[Any, dict[str, Any]] | None:
     """把单张 segmentation 样本缩放到指定画布。"""
 
@@ -290,11 +295,13 @@ def _prepare_yolo26_segmentation_single_sample(
     if image is None:
         return None
     target_width, target_height = int(output_size[0]), int(output_size[1])
-    canvas, resize_ratio, pad_xy = resize_yolo26_image_to_canvas(
-        imports=imports,
+    canvas, resize_ratio, pad_xy = letterbox_yolo_image_to_canvas(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
         image=image,
-        output_size=(target_width, target_height),
+        input_size=(target_height, target_width),
         scale_gain=scale_gain,
+        scaleup=scaleup,
     )
     return canvas, _build_yolo26_segmentation_sample_targets(
         sample=sample,

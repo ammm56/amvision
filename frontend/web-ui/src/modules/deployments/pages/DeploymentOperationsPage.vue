@@ -1488,9 +1488,9 @@ function formatRuntimeLabel(item: TaskDeploymentInstance): string {
   return `${backend} ${precision}${device}`
 }
 
-function formatInputSize(inputSize: [number, number] | null | undefined): string {
-  if (!Array.isArray(inputSize) || inputSize.length < 2) return '-'
-  return `${inputSize[0]} x ${inputSize[1]}`
+function formatInputSize(inputSize: { width: number; height: number } | null | undefined): string {
+  if (!inputSize) return '-'
+  return `${inputSize.width} x ${inputSize.height}`
 }
 
 async function refreshPage(): Promise<void> {

@@ -78,7 +78,7 @@ function createDeployment(
     runtime_precision: 'fp32',
     runtime_execution_mode: 'sync',
     runtime_configuration: runtimeConfiguration(),
-    input_size: [640, 640],
+    input_size: { width: 640, height: 640 },
     labels: ['ok', 'ng'],
     created_at: '2026-07-18T00:00:00Z',
     updated_at: updatedAt,

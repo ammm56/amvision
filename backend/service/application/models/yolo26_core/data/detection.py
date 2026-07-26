@@ -17,7 +17,6 @@ from backend.service.application.models.yolo26_core.data.augmentation import (
     apply_yolo26_random_hsv,
     blend_yolo26_mixup_images,
     flip_yolo26_image_horizontally,
-    resize_yolo26_image_to_canvas,
     should_apply_yolo26_horizontal_flip,
     transform_yolo26_boxes_xyxy,
 )
@@ -28,6 +27,7 @@ from backend.service.application.models.yolo_core_common.data.mosaic import (
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
     letterbox_yolo_image,
+    letterbox_yolo_image_to_canvas,
     scale_yolo_box_to_letterbox,
 )
 
@@ -208,6 +208,7 @@ def _prepare_yolo26_detection_sample_without_augmentation(
     imports: Any,
     sample: Any,
     input_size: tuple[int, int],
+    scaleup: bool = False,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
     """按 YOLO LetterBox 规则准备单张 YOLO26 detection 样本。"""
 
@@ -217,6 +218,7 @@ def _prepare_yolo26_detection_sample_without_augmentation(
         image=image,
         annotations=tuple(sample.annotations),
         input_size=input_size,
+        scaleup=scaleup,
     )
 
 
@@ -247,6 +249,7 @@ def _prepare_yolo26_detection_sample_with_augmentation(
                 imports=imports,
                 sample=primary_sample,
                 input_size=input_size,
+                scaleup=True,
             )
         )
 
@@ -392,10 +395,11 @@ def _build_yolo26_detection_scaled_cell(
 
     image = _load_yolo26_detection_image(imports=imports, sample=sample)
     output_height, output_width = int(output_size[0]), int(output_size[1])
-    canvas, resize_scale, pad_xy = resize_yolo26_image_to_canvas(
-        imports=imports,
+    canvas, resize_scale, pad_xy = letterbox_yolo_image_to_canvas(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
         image=image,
-        output_size=(output_width, output_height),
+        input_size=(output_height, output_width),
         scale_gain=scale_gain,
     )
     boxes_xyxy: list[tuple[float, float, float, float]] = []
@@ -423,6 +427,7 @@ def _letterbox_yolo26_detection_sample_to_size(
     image: Any,
     annotations: tuple[Any, ...],
     input_size: tuple[int, int],
+    scaleup: bool,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int], YoloLetterboxTransform]:
     """把单张 YOLO26 detection 样本按 LetterBox 映射到目标尺寸。"""
 
@@ -431,6 +436,7 @@ def _letterbox_yolo26_detection_sample_to_size(
         np_module=imports.np,
         image=image,
         input_size=input_size,
+        scaleup=scaleup,
     )
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []

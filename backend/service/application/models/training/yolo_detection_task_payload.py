@@ -9,6 +9,10 @@ from backend.service.application.models.training.detection_training_rules import
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.domain.tasks.task_records import TaskRecord
 
 
@@ -82,9 +86,7 @@ def build_yolo_detection_task_spec_payload(
         "batch_size": task_spec.batch_size,
         "gpu_count": task_spec.gpu_count,
         "precision": task_spec.precision,
-        "input_size": list(task_spec.input_size)
-        if task_spec.input_size is not None
-        else None,
+        "input_size": serialize_spatial_size_hw(task_spec.input_size),
         "extra_options": dict(task_spec.extra_options),
         "model_type": model_name,
         "task_type": DETECTION_TASK_TYPE,
@@ -101,10 +103,10 @@ def build_yolo_detection_request_kwargs_from_task_record(
     """
 
     task_spec = dict(task_record.task_spec)
-    raw_input_size = task_spec.get("input_size")
-    input_size = None
-    if isinstance(raw_input_size, list | tuple) and len(raw_input_size) == 2:
-        input_size = (int(raw_input_size[0]), int(raw_input_size[1]))
+    try:
+        input_size = deserialize_spatial_size_hw(task_spec.get("input_size"))
+    except ValueError:
+        input_size = None
     extra_options = task_spec.get("extra_options")
     return {
         "project_id": str(task_spec.get("project_id") or task_record.project_id),

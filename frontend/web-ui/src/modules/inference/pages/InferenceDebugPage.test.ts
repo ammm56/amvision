@@ -63,7 +63,7 @@ const deployment: TaskDeploymentInstance = {
   runtime_precision: 'fp32',
   runtime_execution_mode: 'sync',
   runtime_configuration: runtimeConfiguration(),
-  input_size: [640, 640],
+  input_size: { width: 640, height: 640 },
   labels: [],
   created_at: '2026-07-17T01:00:00Z',
   updated_at: '2026-07-17T01:00:00Z',

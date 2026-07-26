@@ -81,7 +81,7 @@
 - pose 的主输出是原图坐标 keypoints 与置信度；`bbox_xyxy` 只能作为人体、手部或对象实例的辅助外接框。
 - OBB 的主输出是 rotated box，例如 `bbox_xywhr` 或 polygon；`bbox_xyxy` 只能作为普通显示和粗筛选外接矩形，不能替代角度和旋转框语义。
 - 模型内部可以使用 `xywh`、`cxcywh`、`xywhr`、normalized 坐标或 feature map 坐标，但这些表示只允许存在于 core 内部或 task 内部边界，并且必须在公开结果边界转换为对应 task 的原生输出。
-- 公开字段中图片尺寸统一使用 `image_width`、`image_height`；张量形状和 `input_size` 若使用 `(height, width)`，必须在函数名、参数名或注释中写清楚，避免 `width / height` 与 `height / width` 混用。
+- 公开字段中图片尺寸统一使用 `image_width`、`image_height`；公开 `input_size` 固定使用 `{"width": W, "height": H}`。张量形状和模型 core 内部若使用 `(height, width)`，必须在函数名、参数名或注释中写清楚。
 
 ### 模型内部 box 格式契约
 

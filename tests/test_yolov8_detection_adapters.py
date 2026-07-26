@@ -82,6 +82,9 @@ def test_yolov8_model_service_registers_yolov8_specific_file_types() -> None:
             labels_file_uri="memory://runs/yolov8/labels.txt",
             metrics_file_id="metrics-file-1",
             metrics_file_uri="memory://runs/yolov8/metrics.json",
+            metadata={
+                "input_size": {"width": 640, "height": 640},
+            },
         )
     )
     model_build_id = service.register_build(
@@ -160,7 +163,10 @@ def test_yolov8_runtime_target_resolver_returns_yolov8_snapshot(tmp_path: Path) 
             checkpoint_file_uri=checkpoint_object_key,
             labels_file_id="labels-file-1",
             labels_file_uri=labels_object_key,
-            metadata={"category_names": ["part"], "input_size": [640, 640]},
+            metadata={
+                "category_names": ["part"],
+                "input_size": {"width": 640, "height": 640},
+            },
         )
     )
     model_build_id = model_service.register_build(

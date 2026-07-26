@@ -231,7 +231,7 @@ def test_legacy_validation_session_payload_defaults_runtime_precision(tmp_path: 
             "device_name": "cpu",
             "score_threshold": 0.35,
             "save_result_image": True,
-            "input_size": [64, 64],
+            "input_size": {"width": 64, "height": 64},
             "labels": ["bolt"],
             "checkpoint_file_id": "checkpoint-file-1",
             "checkpoint_storage_uri": checkpoint_storage_uri,

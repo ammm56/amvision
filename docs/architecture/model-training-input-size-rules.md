@@ -12,7 +12,9 @@
 - segmentation、pose 和 OBB 不强行转成 `xyxy`：segmentation 以 mask / polygon / instance result 为主，pose 以 keypoints 为主，OBB 以 `xywhr` 或 rotated box 任务格式为主。
 - 模型 core 内部必须保持训练、验证、评估、转换和 runtime 使用同一套预处理与坐标反算规则。
 - 不为了项目表面一致性强行把所有模型改成同一种 LetterBox。YOLOX、RF-DETR、Ultralytics YOLO 主线分别按各自参考实现保留模型差异。
-- 前端训练页面可以继续用“输入宽度 / 输入高度”展示，但对只支持单整数尺寸的模型，应在页面和提交校验中明确要求宽高相同，或收口为单个 `imgsz` 输入。
+- 公开 API、任务快照、ModelVersion、ModelBuild 和部署响应统一使用 `{"width": W, "height": H}`，不接受有顺序歧义的二元素数组。
+- 模型 core 和张量层统一使用 `(height, width)`；OpenCV resize 参数只在调用点转换为 `(width, height)`。
+- ModelVersion 必须固化完整 `model_input_spec`，ModelBuild 必须继承并校验实际 NCHW 输入张量。转换、推理和部署不得用默认值掩盖契约缺失。
 
 ## 训练输入尺寸矩阵
 
@@ -21,11 +23,11 @@
 | YOLOX | detection | 参考实现使用 `input_size=(height, width)`，可设置矩形输入；多尺度训练尺寸通常按 32 的倍数变化。 | 多数模型默认 `640 x 640`；`yolox-tiny`、`yolox-nano` 常用 `416 x 416`。若 `input_size=640` 且默认 `multiscale_range=5`，实际多尺度范围通常是 `480-800`。 |
 | RF-DETR | detection | 使用方形 `resolution x resolution`；当前 detection checkpoint 常用 32 的倍数。 | 常用 `384 x 384`、`512 x 512`、`576 x 576`、`704 x 704`；部分更大 scale 会使用 `700 x 700`、`880 x 880` 这类分辨率。 |
 | RF-DETR Seg | segmentation | 使用方形 `resolution x resolution`；多数 segmentation 模型要求尺寸可被 `patch_size * num_windows` 整除，Nano 可能对应更小倍数。 | 常用 `312 x 312`、`384 x 384`、`432 x 432`、`504 x 504`、`624 x 624`、`768 x 768`。 |
-| YOLOv8 / YOLO11 / YOLO26 Detect | detection | 训练阶段按 Ultralytics 主线使用单整数 `imgsz=N`，目标输入为 `N x N`；传入 `[h, w]` 的场景应按参考规则归一，不作为任意矩形训练入口。 | 默认 `640 x 640`；可按显存和小目标需求使用 `320`、`512`、`768`、`960`、`1024`、`1280` 等，建议使用 stride 倍数，通常是 32 的倍数。 |
-| YOLOv8 / YOLO11 / YOLO26 Segment | instance segmentation | 同 Ultralytics 训练规则：`imgsz=N`，目标输入为 `N x N`。 | 常用 `640 x 640`。 |
-| YOLOv8 / YOLO11 / YOLO26 Pose | pose / keypoints | 同 Ultralytics 训练规则：`imgsz=N`，目标输入为 `N x N`。 | 通常 `640 x 640`；P6 或大模型场景可使用 `1280 x 1280` 训练 / 验证，但参数仍按单整数表达。 |
-| YOLOv8 / YOLO11 / YOLO26 OBB | oriented bounding box | 同 Ultralytics 训练规则：`imgsz=N`，目标输入为 `N x N`。 | 常用 `640 x 640`；DOTA / 航拍类 OBB 评估常见 `1024 x 1024`。 |
-| YOLOv8 / YOLO11 / YOLO26 Classification | classification | 使用单整数 `imgsz=N`，分类模型输入为方形 `N x N`。 | ImageNet 预训练分类模型通常使用 `224 x 224`；特殊小图任务可使用更小尺寸，例如 `64 x 64`。 |
+| YOLOv8 / YOLO11 / YOLO26 Detect | detection | 支持显式矩形目标尺寸。训练随机增强、验证确定性 LetterBox、导出和 runtime 均共享 `(height, width)` 几何契约。 | 默认 `640 x 640`；可按显存和小目标需求使用 `640 x 384`、`960 x 544` 或方形尺寸。 |
+| YOLOv8 / YOLO11 / YOLO26 Segment | instance segmentation | 与 detection 共用中心 LetterBox；polygon、mask 和输出还原使用相同 gain/padding。 | 默认 `640 x 640`，也支持显式矩形尺寸。 |
+| YOLOv8 / YOLO11 / YOLO26 Pose | pose / keypoints | 与 detection 共用中心 LetterBox；keypoint 与 bbox 使用同一几何变换。 | 默认 `640 x 640`，也支持显式矩形尺寸。 |
+| YOLOv8 / YOLO11 / YOLO26 OBB | oriented bounding box | 与 detection 共用中心 LetterBox；rotated box 角点和尺度按同一几何契约转换。 | 默认 `640 x 640`，也支持显式矩形尺寸。 |
+| YOLOv8 / YOLO11 / YOLO26 Classification | classification | 训练使用随机比例裁剪，验证和 runtime 使用保持比例缩放后中心裁剪；目标张量支持显式宽高。 | 默认 `224 x 224`；特殊任务可使用显式矩形尺寸。 |
 
 ## 前端训练页面规则
 
@@ -44,9 +46,9 @@
 
 ### YOLOv8 / YOLO11 / YOLO26
 
-- detection / segmentation / pose / OBB / classification 训练页面不应鼓励填写任意矩形宽高。
-- 页面如果保留两个输入框，应在宽高不一致时给出明确提示：训练阶段按单整数 `imgsz` 进入 `N x N` 训练，不能把 `1280 x 720` 直接作为训练目标矩形。
-- 实际原图可以是 `1280 x 720`、`1920 x 1080`、`3840 x 2160` 等非 1:1 图像；训练时由模型 core 的预处理按参考实现缩放和 padding。
+- detection / segmentation / pose / OBB / classification 页面使用明确的“输入宽度 / 输入高度”字段，并按同名 JSON 字段提交。
+- 实际原图可以是任意宽高比。detection / segmentation / pose / OBB 由公共 LetterBox 保持比例缩放和填充；classification 使用训练随机裁剪与验证确定性中心裁剪。
+- 页面展示、任务详情、模型版本、转换构建和部署实例必须显示同一尺寸，不得交换宽高或在中途回退到默认值。
 
 ## 推荐选型
 

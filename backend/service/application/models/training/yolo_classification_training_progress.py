@@ -9,6 +9,7 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -139,7 +140,7 @@ def build_yolo_classification_epoch_progress_event(
         "percent": percent,
         "evaluation_interval": progress.evaluation_interval,
         "validation_ran": progress.validation_ran,
-        "input_size": list(progress.input_size),
+        "input_size": serialize_spatial_size_hw(progress.input_size),
         "learning_rate": progress.learning_rate,
         "train_metrics": dict(progress.train_metrics),
         "validation_metrics": dict(progress.validation_metrics),

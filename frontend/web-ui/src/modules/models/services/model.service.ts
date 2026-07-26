@@ -357,7 +357,9 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
     max_epochs: input.maxEpochs,
     batch_size: input.batchSize,
     precision: input.precision || null,
-    input_size: input.inputWidth && input.inputHeight ? [input.inputWidth, input.inputHeight] : null,
+    input_size: input.inputWidth && input.inputHeight
+      ? { width: input.inputWidth, height: input.inputHeight }
+      : null,
     extra_options: extraOptions,
     display_name: input.displayName ?? '',
   }

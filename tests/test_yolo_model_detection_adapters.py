@@ -121,7 +121,10 @@ def test_yolo_model_services_and_runtime_resolvers_preserve_model_type(
             checkpoint_file_uri=checkpoint_uri,
             labels_file_id=f"{model_type}-labels-file-1",
             labels_file_uri="models/common/labels.txt",
-            metadata={"category_names": ["part"], "input_size": [64, 64]},
+            metadata={
+                "category_names": ["part"],
+                "input_size": {"width": 96, "height": 64},
+            },
         )
     )
     model_build_id = model_service.register_build(
@@ -129,8 +132,11 @@ def test_yolo_model_services_and_runtime_resolvers_preserve_model_type(
             project_id="project-1",
             source_model_version_id=model_version_id,
             build_format="onnx",
+            runtime_backend="onnxruntime",
+            runtime_precision="fp32",
             build_file_id=f"{model_type}-build-file-1",
             build_file_uri=build_uri,
+            metadata={"input_shape": [1, 3, 64, 96]},
         )
     )
 
@@ -173,6 +179,9 @@ def test_yolo_model_services_and_runtime_resolvers_preserve_model_type(
     )
     assert snapshot.model_type == model_type
     assert snapshot.runtime_backend == "onnxruntime"
+    assert snapshot.input_size == (64, 96)
+    assert snapshot.model_input_spec is not None
+    assert snapshot.model_input_spec.tensor_shape == (1, 3, 64, 96)
     assert snapshot.runtime_artifact_path == dataset_storage.resolve(build_uri)
 
 

@@ -11,6 +11,7 @@ from backend.service.domain.models.platform_model_support import (
 from backend.service.api.rest.v1.routes.task_deployments.runtime_configuration_schemas import (
     DeploymentRuntimeConfigurationBody,
 )
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 
 
 class SegmentationDeploymentInstanceCreateRequestBody(BaseModel):
@@ -63,7 +64,7 @@ class SegmentationDeploymentInstanceResponse(BaseModel):
     runtime_precision: str = Field(description="运行时 precision")
     runtime_execution_mode: str = Field(description="公开展示的运行模式")
     runtime_configuration: DeploymentRuntimeConfigurationBody
-    input_size: tuple[int, int] = Field(description="默认输入尺寸")
+    input_size: SpatialSizeResponse = Field(description="默认输入尺寸")
     labels: tuple[str, ...] = Field(description="类别列表")
     process_status: str | None = Field(default=None, description="进程运行状态")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")

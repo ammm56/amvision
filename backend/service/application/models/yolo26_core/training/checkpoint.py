@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ def build_yolo26_detection_checkpoint_state(
         "model_type": model_type,
         "model_scale": model_scale,
         "category_names": list(category_names),
-        "input_size": list(input_size),
+        "input_size": serialize_spatial_size_hw(input_size),
         "batch_size": batch_size,
         "max_epochs": max_epochs,
         "epoch": epoch,

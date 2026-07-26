@@ -19,6 +19,7 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
 from backend.service.api.rest.v1.routes.task_deployments.runtime_configuration_schemas import (
     DeploymentRuntimeConfigurationBody,
 )
+from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeResponse
 
 
 class DetectionDeploymentInstanceResponse(BaseModel):
@@ -45,7 +46,7 @@ class DetectionDeploymentInstanceResponse(BaseModel):
         description="公开展示的 backend:precision:device 运行模式"
     )
     runtime_configuration: DeploymentRuntimeConfigurationBody
-    input_size: tuple[int, int] = Field(description="默认输入尺寸")
+    input_size: SpatialSizeResponse = Field(description="默认输入尺寸")
     labels: tuple[str, ...] = Field(description="类别列表")
     created_at: str = Field(description="创建时间")
     updated_at: str = Field(description="最后更新时间")
@@ -186,7 +187,7 @@ def build_detection_deployment_instance_response(
         runtime_configuration=DeploymentRuntimeConfigurationBody.from_domain(
             view.runtime_configuration
         ),
-        input_size=view.input_size,
+        input_size=SpatialSizeResponse.from_hw(view.input_size),
         labels=view.labels,
         created_at=view.created_at,
         updated_at=view.updated_at,

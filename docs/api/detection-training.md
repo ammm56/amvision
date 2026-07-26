@@ -69,7 +69,7 @@
 | batch_size | integer \| null | 否 | batch size。 |
 | gpu_count | integer \| null | 否 | 当前版本只支持单 GPU 或 CPU 训练；该字段只能省略或填写 1，大于 1 会被拒绝。 |
 | precision | string \| null | 否 | 请求使用的训练 precision；当前接口字段只接受 fp16、fp32。未指定时默认 fp32。 |
-| input_size | array[integer] \| null | 否 | 训练输入尺寸；未指定时默认使用 [640, 640]。 |
+| input_size | object \| null | 否 | 训练输入尺寸，固定使用 `{"width": 640, "height": 384}` 这类无顺序歧义的对象；未指定时默认宽高均为 640。 |
 | extra_options | object | 否 | 附加训练选项；当前 Swagger/OpenAPI 已展开公开可选字段。 |
 | display_name | string | 否 | 可选的任务展示名称。 |
 
@@ -162,7 +162,8 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 
 #### 当前默认训练配置
 
-- input_size 未显式指定时，真实训练默认使用 [640, 640]。
+- input_size 未显式指定时，真实训练默认使用 `{"width": 640, "height": 640}`。
+- 公开 API、任务快照、ModelVersion 和部署响应均使用 `width / height` 对象；模型 core 内部才转换为 `(height, width)`。
 - precision 未显式指定时，默认使用 fp32。
 - extra_options 未显式指定时，当前默认关闭 flip、hsv、mosaic、mixup 和 multiscale_range，EMA 保持启用。
 - 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。

@@ -13,6 +13,9 @@ from backend.service.application.models.yolo_core_common.data.mosaic import (
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    letterbox_yolo_image_to_canvas,
+)
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     pin_yolo_task_value,
 )
@@ -22,7 +25,6 @@ from backend.service.application.models.yolov8_core.data.augmentation import (
     apply_yolov8_random_hsv,
     blend_yolov8_mixup_images,
     flip_yolov8_image_horizontally,
-    resize_yolov8_image_to_canvas,
     resolve_yolov8_pose_flip_indices,
     select_yolov8_items_by_indices,
     should_apply_yolov8_horizontal_flip,
@@ -71,7 +73,7 @@ def build_yolov8_pose_training_batch(
     if not samples:
         return None
 
-    target_width, target_height = input_size
+    target_height, target_width = input_size
     images: list[Any] = []
     targets: list[YoloV8PosePreparedTarget] = []
     resolved_available_samples = tuple(available_samples or samples)
@@ -142,6 +144,7 @@ def _prepare_yolov8_pose_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
+            scaleup=augmentation_options is not None,
         )
     if prepared is None:
         return None
@@ -200,6 +203,7 @@ def _prepare_yolov8_pose_mixup_sample(
         sample=sample,
         output_size=(target_width, target_height),
         scale_gain=random.uniform(*augmentation_options.mixup_scale),
+        scaleup=True,
     )
 
 
@@ -261,6 +265,7 @@ def _prepare_yolov8_pose_single_sample(
     sample: Any,
     output_size: tuple[int, int],
     scale_gain: float,
+    scaleup: bool,
 ) -> tuple[Any, YoloV8PosePreparedTarget] | None:
     """把单张 pose 样本缩放到指定画布。"""
 
@@ -268,11 +273,13 @@ def _prepare_yolov8_pose_single_sample(
     if image is None:
         return None
     target_width, target_height = int(output_size[0]), int(output_size[1])
-    canvas, resize_ratio, pad_xy = resize_yolov8_image_to_canvas(
-        imports=imports,
+    canvas, resize_ratio, pad_xy = letterbox_yolo_image_to_canvas(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
         image=image,
-        output_size=(target_width, target_height),
+        input_size=(target_height, target_width),
         scale_gain=scale_gain,
+        scaleup=scaleup,
     )
     return canvas, _build_yolov8_pose_sample_targets(
         sample=sample,

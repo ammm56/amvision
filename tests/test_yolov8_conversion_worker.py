@@ -214,8 +214,10 @@ def _seed_placeholder_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["part"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
+                "input_size": {"width": 64, "height": 64},
+                "training_config": {
+                    "input_size": {"width": 64, "height": 64}
+                },
             },
         )
     )
