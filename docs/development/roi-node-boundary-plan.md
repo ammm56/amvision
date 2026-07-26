@@ -55,8 +55,8 @@ ROI 相关节点需要按“创建 ROI、转换 ROI、使用 ROI、绘制 ROI、
 
 | 节点 | 位置 | 职责 | 调整 |
 | --- | --- | --- | --- |
-| `custom.opencv.crop` | `custom_nodes/opencv_basic_nodes/backend/nodes/crop.py` | 按输入 ROI 裁剪图片 | 删除 `x/y/width/height` 直接取参路径，删除交互取参 |
-| `custom.opencv.crop-export` | `custom_nodes/opencv_basic_nodes/backend/nodes/crop_export.py` | 批量导出 detection / ROI crop | 已支持 `roi-list.v1`，ROI polygon 会按外接矩形裁剪并填充 polygon 外部背景 |
+| `custom.opencv.crop` | `custom_nodes/opencv_nodes/categories/basic/backend/nodes/crop.py` | 按输入 ROI 裁剪图片 | 删除 `x/y/width/height` 直接取参路径，删除交互取参 |
+| `custom.opencv.crop-export` | `custom_nodes/opencv_nodes/categories/basic/backend/nodes/crop_export.py` | 批量导出 detection / ROI crop | 已支持 `roi-list.v1`，ROI polygon 会按外接矩形裁剪并填充 polygon 外部背景 |
 | `custom.opencv.template-match` | OpenCV matching | 可选 ROI 作为搜索区域 | 只消费 ROI，不创建 ROI |
 | `custom.opencv.orb-keypoints` | OpenCV matching | 可选 ROI mask | 只消费 ROI |
 | `custom.opencv.caliper-edge` | OpenCV measurement | 在 ROI 内找边 | 只消费 ROI |
@@ -66,7 +66,7 @@ Crop 节点后续应只有两个输入：`image` 和必填或可选 `roi`。如�
 
 ### 4. ROI 绘制节点
 
-位置：`custom_nodes/opencv_basic_nodes/backend/nodes/`
+位置：`custom_nodes/opencv_nodes/categories/basic/backend/nodes/`
 
 这些节点只负责把 ROI/regions/detections/lines/circles 画到图上。
 

@@ -1,0 +1,49 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "opencv.nodes",
+  "version": "0.2.0",
+  "displayName": "OpenCV Nodes",
+  "description": "提供统一的 OpenCV 图像处理、几何、形状、匹配、量测、缺陷分析和渲染节点。",
+  "category": "vision",
+  "categoryRoot": "opencv",
+  "implementationLayout": "categories",
+  "migrationAliases": [
+    "opencv.basic-nodes",
+    "opencv.defect-nodes",
+    "opencv.geometry-nodes",
+    "opencv.matching-nodes",
+    "opencv.measurement-nodes",
+    "opencv.render-nodes",
+    "opencv.shape-nodes"
+  ],
+  "capabilities": [
+    "pipeline.node",
+    "vision.opencv",
+    "vision.filter",
+    "vision.geometry",
+    "vision.matching",
+    "vision.measurement",
+    "vision.defect",
+    "vision.render"
+  ],
+  "permissionScopes": [
+    "objectstore.read.ref",
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.opencv_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "categoryRoot": "opencv",
+    "layout": "categories/<category>"
+  }
+}

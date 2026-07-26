@@ -776,6 +776,19 @@ class LocalNodePackLoader:
                         "node_node_pack_version": node_definition.node_pack_version,
                     },
                 )
+            if manifest.category_root is not None and not (
+                node_definition.category == manifest.category_root
+                or node_definition.category.startswith(f"{manifest.category_root}.")
+            ):
+                raise ServiceConfigurationError(
+                    "自定义节点 category 不在 manifest 声明的 categoryRoot 下",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "node_type_id": node_definition.node_type_id,
+                        "category": node_definition.category,
+                        "category_root": manifest.category_root,
+                    },
+                )
         return custom_node_catalog
 
     def _load_structured_document(self, file_path: Path) -> object:

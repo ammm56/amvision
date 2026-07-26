@@ -16,8 +16,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.camera_usb_uvc_nodes.backend.runtime import capture as camera_capture
-from custom_nodes.camera_usb_uvc_nodes.backend.nodes import (
+from custom_nodes.camera_nodes.providers.usb_uvc.backend.runtime import capture as camera_capture
+from custom_nodes.camera_nodes.providers.usb_uvc.backend.nodes import (
     capture_frame,
     close_device,
     enumerate_devices,

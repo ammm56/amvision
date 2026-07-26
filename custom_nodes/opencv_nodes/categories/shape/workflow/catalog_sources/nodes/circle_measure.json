@@ -1,0 +1,149 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.circle-measure",
+  "display_name": "Circle Measure",
+  "category": "opencv.shape",
+  "description": "围绕参考圆径向采样亚像素边缘，使用 robust circle fitting 输出稳定圆定位和质量诊断。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    { "name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1" },
+    { "name": "roi", "display_name": "ROI", "payload_type_id": "roi.v1", "required": false },
+    {
+      "name": "reference_circles",
+      "display_name": "Reference Circles",
+      "payload_type_id": "circles.v1",
+      "required": false,
+      "description": "可选上游参考圆；显式 reference_center_xy/reference_radius_px 优先。"
+    }
+  ],
+  "output_ports": [
+    { "name": "circles", "display_name": "Circles", "payload_type_id": "circles.v1" },
+    { "name": "summary", "display_name": "Summary", "payload_type_id": "value.v1" },
+    { "name": "debug_preview", "display_name": "Debug Preview", "payload_type_id": "response-body.v1", "required": false }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "reference_center_xy": {
+        "type": "array",
+        "title": "Reference Center",
+        "description": "可选参考圆心原图坐标 [x, y]；可在 Debug 图片页绘制，或改接 Reference Circles 输入。",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "number" }
+      },
+      "reference_radius_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "title": "Reference Radius (px)",
+        "description": "可选参考半径；与 Reference Center 同时设置，决定径向测量带的基准。"
+      },
+      "center_tolerance_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 20,
+        "title": "Center Tolerance (px)",
+        "description": "测得圆心相对参考圆心允许的最大原图像素偏移。"
+      },
+      "radius_tolerance_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 10,
+        "title": "Radius Tolerance (px)",
+        "description": "径向采样范围和测得半径相对参考半径的最大允许偏差。"
+      },
+      "radial_sample_count": {
+        "type": "integer",
+        "minimum": 12,
+        "maximum": 720,
+        "default": 180,
+        "title": "Radial Sample Count",
+        "description": "沿 360° 圆周建立的径向灰度剖面数量；越高越稳但耗时增加。"
+      },
+      "gradient_threshold": {
+        "type": "number",
+        "minimum": 0,
+        "default": 5,
+        "title": "Gradient Threshold",
+        "description": "径向剖面接受边缘的最小梯度幅度；过低易受纹理影响，过高会漏检弱边缘。"
+      },
+      "edge_polarity": {
+        "type": "string",
+        "enum": ["any", "dark-to-bright", "bright-to-dark"],
+        "default": "any",
+        "title": "Edge Polarity",
+        "description": "从圆心向外的边缘灰度方向；已知极性时不要使用 any。"
+      },
+      "robust_loss": {
+        "type": "string",
+        "enum": ["huber", "tukey"],
+        "default": "huber",
+        "title": "Robust Loss",
+        "description": "Huber 保留更多有效边缘；Tukey 对强离群点抑制更强。"
+      },
+      "ransac_iterations": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 256,
+        "default": 64,
+        "title": "RANSAC Iterations",
+        "description": "robust fit 初始化次数；遮挡严重时可增加，但会线性增加拟合耗时。"
+      },
+      "fit_inlier_threshold_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 2,
+        "title": "Fit Inlier Threshold (px)",
+        "description": "边缘点到拟合圆的最大内点残差，使用原图像素。"
+      },
+      "minimum_arc_coverage": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "title": "Minimum Arc Coverage",
+        "description": "有效边缘覆盖完整圆周的最低比例；遮挡场景可降低，稳定测量应提高。"
+      },
+      "maximum_fit_error_px": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 2,
+        "title": "Maximum Fit Error (px)",
+        "description": "robust fit 允许的最大 RMSE，使用原图像素。"
+      },
+      "processing_max_long_edge_px": {
+        "type": "integer",
+        "minimum": 256,
+        "maximum": 32768,
+        "default": 2048,
+        "title": "Processing Max Long Edge (px)",
+        "description": "Search ROI 超过该尺寸时等比缩小，结果自动还原到原图坐标。"
+      },
+      "search_bbox_xyxy": {
+        "type": "array",
+        "title": "Search ROI",
+        "description": "固定搜索区域 [x1, y1, x2, y2]；不会被 Reference Circle 或检测结果覆盖。",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": { "type": "number" }
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "enum": ["storage-ref", "inline-base64"],
+        "default": "storage-ref"
+      }
+    }
+  },
+  "capability_tags": ["opencv.circle-measure", "vision.geometry", "vision.measurement"],
+  "runtime_requirements": { "python_packages": ["opencv-python", "numpy"] },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.0"
+}

@@ -16,9 +16,9 @@
 
 `RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26` 的真实短链路已经形成可追溯记录，`YOLOE / SAM3` 也已按最新 core / runtime / payload / node adapter 边界完成当前阶段收口。第五批当前重点转为剩余 custom node 的结构治理：
 
-- 已完成：`plc_modbus_tcp_nodes`、`output_local_db_nodes`、`output_mes_http_nodes` 的旧 `_runtime.py` 已拆到正式 `backend/runtime/`。
-- 已完成：`camera_usb_uvc_nodes` 和 `barcode_protocol_nodes` 已删除旧 `backend/support.py`，并拆到正式 `backend/runtime/`。
-- 已完成：`_opencv_shared` 已删除旧 `backend/support.py`，跨 OpenCV node pack 共享能力已拆到 `backend/runtime/`。
+- 已完成：`plc_modbus_tcp_nodes`、`database_nodes/providers/sql`、`http_nodes/recipes/mes` 的旧 `_runtime.py` 已拆到正式 `backend/runtime/`。
+- 已完成：`camera_nodes/providers/usb_uvc` 和 `barcode_protocol_nodes` 已删除旧 `backend/support.py`，并拆到正式 `backend/runtime/`。
+- 已完成：`opencv_nodes/shared` 已删除旧 `backend/support.py`，跨 OpenCV node pack 共享能力已拆到 `backend/runtime/`。
 - 显式验收：长时间训练、更长 `release/full` 常驻 soak、更长周期资源占用和异常恢复基线仍单独跑，不放进默认 pytest，也不作为第五批结构收口的默认阻塞条件。
 
 ## 判断状态
@@ -577,7 +577,7 @@ release/full soak 记录：
 1. 如需要更强运行时基线，继续补代表性 deployment 长驻负载、真实长时间训练和更长周期资源采样；这些是显式验收任务，不进入默认 pytest。
 2. YOLOE 后续只保留小范围工程整理：summary helper 已按 text / visual 局部拆分，不做跨模式大 helper；checkpoint 加载和输入预处理已下沉。
 3. `SAM3` custom model node 收口已完成当前阶段：payloads、runtime access、video tracking、私有 core 迁移和 core 内部 checkpoint / models / nn / postprocess / preprocess / prompts / state / tracking 子包细化都已完成。
-4. 第五批 custom nodes 已进入结构收口：`plc_modbus_tcp_nodes`、`output_local_db_nodes` 和 `output_mes_http_nodes` 的旧 `backend/nodes/_runtime.py` 均已删除，协议连接、输出 payload、参数读取、client / database / HTTP 调用和执行入口已拆到各自 `backend/runtime/`。
+4. 第五批 custom nodes 已进入结构收口：`plc_modbus_tcp_nodes`、`database_nodes/providers/sql` 和 `http_nodes/recipes/mes` 的旧 `backend/nodes/_runtime.py` 均已删除，协议连接、输出 payload、参数读取、client / database / HTTP 调用和执行入口已拆到各自 `backend/runtime/`。
 
 ## 第五批进入条件
 

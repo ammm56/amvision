@@ -12,7 +12,7 @@ from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 from backend.nodes.core_nodes.video.tracks.tracks_filter import _tracks_filter_handler
 from backend.nodes.core_nodes.video.tracks.tracks_to_regions import _tracks_to_regions_handler
 from backend.nodes.core_nodes.video.windows.video_decode_frames import _video_decode_frames_handler
-from backend.nodes.core_nodes.output.video_body import _video_body_handler
+from backend.nodes.core_nodes.io.output.response.video_body import _video_body_handler
 from backend.nodes.core_nodes.video.windows.video_frame_window_item_get import _video_frame_window_item_get_handler
 from backend.nodes.core_nodes.video.windows.frame_window_preview import _frame_window_preview_handler
 from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local_handler

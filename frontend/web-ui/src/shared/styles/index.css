@@ -4002,6 +4002,28 @@ textarea:focus-visible {
   align-items: center;
 }
 
+.workflow-node-picker__categories button.is-child {
+  padding-left: 22px;
+}
+
+.workflow-node-picker__category-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 10px 5px;
+  color: var(--graph-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workflow-node-picker__category-root em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
 .workflow-node-picker__sources button:hover,
 .workflow-node-picker__sources button.is-active,
 .workflow-node-picker__categories button:hover,

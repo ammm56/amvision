@@ -18,20 +18,17 @@
 
 当前仓库已经有几类 custom node pack：
 
-- `camera_usb_uvc_nodes`
+- `camera.nodes`，provider 实现在 `camera_nodes/providers/`
 - `yoloe_open_vocab_nodes`
 - `sam3_segment_nodes`
-- `opencv_basic_nodes`
-- `opencv_defect_nodes`
-- `opencv_shape_nodes`
-- `opencv_measurement_nodes`
-- `opencv_geometry_nodes`
-- `opencv_matching_nodes`
+- `opencv.nodes`，功能实现在 `opencv_nodes/categories/`
+- `database.nodes`，provider 实现在 `database_nodes/providers/`
+- `http.nodes`，业务配置场景实现在 `http_nodes/recipes/`
 - `barcode_display_nodes`
 - `barcode_protocol_nodes`
 - `plc_modbus_tcp_nodes`
 
-其中 `opencv_basic_nodes` 当前已经有：
+其中 `opencv_nodes/categories/basic` 当前已经有：
 
 - `binary-threshold`
 - `canny`
@@ -49,18 +46,11 @@
 - `invert`
 - `sobel`
 - `laplacian`
-- `draw-detections`
-- `draw-contours`
-- `draw-lines`
-- `draw-circles`
-- `draw-roi`
-- `draw-measurements`
-- `draw-regions`
 - `crop-export`
 - `gallery-preview`
 - `payload-to-value`
 
-其中 `opencv_geometry_nodes` 当前已经有：
+其中 `opencv_nodes/categories/geometry` 当前已经有：
 
 - `rotation-correct`
 - `perspective-transform`
@@ -68,7 +58,7 @@
 - `undistort`
 - `remap`
 
-其中 `opencv_measurement_nodes` 当前已经有：
+其中 `opencv_nodes/categories/measurement` 当前已经有：
 
 - `measure`
 - `caliper-edge`
@@ -80,7 +70,7 @@
 - `parallelism-metrics`
 - `concentricity-metrics`
 
-其中 `opencv_defect_nodes` 当前已经有：
+其中 `opencv_nodes/categories/defect` 当前已经有：
 
 - `image-diff`
 - `absdiff-threshold`
@@ -88,7 +78,7 @@
 - `fill-holes`
 - `distance-transform`
 
-其中 `opencv_shape_nodes` 当前已经有：
+其中 `opencv_nodes/categories/shape` 当前已经有：
 
 - `contour`
 - `contour-filter`
@@ -102,28 +92,30 @@
 - `fit-line`
 - `min-enclosing-circle`
 
-其中 `opencv_matching_nodes` 当前已经有：
+其中 `opencv_nodes/categories/matching` 当前已经有：
 
 - `template-match`
 - `orb-keypoints`
 - `orb-match`
 - `homography-estimate`
 
-当前 `custom_nodes/opencv_basic_nodes/` 的物理目录名仍保留基础能力边界，manifest id 为 `opencv.basic-nodes`。经过连续拆分后，这个 pack 当前主要承载预处理、导出和桥接能力；调试绘制已经单独收进 `opencv.render-nodes`，不再继续把所有新节点堆进同一个目录。
+当前 OpenCV 只有一个一级 pack：`opencv.nodes`。`basic`、`geometry`、`measurement`、
+`shape`、`defect`、`matching` 和 `render` 是包内分类目录，不再拥有独立 manifest、
+启停状态或版本。
 
-其中前五轮 pack 拆分试点当前已落地：
+其中包内分类收口当前已落地：
 
-- OpenCV 共享 backend helper 已统一收进 `custom_nodes/_opencv_shared/backend/runtime/`，并按依赖加载、图片读写、payload、几何、局部特征、平面变换和参数校验分包
-- OpenCV custom payload 规则 当前也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`
-- `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入 `custom_nodes/opencv_geometry_nodes/`
-- `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_measurement_nodes/`
-- `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_shape_nodes/`
-- `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform` 已正式迁入 `custom_nodes/opencv_defect_nodes/`
-- `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_matching_nodes/`
-- `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` 已正式迁入 `custom_nodes/opencv_render_nodes/`
+- OpenCV 共享 backend helper 已统一收进 `custom_nodes/opencv_nodes/shared/backend/runtime/`，并按依赖加载、图片读写、payload、几何、局部特征、平面变换和参数校验分包
+- OpenCV custom payload 规则 当前也已统一收进 `custom_nodes/opencv_nodes/shared/workflow/payload_contracts.json`
+- `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入 `custom_nodes/opencv_nodes/categories/geometry/`
+- `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_nodes/categories/measurement/`
+- `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_nodes/categories/shape/`
+- `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform` 已正式迁入 `custom_nodes/opencv_nodes/categories/defect/`
+- `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_nodes/categories/matching/`
+- `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` 已正式迁入 `custom_nodes/opencv_nodes/categories/render/`
 - 公开 `node_type_id` 保持不变，当前仍统一使用 `custom.opencv.*`
-- checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_calibrated_orb_homography_gate.*`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为拆包后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
-- checked-in 样例 `industrial_single_frame_reference_diff_watershed_surface_gate.*` 当前也已补入验证入口，专门覆盖 `opencv.defect-nodes` 中 `heatmap-preview / watershed / connected-components` 到工业规则链的现场闭环。
+- checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_calibrated_orb_homography_gate.*`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为分类迁移后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
+- checked-in 样例 `industrial_single_frame_reference_diff_watershed_surface_gate.*` 当前也已补入验证入口，专门覆盖 `opencv.nodes` 中 `heatmap-preview / watershed / connected-components` 到工业规则链的现场闭环。
 
 其中第一批更贴工业现场的传统视觉补强当前已接通：
 
@@ -137,7 +129,7 @@
 
 其中 `min-area-rect` 当前新增 `rotated-rects.v1` 结构化 payload，`payload-to-value` 也已支持把它包装回 `value.v1` 继续参与响应拼装或调试预览。
 
-其中当前最贴工业单帧现场的预处理基础层在 `opencv.basic-nodes` 中已接通：
+其中当前最贴工业单帧现场的预处理基础层在 `opencv.nodes` 中已接通：
 
 - `custom.opencv.crop`
 - `custom.opencv.normalize`
@@ -148,7 +140,7 @@
 
 这组节点当前已经可以先把“ROI 收紧、亮度区间规整、局部对比增强、噪声抑制、黑白方向翻转”这层前置链独立收起来，再接后续差异、轮廓、量测和工业规则节点。
 
-其中几何与标定矫正层当前已独立收进 `opencv.geometry-nodes`：
+其中几何与标定矫正层当前已独立收进 `opencv.nodes`：
 
 - `custom.opencv.rotation-correct`
 - `custom.opencv.perspective-transform`
@@ -158,7 +150,7 @@
 
 这组节点当前已经可以把“姿态矫正、透视面矫正、仿射矫正、镜头畸变矫正和像素级几何重映射”这层从原大 pack 中独立收起来，作为后续 `geometry` 能力包继续拆包的第一轮基线。
 
-其中定位与量测层当前也已独立收进 `opencv.measurement-nodes`：
+其中定位与量测层当前也已独立收进 `opencv.nodes`：
 
 - `custom.opencv.measure`
 - `custom.opencv.caliper-edge`
@@ -172,7 +164,7 @@
 
 这组节点当前已经可以把“轮廓度量、基准边量测、距离 / 角度 / 直径 / 槽宽 / 平行度 / 同心度”这条工业单帧量测主线单独收起来，再继续接 `core.rule.*` 与 `core.output.*`。
 
-其中第二批更贴缺陷/差异流程的原子节点当前也已独立收进 `opencv.defect-nodes`：
+其中第二批更贴缺陷/差异流程的原子节点当前也已独立收进 `opencv.nodes`：
 
 - `custom.opencv.image-diff`
 - `custom.opencv.absdiff-threshold`
@@ -212,9 +204,9 @@
 - `custom.opencv.orb-match`
 - `custom.opencv.homography-estimate`
 
-这组节点当前已经可以把“模板定位”和“局部特征参考对位”这两条定位链从量测链前面单独收起来，再继续衔接 `opencv.measurement-nodes` 与后续工业规则链。
+这组节点当前已经可以把“模板定位”和“局部特征参考对位”这两条定位链从量测链前面单独收起来，再继续衔接 `opencv.nodes` 与后续工业规则链。
 
-其中渲染层当前已独立收进 `opencv.render-nodes`：
+其中渲染层当前已独立收进 `opencv.nodes`：
 
 - `custom.opencv.draw-contours`
 - `custom.opencv.draw-lines`
@@ -226,7 +218,7 @@
 
 这组节点只负责把 `contours.v1 / lines.v1 / circles.v1 / roi.v1 / regions.v1` 等结构化结果画回图像，便于现场调试复核；节点输出默认仍走 memory/raw BGR24，只有前端 Preview 显示或显式落盘时才做图片编码。
 
-其中导出与桥接层当前保留在 `opencv.basic-nodes`：
+其中导出与桥接层当前保留在 `opencv.nodes`：
 
 - `custom.opencv.crop-export`
 - `custom.opencv.gallery-preview`
@@ -270,7 +262,7 @@
 
 当前已落地：
 
-- `custom_nodes/camera_usb_uvc_nodes/` 已作为第一层相机 custom node pack 落地，并默认启用
+- `custom_nodes/camera_nodes/providers/usb_uvc/` 已作为第一层相机 custom node pack 落地，并默认启用
 - 当前前三批节点已收口为 `custom.camera.usb.enumerate-devices`、`custom.camera.usb.capture-frame`、`custom.camera.usb.open-device`、`custom.camera.usb.start-stream`、`custom.camera.usb.read-window`、`custom.camera.usb.read-latest-frame`、`custom.camera.usb.get-parameter`、`custom.camera.usb.set-parameter` 与 `custom.camera.usb.close-device`
 - 当前实现边界保持在项目内 `OpenCV VideoCapture` 适配层，不依赖厂商 SDK、`projectsrc/` 目录或额外 Python 相机包
 - 当前已经支持会话型单帧重复采图、基础参数控制与后台采流窗口读取；后续重点转向更细参数族、目录/触发源接入与非 UVC 相机层
@@ -1078,9 +1070,9 @@ PLC 能力也应至少拆成两类：
 
 建议放在：
 
-- `custom_nodes/opencv_defect_nodes/`
-- 对外 pack id 使用 `opencv.defect-nodes`
-- 或按能力进一步拆成 `opencv.shape-nodes / opencv.measurement-nodes / opencv.matching-nodes`
+- `custom_nodes/opencv_nodes/categories/defect/`
+- 对外 pack id 使用 `opencv.nodes`
+- 或按能力进一步拆成 `opencv.nodes / opencv.nodes / opencv.nodes`
 
 这一层适合承载：
 
@@ -1135,39 +1127,29 @@ PLC 能力也应至少拆成两类：
 
 ### 当前判断
 
-当前 `opencv_basic_nodes` 不是没有价值，但按真实实现宽度看，它必须保持清晰基础边界。几何矫正层已独立拆到 `opencv.geometry-nodes`，量测层已独立拆到 `opencv.measurement-nodes`，轮廓与线圆抽取层已独立拆到 `opencv.shape-nodes`，差异与缺陷后处理层已独立拆到 `opencv.defect-nodes`，匹配定位层已独立拆到 `opencv.matching-nodes`，调试绘制层也已独立拆到 `opencv.render-nodes`。后续不再把新 OpenCV 能力继续堆回 basic pack。
-
-建议后续不要只在现有 pack 上无限加节点，而是按能力族拆成几包：
-
-- `opencv.basic-nodes`
-- `opencv.shape-nodes`
-- `opencv.measurement-nodes`
-- `opencv.geometry-nodes`
-- `opencv.matching-nodes`
-- `opencv.defect-nodes`
-- `opencv.render-nodes`
-
-这样比一个越来越大的 `opencv_basic_nodes` 更容易维护。
+OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免把所有实现堆入
+`categories/basic`，也避免重新把每个能力族升级成一级 pack。
 
 当前拆分约束建议保持：
 
-- pack 边界、manifest、catalog 与测试归属要和真实职责一致
+- `opencv.nodes` 统一维护 manifest、catalog、版本、权限和 runtime entry
+- 分类目录维护各自节点代码、catalog source 和专项测试
 - 公开 `custom.opencv.*` 的 `node_type_id` 继续保持稳定，避免不必要的前端图结构迁移
-- 调试绘制进入 `opencv.render-nodes`；导出与 bridge 继续留在 `opencv.basic-nodes`
+- 调试绘制进入 `categories/render`；导出与 bridge 继续留在对应功能分类
 
-### Pack 拆分映射表（第一版）
+### 包内分类映射
 
-| 目标 pack | 当前状态 | 建议收纳节点 | 说明 |
+| 包内分类 | 当前状态 | 收纳节点 | 说明 |
 | --- | --- | --- | --- |
-| `opencv.basic-nodes` | 已实现，保持基础边界 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / crop-export / gallery-preview / payload-to-value / image-refs-statistics / image-refs-slot-metrics / image-refs-empty-check / image-refs-occupied-check / slot-batch-state` | 承载基础预处理、裁剪导出、批量图像统计、批量槽位指标和结构化 payload 桥接，不再承载绘制节点；空槽/有料判断保持通用规则节点边界，不写死托盘业务。 |
-| `opencv.render-nodes` | 已实现，当前独立承载绘制层 | `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` | 承载现场调试复核和规则依据叠加，输出默认保持 memory/raw BGR24。 |
-| `opencv.shape-nodes` | 已实现，第三步拆分试点已完成 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 承载轮廓、线圆、形状拟合和从图像几何结果到结构化 payload 的抽取层。当前已由 shape pack checked-in catalog 与量测 workflow 样例共同收口。 |
-| `opencv.measurement-nodes` | 已实现，第二轮拆分试点已完成 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 承载工业量测原语，避免和预处理或缺陷流程耦在同一 pack。当前已由 `line_pair_measure_gate / circle_concentricity_gate` 两条样例链收口。 |
-| `opencv.geometry-nodes` | 已实现，第一轮拆分试点已完成 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` | 承载姿态、标定、坐标变换和几何矫正能力。当前已作为 pack 拆分试点落地，并补齐 `planar-transform.v1 -> image-ref.v1 / roi.v1` 这层受控桥接。 |
-| `opencv.matching-nodes` | 已实现，第五步拆分试点已完成 | `template-match / orb-keypoints / orb-match / homography-estimate` | 承载模板定位、局部特征匹配与平面对位链。当前 `template-match` 已从 `opencv.basic-nodes` 迁出，ORB / homography 也已落地，并补到 `local-features.v1 / feature-matches.v1 / planar-transform.v1` 三类共享 payload 规则。 |
-| `opencv.defect-nodes` | 已实现，第四步拆分试点已完成 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 承载差异、缺陷、形态学后处理与缺陷调试预览链。当前已落地 `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / heatmap-preview / watershed / skeletonize`。 |
+| `categories/basic` | 已实现 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / crop-export / gallery-preview / payload-to-value / image-refs-* / slot-batch-state` | 基础预处理、裁剪导出、批量图像统计和 payload 桥接。 |
+| `categories/render` | 已实现 | `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` | 现场调试复核和规则依据叠加。 |
+| `categories/shape` | 已实现 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 轮廓、线圆、形状拟合和结构化 payload 抽取。 |
+| `categories/measurement` | 已实现 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 工业量测原语。 |
+| `categories/geometry` | 已实现 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` | 姿态、标定、坐标变换和几何矫正。 |
+| `categories/matching` | 已实现 | `template-match / orb-keypoints / orb-match / homography-estimate` | 模板定位、局部特征匹配与平面对位。 |
+| `categories/defect` | 已实现 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 差异、缺陷、形态学后处理和调试预览。 |
 
-`draw-* / regions overlay` 这组节点已拆出 `opencv.render-nodes`，后续新增绘制节点直接进入该 pack。
+`draw-* / regions overlay` 后续直接进入 `categories/render`。
 
 ### 第一批最值得继续补的 OpenCV 常用算子
 
@@ -1329,14 +1311,14 @@ PLC 能力也应至少拆成两类：
 
 建议节点：
 
-- `custom.opencv.caliper-edge`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.point-distance`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.point-to-line-distance`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.line-angle`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.circle-diameter`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.slot-width`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.parallelism-metrics`（已实现，`opencv.measurement-nodes`）
-- `custom.opencv.concentricity-metrics`（已实现，`opencv.measurement-nodes`）
+- `custom.opencv.caliper-edge`（已实现，`opencv.nodes`）
+- `custom.opencv.point-distance`（已实现，`opencv.nodes`）
+- `custom.opencv.point-to-line-distance`（已实现，`opencv.nodes`）
+- `custom.opencv.line-angle`（已实现，`opencv.nodes`）
+- `custom.opencv.circle-diameter`（已实现，`opencv.nodes`）
+- `custom.opencv.slot-width`（已实现，`opencv.nodes`）
+- `custom.opencv.parallelism-metrics`（已实现，`opencv.nodes`）
+- `custom.opencv.concentricity-metrics`（已实现，`opencv.nodes`）
 
 说明：
 
@@ -1369,8 +1351,8 @@ PLC 能力也应至少拆成两类：
 - `custom.camera.usb_uvc_nodes`（前三批已实现：`enumerate-devices / capture-frame / open-device / start-stream / read-window / read-latest-frame / get-parameter / set-parameter / close-device`）
 - `custom.plc.modbus_tcp_nodes`（主动读写 / wait-condition / write-result-signals 已实现）
 - `custom.opencv.grayscale / resize / adaptive-threshold / otsu-threshold`（已实现）
-- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert`（已实现，`opencv.basic-nodes`）
-- `custom.opencv.rotation-correct / perspective-transform / affine-transform / undistort / remap`（已实现，`opencv.geometry-nodes`）
+- `custom.opencv.crop / normalize / clahe / median-blur / bilateral-filter / invert`（已实现，`opencv.nodes`）
+- `custom.opencv.rotation-correct / perspective-transform / affine-transform / undistort / remap`（已实现，`opencv.nodes`）
 - `custom.opencv.contour-approx / convex-hull / fit-ellipse / fill-holes / distance-transform`（已实现）
 - `custom.opencv.sobel / laplacian`（已实现）
 - `custom.opencv.hough-lines / hough-circles`（已实现）

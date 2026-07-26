@@ -573,11 +573,11 @@ backend/nodes/core_nodes/
 ### 当前问题
 
 - `plc_modbus_tcp_nodes` 已删除旧 `backend/nodes/_runtime.py`，连接参数、地址解析、编解码、client 生命周期、读写、等待条件和结果信号回写已拆到 `backend/runtime/`；节点入口只保留调用 runtime 的薄入口。
-- `output_local_db_nodes` 已删除旧 `backend/nodes/_runtime.py`，输入来源、列映射、参数读取、数据库连接、表反射、upsert 构造和执行入口已拆到 `backend/runtime/`。
-- `output_mes_http_nodes` 已删除旧 `backend/nodes/_runtime.py`，输入来源、query/body 映射、参数读取、请求头与鉴权、HTTP 调用、响应解析和执行入口已拆到 `backend/runtime/`。
-- `camera_usb_uvc_nodes` 已删除旧 `backend/support.py`，参数解析、OpenCV capture、单帧编码、session registry、stream worker、参数读写和 payload 组装已拆到 `backend/runtime/`；节点入口只保留调用 runtime 的薄入口。
+- `database_nodes/providers/sql` 已删除旧 `backend/nodes/_runtime.py`，输入来源、列映射、参数读取、数据库连接、表反射、upsert 构造和执行入口已拆到 `backend/runtime/`。
+- `http_nodes/recipes/mes` 已删除旧 `backend/nodes/_runtime.py`，输入来源、query/body 映射、参数读取、请求头与鉴权、HTTP 调用、响应解析和执行入口已拆到 `backend/runtime/`。
+- `camera_nodes/providers/usb_uvc` 已删除旧 `backend/support.py`，参数解析、OpenCV capture、单帧编码、session registry、stream worker、参数读写和 payload 组装已拆到 `backend/runtime/`；节点入口只保留调用 runtime 的薄入口。
 - `barcode_protocol_nodes` 已删除旧 `backend/support.py`，依赖加载、图片读写、ZXing 解码、结果 payload、筛选匹配和参数校验已拆到 `backend/runtime/`；decode 节点生成器和手写节点都改为调用 runtime 模块。
-- `_opencv_shared` 已删除旧 `backend/support.py`，OpenCV 依赖加载、图片读写、payload 规范化、几何量测、局部特征、平面变换和参数校验已拆到 `backend/runtime/`；其中 shared payload 已继续按 detections / image refs / contours / lines / circles 拆到 `backend/runtime/payloads/`，各 OpenCV pack 继续共享这组 runtime 模块，不再依赖单一 shared 大文件。
+- `opencv_nodes/shared` 已删除旧 `backend/support.py`，OpenCV 依赖加载、图片读写、payload 规范化、几何量测、局部特征、平面变换和参数校验已拆到 `backend/runtime/`；其中 shared payload 已继续按 detections / image refs / contours / lines / circles 拆到 `backend/runtime/payloads/`，各 OpenCV pack 继续共享这组 runtime 模块，不再依赖单一 shared 大文件。
 - `yoloe_open_vocab_nodes` 的模型模块、checkpoint 读取、postprocess、prompt helper、runtime session、payload 解析和 result / summary helper 已拆到 `core/`、`runtime/` 与 `payloads/`；旧 `nodes/_common.py` 已删除；prompt-free / text-prompt / visual-prompt 三类节点已补 WorkflowAppRuntime smoke。
 - `sam3_segment_nodes` 的模型支撑已进入私有 `core/`，并按 checkpoint、models、nn、postprocess、preprocess、prompts、state、tracking 拆分；runtime session cache 已从 `nodes/_project_native_runtime.py` 迁到 `runtime/access.py`；旧 `nodes/_common.py` 已删除，prompt 类型、预训练解析、输入读取和结果 payload 已拆到 `payloads/`；video-interactive 的跨帧 tracking 编排已拆到 `runtime/tracking.py`。
 
@@ -603,7 +603,7 @@ custom_nodes/plc_modbus_tcp_nodes/backend/
 ```
 
 ```text
-custom_nodes/output_local_db_nodes/backend/
+custom_nodes/database_nodes/providers/sql/backend/
 ├─ runtime/
 │  ├─ database.py
 │  ├─ execution.py
@@ -614,7 +614,7 @@ custom_nodes/output_local_db_nodes/backend/
 ```
 
 ```text
-custom_nodes/output_mes_http_nodes/backend/
+custom_nodes/http_nodes/recipes/mes/backend/
 ├─ runtime/
 │  ├─ execution.py
 │  ├─ http_client.py
@@ -630,7 +630,7 @@ custom_nodes/output_mes_http_nodes/backend/
 ```
 
 ```text
-custom_nodes/camera_usb_uvc_nodes/backend/
+custom_nodes/camera_nodes/providers/usb_uvc/backend/
 ├─ runtime/
 │  ├─ config.py
 │  ├─ capture.py

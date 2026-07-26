@@ -1,0 +1,69 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.crop",
+  "display_name": "Crop",
+  "category": "opencv.filter",
+  "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "ROI",
+      "payload_type_id": "roi.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "padding": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "polygon_background_fill": {
+        "type": "string",
+        "title": "Polygon Background Fill",
+        "description": "polygon ROI 裁剪时，多边形外接矩形中 ROI 外部区域的填充色；bbox ROI 不受影响。",
+        "enum": [
+          "black",
+          "white"
+        ],
+        "default": "black"
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.crop",
+    "vision.preprocess",
+    "inspection.roi"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.0"
+}

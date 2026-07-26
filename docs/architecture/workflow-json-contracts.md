@@ -123,7 +123,7 @@ FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定
 
 ### barcode.protocol-nodes 当前维护方式
 
-barcode.protocol-nodes 现在采用和 opencv.basic-nodes 一致的拆分维护方式：
+barcode.protocol-nodes 现在采用和 opencv.nodes 一致的拆分维护方式：
 
 - backend/nodes/*.py 只放节点执行实现、NODE_TYPE_ID 和 handle_node
 - workflow/catalog_sources/nodes/*.json 单独维护每个节点的 NodeDefinition
@@ -189,55 +189,55 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 当前 OpenCV custom node 已开始按多 pack 收口：
 
-- `opencv.basic-nodes`：预处理、桥接与导出主线
-- `opencv.render-nodes`：结果绘制与调试复核主线
-- `opencv.defect-nodes`：差异、连通域与缺陷后处理主线
-- `opencv.shape-nodes`：轮廓、线圆、形状拟合与几何结果抽取主线
-- `opencv.measurement-nodes`：工业量测与几何判定前置主线
-- `opencv.geometry-nodes`：姿态矫正、标定与几何变换主线
-- `opencv.matching-nodes`：模板匹配、局部特征匹配与平面对位主线
+- `opencv.nodes`：预处理、桥接与导出主线
+- `opencv.nodes`：结果绘制与调试复核主线
+- `opencv.nodes`：差异、连通域与缺陷后处理主线
+- `opencv.nodes`：轮廓、线圆、形状拟合与几何结果抽取主线
+- `opencv.nodes`：工业量测与几何判定前置主线
+- `opencv.nodes`：姿态矫正、标定与几何变换主线
+- `opencv.nodes`：模板匹配、局部特征匹配与平面对位主线
 
-其中 `opencv.basic-nodes` 当前已落地的节点族：
+其中 `opencv.nodes` 当前已落地的节点族：
 
 - opencv.filter：gaussian-blur、binary-threshold、morphology、canny、grayscale、resize、adaptive-threshold、otsu-threshold
 - opencv.transform：payload-to-value
 - opencv.io：crop-export
 - opencv.preview：gallery-preview
 
-而 `opencv.render-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.render：draw-detections、draw-contours、draw-lines、draw-circles、draw-roi、draw-rois、draw-measurements、draw-regions
 
-而 `opencv.matching-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.matching：template-match、orb-keypoints、orb-match、homography-estimate
 
-而 `opencv.defect-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.defect：image-diff、connected-components
 - opencv.filter：absdiff-threshold、fill-holes、distance-transform
 
-而 `opencv.shape-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.shape：contour、contour-filter、contour-approx、convex-hull、min-area-rect、fit-ellipse、hough-lines、hough-circles、fit-line、min-enclosing-circle
 - opencv.transform：contours-to-regions
 
-而 `opencv.measurement-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.measurement：measure、caliper-edge、point-distance、point-to-line-distance、line-angle、circle-diameter、parallelism-metrics、concentricity-metrics、slot-width
 
-而 `opencv.geometry-nodes` 当前承载：
+而 `opencv.nodes` 当前承载：
 
 - opencv.geometry：rotation-correct、perspective-transform、affine-transform、undistort、remap、planar-transform-bridge
 
-其中 `opencv.shape-nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.defect-nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.matching-nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；`opencv.geometry-nodes` 则继续通过 `planar-transform-bridge` 把 `planar-transform.v1` 显式桥接回 `image-ref.v1 / roi.v1`，便于继续接量测、模板定位和 ROI 规则链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload 规则 也已统一收进 `custom_nodes/_opencv_shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
+其中 `opencv.nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；`opencv.nodes` 则继续通过 `planar-transform-bridge` 把 `planar-transform.v1` 显式桥接回 `image-ref.v1 / roi.v1`，便于继续接量测、模板定位和 ROI 规则链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload 规则 也已统一收进 `custom_nodes/opencv_nodes/shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
 
 `point-distance / point-to-line-distance / line-angle / circle-diameter / parallelism-metrics / concentricity-metrics / slot-width` 当前则直接输出可进规则链的 `value.v1 + summary(value.v1)`，适合继续接 `threshold-check / range-check / process-decision`。`draw-contours / draw-lines / draw-circles / draw-roi / draw-measurements / draw-regions` 则统一输出 `image-ref.v1`，用于把轮廓、直线、圆、ROI、分割覆盖层和量测依据直接画回原图做现场调试。
 
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 
 - python_packages: [opencv-python, numpy]
-- node_pack_id: opencv.basic-nodes / opencv.render-nodes / opencv.defect-nodes / opencv.shape-nodes / opencv.measurement-nodes / opencv.geometry-nodes / opencv.matching-nodes
+- node_pack_id: opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes
 - capability_tags: [opencv.preprocess] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching]
 
 `capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。
@@ -296,7 +296,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
   "runtime_requirements": {
     "python_packages": ["opencv-python", "numpy"]
   },
-  "node_pack_id": "opencv.basic-nodes",
+  "node_pack_id": "opencv.nodes",
   "node_pack_version": "0.1.0",
   "metadata": {}
 }
@@ -307,7 +307,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 ```json
 {
   "format_id": "amvision.node-pack-manifest.v1",
-  "id": "opencv.basic-nodes",
+  "id": "opencv.nodes",
   "version": "0.1.0",
   "displayName": "OpenCV Basic Nodes",
   "category": "custom-node-pack",
@@ -317,7 +317,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 }
 ```
 
-对于需要拆分维护的 node pack，推荐把每个 NodeDefinition 单独维护在 workflow/catalog_sources/nodes/ 下，把额外 payload 规则 维护在 workflow/catalog_sources/payload_contracts.json，然后通过类似 custom_nodes/opencv_basic_nodes/workflow/generate_catalog.py 的生成步骤汇总出最终的 workflow/catalog.json。
+对于需要拆分维护的 node pack，推荐把每个 NodeDefinition 单独维护在 workflow/catalog_sources/nodes/ 下，把额外 payload 规则 维护在 workflow/catalog_sources/payload_contracts.json，然后通过类似 custom_nodes/opencv_nodes/categories/basic/workflow/generate_catalog.py 的生成步骤汇总出最终的 workflow/catalog.json。
 
 barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 custom_nodes/barcode_protocol_nodes/workflow/generate_catalog.py 手动回写 workflow/catalog.json。
 

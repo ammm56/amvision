@@ -19,7 +19,7 @@ def test_local_node_pack_loader_loads_enabled_custom_node_pack(tmp_path: Path) -
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
 
     assert len(catalog_snapshot.node_pack_manifests) == 1
-    assert catalog_snapshot.node_pack_manifests[0].node_pack_id == "opencv.basic-nodes"
+    assert catalog_snapshot.node_pack_manifests[0].node_pack_id == "opencv.nodes"
     assert [node.node_type_id for node in catalog_snapshot.node_definitions] == [
         "custom.opencv.draw-detections"
     ]
@@ -35,7 +35,7 @@ def test_local_node_pack_loader_skips_disabled_node_pack_registration(tmp_path: 
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
 
     assert len(catalog_snapshot.node_pack_manifests) == 1
-    assert catalog_snapshot.node_pack_manifests[0].node_pack_id == "opencv.basic-nodes"
+    assert catalog_snapshot.node_pack_manifests[0].node_pack_id == "opencv.nodes"
     assert catalog_snapshot.node_pack_manifests[0].enabled_by_default is False
     assert catalog_snapshot.payload_contracts == ()
     assert catalog_snapshot.node_definitions == ()
@@ -49,7 +49,7 @@ def test_local_node_pack_loader_loads_enabled_node_pack_with_satisfied_dependenc
     custom_nodes_root_dir = _create_node_pack_fixture(tmp_path)
     _create_dependent_node_pack_fixture(
         tmp_path,
-        dependency_node_pack_id="opencv.basic-nodes",
+        dependency_node_pack_id="opencv.nodes",
         dependency_version_range=">=0.1.0 <1.0",
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -58,7 +58,7 @@ def test_local_node_pack_loader_loads_enabled_node_pack_with_satisfied_dependenc
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
 
     assert {manifest.node_pack_id for manifest in catalog_snapshot.node_pack_manifests} == {
-        "opencv.basic-nodes",
+        "opencv.nodes",
         "barcode.protocol-nodes",
     }
     assert {node.node_type_id for node in catalog_snapshot.node_definitions} == {
@@ -74,7 +74,7 @@ def test_local_node_pack_loader_requires_declared_dependency_to_exist_before_ena
 
     custom_nodes_root_dir = _create_dependent_node_pack_fixture(
         tmp_path,
-        dependency_node_pack_id="opencv.basic-nodes",
+        dependency_node_pack_id="opencv.nodes",
         dependency_version_range=">=0.1.0 <1.0",
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -97,7 +97,7 @@ def test_local_node_pack_loader_requires_dependency_to_be_enabled_before_enable(
     custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, enabled_by_default=False)
     _create_dependent_node_pack_fixture(
         tmp_path,
-        dependency_node_pack_id="opencv.basic-nodes",
+        dependency_node_pack_id="opencv.nodes",
         dependency_version_range=">=0.1.0 <1.0",
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -108,7 +108,7 @@ def test_local_node_pack_loader_requires_dependency_to_be_enabled_before_enable(
     status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
 
     assert {manifest.node_pack_id for manifest in catalog_snapshot.node_pack_manifests} == {
-        "opencv.basic-nodes",
+        "opencv.nodes",
         "barcode.protocol-nodes",
     }
     assert catalog_snapshot.node_definitions == ()
@@ -125,7 +125,7 @@ def test_local_node_pack_loader_requires_dependency_version_to_match_before_enab
     custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, version="0.2.0")
     _create_dependent_node_pack_fixture(
         tmp_path,
-        dependency_node_pack_id="opencv.basic-nodes",
+        dependency_node_pack_id="opencv.nodes",
         dependency_version_range="==0.1.0",
     )
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -153,7 +153,7 @@ def test_local_node_pack_loader_status_reports_disabled_and_missing_manifest(
 
     node_pack_loader.refresh()
     status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
-    disabled_item = _find_status_item(status_snapshot, "opencv.basic-nodes")
+    disabled_item = _find_status_item(status_snapshot, "opencv.nodes")
     missing_item = _find_status_item(status_snapshot, "missing_manifest_nodes")
 
     assert disabled_item.state == "disabled"
@@ -191,7 +191,7 @@ def register(context):
     )
     manifest_payload = {
         "format_id": "amvision.node-pack-manifest.v1",
-        "id": "opencv.basic-nodes",
+        "id": "opencv.nodes",
         "version": version,
         "displayName": "OpenCV Basic Nodes",
         "description": "测试用 OpenCV 自定义节点包。",
@@ -237,7 +237,7 @@ def register(context):
                 "parameter_schema": {"type": "object", "properties": {}},
                 "capability_tags": ["opencv.draw"],
                 "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
-                "node_pack_id": "opencv.basic-nodes",
+                "node_pack_id": "opencv.nodes",
                 "node_pack_version": version,
             }
         ],

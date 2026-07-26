@@ -13,7 +13,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from custom_nodes.output_local_db_nodes.backend.nodes import local_db_upsert
+from custom_nodes.database_nodes.providers.sql.backend.nodes import local_db_upsert
 
 
 def test_local_db_upsert_inserts_and_updates_sqlite_row(tmp_path: Path) -> None:

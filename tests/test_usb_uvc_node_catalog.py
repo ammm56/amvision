@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
-from custom_nodes.camera_usb_uvc_nodes.workflow.catalog_builder import (
+from custom_nodes.camera_nodes.providers.usb_uvc.workflow.catalog_builder import (
     build_custom_node_catalog_payload,
 )
 
@@ -17,7 +17,7 @@ def test_usb_uvc_node_catalog_builder_matches_checked_in_catalog() -> None:
     workflow_dir = (
         Path(__file__).resolve().parents[1]
         / "custom_nodes"
-        / "camera_usb_uvc_nodes"
+        / "camera_nodes" / "providers" / "usb_uvc"
         / "workflow"
     )
     checked_in_payload = json.loads((workflow_dir / "catalog.json").read_text(encoding="utf-8"))
@@ -26,7 +26,7 @@ def test_usb_uvc_node_catalog_builder_matches_checked_in_catalog() -> None:
 
 
 def test_repository_usb_uvc_node_pack_is_enabled_by_default() -> None:
-    """验证仓库内置 camera.usb-uvc-nodes 会被默认加载。"""
+    """验证仓库内置 camera.nodes 会被默认加载。"""
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -35,7 +35,7 @@ def test_repository_usb_uvc_node_pack_is_enabled_by_default() -> None:
     node_pack_ids = {manifest.node_pack_id for manifest in node_pack_loader.get_node_pack_manifests()}
     loaded_node_type_ids = {node.node_type_id for node in node_pack_loader.get_workflow_node_definitions()}
 
-    assert "camera.usb-uvc-nodes" in node_pack_ids
+    assert "camera.nodes" in node_pack_ids
     assert {
         "custom.camera.usb.enumerate-devices",
         "custom.camera.usb.capture-frame",

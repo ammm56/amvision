@@ -11,7 +11,7 @@
   ],
   "dependencies": [
     {
-      "nodePackId": "opencv.basic-nodes",
+      "nodePackId": "opencv.nodes",
       "versionRange": ">=0.1.0 <1.0"
     }
   ],

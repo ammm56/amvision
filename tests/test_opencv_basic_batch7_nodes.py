@@ -22,7 +22,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.opencv_render_nodes.backend.nodes.draw_rois import (
+from custom_nodes.opencv_nodes.categories.render.backend.nodes.draw_rois import (
     _fill_polygon_alpha,
 )
 

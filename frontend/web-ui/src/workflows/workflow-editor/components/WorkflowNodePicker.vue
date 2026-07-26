@@ -50,16 +50,22 @@
       </nav>
 
       <nav v-if="!searchQuery" class="workflow-node-picker__categories" :aria-label="t('workflowEditor.nodePicker.categoryAria')">
-        <button
-          v-for="category in categoryGroups"
-          :key="category.id"
-          type="button"
-          :class="{ 'is-active': category.id === activeCategoryId }"
-          @click="activeCategoryId = category.id"
-        >
-          <span>{{ category.label }}</span>
-          <em>{{ category.definitions.length }}</em>
-        </button>
+        <template v-for="row in categoryRows" :key="row.id">
+          <div v-if="row.kind === 'root'" class="workflow-node-picker__category-root">
+            <span>{{ row.label }}</span>
+            <em>{{ row.count }}</em>
+          </div>
+          <button
+            v-else
+            type="button"
+            class="is-child"
+            :class="{ 'is-active': row.id === activeCategoryId }"
+            @click="activeCategoryId = row.id"
+          >
+            <span>{{ row.label }}</span>
+            <em>{{ row.definitions.length }}</em>
+          </button>
+        </template>
       </nav>
 
       <section class="workflow-node-picker__nodes" :aria-label="t('workflowEditor.nodePicker.resultAria')">
@@ -71,7 +77,7 @@
           @click="emit('select', definition)"
         >
           <strong>{{ readDefinitionDisplayName(definition) }}</strong>
-          <span>{{ definition.category.replaceAll('.', ' / ') }}</span>
+          <span>{{ readCategoryLabel(definition.category) }}</span>
           <p v-if="readDefinitionDescription(definition)">{{ readDefinitionDescription(definition) }}</p>
           <small>{{ definition.node_type_id }}</small>
         </button>
@@ -112,6 +118,10 @@ interface CategoryGroup {
   label: string
   definitions: NodeDefinition[]
 }
+
+type CategoryRow =
+  | { id: string; kind: 'root'; label: string; count: number }
+  | { id: string; kind: 'category'; label: string; definitions: NodeDefinition[] }
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -157,7 +167,9 @@ const connectionLabel = computed(() => {
   return props.requiredPayloadTypeId ? `${directionText} / ${props.requiredPayloadTypeId}` : directionText
 })
 
-const compatibleDefinitions = computed(() => props.definitions.filter(matchesConnectionFilter))
+const compatibleDefinitions = computed(() => props.definitions.filter(
+  (definition) => definition.metadata.catalogHidden !== true && matchesConnectionFilter(definition),
+))
 
 const sourceGroups = computed<SourceGroup[]>(() => {
   const coreDefinitions = compatibleDefinitions.value.filter((definition) => definition.implementation_kind === 'core-node')
@@ -207,6 +219,38 @@ const categoryGroups = computed<CategoryGroup[]>(() => {
       label: readCategoryLabel(category),
       definitions: sortDefinitions(definitions),
     }))
+})
+
+const categoryRows = computed<CategoryRow[]>(() => {
+  const groupsByRoot = new Map<string, CategoryGroup[]>()
+  for (const category of categoryGroups.value) {
+    const root = readCategoryTokens(category.id)[0] ?? category.id
+    const items = groupsByRoot.get(root) ?? []
+    items.push(category)
+    groupsByRoot.set(root, items)
+  }
+
+  const rows: CategoryRow[] = []
+  for (const [root, categories] of [...groupsByRoot.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    rows.push({
+      id: `root:${root}`,
+      kind: 'root',
+      label: humanizeCategoryToken(root),
+      count: categories.reduce((count, category) => count + category.definitions.length, 0),
+    })
+    for (const category of categories) {
+      const childTokens = readCategoryTokens(category.id).slice(1)
+      rows.push({
+        id: category.id,
+        kind: 'category',
+        label: childTokens.length > 0
+          ? childTokens.map(humanizeCategoryToken).join(' / ')
+          : humanizeCategoryToken(root),
+        definitions: category.definitions,
+      })
+    }
+  }
+  return rows
 })
 
 const selectedCategory = computed(() => categoryGroups.value.find((category) => category.id === activeCategoryId.value) ?? categoryGroups.value[0] ?? null)
@@ -284,11 +328,36 @@ function readDefinitionDescription(definition: NodeDefinition): string {
 }
 
 function readCategoryLabel(category: string): string {
-  return category.replaceAll('.', ' / ')
+  return readCategoryTokens(category).map(humanizeCategoryToken).join(' / ')
 }
 
 function formatNodePackLabel(packId: string): string {
-  return packId.replace(/[._-]+/g, ' ')
+  const tokens = packId
+    .split(/[._-]+/)
+    .filter((token) => token && token.toLowerCase() !== 'nodes')
+  return tokens.map(humanizeCategoryToken).join(' ')
+}
+
+function readCategoryTokens(category: string): string[] {
+  return category.split(/[./]+/).map((token) => token.trim()).filter(Boolean)
+}
+
+function humanizeCategoryToken(token: string): string {
+  const normalizedToken = token.toLowerCase()
+  const fixedLabels: Record<string, string> = {
+    api: 'API',
+    cv: 'CV',
+    http: 'HTTP',
+    io: 'IO',
+    opencv: 'OpenCV',
+    plc: 'PLC',
+    roi: 'ROI',
+    sql: 'SQL',
+    ui: 'UI',
+    uvc: 'UVC',
+  }
+  return fixedLabels[normalizedToken]
+    ?? token.replace(/[-_]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
 function clampToViewport(value: number, size: number, axis: 'width' | 'height'): number {

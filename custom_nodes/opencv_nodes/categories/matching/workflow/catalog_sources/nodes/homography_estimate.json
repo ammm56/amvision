@@ -1,0 +1,177 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.homography-estimate",
+  "display_name": "Homography Estimate",
+  "category": "opencv.matching",
+  "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "matches",
+      "display_name": "Matches",
+      "payload_type_id": "feature-matches.v1"
+    },
+    {
+      "name": "features_a",
+      "display_name": "Features A",
+      "payload_type_id": "local-features.v1"
+    },
+    {
+      "name": "features_b",
+      "display_name": "Features B",
+      "payload_type_id": "local-features.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "transform",
+      "display_name": "Transform",
+      "payload_type_id": "planar-transform.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    },
+    {
+      "name": "debug_preview",
+      "display_name": "Debug Preview",
+      "payload_type_id": "response-body.v1",
+      "required": false
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "enum": [
+          "ransac",
+          "lmeds"
+        ],
+        "default": "ransac"
+      },
+      "ransac_reprojection_threshold": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "default": 3.0
+      },
+      "confidence": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "exclusiveMaximum": 1,
+        "default": 0.995
+      },
+      "max_iters": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2000
+      },
+      "min_match_count": {
+        "type": "integer",
+        "minimum": 4,
+        "default": 4
+      },
+      "include_inverse_matrix": {
+        "type": "boolean",
+        "default": true
+      },
+      "debug_image_panel_enabled": {
+        "type": "boolean",
+        "title": "显示调试图",
+        "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+        "default": false
+      },
+      "debug_image_panel_transport_mode": {
+        "type": "string",
+        "title": "调试图返回方式",
+        "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+        "enum": [
+          "storage-ref",
+          "inline-base64"
+        ],
+        "default": "storage-ref"
+      },
+      "debug_show_match_lines": {
+        "type": "boolean",
+        "title": "显示内点线",
+        "description": "仅控制 debug_preview 中是否绘制 homography 内点匹配线，不影响 transform 输出。",
+        "default": true
+      },
+      "debug_show_homography_projection": {
+        "type": "boolean",
+        "title": "显示投影框",
+        "description": "仅控制 debug_preview 中是否绘制 homography 投影框。",
+        "default": true
+      },
+      "debug_max_match_lines": {
+        "type": "integer",
+        "title": "最多显示内点线",
+        "description": "限制 debug_preview 绘制的内点匹配线数量，避免双图调试图过载。",
+        "minimum": 1,
+        "default": 200
+      },
+      "debug_selected_match_ids": {
+        "type": "array",
+        "title": "点选匹配 ids",
+        "description": "图片面板点选内点匹配线后写回的 match id 集合，仅用于调试高亮和筛选，不影响 homography 估计结果。",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "debug_selected_projection_id": {
+        "type": "string",
+        "title": "点选投影框 id",
+        "description": "图片面板点选 homography 投影框后写回，仅用于调试高亮，不影响 homography 估计结果。",
+        "default": ""
+      },
+      "debug_selected_match_only": {
+        "type": "boolean",
+        "title": "只显示点选内点",
+        "description": "打开后 debug_preview 只显示当前点选内点，便于排查误匹配。",
+        "default": false
+      },
+      "debug_show_left_points": {
+        "type": "boolean",
+        "title": "显示左图端点",
+        "description": "控制 debug_preview 是否显示左图匹配端点。",
+        "default": true
+      },
+      "debug_show_right_points": {
+        "type": "boolean",
+        "title": "显示右图端点",
+        "description": "控制 debug_preview 是否显示右图匹配端点。",
+        "default": true
+      },
+      "debug_manual_pair_lines_xyxy": {
+        "type": "array",
+        "title": "手动点对线列表",
+        "description": "图片面板手动画出的左右图点对线列表，仅用于调试显示。",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "default": []
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.homography-estimate",
+    "vision.alignment",
+    "vision.matching"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.0"
+}

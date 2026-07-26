@@ -1,0 +1,3572 @@
+{
+  "format_id": "amvision.custom-node-catalog.v1",
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "measurements.v1",
+      "display_name": "Measurement Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "total_area": {
+                "type": "number"
+              },
+              "mean_area": {
+                "type": "number"
+              },
+              "max_area": {
+                "type": "number"
+              },
+              "min_area": {
+                "type": "number"
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "aspect_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "contour_index",
+                "bbox_xyxy",
+                "area",
+                "perimeter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "lines.v1",
+      "display_name": "Line Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line_index": {
+                  "type": "integer"
+                },
+                "start_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "end_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "dx_pixels": {
+                  "type": "number"
+                },
+                "dy_pixels": {
+                  "type": "number"
+                },
+                "length_pixels": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "midpoint_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "midpoint_x": {
+                  "type": "number"
+                },
+                "midpoint_y": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "origin_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "direction_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "line_index",
+                "start_xy",
+                "end_xy",
+                "length_pixels",
+                "angle_deg"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "circles.v1",
+      "display_name": "Circle Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "circle_index": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                },
+                "diameter": {
+                  "type": "number"
+                },
+                "area": {
+                  "type": "number"
+                },
+                "circumference": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "circle_index",
+                "center_xy",
+                "radius",
+                "diameter",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "ellipses.v1",
+      "display_name": "Ellipse Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ellipse_index": {
+                  "type": "integer"
+                },
+                "contour_index": {
+                  "type": "integer"
+                },
+                "point_count": {
+                  "type": "integer"
+                },
+                "center_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "center_x": {
+                  "type": "number"
+                },
+                "center_y": {
+                  "type": "number"
+                },
+                "size_wh": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "major_axis": {
+                  "type": "number"
+                },
+                "minor_axis": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "bbox_xyxy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "box_points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "area": {
+                  "type": "number"
+                },
+                "perimeter": {
+                  "type": "number"
+                },
+                "contour_area": {
+                  "type": "number"
+                },
+                "fill_ratio": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "ellipse_index",
+                "center_xy",
+                "major_axis",
+                "minor_axis",
+                "angle_deg",
+                "area"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "local-features.v1",
+      "display_name": "Local Feature Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_object_key": {
+            "type": "string"
+          },
+          "feature_extractor": {
+            "type": "string"
+          },
+          "descriptor_kind": {
+            "type": "string"
+          },
+          "descriptor_dtype": {
+            "type": "string"
+          },
+          "descriptor_norm": {
+            "type": "string"
+          },
+          "descriptor_length": {
+            "type": "integer"
+          },
+          "wta_k": {
+            "type": "integer"
+          },
+          "roi_id": {
+            "type": "string"
+          },
+          "roi_kind": {
+            "type": "string"
+          },
+          "roi_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature_id": {
+                  "type": "string"
+                },
+                "feature_index": {
+                  "type": "integer"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "point_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "size": {
+                  "type": "number"
+                },
+                "angle_deg": {
+                  "type": "number"
+                },
+                "response": {
+                  "type": "number"
+                },
+                "octave": {
+                  "type": "integer"
+                },
+                "class_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "feature_id",
+                "feature_index",
+                "x",
+                "y",
+                "point_xy",
+                "size",
+                "angle_deg",
+                "response",
+                "octave",
+                "class_id"
+              ]
+            }
+          },
+          "descriptors": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "feature_extractor",
+          "descriptor_kind",
+          "descriptor_dtype",
+          "descriptor_length",
+          "items",
+          "descriptors"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "feature-matches.v1",
+      "display_name": "Feature Match Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "matcher_kind": {
+            "type": "string"
+          },
+          "cross_check": {
+            "type": "boolean"
+          },
+          "ratio_test_threshold": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "match_id": {
+                  "type": "string"
+                },
+                "query_feature_id": {
+                  "type": "string"
+                },
+                "train_feature_id": {
+                  "type": "string"
+                },
+                "query_index": {
+                  "type": "integer"
+                },
+                "train_index": {
+                  "type": "integer"
+                },
+                "distance": {
+                  "type": "number"
+                },
+                "query_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "train_xy": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "match_id",
+                "query_feature_id",
+                "train_feature_id",
+                "query_index",
+                "train_index",
+                "distance",
+                "query_xy",
+                "train_xy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matcher_kind",
+          "cross_check",
+          "items"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "planar-transform.v1",
+      "display_name": "Planar Transform Result",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "source_a_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_b_image": {
+            "type": "object",
+            "properties": {
+              "transport_kind": {
+                "type": "string",
+                "enum": [
+                  "memory",
+                  "storage",
+                  "buffer",
+                  "frame"
+                ]
+              },
+              "object_key": {
+                "type": "string"
+              },
+              "image_handle": {
+                "type": "string"
+              },
+              "buffer_ref": {
+                "type": "object"
+              },
+              "frame_ref": {
+                "type": "object"
+              },
+              "width": {
+                "type": "integer"
+              },
+              "height": {
+                "type": "integer"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "shape": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 4
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "pixel_format": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "transport_kind",
+              "media_type"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "storage"
+                  }
+                },
+                "required": [
+                  "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "memory"
+                  }
+                },
+                "required": [
+                  "image_handle"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "buffer"
+                  }
+                },
+                "required": [
+                  "buffer_ref"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "frame"
+                  }
+                },
+                "required": [
+                  "frame_ref"
+                ]
+              }
+            ]
+          },
+          "source_a_object_key": {
+            "type": "string"
+          },
+          "source_b_object_key": {
+            "type": "string"
+          },
+          "transform_kind": {
+            "type": "string"
+          },
+          "matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "inverse_matrix_3x3": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "match_count": {
+            "type": "integer"
+          },
+          "inlier_count": {
+            "type": "integer"
+          },
+          "inlier_match_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reprojection_error": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "transform_kind",
+          "matrix_3x3",
+          "match_count",
+          "inlier_count",
+          "inlier_match_ids"
+        ]
+      },
+      "artifact_kinds": [],
+      "metadata": {}
+    }
+  ],
+  "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-measure",
+      "display_name": "Circle Measure",
+      "category": "opencv.shape",
+      "description": "围绕参考圆径向采样亚像素边缘，使用 robust circle fitting 输出稳定圆定位和质量诊断。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "reference_circles",
+          "display_name": "Reference Circles",
+          "payload_type_id": "circles.v1",
+          "description": "可选上游参考圆；显式 reference_center_xy/reference_radius_px 优先。",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "reference_center_xy": {
+            "type": "array",
+            "title": "Reference Center",
+            "description": "可选参考圆心原图坐标 [x, y]；可在 Debug 图片页绘制，或改接 Reference Circles 输入。",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          },
+          "reference_radius_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Reference Radius (px)",
+            "description": "可选参考半径；与 Reference Center 同时设置，决定径向测量带的基准。"
+          },
+          "center_tolerance_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 20,
+            "title": "Center Tolerance (px)",
+            "description": "测得圆心相对参考圆心允许的最大原图像素偏移。"
+          },
+          "radius_tolerance_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 10,
+            "title": "Radius Tolerance (px)",
+            "description": "径向采样范围和测得半径相对参考半径的最大允许偏差。"
+          },
+          "radial_sample_count": {
+            "type": "integer",
+            "minimum": 12,
+            "maximum": 720,
+            "default": 180,
+            "title": "Radial Sample Count",
+            "description": "沿 360° 圆周建立的径向灰度剖面数量；越高越稳但耗时增加。"
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "default": 5,
+            "title": "Gradient Threshold",
+            "description": "径向剖面接受边缘的最小梯度幅度；过低易受纹理影响，过高会漏检弱边缘。"
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any",
+            "title": "Edge Polarity",
+            "description": "从圆心向外的边缘灰度方向；已知极性时不要使用 any。"
+          },
+          "robust_loss": {
+            "type": "string",
+            "enum": [
+              "huber",
+              "tukey"
+            ],
+            "default": "huber",
+            "title": "Robust Loss",
+            "description": "Huber 保留更多有效边缘；Tukey 对强离群点抑制更强。"
+          },
+          "ransac_iterations": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256,
+            "default": 64,
+            "title": "RANSAC Iterations",
+            "description": "robust fit 初始化次数；遮挡严重时可增加，但会线性增加拟合耗时。"
+          },
+          "fit_inlier_threshold_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2,
+            "title": "Fit Inlier Threshold (px)",
+            "description": "边缘点到拟合圆的最大内点残差，使用原图像素。"
+          },
+          "minimum_arc_coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5,
+            "title": "Minimum Arc Coverage",
+            "description": "有效边缘覆盖完整圆周的最低比例；遮挡场景可降低，稳定测量应提高。"
+          },
+          "maximum_fit_error_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2,
+            "title": "Maximum Fit Error (px)",
+            "description": "robust fit 允许的最大 RMSE，使用原图像素。"
+          },
+          "processing_max_long_edge_px": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048,
+            "title": "Processing Max Long Edge (px)",
+            "description": "Search ROI 超过该尺寸时等比缩小，结果自动还原到原图坐标。"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "固定搜索区域 [x1, y1, x2, y2]；不会被 Reference Circle 或检测结果覆盖。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.circle-measure",
+        "vision.geometry",
+        "vision.measurement"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contour",
+      "display_name": "Contour",
+      "category": "opencv.shape",
+      "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "integer",
+            "title": "Threshold",
+            "description": "普通 binary 模式下使用的阈值；Otsu 模式会由 OpenCV 自动求阈值。",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 127
+          },
+          "threshold_mode": {
+            "type": "string",
+            "title": "Threshold Mode",
+            "description": "轮廓提取前的二值化方式。",
+            "enum": [
+              "binary",
+              "binary-inverse",
+              "otsu",
+              "otsu-inverse"
+            ],
+            "default": "binary"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "title": "Retrieval Mode",
+            "description": "OpenCV findContours 的轮廓层级检索方式。",
+            "enum": [
+              "external",
+              "list",
+              "tree",
+              "ccomp"
+            ],
+            "default": "external"
+          },
+          "approximation": {
+            "type": "string",
+            "title": "Approximation",
+            "description": "OpenCV findContours 的轮廓点近似方式。",
+            "enum": [
+              "simple",
+              "none",
+              "tc89-l1",
+              "tc89-kcos"
+            ],
+            "default": "simple"
+          },
+          "min_area": {
+            "type": "number",
+            "title": "Min Area",
+            "description": "小于该面积的 contour 会被过滤，单位为像素面积。",
+            "minimum": 0,
+            "default": 0
+          },
+          "max_area": {
+            "type": "number",
+            "title": "Max Area",
+            "description": "大于该面积的 contour 会被过滤；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_width": {
+            "type": "number",
+            "title": "Min Width",
+            "minimum": 0
+          },
+          "max_width": {
+            "type": "number",
+            "title": "Max Width",
+            "minimum": 0
+          },
+          "min_height": {
+            "type": "number",
+            "title": "Min Height",
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "number",
+            "title": "Max Height",
+            "minimum": 0
+          },
+          "min_aspect_ratio": {
+            "type": "number",
+            "title": "Min Aspect Ratio",
+            "minimum": 0
+          },
+          "max_aspect_ratio": {
+            "type": "number",
+            "title": "Max Aspect Ratio",
+            "minimum": 0
+          },
+          "min_rectangularity": {
+            "type": "number",
+            "title": "Min Rectangularity",
+            "description": "contour 面积与外接 bbox 面积的最小比例。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_rectangularity": {
+            "type": "number",
+            "title": "Max Rectangularity",
+            "description": "contour 面积与外接 bbox 面积的最大比例。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_contours": {
+            "type": "integer",
+            "title": "Max Contours",
+            "description": "按面积从大到小稳定排序后最多输出的 contour 数量。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "processing_max_long_edge": {
+            "type": "integer",
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，轮廓坐标和过滤尺寸自动还原到原图坐标。",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour，便于在调试图上点选目标轮廓。"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contour",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contour-approx",
+      "display_name": "Contour Approx",
+      "category": "opencv.shape",
+      "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "epsilon_mode": {
+            "type": "string",
+            "enum": [
+              "perimeter-ratio",
+              "pixels"
+            ],
+            "default": "perimeter-ratio"
+          },
+          "epsilon_value": {
+            "type": "number",
+            "minimum": 0
+          },
+          "closed": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只近似该 contour。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contour-approx",
+        "vision.contour",
+        "vision.shape"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contour-filter",
+      "display_name": "Contour Filter",
+      "category": "opencv.shape",
+      "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "min_area": {
+            "type": "number",
+            "title": "Min Area",
+            "description": "保留面积大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_area": {
+            "type": "number",
+            "title": "Max Area",
+            "description": "保留面积小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_width": {
+            "type": "number",
+            "title": "Min Width",
+            "description": "保留外接 bbox 宽度大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_width": {
+            "type": "number",
+            "title": "Max Width",
+            "description": "保留外接 bbox 宽度小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_height": {
+            "type": "number",
+            "title": "Min Height",
+            "description": "保留外接 bbox 高度大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_height": {
+            "type": "number",
+            "title": "Max Height",
+            "description": "保留外接 bbox 高度小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_aspect_ratio": {
+            "type": "number",
+            "title": "Min Aspect Ratio",
+            "description": "保留外接 bbox 宽高比大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_aspect_ratio": {
+            "type": "number",
+            "title": "Max Aspect Ratio",
+            "description": "保留外接 bbox 宽高比小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "min_rectangularity": {
+            "type": "number",
+            "title": "Min Rectangularity",
+            "description": "保留 contour 面积与外接 bbox 面积比例大于等于该值的 contour。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "max_rectangularity": {
+            "type": "number",
+            "title": "Max Rectangularity",
+            "description": "保留 contour 面积与外接 bbox 面积比例小于等于该值的 contour。",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "min_point_count": {
+            "type": "integer",
+            "title": "Min Points",
+            "description": "保留点数大于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "max_point_count": {
+            "type": "integer",
+            "title": "Max Points",
+            "description": "保留点数小于等于该值的 contour；为空表示不限制。",
+            "minimum": 0
+          },
+          "sort_by": {
+            "type": "string",
+            "title": "Sort By",
+            "description": "过滤后 contour 的排序字段。",
+            "enum": [
+              "contour_index",
+              "point_count",
+              "area",
+              "width",
+              "height",
+              "perimeter",
+              "aspect_ratio",
+              "rectangularity"
+            ],
+            "default": "contour_index"
+          },
+          "descending": {
+            "type": "boolean",
+            "title": "Descending",
+            "description": "启用后按 sort_by 倒序输出。",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Output Limit",
+            "description": "排序后最多输出多少个 contour。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只保留该 contour。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contour-filter",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.contours-to-regions",
+      "display_name": "Contours To Regions",
+      "category": "opencv.shape",
+      "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "regions",
+          "display_name": "Regions",
+          "payload_type_id": "regions.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "region_id_prefix": {
+            "type": "string",
+            "default": "ctr"
+          },
+          "class_id_default": {
+            "type": "integer",
+            "default": -1
+          },
+          "class_name_default": {
+            "type": "string",
+            "default": "contour"
+          },
+          "score_default": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.contours-to-regions",
+        "vision.region",
+        "vision.bridge"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.convex-hull",
+      "display_name": "Convex Hull",
+      "category": "opencv.shape",
+      "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "contour_index",
+              "contour_area",
+              "hull_area",
+              "solidity",
+              "point_count"
+            ]
+          },
+          "descending": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只计算该 contour 的凸包。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.convex-hull",
+        "vision.contour",
+        "vision.shape"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fit-ellipse",
+      "display_name": "Fit Ellipse",
+      "category": "opencv.shape",
+      "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "ellipses",
+          "display_name": "Ellipses",
+          "payload_type_id": "ellipses.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "ellipse_index",
+              "contour_index",
+              "major_axis",
+              "minor_axis",
+              "area",
+              "fill_ratio",
+              "angle_deg",
+              "center_x",
+              "center_y"
+            ],
+            "default": "major_axis"
+          },
+          "descending": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的拟合椭圆。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fit-ellipse",
+        "vision.geometry",
+        "inspection.ellipse"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fit-line",
+      "display_name": "Fit Line",
+      "category": "opencv.shape",
+      "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "distance_type": {
+            "type": "string",
+            "enum": [
+              "l2",
+              "l1",
+              "l12",
+              "fair",
+              "welsch",
+              "huber"
+            ],
+            "default": "l2"
+          },
+          "reps": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.01
+          },
+          "aeps": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0.01
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "line_index",
+              "contour_index",
+              "length_pixels",
+              "angle_deg",
+              "midpoint_x",
+              "midpoint_y"
+            ],
+            "default": "length_pixels"
+          },
+          "descending": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fit-line",
+        "vision.geometry",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.hough-circles",
+      "display_name": "Hough Circles",
+      "category": "opencv.shape",
+      "description": "在 Search ROI 内执行位置无关的工业圆搜索；Reference Circle 只定义目标半径，不固定圆心，并使用径向边缘、robust fitting 和质量门槛过滤伪圆。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "accumulator_resolution_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 4,
+            "default": 1,
+            "title": "Accumulator Resolution Ratio",
+            "description": "圆心累加器相对处理图的降采样比例；1 表示相同分辨率，2 表示宽高各减半。"
+          },
+          "minimum_center_distance_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 20,
+            "title": "Minimum Center Distance (px)",
+            "description": "候选圆心之间允许的最小原图像素距离。"
+          },
+          "canny_high_threshold": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 100,
+            "title": "Canny High Threshold",
+            "description": "Hough Gradient 内部 Canny 的高阈值。"
+          },
+          "center_vote_threshold": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 20,
+            "title": "Center Vote Threshold",
+            "description": "圆心累加器投票阈值；越低候选越多，也更容易出现误检。"
+          },
+          "minimum_radius_px": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "title": "Minimum Radius (px)",
+            "description": "候选圆的最小原图半径；现场尺寸已知时应尽量收紧范围。"
+          },
+          "maximum_radius_px": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "title": "Maximum Radius (px)",
+            "description": "候选圆的最大原图半径；0 表示由 OpenCV 推断，不建议在大图整图搜索时使用。"
+          },
+          "median_blur_kernel_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "default": 5,
+            "title": "Median Blur Kernel Size",
+            "description": "HoughCircles 前的 median blur 奇数核尺寸；1 表示不模糊。"
+          },
+          "reference_radius_px": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Reference Radius (px)",
+            "description": "目标圆的参考半径；仅约束尺寸，不记录取参圆心。0 表示不启用参考半径。"
+          },
+          "radius_tolerance_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 10,
+            "title": "Radius Tolerance (px)",
+            "description": "检测半径相对 Reference Radius 允许的最大原图像素偏差，也是精定位径向搜索带宽。"
+          },
+          "maximum_refinement_center_shift_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 12,
+            "title": "Maximum Refinement Center Shift (px)",
+            "description": "robust fitting 相对每个 Hough 候选圆心允许的最大修正量；不限制目标在 Search ROI 内的整体位置漂移。"
+          },
+          "refine_candidates": {
+            "type": "boolean",
+            "default": true,
+            "title": "Refine Candidates",
+            "description": "沿候选圆径向采样边缘，并使用 robust circle fitting 进行亚像素精定位。"
+          },
+          "edge_polarity": {
+            "type": "string",
+            "enum": [
+              "any",
+              "dark-to-bright",
+              "bright-to-dark"
+            ],
+            "default": "any",
+            "title": "Edge Polarity",
+            "description": "从圆心向外的灰度变化方向；已知目标极性时指定方向可减少误边缘。"
+          },
+          "radial_sample_count": {
+            "type": "integer",
+            "minimum": 12,
+            "maximum": 720,
+            "default": 180,
+            "title": "Radial Sample Count",
+            "description": "每个候选圆沿 360° 建立的径向灰度剖面数量。"
+          },
+          "gradient_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "default": 12,
+            "title": "Gradient Threshold",
+            "description": "精定位接受边缘的最小梯度幅度。"
+          },
+          "robust_loss": {
+            "type": "string",
+            "enum": [
+              "huber",
+              "tukey"
+            ],
+            "default": "huber",
+            "title": "Robust Loss",
+            "description": "robust circle fitting 使用的损失函数；Tukey 对离群点抑制更强。"
+          },
+          "ransac_iterations": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256,
+            "default": 32,
+            "title": "RANSAC Iterations",
+            "description": "精定位 RANSAC 初始化次数；增加会提高复杂遮挡下的稳定性并增加耗时。"
+          },
+          "fit_inlier_threshold_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 2,
+            "title": "Fit Inlier Threshold (px)",
+            "description": "边缘点到拟合圆的最大内点残差，使用原图像素。"
+          },
+          "minimum_arc_coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.55,
+            "title": "Minimum Arc Coverage",
+            "description": "有效边缘覆盖完整圆周的最低比例。"
+          },
+          "minimum_edge_support_ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5,
+            "title": "Minimum Edge Support Ratio",
+            "description": "径向采样中达到梯度阈值的有效边缘比例，用于拒绝只在少量方向偶然成圆的纹理。"
+          },
+          "minimum_polarity_consistency": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.55,
+            "title": "Minimum Polarity Consistency",
+            "description": "圆周边缘灰度变化方向的一致性下限，用于抑制高光、文字和杂乱交叉边缘。"
+          },
+          "minimum_quality_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.35,
+            "title": "Minimum Quality Score",
+            "description": "综合圆弧覆盖、边缘支持、拟合内点、极性、残差和半径匹配后的最低质量分。"
+          },
+          "maximum_fit_error_px": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 3,
+            "title": "Maximum Fit Error (px)",
+            "description": "候选精定位允许的最大 RMSE，使用原图像素。"
+          },
+          "illumination_normalization": {
+            "type": "string",
+            "enum": [
+              "none",
+              "clahe"
+            ],
+            "default": "clahe",
+            "title": "Illumination Normalization",
+            "description": "CLAHE 可在 Search ROI 内减弱不均匀光照影响；纹理被过度增强时可选择 none。"
+          },
+          "clahe_clip_limit": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "default": 2,
+            "title": "CLAHE Clip Limit"
+          },
+          "clahe_tile_grid_size": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 32,
+            "default": 8,
+            "title": "CLAHE Tile Grid Size"
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "circle_index",
+              "radius",
+              "diameter",
+              "area",
+              "center_x",
+              "center_y",
+              "search_center_distance",
+              "reference_radius_deviation",
+              "quality_score"
+            ],
+            "default": "quality_score"
+          },
+          "descending": {
+            "type": "boolean",
+            "default": true
+          },
+          "show_rejected_candidates": {
+            "type": "boolean",
+            "default": false,
+            "title": "Show Rejected Candidates",
+            "description": "仅用于 Debug Preview 显示被质量门槛拒绝的 Hough 原始候选；正式 circles 输出始终不包含这些候选。"
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10,
+            "title": "Result Limit"
+          },
+          "maximum_candidates": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 40,
+            "title": "Maximum Candidates",
+            "description": "进入精定位和质量验证的 Hough 候选上限，防止低阈值在复杂图像上产生无界计算。"
+          },
+          "processing_max_long_edge_px": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048,
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.hough-circles",
+        "vision.geometry",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.hough-lines",
+      "display_name": "Hough Lines",
+      "category": "opencv.shape",
+      "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "ROI",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "input_mode": {
+            "type": "string",
+            "enum": [
+              "auto-canny",
+              "binary-edge"
+            ],
+            "default": "auto-canny",
+            "title": "Input Mode",
+            "description": "auto-canny 会先生成二值边缘；binary-edge 用于已连接 Canny 等边缘图。"
+          },
+          "canny_threshold1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 50,
+            "title": "Canny Threshold 1"
+          },
+          "canny_threshold2": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 255,
+            "default": 150,
+            "title": "Canny Threshold 2"
+          },
+          "rho_resolution": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1
+          },
+          "theta_step_deg": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1
+          },
+          "threshold": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 60
+          },
+          "min_line_length": {
+            "type": "number",
+            "minimum": 0,
+            "default": 20
+          },
+          "max_line_gap": {
+            "type": "number",
+            "minimum": 0,
+            "default": 5
+          },
+          "angle_min_deg": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "title": "Angle Min Deg",
+            "description": "可选线段角度下限，角度范围为 -90 到 90；为空时不限制。"
+          },
+          "angle_max_deg": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "title": "Angle Max Deg",
+            "description": "可选线段角度上限，角度范围为 -90 到 90；为空时不限制。"
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "line_index",
+              "length_pixels",
+              "angle_deg",
+              "midpoint_x",
+              "midpoint_y"
+            ],
+            "default": "length_pixels"
+          },
+          "descending": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10,
+            "title": "Result Limit"
+          },
+          "deduplicate": {
+            "type": "boolean",
+            "default": true,
+            "title": "Deduplicate",
+            "description": "按角度、法向距离和投影区间过滤同一物理直线的重复 Hough 片段。"
+          },
+          "deduplicate_angle_tolerance_deg": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 45,
+            "default": 2,
+            "title": "Deduplicate Angle Tolerance Deg"
+          },
+          "deduplicate_distance_pixels": {
+            "type": "number",
+            "minimum": 0,
+            "default": 8,
+            "title": "Deduplicate Distance Pixels"
+          },
+          "processing_max_long_edge": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 32768,
+            "default": 2048,
+            "title": "Processing Max Long Edge",
+            "description": "算法处理图的最长边；大图会等比缩小，结果坐标自动还原到原图。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "title": "Search ROI",
+            "description": "可选搜索区域 [x1, y1, x2, y2]；为空且未连接 ROI 时使用整张图。",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.hough-lines",
+        "vision.geometry",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.min-area-rect",
+      "display_name": "Min Area Rect",
+      "category": "opencv.shape",
+      "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "rotated_rects",
+          "display_name": "Rotated Rects",
+          "payload_type_id": "rotated-rects.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sort_by": {
+            "type": "string",
+            "title": "Sort By",
+            "description": "输出 rotated rect 前使用的排序字段。",
+            "enum": [
+              "contour_index",
+              "contour_area",
+              "rect_area",
+              "long_side",
+              "short_side",
+              "angle_deg",
+              "fill_ratio"
+            ],
+            "default": "contour_index"
+          },
+          "descending": {
+            "type": "boolean",
+            "title": "Descending",
+            "description": "启用后按 sort_by 倒序输出。",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Output Limit",
+            "description": "排序后最多输出多少个 rotated rect。",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的最小外接旋转矩形。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.min-area-rect",
+        "vision.geometry",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.min-enclosing-circle",
+      "display_name": "Min Enclosing Circle",
+      "category": "opencv.shape",
+      "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "circles",
+          "display_name": "Circles",
+          "payload_type_id": "circles.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "debug_preview",
+          "display_name": "Debug Preview",
+          "payload_type_id": "response-body.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "circle_index",
+              "contour_index",
+              "radius",
+              "diameter",
+              "area",
+              "fill_ratio",
+              "center_x",
+              "center_y"
+            ],
+            "default": "radius"
+          },
+          "descending": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 10
+          },
+          "selected_contour_index": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Selected Contour Index",
+            "description": "可选点选 contour 序号；设置后只输出该 contour 对应的最小外接圆。"
+          },
+          "debug_image_panel_enabled": {
+            "type": "boolean",
+            "title": "显示调试图",
+            "description": "仅编辑 Preview Run 使用；生产 runtime 默认不会生成调试图片。",
+            "default": false
+          },
+          "debug_image_panel_transport_mode": {
+            "type": "string",
+            "title": "调试图返回方式",
+            "description": "storage-ref 会保存为 Preview Run artifact；inline-base64 只适合小图快速调试。",
+            "enum": [
+              "storage-ref",
+              "inline-base64"
+            ],
+            "default": "storage-ref"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.min-enclosing-circle",
+        "vision.geometry",
+        "vision.analysis"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.0",
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

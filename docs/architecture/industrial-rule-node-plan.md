@@ -522,7 +522,7 @@
   - 放置位置：`custom`
   - 作用：在现有 `core.output.http-post` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / core.output.batch-result-summary` 输出的 `summary(value)` 重组为更贴现场的请求体
   - 原因：现场 MES 接口千差万别，这一层不适合塞进 `core.output.*`；第一阶段只做受限通用层，不做“万能 MES 适配器”，厂商或项目专有接口继续通过后续 custom pack 扩展
-  - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/output_mes_http_nodes/` 或等价目录，不与通用 `core.output.http-post` 混写
+  - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/http_nodes/recipes/mes/` 或等价目录，不与通用 `core.output.http-post` 混写
   - 当前状态：第一阶段 pack / specs / catalog / runtime 已落地，当前已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1) + request(value.v1)` 的受限 JSON 回传，以及 `prepared_request` 调试输出
 
 第一阶段输入输出规则：

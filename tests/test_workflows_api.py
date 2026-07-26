@@ -202,7 +202,7 @@ def test_workflow_editor_catalog_and_resource_management_endpoints(tmp_path: Pat
 
         assert node_catalog_response.status_code == 200
         node_catalog_payload = node_catalog_response.json()
-        assert node_catalog_payload["node_pack_manifests"][0]["id"] == "opencv.basic-nodes"
+        assert node_catalog_payload["node_pack_manifests"][0]["id"] == "opencv.nodes"
         assert any(
             item["node_type_id"] == "custom.opencv.draw-detections"
             for item in node_catalog_payload["node_definitions"]
@@ -383,7 +383,7 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
         with client:
             by_node_pack_response = client.get(
                 "/api/v1/workflows/node-catalog",
-                params={"node_pack_id": "opencv.basic-nodes"},
+                params={"node_pack_id": "opencv.nodes"},
                 headers=_build_workflow_read_headers(),
             )
             by_category_response = client.get(
@@ -404,15 +404,15 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
 
         assert by_node_pack_response.status_code == 200
         by_node_pack_payload = by_node_pack_response.json()
-        assert [item["id"] for item in by_node_pack_payload["node_pack_manifests"]] == ["opencv.basic-nodes"]
+        assert [item["id"] for item in by_node_pack_payload["node_pack_manifests"]] == ["opencv.nodes"]
         assert by_node_pack_payload["node_definitions"]
         assert by_node_pack_payload["palette_groups"]
         assert all(
-            item["node_pack_id"] == "opencv.basic-nodes"
+            item["node_pack_id"] == "opencv.nodes"
             for item in by_node_pack_payload["node_definitions"]
         )
         assert all(
-            all(node_item["node_pack_id"] == "opencv.basic-nodes" for node_item in group["node_definitions"])
+            all(node_item["node_pack_id"] == "opencv.nodes" for node_item in group["node_definitions"])
             for group in by_node_pack_payload["palette_groups"]
         )
         assert any(
@@ -475,11 +475,11 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
                 headers=_build_workflow_read_headers(),
             )
             logs_response = client.get(
-                "/api/v1/workflows/node-packs/opencv.basic-nodes/logs",
+                "/api/v1/workflows/node-packs/opencv.nodes/logs",
                 headers=_build_workflow_read_headers(),
             )
             validate_response = client.post(
-                "/api/v1/workflows/node-packs/opencv.basic-nodes/validate",
+                "/api/v1/workflows/node-packs/opencv.nodes/validate",
                 headers=_build_workflow_read_headers(),
             )
             reload_response = client.post(
@@ -487,22 +487,22 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
                 headers=_build_workflow_write_headers(),
             )
             disable_response = client.post(
-                "/api/v1/workflows/node-packs/opencv.basic-nodes/disable",
+                "/api/v1/workflows/node-packs/opencv.nodes/disable",
                 headers=_build_workflow_write_headers(),
             )
             catalog_after_disable_response = client.get(
                 "/api/v1/workflows/node-catalog",
-                params={"node_pack_id": "opencv.basic-nodes"},
+                params={"node_pack_id": "opencv.nodes"},
                 headers=_build_workflow_read_headers(),
             )
             enable_response = client.post(
-                "/api/v1/workflows/node-packs/opencv.basic-nodes/enable",
+                "/api/v1/workflows/node-packs/opencv.nodes/enable",
                 headers=_build_workflow_write_headers(),
             )
 
         assert status_response.status_code == 200
         status_payload = status_response.json()
-        status_item = _find_node_pack_status_item(status_payload, "opencv.basic-nodes")
+        status_item = _find_node_pack_status_item(status_payload, "opencv.nodes")
         assert status_item["state"] == "loaded"
         assert status_item["enabled"] is True
         assert status_item["source_dir"]
@@ -516,19 +516,19 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
         assert logs_response.json()[0]["message"] == "节点包状态正常"
 
         assert validate_response.status_code == 200
-        assert _find_node_pack_status_item(validate_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+        assert _find_node_pack_status_item(validate_response.json(), "opencv.nodes")["state"] == "loaded"
 
         assert reload_response.status_code == 200
-        assert _find_node_pack_status_item(reload_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+        assert _find_node_pack_status_item(reload_response.json(), "opencv.nodes")["state"] == "loaded"
 
         assert disable_response.status_code == 200
-        assert _find_node_pack_status_item(disable_response.json(), "opencv.basic-nodes")["state"] == "disabled"
+        assert _find_node_pack_status_item(disable_response.json(), "opencv.nodes")["state"] == "disabled"
 
         assert catalog_after_disable_response.status_code == 200
         assert catalog_after_disable_response.json()["node_definitions"] == []
 
         assert enable_response.status_code == 200
-        assert _find_node_pack_status_item(enable_response.json(), "opencv.basic-nodes")["state"] == "loaded"
+        assert _find_node_pack_status_item(enable_response.json(), "opencv.nodes")["state"] == "loaded"
     finally:
         session_factory.engine.dispose()
 
@@ -769,7 +769,7 @@ def register(context):
     )
     manifest_payload = {
         "format_id": "amvision.node-pack-manifest.v1",
-        "id": "opencv.basic-nodes",
+        "id": "opencv.nodes",
         "version": "0.1.0",
         "displayName": "OpenCV Basic Nodes",
         "description": "测试用 OpenCV workflow 节点包。",
@@ -822,7 +822,7 @@ def register(context):
                 },
                 "capability_tags": ["opencv.draw", "vision.render", "result.aggregate"],
                 "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
-                "node_pack_id": "opencv.basic-nodes",
+                "node_pack_id": "opencv.nodes",
                 "node_pack_version": "0.1.0",
             }
         ],

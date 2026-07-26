@@ -7,6 +7,7 @@
 ## 当前文档
 
 - [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)：node pack manifest、capability、permission scope 和兼容性规范
+- [docs/architecture/node-taxonomy.md](../architecture/node-taxonomy.md)：node pack 边界、包内 categories/providers/recipes、core 分类和兼容迁移规则
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)：节点扩展 trigger、hook、完成回调和数据上报规范
 - [docs/nodes/opencv-circle-nodes.md](opencv-circle-nodes.md)：Hough Circles、Circle Measure 和四圆角点组合的职责、参数与调试方法
 - [docs/nodes/examples/example.simple-node-pack.manifest.json](examples/example.simple-node-pack.manifest.json)：简单节点包可直接复制的 manifest 示例

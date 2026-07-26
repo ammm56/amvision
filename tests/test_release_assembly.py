@@ -54,14 +54,10 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
             release_assembly.REPOSITORY_ROOT / document_name
         ).read_bytes()
     assert (release_dir / "app" / "requirements.txt").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_geometry_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_matching_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "runtime" / "images.py").is_file()
-    assert (release_dir / "custom_nodes" / "_opencv_shared" / "workflow" / "payload_contracts.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry").is_dir()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").is_file()
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
@@ -360,14 +356,10 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     assert marker_file.read_text(encoding="utf-8") == "keep"
     assert not stale_file.exists()
     assert (release_dir / "app" / "backend").is_dir()
-    assert (release_dir / "custom_nodes" / "opencv_basic_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_geometry_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_measurement_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_shape_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_defect_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_matching_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "_opencv_shared" / "backend" / "runtime" / "images.py").is_file()
-    assert (release_dir / "custom_nodes" / "_opencv_shared" / "workflow" / "payload_contracts.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "manifest.json").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry").is_dir()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").is_file()
+    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").is_file()
 
 
 def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
@@ -510,43 +502,18 @@ def _patch_release_runtime_asset_sources(
     """用轻量测试目录替换 release 组装使用的运行期资产源目录。"""
 
     source_custom_nodes_dir = tmp_path / "source-custom-nodes"
-    (source_custom_nodes_dir / "opencv_basic_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_basic_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.basic-nodes"}\n',
+    (source_custom_nodes_dir / "opencv_nodes" / "categories" / "geometry").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_nodes" / "manifest.json").write_text(
+        '{"id": "opencv.nodes"}\n',
         encoding="utf-8",
     )
-    (source_custom_nodes_dir / "opencv_geometry_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_geometry_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.geometry-nodes"}\n',
-        encoding="utf-8",
-    )
-    (source_custom_nodes_dir / "opencv_measurement_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_measurement_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.measurement-nodes"}\n',
-        encoding="utf-8",
-    )
-    (source_custom_nodes_dir / "opencv_shape_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_shape_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.shape-nodes"}\n',
-        encoding="utf-8",
-    )
-    (source_custom_nodes_dir / "opencv_defect_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_defect_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.defect-nodes"}\n',
-        encoding="utf-8",
-    )
-    (source_custom_nodes_dir / "opencv_matching_nodes").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_matching_nodes" / "manifest.json").write_text(
-        '{"id": "opencv.matching-nodes"}\n',
-        encoding="utf-8",
-    )
-    (source_custom_nodes_dir / "_opencv_shared" / "backend" / "runtime").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "_opencv_shared" / "backend" / "runtime" / "images.py").write_text(
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "backend" / "runtime").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").write_text(
         '"""shared image runtime"""\n',
         encoding="utf-8",
     )
-    (source_custom_nodes_dir / "_opencv_shared" / "workflow").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "_opencv_shared" / "workflow" / "payload_contracts.json").write_text(
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "workflow").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").write_text(
         "{}\n",
         encoding="utf-8",
     )

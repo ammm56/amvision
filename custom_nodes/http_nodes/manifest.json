@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "http.nodes",
+  "version": "0.2.0",
+  "displayName": "HTTP Nodes",
+  "description": "提供通用 HTTP 请求、鉴权、查询参数、JSON 映射和响应处理能力；业务系统提交属于 recipes。",
+  "category": "integration",
+  "categoryRoot": "http",
+  "implementationLayout": "recipes",
+  "migrationAliases": ["output.mes-http-nodes"],
+  "capabilities": [
+    "pipeline.node",
+    "integration.http",
+    "integration.http.request",
+    "integration.output"
+  ],
+  "permissionScopes": [
+    "integration.endpoint.invoke"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.http_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "categoryRoot": "http",
+    "recipeLayout": "recipes/<recipe>",
+    "implementedRecipes": ["mes"]
+  }
+}

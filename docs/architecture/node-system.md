@@ -4,6 +4,9 @@
 
 本文档用于说明平台节点系统的位置、边界、类型、生命周期，以及它和节点编辑器的关系。
 
+node pack 的拆分标准、包内目录、core 分类和兼容迁移统一见
+[节点包边界和节点分类](node-taxonomy.md)。
+
 本文档主要回答两个问题：哪些能力保留在核心平台，哪些能力通过 node pack 扩展；custom nodes 如何向 ComfyUI 的扩展体验靠拢，同时保持工业现场需要的版本、权限、超时、禁用和回滚约束。
 
 ## 设计目标
@@ -79,7 +82,7 @@
 - 当外部事件到达后，bridge 应优先创建 WorkflowRun 并交给 runtime instance 执行，而不是让 workflow 首节点长期空转轮询外部世界
 - 这类扩展应声明独立 capability、timeout、外部依赖、去抖策略、幂等键来源和启停方式，保证现场长期运行时的可控性和可审计性
 
-## node pack 目录结构建议
+## node pack 目录结构
 
 ```text
 custom_nodes/
@@ -89,6 +92,7 @@ custom_nodes/
    │  └─ entry.py
    ├─ workflow/
    │  └─ catalog.json
+   ├─ categories/ | providers/ | recipes/
    ├─ schemas/
    │  ├─ config/
    │  ├─ inputs/
@@ -97,6 +101,10 @@ custom_nodes/
    ├─ assets/
    └─ docs/
 ```
+
+一个技术域只保留一个一级 node pack。功能分类放 `categories`，实现后端放
+`providers`，业务配置场景放 `recipes`。OpenCV basic、geometry、measurement，
+USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默认拆分依据。
 
 ## manifest 最低要求
 

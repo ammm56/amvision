@@ -178,7 +178,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             },
             capability_tags=("opencv.draw", "vision.render", "result.aggregate"),
             runtime_requirements={"python_packages": ["opencv-python", "numpy"]},
-            node_pack_id="opencv.basic-nodes",
+            node_pack_id="opencv.nodes",
             node_pack_version="0.1.0",
         ),
     )
@@ -310,7 +310,7 @@ def test_workflow_contracts_roundtrip_and_binding_validation() -> None:
     restored_application = FlowApplication.model_validate_json(flow_application.model_dump_json())
 
     assert restored_contract.payload_type_id == "image-ref.v1"
-    assert restored_definition.node_pack_id == "opencv.basic-nodes"
+    assert restored_definition.node_pack_id == "opencv.nodes"
     assert restored_definition.runtime_requirements["python_packages"] == ["opencv-python", "numpy"]
     assert restored_template.nodes[1].parameters["score_threshold"] == 0.3
     assert restored_application.bindings[0].binding_kind == "api-request"

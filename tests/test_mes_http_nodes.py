@@ -11,8 +11,8 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from custom_nodes.output_mes_http_nodes.backend.nodes import mes_http_post
-import custom_nodes.output_mes_http_nodes.backend.runtime.execution as mes_http_runtime
+from custom_nodes.http_nodes.recipes.mes.backend.nodes import mes_http_post
+import custom_nodes.http_nodes.recipes.mes.backend.runtime.execution as mes_http_runtime
 
 
 def test_mes_http_post_builds_request_from_result_and_request_context(

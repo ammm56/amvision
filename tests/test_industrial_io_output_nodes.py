@@ -31,14 +31,14 @@ from backend.nodes.core_nodes.io.directory.directory_scan import _directory_scan
 from backend.nodes.core_nodes.io.local.image_list_local import _image_list_local_handler
 from backend.nodes.core_nodes.io.local.image_load_local import _image_load_local_handler
 from backend.nodes.core_nodes.io.local.json_load_local import _json_load_local_handler
-from backend.nodes.core_nodes.output.batch_record import _batch_record_handler
-from backend.nodes.core_nodes.output.batch_result_summary import (
+from backend.nodes.core_nodes.io.output.records.batch_record import _batch_record_handler
+from backend.nodes.core_nodes.io.output.records.batch_result_summary import (
     _batch_result_summary_handler,
 )
-from backend.nodes.core_nodes.output.csv_append_local import _csv_append_local_handler
-from backend.nodes.core_nodes.output.http_post import _http_post_handler
-from backend.nodes.core_nodes.output.json_save_local import _json_save_local_handler
-from backend.nodes.core_nodes.output.workflow_result import _workflow_result_handler
+from backend.nodes.core_nodes.io.output.storage.csv_append_local import _csv_append_local_handler
+from backend.nodes.core_nodes.io.output.http.http_post import _http_post_handler
+from backend.nodes.core_nodes.io.output.storage.json_save_local import _json_save_local_handler
+from backend.nodes.core_nodes.io.output.records.workflow_result import _workflow_result_handler
 from backend.nodes.runtime_support import require_execution_image_registry
 from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
 from backend.service.application.workflows.graph_executor import (
@@ -200,7 +200,7 @@ def test_http_post_handler_posts_json_and_returns_summary(monkeypatch: object) -
             request=request,
         )
 
-    monkeypatch.setattr("backend.nodes.core_nodes.output.http_post._send_http_request", _fake_request)
+    monkeypatch.setattr("backend.nodes.core_nodes.io.output.http.http_post._send_http_request", _fake_request)
 
     output = _http_post_handler(
         WorkflowNodeExecutionRequest(
@@ -231,7 +231,7 @@ def test_http_post_handler_maps_timeout_to_operation_timeout(
         raise httpx.TimeoutException("timeout")
 
     monkeypatch.setattr(
-        "backend.nodes.core_nodes.output.http_post._send_http_request",
+        "backend.nodes.core_nodes.io.output.http.http_post._send_http_request",
         _fake_request,
     )
 

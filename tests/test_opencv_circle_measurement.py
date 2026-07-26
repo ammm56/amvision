@@ -6,15 +6,15 @@ import cv2
 import numpy as np
 import pytest
 
-from custom_nodes._opencv_shared.backend.runtime.circle_measurement import (
+from custom_nodes.opencv_nodes.shared.backend.runtime.circle_measurement import (
     fit_circle_robust,
     sample_radial_edges,
 )
-from custom_nodes._opencv_shared.backend.runtime.search_roi import (
+from custom_nodes.opencv_nodes.shared.backend.runtime.search_roi import (
     ResolvedSearchRoi,
     build_search_roi_overlay,
 )
-from custom_nodes.opencv_shape_nodes.backend.nodes.hough_circles import (
+from custom_nodes.opencv_nodes.categories.shape.backend.nodes.hough_circles import (
     _build_circle_interaction,
 )
 

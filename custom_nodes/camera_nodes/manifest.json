@@ -1,0 +1,38 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "camera.nodes",
+  "version": "0.2.0",
+  "displayName": "Camera Nodes",
+  "description": "提供统一的相机发现、会话、采图、参数和流式读取节点；设备差异在 providers 目录内隔离。",
+  "category": "integration",
+  "categoryRoot": "camera",
+  "implementationLayout": "providers",
+  "migrationAliases": ["camera.usb-uvc-nodes"],
+  "capabilities": [
+    "pipeline.node",
+    "integration.camera",
+    "integration.camera.usb-uvc",
+    "vision.image-input"
+  ],
+  "permissionScopes": [
+    "objectstore.write.ref"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.camera_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "categoryRoot": "camera",
+    "providerLayout": "providers/<provider>",
+    "implementedProviders": ["usb-uvc"],
+    "plannedProviders": ["hikvision-mvs"]
+  }
+}

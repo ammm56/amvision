@@ -1,0 +1,37 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "database.nodes",
+  "version": "0.2.0",
+  "displayName": "Database Nodes",
+  "description": "提供统一的数据库节点；SQL 与 key-value 实现在 providers 目录内按后端隔离。",
+  "category": "integration",
+  "categoryRoot": "database",
+  "implementationLayout": "providers",
+  "migrationAliases": ["output.local-db-nodes"],
+  "capabilities": [
+    "pipeline.node",
+    "integration.database",
+    "integration.database.sql",
+    "integration.database.upsert"
+  ],
+  "permissionScopes": [],
+  "entrypoints": {
+    "backend": "custom_nodes.database_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 30
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "categoryRoot": "database",
+    "providerLayout": "providers/<provider>",
+    "implementedProviders": ["sql"],
+    "sqlDialects": ["sqlite", "mysql", "postgresql"],
+    "plannedProviders": ["redis"]
+  }
+}

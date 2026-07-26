@@ -7,13 +7,13 @@ import numpy as np
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
-from custom_nodes._opencv_shared.backend.runtime.performance import (
+from custom_nodes.opencv_nodes.shared.backend.runtime.performance import (
     DEFAULT_FIND_RESULT_LIMIT,
     build_processing_image,
     read_find_result_limit,
     require_bounded_circle_search,
 )
-from custom_nodes.opencv_shape_nodes.backend.nodes.hough_lines import _deduplicate_lines
+from custom_nodes.opencv_nodes.categories.shape.backend.nodes.hough_lines import _deduplicate_lines
 
 
 def test_find_result_limit_uses_bounded_default_and_rejects_unlimited_values() -> None:
