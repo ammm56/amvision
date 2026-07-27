@@ -55,7 +55,7 @@
               <th>{{ t('workflowEditor.columns.bindings') }}</th>
               <th>{{ t('workflowEditor.columns.runtime') }}</th>
               <th>{{ t('workflowEditor.columns.updatedAt') }}</th>
-              <th>{{ t('workflowEditor.columns.actions') }}</th>
+              <th class="workflow-app-list__actions-column">{{ t('workflowEditor.columns.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -74,7 +74,7 @@
                 <span v-else>{{ t('common.none') }}</span>
               </td>
               <td>{{ formatSystemDateTime(workflowApp.application.updated_at) }}</td>
-              <td>
+              <td class="workflow-app-list__actions-column">
                 <div class="table-actions table-actions--wrap workflow-app-list__actions">
                   <Button
                     size="sm"
@@ -311,6 +311,11 @@ watch(
 .workflow-app-list__actions {
   align-items: center;
   gap: 6px;
+  justify-content: flex-end;
+}
+
+.workflow-app-list__actions-column {
+  text-align: right;
 }
 
 .workflow-app-list__pagination {

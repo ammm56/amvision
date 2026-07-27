@@ -12,10 +12,7 @@
     @contextmenu.prevent.stop
   >
     <header class="workflow-node-picker__header">
-      <div>
-        <p>{{ displayTitle }}</p>
-        <h2>{{ connectionLabel }}</h2>
-      </div>
+      <h2>{{ connectionLabel }}</h2>
       <button type="button" class="workflow-node-picker__close" :title="t('workflowEditor.nodePicker.close')" :aria-label="t('workflowEditor.nodePicker.close')" @click="emit('close')">
         <X :size="15" />
       </button>

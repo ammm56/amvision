@@ -3890,15 +3890,8 @@ textarea:focus-visible {
   gap: 12px;
 }
 
-.workflow-node-picker__header p,
 .workflow-node-picker__header h2 {
   margin: 0;
-}
-
-.workflow-node-picker__header p {
-  color: var(--graph-muted);
-  font-size: 12px;
-  text-transform: uppercase;
 }
 
 .workflow-node-picker__header h2 {
@@ -3944,9 +3937,16 @@ textarea:focus-visible {
   min-width: 0;
   border: 0;
   outline: 0;
+  box-shadow: none;
   color: var(--graph-text-strong);
   background: transparent;
   font: inherit;
+}
+
+.workflow-node-picker__search input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
+  border-color: transparent;
+  outline: 0;
+  box-shadow: none;
 }
 
 .workflow-node-picker__body {
