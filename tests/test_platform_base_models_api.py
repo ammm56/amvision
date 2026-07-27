@@ -46,7 +46,10 @@ def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) 
         assert [item["model_id"] for item in payload] == platform_model_ids
         assert all(item["scope_kind"] == "platform-base" for item in payload)
         assert all(item["project_id"] is None for item in payload)
-        assert payload[0]["available_versions"][0]["model_version_id"] == "model-version-pretrained-yolox-nano"
+        assert (
+            payload[0]["available_versions"][0]["model_version_id"]
+            == "model-version-pretrained-yolox-nano"
+        )
         assert payload[1]["available_versions"][0]["checkpoint_storage_uri"] == (
             "models/pretrained/yolox/detection/s/default/checkpoints/yolox_s.pth"
         )
@@ -54,7 +57,9 @@ def test_list_platform_base_models_returns_only_platform_models(tmp_path: Path) 
         session_factory.engine.dispose()
 
 
-def test_get_platform_base_model_detail_returns_versions_and_files(tmp_path: Path) -> None:
+def test_get_platform_base_model_detail_returns_versions_and_files(
+    tmp_path: Path,
+) -> None:
     """验证平台基础模型详情接口会返回版本和文件明细。"""
 
     client, session_factory = _create_test_client(tmp_path)
@@ -72,7 +77,10 @@ def test_get_platform_base_model_detail_returns_versions_and_files(tmp_path: Pat
         assert payload["project_id"] is None
         assert payload["version_count"] == 1
         assert payload["build_count"] == 0
-        assert payload["versions"][0]["model_version_id"] == "model-version-pretrained-yolox-nano"
+        assert (
+            payload["versions"][0]["model_version_id"]
+            == "model-version-pretrained-yolox-nano"
+        )
         assert payload["versions"][0]["catalog_manifest_object_key"] == (
             "models/pretrained/yolox/detection/nano/default/manifest.json"
         )
@@ -82,11 +90,15 @@ def test_get_platform_base_model_detail_returns_versions_and_files(tmp_path: Pat
         session_factory.engine.dispose()
 
 
-def test_get_platform_base_model_detail_rejects_project_model_id(tmp_path: Path) -> None:
+def test_get_platform_base_model_detail_rejects_project_model_id(
+    tmp_path: Path,
+) -> None:
     """验证平台基础模型详情接口不会暴露 Project 内模型。"""
 
     client, session_factory = _create_test_client(tmp_path)
-    _platform_model_ids, project_model_id = _seed_platform_and_project_models(session_factory, include_project_model=True)
+    _platform_model_ids, project_model_id = _seed_platform_and_project_models(
+        session_factory, include_project_model=True
+    )
     try:
         with client:
             response = client.get(
@@ -126,7 +138,9 @@ def test_list_platform_base_models_requires_models_read_scope(tmp_path: Path) ->
         session_factory.engine.dispose()
 
 
-def test_deployment_source_models_include_project_training_builds(tmp_path: Path) -> None:
+def test_deployment_source_models_include_project_training_builds(
+    tmp_path: Path,
+) -> None:
     """验证部署来源接口会返回当前 Project 的训练版本和转换 build。"""
 
     client, session_factory = _create_test_client(tmp_path)
@@ -141,10 +155,15 @@ def test_deployment_source_models_include_project_training_builds(tmp_path: Path
             dataset_version_id="dataset-version-deployable",
             checkpoint_file_id="model-file-project-yolox-m-checkpoint",
             checkpoint_file_uri="task-runs/training/task-2/artifacts/checkpoints/best_ckpt.pth",
-            metadata={"dataset_export_id": "dataset-export-deployable"},
+            metadata={
+                "dataset_export_id": "dataset-export-deployable",
+                "input_size": {"width": 640, "height": 640},
+            },
         )
     )
-    project_model = service.get_model(service.get_model_version(project_version_id).model_id)
+    project_model = service.get_model(
+        service.get_model_version(project_version_id).model_id
+    )
     project_build_id = service.register_build(
         ModelBuildRegistration(
             project_id="project-1",
@@ -180,7 +199,9 @@ def test_deployment_source_models_include_project_training_builds(tmp_path: Path
 
             assert detail_response.status_code == 200
             detail_payload = detail_response.json()
-            assert detail_payload["versions"][0]["model_version_id"] == project_version_id
+            assert (
+                detail_payload["versions"][0]["model_version_id"] == project_version_id
+            )
             assert detail_payload["builds"][0]["model_build_id"] == project_build_id
             assert detail_payload["builds"][0]["build_format"] == "onnx"
             assert detail_payload["builds"][0]["runtime_backend"] == "onnxruntime"
@@ -198,7 +219,9 @@ def test_deployment_source_models_include_project_training_builds(tmp_path: Path
         session_factory.engine.dispose()
 
 
-def test_yolo_model_pretrained_manifest_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
+def test_yolo_model_pretrained_manifest_rejects_inconsistent_model_version_id(
+    tmp_path: Path,
+) -> None:
     """验证 YOLO 主线预训练 manifest 不会静默接受错误版本 id。"""
 
     manifest_path, dataset_storage = _write_yolo_model_manifest(
@@ -218,7 +241,9 @@ def test_yolo_model_pretrained_manifest_rejects_inconsistent_model_version_id(tm
         raise AssertionError("错误的 model_version_id 应该被拒绝")
 
 
-def test_yolo_model_pretrained_manifest_accepts_variant_model_version_id(tmp_path: Path) -> None:
+def test_yolo_model_pretrained_manifest_accepts_variant_model_version_id(
+    tmp_path: Path,
+) -> None:
     """验证 YOLO 主线预训练 manifest 允许使用 variant 后缀区分版本。"""
 
     manifest_path, dataset_storage = _write_yolo_model_manifest(
@@ -294,10 +319,15 @@ def _seed_platform_and_project_models(
             dataset_version_id="dataset-version-1",
             checkpoint_file_id="model-file-project-yolox-nano-checkpoint",
             checkpoint_file_uri="task-runs/training/task-1/artifacts/checkpoints/best_ckpt.pth",
-            metadata={"dataset_export_id": "dataset-export-1"},
+            metadata={
+                "dataset_export_id": "dataset-export-1",
+                "input_size": {"width": 640, "height": 640},
+            },
         )
     )
-    project_model = service.get_model(service.get_model_version(project_version_id).model_id)
+    project_model = service.get_model(
+        service.get_model_version(project_version_id).model_id
+    )
     return platform_model_ids, project_model.model_id
 
 
@@ -324,8 +354,18 @@ def _write_yolo_model_manifest(
 ) -> tuple[Path, LocalDatasetStorage]:
     """写入一个最小 YOLO 主线预训练 manifest。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
-    manifest_dir = dataset_storage.root_dir / "models" / "pretrained" / "yolov8" / "detection" / "nano" / "default"
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    manifest_dir = (
+        dataset_storage.root_dir
+        / "models"
+        / "pretrained"
+        / "yolov8"
+        / "detection"
+        / "nano"
+        / "default"
+    )
     checkpoint_path = manifest_dir / "checkpoints" / "yolov8n.pt"
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path.write_bytes(b"fake-checkpoint")

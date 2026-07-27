@@ -24,9 +24,13 @@ from backend.service.application.runtime.tasks.segmentation_model_runtime import
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 @dataclass(frozen=True)
@@ -38,7 +42,18 @@ class SegmentationEvaluationRequest:
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
     mask_threshold: float = 0.5
-    iou_thresholds: tuple[float, ...] = (0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95)
+    iou_thresholds: tuple[float, ...] = (
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+    )
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -67,11 +82,18 @@ def run_segmentation_evaluation(
     manifest = request.manifest_payload
     runtime_target = request.runtime_target
 
-    split_name, samples, label_names = _parse_segmentation_manifest(manifest, dataset_storage)
+    split_name, samples, label_names = _parse_segmentation_manifest(
+        manifest, dataset_storage
+    )
     if not samples:
         return SegmentationEvaluationResult(
-            split_name=split_name, sample_count=0, duration_seconds=0.0,
-            map50=0.0, map50_95=0.0, mask_map50=0.0, mask_map50_95=0.0,
+            split_name=split_name,
+            sample_count=0,
+            duration_seconds=0.0,
+            map50=0.0,
+            map50_95=0.0,
+            mask_map50=0.0,
+            mask_map50_95=0.0,
         )
 
     runtime = DefaultSegmentationModelRuntime()
@@ -81,6 +103,31 @@ def run_segmentation_evaluation(
             runtime_target=runtime_target,
         )
     )
+    try:
+        return _run_segmentation_evaluation_with_session(
+            request=request,
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            split_name=split_name,
+            samples=samples,
+            label_names=label_names,
+            session=session,
+        )
+    finally:
+        session.close()
+
+
+def _run_segmentation_evaluation_with_session(
+    *,
+    request: SegmentationEvaluationRequest,
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    split_name: str,
+    samples: list[dict[str, object]],
+    label_names: tuple[str, ...],
+    session: RuntimeSessionLease,
+) -> SegmentationEvaluationResult:
+    """在受控 runtime session 内计算 segmentation 指标。"""
 
     started = time.monotonic()
     gt_bbox_items: list[dict[str, object]] = []
@@ -95,7 +142,10 @@ def run_segmentation_evaluation(
         gt_annotations = sample.get("annotations", [])
         resolved = dataset_storage.resolve(image_path) if image_path else None
         if resolved is None or not resolved.is_file():
-            continue
+            raise InvalidRequestError(
+                "segmentation 评估样本文件不存在",
+                details={"image_path": str(image_path)},
+            )
 
         image_bytes = resolved.read_bytes()
         pred_request = SegmentationPredictionRequest(
@@ -104,10 +154,7 @@ def run_segmentation_evaluation(
             save_result_image=False,
             input_image_bytes=image_bytes,
         )
-        try:
-            result = session.predict(pred_request)
-        except Exception:
-            continue
+        result = session.predict(pred_request)
 
         image_width = int(result.image_width)
         image_height = int(result.image_height)
@@ -161,13 +208,15 @@ def run_segmentation_evaluation(
                     },
                 )
 
-        predictions_out.append({
-            "image_index": img_idx,
-            "image_path": str(image_path),
-            "gt_count": len(gt_annotations),
-            "pred_count": len(result.instances),
-            "latency_ms": result.latency_ms,
-        })
+        predictions_out.append(
+            {
+                "image_index": img_idx,
+                "image_path": str(image_path),
+                "gt_count": len(gt_annotations),
+                "pred_count": len(result.instances),
+                "latency_ms": result.latency_ms,
+            }
+        )
 
     duration = time.monotonic() - started
     total_images = len(predictions_out)
@@ -209,13 +258,17 @@ def run_segmentation_evaluation(
         "per_class_metrics": per_class_metrics,
     }
 
-    session.close()
     return SegmentationEvaluationResult(
-        split_name=split_name, sample_count=total_images, duration_seconds=duration,
-        map50=bbox_metrics.ap50, map50_95=bbox_metrics.ap50_95,
-        mask_map50=mask_metrics.ap50, mask_map50_95=mask_metrics.ap50_95,
+        split_name=split_name,
+        sample_count=total_images,
+        duration_seconds=duration,
+        map50=bbox_metrics.ap50,
+        map50_95=bbox_metrics.ap50_95,
+        mask_map50=mask_metrics.ap50,
+        mask_map50_95=mask_metrics.ap50_95,
         per_class_metrics=per_class_metrics,
-        report_payload=report, predictions_payload=predictions_out,
+        report_payload=report,
+        predictions_payload=predictions_out,
     )
 
 
@@ -226,7 +279,7 @@ def _parse_segmentation_manifest(
     """解析 segmentation manifest。"""
     splits = manifest.get("splits", [])
     chosen_split: dict[str, object] | None = None
-    for split in (splits or []):
+    for split in splits or []:
         if not isinstance(split, dict):
             continue
         name = str(split.get("name", "")).lower()
@@ -255,7 +308,13 @@ def _parse_segmentation_manifest(
             for category in categories
             if isinstance(category, dict)
         )
-        return split_name, _build_segmentation_samples(image_root=image_root, payload=annotation_payload), label_names
+        return (
+            split_name,
+            _build_segmentation_samples(
+                image_root=image_root, payload=annotation_payload
+            ),
+            label_names,
+        )
     if label_root:
         category_names = normalize_yolo_category_names(
             category_names=manifest.get("category_names"),
@@ -279,10 +338,20 @@ def _parse_segmentation_manifest(
             label_root=label_root_path,
             category_names=category_names,
         )
-        return split_name, _build_segmentation_samples(image_root=image_root, payload=payload), category_names
+        return (
+            split_name,
+            _build_segmentation_samples(image_root=image_root, payload=payload),
+            category_names,
+        )
     categories = manifest.get("categories", [])
-    label_names = tuple(str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict))
-    return split_name, _build_segmentation_samples(image_root=image_root, payload=chosen_split), label_names
+    label_names = tuple(
+        str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict)
+    )
+    return (
+        split_name,
+        _build_segmentation_samples(image_root=image_root, payload=chosen_split),
+        label_names,
+    )
 
 
 def _build_segmentation_samples(
@@ -293,12 +362,12 @@ def _build_segmentation_samples(
     """把 COCO 风格 images/annotations 组装成评估样本列表。"""
 
     images_by_id: dict[int, str] = {}
-    for img in (payload.get("images") or []):
+    for img in payload.get("images") or []:
         if isinstance(img, dict):
             images_by_id[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
     anns_by_image: dict[int, list[dict]] = {}
-    for ann in (payload.get("annotations") or []):
+    for ann in payload.get("annotations") or []:
         if isinstance(ann, dict):
             img_id = int(ann.get("image_id", -1))
             anns_by_image.setdefault(img_id, []).append(ann)
@@ -306,10 +375,12 @@ def _build_segmentation_samples(
     samples: list[dict[str, object]] = []
     for img_id, file_name in images_by_id.items():
         full_path = f"{image_root}/{file_name}" if image_root else file_name
-        samples.append({
-            "image_path": full_path,
-            "annotations": anns_by_image.get(img_id, []),
-        })
+        samples.append(
+            {
+                "image_path": full_path,
+                "annotations": anns_by_image.get(img_id, []),
+            }
+        )
     return samples
 
 
@@ -352,7 +423,9 @@ def _build_segmentation_instance_mask(
     return _rasterize_polygons(polygons=polygons, width=width, height=height)
 
 
-def _normalize_segmentation_polygons(segmentation: object) -> list[list[tuple[float, float]]]:
+def _normalize_segmentation_polygons(
+    segmentation: object,
+) -> list[list[tuple[float, float]]]:
     """归一化 COCO polygon segmentation。"""
 
     polygons: list[list[tuple[float, float]]] = []
@@ -373,7 +446,9 @@ def _normalize_segmentation_polygons(segmentation: object) -> list[list[tuple[fl
     return polygons
 
 
-def _rasterize_polygons(*, polygons: list[list[tuple[float, float]]], width: int, height: int):
+def _rasterize_polygons(
+    *, polygons: list[list[tuple[float, float]]], width: int, height: int
+):
     """用 Pillow 把 polygon 列表栅格化为 NumPy bool mask。"""
 
     from PIL import Image, ImageDraw
@@ -408,9 +483,7 @@ def _merge_segmentation_per_class_metrics(
     """合并 bbox AP 和 mask AP 的 per-class 摘要。"""
 
     mask_by_category = {
-        int(item["category_id"]): item
-        for item in mask_metrics
-        if "category_id" in item
+        int(item["category_id"]): item for item in mask_metrics if "category_id" in item
     }
     merged: list[dict[str, object]] = []
     for bbox_item in bbox_metrics:

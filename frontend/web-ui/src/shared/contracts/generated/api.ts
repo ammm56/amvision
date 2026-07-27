@@ -59,6 +59,7 @@ export interface SystemCapabilities {
   }
   project_summary_topics?: string[]
   platform_model_types_by_task_type?: Record<string, string[]>
+  training_export_formats_by_task_and_model_type?: Record<string, Record<string, string[]>>
   [key: string]: unknown
 }
 

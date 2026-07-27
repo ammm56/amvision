@@ -10,7 +10,9 @@ from backend.nodes.text_encoder_runtime_support import (
     resolve_clip_tokenizer_bpe_path,
     resolve_mobileclip_blt_ts_path,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import text_prompt_detect
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
@@ -51,6 +53,7 @@ def test_text_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -
             self,
             *,
             image_bytes: bytes,
+            image_payload,
             prompts,
             confidence_threshold: float,
             iou_threshold: float,
@@ -94,7 +97,12 @@ def test_text_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -
                         "score": 0.95,
                         "class_id": 0,
                         "class_name": "缺陷A",
-                        "polygon_xy": [[10.0, 20.0], [30.0, 20.0], [30.0, 40.0], [10.0, 40.0]],
+                        "polygon_xy": [
+                            [10.0, 20.0],
+                            [30.0, 20.0],
+                            [30.0, 40.0],
+                            [10.0, 40.0],
+                        ],
                         "area": 400,
                         "prompt_id": "prompt-1",
                         "source_prompt_text": "defect-a",
@@ -102,7 +110,9 @@ def test_text_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -
                 ),
             )
 
-    def _fake_get_or_create_session(*, model_series: str, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(
+        *, model_series: str, model_scale: str, device: str, precision: str
+    ):
         captured["session_kwargs"] = {
             "model_series": model_series,
             "model_scale": model_scale,
@@ -183,10 +193,34 @@ def test_merge_text_prompt_items_supports_positive_and_negative_groups() -> None
 
     prompt_groups = merge_text_prompt_items(
         (
-            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-            SimpleNamespace(prompt_id="prompt-1", text="human", display_name="person", negative=False, language="en"),
-            SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-            SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="human",
+                display_name="person",
+                negative=False,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="background",
+                display_name="person",
+                negative=True,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-2",
+                text="car",
+                display_name="car",
+                negative=False,
+                language=None,
+            ),
         )
     )
 
@@ -225,6 +259,7 @@ def test_text_prompt_runtime_session_runs_project_native_smoke() -> None:
     )
     prediction = runtime_session.predict(
         image_bytes=_build_test_png_bytes(),
+        image_payload=None,
         prompts=(
             SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person"),
             SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car"),
@@ -244,7 +279,9 @@ def test_text_prompt_runtime_session_runs_project_native_smoke() -> None:
     assert isinstance(prediction.regions, tuple)
 
 
-def test_text_prompt_runtime_session_runs_project_native_smoke_with_grouped_negative_prompts() -> None:
+def test_text_prompt_runtime_session_runs_project_native_smoke_with_grouped_negative_prompts() -> (
+    None
+):
     """验证 text-prompt runtime 支持同一 prompt_id 下的正负文本组合。"""
 
     runtime_session = get_or_create_yoloe_text_prompt_runtime_session(
@@ -255,11 +292,36 @@ def test_text_prompt_runtime_session_runs_project_native_smoke_with_grouped_nega
     )
     prediction = runtime_session.predict(
         image_bytes=_build_test_png_bytes(),
+        image_payload=None,
         prompts=(
-            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-            SimpleNamespace(prompt_id="prompt-1", text="human", display_name="person", negative=False, language="en"),
-            SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-            SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="human",
+                display_name="person",
+                negative=False,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="background",
+                display_name="person",
+                negative=True,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-2",
+                text="car",
+                display_name="car",
+                negative=False,
+                language=None,
+            ),
         ),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -274,7 +336,10 @@ def test_text_prompt_runtime_session_runs_project_native_smoke_with_grouped_nega
     assert prediction.summary["negative_prompt_count"] == 1
     assert prediction.summary["negative_prompt_weight"] == 0.5
     assert prediction.summary["prompt_groups"][0]["prompt_id"] == "prompt-1"
-    assert prediction.summary["prompt_groups"][0]["positive_texts"] == ["person", "human"]
+    assert prediction.summary["prompt_groups"][0]["positive_texts"] == [
+        "person",
+        "human",
+    ]
     assert prediction.summary["prompt_groups"][0]["negative_texts"] == ["background"]
     assert isinstance(prediction.detections, tuple)
     assert isinstance(prediction.regions, tuple)

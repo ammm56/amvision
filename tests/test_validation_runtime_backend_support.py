@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.service.application.errors import ResourceNotFoundError
 from backend.service.application.models.validation import classification_session_service as classification_validation
 from backend.service.application.models.validation import detection_session_service as detection_validation
 from backend.service.application.models.validation import obb_session_service as obb_validation
@@ -53,8 +54,8 @@ def test_detection_validation_device_name_defaults_follow_runtime_backend() -> N
     assert detection_validation._normalize_device_name(None, "tensorrt", {"device": "cuda"}) == "cuda:0"
 
 
-def test_classification_validation_payload_without_runtime_artifact_fields_still_loads() -> None:
-    """验证旧 classification session 载荷仍可回退为 checkpoint 运行时产物。"""
+def test_classification_validation_payload_without_runtime_artifact_fields_is_rejected() -> None:
+    """验证 classification session 不再回退到旧 checkpoint 字段。"""
 
     payload = {
         "session_id": "session-1",
@@ -83,15 +84,12 @@ def test_classification_validation_payload_without_runtime_artifact_fields_still
         "last_prediction": None,
     }
 
-    session = classification_validation._build_session_from_payload(payload)
-
-    assert session.runtime_artifact_file_id == "checkpoint-1"
-    assert session.runtime_artifact_storage_uri == "runtime/classification/checkpoint.pt"
-    assert session.runtime_artifact_file_type == "pytorch-checkpoint"
+    with pytest.raises(ResourceNotFoundError, match="validation session"):
+        classification_validation._build_session_from_payload(payload)
 
 
-def test_detection_validation_payload_without_runtime_artifact_fields_still_loads() -> None:
-    """验证旧 detection session 载荷仍可回退为 checkpoint 运行时产物。"""
+def test_detection_validation_payload_without_runtime_artifact_fields_is_rejected() -> None:
+    """验证 detection session 不再回退到旧 checkpoint 字段。"""
 
     payload = {
         "session_id": "session-1",
@@ -121,11 +119,8 @@ def test_detection_validation_payload_without_runtime_artifact_fields_still_load
         "last_prediction": None,
     }
 
-    session = detection_validation._build_session_from_payload(payload)
-
-    assert session.runtime_artifact_file_id == "checkpoint-1"
-    assert session.runtime_artifact_storage_uri == "runtime/detection/checkpoint.pt"
-    assert session.runtime_artifact_file_type == "yolox-checkpoint"
+    with pytest.raises(ResourceNotFoundError, match="validation session"):
+        detection_validation._build_session_from_payload(payload)
 
 
 def test_classification_runtime_target_is_restored_from_runtime_artifact_fields(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic_placement_transform,
     build_yolo_mosaic4_canvas,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
@@ -248,8 +249,10 @@ def _build_yolo11_obb_mosaic_sample(
         sample = selected_items[placement.index][0]
         placed_target = _build_yolo11_obb_sample_targets(
             sample=sample,
-            resize_ratio=placement.resize_scale,
-            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
+            letterbox_transform=build_yolo_mosaic_placement_transform(
+                placement=placement,
+                source_image=selected_items[placement.index][1],
+            ),
         )
         placed_target = _filter_yolo11_obb_target(placed_target)
         merged_target = (

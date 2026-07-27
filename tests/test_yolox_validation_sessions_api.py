@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 import backend.service.application.models.validation.detection_session_service as validation_session_service_module
+from backend.service.application.errors import ResourceNotFoundError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -204,53 +206,37 @@ def test_predict_yolox_validation_session_accepts_public_project_file_id(
         session_factory.engine.dispose()
 
 
-def test_legacy_validation_session_payload_defaults_runtime_precision(tmp_path: Path) -> None:
-    """验证旧 session JSON 缺少 runtime_precision 时仍可恢复运行时快照。"""
+def test_validation_session_payload_rejects_removed_checkpoint_contract() -> None:
+    """验证开发阶段已删除的 checkpoint 双来源 session 契约不会继续回退。"""
 
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
-    )
-    checkpoint_storage_uri = "runtime/validation-sessions/session-1/checkpoints/best_ckpt.pth"
-    checkpoint_path = dataset_storage.resolve(checkpoint_storage_uri)
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    checkpoint_path.write_bytes(b"fake-checkpoint")
-
-    session = validation_session_service_module._build_session_from_payload(
-        {
-            "session_id": "validation-session-1",
-            "project_id": "project-1",
-            "model_type": "yolox",
-            "model_id": "model-1",
-            "model_version_id": "model-version-1",
-            "model_name": "yolox-nano-bolt",
-            "model_scale": "nano",
-            "source_kind": "training-output",
-            "status": "ready",
-            "runtime_profile_id": None,
-            "runtime_backend": "pytorch",
-            "device_name": "cpu",
-            "score_threshold": 0.35,
-            "save_result_image": True,
-            "input_size": {"width": 64, "height": 64},
-            "labels": ["bolt"],
-            "checkpoint_file_id": "checkpoint-file-1",
-            "checkpoint_storage_uri": checkpoint_storage_uri,
-            "labels_storage_uri": None,
-            "extra_options": {},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "created_by": "tester",
-            "last_prediction": None,
-        }
-    )
-
-    runtime_target = validation_session_service_module._build_runtime_target_from_session(
-        session=session,
-        dataset_storage=dataset_storage,
-    )
-
-    assert session.runtime_precision == "fp32"
-    assert runtime_target.runtime_precision == "fp32"
+    with pytest.raises(
+        ResourceNotFoundError,
+        match="validation session 数据缺少必要字段",
+    ):
+        validation_session_service_module._build_session_from_payload(
+            {
+                "session_id": "validation-session-1",
+                "project_id": "project-1",
+                "model_type": "yolox",
+                "model_id": "model-1",
+                "model_version_id": "model-version-1",
+                "model_name": "yolox-nano-bolt",
+                "model_scale": "nano",
+                "source_kind": "training-output",
+                "status": "ready",
+                "runtime_backend": "pytorch",
+                "device_name": "cpu",
+                "input_size": {"width": 64, "height": 64},
+                "labels": ["bolt"],
+                "checkpoint_file_id": "checkpoint-file-1",
+                "checkpoint_storage_uri": "obsolete/checkpoint.pth",
+                "extra_options": {},
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": "tester",
+                "last_prediction": None,
+            }
+        )
 
 
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:

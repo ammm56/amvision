@@ -7,7 +7,9 @@ from types import SimpleNamespace
 from PIL import Image
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_semantic_segment
 
 
@@ -17,7 +19,7 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {"predict_calls": 0, "prompt_groups": []}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
             captured["predict_calls"] = int(captured["predict_calls"]) + 1
             history = list(captured["prompt_groups"])
             history.append(prompt_items)
@@ -30,7 +32,12 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
                         class_id=0,
                         class_name="缺陷区域",
                         bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
-                        polygon_xy=((8.0, 12.0), (44.0, 12.0), (44.0, 52.0), (8.0, 52.0)),
+                        polygon_xy=(
+                            (8.0, 12.0),
+                            (44.0, 12.0),
+                            (44.0, 52.0),
+                            (8.0, 52.0),
+                        ),
                         area=1440,
                         prompt_id="prompt-1",
                         source_prompt_text="defect || !background",
@@ -77,10 +84,14 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=96, height=72)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=2, width=96, height=72
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-semantic",
-        node_definition=SimpleNamespace(node_type_id=video_semantic_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_semantic_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,
@@ -110,7 +121,9 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
     assert output["tracks"]["items"][0]["track_id"] == "prompt-1"
     assert output["tracks"]["items"][0]["state"] == "semantic"
     assert output["tracks"]["items"][0]["source_prompt_positive_texts"] == ["defect"]
-    assert output["tracks"]["items"][0]["source_prompt_negative_texts"] == ["background"]
+    assert output["tracks"]["items"][0]["source_prompt_negative_texts"] == [
+        "background"
+    ]
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "video-semantic-segment"
     assert output["summary"]["processed_frame_count"] == 2
@@ -131,10 +144,14 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
 def test_video_semantic_segment_runs_project_native_smoke() -> None:
     """验证 video-semantic 节点会加载本地 project-native runtime。"""
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=1, width=128, height=96)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=1, width=128, height=96
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-semantic-real-smoke",
-        node_definition=SimpleNamespace(node_type_id=video_semantic_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_semantic_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,

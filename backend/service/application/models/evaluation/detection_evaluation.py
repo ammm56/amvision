@@ -17,9 +17,13 @@ from backend.service.application.runtime.tasks.detection_model_runtime import (
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 @dataclass(frozen=True)
@@ -63,11 +67,16 @@ def run_detection_evaluation(
     manifest = request.manifest_payload
     runtime_target = request.runtime_target
 
-    split_name, images, categories = _parse_detection_manifest(manifest, dataset_storage)
+    split_name, images, categories = _parse_detection_manifest(
+        manifest, dataset_storage
+    )
     if not images:
         return DetectionEvaluationResult(
-            split_name=split_name, sample_count=0, duration_seconds=0.0,
-            map50=0.0, map50_95=0.0,
+            split_name=split_name,
+            sample_count=0,
+            duration_seconds=0.0,
+            map50=0.0,
+            map50_95=0.0,
         )
 
     category_ids = tuple(int(category["id"]) for category in categories)
@@ -83,6 +92,33 @@ def run_detection_evaluation(
             runtime_target=runtime_target,
         )
     )
+    try:
+        return _run_detection_evaluation_with_session(
+            request=request,
+            dataset_storage=dataset_storage,
+            runtime_target=runtime_target,
+            split_name=split_name,
+            images=images,
+            category_ids=category_ids,
+            category_name_by_id=category_name_by_id,
+            session=session,
+        )
+    finally:
+        session.close()
+
+
+def _run_detection_evaluation_with_session(
+    *,
+    request: DetectionEvaluationRequest,
+    dataset_storage: LocalDatasetStorage,
+    runtime_target: RuntimeTargetSnapshot,
+    split_name: str,
+    images: list[dict[str, Any]],
+    category_ids: tuple[int, ...],
+    category_name_by_id: dict[int, str],
+    session: RuntimeSessionLease,
+) -> DetectionEvaluationResult:
+    """在受控 runtime session 内计算 detection 指标。"""
 
     started = time.monotonic()
 
@@ -96,19 +132,29 @@ def run_detection_evaluation(
         gt_annotations = img_info.get("annotations", [])
         resolved = dataset_storage.resolve(image_path) if image_path else None
         if resolved is None or not resolved.is_file():
-            continue
+            raise InvalidRequestError(
+                "detection 评估样本文件不存在",
+                details={"image_path": str(image_path)},
+            )
 
         # 记录 GT
         for ann in gt_annotations:
             bbox = ann.get("bbox")
             if isinstance(bbox, list) and len(bbox) == 4:
-                x, y, w, h = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
-                all_gt.append({
-                    "image_id": img_idx,
-                    "category_id": int(ann.get("category_id", 0)),
-                    "bbox_xyxy": (x, y, x + w, y + h),
-                    "area": w * h,
-                })
+                x, y, w, h = (
+                    float(bbox[0]),
+                    float(bbox[1]),
+                    float(bbox[2]),
+                    float(bbox[3]),
+                )
+                all_gt.append(
+                    {
+                        "image_id": img_idx,
+                        "category_id": int(ann.get("category_id", 0)),
+                        "bbox_xyxy": (x, y, x + w, y + h),
+                        "area": w * h,
+                    }
+                )
 
         # 推理
         image_bytes = resolved.read_bytes()
@@ -118,10 +164,7 @@ def run_detection_evaluation(
             input_image_bytes=image_bytes,
             extra_options={"nms_threshold": request.nms_threshold},
         )
-        try:
-            result = session.predict(pred_request)
-        except Exception:
-            continue
+        result = session.predict(pred_request)
 
         for det in result.detections:
             class_index = int(det.class_id)
@@ -131,31 +174,35 @@ def run_detection_evaluation(
             )
             if category_id is None:
                 continue
-            all_pred.append({
-                "image_id": img_idx,
-                # 模型输出始终是零基 class index；评估数据必须使用 manifest
-                # 中的真实 category id，COCO 数据集的 id 不保证连续。
-                "category_id": category_id,
-                "bbox_xyxy": det.bbox_xyxy,
-                "score": det.score,
-            })
+            all_pred.append(
+                {
+                    "image_id": img_idx,
+                    # 模型输出始终是零基 class index；评估数据必须使用 manifest
+                    # 中的真实 category id，COCO 数据集的 id 不保证连续。
+                    "category_id": category_id,
+                    "bbox_xyxy": det.bbox_xyxy,
+                    "score": det.score,
+                }
+            )
 
-        predictions_out.append({
-            "image_index": img_idx,
-            "image_path": str(image_path),
-            "gt_count": len(gt_annotations),
-            "pred_count": len(result.detections),
-            "latency_ms": result.latency_ms,
-        })
+        predictions_out.append(
+            {
+                "image_index": img_idx,
+                "image_path": str(image_path),
+                "gt_count": len(gt_annotations),
+                "pred_count": len(result.detections),
+                "latency_ms": result.latency_ms,
+            }
+        )
 
     duration = time.monotonic() - started
     total_images = len(predictions_out)
 
     # 计算 mAP
     iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5, 0.55, ..., 0.95
-    all_class_ids = sorted(set(
-        [g["category_id"] for g in all_gt] + [p["category_id"] for p in all_pred]
-    ))
+    all_class_ids = sorted(
+        set([g["category_id"] for g in all_gt] + [p["category_id"] for p in all_pred])
+    )
 
     ap_at_50_list: list[float] = []
     ap_at_all_list: list[float] = []
@@ -174,7 +221,9 @@ def run_detection_evaluation(
             continue
 
         cat_ap50 = _compute_ap(cat_gt, cat_pred, iou_threshold=0.5)
-        cat_ap_all = [_compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds]
+        cat_ap_all = [
+            _compute_ap(cat_gt, cat_pred, iou_threshold=t) for t in iou_thresholds
+        ]
         cat_ap_mean = sum(cat_ap_all) / max(len(cat_ap_all), 1)
 
         # 计算单类别 precision/recall/F1（IoU=0.5）
@@ -189,23 +238,33 @@ def run_detection_evaluation(
         recall_list.append(cat_recall)
 
         name = category_name_by_id.get(cat_id, str(cat_id))
-        per_class.append({
-            "class_id": cat_id,
-            "class_name": name,
-            "gt_count": len(cat_gt),
-            "pred_count": len(cat_pred),
-            "ap50": round(cat_ap50, 6),
-            "ap50_95": round(cat_ap_mean, 6),
-            "precision": round(cat_precision, 6),
-            "recall": round(cat_recall, 6),
-            "f1": round(cat_f1, 6),
-        })
+        per_class.append(
+            {
+                "class_id": cat_id,
+                "class_name": name,
+                "gt_count": len(cat_gt),
+                "pred_count": len(cat_pred),
+                "ap50": round(cat_ap50, 6),
+                "ap50_95": round(cat_ap_mean, 6),
+                "precision": round(cat_precision, 6),
+                "recall": round(cat_recall, 6),
+                "f1": round(cat_f1, 6),
+            }
+        )
 
     map50 = sum(ap_at_50_list) / max(len(ap_at_50_list), 1) if ap_at_50_list else 0.0
-    map50_95 = sum(ap_at_all_list) / max(len(ap_at_all_list), 1) if ap_at_all_list else 0.0
-    mean_precision = sum(precision_list) / max(len(precision_list), 1) if precision_list else 0.0
+    map50_95 = (
+        sum(ap_at_all_list) / max(len(ap_at_all_list), 1) if ap_at_all_list else 0.0
+    )
+    mean_precision = (
+        sum(precision_list) / max(len(precision_list), 1) if precision_list else 0.0
+    )
     mean_recall = sum(recall_list) / max(len(recall_list), 1) if recall_list else 0.0
-    mean_f1 = (2 * mean_precision * mean_recall / (mean_precision + mean_recall)) if (mean_precision + mean_recall) > 0 else 0.0
+    mean_f1 = (
+        (2 * mean_precision * mean_recall / (mean_precision + mean_recall))
+        if (mean_precision + mean_recall) > 0
+        else 0.0
+    )
 
     report = {
         "task_type": "detection",
@@ -223,12 +282,17 @@ def run_detection_evaluation(
         "per_class_metrics": per_class,
     }
 
-    session.close()
     return DetectionEvaluationResult(
-        split_name=split_name, sample_count=total_images, duration_seconds=duration,
-        map50=map50, map50_95=map50_95,
-        mean_precision=mean_precision, mean_recall=mean_recall, mean_f1=mean_f1,
-        per_class_metrics=per_class, report_payload=report,
+        split_name=split_name,
+        sample_count=total_images,
+        duration_seconds=duration,
+        map50=map50,
+        map50_95=map50_95,
+        mean_precision=mean_precision,
+        mean_recall=mean_recall,
+        mean_f1=mean_f1,
+        per_class_metrics=per_class,
+        report_payload=report,
         detections_payload=predictions_out,
     )
 
@@ -253,7 +317,7 @@ def _parse_detection_manifest(
     splits = manifest.get("splits", [])
 
     chosen_split: dict[str, object] | None = None
-    for split in (splits or []):
+    for split in splits or []:
         if not isinstance(split, dict):
             continue
         name = str(split.get("name", "")).lower()
@@ -347,7 +411,9 @@ def _parse_yolo_detection_split(
             details={"label_root": label_root, "split_name": split_name},
         )
     images: list[dict[str, Any]] = []
-    for image_id, image_path in enumerate(_iter_detection_image_files(resolved_image_root), start=1):
+    for image_id, image_path in enumerate(
+        _iter_detection_image_files(resolved_image_root), start=1
+    ):
         image_width, image_height = _read_detection_image_size(image_path)
         relative_image_path = image_path.relative_to(resolved_image_root).as_posix()
         label_path = (resolved_label_root / relative_image_path).with_suffix(".txt")
@@ -409,12 +475,12 @@ def _build_detection_images_from_annotation_payload(
     """把 COCO 风格 annotation payload 转成评估使用的图片列表。"""
 
     images_by_id: dict[int, str] = {}
-    for img in (annotation_payload.get("images") or []):
+    for img in annotation_payload.get("images") or []:
         if isinstance(img, dict):
             images_by_id[int(img.get("id", -1))] = str(img.get("file_name", ""))
 
     anns_by_image: dict[int, list[dict[str, Any]]] = {}
-    for ann in (annotation_payload.get("annotations") or []):
+    for ann in annotation_payload.get("annotations") or []:
         if isinstance(ann, dict):
             img_id = int(ann.get("image_id", -1))
             anns_by_image.setdefault(img_id, []).append(ann)
@@ -668,7 +734,11 @@ def _compute_precision_recall_f1(
     fn = total_gt - tp
     precision = tp / max(tp + fp, 1)
     recall = tp / max(tp + fn, 1)
-    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    f1 = (
+        (2 * precision * recall / (precision + recall))
+        if (precision + recall) > 0
+        else 0.0
+    )
 
     return {"precision": precision, "recall": recall, "f1": f1}
 

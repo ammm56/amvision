@@ -2711,7 +2711,7 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
 def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_details(
     tmp_path: Path,
 ) -> None:
-    """验证异步 WorkflowRun 失败后会保留失败状态、节点定位信息，并把 runtime 置为 failed。"""
+    """验证单次异步 WorkflowRun 失败会保留诊断信息且常驻 worker 仍可复用。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -2810,7 +2810,7 @@ def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_deta
     assert error_details["runtime_kind"] == "python-callable"
     assert error_details["error_type"] == "AssertionError"
     assert error_details["error_message"] == "process fail"
-    assert health_response.json()["observed_state"] == "failed"
+    assert health_response.json()["observed_state"] == "running"
     assert restart_response.json()["observed_state"] == "running"
     assert stop_response.json()["observed_state"] == "stopped"
 

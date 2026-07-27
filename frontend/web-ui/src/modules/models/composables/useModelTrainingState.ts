@@ -15,37 +15,6 @@ import {
 
 const DEFAULT_TRAINING_RECIPE_ID = 'default'
 
-const trainingFormatsByTaskAndModelType: Record<ModelTaskType, Record<string, string[]>> = {
-  detection: {
-    yolox: ['coco-detection-v1', 'voc-detection-v1'],
-    yolov8: ['yolo-detection-v1', 'coco-detection-v1'],
-    yolo11: ['yolo-detection-v1', 'coco-detection-v1'],
-    yolo26: ['yolo-detection-v1', 'coco-detection-v1'],
-    rfdetr: ['coco-detection-v1'],
-  },
-  classification: {
-    yolov8: ['imagenet-classification-v1'],
-    yolo11: ['imagenet-classification-v1'],
-    yolo26: ['imagenet-classification-v1'],
-  },
-  segmentation: {
-    yolov8: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
-    yolo11: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
-    yolo26: ['yolo-instance-seg-v1', 'coco-instance-seg-v1'],
-    rfdetr: ['coco-instance-seg-v1'],
-  },
-  pose: {
-    yolov8: ['yolo-pose-v1', 'coco-keypoints-v1'],
-    yolo11: ['yolo-pose-v1', 'coco-keypoints-v1'],
-    yolo26: ['yolo-pose-v1', 'coco-keypoints-v1'],
-  },
-  obb: {
-    yolov8: ['dota-obb-v1'],
-    yolo11: ['dota-obb-v1'],
-    yolo26: ['dota-obb-v1'],
-  },
-}
-
 function normalizeText(value: string | null | undefined): string {
   return String(value ?? '').trim().toLowerCase()
 }
@@ -53,8 +22,9 @@ function normalizeText(value: string | null | undefined): string {
 export function resolveSupportedTrainingExportFormats(
   taskType: ModelTaskType,
   modelTypeValue: string,
+  formatsByTaskAndModelType: Record<string, Record<string, string[]>>,
 ): string[] {
-  return trainingFormatsByTaskAndModelType[taskType][normalizeText(modelTypeValue)] ?? []
+  return formatsByTaskAndModelType[taskType]?.[normalizeText(modelTypeValue)] ?? []
 }
 
 export function useModelTrainingState(options: {
@@ -81,6 +51,7 @@ export function useModelTrainingState(options: {
   trainingDisplayName: Ref<string>
   trainingModelParameterValues: TrainingParameterValues
   trainingAugmentationEnabled: Ref<boolean>
+  trainingExportFormatsByTaskAndModelType: ComputedRef<Record<string, Record<string, string[]>>>
   alignTrainingInputSizeForSubmit: () => { width: number; height: number }
   refreshTrainingTasks: () => Promise<void>
   setErrorMessage: (message: string | null) => void
@@ -123,6 +94,7 @@ export function useModelTrainingState(options: {
     const supportedFormatIds = resolveSupportedTrainingExportFormats(
       options.selectedTaskType.value,
       options.resolvedTrainingModelType.value,
+      options.trainingExportFormatsByTaskAndModelType.value,
     )
     if (
       supportedFormatIds.length > 0

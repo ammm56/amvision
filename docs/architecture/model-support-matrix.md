@@ -8,7 +8,8 @@
 - 这些组合在 `导入 -> 导出 -> 训练 -> 验证 -> 评估 -> 转换 -> 部署 -> 推理 -> workflow -> 前端` 各阶段做到哪里
 - 哪些能力已经有显式回归，哪些只是代码已接通但还需要继续补 smoke 或工程化收口
 
-本文档按 2026-06-15 的仓库主干代码整理，只描述本项目正式实现，不包含 `projectsrc/` 参考仓库。
+本文档按 2026-07-27 的仓库主干代码整理，只描述本项目正式实现，不包含
+`projectsrc/` 参考仓库。参考仓库只用于开发期逐项核对，运行时、测试和发布包均不得依赖。
 
 ## 适用范围
 
@@ -17,6 +18,19 @@
 - 数据集导入导出、训练、验证、评估、转换、部署、推理、workflow 编排和浏览器前端
 
 本文档不覆盖 `YOLOE / SAM3` custom node 主线。两者当前走 `WorkflowAppRuntime + custom node runtime`，不属于 `DeploymentInstance` 主链。
+
+## 模型任务边界
+
+| model_type | 正式任务 |
+| --- | --- |
+| `yolox` | `detection` |
+| `yolov8` | `detection / classification / segmentation / pose / obb` |
+| `yolo11` | `detection / classification / segmentation / pose / obb` |
+| `yolo26` | `detection / classification / segmentation / pose / obb` |
+| `rfdetr` | `detection / segmentation` |
+
+RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开能力。最新 RF-DETR
+参考代码中的 keypoint 分支尚未进入本项目公开 pose 主链，因此不能把 RF-DETR 写成五任务模型。
 
 ## 状态标记
 
@@ -88,6 +102,7 @@
 
 - `COCO`：服务 detection / segmentation / pose
 - `VOC`：服务 detection
+- `YOLO`：服务 detection / segmentation / pose / obb
 - `ImageNet classification`：服务 classification
 - `DOTA OBB`：服务 obb
 
@@ -140,9 +155,32 @@
 ## 当前还没完全收口的点
 
 - `semantic-mask-dir-v1`、`sam-promptable-seg-v1` 还没有正式导出实现。
+- 平台通用 dataset evaluation 使用项目内 101 点 COCO-style AP、OKS、mask IoU
+  和 rotated IoU，已统一全类别每图 `maxDets`、多类别匹配和资源释放；它不是
+  `pycocotools.COCOeval` 的 area range、crowd/ignore、全部 stats 字段替代品。
+  训练期模型选择仍走各模型 core validator，不能把平台通用评估器描述成参考仓库
+  validator 的逐字段复制。
+- RF-DETR 当前不公开 LoRA/PEFT，也不接受配置中任意 Python optimizer callable；
+  这是平台可复现配置和代码执行边界，不属于当前正式训练能力。
 - `frontend` 真实代码已经明显领先于部分旧文档，本轮已先同步 models / deployments / inference 的 task-aware 调试入口，并清掉这几页内部的 `Detection*` 历史类型命名；前端专题文档后续还需要继续细化 workflow template/version 使用面。
 - `release/full` 基础装配、一键启动验收和仓库侧短时自动验收入口已经具备；worker profile 也已短时启动确认可装配。后续还需要继续补更长时间的发布目录 soak、资源占用、日志指标和现场排障样例。
 - `workflow template/version` 的前端使用面已经可走主线，但还没有细化成更完整的独立使用说明。
+
+## 2026-07-27 本轮核对结果
+
+- 修复 YOLO detection zip 因空 label 文件被误识别成 DOTA 的问题。
+- 训练 worker 改为严格的 `task_type × model_type` 路由，不再把未知模型回退到 YOLOv8。
+- validation session 和异步 inference task 只接受当前 `runtime_artifact_*` 与
+  `normalized_input` 契约，不再读取旧 checkpoint/task_spec 双来源字段。
+- 三代 YOLO 的 segmentation、pose、obb Mosaic 统一使用完整
+  `YoloLetterboxTransform`，并覆盖非方形、奇数 padding 和正反变换。
+- RF-DETR 和通用 OpenVINO 构建摘要统一使用稳定 dtype 名，真实 RF-DETR
+  segmentation 训练 -> ONNX -> OpenVINO -> deployment 推理已复跑通过。
+- deployment runtime pool 已覆盖三代五任务三后端反复 warmup/close 矩阵；
+  单次 workflow run 的领域错误只终止该 run，常驻 worker 保持可复用，进程退出、
+  heartbeat 超时和用户执行超时仍进入失败或超时状态。
+- 后端 bootstrap 返回 `training_export_formats_by_task_and_model_type`，Vue 3
+  训练页面不再维护第二份静态格式矩阵。
 
 ## 建议下一步
 

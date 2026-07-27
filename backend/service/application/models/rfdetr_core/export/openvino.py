@@ -94,11 +94,7 @@ def build_rfdetr_openvino_ir(
             int(dimension.get_length()) if dimension.is_static else -1
             for dimension in model_input.get_partial_shape()
         ],
-        "input_dtype": (
-            "float32"
-            if str(model_input.get_element_type()).strip().lower() == "f32"
-            else str(model_input.get_element_type())
-        ),
+        "input_dtype": str(model_input.get_element_type().get_type_name()),
     }
 
 

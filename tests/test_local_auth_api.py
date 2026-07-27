@@ -15,7 +15,13 @@ from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
     DEFAULT_LOCAL_AUTH_USERNAME,
 )
-from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
+from backend.service.application.auth.local_auth_service import (
+    LocalAuthService,
+    LocalAuthUserCreateRequest,
+)
+from backend.service.application.datasets.formats.export_support import (
+    build_supported_dataset_export_formats_by_task_and_model_type,
+)
 from backend.service.domain.datasets.dataset_import import (
     IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
     IMPLEMENTED_DATASET_IMPORT_TASK_TYPES,
@@ -36,7 +42,9 @@ from backend.service.settings import (
 from tests.api_test_support import build_bearer_headers, create_test_runtime
 
 
-def test_local_auth_bootstrap_refresh_logout_and_system_me_resolves_session(tmp_path: Path) -> None:
+def test_local_auth_bootstrap_refresh_logout_and_system_me_resolves_session(
+    tmp_path: Path,
+) -> None:
     """验证 bootstrap、refresh、logout 与 system/me 的会话 token 语义。"""
 
     client, session_factory = _create_local_auth_test_client(
@@ -124,18 +132,28 @@ def test_local_auth_bootstrap_refresh_logout_and_system_me_resolves_session(tmp_
     assert refresh_payload["refresh_token"] != bootstrap_payload["refresh_token"]
 
     assert me_with_old_session_response.status_code == 401
-    assert me_with_old_session_response.json()["error"]["code"] == "authentication_required"
+    assert (
+        me_with_old_session_response.json()["error"]["code"]
+        == "authentication_required"
+    )
 
     assert me_with_refreshed_session_response.status_code == 200
-    assert me_with_refreshed_session_response.json()["auth_credential_kind"] == "session"
-    assert me_with_refreshed_session_response.json()["auth_credential_id"] == refresh_payload["session_id"]
+    assert (
+        me_with_refreshed_session_response.json()["auth_credential_kind"] == "session"
+    )
+    assert (
+        me_with_refreshed_session_response.json()["auth_credential_id"]
+        == refresh_payload["session_id"]
+    )
 
     assert logout_response.status_code == 204
     assert me_after_logout_response.status_code == 401
     assert me_after_logout_response.json()["error"]["code"] == "authentication_required"
 
 
-def test_local_auth_default_user_token_can_access_rest_and_websocket(tmp_path: Path) -> None:
+def test_local_auth_default_user_token_can_access_rest_and_websocket(
+    tmp_path: Path,
+) -> None:
     """验证新建用户默认长期 token 可访问 REST 与 WebSocket，并且不能走 logout。"""
 
     client, session_factory = _create_local_auth_test_client(
@@ -216,7 +234,9 @@ def test_local_auth_default_user_token_can_access_rest_and_websocket(tmp_path: P
     assert snapshot_message["resource_id"] == "project-1"
 
 
-def test_auth_providers_endpoint_lists_local_and_configured_online_provider(tmp_path: Path) -> None:
+def test_auth_providers_endpoint_lists_local_and_configured_online_provider(
+    tmp_path: Path,
+) -> None:
     """验证账号 provider 目录会公开 local 和已配置的在线 provider。"""
 
     client, session_factory = _create_local_auth_test_client(
@@ -266,10 +286,14 @@ def test_auth_providers_endpoint_lists_local_and_configured_online_provider(tmp_
     assert providers_by_id["company-sso"]["metadata"] == {"audience": "frontend"}
 
     assert unsupported_password_login_response.status_code == 400
-    assert unsupported_password_login_response.json()["error"]["code"] == "invalid_request"
+    assert (
+        unsupported_password_login_response.json()["error"]["code"] == "invalid_request"
+    )
 
 
-def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabilities(tmp_path: Path) -> None:
+def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabilities(
+    tmp_path: Path,
+) -> None:
     """验证 system/bootstrap 会聚合首屏所需的主体、provider、Project 和能力信息。"""
 
     client, session_factory = _create_local_auth_test_client(
@@ -318,7 +342,10 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     assert payload["websocket_query_token_enabled"] is True
     assert payload["current_user"]["username"] == DEFAULT_LOCAL_AUTH_USERNAME
     assert payload["current_user"]["auth_credential_kind"] == "user-token"
-    assert {item["provider_id"] for item in payload["providers"]} == {"local", "company-sso"}
+    assert {item["provider_id"] for item in payload["providers"]} == {
+        "local",
+        "company-sso",
+    }
     assert [item["project_id"] for item in payload["visible_projects"]] == ["project-1"]
     assert payload["visible_projects"][0]["display_name"] == "Project One"
     assert payload["visible_projects"][0]["project_source"] == "configured"
@@ -333,7 +360,10 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
     assert payload["capabilities"]["dataset_export"]["implemented_formats"] == list(
         IMPLEMENTED_DATASET_EXPORT_FORMATS
     )
-    assert payload["capabilities"]["dataset_export"]["default_format"] == "coco-detection-v1"
+    assert (
+        payload["capabilities"]["dataset_export"]["default_format"]
+        == "coco-detection-v1"
+    )
     assert payload["capabilities"]["dataset_export"]["format_types_by_task_type"] == {
         task_type: list(format_types)
         for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
@@ -343,9 +373,15 @@ def test_system_bootstrap_aggregates_current_user_providers_projects_and_capabil
         task_type: list(model_types)
         for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
     }
+    assert (
+        payload["capabilities"]["training_export_formats_by_task_and_model_type"]
+        == build_supported_dataset_export_formats_by_task_and_model_type()
+    )
 
 
-def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Path) -> None:
+def test_default_local_auth_initializer_skips_non_empty_user_table(
+    tmp_path: Path,
+) -> None:
     """验证默认本地用户初始化只在空库时执行，不覆盖已有用户态。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -384,7 +420,9 @@ def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Pat
             )
             existing_user_response = client.get(
                 "/api/v1/system/me",
-                headers=build_bearer_headers(existing_user_result.initial_user_token.token),
+                headers=build_bearer_headers(
+                    existing_user_result.initial_user_token.token
+                ),
             )
     finally:
         session_factory.engine.dispose()
@@ -395,7 +433,9 @@ def test_default_local_auth_initializer_skips_non_empty_user_table(tmp_path: Pat
     assert existing_user_response.json()["username"] == "existing-admin"
 
 
-def test_auth_events_websocket_streams_session_and_user_token_audit_events(tmp_path: Path) -> None:
+def test_auth_events_websocket_streams_session_and_user_token_audit_events(
+    tmp_path: Path,
+) -> None:
     """验证 auth.events 会推送 session 与 user token 的审计事件。"""
 
     client, session_factory = _create_local_auth_test_client(
@@ -414,7 +454,9 @@ def test_auth_events_websocket_streams_session_and_user_token_audit_events(tmp_p
                 },
             )
             bootstrap_payload = bootstrap_response.json()
-            admin_headers = {"Authorization": f"Bearer {bootstrap_payload['access_token']}"}
+            admin_headers = {
+                "Authorization": f"Bearer {bootstrap_payload['access_token']}"
+            }
             with client.websocket_connect(
                 "/ws/v1/auth/events",
                 headers=admin_headers,
@@ -477,7 +519,10 @@ def test_auth_events_websocket_streams_session_and_user_token_audit_events(tmp_p
     assert default_user_token_event["event_type"] == "auth.user-tokens.issued"
     assert default_user_token_event["payload"]["provider_id"] == "local"
     assert default_user_token_event["payload"]["user_id"] == viewer_user_id
-    assert default_user_token_event["payload"]["actor_user_id"] == bootstrap_payload["user"]["user_id"]
+    assert (
+        default_user_token_event["payload"]["actor_user_id"]
+        == bootstrap_payload["user"]["user_id"]
+    )
     assert default_user_token_event["payload"]["credential_kind"] == "user-token"
     assert default_user_token_event["payload"]["token_name"] == "default"
 
@@ -565,7 +610,9 @@ def test_local_auth_admin_can_manage_long_lived_user_tokens(tmp_path: Path) -> N
             )
             operator_me_response = client.get(
                 "/api/v1/system/me",
-                headers={"Authorization": f"Bearer {operator_session_payload['access_token']}"},
+                headers={
+                    "Authorization": f"Bearer {operator_session_payload['access_token']}"
+                },
             )
             token_me_response = client.get(
                 "/api/v1/system/me",
@@ -588,7 +635,10 @@ def test_local_auth_admin_can_manage_long_lived_user_tokens(tmp_path: Path) -> N
     assert operator_login_response.status_code == 200
     assert issued_user_token_payload["token_name"] == "tablet"
     assert issued_user_token_payload["expires_at"] is not None
-    assert issued_user_token_payload["created_by_user_id"] == admin_payload["user"]["user_id"]
+    assert (
+        issued_user_token_payload["created_by_user_id"]
+        == admin_payload["user"]["user_id"]
+    )
     assert issued_user_token_payload["metadata"] == {"channel": "workstation"}
 
     assert list_tokens_response.status_code == 200
@@ -607,7 +657,10 @@ def test_local_auth_admin_can_manage_long_lived_user_tokens(tmp_path: Path) -> N
 
     assert revoke_user_token_response.status_code == 204
     assert token_me_after_revoke_response.status_code == 401
-    assert token_me_after_revoke_response.json()["error"]["code"] == "authentication_required"
+    assert (
+        token_me_after_revoke_response.json()["error"]["code"]
+        == "authentication_required"
+    )
 
 
 def test_local_auth_admin_can_reset_password_and_delete_user(tmp_path: Path) -> None:
@@ -628,7 +681,9 @@ def test_local_auth_admin_can_reset_password_and_delete_user(tmp_path: Path) -> 
                     "display_name": "Local Admin",
                 },
             )
-            admin_headers = {"Authorization": f"Bearer {bootstrap_response.json()['access_token']}"}
+            admin_headers = {
+                "Authorization": f"Bearer {bootstrap_response.json()['access_token']}"
+            }
             create_user_response = client.post(
                 "/api/v1/auth/users",
                 headers=admin_headers,
@@ -703,9 +758,14 @@ def test_local_auth_admin_can_reset_password_and_delete_user(tmp_path: Path) -> 
 
     assert delete_user_response.status_code == 204
     assert deleted_user_token_me_response.status_code == 401
-    assert deleted_user_token_me_response.json()["error"]["code"] == "authentication_required"
+    assert (
+        deleted_user_token_me_response.json()["error"]["code"]
+        == "authentication_required"
+    )
     assert deleted_user_login_response.status_code == 401
-    assert deleted_user_login_response.json()["error"]["code"] == "authentication_required"
+    assert (
+        deleted_user_login_response.json()["error"]["code"] == "authentication_required"
+    )
 
 
 def _create_local_auth_test_client(

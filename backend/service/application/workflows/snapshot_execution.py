@@ -57,6 +57,7 @@ from backend.service.application.workflows.process_threads import configure_work
 
 LOGGER = logging.getLogger(__name__)
 _MAX_VALIDATED_SNAPSHOT_PAIRS = 16
+WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE = "workflow.worker.ready"
 
 if TYPE_CHECKING:
     from backend.service.application.deployments import (
@@ -716,6 +717,14 @@ def run_workflow_snapshot_process_worker(
             async_inference_service_id="workflow-local",
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
+        )
+        _emit_snapshot_execution_event(
+            event_queue,
+            {
+                "event_type": WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE,
+                "message": "workflow snapshot worker ready",
+                "payload": {},
+            },
         )
         execution_result = SnapshotExecutionService(
             dataset_storage=dataset_storage,

@@ -110,10 +110,7 @@ class YoloePromptFreeRuntimeSession:
             confidence_threshold=confidence_threshold,
             iou_threshold=iou_threshold,
             max_detections=max_detections,
-            resize_ratio=runtime_input.resize_ratio,
-            image_width=int(runtime_input.image.shape[1]),
-            image_height=int(runtime_input.image.shape[0]),
-            input_size=self.input_size,
+            letterbox_transform=runtime_input.letterbox_transform,
         )
         summary = {
             "model_series": self.variant.model_series,

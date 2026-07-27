@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic_placement_transform,
     build_yolo_mosaic4_canvas,
 )
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
@@ -105,7 +106,9 @@ def build_yolov8_pose_training_batch(
             augmentation_options=augmentation_options,
         )
 
-        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        tensor = (
+            canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        )
         images.append(imports.torch.from_numpy(tensor).float())
         targets.append(target)
 
@@ -197,7 +200,10 @@ def _prepare_yolov8_pose_mixup_sample(
 ) -> tuple[Any, YoloV8PosePreparedTarget] | None:
     """构造 MixUp 的第二张 pose 样本。"""
 
-    if augmentation_options.mosaic_prob > 0.0 and random.random() < augmentation_options.mosaic_prob:
+    if (
+        augmentation_options.mosaic_prob > 0.0
+        and random.random() < augmentation_options.mosaic_prob
+    ):
         return _build_yolov8_pose_mosaic_sample(
             imports=imports,
             primary_sample=sample,
@@ -229,8 +235,7 @@ def _build_yolov8_pose_mosaic_sample(
     merged_target: YoloV8PosePreparedTarget | None = None
     selected_samples = [primary_sample]
     selected_samples.extend(
-        random.choice(tuple(available_samples) or (primary_sample,))
-        for _ in range(3)
+        random.choice(tuple(available_samples) or (primary_sample,)) for _ in range(3)
     )
     selected_items: list[tuple[Any, Any]] = []
     for sample in selected_samples:
@@ -250,8 +255,10 @@ def _build_yolov8_pose_mosaic_sample(
         sample = selected_items[placement.index][0]
         placed_target = _build_yolov8_pose_sample_targets(
             sample=sample,
-            resize_ratio=placement.resize_scale,
-            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
+            letterbox_transform=build_yolo_mosaic_placement_transform(
+                placement=placement,
+                source_image=selected_items[placement.index][1],
+            ),
         )
         placed_target = _filter_yolov8_pose_target(placed_target)
         merged_target = (
@@ -348,7 +355,8 @@ def _merge_yolov8_pose_targets(
     return _filter_yolov8_pose_target(
         YoloV8PosePreparedTarget(
             boxes_xyxy=list(primary.boxes_xyxy) + list(other.boxes_xyxy),
-            category_indexes=list(primary.category_indexes) + list(other.category_indexes),
+            category_indexes=list(primary.category_indexes)
+            + list(other.category_indexes),
             keypoints=keypoints,
         )
     )
@@ -405,9 +413,7 @@ def _transform_yolov8_pose_keypoints(
             ),
             transform=letterbox_transform,
         )
-        transformed.extend(
-            [mapped_x, mapped_y, raw_keypoints[base_index + 2]]
-        )
+        transformed.extend([mapped_x, mapped_y, raw_keypoints[base_index + 2]])
     return transformed
 
 
@@ -444,7 +450,9 @@ def _apply_yolov8_pose_augmentation(
         keypoint_count=keypoint_count,
         keypoint_flip_indices=augmentation_options.keypoint_flip_indices,
     )
-    if flip_indices is None or not should_apply_yolov8_horizontal_flip(augmentation_options.flip_prob):
+    if flip_indices is None or not should_apply_yolov8_horizontal_flip(
+        augmentation_options.flip_prob
+    ):
         return image, target
     flipped_boxes = [
         [target_width - box[2], box[1], target_width - box[0], box[3]]

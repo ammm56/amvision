@@ -15,7 +15,9 @@ from backend.service.application.models.yolo_core_common.export.plan import (
 from backend.service.application.models.yolo_core_common.export.segmentation import (
     normalize_segmentation_export_outputs,
 )
-from backend.service.application.models.export.onnx_export import export_torch_model_to_onnx
+from backend.service.application.models.export.onnx_export import (
+    export_torch_model_to_onnx,
+)
 
 
 YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
@@ -503,6 +505,29 @@ def _validate_input_tensor_against_session(
         model_input_spec_payload=input_spec.to_payload(),
         artifact_format=artifact_format,
     )
+
+
+def build_validated_yolo_runtime_input_tensor(
+    *,
+    session: object,
+    name: object,
+    shape: object,
+    dtype: object,
+    artifact_format: str,
+) -> dict[str, object]:
+    """从实际 runtime 输入描述构建并校验 YOLO 输入张量摘要。"""
+
+    input_tensor = _build_runtime_input_tensor_payload(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+    )
+    _validate_input_tensor_against_session(
+        session=session,
+        input_tensor=input_tensor,
+        artifact_format=artifact_format,
+    )
+    return input_tensor
 
 
 def validate_yolo_converted_input_tensor(

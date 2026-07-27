@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic_placement_transform,
     build_yolo_mosaic4_canvas,
 )
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
@@ -102,7 +103,9 @@ def build_yolov8_obb_training_batch(
             augmentation_options=augmentation_options,
         )
 
-        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        tensor = (
+            canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        )
         images.append(imports.torch.from_numpy(tensor).float())
         targets.append(target)
 
@@ -194,7 +197,10 @@ def _prepare_yolov8_obb_mixup_sample(
 ) -> tuple[Any, YoloV8ObbPreparedTarget] | None:
     """构造 MixUp 的第二张 OBB 样本。"""
 
-    if augmentation_options.mosaic_prob > 0.0 and random.random() < augmentation_options.mosaic_prob:
+    if (
+        augmentation_options.mosaic_prob > 0.0
+        and random.random() < augmentation_options.mosaic_prob
+    ):
         return _build_yolov8_obb_mosaic_sample(
             imports=imports,
             primary_sample=sample,
@@ -226,8 +232,7 @@ def _build_yolov8_obb_mosaic_sample(
     merged_target: YoloV8ObbPreparedTarget | None = None
     selected_samples = [primary_sample]
     selected_samples.extend(
-        random.choice(tuple(available_samples) or (primary_sample,))
-        for _ in range(3)
+        random.choice(tuple(available_samples) or (primary_sample,)) for _ in range(3)
     )
     selected_items: list[tuple[Any, Any]] = []
     for sample in selected_samples:
@@ -247,8 +252,10 @@ def _build_yolov8_obb_mosaic_sample(
         sample = selected_items[placement.index][0]
         placed_target = _build_yolov8_obb_sample_targets(
             sample=sample,
-            resize_ratio=placement.resize_scale,
-            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
+            letterbox_transform=build_yolo_mosaic_placement_transform(
+                placement=placement,
+                source_image=selected_items[placement.index][1],
+            ),
         )
         placed_target = _filter_yolov8_obb_target(placed_target)
         merged_target = (
@@ -327,7 +334,8 @@ def _merge_yolov8_obb_targets(
     return _filter_yolov8_obb_target(
         YoloV8ObbPreparedTarget(
             boxes_xywhr=list(primary.boxes_xywhr) + list(other.boxes_xywhr),
-            category_indexes=list(primary.category_indexes) + list(other.category_indexes),
+            category_indexes=list(primary.category_indexes)
+            + list(other.category_indexes),
         )
     )
 

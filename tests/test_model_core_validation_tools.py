@@ -9,7 +9,9 @@ from backend.service.application.models.validation.model_core_validation import 
     analyze_state_dict_coverage,
     build_model_core_snapshot,
 )
-from backend.service.application.models.yolo_core_common.model_builders import build_yolo_model
+from backend.service.application.models.yolo_core_common.model_builders import (
+    build_yolo_model,
+)
 from backend.service.domain.models.model_task_types import (
     CLASSIFICATION_TASK_TYPE,
     DETECTION_TASK_TYPE,
@@ -58,10 +60,13 @@ def test_yolo_model_core_snapshot_records_tensor_output_shape(
     assert snapshot.model_type == model_type
     assert snapshot.task_type == task_type
     assert snapshot.parameters.total_parameter_count > 0
-    assert snapshot.parameters.trainable_parameter_count == snapshot.parameters.total_parameter_count
+    assert (
+        snapshot.parameters.trainable_parameter_count
+        == snapshot.parameters.total_parameter_count
+    )
     assert snapshot.parameters.state_dict_key_count == len(model.state_dict())
     assert snapshot.parameters.leaf_module_counts["Conv2d"] > 0
-    if model_type == "yolo26":
+    if model_type == "yolo26" or task_type == DETECTION_TASK_TYPE:
         assert snapshot.output_summary is not None
         assert snapshot.output_summary["kind"] == "tuple"
         assert snapshot.output_summary["items"][0] == {
@@ -69,7 +74,11 @@ def test_yolo_model_core_snapshot_records_tensor_output_shape(
             "shape": expected_output_shape,
             "dtype": "torch.float32",
         }
-        assert _is_yolo26_raw_output_summary(snapshot.output_summary["items"][1])
+        raw_output_summary = snapshot.output_summary["items"][1]
+        if model_type == "yolo26":
+            assert _is_yolo26_raw_output_summary(raw_output_summary)
+        else:
+            assert _is_yolo_detection_raw_output_summary(raw_output_summary)
         return
     assert snapshot.output_summary == {
         "kind": "tensor",
@@ -79,7 +88,9 @@ def test_yolo_model_core_snapshot_records_tensor_output_shape(
 
 
 @pytest.mark.parametrize("model_type", YOLO_MODEL_TYPES)
-def test_yolo_model_core_snapshot_records_classification_tuple_shape(model_type: str) -> None:
+def test_yolo_model_core_snapshot_records_classification_tuple_shape(
+    model_type: str,
+) -> None:
     """验证 classification 输出的概率和 logits 形状会一起记录。"""
 
     model = build_yolo_model(
@@ -108,7 +119,9 @@ def test_yolo_model_core_snapshot_records_classification_tuple_shape(model_type:
 
 
 @pytest.mark.parametrize("model_type", YOLO_MODEL_TYPES)
-def test_yolo_model_core_snapshot_records_segmentation_tuple_shape(model_type: str) -> None:
+def test_yolo_model_core_snapshot_records_segmentation_tuple_shape(
+    model_type: str,
+) -> None:
     """验证 segmentation 输出的预测和 proto 形状会一起记录。"""
 
     model = build_yolo_model(
@@ -153,6 +166,17 @@ def _is_yolo26_raw_output_summary(summary: dict[str, object]) -> bool:
     if not isinstance(items, dict):
         return False
     return set(items) == {"one2many", "one2one"}
+
+
+def _is_yolo_detection_raw_output_summary(summary: dict[str, object]) -> bool:
+    """验证 YOLOv8/YOLO11 非 export 路径保留 raw head 输出。"""
+
+    if summary.get("kind") != "dict":
+        return False
+    items = summary.get("items")
+    if not isinstance(items, dict):
+        return False
+    return set(items) == {"boxes", "scores", "feats"}
 
 
 def test_state_dict_coverage_accepts_exact_project_state_dict() -> None:

@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.queue import QueueBackend
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.models.training.rfdetr_segmentation import (
     RfdetrSegmentationTrainingExecutionRequest,
     RfdetrSegmentationTrainingTerminatedError,
@@ -86,9 +89,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 SEGMENTATION_TRAINING_TASK_KIND = "segmentation-training"
 SEGMENTATION_TRAINING_QUEUE_NAME = "segmentation-trainings"
-SEGMENTATION_TRAINING_CONTROL_METADATA_KEY = (
-    "segmentation_training_control"
-)
+SEGMENTATION_TRAINING_CONTROL_METADATA_KEY = "segmentation_training_control"
 SEGMENTATION_TRAINING_DEFAULT_EVALUATION_INTERVAL = 5
 
 
@@ -100,6 +101,7 @@ class SegmentationTrainingRequest:
     recipe_id: str
     model_scale: str
     output_model_name: str
+    model_type: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
     warm_start_model_version_id: str | None = None
@@ -110,7 +112,6 @@ class SegmentationTrainingRequest:
     precision: str | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
     display_name: str = ""
-    model_type: str = "yolov8"
 
 
 class SqlAlchemySegmentationTrainingService:
@@ -316,7 +317,9 @@ class SqlAlchemySegmentationTrainingService:
                 train_metrics_object_key=train_metrics_object_key,
                 progress=progress,
                 dataset_storage=self.dataset_storage,
-                implementation_mode=self._resolve_implementation_mode(resolved_model_type),
+                implementation_mode=self._resolve_implementation_mode(
+                    resolved_model_type
+                ),
             )
             control_state = self._read_control_state(task_record.task_id)
             if control_state.terminate_requested:
@@ -331,9 +334,7 @@ class SqlAlchemySegmentationTrainingService:
                 )
             if control_state.save_requested:
                 self._clear_manual_save_request(task_record.task_id)
-                return YoloV8SegmentationTrainingControlCommand(
-                    save_checkpoint=True
-                )
+                return YoloV8SegmentationTrainingControlCommand(save_checkpoint=True)
             return None
 
         def on_savepoint(savepoint: YoloV8SegmentationTrainingSavePoint) -> None:
@@ -395,9 +396,7 @@ class SqlAlchemySegmentationTrainingService:
                         if warm_start_reference is not None
                         else None
                     ),
-                    warm_start_source_summary=(
-                        warm_start_source_summary
-                    ),
+                    warm_start_source_summary=(warm_start_source_summary),
                     resume_checkpoint_path=resume_checkpoint_path,
                     extra_options=dict(payload.get("extra_options") or {}),
                     epoch_callback=on_epoch,
@@ -605,15 +604,13 @@ class SqlAlchemySegmentationTrainingService:
     def _normalize_model_type(self, model_type: object) -> str:
         """把模型分类名称规范化为受支持值。"""
 
-        normalized = str(model_type or "yolov8").strip().lower()
+        normalized = str(model_type or "").strip().lower()
         if normalized not in SEGMENTATION_TRAINING_MODEL_SERVICE_MAP:
             raise InvalidRequestError(
                 "当前 segmentation 训练不支持指定模型分类",
                 details={
                     "model_type": normalized,
-                    "supported": tuple(
-                        SEGMENTATION_TRAINING_MODEL_SERVICE_MAP.keys()
-                    ),
+                    "supported": tuple(SEGMENTATION_TRAINING_MODEL_SERVICE_MAP.keys()),
                 },
             )
         return normalized
@@ -747,9 +744,11 @@ class SqlAlchemySegmentationTrainingService:
         """构建 segmentation 训练摘要。"""
 
         input_size = self._read_input_size(payload.get("input_size"))
+        aligned_input_size = getattr(execution_result, "aligned_input_size", None)
         effective_input_size = (
-            self._read_input_size(getattr(execution_result, "aligned_input_size", None))
-            or input_size
+            self._read_execution_input_size(aligned_input_size)
+            if aligned_input_size is not None
+            else input_size
         )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
@@ -885,9 +884,7 @@ class SqlAlchemySegmentationTrainingService:
             "task_type": SEGMENTATION_TASK_TYPE,
         }
 
-    def _read_control_state(
-        self, task_id: str
-    ) -> SegmentationTrainingControlState:
+    def _read_control_state(self, task_id: str) -> SegmentationTrainingControlState:
         """从任务 metadata 中读取最新控制状态。"""
 
         task = self.task_service.get_task(task_id).task
@@ -938,9 +935,25 @@ class SqlAlchemySegmentationTrainingService:
         self.dataset_storage.write_text(labels_object_key, content)
 
     def _read_input_size(self, value: object) -> tuple[int, int] | None:
-        """把输入尺寸负载解析为二元组。"""
+        """把持久化尺寸对象解析为内部二元组。"""
 
         return deserialize_spatial_size_hw(value)
+
+    def _read_execution_input_size(self, value: object) -> tuple[int, int]:
+        """读取训练 executor 的内部 ``(height, width)`` 尺寸。"""
+
+        if (
+            not isinstance(value, tuple)
+            or len(value) != 2
+            or not all(
+                isinstance(item, int) and not isinstance(item, bool) and item > 0
+                for item in value
+            )
+        ):
+            raise ValueError(
+                "训练 executor 的 aligned_input_size 必须是正整数 (height, width) tuple"
+            )
+        return (int(value[0]), int(value[1]))
 
     def _read_optional_str(self, value: object) -> str | None:
         """读取可选字符串字段。"""
@@ -953,4 +966,3 @@ class SqlAlchemySegmentationTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
-

@@ -651,43 +651,21 @@ class SqlAlchemyDetectionInferenceTaskService:
 
         task_spec = dict(task_record.task_spec)
         normalized_input_payload = task_spec.get("normalized_input")
-        normalized_input = None
-        if isinstance(normalized_input_payload, dict):
-            normalized_input = deserialize_detection_normalized_inference_input(
-                normalized_input_payload
-            )
+        if not isinstance(normalized_input_payload, dict):
+            raise InvalidRequestError("detection inference task 缺少 normalized_input")
+        normalized_input = deserialize_detection_normalized_inference_input(
+            normalized_input_payload
+        )
         return DetectionInferenceTaskRequest(
             project_id=self._require_str(task_spec, "project_id"),
             deployment_instance_id=self._require_str(
                 task_spec, "deployment_instance_id"
             ),
-            input_file_id=(
-                normalized_input.input_file_id
-                if normalized_input is not None
-                else self._read_optional_str(task_spec, "input_file_id")
-            ),
-            input_uri=(
-                normalized_input.input_uri
-                if normalized_input is not None
-                else self._require_str(task_spec, "input_uri")
-            ),
-            input_source_kind=(
-                normalized_input.input_source_kind
-                if normalized_input is not None
-                else self._read_optional_str(task_spec, "input_source_kind")
-                or "input_uri"
-            ),
-            input_transport_mode=(
-                normalized_input.input_transport_mode
-                if normalized_input is not None
-                else self._read_optional_str(task_spec, "input_transport_mode")
-                or DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE
-            ),
-            input_image_bytes=(
-                normalized_input.input_image_bytes
-                if normalized_input is not None
-                else None
-            ),
+            input_file_id=normalized_input.input_file_id,
+            input_uri=normalized_input.input_uri,
+            input_source_kind=normalized_input.input_source_kind,
+            input_transport_mode=normalized_input.input_transport_mode,
+            input_image_bytes=normalized_input.input_image_bytes,
             async_inference_owner_id=self._read_optional_str(
                 task_spec, "async_inference_owner_id"
             ),
@@ -707,12 +685,10 @@ class SqlAlchemyDetectionInferenceTaskService:
 
         task_spec = dict(task_record.task_spec)
         normalized_input_payload = task_spec.get("normalized_input")
-        if isinstance(normalized_input_payload, dict):
-            return deserialize_detection_normalized_inference_input(
-                normalized_input_payload
-            )
-        return self._build_normalized_input_from_request(
-            self._build_request_from_task_record(task_record)
+        if not isinstance(normalized_input_payload, dict):
+            raise InvalidRequestError("detection inference task 缺少 normalized_input")
+        return deserialize_detection_normalized_inference_input(
+            normalized_input_payload
         )
 
     def _build_process_config_from_task_record(

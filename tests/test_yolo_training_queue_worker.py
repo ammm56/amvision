@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -17,6 +18,7 @@ from backend.workers.training.yolo_training_queue_worker import (
     ObbTrainingQueueWorker,
     PoseTrainingQueueWorker,
     SegmentationTrainingQueueWorker,
+    _read_model_type,
 )
 
 
@@ -29,6 +31,18 @@ class _KeywordOnlyQueueBackend:
     def claim_next(self, *, queue_name: str, worker_id: str):
         self.calls.append((queue_name, worker_id))
         return None
+
+
+def test_read_model_type_requires_explicit_supported_task_mapping() -> None:
+    """验证 worker 不再把缺失或错误的模型类型静默回退到 YOLOv8。"""
+
+    assert (
+        _read_model_type({"model_type": "rfdetr"}, task_type="segmentation") == "rfdetr"
+    )
+    with pytest.raises(InvalidRequestError, match="缺少 model_type"):
+        _read_model_type({}, task_type="segmentation")
+    with pytest.raises(InvalidRequestError, match="模型分类与任务类型不匹配"):
+        _read_model_type({"model_type": "rfdetr"}, task_type="classification")
 
 
 @pytest.mark.parametrize(
@@ -48,7 +62,9 @@ def test_yolo_training_workers_use_keyword_only_claim_next(
 ) -> None:
     """验证 non-detection 训练 worker 使用 QueueBackend 新签名。"""
 
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{(tmp_path / 'worker.db').as_posix()}"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'worker.db').as_posix()}")
+    )
     Base.metadata.create_all(session_factory.engine)
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))

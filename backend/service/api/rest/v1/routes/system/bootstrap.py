@@ -14,13 +14,19 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal, get_optional_p
 from backend.service.api.rest.v1.routes.projects.responses import (
     build_project_catalog_item_response,
 )
-from backend.service.api.rest.v1.routes.projects.schemas import ProjectCatalogItemResponse
-from backend.service.api.rest.v1.routes.projects.services import list_visible_project_ids
+from backend.service.api.rest.v1.routes.projects.schemas import (
+    ProjectCatalogItemResponse,
+)
+from backend.service.api.rest.v1.routes.projects.services import (
+    list_visible_project_ids,
+)
 from backend.service.api.rest.v1.routes.system.responses import (
     build_auth_provider_contract,
     build_current_principal_contract,
 )
-from backend.service.api.rest.v1.routes.system.diagnostics import build_device_diagnostics
+from backend.service.api.rest.v1.routes.system.diagnostics import (
+    build_device_diagnostics,
+)
 from backend.service.api.rest.v1.routes.system.schemas import (
     DatasetExportCapabilityContract,
     DatasetImportCapabilityContract,
@@ -32,7 +38,12 @@ from backend.service.api.rest.v1.routes.system.services import (
     require_session_factory,
 )
 from backend.service.application.auth.provider_registry import AuthProviderRegistry
-from backend.service.application.project_summary import get_supported_project_summary_topics
+from backend.service.application.datasets.formats.export_support import (
+    build_supported_dataset_export_formats_by_task_and_model_type,
+)
+from backend.service.application.project_summary import (
+    get_supported_project_summary_topics,
+)
 from backend.service.domain.datasets.dataset_import import (
     IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
     IMPLEMENTED_DATASET_IMPORT_TASK_TYPES,
@@ -48,10 +59,14 @@ system_bootstrap_router = APIRouter()
 @system_bootstrap_router.get("/bootstrap", response_model=SystemBootstrapResponse)
 def get_system_bootstrap(
     request: Request,
-    principal: Annotated[AuthenticatedPrincipal | None, Depends(get_optional_principal)],
+    principal: Annotated[
+        AuthenticatedPrincipal | None, Depends(get_optional_principal)
+    ],
     include_devices: Annotated[
         bool,
-        Query(description="是否返回设备与推理运行时摘要；首屏会话检查默认可关闭，避免硬件探测拖慢启动。"),
+        Query(
+            description="是否返回设备与推理运行时摘要；首屏会话检查默认可关闭，避免硬件探测拖慢启动。"
+        ),
     ] = True,
 ) -> SystemBootstrapResponse:
     """返回前端首屏初始化需要的聚合响应。"""
@@ -72,14 +87,18 @@ def get_system_bootstrap(
                 project_id=project_id,
                 include_summary=False,
             )
-            for project_id in list_visible_project_ids(request=request, principal=principal)
+            for project_id in list_visible_project_ids(
+                request=request, principal=principal
+            )
         ]
 
     return SystemBootstrapResponse(
         auth_mode=settings.auth.mode,
         bearer_auth_enabled=settings.auth.bearer_auth_enabled(),
         websocket_query_token_enabled=settings.auth.websocket_query_token_enabled,
-        current_user=None if principal is None else build_current_principal_contract(principal),
+        current_user=None
+        if principal is None
+        else build_current_principal_contract(principal),
         providers=providers,
         visible_projects=visible_projects,
         capabilities=SystemBootstrapCapabilitiesContract(
@@ -104,6 +123,9 @@ def get_system_bootstrap(
                 task_type: list(model_types)
                 for task_type, model_types in SUPPORTED_PLATFORM_MODEL_TYPES_BY_TASK_TYPE.items()
             },
+            training_export_formats_by_task_and_model_type=(
+                build_supported_dataset_export_formats_by_task_and_model_type()
+            ),
         ),
         devices=build_device_diagnostics() if include_devices else {},
     )

@@ -72,6 +72,90 @@ def test_compute_coco_style_ap_keeps_false_positive_from_matching() -> None:
     assert result.ap50_95 == 0.0
 
 
+def test_compute_coco_style_ap_applies_max_detections_per_image_before_matching() -> (
+    None
+):
+    """验证每图 maxDets 会按置信度截断预测。"""
+
+    result = compute_coco_style_ap(
+        gt_items=[
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox_xyxy": [0.0, 0.0, 10.0, 10.0],
+            },
+        ],
+        pred_items=[
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox_xyxy": [20.0, 20.0, 30.0, 30.0],
+                "score": 0.9,
+            },
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox_xyxy": [0.0, 0.0, 10.0, 10.0],
+                "score": 0.8,
+            },
+        ],
+        category_names={0: "part"},
+        max_detections_per_image=1,
+        similarity_func=lambda pred, gt: bbox_iou_xyxy(
+            pred["bbox_xyxy"],
+            gt["bbox_xyxy"],
+        ),
+    )
+
+    assert result.ap50 == 0.0
+    assert result.per_class_metrics[0]["pred_count"] == 1
+
+
+def test_compute_coco_style_ap_applies_max_detections_across_categories() -> None:
+    """验证 maxDets 是每张图的全类别上限，不是每类各自的上限。"""
+
+    result = compute_coco_style_ap(
+        gt_items=[
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox_xyxy": [0.0, 0.0, 10.0, 10.0],
+            },
+            {
+                "image_id": 1,
+                "category_id": 1,
+                "bbox_xyxy": [20.0, 20.0, 30.0, 30.0],
+            },
+        ],
+        pred_items=[
+            {
+                "image_id": 1,
+                "category_id": 1,
+                "bbox_xyxy": [20.0, 20.0, 30.0, 30.0],
+                "score": 0.9,
+            },
+            {
+                "image_id": 1,
+                "category_id": 0,
+                "bbox_xyxy": [0.0, 0.0, 10.0, 10.0],
+                "score": 0.8,
+            },
+        ],
+        max_detections_per_image=1,
+        similarity_func=lambda pred, gt: bbox_iou_xyxy(
+            pred["bbox_xyxy"],
+            gt["bbox_xyxy"],
+        ),
+    )
+
+    assert result.ap50 == 0.5
+    metrics_by_category = {
+        item["category_id"]: item for item in result.per_class_metrics
+    }
+    assert metrics_by_category[0]["pred_count"] == 0
+    assert metrics_by_category[1]["pred_count"] == 1
+
+
 def test_mask_iou_matches_binary_overlap() -> None:
     """验证 mask IoU 按二值区域交并比计算。"""
 
@@ -104,7 +188,10 @@ def test_compute_object_keypoint_similarity_uses_visible_keypoints() -> None:
 def test_rotated_iou_xywhr_returns_full_score_for_same_box() -> None:
     """验证相同旋转框的 rotated IoU 为 1。"""
 
-    assert rotated_iou_xywhr(
-        [8.0, 8.0, 6.0, 4.0, 0.3],
-        [8.0, 8.0, 6.0, 4.0, 0.3],
-    ) == 1.0
+    assert (
+        rotated_iou_xywhr(
+            [8.0, 8.0, 6.0, 4.0, 0.3],
+            [8.0, 8.0, 6.0, 4.0, 0.3],
+        )
+        == 1.0
+    )

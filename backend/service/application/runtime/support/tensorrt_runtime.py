@@ -113,8 +113,6 @@ def prepare_tensorrt_python_runtime(*, app_root: Path | None = None) -> Path | N
     cudnn_bin_dir = resolve_cudnn_bin_dir(app_root=app_root)
     if cudnn_bin_dir is not None:
         _prepend_process_path(str(cudnn_bin_dir))
-        os.environ.setdefault(CUDNN_BIN_DIR_ENV_VAR, str(cudnn_bin_dir))
-        os.environ.setdefault(CUDNN_ROOT_DIR_ENV_VAR, str(_resolve_cudnn_root_dir(cudnn_bin_dir)))
         _add_windows_dll_directory(cudnn_bin_dir)
 
     tensorrt_bin_dir = resolve_tensorrt_bin_dir(app_root=app_root)
@@ -122,8 +120,6 @@ def prepare_tensorrt_python_runtime(*, app_root: Path | None = None) -> Path | N
         return None
 
     _prepend_process_path(str(tensorrt_bin_dir))
-    os.environ.setdefault(TENSORRT_BIN_DIR_ENV_VAR, str(tensorrt_bin_dir))
-    os.environ.setdefault(TENSORRT_ROOT_DIR_ENV_VAR, str(tensorrt_bin_dir.parent))
     _add_windows_dll_directory(tensorrt_bin_dir)
     return tensorrt_bin_dir
 

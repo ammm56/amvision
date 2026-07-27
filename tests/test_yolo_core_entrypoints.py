@@ -358,7 +358,7 @@ from backend.service.application.runtime.predictors.yolo26.obb import (
     TensorRTYolo26ObbRuntimeSession,
 )
 from backend.workers.training.yolo_training_runner import (
-    _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE,
+    _SERVICE_BY_TASK_KIND_AND_MODEL_TYPE,
 )
 from backend.service.application.models.training.yolo11_training_service import (
     SqlAlchemyYolo11TrainingTaskService,
@@ -1360,13 +1360,12 @@ def test_yolo26_classification_training_service_uses_model_specific_runner() -> 
     )
     assert YOLO26_CLASSIFICATION_TRAINING_TASK_KIND == "yolo26-classification-training"
     assert (
-        YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME
-        == "yolo26-classification-trainings"
+        YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME == "yolo26-classification-trainings"
     )
     assert "primary" not in YOLO26_CLASSIFICATION_TRAINING_TASK_KIND
     assert "primary" not in YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME
     assert (
-        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+        _SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
             (YOLO26_CLASSIFICATION_TRAINING_TASK_KIND, "yolo26")
         ]
         is SqlAlchemyYolo26ClassificationTrainingTaskService
@@ -1446,7 +1445,7 @@ def test_yolo26_segmentation_training_service_uses_model_specific_runner() -> No
     assert "primary" not in YOLO26_SEGMENTATION_TRAINING_TASK_KIND
     assert "primary" not in YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME
     assert (
-        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
+        _SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
             (YOLO26_SEGMENTATION_TRAINING_TASK_KIND, "yolo26")
         ]
         is SqlAlchemyYolo26SegmentationTrainingTaskService
@@ -1507,9 +1506,7 @@ def test_yolo26_pose_training_service_uses_model_specific_runner() -> None:
     assert "primary" not in YOLO26_POSE_TRAINING_TASK_KIND
     assert "primary" not in YOLO26_POSE_TRAINING_QUEUE_NAME
     assert (
-        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
-            (YOLO26_POSE_TRAINING_TASK_KIND, "yolo26")
-        ]
+        _SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[(YOLO26_POSE_TRAINING_TASK_KIND, "yolo26")]
         is SqlAlchemyYolo26PoseTrainingTaskService
     )
 
@@ -1569,9 +1566,7 @@ def test_yolo26_obb_training_service_uses_model_specific_runner() -> None:
     assert "primary" not in YOLO26_OBB_TRAINING_TASK_KIND
     assert "primary" not in YOLO26_OBB_TRAINING_QUEUE_NAME
     assert (
-        _MODEL_SPECIFIC_SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[
-            (YOLO26_OBB_TRAINING_TASK_KIND, "yolo26")
-        ]
+        _SERVICE_BY_TASK_KIND_AND_MODEL_TYPE[(YOLO26_OBB_TRAINING_TASK_KIND, "yolo26")]
         is SqlAlchemyYolo26ObbTrainingTaskService
     )
 
@@ -1634,8 +1629,12 @@ def test_yolo11_pose_and_obb_training_services_use_model_specific_runner() -> No
     assert run_yolo11_obb_training_from_task_request.__module__.endswith(
         "models.training.yolo11_obb_task_execution"
     )
-    assert run_yolo11_pose_training.__module__.endswith("models.training.yolo11_pose_training")
-    assert run_yolo11_obb_training.__module__.endswith("models.training.yolo11_obb_training")
+    assert run_yolo11_pose_training.__module__.endswith(
+        "models.training.yolo11_pose_training"
+    )
+    assert run_yolo11_obb_training.__module__.endswith(
+        "models.training.yolo11_obb_training"
+    )
 
 
 def test_yolo11_pose_and_obb_training_execution_lives_in_core() -> None:
@@ -1893,9 +1892,21 @@ def test_yolo_segmentation_training_defaults_do_not_use_legacy_large_values(
 @pytest.mark.parametrize(
     ("runner_cls", "session_cls", "module_suffix"),
     (
-        (LocalYoloV8ConversionRunner, YoloV8ExportSourceSession, "yolov8_core.export.source"),
-        (LocalYolo11ConversionRunner, Yolo11ExportSourceSession, "yolo11_core.export.source"),
-        (LocalYolo26ConversionRunner, Yolo26ExportSourceSession, "yolo26_core.export.source"),
+        (
+            LocalYoloV8ConversionRunner,
+            YoloV8ExportSourceSession,
+            "yolov8_core.export.source",
+        ),
+        (
+            LocalYolo11ConversionRunner,
+            Yolo11ExportSourceSession,
+            "yolo11_core.export.source",
+        ),
+        (
+            LocalYolo26ConversionRunner,
+            Yolo26ExportSourceSession,
+            "yolo26_core.export.source",
+        ),
     ),
 )
 def test_yolo_conversion_runner_uses_core_export_source_session(
@@ -1985,8 +1996,7 @@ def test_yolo11_pytorch_runtime_uses_yolo11_core_session() -> None:
         TensorRTYolo11ObbRuntimeSession,
     ):
         assert all(
-            "Primary" not in base_class.__name__
-            for base_class in session_class.__mro__
+            "Primary" not in base_class.__name__ for base_class in session_class.__mro__
         )
 
 
@@ -3583,6 +3593,7 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
             precision="fp32",
             imports=imports,
             augmentation_options=augmentation_options,
+            training=True,
         )
         assert segmentation_batch is not None
         segmentation_boxes = segmentation_batch.targets[0]["boxes"]
@@ -3607,6 +3618,7 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
             precision="fp32",
             imports=imports,
             augmentation_options=augmentation_options,
+            training=True,
         )
         assert pose_batch is not None
         assert pose_batch.targets[0].boxes_xyxy
@@ -3632,6 +3644,7 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
             precision="fp32",
             imports=imports,
             augmentation_options=augmentation_options,
+            training=True,
         )
         assert obb_batch is not None
         assert obb_batch.targets[0].boxes_xywhr
@@ -3880,4 +3893,3 @@ class _StaticYoloV8ObbModel(torch.nn.Module):
         prediction[:, 0, 4] = 0.95
         prediction[:, 0, 5] = 0.0
         return prediction
-

@@ -32,7 +32,12 @@ def test_yoloe_resolve_pretrained_variant_rejects_missing_manifest(monkeypatch) 
     monkeypatch.setattr(
         yoloe_pretrained,
         "YOLOE_PRETRAINED_ROOT",
-        Path(__file__).resolve().parents[1] / "data" / "files" / "models" / "pretrained" / "_missing-yoloe",
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "files"
+        / "models"
+        / "pretrained"
+        / "_missing-yoloe",
     )
 
     with pytest.raises(InvalidRequestError, match="manifest"):
@@ -49,7 +54,12 @@ def test_sam3_resolve_pretrained_variant_rejects_missing_manifest(monkeypatch) -
     monkeypatch.setattr(
         sam3_pretrained,
         "SAM3_PRETRAINED_ROOT",
-        Path(__file__).resolve().parents[1] / "data" / "files" / "models" / "pretrained" / "_missing-sam3",
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "files"
+        / "models"
+        / "pretrained"
+        / "_missing-sam3",
     )
 
     with pytest.raises(InvalidRequestError, match="manifest"):
@@ -103,10 +113,29 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
 
     prediction_a = session_a.predict(
         image_bytes=_build_test_png_bytes(width=80, height=60),
+        image_payload=None,
         prompts=(
-            _build_namespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-            _build_namespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language=None),
-            _build_namespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+            _build_namespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
+            _build_namespace(
+                prompt_id="prompt-1",
+                text="background",
+                display_name="person",
+                negative=True,
+                language=None,
+            ),
+            _build_namespace(
+                prompt_id="prompt-2",
+                text="car",
+                display_name="car",
+                negative=False,
+                language=None,
+            ),
         ),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -114,10 +143,29 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
     )
     prediction_b = session_b.predict(
         image_bytes=_build_test_png_bytes(width=80, height=60),
+        image_payload=None,
         prompts=(
-            _build_namespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-            _build_namespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language=None),
-            _build_namespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+            _build_namespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
+            _build_namespace(
+                prompt_id="prompt-1",
+                text="background",
+                display_name="person",
+                negative=True,
+                language=None,
+            ),
+            _build_namespace(
+                prompt_id="prompt-2",
+                text="car",
+                display_name="car",
+                negative=False,
+                language=None,
+            ),
         ),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -166,10 +214,12 @@ def test_sam3_semantic_runtime_session_reuses_cpu_cache() -> None:
     )
     prediction_a = session_a.predict(
         image_bytes=_build_test_png_bytes(width=128, height=96),
+        image_payload=None,
         prompt_items=prompt_groups,
     )
     prediction_b = session_b.predict(
         image_bytes=_build_test_png_bytes(width=128, height=96),
+        image_payload=None,
         prompt_items=prompt_groups,
     )
 

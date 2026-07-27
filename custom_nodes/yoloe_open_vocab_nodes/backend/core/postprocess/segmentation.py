@@ -10,10 +10,16 @@ from PIL import Image
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.images import decode_image_bytes_to_matrix
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_box_from_letterbox,
+)
 from backend.service.application.runtime.support.detection import batched_nms_indices
 
 
-def decode_runtime_image(cv2_module: Any, np_module: Any, image_bytes: bytes, image_payload: object) -> Any:
+def decode_runtime_image(
+    cv2_module: Any, np_module: Any, image_bytes: bytes, image_payload: object
+) -> Any:
     """把节点输入图片字节解码成 OpenCV BGR 图像。"""
 
     return decode_image_bytes_to_matrix(
@@ -37,10 +43,7 @@ def postprocess_prompt_free_outputs(
     confidence_threshold: float,
     iou_threshold: float,
     max_detections: int,
-    resize_ratio: float,
-    image_width: int,
-    image_height: int,
-    input_size: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """把 YOLOE segmentation head 输出转换为 detections 和 regions。"""
 
@@ -78,7 +81,9 @@ def postprocess_prompt_free_outputs(
         return [], []
 
     best_scores = np_module.max(class_scores, axis=1)
-    best_class_ids = np_module.argmax(class_scores, axis=1).astype(np_module.int32, copy=False)
+    best_class_ids = np_module.argmax(class_scores, axis=1).astype(
+        np_module.int32, copy=False
+    )
     keep_mask = best_scores >= float(confidence_threshold)
     boxes = boxes[keep_mask]
     best_scores = best_scores[keep_mask]
@@ -103,19 +108,13 @@ def postprocess_prompt_free_outputs(
     best_class_ids = best_class_ids[keep_indices]
     mask_coefficients = mask_coefficients[keep_indices]
 
-    resized_height = min(int(round(image_height * resize_ratio)), int(input_size[0]))
-    resized_width = min(int(round(image_width * resize_ratio)), int(input_size[1]))
     proto = normalized_proto[0]
     masks = _decode_segmentation_masks(
         cv2_module=cv2_module,
         np_module=np_module,
         proto=proto,
         mask_coefficients=mask_coefficients,
-        input_size=input_size,
-        resized_width=resized_width,
-        resized_height=resized_height,
-        image_width=image_width,
-        image_height=image_height,
+        letterbox_transform=letterbox_transform,
     )
 
     detections: list[dict[str, object]] = []
@@ -124,11 +123,13 @@ def postprocess_prompt_free_outputs(
         zip(boxes, best_scores, best_class_ids, masks, strict=True),
         start=1,
     ):
-        scaled_bbox = bbox / max(resize_ratio, 1e-8)
-        x1 = float(max(0.0, min(float(scaled_bbox[0]), float(image_width))))
-        y1 = float(max(0.0, min(float(scaled_bbox[1]), float(image_height))))
-        x2 = float(max(0.0, min(float(scaled_bbox[2]), float(image_width))))
-        y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
+        scaled_bbox = scale_yolo_box_from_letterbox(
+            box_xyxy=tuple(float(value) for value in bbox),
+            transform=letterbox_transform,
+        )
+        if scaled_bbox is None:
+            continue
+        x1, y1, x2, y2 = scaled_bbox
         class_index = int(class_id)
         class_name = class_names.get(class_index, str(class_index))
         bbox_xyxy = [round(x1, 4), round(y1, 4), round(x2, 4), round(y2, 4)]
@@ -145,7 +146,9 @@ def postprocess_prompt_free_outputs(
             binary_mask=binary_mask,
             fallback_bbox_xyxy=bbox_xyxy,
         )
-        mask_png_bytes, mask_width, mask_height, mask_area = _encode_binary_mask_png(binary_mask)
+        mask_png_bytes, mask_width, mask_height, mask_area = _encode_binary_mask_png(
+            binary_mask
+        )
         region_item = {
             "region_id": f"region-{index}",
             "bbox_xyxy": bbox_xyxy,
@@ -155,7 +158,11 @@ def postprocess_prompt_free_outputs(
             "polygon_xy": polygon_xy,
             "area": int(mask_area),
         }
-        if mask_png_bytes is not None and mask_width is not None and mask_height is not None:
+        if (
+            mask_png_bytes is not None
+            and mask_width is not None
+            and mask_height is not None
+        ):
             region_item["mask_png_bytes"] = mask_png_bytes
             region_item["mask_width"] = mask_width
             region_item["mask_height"] = mask_height
@@ -169,31 +176,39 @@ def _decode_segmentation_masks(
     np_module: Any,
     proto: Any,
     mask_coefficients: Any,
-    input_size: tuple[int, int],
-    resized_width: int,
-    resized_height: int,
-    image_width: int,
-    image_height: int,
+    letterbox_transform: YoloLetterboxTransform,
     mask_threshold: float = 0.5,
 ) -> list[Any]:
     """按 YOLOE proto 和 mask 系数还原原图尺寸二值 mask。"""
 
     proto_features = proto.reshape(int(proto.shape[0]), -1)
     mask_logits = mask_coefficients @ proto_features
-    mask_logits = mask_logits.reshape(int(mask_coefficients.shape[0]), int(proto.shape[1]), int(proto.shape[2]))
+    mask_logits = mask_logits.reshape(
+        int(mask_coefficients.shape[0]), int(proto.shape[1]), int(proto.shape[2])
+    )
     masks: list[Any] = []
     for mask_logit in mask_logits:
         clipped_mask_logit = np_module.clip(mask_logit, -50.0, 50.0)
         probability_mask = 1.0 / (1.0 + np_module.exp(-clipped_mask_logit))
         resized_mask = cv2_module.resize(
             probability_mask,
-            (int(input_size[1]), int(input_size[0])),
+            (
+                int(letterbox_transform.target_width),
+                int(letterbox_transform.target_height),
+            ),
             interpolation=cv2_module.INTER_LINEAR,
         )
-        cropped_mask = resized_mask[:resized_height, :resized_width]
+        crop_left = int(letterbox_transform.pad_left)
+        crop_top = int(letterbox_transform.pad_top)
+        crop_right = crop_left + int(letterbox_transform.resized_width)
+        crop_bottom = crop_top + int(letterbox_transform.resized_height)
+        cropped_mask = resized_mask[crop_top:crop_bottom, crop_left:crop_right]
         restored_mask = cv2_module.resize(
             cropped_mask,
-            (int(image_width), int(image_height)),
+            (
+                int(letterbox_transform.source_width),
+                int(letterbox_transform.source_height),
+            ),
             interpolation=cv2_module.INTER_LINEAR,
         )
         binary_mask = (restored_mask >= float(mask_threshold)).astype(np_module.uint8)
@@ -201,7 +216,9 @@ def _decode_segmentation_masks(
     return masks
 
 
-def _extract_primary_polygon(*, cv2_module: Any, binary_mask: Any, fallback_bbox_xyxy: list[float]) -> list[list[float]]:
+def _extract_primary_polygon(
+    *, cv2_module: Any, binary_mask: Any, fallback_bbox_xyxy: list[float]
+) -> list[list[float]]:
     """从 mask 最大外轮廓提取 polygon，失败时回退到 bbox 四边形。"""
 
     contours, _hierarchy = cv2_module.findContours(
@@ -219,7 +236,10 @@ def _extract_primary_polygon(*, cv2_module: Any, binary_mask: Any, fallback_bbox
         if area <= best_area:
             continue
         best_area = area
-        best_polygon = [[round(float(point[0]), 3), round(float(point[1]), 3)] for point in flattened]
+        best_polygon = [
+            [round(float(point[0]), 3), round(float(point[1]), 3)]
+            for point in flattened
+        ]
     if best_polygon:
         return best_polygon
     x1_value, y1_value, x2_value, y2_value = fallback_bbox_xyxy
@@ -231,7 +251,9 @@ def _extract_primary_polygon(*, cv2_module: Any, binary_mask: Any, fallback_bbox
     ]
 
 
-def _encode_binary_mask_png(binary_mask: Any) -> tuple[bytes | None, int | None, int | None, int]:
+def _encode_binary_mask_png(
+    binary_mask: Any,
+) -> tuple[bytes | None, int | None, int | None, int]:
     """把二值 mask 编码成 PNG bytes，供 regions payload 保存。"""
 
     normalized_mask = np.asarray(binary_mask, dtype=np.uint8)

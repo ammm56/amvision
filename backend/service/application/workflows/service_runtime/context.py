@@ -106,9 +106,11 @@ class WorkflowServiceNodeRuntimeContext:
     def build_task_service(self) -> Any:
         """构造通用任务查询 service。"""
 
-        from backend.service.application.workflows.service_runtime import builders
+        from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 
-        return builders.build_task_service(self)
+        # task.get/task.wait 是轻量观察节点，不应为了构造通用任务查询 service
+        # 导入包含全部训练、转换和评估实现的聚合 builders 模块。
+        return SqlAlchemyTaskService(self.session_factory)
 
     def build_evaluation_task_service(self, *, task_type: str) -> Any:
         """构造评估任务 service。"""

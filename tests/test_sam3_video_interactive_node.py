@@ -8,7 +8,9 @@ from PIL import Image
 import torch
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segment
 
 
@@ -18,7 +20,7 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
     captured: dict[str, object] = {"predict_calls": 0, "prompt_history": []}
 
     class _FakeSession:
-        def prepare_frame_context(self, *, image_bytes: bytes):
+        def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
         def predict_from_frame_context(self, *, frame_context, prompt_items):
@@ -34,7 +36,12 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
                         class_id=0,
                         class_name="tracked-object",
                         bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
-                        polygon_xy=((8.0, 12.0), (44.0, 12.0), (44.0, 52.0), (8.0, 52.0)),
+                        polygon_xy=(
+                            (8.0, 12.0),
+                            (44.0, 12.0),
+                            (44.0, 52.0),
+                            (8.0, 52.0),
+                        ),
                         area=1440,
                         prompt_id="track-1",
                         source_prompt_text=None,
@@ -66,10 +73,14 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=96, height=72)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=2, width=96, height=72
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-interactive",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,
@@ -114,10 +125,14 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
 def test_video_interactive_segment_runs_project_native_smoke() -> None:
     """验证 video-interactive 节点会加载本地 project-native runtime。"""
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=128, height=96)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=2, width=128, height=96
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-real-smoke",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,
@@ -145,13 +160,15 @@ def test_video_interactive_segment_runs_project_native_smoke() -> None:
     assert output["tracks"]["count"] >= 1
 
 
-def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypatch) -> None:
+def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
+    monkeypatch,
+) -> None:
     """验证 video-interactive 节点允许显式回退到 shared prompt 模式。"""
 
     captured: dict[str, object] = {"prompt_history": []}
 
     class _FakeSession:
-        def prepare_frame_context(self, *, image_bytes: bytes):
+        def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
         def predict_from_frame_context(self, *, frame_context, prompt_items):
@@ -166,7 +183,12 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypa
                         class_id=0,
                         class_name="tracked-object",
                         bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
-                        polygon_xy=((8.0, 12.0), (44.0, 12.0), (44.0, 52.0), (8.0, 52.0)),
+                        polygon_xy=(
+                            (8.0, 12.0),
+                            (44.0, 12.0),
+                            (44.0, 52.0),
+                            (8.0, 52.0),
+                        ),
                         area=1440,
                         prompt_id="track-1",
                         source_prompt_text=None,
@@ -198,10 +220,14 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypa
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=96, height=72)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=2, width=96, height=72
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-interactive-shared",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
             "model_scale": "l",
             "device": "cpu",
@@ -233,13 +259,15 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(monkeypa
     assert prompt_history[1][0].prompt_kind == "box"
 
 
-def test_video_interactive_segment_memory_mode_supports_longer_window(monkeypatch) -> None:
+def test_video_interactive_segment_memory_mode_supports_longer_window(
+    monkeypatch,
+) -> None:
     """验证默认 memory 模式可以稳定处理更长窗口。"""
 
     captured: dict[str, object] = {"prompt_history": []}
 
     class _FakeSession:
-        def prepare_frame_context(self, *, image_bytes: bytes):
+        def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
         def predict_from_frame_context(self, *, frame_context, prompt_items):
@@ -262,10 +290,14 @@ def test_video_interactive_segment_memory_mode_supports_longer_window(monkeypatc
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=6, width=96, height=72)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=6, width=96, height=72
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-interactive-long-window",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,
@@ -295,13 +327,15 @@ def test_video_interactive_segment_memory_mode_supports_longer_window(monkeypatc
         assert prompt_items[0].prompt_kind == "mask"
 
 
-def test_video_interactive_segment_memory_mode_supports_multiple_objects(monkeypatch) -> None:
+def test_video_interactive_segment_memory_mode_supports_multiple_objects(
+    monkeypatch,
+) -> None:
     """验证默认 memory 模式可以同时维护多个对象状态。"""
 
     captured: dict[str, object] = {"prompt_history": []}
 
     class _FakeSession:
-        def prepare_frame_context(self, *, image_bytes: bytes):
+        def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=120, height=80)
 
         def predict_from_frame_context(self, *, frame_context, prompt_items):
@@ -317,7 +351,9 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(monkeyp
             )
             return SimpleNamespace(
                 regions=regions,
-                summary=_build_fake_summary(prompt_count=len(prompt_items), region_count=len(regions)),
+                summary=_build_fake_summary(
+                    prompt_count=len(prompt_items), region_count=len(regions)
+                ),
             )
 
     monkeypatch.setattr(
@@ -326,10 +362,14 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(monkeyp
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=3, width=120, height=80)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=3, width=120, height=80
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-interactive-multi-object",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
         input_values={
             "frames": frame_window_payload,
@@ -369,13 +409,15 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(monkeyp
         assert tuple(item.prompt_kind for item in prompt_items) == ("mask", "mask")
 
 
-def test_video_interactive_segment_supports_explicit_memory_attention_mode(monkeypatch) -> None:
+def test_video_interactive_segment_supports_explicit_memory_attention_mode(
+    monkeypatch,
+) -> None:
     """验证 video-interactive 节点允许显式切到 memory-attention-tracker。"""
 
     captured: dict[str, object] = {"prompt_history": []}
 
     class _FakeSession:
-        def prepare_frame_context(self, *, image_bytes: bytes):
+        def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=104, height=76)
 
         def predict_from_frame_context(self, *, frame_context, prompt_items):
@@ -398,10 +440,14 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(monke
         lambda **_: _FakeSession(),
     )
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=3, width=104, height=76)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=3, width=104, height=76
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-interactive-attention",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
             "model_scale": "l",
             "device": "cpu",
@@ -453,10 +499,14 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(monke
 def test_video_interactive_segment_memory_attention_runs_project_native_smoke() -> None:
     """验证 video-interactive 节点可以加载本地 memory-attention-tracker 模式。"""
 
-    frame_window_payload, image_registry = _build_test_frame_window_payload(frame_count=2, width=128, height=96)
+    frame_window_payload, image_registry = _build_test_frame_window_payload(
+        frame_count=2, width=128, height=96
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-attention-real-smoke",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
             "model_scale": "l",
             "device": "cpu",
@@ -521,7 +571,9 @@ def _build_fake_region(*, prompt_id: str, class_name: str):
     )
 
 
-def _build_fake_summary(*, prompt_count: int = 1, region_count: int = 1) -> dict[str, object]:
+def _build_fake_summary(
+    *, prompt_count: int = 1, region_count: int = 1
+) -> dict[str, object]:
     """构造测试用 fake summary。"""
 
     return {

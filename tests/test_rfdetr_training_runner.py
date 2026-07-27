@@ -31,7 +31,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.infrastructure.persistence.base import Base
 from backend.service.application.models.training import rfdetr_detection_task_service
-from backend.workers.training.rfdetr_training_queue_worker import RfdetrTrainingQueueWorker
+from backend.workers.training.rfdetr_training_queue_worker import (
+    RfdetrTrainingQueueWorker,
+)
 from backend.workers.training.rfdetr_trainer_runner import SqlAlchemyRfdetrTrainerRunner
 
 
@@ -140,13 +142,13 @@ def test_rfdetr_trainer_runner_reads_task_spec_without_queue_payload(
         return SimpleNamespace(
             best_metric_value=0.75,
             best_metric_name="map50",
-                latest_checkpoint_bytes=b"fake-rfdetr-checkpoint",
-                metrics_payload={"train_loss": 1.0},
-                validation_metrics_payload={"map50": 0.75},
-                warm_start_summary={"enabled": False},
-                labels=("part",),
-                aligned_input_size=(384, 384),
-            )
+            latest_checkpoint_bytes=b"fake-rfdetr-checkpoint",
+            metrics_payload={"train_loss": 1.0},
+            validation_metrics_payload={"map50": 0.75},
+            warm_start_summary={"enabled": False},
+            labels=("part",),
+            aligned_input_size=(384, 384),
+        )
 
     monkeypatch.setattr(
         rfdetr_detection_task_service,
@@ -175,9 +177,11 @@ def test_rfdetr_trainer_runner_reads_task_spec_without_queue_payload(
     assert result.dataset_export_id == "dataset-export-1"
     assert result.format_id == "coco-detection-v1"
     assert result.best_metric_value == 0.75
-    updated_task = SqlAlchemyTaskService(session_factory=session_factory).get_task(
-        task_record.task_id
-    ).task
+    updated_task = (
+        SqlAlchemyTaskService(session_factory=session_factory)
+        .get_task(task_record.task_id)
+        .task
+    )
     assert updated_task.state == "succeeded"
     assert updated_task.result["model_version_id"]
     assert dataset_storage.resolve(result.checkpoint_object_key).is_file()
@@ -292,9 +296,11 @@ def test_rfdetr_trainer_runner_routes_segmentation_task_type(
     assert result.format_id == "coco-instance-seg-v1"
     assert result.best_metric_name == "mask_map50"
     assert result.best_metric_value == 0.66
-    updated_task = SqlAlchemyTaskService(session_factory=session_factory).get_task(
-        str(submission["task_id"])
-    ).task
+    updated_task = (
+        SqlAlchemyTaskService(session_factory=session_factory)
+        .get_task(str(submission["task_id"]))
+        .task
+    )
     assert updated_task.state == "succeeded"
     assert updated_task.result["summary"]["implementation_mode"] == (
         "rfdetr-full-core-segmentation"

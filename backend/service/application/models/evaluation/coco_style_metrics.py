@@ -36,6 +36,7 @@ def compute_coco_style_ap(
         0.9,
         0.95,
     ),
+    max_detections_per_image: int = 300,
     similarity_func: SimilarityFunc,
 ) -> CocoStyleMetricResult:
     """按类别计算 COCO-style AP。
@@ -48,23 +49,23 @@ def compute_coco_style_ap(
         return CocoStyleMetricResult(ap50=0.0, ap50_95=0.0)
 
     categories = sorted(
-        {
-            int(item["category_id"])
-            for item in gt_items
-            if "category_id" in item
-        },
+        {int(item["category_id"]) for item in gt_items if "category_id" in item},
     )
     per_class_metrics: list[dict[str, object]] = []
     ap50_values: list[float] = []
     ap50_95_values: list[float] = []
+    limited_pred_items = _limit_predictions_per_image(
+        pred_items,
+        max_detections_per_image=max_detections_per_image,
+    )
 
     for category_id in categories:
         class_gt = [
-            item for item in gt_items
-            if int(item.get("category_id", -1)) == category_id
+            item for item in gt_items if int(item.get("category_id", -1)) == category_id
         ]
         class_pred = [
-            item for item in pred_items
+            item
+            for item in limited_pred_items
             if int(item.get("category_id", -1)) == category_id
         ]
         if not class_gt:
@@ -86,7 +87,9 @@ def compute_coco_style_ap(
         per_class_metrics.append(
             {
                 "category_id": category_id,
-                "category_name": (category_names or {}).get(category_id, str(category_id)),
+                "category_name": (category_names or {}).get(
+                    category_id, str(category_id)
+                ),
                 "gt_count": len(class_gt),
                 "pred_count": len(class_pred),
                 "ap50": ap50,
@@ -99,6 +102,32 @@ def compute_coco_style_ap(
         ap50_95=sum(ap50_95_values) / max(len(ap50_95_values), 1),
         per_class_metrics=per_class_metrics,
     )
+
+
+def _limit_predictions_per_image(
+    pred_items: list[dict[str, object]],
+    *,
+    max_detections_per_image: int,
+) -> list[dict[str, object]]:
+    """按 COCO evaluator 语义限制每张图参与评估的全部预测数。"""
+
+    if max_detections_per_image < 1:
+        raise ValueError("max_detections_per_image 必须大于等于 1")
+    predictions_by_image: dict[int, list[dict[str, object]]] = {}
+    for item in pred_items:
+        image_id = int(item.get("image_id", -1))
+        predictions_by_image.setdefault(image_id, []).append(item)
+
+    limited: list[dict[str, object]] = []
+    for image_predictions in predictions_by_image.values():
+        limited.extend(
+            sorted(
+                image_predictions,
+                key=lambda item: float(item.get("score", 0.0)),
+                reverse=True,
+            )[:max_detections_per_image]
+        )
+    return limited
 
 
 def _compute_ap_at_threshold(
@@ -179,8 +208,12 @@ def bbox_iou_xyxy(
     x2 = min(float(box1[2]), float(box2[2]))
     y2 = min(float(box1[3]), float(box2[3]))
     intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    area1 = max(0.0, float(box1[2]) - float(box1[0])) * max(0.0, float(box1[3]) - float(box1[1]))
-    area2 = max(0.0, float(box2[2]) - float(box2[0])) * max(0.0, float(box2[3]) - float(box2[1]))
+    area1 = max(0.0, float(box1[2]) - float(box1[0])) * max(
+        0.0, float(box1[3]) - float(box1[1])
+    )
+    area2 = max(0.0, float(box2[2]) - float(box2[0])) * max(
+        0.0, float(box2[3]) - float(box2[1])
+    )
     return intersection / max(area1 + area2 - intersection, 1e-8)
 
 
@@ -223,9 +256,13 @@ def compute_object_keypoint_similarity(
             continue
         dx = float(gt_keypoints[base_index]) - float(pred_keypoints[base_index])
         dy = float(gt_keypoints[base_index + 1]) - float(pred_keypoints[base_index + 1])
-        sigma = resolved_sigmas[keypoint_index] if keypoint_index < len(resolved_sigmas) else 0.05
+        sigma = (
+            resolved_sigmas[keypoint_index]
+            if keypoint_index < len(resolved_sigmas)
+            else 0.05
+        )
         # COCO OKS: exp(-d² / (((2 * sigma)²) * area * 2))。
-        denominator = 8.0 * (sigma ** 2) * max(float(area), 1.0)
+        denominator = 8.0 * (sigma**2) * max(float(area), 1.0)
         oks_sum += math.exp(-((dx * dx + dy * dy) / max(denominator, 1e-8)))
         visible_count += 1
     if visible_count <= 0:
@@ -305,7 +342,9 @@ def polygon_iou(
         import cv2
         import numpy as np
     except ImportError:
-        return bbox_iou_xyxy(polygon_bounds_xyxy(polygon1), polygon_bounds_xyxy(polygon2))
+        return bbox_iou_xyxy(
+            polygon_bounds_xyxy(polygon1), polygon_bounds_xyxy(polygon2)
+        )
 
     left = np.asarray(polygon1, dtype=np.float32)
     right = np.asarray(polygon2, dtype=np.float32)
@@ -316,7 +355,9 @@ def polygon_iou(
     if left_area <= 0.0 or right_area <= 0.0:
         return 0.0
     _status, intersection = cv2.intersectConvexConvex(left, right)
-    intersection_area = 0.0 if intersection is None else float(abs(cv2.contourArea(intersection)))
+    intersection_area = (
+        0.0 if intersection is None else float(abs(cv2.contourArea(intersection)))
+    )
     return intersection_area / max(left_area + right_area - intersection_area, 1e-8)
 
 

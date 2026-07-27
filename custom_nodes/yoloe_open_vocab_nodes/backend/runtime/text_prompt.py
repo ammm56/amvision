@@ -58,7 +58,9 @@ class YoloeTextPromptRuntimeSession:
         self.imports = imports
         self.model = model
         self.input_size = input_size
-        self.text_encoder = get_or_create_mobileclip_blt_text_encoder(device=device_name)
+        self.text_encoder = get_or_create_mobileclip_blt_text_encoder(
+            device=device_name
+        )
 
     @classmethod
     def load(
@@ -140,19 +142,27 @@ class YoloeTextPromptRuntimeSession:
             )
 
         if not prompt_texts:
-            raise InvalidRequestError("YOLOE text-prompt 节点要求至少包含一条 positive 文本提示")
+            raise InvalidRequestError(
+                "YOLOE text-prompt 节点要求至少包含一条 positive 文本提示"
+            )
         tokens = self.text_encoder.tokenize(prompt_texts)
-        text_features = self.text_encoder.encode_text(tokens).to(dtype=runtime_input.input_tensor.dtype)
+        text_features = self.text_encoder.encode_text(tokens).to(
+            dtype=runtime_input.input_tensor.dtype
+        )
         grouped_text_features = build_grouped_text_features(
             text_features=text_features,
             prompt_text_offsets=tuple(prompt_text_offsets),
             negative_prompt_weight=self.NEGATIVE_PROMPT_WEIGHT,
         )
-        class_embeddings = self.model.model[-1].get_tpe(grouped_text_features.unsqueeze(0))
+        class_embeddings = self.model.model[-1].get_tpe(
+            grouped_text_features.unsqueeze(0)
+        )
         if class_embeddings is None:
             raise InvalidRequestError("YOLOE text-prompt 无法生成类别 embedding")
 
-        prediction_tensor, proto_tensor = self.model(runtime_input.input_tensor, class_embeddings)
+        prediction_tensor, proto_tensor = self.model(
+            runtime_input.input_tensor, class_embeddings
+        )
         prediction_array = prediction_tensor.detach().float().cpu().numpy()
         proto_array = proto_tensor.detach().float().cpu().numpy()
         detections, regions = _postprocess_prompt_free_outputs(
@@ -164,23 +174,28 @@ class YoloeTextPromptRuntimeSession:
             confidence_threshold=confidence_threshold,
             iou_threshold=iou_threshold,
             max_detections=max_detections,
-            resize_ratio=runtime_input.resize_ratio,
-            image_width=int(runtime_input.image.shape[1]),
-            image_height=int(runtime_input.image.shape[0]),
-            input_size=self.input_size,
+            letterbox_transform=runtime_input.letterbox_transform,
         )
         for item in detections:
             class_id = int(item["class_id"])
             item["prompt_id"] = prompt_id_map.get(class_id)
             item["source_prompt_text"] = source_text_map.get(class_id)
-            item["source_prompt_positive_texts"] = list(positive_text_map.get(class_id, ()))
-            item["source_prompt_negative_texts"] = list(negative_text_map.get(class_id, ()))
+            item["source_prompt_positive_texts"] = list(
+                positive_text_map.get(class_id, ())
+            )
+            item["source_prompt_negative_texts"] = list(
+                negative_text_map.get(class_id, ())
+            )
         for item in regions:
             class_id = int(item["class_id"])
             item["prompt_id"] = prompt_id_map.get(class_id)
             item["source_prompt_text"] = source_text_map.get(class_id)
-            item["source_prompt_positive_texts"] = list(positive_text_map.get(class_id, ()))
-            item["source_prompt_negative_texts"] = list(negative_text_map.get(class_id, ()))
+            item["source_prompt_positive_texts"] = list(
+                positive_text_map.get(class_id, ())
+            )
+            item["source_prompt_negative_texts"] = list(
+                negative_text_map.get(class_id, ())
+            )
 
         summary = {
             "model_series": self.variant.model_series,
@@ -191,8 +206,12 @@ class YoloeTextPromptRuntimeSession:
             "prompt_count": len(prompt_groups),
             "prompt_item_count": len(prompts),
             "prompt_group_count": len(prompt_groups),
-            "positive_prompt_count": sum(len(group.positive_texts) for group in prompt_groups),
-            "negative_prompt_count": sum(len(group.negative_texts) for group in prompt_groups),
+            "positive_prompt_count": sum(
+                len(group.positive_texts) for group in prompt_groups
+            ),
+            "negative_prompt_count": sum(
+                len(group.negative_texts) for group in prompt_groups
+            ),
             "detection_count": len(detections),
             "region_count": len(regions),
             "device": self.device_name,
@@ -205,8 +224,7 @@ class YoloeTextPromptRuntimeSession:
             "text_encoder": "mobileclip/blt",
             "negative_prompt_weight": self.NEGATIVE_PROMPT_WEIGHT,
             "prompt_groups": [
-                _build_text_prompt_group_summary_item(group)
-                for group in prompt_groups
+                _build_text_prompt_group_summary_item(group) for group in prompt_groups
             ],
             "project_native": True,
         }

@@ -699,10 +699,15 @@ def test_repository_barcode_draw_results_node_renders_position_overlay(tmp_path:
 
     output_payload = execution_result.outputs["drawn_image"]
     assert output_payload["transport_kind"] == "memory"
-    assert output_payload["media_type"] == "image/png"
-    output_image_bytes = execution_metadata["execution_image_registry"].read_bytes(str(output_payload["image_handle"]))
-    assert output_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert output_image_bytes != source_image_bytes
+    assert output_payload["media_type"] == "image/raw"
+    output_matrix = execution_metadata["execution_image_registry"].read_matrix(
+        str(output_payload["image_handle"])
+    )
+    assert output_matrix is not None
+    assert tuple(output_matrix.shape[:2]) == (
+        int(output_payload["height"]),
+        int(output_payload["width"]),
+    )
     assert any(record.node_type_id == DRAW_BARCODE_RESULTS_NODE_TYPE_ID for record in execution_result.node_records)
 
 
@@ -799,10 +804,15 @@ def test_repository_barcode_draw_results_node_uses_defaults_when_parameters_are_
 
     output_payload = execution_result.outputs["drawn_image"]
     assert output_payload["transport_kind"] == "memory"
-    assert output_payload["media_type"] == "image/png"
-    output_image_bytes = execution_metadata["execution_image_registry"].read_bytes(str(output_payload["image_handle"]))
-    assert output_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
-    assert output_image_bytes != source_image_bytes
+    assert output_payload["media_type"] == "image/raw"
+    output_matrix = execution_metadata["execution_image_registry"].read_matrix(
+        str(output_payload["image_handle"])
+    )
+    assert output_matrix is not None
+    assert tuple(output_matrix.shape[:2]) == (
+        int(output_payload["height"]),
+        int(output_payload["width"]),
+    )
 
 
 def test_repository_barcode_qr_crop_decode_remap_node_offsets_positions_to_source_image(

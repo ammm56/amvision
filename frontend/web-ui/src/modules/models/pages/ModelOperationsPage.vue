@@ -270,6 +270,10 @@ const platformModelTypesByTaskType = computed<Record<string, string[]>>(() => {
   ])
   return Object.fromEntries(normalizedEntries)
 })
+const trainingExportFormatsByTaskAndModelType = computed<Record<string, Record<string, string[]>>>(() => {
+  const rawValue = sessionStore.bootstrap?.capabilities.training_export_formats_by_task_and_model_type
+  return rawValue && typeof rawValue === 'object' ? rawValue : {}
+})
 watch(conversionTargetOptions, (options) => {
   if (!options.some((option) => option.value === conversionTarget.value)) {
     conversionTarget.value = 'onnx'
@@ -412,6 +416,7 @@ const {
   trainingDisplayName,
   trainingModelParameterValues,
   trainingAugmentationEnabled,
+  trainingExportFormatsByTaskAndModelType,
   alignTrainingInputSizeForSubmit,
   refreshTrainingTasks,
   setErrorMessage,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
@@ -12,10 +13,16 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     polygon_iou,
     xywhr_to_polygon,
 )
-from backend.service.application.runtime.contracts.obb.prediction import ObbPredictionRequest
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.contracts.obb.prediction import (
+    ObbPredictionRequest,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 @dataclass(frozen=True)
@@ -26,7 +33,18 @@ class ObbEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
-    iou_thresholds: tuple[float, ...] = (0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95)
+    iou_thresholds: tuple[float, ...] = (
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+    )
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -50,8 +68,14 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     manifest = request.manifest_payload
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
+    images, annotations, categories = _parse_obb_manifest_payload(
+        manifest=manifest,
+        dataset_storage=dataset_storage,
+    )
 
-    from backend.service.application.runtime.tasks.obb_model_runtime import DefaultObbModelRuntime
+    from backend.service.application.runtime.tasks.obb_model_runtime import (
+        DefaultObbModelRuntime,
+    )
 
     model_runtime = DefaultObbModelRuntime()
     session = RuntimeSessionLease(
@@ -60,14 +84,35 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
             runtime_target=request.runtime_target,
         )
     )
+    try:
+        return _run_obb_evaluation_with_session(
+            request=request,
+            dataset_storage=dataset_storage,
+            score_threshold=score_threshold,
+            output_prefix=output_prefix,
+            images=images,
+            annotations=annotations,
+            categories=categories,
+            session=session,
+        )
+    finally:
+        session.close()
+
+
+def _run_obb_evaluation_with_session(
+    *,
+    request: ObbEvaluationRequest,
+    dataset_storage: LocalDatasetStorage,
+    score_threshold: float,
+    output_prefix: str,
+    images: dict[int, dict[str, object]],
+    annotations: list[dict],
+    categories: list[dict],
+    session: RuntimeSessionLease,
+) -> ObbEvaluationResult:
+    """在受控 runtime session 内计算 OBB 指标。"""
 
     started_at = datetime.now(timezone.utc)
-
-    # 解析 manifest
-    images, annotations, categories = _parse_obb_manifest_payload(
-        manifest=manifest,
-        dataset_storage=dataset_storage,
-    )
 
     # 按 image_id 分组 GT
     gt_by_image: dict[int, list[dict]] = {}
@@ -90,7 +135,10 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
         image_path = img_info.get("file_name", "")
         resolved = dataset_storage.resolve(image_path)
         if not resolved or not resolved.is_file():
-            continue
+            raise InvalidRequestError(
+                "OBB 评估样本文件不存在",
+                details={"image_path": str(image_path)},
+            )
 
         image_bytes = resolved.read_bytes()
         pred_request = ObbPredictionRequest(
@@ -99,23 +147,22 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
             input_image_bytes=image_bytes,
         )
 
-        try:
-            result = session.predict(pred_request)
-        except Exception:
-            continue
+        result = session.predict(pred_request)
 
         processed_count += 1
 
         # 收集预测
         for det in _iter_obb_prediction_instances(result):
             bbox = _build_obb_prediction_bbox(det)
-            all_preds.append({
-                "image_id": img_id,
-                "category_id": det.class_id,
-                "bbox": bbox,
-                "polygon": _xywhr_to_polygon(bbox),
-                "score": det.score,
-            })
+            all_preds.append(
+                {
+                    "image_id": img_id,
+                    "category_id": det.class_id,
+                    "bbox": bbox,
+                    "polygon": _xywhr_to_polygon(bbox),
+                    "score": det.score,
+                }
+            )
 
     category_names = {
         int(category.get("id", 0)): str(category.get("name", category.get("id", 0)))
@@ -150,7 +197,6 @@ def run_obb_evaluation(request: ObbEvaluationRequest) -> ObbEvaluationResult:
     }
     dataset_storage.write_json(report_key, report)
 
-    session.close()
     return ObbEvaluationResult(
         sample_count=processed_count,
         map50=obb_metrics.ap50,
@@ -180,7 +226,11 @@ def _parse_obb_manifest_payload(
         and images_payload
     ):
         return (
-            {int(img["id"]): img for img in images_payload if isinstance(img, dict) and "id" in img},
+            {
+                int(img["id"]): img
+                for img in images_payload
+                if isinstance(img, dict) and "id" in img
+            },
             [ann for ann in annotations_payload if isinstance(ann, dict)],
             [cat for cat in categories_payload if isinstance(cat, dict)],
         )
@@ -245,8 +295,7 @@ def _parse_obb_manifest_payload(
                 annotations.append(merged_annotation)
 
     categories = [
-        categories_by_id[category_id]
-        for category_id in sorted(categories_by_id)
+        categories_by_id[category_id] for category_id in sorted(categories_by_id)
     ]
     return images, annotations, categories
 
@@ -282,7 +331,9 @@ def _build_obb_prediction_bbox(instance: object) -> list[float]:
 def _build_obb_gt_item(annotation: dict) -> dict[str, object] | None:
     """把 OBB annotation 归一化为 COCO-style AP 使用的 GT 项。"""
 
-    polygon = _normalize_obb_polygon(annotation.get("poly") or annotation.get("polygon"))
+    polygon = _normalize_obb_polygon(
+        annotation.get("poly") or annotation.get("polygon")
+    )
     bbox = _normalize_obb_bbox(annotation.get("bbox"))
     if polygon is None and bbox is not None:
         polygon = _bbox_to_polygon(bbox)
@@ -337,8 +388,7 @@ def _normalize_obb_polygon(value: object) -> list[tuple[float, float]] | None:
         return None
     if len(value) == 8 and all(isinstance(item, (int, float)) for item in value):
         return [
-            (float(value[index]), float(value[index + 1]))
-            for index in range(0, 8, 2)
+            (float(value[index]), float(value[index + 1])) for index in range(0, 8, 2)
         ]
     points: list[tuple[float, float]] = []
     for point in value:

@@ -9,7 +9,12 @@ import pytest
 import torch
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import visual_prompt_detect
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
     YoloeDetectionPrediction,
@@ -18,10 +23,14 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
 from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
     get_or_create_yoloe_visual_prompt_runtime_session,
 )
-from custom_nodes.yoloe_open_vocab_nodes.backend.core.prompts.visual import build_visual_prompt_tensor
+from custom_nodes.yoloe_open_vocab_nodes.backend.core.prompts.visual import (
+    build_visual_prompt_tensor,
+)
 
 
-def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch) -> None:
+def test_visual_prompt_detect_returns_detection_payload_and_summary(
+    monkeypatch,
+) -> None:
     """验证视觉提示节点会返回 detections 与 summary。"""
 
     captured: dict[str, object] = {}
@@ -31,7 +40,9 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
             self,
             *,
             image_bytes: bytes,
+            image_payload,
             prompt_image_bytes: bytes,
+            prompt_image_payload,
             prompts,
             confidence_threshold: float,
             iou_threshold: float,
@@ -73,14 +84,21 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(monkeypatch)
                         "score": 0.9,
                         "class_id": 0,
                         "class_name": "缺陷A",
-                        "polygon_xy": [[8.0, 12.0], [40.0, 12.0], [40.0, 44.0], [8.0, 44.0]],
+                        "polygon_xy": [
+                            [8.0, 12.0],
+                            [40.0, 12.0],
+                            [40.0, 44.0],
+                            [8.0, 44.0],
+                        ],
                         "area": 1024,
                         "prompt_id": "prompt-1",
                     },
                 ),
             )
 
-    def _fake_get_or_create_session(*, model_series: str, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(
+        *, model_series: str, model_scale: str, device: str, precision: str
+    ):
         captured["session_kwargs"] = {
             "model_series": model_series,
             "model_scale": model_scale,
@@ -294,7 +312,11 @@ def test_visual_prompt_detect_merges_same_prompt_id_mixed_prompts(monkeypatch) -
     assert int(np.count_nonzero(prompt_item.prompt_mask)) > 0
     assert output["summary"]["prompt_count"] == 1
     assert output["summary"]["prompt_items"][0]["prompt_kind"] == "mixed"
-    assert output["summary"]["prompt_items"][0]["prompt_kinds"] == ["box", "mask", "point"]
+    assert output["summary"]["prompt_items"][0]["prompt_kinds"] == [
+        "box",
+        "mask",
+        "point",
+    ]
     assert output["summary"]["prompt_items"][0]["raw_item_count"] == 3
     assert output["summary"]["prompt_items"][0]["has_prompt_mask"] is True
 
@@ -351,10 +373,11 @@ def test_build_visual_prompt_tensor_supports_multiple_prompt_kinds() -> None:
                 display_name="mask",
             ),
         ),
-        input_size=(640, 640),
-        resize_ratio=10.0,
-        prompt_image_width=64,
-        prompt_image_height=64,
+        letterbox_transform=build_yolo_letterbox_transform(
+            source_width=64,
+            source_height=64,
+            input_size=(640, 640),
+        ),
         device_name="cpu",
         dtype=torch.float32,
     )
@@ -377,7 +400,9 @@ def test_visual_prompt_runtime_session_is_not_backfilled_by_external_runtime() -
     )
     prediction = runtime_session.predict(
         image_bytes=_build_test_png_bytes(),
+        image_payload=None,
         prompt_image_bytes=_build_test_png_bytes(),
+        prompt_image_payload=None,
         prompts=(
             SimpleNamespace(
                 prompt_id="prompt-1",
@@ -455,7 +480,9 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_extended_pr
     prompt_image_bytes = _build_visual_prompt_scene_png_bytes()
     prediction = runtime_session.predict(
         image_bytes=image_bytes,
+        image_payload=None,
         prompt_image_bytes=prompt_image_bytes,
+        prompt_image_payload=None,
         prompts=(prompt_item,),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -474,7 +501,9 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_extended_pr
     assert isinstance(prediction.regions, tuple)
 
 
-def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_prompt_item() -> None:
+def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_prompt_item() -> (
+    None
+):
     """验证聚合后的 mixed visual prompt 也能走本地权重链。"""
 
     runtime_session = get_or_create_yoloe_visual_prompt_runtime_session(
@@ -490,7 +519,9 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_promp
         point_xy=None,
         point_label=None,
         polygon_xy=None,
-        prompt_mask=np.maximum(_build_polygon_prompt_mask(), _build_dense_prompt_mask()),
+        prompt_mask=np.maximum(
+            _build_polygon_prompt_mask(), _build_dense_prompt_mask()
+        ),
         display_name="mixed-target",
         prompt_kinds=("mask", "point", "polygon"),
         raw_item_count=3,
@@ -499,7 +530,9 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_promp
     prompt_image_bytes = _build_visual_prompt_scene_png_bytes()
     prediction = runtime_session.predict(
         image_bytes=image_bytes,
+        image_payload=None,
         prompt_image_bytes=prompt_image_bytes,
+        prompt_image_payload=None,
         prompts=(prompt_item,),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -511,9 +544,17 @@ def test_visual_prompt_runtime_session_runs_project_native_smoke_for_mixed_promp
     assert prediction.summary["visual_prompt_kinds"] == ["mask", "point", "polygon"]
     assert prediction.summary["prompt_item_count"] == 3
     assert prediction.summary["prompt_group_count"] == 1
-    assert prediction.summary["prompt_kind_counts"] == {"mask": 1, "point": 1, "polygon": 1}
+    assert prediction.summary["prompt_kind_counts"] == {
+        "mask": 1,
+        "point": 1,
+        "polygon": 1,
+    }
     assert prediction.summary["prompt_groups"][0]["raw_item_count"] == 3
-    assert prediction.summary["prompt_groups"][0]["prompt_kinds"] == ["mask", "point", "polygon"]
+    assert prediction.summary["prompt_groups"][0]["prompt_kinds"] == [
+        "mask",
+        "point",
+        "polygon",
+    ]
     assert isinstance(prediction.detections, tuple)
     assert isinstance(prediction.regions, tuple)
 
@@ -528,7 +569,9 @@ def _prepare_visual_prompt_capture(monkeypatch):
             self,
             *,
             image_bytes: bytes,
+            image_payload,
             prompt_image_bytes: bytes,
+            prompt_image_payload,
             prompts,
             confidence_threshold: float,
             iou_threshold: float,
@@ -568,7 +611,9 @@ def _prepare_visual_prompt_capture(monkeypatch):
     return captured
 
 
-def _build_test_images() -> tuple[dict[str, object], dict[str, object], ExecutionImageRegistry]:
+def _build_test_images() -> tuple[
+    dict[str, object], dict[str, object], ExecutionImageRegistry
+]:
     """构造 source/prompt 两张测试图。"""
 
     image_bytes = _build_test_png_bytes()
@@ -605,7 +650,9 @@ def _build_test_images() -> tuple[dict[str, object], dict[str, object], Executio
     )
 
 
-def _build_mask_image_payload(image_registry: ExecutionImageRegistry) -> dict[str, object]:
+def _build_mask_image_payload(
+    image_registry: ExecutionImageRegistry,
+) -> dict[str, object]:
     """构造 mask prompt 使用的 image-ref payload。"""
 
     mask_image = np.zeros((64, 64), dtype=np.uint8)

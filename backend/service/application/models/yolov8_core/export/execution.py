@@ -9,8 +9,15 @@ import subprocess
 from typing import Callable
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.export.onnx_export import export_torch_model_to_onnx
-from backend.service.application.models.yolov8_core.export.plan import YoloV8ExportTaskPlan
+from backend.service.application.models.export.onnx_export import (
+    export_torch_model_to_onnx,
+)
+from backend.service.application.models.yolo_core_common.export.execution import (
+    build_validated_yolo_runtime_input_tensor,
+)
+from backend.service.application.models.yolov8_core.export.plan import (
+    YoloV8ExportTaskPlan,
+)
 from backend.service.application.models.yolov8_core.export.segmentation import (
     normalize_yolov8_segmentation_export_outputs,
 )
@@ -54,9 +61,7 @@ def export_yolov8_onnx_model(
         "stage": "export-onnx",
         "object_uri": output_object_key,
         "opset_version": export_plan.onnx_opset_version,
-        "model_input_spec": _require_yolov8_model_input_spec_payload(
-            session=session
-        ),
+        "model_input_spec": _require_yolov8_model_input_spec_payload(session=session),
         "input_tensor": _build_yolov8_input_tensor_payload(
             session=session,
             input_name=export_plan.input_names[0],
@@ -99,9 +104,17 @@ def validate_yolov8_onnx_model(
         str(onnx_path),
         providers=["CPUExecutionProvider"],
     )
+    ort_input = ort_session.get_inputs()[0]
+    input_tensor = build_validated_yolo_runtime_input_tensor(
+        session=session,
+        name=ort_input.name,
+        shape=ort_input.shape,
+        dtype=ort_input.type,
+        artifact_format="onnx",
+    )
     ort_outputs = ort_session.run(
         list(export_plan.output_names),
-        {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
+        {ort_input.name: dummy_input.detach().cpu().numpy()},
     )
     _validate_yolov8_task_export_outputs(
         task_type=export_plan.task_type,
@@ -118,6 +131,7 @@ def validate_yolov8_onnx_model(
             "YOLOv8 ONNX 数值校验失败",
             details=dict(summary),
         )
+    summary["input_tensor"] = input_tensor
     return summary
 
 
@@ -164,7 +178,9 @@ def build_yolov8_openvino_ir_model(
         "stage": "build-openvino-ir",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
-        "weights_object_uri": resolve_yolov8_openvino_weights_object_key(output_object_key),
+        "weights_object_uri": resolve_yolov8_openvino_weights_object_key(
+            output_object_key
+        ),
         "build_precision": build_precision,
         "compress_to_fp16": compress_to_fp16,
         "execution_mode": "subprocess-openvino-convert-model",
@@ -216,7 +232,9 @@ def build_yolov8_tensorrt_engine_model(
     return build_summary
 
 
-def normalize_yolov8_export_model_outputs(model_outputs: object, imports: object) -> list[object]:
+def normalize_yolov8_export_model_outputs(
+    model_outputs: object, imports: object
+) -> list[object]:
     """把 YOLOv8 PyTorch 模型输出规整为 numpy 数组列表。"""
 
     if hasattr(model_outputs, "detach"):
@@ -288,7 +306,9 @@ def summarize_yolov8_onnx_numeric_validation(
         output_mean_abs_diff = float(np_module.mean(abs_diff))
         reference_mean_abs = float(np_module.mean(np_module.abs(torch_output)))
         mean_abs_ratio = output_mean_abs_diff / max(reference_mean_abs, 1e-6)
-        output_allclose = bool(np_module.allclose(torch_output, ort_output, rtol=1e-3, atol=1e-4))
+        output_allclose = bool(
+            np_module.allclose(torch_output, ort_output, rtol=1e-3, atol=1e-4)
+        )
         mean_abs_ratio_tolerance = YOLOV8_ONNX_MEAN_RATIO_TOLERANCES.get(output_name)
         output_accepted = output_allclose or (
             mean_abs_ratio_tolerance is not None
@@ -398,7 +418,9 @@ def _build_yolov8_input_tensor_payload(
     }
 
 
-def _validate_yolov8_task_export_outputs(*, task_type: str, outputs: list[object]) -> None:
+def _validate_yolov8_task_export_outputs(
+    *, task_type: str, outputs: list[object]
+) -> None:
     """按 task_type 校验 YOLOv8 导出输出数量和语义。"""
 
     if task_type == "segmentation":

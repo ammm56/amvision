@@ -16,11 +16,19 @@ from backend.service.application.models.support.yolo_dataset_manifest_support im
     build_coco_payload_from_yolo_pose_split,
     normalize_yolo_category_names,
 )
-from backend.service.application.runtime.tasks.pose_model_runtime import DefaultPoseModelRuntime
-from backend.service.application.runtime.contracts.pose.prediction import PosePredictionRequest
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.tasks.pose_model_runtime import (
+    DefaultPoseModelRuntime,
+)
+from backend.service.application.runtime.contracts.pose.prediction import (
+    PosePredictionRequest,
+)
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 @dataclass(frozen=True)
@@ -31,7 +39,18 @@ class PoseEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
-    oks_thresholds: tuple[float, ...] = (0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95)
+    oks_thresholds: tuple[float, ...] = (
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+    )
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -55,6 +74,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     manifest = request.manifest_payload
     score_threshold = request.score_threshold
     output_prefix = f"task-runs/evaluation/{request.runtime_target.model_version_id}"
+    _, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
 
     model_runtime = DefaultPoseModelRuntime()
     session = RuntimeSessionLease(
@@ -63,10 +83,33 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
             runtime_target=request.runtime_target,
         )
     )
+    try:
+        return _run_pose_evaluation_with_session(
+            request=request,
+            dataset_storage=dataset_storage,
+            score_threshold=score_threshold,
+            output_prefix=output_prefix,
+            samples=samples,
+            categories=categories,
+            session=session,
+        )
+    finally:
+        session.close()
+
+
+def _run_pose_evaluation_with_session(
+    *,
+    request: PoseEvaluationRequest,
+    dataset_storage: LocalDatasetStorage,
+    score_threshold: float,
+    output_prefix: str,
+    samples: list[dict[str, object]],
+    categories: list[dict[str, Any]],
+    session: RuntimeSessionLease,
+) -> PoseEvaluationResult:
+    """在受控 runtime session 内计算 pose 指标。"""
 
     started_at = datetime.now(timezone.utc)
-
-    _, samples, categories = _parse_pose_manifest(manifest, dataset_storage)
 
     # 收集预测
     all_preds: list[dict] = []
@@ -80,7 +123,10 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
             gt_anns = []
         resolved = dataset_storage.resolve(image_path) if image_path else None
         if not resolved or not resolved.is_file():
-            continue
+            raise InvalidRequestError(
+                "pose 评估样本文件不存在",
+                details={"image_path": image_path},
+            )
 
         image_bytes = resolved.read_bytes()
         pred_request = PosePredictionRequest(
@@ -92,10 +138,7 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
             input_image_bytes=image_bytes,
         )
 
-        try:
-            result = session.predict(pred_request)
-        except Exception:
-            continue
+        result = session.predict(pred_request)
 
         processed_count += 1
 
@@ -117,12 +160,14 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
 
         # 收集预测 keypoints
         for det in _iter_pose_prediction_instances(result):
-            all_preds.append({
-                "image_id": image_index,
-                "category_id": det.class_id,
-                "keypoints": _flatten_pose_keypoints(det.keypoints),
-                "score": det.score,
-            })
+            all_preds.append(
+                {
+                    "image_id": image_index,
+                    "category_id": det.class_id,
+                    "keypoints": _flatten_pose_keypoints(det.keypoints),
+                    "score": det.score,
+                }
+            )
 
     category_names = {
         int(cat.get("id", 0)): str(cat.get("name", cat.get("id", 0)))
@@ -158,7 +203,6 @@ def run_pose_evaluation(request: PoseEvaluationRequest) -> PoseEvaluationResult:
     }
     dataset_storage.write_json(report_key, report)
 
-    session.close()
     return PoseEvaluationResult(
         sample_count=processed_count,
         oks_ap50=oks_metrics.ap50,
@@ -179,7 +223,7 @@ def _parse_pose_manifest(
 
     splits = manifest.get("splits", [])
     chosen_split: dict[str, object] | None = None
-    for split in (splits or []):
+    for split in splits or []:
         if not isinstance(split, dict):
             continue
         name = str(split.get("name", "")).lower()
@@ -187,7 +231,9 @@ def _parse_pose_manifest(
             chosen_split = split
             break
     if chosen_split is None and splits:
-        chosen_split = next((split for split in splits if isinstance(split, dict)), None)
+        chosen_split = next(
+            (split for split in splits if isinstance(split, dict)), None
+        )
     if chosen_split is None:
         raise InvalidRequestError("pose manifest 不包含可用的 split")
 
@@ -203,7 +249,11 @@ def _parse_pose_manifest(
                 details={"annotation_file": annotation_file},
             )
         categories = _normalize_pose_categories(annotation_payload.get("categories"))
-        return split_name, _build_pose_samples(image_root=image_root, payload=annotation_payload), categories
+        return (
+            split_name,
+            _build_pose_samples(image_root=image_root, payload=annotation_payload),
+            categories,
+        )
     if label_root:
         category_names = normalize_yolo_category_names(
             category_names=manifest.get("category_names"),
@@ -228,9 +278,17 @@ def _parse_pose_manifest(
             category_names=category_names,
         )
         categories = _normalize_pose_categories(payload.get("categories"))
-        return split_name, _build_pose_samples(image_root=image_root, payload=payload), categories
+        return (
+            split_name,
+            _build_pose_samples(image_root=image_root, payload=payload),
+            categories,
+        )
     categories = _normalize_pose_categories(manifest.get("categories"))
-    return split_name, _build_pose_samples(image_root=image_root, payload=chosen_split), categories
+    return (
+        split_name,
+        _build_pose_samples(image_root=image_root, payload=chosen_split),
+        categories,
+    )
 
 
 def _build_pose_samples(
@@ -241,7 +299,7 @@ def _build_pose_samples(
     """把 COCO 风格 pose 标注组装成按图片分组的样本列表。"""
 
     images_by_id: dict[int, str] = {}
-    for image in (payload.get("images") or []):
+    for image in payload.get("images") or []:
         if not isinstance(image, dict):
             continue
         image_id = image.get("id")
@@ -251,7 +309,7 @@ def _build_pose_samples(
         images_by_id[image_id] = file_name
 
     anns_by_image: dict[int, list[dict[str, object]]] = {}
-    for ann in (payload.get("annotations") or []):
+    for ann in payload.get("annotations") or []:
         if not isinstance(ann, dict):
             continue
         image_id = ann.get("image_id")
@@ -281,7 +339,9 @@ def _normalize_pose_categories(categories_payload: object) -> list[dict[str, Any
         category_id = category.get("id", category.get("category_id"))
         if not isinstance(category_id, int):
             continue
-        categories.append({"id": category_id, "name": str(category.get("name", category_id))})
+        categories.append(
+            {"id": category_id, "name": str(category.get("name", category_id))}
+        )
     return categories
 
 

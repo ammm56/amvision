@@ -57,7 +57,9 @@ def build_openvino_ir(
         for dimension in model_input.get_partial_shape()
     ]
     input_name = next(iter(model_input.get_names()), model_input.get_any_name())
-    input_dtype = str(model_input.get_element_type())
+    # OpenVINO 新版 ``str(Type.f32)`` 会返回 ``<Type: 'float32'>``，
+    # 该展示文本不是稳定的跨版本契约。构建摘要统一保存规范类型名。
+    input_dtype = str(model_input.get_element_type().get_type_name())
     save_model(
         openvino_model,
         str(resolved_output_path),

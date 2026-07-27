@@ -449,6 +449,10 @@ def _build_yolox_built_input_tensor(
         "float32": "float32",
         "f32": "float32",
         "datatype.float": "float32",
+        "float16": "float16",
+        "half": "float16",
+        "f16": "float16",
+        "datatype.half": "float16",
     }
     if not isinstance(shape, list) or not isinstance(name, str):
         raise ServiceConfigurationError("YOLOX 构建器未返回真实输入张量")

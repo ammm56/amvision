@@ -322,7 +322,7 @@ def package_evaluation_result(
     """按任务分类生成或复用评估结果包。"""
 
     normalized_task_type = context.normalize_task_type(task_type)
-    task_record = build_task_service(context).get_task(task_id).task
+    task_record = context.build_task_service().get_task(task_id).task
     expected_task_kind = {
         DETECTION_TASK_TYPE: "detection-evaluation",
         CLASSIFICATION_TASK_TYPE: "classification-evaluation",

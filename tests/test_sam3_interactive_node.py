@@ -7,7 +7,9 @@ from types import SimpleNamespace
 from PIL import Image
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import interactive_segment
 
 
@@ -17,7 +19,7 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
             captured["image_bytes_length"] = len(image_bytes)
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
@@ -28,7 +30,12 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
                         class_id=0,
                         class_name="interactive-region",
                         bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
-                        polygon_xy=((8.0, 12.0), (44.0, 12.0), (44.0, 52.0), (8.0, 52.0)),
+                        polygon_xy=(
+                            (8.0, 12.0),
+                            (44.0, 12.0),
+                            (44.0, 52.0),
+                            (8.0, 52.0),
+                        ),
                         area=1440,
                         prompt_id="prompt-1",
                         source_prompt_text=None,
@@ -112,7 +119,7 @@ def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
                 regions=(),
@@ -174,7 +181,7 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
                 regions=(),
@@ -199,7 +206,9 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
     )
 
     image_payload, image_registry = _build_test_image_payload(width=96, height=72)
-    mask_payload = _build_test_mask_payload(image_registry=image_registry, width=24, height=18)
+    mask_payload = _build_test_mask_payload(
+        image_registry=image_registry, width=24, height=18
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-interactive-mask",
         node_definition=SimpleNamespace(node_type_id=interactive_segment.NODE_TYPE_ID),
@@ -267,7 +276,9 @@ def test_interactive_segment_runs_project_native_smoke() -> None:
     assert output["regions"]["count"] >= 1
 
 
-def _build_test_image_payload(*, width: int, height: int) -> tuple[dict[str, object], ExecutionImageRegistry]:
+def _build_test_image_payload(
+    *, width: int, height: int
+) -> tuple[dict[str, object], ExecutionImageRegistry]:
     """构造测试图片 payload。"""
 
     image_bytes = _build_test_png_bytes(width=width, height=height)
@@ -301,7 +312,9 @@ def _build_test_png_bytes(*, width: int = 96, height: int = 72) -> bytes:
     return buffer.getvalue()
 
 
-def _build_test_mask_payload(*, image_registry: ExecutionImageRegistry, width: int, height: int) -> dict[str, object]:
+def _build_test_mask_payload(
+    *, image_registry: ExecutionImageRegistry, width: int, height: int
+) -> dict[str, object]:
     """构造测试 mask image payload。"""
 
     import io

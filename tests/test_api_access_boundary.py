@@ -7,6 +7,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
 from backend.service.settings import (
     BackendServiceAuthConfig,
     BackendServiceSettings,
@@ -109,6 +112,7 @@ def _create_access_boundary_test_client(
     )
     application = create_app(
         settings=BackendServiceSettings(
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             auth=BackendServiceAuthConfig(
                 mode="static-bearer",
                 websocket_query_token_enabled=True,

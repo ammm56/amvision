@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.api.app import create_app
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceDatabaseConfig,
@@ -34,6 +37,7 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -74,6 +78,7 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
             )
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke/upload",
+                params={"response_mode": "run"},
                 headers=headers,
                 data={
                     "input_bindings_json": json.dumps(
@@ -140,6 +145,7 @@ def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: P
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,

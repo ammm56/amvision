@@ -273,38 +273,9 @@ class SqlAlchemyObbInferenceTaskService(TaskNativeInferenceTaskServiceBase):
         )
 
         normalized_input_payload = task_spec.get("normalized_input")
-        if isinstance(normalized_input_payload, dict):
-            return deserialize_obb_normalized_inference_input(normalized_input_payload)
-        return self._build_normalized_input_from_request(
-            self._build_request_from_task_record_fallback(task_spec)
-        )
-
-    def _build_request_from_task_record_fallback(
-        self, task_spec: dict[str, object]
-    ) -> ObbInferenceTaskRequest:
-        return ObbInferenceTaskRequest(
-            project_id=self._require_str(task_spec, "project_id"),
-            deployment_instance_id=self._require_str(
-                task_spec, "deployment_instance_id"
-            ),
-            input_file_id=self._read_optional_str(task_spec, "input_file_id"),
-            input_uri=self._require_str(task_spec, "input_uri"),
-            input_source_kind=self._read_optional_str(task_spec, "input_source_kind")
-            or "input_uri",
-            input_transport_mode=self._read_optional_str(
-                task_spec, "input_transport_mode"
-            )
-            or "storage",
-            async_inference_owner_id=self._read_optional_str(
-                task_spec, "async_inference_owner_id"
-            ),
-            score_threshold=self._read_optional_float(task_spec, "score_threshold"),
-            save_result_image=bool(task_spec.get("save_result_image") is True),
-            return_preview_image_base64=bool(
-                task_spec.get("return_preview_image_base64") is True
-            ),
-            extra_options=self._read_dict(task_spec, "extra_options"),
-        )
+        if not isinstance(normalized_input_payload, dict):
+            raise InvalidRequestError("obb inference task 缺少 normalized_input")
+        return deserialize_obb_normalized_inference_input(normalized_input_payload)
 
 
 __all__ = [

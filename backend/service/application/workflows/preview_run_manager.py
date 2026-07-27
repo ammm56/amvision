@@ -37,6 +37,7 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
     serialize_node_execution_record_for_response,
 )
 from backend.service.application.workflows.snapshot_execution import (
+    WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE,
     WorkflowSnapshotExecutionRequest,
     WorkflowSnapshotExecutionResult,
     WorkflowSnapshotProcessExecutor,
@@ -308,15 +309,15 @@ class WorkflowPreviewRunManager:
     def _observe_active_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
         """在后台线程里观察单条 preview run 的执行过程。"""
 
-        deadline = (
-            monotonic()
-            + float(active_run.request.timeout_seconds)
-            + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
-        )
+        startup_deadline = monotonic() + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
+        execution_deadline: float | None = None
         preview_run_id = active_run.request.preview_run_id
         try:
             while True:
-                self._drain_child_events(active_run)
+                if self._drain_child_events(active_run) and execution_deadline is None:
+                    execution_deadline = (
+                        monotonic() + float(active_run.request.timeout_seconds)
+                    )
                 if active_run.cancel_event.is_set():
                     active_run.executor.terminate(active_run.handle)
                     updated_preview_run = self._mark_run_cancelled(preview_run_id)
@@ -329,6 +330,11 @@ class WorkflowPreviewRunManager:
                     )
                     return
 
+                deadline = (
+                    execution_deadline
+                    if execution_deadline is not None
+                    else startup_deadline
+                )
                 remaining_seconds = deadline - monotonic()
                 if remaining_seconds <= 0:
                     active_run.executor.terminate(active_run.handle)
@@ -448,16 +454,21 @@ class WorkflowPreviewRunManager:
         with self._lock:
             return self._completed_preview_runs.pop(preview_run_id, None)
 
-    def _drain_child_events(self, active_run: _ActiveWorkflowPreviewRun) -> None:
-        """把子进程已经产生的过程事件持久化到 events.json。"""
+    def _drain_child_events(self, active_run: _ActiveWorkflowPreviewRun) -> bool:
+        """持久化子进程事件，并返回 worker 是否已完成启动。"""
 
+        worker_ready = False
         while True:
             child_event = active_run.executor.read_event(active_run.handle)
             if child_event is None:
-                return
+                return worker_ready
+            event_type = str(child_event.get("event_type") or "workflow.event")
+            if event_type == WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE:
+                worker_ready = True
+                continue
             self._append_event(
                 active_run.request.preview_run_id,
-                event_type=str(child_event.get("event_type") or "workflow.event"),
+                event_type=event_type,
                 message=str(child_event.get("message") or child_event.get("event_type") or "workflow event"),
                 payload=child_event.get("payload") if isinstance(child_event.get("payload"), dict) else {},
                 event_lock=active_run.event_lock,

@@ -92,6 +92,7 @@ class YoloV8ObbTrainingRequest:
     recipe_id: str
     model_scale: str
     output_model_name: str
+    model_type: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
     warm_start_model_version_id: str | None = None
@@ -102,7 +103,6 @@ class YoloV8ObbTrainingRequest:
     precision: str | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
     display_name: str = ""
-    model_type: str = "yolov8"
 
 
 class SqlAlchemyYoloV8ObbTrainingService:
@@ -263,7 +263,9 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 train_metrics_object_key=train_metrics_object_key,
                 progress=progress,
                 dataset_storage=self.dataset_storage,
-                implementation_mode=self._resolve_implementation_mode(resolved_model_type),
+                implementation_mode=self._resolve_implementation_mode(
+                    resolved_model_type
+                ),
             )
             control_state = self._read_control_state(task_record.task_id)
             if control_state.terminate_requested:
@@ -501,7 +503,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
     def _normalize_model_type(self, model_type: object) -> str:
         """把模型分类名称规范化为受支持值。"""
 
-        normalized = str(model_type or "yolov8").strip().lower()
+        normalized = str(model_type or "").strip().lower()
         if normalized not in YOLOV8_OBB_TRAINING_SUPPORTED_MODEL_TYPES:
             raise InvalidRequestError(
                 "当前 obb 训练不支持指定模型分类",
@@ -848,5 +850,3 @@ class SqlAlchemyYoloV8ObbTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
-
-

@@ -79,12 +79,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND = "yolov8-classification-training"
-YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME = (
-    "yolov8-classification-trainings"
-)
-YOLOV8_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY = (
-    "classification_training_control"
-)
+YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME = "yolov8-classification-trainings"
+YOLOV8_CLASSIFICATION_TRAINING_CONTROL_METADATA_KEY = "classification_training_control"
 
 
 @dataclass(frozen=True)
@@ -95,6 +91,7 @@ class YoloV8ClassificationTrainingRequest:
     recipe_id: str
     model_scale: str
     output_model_name: str
+    model_type: str
     dataset_export_id: str | None = None
     dataset_export_manifest_key: str | None = None
     warm_start_model_version_id: str | None = None
@@ -105,7 +102,6 @@ class YoloV8ClassificationTrainingRequest:
     precision: str | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
     display_name: str = ""
-    model_type: str = "yolov8"
 
 
 class SqlAlchemyYoloV8ClassificationTrainingService:
@@ -313,9 +309,7 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
                 )
             if control_state.save_requested:
                 self._clear_manual_save_request(task_record.task_id)
-                return YoloV8ClassificationTrainingControlCommand(
-                    save_checkpoint=True
-                )
+                return YoloV8ClassificationTrainingControlCommand(save_checkpoint=True)
             return None
 
         def on_savepoint(savepoint: YoloV8ClassificationTrainingSavePoint) -> None:
@@ -565,15 +559,13 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
     def _normalize_model_type(self, model_type: object) -> str:
         """把模型分类名称规范化为受支持值。"""
 
-        normalized = str(model_type or "yolov8").strip().lower()
+        normalized = str(model_type or "").strip().lower()
         if normalized not in YOLOV8_CLASSIFICATION_MODEL_SERVICE_MAP:
             raise InvalidRequestError(
                 "当前 classification 训练不支持指定模型分类",
                 details={
                     "model_type": normalized,
-                    "supported": tuple(
-                        YOLOV8_CLASSIFICATION_MODEL_SERVICE_MAP.keys()
-                    ),
+                    "supported": tuple(YOLOV8_CLASSIFICATION_MODEL_SERVICE_MAP.keys()),
                 },
             )
         return normalized
@@ -920,4 +912,3 @@ class SqlAlchemyYoloV8ClassificationTrainingService:
         """返回当前 UTC 时间的 ISO 字符串。"""
 
         return datetime.now(timezone.utc).isoformat()
-

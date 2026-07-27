@@ -106,13 +106,7 @@ def test_opencv_defect_batch12_heatmap_preview_execute(tmp_path: Path) -> None:
     heatmap_image = execution_result.outputs["heatmap_image"]
     heatmap_summary = execution_result.outputs["heatmap_summary"]
 
-    import cv2
-    import numpy as np
-
-    preview_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(heatmap_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_COLOR,
-    )
+    preview_matrix = image_registry.read_matrix(str(heatmap_image["image_handle"]))
 
     assert heatmap_image["transport_kind"] == "memory"
     assert heatmap_image["width"] == 96
@@ -293,18 +287,16 @@ def test_opencv_defect_batch12_skeletonize_execute(tmp_path: Path) -> None:
     skeleton_image = execution_result.outputs["skeleton_image"]
     skeleton_summary = execution_result.outputs["skeleton_summary"]
 
-    import cv2
     import numpy as np
 
-    skeleton_matrix = cv2.imdecode(
-        np.frombuffer(image_registry.read_bytes(str(skeleton_image["image_handle"])), dtype=np.uint8),
-        cv2.IMREAD_GRAYSCALE,
-    )
+    skeleton_matrix = image_registry.read_matrix(str(skeleton_image["image_handle"]))
 
     assert skeleton_summary["value"]["iteration_count"] > 0
     assert skeleton_summary["value"]["input_foreground_pixel_count"] > skeleton_summary["value"]["skeleton_pixel_count"]
     assert skeleton_summary["value"]["skeleton_ratio"] < 1.0
-    assert int(np.count_nonzero(skeleton_matrix)) == skeleton_summary["value"]["skeleton_pixel_count"]
+    assert int(np.count_nonzero(np.any(skeleton_matrix != 0, axis=2))) == (
+        skeleton_summary["value"]["skeleton_pixel_count"]
+    )
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:

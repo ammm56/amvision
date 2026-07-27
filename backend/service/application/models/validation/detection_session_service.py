@@ -7,9 +7,16 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
 
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
-from backend.service.application.model_type_support import require_supported_platform_model_type
-from backend.service.application.project_public_files import resolve_public_project_file_reference
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
+from backend.service.application.model_type_support import (
+    require_supported_platform_model_type,
+)
+from backend.service.application.project_public_files import (
+    resolve_public_project_file_reference,
+)
 from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
@@ -53,15 +60,21 @@ from backend.service.domain.models.model_input_spec import (
     serialize_spatial_size_hw,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 _VALIDATION_SESSION_STATUS_READY = "ready"
 _VALIDATION_RUNTIME_BACKEND = "pytorch"
-_SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
+_SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset(
+    {"pytorch", "onnxruntime", "openvino", "tensorrt"}
+)
 _SUPPORTED_DETECTION_MODEL_TYPES = ("yolox", "yolov8", "yolo11", "yolo26", "rfdetr")
 _DEFAULT_SCORE_THRESHOLD = 0.3
 _DEFAULT_INPUT_SIZE = (640, 640)
+
+
 @dataclass(frozen=True)
 class DetectionValidationSessionCreateRequest:
     """描述一次 detection validation session 创建请求。"""
@@ -274,8 +287,12 @@ class LocalDetectionValidationSessionService:
             runtime_artifact_file_id=runtime_artifact_file_id,
             runtime_artifact_storage_uri=runtime_artifact_storage_uri,
             runtime_artifact_file_type=runtime_artifact_file_type,
-            checkpoint_file_id=_normalize_optional_str(runtime_target.checkpoint_file_id),
-            checkpoint_storage_uri=_normalize_optional_str(runtime_target.checkpoint_storage_uri),
+            checkpoint_file_id=_normalize_optional_str(
+                runtime_target.checkpoint_file_id
+            ),
+            checkpoint_storage_uri=_normalize_optional_str(
+                runtime_target.checkpoint_storage_uri
+            ),
             labels_storage_uri=runtime_target.labels_storage_uri,
             extra_options=_normalize_extra_options(request.extra_options),
             created_at=now,
@@ -340,7 +357,11 @@ class LocalDetectionValidationSessionService:
             field_name="score_threshold",
             default=session.score_threshold,
         )
-        save_result_image = session.save_result_image if request.save_result_image is None else bool(request.save_result_image)
+        save_result_image = (
+            session.save_result_image
+            if request.save_result_image is None
+            else bool(request.save_result_image)
+        )
         merged_extra_options = dict(session.extra_options)
         merged_extra_options.update(_normalize_extra_options(request.extra_options))
 
@@ -359,7 +380,9 @@ class LocalDetectionValidationSessionService:
         preview_image_uri: str | None = None
         if save_result_image and execution.preview_image_bytes is not None:
             preview_image_uri = str(prediction_output_dir / "preview.jpg")
-            self.dataset_storage.write_bytes(preview_image_uri, execution.preview_image_bytes)
+            self.dataset_storage.write_bytes(
+                preview_image_uri, execution.preview_image_bytes
+            )
 
         raw_result_payload = {
             "prediction_id": prediction_id,
@@ -373,8 +396,12 @@ class LocalDetectionValidationSessionService:
             "image_width": execution.image_width,
             "image_height": execution.image_height,
             "labels": list(session.labels),
-            "detections": [_serialize_detection(detection) for detection in execution.detections],
-            "runtime_session_info": _serialize_runtime_session_info(execution.runtime_session_info),
+            "detections": [
+                _serialize_detection(detection) for detection in execution.detections
+            ],
+            "runtime_session_info": _serialize_runtime_session_info(
+                execution.runtime_session_info
+            ),
             "preview_image_uri": preview_image_uri,
         }
         self.dataset_storage.write_json(raw_result_uri, raw_result_payload)
@@ -389,7 +416,9 @@ class LocalDetectionValidationSessionService:
             raw_result_uri=raw_result_uri,
             latency_ms=execution.latency_ms,
         )
-        self._write_session(replace(session, updated_at=created_at, last_prediction=summary))
+        self._write_session(
+            replace(session, updated_at=created_at, last_prediction=summary)
+        )
 
         return DetectionValidationPredictionView(
             prediction_id=prediction_id,
@@ -456,19 +485,32 @@ class LocalDetectionValidationSessionService:
     def _write_session(self, session: DetectionValidationSessionView) -> None:
         """把 session 当前视图写入本地文件。"""
 
-        self.dataset_storage.write_json(self._session_path(session.session_id), _serialize_session(session))
+        self.dataset_storage.write_json(
+            self._session_path(session.session_id), _serialize_session(session)
+        )
 
     @staticmethod
     def _session_path(session_id: str) -> str:
         """返回 session JSON 的相对路径。"""
 
-        return str(PurePosixPath("runtime") / "validation-sessions" / session_id / "session.json")
+        return str(
+            PurePosixPath("runtime")
+            / "validation-sessions"
+            / session_id
+            / "session.json"
+        )
 
     @staticmethod
     def _prediction_output_dir(session_id: str, prediction_id: str) -> PurePosixPath:
         """返回某次预测输出目录的相对路径。"""
 
-        return PurePosixPath("runtime") / "validation" / session_id / "pred" / prediction_id
+        return (
+            PurePosixPath("runtime")
+            / "validation"
+            / session_id
+            / "pred"
+            / prediction_id
+        )
 
 
 def _build_runtime_target_resolver(
@@ -495,7 +537,9 @@ def _build_runtime_target_resolver(
                 "supported_model_types": list(_SUPPORTED_DETECTION_MODEL_TYPES),
             },
         )
-    return resolver_factory(session_factory=session_factory, dataset_storage=dataset_storage)
+    return resolver_factory(
+        session_factory=session_factory, dataset_storage=dataset_storage
+    )
 
 
 def _build_runtime_target_from_session(
@@ -602,7 +646,9 @@ def _serialize_session(session: DetectionValidationSessionView) -> dict[str, obj
     }
 
 
-def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidationSessionView:
+def _build_session_from_payload(
+    payload: dict[str, object],
+) -> DetectionValidationSessionView:
     """从 session JSON 载荷恢复 session 视图。"""
 
     raw_input_size = payload.get("input_size")
@@ -617,14 +663,15 @@ def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidati
     device_name = _require_payload_str(payload, "device_name")
     model_type = _require_payload_str(payload, "model_type")
     checkpoint_file_id = _read_payload_optional_str(payload, "checkpoint_file_id")
-    checkpoint_storage_uri = _read_payload_optional_str(payload, "checkpoint_storage_uri")
-    runtime_artifact_file_id = _read_payload_optional_str(payload, "runtime_artifact_file_id") or checkpoint_file_id
-    runtime_artifact_storage_uri = _read_payload_optional_str(payload, "runtime_artifact_storage_uri") or checkpoint_storage_uri
-    if runtime_artifact_file_id is None or runtime_artifact_storage_uri is None:
-        raise ResourceNotFoundError("validation session 数据缺少必要字段", details={"field": "runtime_artifact"})
-    runtime_artifact_file_type = (
-        _read_payload_optional_str(payload, "runtime_artifact_file_type")
-        or _resolve_detection_file_types(model_type).checkpoint_file_type
+    checkpoint_storage_uri = _read_payload_optional_str(
+        payload, "checkpoint_storage_uri"
+    )
+    runtime_artifact_file_id = _require_payload_str(payload, "runtime_artifact_file_id")
+    runtime_artifact_storage_uri = _require_payload_str(
+        payload, "runtime_artifact_storage_uri"
+    )
+    runtime_artifact_file_type = _require_payload_str(
+        payload, "runtime_artifact_file_type"
     )
 
     return DetectionValidationSessionView(
@@ -660,7 +707,9 @@ def _build_session_from_payload(payload: dict[str, object]) -> DetectionValidati
         created_at=_require_payload_str(payload, "created_at"),
         updated_at=_require_payload_str(payload, "updated_at"),
         created_by=_read_payload_optional_str(payload, "created_by"),
-        last_prediction=_build_prediction_summary_from_payload(payload.get("last_prediction")),
+        last_prediction=_build_prediction_summary_from_payload(
+            payload.get("last_prediction")
+        ),
     )
 
 
@@ -683,7 +732,9 @@ def _serialize_prediction_summary(
     }
 
 
-def _build_prediction_summary_from_payload(payload: object) -> DetectionValidationPredictionSummary | None:
+def _build_prediction_summary_from_payload(
+    payload: object,
+) -> DetectionValidationPredictionSummary | None:
     """从 JSON 载荷恢复预测摘要。"""
 
     if not isinstance(payload, dict):
@@ -691,7 +742,9 @@ def _build_prediction_summary_from_payload(payload: object) -> DetectionValidati
     raw_detection_count = payload.get("detection_count", 0)
     detection_count = raw_detection_count if isinstance(raw_detection_count, int) else 0
     raw_latency_ms = payload.get("latency_ms")
-    latency_ms = float(raw_latency_ms) if isinstance(raw_latency_ms, int | float) else None
+    latency_ms = (
+        float(raw_latency_ms) if isinstance(raw_latency_ms, int | float) else None
+    )
     return DetectionValidationPredictionSummary(
         prediction_id=_require_payload_str(payload, "prediction_id"),
         created_at=_require_payload_str(payload, "created_at"),
@@ -715,7 +768,9 @@ def _serialize_detection(detection: DetectionValidationDetection) -> dict[str, o
     }
 
 
-def _serialize_runtime_tensor_spec(spec: DetectionRuntimeTensorSpec) -> dict[str, object]:
+def _serialize_runtime_tensor_spec(
+    spec: DetectionRuntimeTensorSpec,
+) -> dict[str, object]:
     """把 runtime 张量规格转换为 JSON 字典。"""
 
     return {
@@ -725,7 +780,9 @@ def _serialize_runtime_tensor_spec(spec: DetectionRuntimeTensorSpec) -> dict[str
     }
 
 
-def _serialize_runtime_session_info(session_info: DetectionRuntimeSessionInfo) -> dict[str, object]:
+def _serialize_runtime_session_info(
+    session_info: DetectionRuntimeSessionInfo,
+) -> dict[str, object]:
     """把 runtime session info 转换为 JSON 字典。"""
 
     return {
@@ -760,7 +817,9 @@ def _normalize_runtime_backend(runtime_backend: str | None) -> str:
             "当前 detection validation session 不支持指定 runtime_backend",
             details={
                 "runtime_backend": normalized_backend,
-                "supported_runtime_backends": sorted(_SUPPORTED_VALIDATION_RUNTIME_BACKENDS),
+                "supported_runtime_backends": sorted(
+                    _SUPPORTED_VALIDATION_RUNTIME_BACKENDS
+                ),
             },
         )
     return normalized_backend
@@ -773,11 +832,16 @@ def _normalize_device_name(
 ) -> str:
     """归一化 validation session 默认 device 名称。"""
 
-    if isinstance(extra_options.get("device"), str) and str(extra_options["device"]).strip():
+    if (
+        isinstance(extra_options.get("device"), str)
+        and str(extra_options["device"]).strip()
+    ):
         requested = str(extra_options["device"]).strip()
     else:
         requested = _normalize_optional_str(device_name)
-    return normalize_runtime_target_device_name(requested, runtime_backend=runtime_backend)
+    return normalize_runtime_target_device_name(
+        requested, runtime_backend=runtime_backend
+    )
 
 
 def _normalize_extra_options(extra_options: object) -> dict[str, object]:

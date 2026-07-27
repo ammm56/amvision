@@ -99,7 +99,7 @@ def _read_runtime_configuration(
     """读取完整运行时配置；未提供时交给 deployment service 生成设备默认值。"""
 
     payload = get_optional_dict_parameter(request, "runtime_configuration")
-    if payload is None:
+    if not payload:
         return None
     return deserialize_deployment_runtime_configuration(payload)
 

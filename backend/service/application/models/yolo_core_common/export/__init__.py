@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.service.application.models.yolo_core_common.export.execution import (
+    build_validated_yolo_runtime_input_tensor,
     YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE,
     YOLO_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
     build_yolo_openvino_ir,
@@ -49,6 +50,7 @@ __all__ = [
     "build_yolo_openvino_ir",
     "build_yolo_tensorrt_engine",
     "build_yolo_export_task_plan",
+    "build_validated_yolo_runtime_input_tensor",
     "export_yolo_onnx",
     "is_yolo_export_mode_enabled",
     "normalize_yolo_export_model_outputs",

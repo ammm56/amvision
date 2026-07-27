@@ -144,9 +144,6 @@ class OnnxRuntimeYolo11SegmentationRuntimeSession:
         )
         infer_ms = round((perf_counter() - infer_started_at) * 1000, 3)
 
-        image_height = int(image.shape[0])
-        image_width = int(image.shape[1])
-
         postprocess_started_at = perf_counter()
         prediction_array, proto_array = (
             normalize_yolo11_segmentation_outputs_for_backend(

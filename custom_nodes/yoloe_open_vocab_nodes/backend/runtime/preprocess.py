@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+)
 from backend.service.application.runtime.support.detection import preprocess_image
 from custom_nodes.yoloe_open_vocab_nodes.backend.core.postprocess.segmentation import (
     decode_runtime_image,
@@ -17,7 +20,7 @@ class RuntimeImageTensor:
 
     image: Any
     input_tensor: Any
-    resize_ratio: float
+    letterbox_transform: YoloLetterboxTransform
 
 
 def prepare_image_tensor(
@@ -32,7 +35,7 @@ def prepare_image_tensor(
     """把图片字节转换为 YOLOE runtime 输入 tensor。"""
 
     image = decode_runtime_image(imports.cv2, imports.np, image_bytes, image_payload)
-    input_array, resize_ratio = preprocess_image(
+    input_array, letterbox_transform = preprocess_image(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -45,7 +48,7 @@ def prepare_image_tensor(
     return RuntimeImageTensor(
         image=image,
         input_tensor=input_tensor,
-        resize_ratio=float(resize_ratio),
+        letterbox_transform=letterbox_transform,
     )
 
 

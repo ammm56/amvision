@@ -122,10 +122,7 @@ class YoloeVisualPromptRuntimeSession:
             torch_module=self.imports.torch,
             np_module=self.imports.np,
             prompts=prompts,
-            input_size=self.input_size,
-            resize_ratio=prompt_runtime_input.resize_ratio,
-            prompt_image_width=int(prompt_runtime_input.image.shape[1]),
-            prompt_image_height=int(prompt_runtime_input.image.shape[0]),
+            letterbox_transform=prompt_runtime_input.letterbox_transform,
             device_name=self.device_name,
             dtype=prompt_runtime_input.input_tensor.dtype,
         )
@@ -141,8 +138,12 @@ class YoloeVisualPromptRuntimeSession:
         )
         prediction_array = prediction_tensor.detach().float().cpu().numpy()
         proto_array = proto_tensor.detach().float().cpu().numpy()
-        prompt_display_names = {index: str(item.display_name) for index, item in enumerate(prompts)}
-        prompt_id_map = {index: str(item.prompt_id) for index, item in enumerate(prompts)}
+        prompt_display_names = {
+            index: str(item.display_name) for index, item in enumerate(prompts)
+        }
+        prompt_id_map = {
+            index: str(item.prompt_id) for index, item in enumerate(prompts)
+        }
         detections, regions = _postprocess_prompt_free_outputs(
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
@@ -152,10 +153,7 @@ class YoloeVisualPromptRuntimeSession:
             confidence_threshold=confidence_threshold,
             iou_threshold=iou_threshold,
             max_detections=max_detections,
-            resize_ratio=runtime_input.resize_ratio,
-            image_width=int(runtime_input.image.shape[1]),
-            image_height=int(runtime_input.image.shape[0]),
-            input_size=self.input_size,
+            letterbox_transform=runtime_input.letterbox_transform,
         )
         for item in detections:
             class_id = int(item["class_id"])
@@ -169,19 +167,24 @@ class YoloeVisualPromptRuntimeSession:
                     str(kind)
                     for item in prompts
                     for kind in (
-                        tuple(getattr(item, "prompt_kinds", ())) or (str(getattr(item, "prompt_kind", "mixed")),)
+                        tuple(getattr(item, "prompt_kinds", ()))
+                        or (str(getattr(item, "prompt_kind", "mixed")),)
                     )
                 }
             )
         )
-        prompt_item_count = sum(max(1, int(getattr(item, "raw_item_count", 1))) for item in prompts)
+        prompt_item_count = sum(
+            max(1, int(getattr(item, "raw_item_count", 1))) for item in prompts
+        )
         prompt_kind_counts: dict[str, int] = {}
         for item in prompts:
             normalized_prompt_kinds = tuple(getattr(item, "prompt_kinds", ())) or (
                 str(getattr(item, "prompt_kind", "mixed")),
             )
             for prompt_kind in normalized_prompt_kinds:
-                prompt_kind_counts[str(prompt_kind)] = int(prompt_kind_counts.get(str(prompt_kind), 0)) + 1
+                prompt_kind_counts[str(prompt_kind)] = (
+                    int(prompt_kind_counts.get(str(prompt_kind), 0)) + 1
+                )
 
         summary = {
             "model_series": self.variant.model_series,
@@ -202,9 +205,13 @@ class YoloeVisualPromptRuntimeSession:
             "prompt_free": False,
             "inference_mode": "visual-prompt",
             "visual_prompt_kinds": list(visual_prompt_kinds),
-            "visual_prompt_kind": visual_prompt_kinds[0] if len(visual_prompt_kinds) == 1 else "mixed",
+            "visual_prompt_kind": visual_prompt_kinds[0]
+            if len(visual_prompt_kinds) == 1
+            else "mixed",
             "prompt_kind_counts": prompt_kind_counts,
-            "prompt_groups": [_build_visual_prompt_summary_item(item) for item in prompts],
+            "prompt_groups": [
+                _build_visual_prompt_summary_item(item) for item in prompts
+            ],
             "project_native": True,
         }
         return ProjectNativeYoloePrediction(
@@ -217,10 +224,14 @@ class YoloeVisualPromptRuntimeSession:
 def _build_visual_prompt_summary_item(item: Any) -> dict[str, object]:
     """构建 visual prompt 运行时摘要项。"""
 
-    prompt_kinds = tuple(getattr(item, "prompt_kinds", ())) or (str(getattr(item, "prompt_kind", "mixed")),)
+    prompt_kinds = tuple(getattr(item, "prompt_kinds", ())) or (
+        str(getattr(item, "prompt_kind", "mixed")),
+    )
     summary_item: dict[str, object] = {
         "prompt_id": str(getattr(item, "prompt_id", "")),
-        "display_name": str(getattr(item, "display_name", "") or getattr(item, "prompt_id", "")),
+        "display_name": str(
+            getattr(item, "display_name", "") or getattr(item, "prompt_id", "")
+        ),
         "prompt_kind": str(getattr(item, "prompt_kind", "mixed")),
         "prompt_kinds": list(prompt_kinds),
         "raw_item_count": max(1, int(getattr(item, "raw_item_count", 1))),
@@ -236,7 +247,9 @@ def _build_visual_prompt_summary_item(item: Any) -> dict[str, object]:
         summary_item["point_label"] = str(point_label)
     polygon_xy = getattr(item, "polygon_xy", None)
     if polygon_xy is not None:
-        summary_item["polygon_xy"] = [[float(value) for value in point] for point in polygon_xy]
+        summary_item["polygon_xy"] = [
+            [float(value) for value in point] for point in polygon_xy
+        ]
     if getattr(item, "prompt_mask", None) is not None:
         summary_item["has_prompt_mask"] = True
     return summary_item

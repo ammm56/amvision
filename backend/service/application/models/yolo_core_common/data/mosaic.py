@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
     clip_yolo_xyxy_box,
 )
 
@@ -31,6 +32,47 @@ class YoloMosaicImagePlacement:
     offset_y: float
     canvas_width: int
     canvas_height: int
+
+
+def build_yolo_mosaic_placement_transform(
+    *,
+    placement: YoloMosaicImagePlacement,
+    source_image: Any,
+    fill_value: int = 114,
+) -> YoloLetterboxTransform:
+    """把 Mosaic placement 转成统一几何变换元数据。
+
+    Mosaic 单图不会执行居中 padding，但后续 box、mask、keypoint 和 OBB
+    仍可复用同一个 ``YoloLetterboxTransform`` 坐标接口。offset 允许为负，
+    表示原图缩放后有一部分落在大画布外并被裁剪。
+    """
+
+    source_height = max(1, int(source_image.shape[0]))
+    source_width = max(1, int(source_image.shape[1]))
+    resized_height = max(1, int(round(source_height * placement.resize_scale)))
+    resized_width = max(1, int(round(source_width * placement.resize_scale)))
+    pad_left = int(round(placement.offset_x))
+    pad_top = int(round(placement.offset_y))
+    return YoloLetterboxTransform(
+        source_width=source_width,
+        source_height=source_height,
+        target_width=int(placement.canvas_width),
+        target_height=int(placement.canvas_height),
+        gain=float(placement.resize_scale),
+        pad_left=pad_left,
+        pad_top=pad_top,
+        pad_right=int(placement.canvas_width) - resized_width - pad_left,
+        pad_bottom=int(placement.canvas_height) - resized_height - pad_top,
+        resized_width=resized_width,
+        resized_height=resized_height,
+        scaleup=True,
+        centered=False,
+        auto=False,
+        stride=32,
+        scale_gain=1.0,
+        fill_value=max(0, min(255, int(fill_value))),
+        interpolation="bilinear",
+    )
 
 
 def build_yolo_detection_mosaic4(
@@ -106,7 +148,9 @@ def build_yolo_mosaic4_canvas(
         dtype=np_module.uint8,
     )
     center_x = int(random.uniform(float(target_width) * 0.5, float(target_width) * 1.5))
-    center_y = int(random.uniform(float(target_height) * 0.5, float(target_height) * 1.5))
+    center_y = int(
+        random.uniform(float(target_height) * 0.5, float(target_height) * 1.5)
+    )
 
     placements: list[YoloMosaicImagePlacement] = []
     for index, source_image in enumerate(images[:4]):

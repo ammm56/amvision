@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.data.mosaic import (
+    build_yolo_mosaic_placement_transform,
     build_yolo_mosaic4_canvas,
 )
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
@@ -106,7 +107,9 @@ def build_yolov8_segmentation_training_batch(
             device=device,
         )
 
-        tensor = canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        tensor = (
+            canvas[:, :, ::-1].transpose(2, 0, 1).astype(imports.np.float32) / 255.0
+        )
         images.append(imports.torch.from_numpy(tensor).float())
         targets.append(target)
 
@@ -204,7 +207,10 @@ def _prepare_yolov8_segmentation_mixup_sample(
 ) -> tuple[Any, dict[str, Any]] | None:
     """构造 MixUp 的第二张 segmentation 样本。"""
 
-    if augmentation_options.mosaic_prob > 0.0 and random.random() < augmentation_options.mosaic_prob:
+    if (
+        augmentation_options.mosaic_prob > 0.0
+        and random.random() < augmentation_options.mosaic_prob
+    ):
         return _build_yolov8_segmentation_mosaic_sample(
             imports=imports,
             primary_sample=sample,
@@ -236,8 +242,7 @@ def _build_yolov8_segmentation_mosaic_sample(
     merged_target: dict[str, Any] | None = None
     selected_samples = [primary_sample]
     selected_samples.extend(
-        random.choice(tuple(available_samples) or (primary_sample,))
-        for _ in range(3)
+        random.choice(tuple(available_samples) or (primary_sample,)) for _ in range(3)
     )
     selected_items: list[tuple[Any, Any]] = []
     for sample in selected_samples:
@@ -259,8 +264,10 @@ def _build_yolov8_segmentation_mosaic_sample(
             sample=sample,
             target_width=placement.canvas_width,
             target_height=placement.canvas_height,
-            resize_ratio=placement.resize_scale,
-            pad_xy=(int(placement.offset_x), int(placement.offset_y)),
+            letterbox_transform=build_yolo_mosaic_placement_transform(
+                placement=placement,
+                source_image=selected_items[placement.index][1],
+            ),
             imports=imports,
         )
         placed_target = _filter_yolov8_segmentation_target_by_boxes(
@@ -365,7 +372,9 @@ def _build_yolov8_segmentation_sample_targets(
     }
     if mask_targets:
         target_payload["masks_array"] = imports.np.stack(mask_targets, axis=0)
-        target_payload["mask_valid_array"] = imports.np.asarray(mask_valid, dtype=imports.np.bool_)
+        target_payload["mask_valid_array"] = imports.np.asarray(
+            mask_valid, dtype=imports.np.bool_
+        )
     return target_payload
 
 
@@ -381,7 +390,8 @@ def _merge_yolov8_segmentation_targets(
 
     merged = {
         "boxes": list(primary.get("boxes", [])) + list(other.get("boxes", [])),
-        "class_ids": list(primary.get("class_ids", [])) + list(other.get("class_ids", [])),
+        "class_ids": list(primary.get("class_ids", []))
+        + list(other.get("class_ids", [])),
     }
     primary_masks = primary.get("masks_array")
     other_masks = other.get("masks_array")
@@ -438,7 +448,9 @@ def _ensure_yolov8_segmentation_masks(
 
     if masks is not None:
         return masks
-    return imports.np.zeros((count, target_height, target_width), dtype=imports.np.float32)
+    return imports.np.zeros(
+        (count, target_height, target_width), dtype=imports.np.float32
+    )
 
 
 def _ensure_yolov8_mask_valid(
@@ -478,7 +490,9 @@ def _filter_yolov8_segmentation_target_by_boxes(
     if "masks_array" in filtered:
         filtered["masks_array"] = filtered["masks_array"][kept_indices]
     if "mask_valid_array" in filtered:
-        filtered["mask_valid_array"] = imports.np.asarray(filtered["mask_valid_array"])[kept_indices]
+        filtered["mask_valid_array"] = imports.np.asarray(filtered["mask_valid_array"])[
+            kept_indices
+        ]
     return filtered
 
 
@@ -579,7 +593,9 @@ def _apply_yolov8_segmentation_random_affine(
     )
     if warped_masks is not None:
         transformed_target["masks_array"] = warped_masks[kept_indices]
-        transformed_target["mask_valid_array"] = target.get("mask_valid_array")[kept_indices]
+        transformed_target["mask_valid_array"] = target.get("mask_valid_array")[
+            kept_indices
+        ]
     return image, transformed_target
 
 

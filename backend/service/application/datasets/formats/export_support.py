@@ -26,8 +26,13 @@ from backend.service.domain.models.model_task_types import (
 )
 
 
-_SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK: dict[tuple[str, str], tuple[str, ...]] = {
-    ("yolox", DETECTION_TASK_TYPE): (COCO_DETECTION_DATASET_FORMAT, VOC_DETECTION_DATASET_FORMAT),
+_SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK: dict[
+    tuple[str, str], tuple[str, ...]
+] = {
+    ("yolox", DETECTION_TASK_TYPE): (
+        COCO_DETECTION_DATASET_FORMAT,
+        VOC_DETECTION_DATASET_FORMAT,
+    ),
     (
         "yolov8",
         DETECTION_TASK_TYPE,
@@ -62,9 +67,18 @@ _SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK: dict[tuple[str, str], tuple[str
         COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     ),
     ("rfdetr", SEGMENTATION_TASK_TYPE): (COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,),
-    ("yolov8", POSE_TASK_TYPE): (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT),
-    ("yolo11", POSE_TASK_TYPE): (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT),
-    ("yolo26", POSE_TASK_TYPE): (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT),
+    ("yolov8", POSE_TASK_TYPE): (
+        YOLO_POSE_DATASET_FORMAT,
+        COCO_KEYPOINTS_DATASET_FORMAT,
+    ),
+    ("yolo11", POSE_TASK_TYPE): (
+        YOLO_POSE_DATASET_FORMAT,
+        COCO_KEYPOINTS_DATASET_FORMAT,
+    ),
+    ("yolo26", POSE_TASK_TYPE): (
+        YOLO_POSE_DATASET_FORMAT,
+        COCO_KEYPOINTS_DATASET_FORMAT,
+    ),
     ("yolov8", OBB_TASK_TYPE): (DOTA_OBB_DATASET_FORMAT,),
     ("yolo11", OBB_TASK_TYPE): (DOTA_OBB_DATASET_FORMAT,),
     ("yolo26", OBB_TASK_TYPE): (DOTA_OBB_DATASET_FORMAT,),
@@ -73,6 +87,20 @@ _SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK: dict[tuple[str, str], tuple[str
     ("yolo26", CLASSIFICATION_TASK_TYPE): (IMAGENET_CLASSIFICATION_DATASET_FORMAT,),
     ("rfdetr", DETECTION_TASK_TYPE): (COCO_DETECTION_DATASET_FORMAT,),
 }
+
+
+def build_supported_dataset_export_formats_by_task_and_model_type() -> dict[
+    str, dict[str, list[str]]
+]:
+    """构建前端与外部客户端可直接消费的训练导出格式能力矩阵。"""
+
+    result: dict[str, dict[str, list[str]]] = {}
+    for (
+        model_type,
+        task_type,
+    ), format_ids in _SUPPORTED_DATASET_EXPORT_FORMATS_BY_MODEL_TASK.items():
+        result.setdefault(task_type, {})[model_type] = list(format_ids)
+    return result
 
 
 def resolve_supported_dataset_export_formats(

@@ -7,7 +7,9 @@ from types import SimpleNamespace
 from PIL import Image
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import semantic_segment
 
 
@@ -17,7 +19,7 @@ def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
             captured["image_bytes_length"] = len(image_bytes)
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
@@ -28,7 +30,12 @@ def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
                         class_id=0,
                         class_name="缺陷区域",
                         bbox_xyxy=(10.0, 16.0, 50.0, 54.0),
-                        polygon_xy=((10.0, 16.0), (50.0, 16.0), (50.0, 54.0), (10.0, 54.0)),
+                        polygon_xy=(
+                            (10.0, 16.0),
+                            (50.0, 16.0),
+                            (50.0, 54.0),
+                            (10.0, 54.0),
+                        ),
                         area=1520,
                         prompt_id="prompt-1",
                         source_prompt_text="defect region",
@@ -115,7 +122,9 @@ def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
     }
     assert output["regions"]["count"] == 1
     assert output["regions"]["items"][0]["class_name"] == "缺陷区域"
-    assert output["regions"]["items"][0]["source_prompt_positive_texts"] == ["defect region"]
+    assert output["regions"]["items"][0]["source_prompt_positive_texts"] == [
+        "defect region"
+    ]
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "semantic-segment"
     assert output["summary"]["prompt_ids"] == ["prompt-1"]
@@ -158,7 +167,9 @@ def test_semantic_segment_runs_project_native_smoke() -> None:
     assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
 
 
-def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group() -> None:
+def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group() -> (
+    None
+):
     """验证 SAM3 semantic runtime 支持同一 prompt_id 下的正负文本组合。"""
 
     image_payload, image_registry = _build_test_image_payload(width=128, height=96)
@@ -204,7 +215,9 @@ def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group()
     assert output["summary"]["prompt_groups"][0]["negative_texts"] == ["background"]
 
 
-def _build_test_image_payload(*, width: int, height: int) -> tuple[dict[str, object], ExecutionImageRegistry]:
+def _build_test_image_payload(
+    *, width: int, height: int
+) -> tuple[dict[str, object], ExecutionImageRegistry]:
     """构造测试图片 payload。"""
 
     image_bytes = _build_test_png_bytes(width=width, height=height)

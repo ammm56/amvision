@@ -5,10 +5,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from backend.queue import QueueBackend, QueueMessage
-from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
+from backend.service.application.backends import (
+    TrainingBackend,
+    TrainingBackendRunRequest,
+)
 from backend.service.application.error_serialization import serialize_error
-from backend.service.application.errors import InvalidRequestError, OperationCancelledError, ServiceError
-from backend.service.application.tasks.task_service import AppendTaskEventRequest, SqlAlchemyTaskService
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationCancelledError,
+    ServiceError,
+)
+from backend.service.application.model_type_support import (
+    require_supported_platform_model_type,
+)
+from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
+    SqlAlchemyTaskService,
+)
 from backend.service.application.models.training.yolov8_classification_training_service import (
     YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
@@ -46,7 +59,9 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     YOLO26_OBB_TRAINING_QUEUE_NAME,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner
 
@@ -91,14 +106,23 @@ class ClassificationTrainingQueueWorker:
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
             )
-            run_result = training_backend.run_training(TrainingBackendRunRequest(
-                training_task_id=task_id,
-                model_type=_read_model_type(qt.payload),
-                task_type="classification",
-                metadata={"queue_task_id": qt.task_id},
-            ))
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
+                    training_task_id=task_id,
+                    model_type=_read_model_type(qt.payload, task_type="classification"),
+                    task_type="classification",
+                    metadata={"queue_task_id": qt.task_id},
+                )
+            )
         except OperationCancelledError as error:
-            self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
+            self.queue_backend.complete(
+                qt,
+                metadata={
+                    "task_id": qt.payload.get("task_id"),
+                    "status": "cancelled",
+                    "cancel_message": error.message,
+                },
+            )
             return True
         except ServiceError as error:
             _mark_training_task_failed(
@@ -125,12 +149,16 @@ class ClassificationTrainingQueueWorker:
             )
             return True
 
-        self.queue_backend.complete(qt, metadata={
-            "task_id": run_result.training_task_id, "status": run_result.status,
-            "dataset_export_id": run_result.dataset_export_id,
-            "output_object_prefix": run_result.output_object_prefix,
-            "checkpoint_object_key": run_result.checkpoint_object_key,
-        })
+        self.queue_backend.complete(
+            qt,
+            metadata={
+                "task_id": run_result.training_task_id,
+                "status": run_result.status,
+                "dataset_export_id": run_result.dataset_export_id,
+                "output_object_prefix": run_result.output_object_prefix,
+                "checkpoint_object_key": run_result.checkpoint_object_key,
+            },
+        )
         return True
 
 
@@ -192,14 +220,23 @@ class SegmentationTrainingQueueWorker:
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
             )
-            run_result = training_backend.run_training(TrainingBackendRunRequest(
-                training_task_id=task_id,
-                model_type=_read_model_type(qt.payload),
-                task_type="segmentation",
-                metadata={"queue_task_id": qt.task_id},
-            ))
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
+                    training_task_id=task_id,
+                    model_type=_read_model_type(qt.payload, task_type="segmentation"),
+                    task_type="segmentation",
+                    metadata={"queue_task_id": qt.task_id},
+                )
+            )
         except OperationCancelledError as error:
-            self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
+            self.queue_backend.complete(
+                qt,
+                metadata={
+                    "task_id": qt.payload.get("task_id"),
+                    "status": "cancelled",
+                    "cancel_message": error.message,
+                },
+            )
             return True
         except ServiceError as error:
             _mark_training_task_failed(
@@ -226,12 +263,16 @@ class SegmentationTrainingQueueWorker:
             )
             return True
 
-        self.queue_backend.complete(qt, metadata={
-            "task_id": run_result.training_task_id, "status": run_result.status,
-            "dataset_export_id": run_result.dataset_export_id,
-            "output_object_prefix": run_result.output_object_prefix,
-            "checkpoint_object_key": run_result.checkpoint_object_key,
-        })
+        self.queue_backend.complete(
+            qt,
+            metadata={
+                "task_id": run_result.training_task_id,
+                "status": run_result.status,
+                "dataset_export_id": run_result.dataset_export_id,
+                "output_object_prefix": run_result.output_object_prefix,
+                "checkpoint_object_key": run_result.checkpoint_object_key,
+            },
+        )
         return True
 
 
@@ -275,14 +316,23 @@ class PoseTrainingQueueWorker:
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
             )
-            run_result = training_backend.run_training(TrainingBackendRunRequest(
-                training_task_id=task_id,
-                model_type=_read_model_type(qt.payload),
-                task_type="pose",
-                metadata={"queue_task_id": qt.task_id},
-            ))
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
+                    training_task_id=task_id,
+                    model_type=_read_model_type(qt.payload, task_type="pose"),
+                    task_type="pose",
+                    metadata={"queue_task_id": qt.task_id},
+                )
+            )
         except OperationCancelledError as error:
-            self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
+            self.queue_backend.complete(
+                qt,
+                metadata={
+                    "task_id": qt.payload.get("task_id"),
+                    "status": "cancelled",
+                    "cancel_message": error.message,
+                },
+            )
             return True
         except ServiceError as error:
             _mark_training_task_failed(
@@ -309,12 +359,16 @@ class PoseTrainingQueueWorker:
             )
             return True
 
-        self.queue_backend.complete(qt, metadata={
-            "task_id": run_result.training_task_id, "status": run_result.status,
-            "dataset_export_id": run_result.dataset_export_id,
-            "output_object_prefix": run_result.output_object_prefix,
-            "checkpoint_object_key": run_result.checkpoint_object_key,
-        })
+        self.queue_backend.complete(
+            qt,
+            metadata={
+                "task_id": run_result.training_task_id,
+                "status": run_result.status,
+                "dataset_export_id": run_result.dataset_export_id,
+                "output_object_prefix": run_result.output_object_prefix,
+                "checkpoint_object_key": run_result.checkpoint_object_key,
+            },
+        )
         return True
 
 
@@ -358,14 +412,23 @@ class ObbTrainingQueueWorker:
                 dataset_storage=self.dataset_storage,
                 queue_backend=self.queue_backend,
             )
-            run_result = training_backend.run_training(TrainingBackendRunRequest(
-                training_task_id=task_id,
-                model_type=_read_model_type(qt.payload),
-                task_type="obb",
-                metadata={"queue_task_id": qt.task_id},
-            ))
+            run_result = training_backend.run_training(
+                TrainingBackendRunRequest(
+                    training_task_id=task_id,
+                    model_type=_read_model_type(qt.payload, task_type="obb"),
+                    task_type="obb",
+                    metadata={"queue_task_id": qt.task_id},
+                )
+            )
         except OperationCancelledError as error:
-            self.queue_backend.complete(qt, metadata={"task_id": qt.payload.get("task_id"), "status": "cancelled", "cancel_message": error.message})
+            self.queue_backend.complete(
+                qt,
+                metadata={
+                    "task_id": qt.payload.get("task_id"),
+                    "status": "cancelled",
+                    "cancel_message": error.message,
+                },
+            )
             return True
         except ServiceError as error:
             _mark_training_task_failed(
@@ -392,18 +455,23 @@ class ObbTrainingQueueWorker:
             )
             return True
 
-        self.queue_backend.complete(qt, metadata={
-            "task_id": run_result.training_task_id, "status": run_result.status,
-            "dataset_export_id": run_result.dataset_export_id,
-            "output_object_prefix": run_result.output_object_prefix,
-            "checkpoint_object_key": run_result.checkpoint_object_key,
-        })
+        self.queue_backend.complete(
+            qt,
+            metadata={
+                "task_id": run_result.training_task_id,
+                "status": run_result.status,
+                "dataset_export_id": run_result.dataset_export_id,
+                "output_object_prefix": run_result.output_object_prefix,
+                "checkpoint_object_key": run_result.checkpoint_object_key,
+            },
+        )
         return True
 
 
 def _read_task_id(qt: QueueMessage) -> str:
     """从队列负载中读取训练任务 id。"""
     import json
+
     payload = qt.payload
     if isinstance(payload, dict):
         return str(payload.get("task_id", ""))
@@ -412,15 +480,21 @@ def _read_task_id(qt: QueueMessage) -> str:
     raise InvalidRequestError("训练队列任务缺少 task_id")
 
 
-def _read_model_type(payload: dict | str) -> str:
-    """从负载中读取模型类型。"""
+def _read_model_type(payload: dict | str, *, task_type: str) -> str:
+    """从负载中读取并校验当前任务真正支持的模型类型。"""
+
     import json
+
     if isinstance(payload, str):
         payload = json.loads(payload)
-    model_type = str(payload.get("model_type", payload.get("model_scale", "yolov8")))
-    if not model_type or model_type in ("s", "m", "l", "x", "nano"):
-        return "yolov8"
-    return model_type
+    if not isinstance(payload, dict):
+        raise InvalidRequestError("训练队列负载必须是对象")
+    return require_supported_platform_model_type(
+        task_type=task_type,
+        model_type=payload.get("model_type"),
+        empty_message="训练队列负载缺少 model_type",
+        unsupported_message="训练队列负载的模型分类与任务类型不匹配",
+    )
 
 
 def _mark_training_task_failed(
@@ -478,4 +552,3 @@ def _read_optional_task_id(payload: dict | str) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
-

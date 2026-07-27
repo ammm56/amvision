@@ -7,7 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.yoloe_open_vocab_nodes.backend.nodes import prompt_free_detect
 from custom_nodes.yoloe_open_vocab_nodes.backend.core.weights.checkpoint import (
     is_ignored_text_prompt_checkpoint_key,
@@ -29,7 +31,9 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_YOLOE_PRETRAINED_ROOT = _REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "segmentation"
+_YOLOE_PRETRAINED_ROOT = (
+    _REPO_ROOT / "data" / "files" / "models" / "pretrained" / "yoloe" / "segmentation"
+)
 
 
 def test_resolve_yoloe_pretrained_variant_reads_local_prompt_free_manifest() -> None:
@@ -57,6 +61,7 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
             self,
             *,
             image_bytes: bytes,
+            image_payload,
             confidence_threshold: float,
             iou_threshold: float,
             max_detections: int,
@@ -99,13 +104,20 @@ def test_prompt_free_detect_returns_detection_payload_and_summary(monkeypatch) -
                         "score": 0.87,
                         "class_id": 504,
                         "class_name": "bolt",
-                        "polygon_xy": [[12.0, 24.0], [60.0, 24.0], [60.0, 80.0], [12.0, 80.0]],
+                        "polygon_xy": [
+                            [12.0, 24.0],
+                            [60.0, 24.0],
+                            [60.0, 80.0],
+                            [12.0, 80.0],
+                        ],
                         "area": 2688,
                     },
                 ),
             )
 
-    def _fake_get_or_create_session(*, model_series: str, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(
+        *, model_series: str, model_scale: str, device: str, precision: str
+    ):
         captured["session_kwargs"] = {
             "model_series": model_series,
             "model_scale": model_scale,
@@ -182,6 +194,7 @@ def test_prompt_free_runtime_session_runs_project_native_smoke() -> None:
     )
     prediction = runtime_session.predict(
         image_bytes=_build_test_png_bytes(),
+        image_payload=None,
         confidence_threshold=0.25,
         iou_threshold=0.7,
         max_detections=5,
@@ -204,7 +217,9 @@ def test_yoloe_pretrained_manifests_load_project_native_weights() -> None:
     for manifest_path in manifest_paths:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         checkpoint_path = manifest_path.parent / manifest["checkpoint_path"]
-        artifacts = load_prompt_free_checkpoint_artifacts(checkpoint_path=checkpoint_path)
+        artifacts = load_prompt_free_checkpoint_artifacts(
+            checkpoint_path=checkpoint_path
+        )
         upstream_mode = str(manifest.get("metadata", {}).get("upstream_mode") or "")
         builder = (
             build_yoloe_prompt_free_segmentation_model
@@ -224,10 +239,20 @@ def test_yoloe_pretrained_manifests_load_project_native_weights() -> None:
             unexpected_keys = tuple(incompatible.unexpected_keys)
             missing_keys = tuple(incompatible.missing_keys)
         else:
-            unexpected_keys = tuple(key for key in incompatible.unexpected_keys if not is_ignored_text_prompt_checkpoint_key(key))
-            missing_keys = tuple(key for key in incompatible.missing_keys if not is_ignored_text_prompt_checkpoint_key(key))
+            unexpected_keys = tuple(
+                key
+                for key in incompatible.unexpected_keys
+                if not is_ignored_text_prompt_checkpoint_key(key)
+            )
+            missing_keys = tuple(
+                key
+                for key in incompatible.missing_keys
+                if not is_ignored_text_prompt_checkpoint_key(key)
+            )
 
-        assert not unexpected_keys, f"{manifest_path} unexpected keys: {unexpected_keys[:10]}"
+        assert not unexpected_keys, (
+            f"{manifest_path} unexpected keys: {unexpected_keys[:10]}"
+        )
         assert not missing_keys, f"{manifest_path} missing keys: {missing_keys[:10]}"
 
 

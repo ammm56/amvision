@@ -290,12 +290,14 @@ class DotaDatasetImportParserMixin:
         if not label_dir.is_dir():
             return False
         label_paths = sorted(label_dir.glob("*.txt"))
+        has_dota_metadata = False
         for label_path in label_paths:
             for line in label_path.read_text(encoding="utf-8").splitlines():
                 stripped = line.strip()
                 if not stripped:
                     continue
                 if self._is_dota_metadata_line(stripped):
+                    has_dota_metadata = True
                     continue
                 parts = stripped.split()
                 if len(parts) < 9:
@@ -310,7 +312,10 @@ class DotaDatasetImportParserMixin:
                 except ValueError:
                     return True
                 return False
-        return bool(label_paths)
+        # 空 label 文件同样是合法的 YOLO split，不能仅凭目录中存在
+        # `.txt` 文件就把数据集误识别成 DOTA。仅包含 DOTA 官方元数据头
+        # 的文件仍可作为 DOTA 空标注 split 识别。
+        return has_dota_metadata
 
     def _is_dota_metadata_line(self, line: str) -> bool:
         """识别 DOTA 官方 label 文件可选的 imagesource/gsd 头。"""

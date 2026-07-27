@@ -7,9 +7,16 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
 
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
-from backend.service.application.model_type_support import require_supported_platform_model_type
-from backend.service.application.project_public_files import resolve_public_project_file_reference
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
+from backend.service.application.model_type_support import (
+    require_supported_platform_model_type,
+)
+from backend.service.application.project_public_files import (
+    resolve_public_project_file_reference,
+)
 from backend.service.application.runtime.tasks.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
@@ -36,23 +43,26 @@ from backend.service.application.runtime.targets.runtime_target import (
     resolve_local_file_path,
     resolve_runtime_precision,
 )
-from backend.service.domain.files.classification_model_file_types import (
-    YOLO_MODEL_CLASSIFICATION_FILE_TYPES,
-)
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.domain.models.model_input_spec import (
     deserialize_spatial_size_hw,
     serialize_spatial_size_hw,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 _VALIDATION_SESSION_STATUS_READY = "ready"
 _VALIDATION_RUNTIME_BACKEND = "pytorch"
-_SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset({"pytorch", "onnxruntime", "openvino", "tensorrt"})
+_SUPPORTED_VALIDATION_RUNTIME_BACKENDS = frozenset(
+    {"pytorch", "onnxruntime", "openvino", "tensorrt"}
+)
 _DEFAULT_TOP_K = 5
 _DEFAULT_INPUT_SIZE = (224, 224)
+
+
 @dataclass(frozen=True)
 class ClassificationValidationSessionCreateRequest:
     project_id: str
@@ -151,7 +161,9 @@ class LocalClassificationValidationSessionService:
     ) -> None:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.classification_runtime = classification_runtime or DefaultClassificationModelRuntime()
+        self.classification_runtime = (
+            classification_runtime or DefaultClassificationModelRuntime()
+        )
 
     def create_session(
         self,
@@ -188,7 +200,9 @@ class LocalClassificationValidationSessionService:
                 },
             )
 
-        top_k = _resolve_positive_int(request.top_k, field_name="top_k", default=_DEFAULT_TOP_K)
+        top_k = _resolve_positive_int(
+            request.top_k, field_name="top_k", default=_DEFAULT_TOP_K
+        )
         runtime_artifact_file_id = _require_non_empty_str(
             runtime_target.runtime_artifact_file_id,
             field_name="runtime_artifact_file_id",
@@ -225,8 +239,12 @@ class LocalClassificationValidationSessionService:
             runtime_artifact_file_id=runtime_artifact_file_id,
             runtime_artifact_storage_uri=runtime_artifact_storage_uri,
             runtime_artifact_file_type=runtime_artifact_file_type,
-            checkpoint_file_id=_normalize_optional_str(runtime_target.checkpoint_file_id),
-            checkpoint_storage_uri=_normalize_optional_str(runtime_target.checkpoint_storage_uri),
+            checkpoint_file_id=_normalize_optional_str(
+                runtime_target.checkpoint_file_id
+            ),
+            checkpoint_storage_uri=_normalize_optional_str(
+                runtime_target.checkpoint_storage_uri
+            ),
             extra_options=_normalize_extra_options(request.extra_options),
             created_at=now,
             updated_at=now,
@@ -238,10 +256,14 @@ class LocalClassificationValidationSessionService:
     def get_session(self, session_id: str) -> ClassificationValidationSessionView:
         session_path = self._session_path(session_id)
         if not self.dataset_storage.resolve(session_path).is_file():
-            raise ResourceNotFoundError("指定的 validation session 不存在", details={"session_id": session_id})
+            raise ResourceNotFoundError(
+                "指定的 validation session 不存在", details={"session_id": session_id}
+            )
         payload = self.dataset_storage.read_json(session_path)
         if not isinstance(payload, dict):
-            raise ResourceNotFoundError("指定的 validation session 数据损坏", details={"session_id": session_id})
+            raise ResourceNotFoundError(
+                "指定的 validation session 数据损坏", details={"session_id": session_id}
+            )
         return _build_session_from_payload(payload)
 
     def predict(
@@ -255,7 +277,11 @@ class LocalClassificationValidationSessionService:
         if input_uri is not None and input_file_id is not None:
             raise InvalidRequestError(
                 "input_uri 和 input_file_id 只能提供一个",
-                details={"session_id": session_id, "input_uri": input_uri, "input_file_id": input_file_id},
+                details={
+                    "session_id": session_id,
+                    "input_uri": input_uri,
+                    "input_file_id": input_file_id,
+                },
             )
         resolved_input_file_id = input_file_id
         if input_file_id is not None:
@@ -269,9 +295,13 @@ class LocalClassificationValidationSessionService:
         if input_uri is None:
             raise InvalidRequestError("predict 请求必须提供 input_uri 或 input_file_id")
 
-        top_k = _resolve_positive_int(request.top_k, field_name="top_k", default=session.top_k)
+        top_k = _resolve_positive_int(
+            request.top_k, field_name="top_k", default=session.top_k
+        )
         save_result_image = (
-            session.save_result_image if request.save_result_image is None else bool(request.save_result_image)
+            session.save_result_image
+            if request.save_result_image is None
+            else bool(request.save_result_image)
         )
         merged_extra_options = dict(session.extra_options)
         merged_extra_options.update(_normalize_extra_options(request.extra_options))
@@ -290,7 +320,9 @@ class LocalClassificationValidationSessionService:
         preview_image_uri: str | None = None
         if save_result_image and execution.preview_image_bytes is not None:
             preview_image_uri = str(prediction_output_dir / "preview.jpg")
-            self.dataset_storage.write_bytes(preview_image_uri, execution.preview_image_bytes)
+            self.dataset_storage.write_bytes(
+                preview_image_uri, execution.preview_image_bytes
+            )
 
         raw_result_payload = {
             "prediction_id": prediction_id,
@@ -305,8 +337,12 @@ class LocalClassificationValidationSessionService:
             "image_height": execution.image_height,
             "labels": list(session.labels),
             "categories": [_serialize_category(c) for c in execution.categories],
-            "top_category": _serialize_category(execution.top_category) if execution.top_category else None,
-            "runtime_session_info": _serialize_runtime_session_info(execution.runtime_session_info),
+            "top_category": _serialize_category(execution.top_category)
+            if execution.top_category
+            else None,
+            "runtime_session_info": _serialize_runtime_session_info(
+                execution.runtime_session_info
+            ),
             "preview_image_uri": preview_image_uri,
         }
         self.dataset_storage.write_json(raw_result_uri, raw_result_payload)
@@ -321,7 +357,9 @@ class LocalClassificationValidationSessionService:
             raw_result_uri=raw_result_uri,
             latency_ms=execution.latency_ms,
         )
-        self._write_session(replace(session, updated_at=created_at, last_prediction=summary))
+        self._write_session(
+            replace(session, updated_at=created_at, last_prediction=summary)
+        )
 
         return ClassificationValidationPredictionView(
             prediction_id=prediction_id,
@@ -350,7 +388,9 @@ class LocalClassificationValidationSessionService:
         top_k: int,
         save_result_image: bool,
     ) -> ClassificationPredictionExecutionResult:
-        runtime_target = _build_runtime_target_from_session(session=session, dataset_storage=self.dataset_storage)
+        runtime_target = _build_runtime_target_from_session(
+            session=session, dataset_storage=self.dataset_storage
+        )
         runtime_session = self.classification_runtime.load_session(
             dataset_storage=self.dataset_storage,
             runtime_target=runtime_target,
@@ -364,15 +404,28 @@ class LocalClassificationValidationSessionService:
         )
 
     def _write_session(self, session: ClassificationValidationSessionView) -> None:
-        self.dataset_storage.write_json(self._session_path(session.session_id), _serialize_session(session))
+        self.dataset_storage.write_json(
+            self._session_path(session.session_id), _serialize_session(session)
+        )
 
     @staticmethod
     def _session_path(session_id: str) -> str:
-        return str(PurePosixPath("runtime") / "validation-sessions-classification" / session_id / "session.json")
+        return str(
+            PurePosixPath("runtime")
+            / "validation-sessions-classification"
+            / session_id
+            / "session.json"
+        )
 
     @staticmethod
     def _prediction_output_dir(session_id: str, prediction_id: str) -> PurePosixPath:
-        return PurePosixPath("runtime") / "validation-sessions-classification" / session_id / "predictions" / prediction_id
+        return (
+            PurePosixPath("runtime")
+            / "validation-sessions-classification"
+            / session_id
+            / "predictions"
+            / prediction_id
+        )
 
 
 def _build_runtime_target_resolver(
@@ -395,7 +448,9 @@ def _build_runtime_target_resolver(
                 "supported_model_types": list(resolver_factory_map),
             },
         )
-    return resolver_factory(session_factory=session_factory, dataset_storage=dataset_storage)
+    return resolver_factory(
+        session_factory=session_factory, dataset_storage=dataset_storage
+    )
 
 
 def _build_runtime_target_from_session(
@@ -442,7 +497,9 @@ def _build_runtime_target_from_session(
     )
 
 
-def _serialize_category(category: ClassificationPredictionCategory) -> dict[str, object]:
+def _serialize_category(
+    category: ClassificationPredictionCategory,
+) -> dict[str, object]:
     return {
         "class_id": category.class_id,
         "class_name": category.class_name,
@@ -451,7 +508,9 @@ def _serialize_category(category: ClassificationPredictionCategory) -> dict[str,
     }
 
 
-def _serialize_runtime_session_info(session_info: ClassificationRuntimeSessionInfo) -> dict[str, object]:
+def _serialize_runtime_session_info(
+    session_info: ClassificationRuntimeSessionInfo,
+) -> dict[str, object]:
     return {
         "backend_name": session_info.backend_name,
         "model_uri": session_info.model_uri,
@@ -470,7 +529,9 @@ def _serialize_runtime_session_info(session_info: ClassificationRuntimeSessionIn
     }
 
 
-def _serialize_session(session: ClassificationValidationSessionView) -> dict[str, object]:
+def _serialize_session(
+    session: ClassificationValidationSessionView,
+) -> dict[str, object]:
     return {
         "session_id": session.session_id,
         "project_id": session.project_id,
@@ -503,7 +564,9 @@ def _serialize_session(session: ClassificationValidationSessionView) -> dict[str
     }
 
 
-def _serialize_prediction_summary(summary: ClassificationValidationPredictionSummary | None) -> dict[str, object] | None:
+def _serialize_prediction_summary(
+    summary: ClassificationValidationPredictionSummary | None,
+) -> dict[str, object] | None:
     if summary is None:
         return None
     return {
@@ -518,7 +581,9 @@ def _serialize_prediction_summary(summary: ClassificationValidationPredictionSum
     }
 
 
-def _build_session_from_payload(payload: dict[str, object]) -> ClassificationValidationSessionView:
+def _build_session_from_payload(
+    payload: dict[str, object],
+) -> ClassificationValidationSessionView:
     raw_input_size = payload.get("input_size")
     try:
         resolved_input_size = deserialize_spatial_size_hw(raw_input_size)
@@ -528,18 +593,18 @@ def _build_session_from_payload(payload: dict[str, object]) -> ClassificationVal
         raise ResourceNotFoundError("validation session 的 input_size 无效")
     runtime_backend = _require_payload_str(payload, "runtime_backend")
     device_name = _require_payload_str(payload, "device_name")
-    model_type = _read_payload_optional_str(payload, "model_type") or "yolov8"
-    runtime_artifact_file_id = (
-        _read_payload_optional_str(payload, "runtime_artifact_file_id")
-        or _require_payload_str(payload, "checkpoint_file_id")
+    model_type = _require_payload_str(payload, "model_type")
+    runtime_artifact_file_id = _require_payload_str(
+        payload,
+        "runtime_artifact_file_id",
     )
-    runtime_artifact_storage_uri = (
-        _read_payload_optional_str(payload, "runtime_artifact_storage_uri")
-        or _require_payload_str(payload, "checkpoint_storage_uri")
+    runtime_artifact_storage_uri = _require_payload_str(
+        payload,
+        "runtime_artifact_storage_uri",
     )
-    runtime_artifact_file_type = (
-        _read_payload_optional_str(payload, "runtime_artifact_file_type")
-        or YOLO_MODEL_CLASSIFICATION_FILE_TYPES.checkpoint_file_type
+    runtime_artifact_file_type = _require_payload_str(
+        payload,
+        "runtime_artifact_file_type",
     )
     return ClassificationValidationSessionView(
         session_id=_require_payload_str(payload, "session_id"),
@@ -568,16 +633,22 @@ def _build_session_from_payload(payload: dict[str, object]) -> ClassificationVal
         runtime_artifact_storage_uri=runtime_artifact_storage_uri,
         runtime_artifact_file_type=runtime_artifact_file_type,
         checkpoint_file_id=_read_payload_optional_str(payload, "checkpoint_file_id"),
-        checkpoint_storage_uri=_read_payload_optional_str(payload, "checkpoint_storage_uri"),
+        checkpoint_storage_uri=_read_payload_optional_str(
+            payload, "checkpoint_storage_uri"
+        ),
         extra_options=_normalize_extra_options(payload.get("extra_options")),
         created_at=_require_payload_str(payload, "created_at"),
         updated_at=_require_payload_str(payload, "updated_at"),
         created_by=_read_payload_optional_str(payload, "created_by"),
-        last_prediction=_build_prediction_summary_from_payload(payload.get("last_prediction")),
+        last_prediction=_build_prediction_summary_from_payload(
+            payload.get("last_prediction")
+        ),
     )
 
 
-def _build_prediction_summary_from_payload(payload: object) -> ClassificationValidationPredictionSummary | None:
+def _build_prediction_summary_from_payload(
+    payload: object,
+) -> ClassificationValidationPredictionSummary | None:
     if not isinstance(payload, dict):
         return None
     raw_count = payload.get("category_count", 0)
@@ -598,6 +669,7 @@ def _build_prediction_summary_from_payload(payload: object) -> ClassificationVal
 
 # -- helpers --
 
+
 def _normalize_model_type(model_type: str | None) -> str:
     return require_supported_platform_model_type(
         task_type=CLASSIFICATION_TASK_TYPE,
@@ -616,7 +688,9 @@ def _normalize_runtime_backend(runtime_backend: str | None) -> str:
             "当前 classification validation session 不支持指定 runtime_backend",
             details={
                 "runtime_backend": normalized,
-                "supported_runtime_backends": sorted(_SUPPORTED_VALIDATION_RUNTIME_BACKENDS),
+                "supported_runtime_backends": sorted(
+                    _SUPPORTED_VALIDATION_RUNTIME_BACKENDS
+                ),
             },
         )
     return normalized
@@ -644,7 +718,9 @@ def _normalize_optional_str(value: object) -> str | None:
 def _resolve_positive_int(value: object, *, field_name: str, default: int) -> int:
     resolved = int(value) if isinstance(value, int | float) else default
     if resolved <= 0:
-        raise InvalidRequestError(f"{field_name} 必须大于 0", details={field_name: resolved})
+        raise InvalidRequestError(
+            f"{field_name} 必须大于 0", details={field_name: resolved}
+        )
     return resolved
 
 
@@ -652,14 +728,18 @@ def _require_non_empty_str(value: str | None, *, field_name: str) -> str:
     normalized = _normalize_optional_str(value)
     if normalized is not None:
         return normalized
-    raise InvalidRequestError("validation session 缺少必要模型文件引用", details={"field": field_name})
+    raise InvalidRequestError(
+        "validation session 缺少必要模型文件引用", details={"field": field_name}
+    )
 
 
 def _require_payload_str(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if isinstance(value, str) and value.strip():
         return value.strip()
-    raise ResourceNotFoundError("validation session 数据缺少必要字段", details={"field": key})
+    raise ResourceNotFoundError(
+        "validation session 数据缺少必要字段", details={"field": key}
+    )
 
 
 def _read_payload_optional_str(payload: dict[str, object], key: str) -> str | None:
