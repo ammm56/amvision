@@ -10,7 +10,7 @@ from backend.service.application.models.rfdetr_core.detection import (
 )
 from backend.service.application.models.rfdetr_core.factory import (
     align_rfdetr_full_core_input_size,
-    resolve_rfdetr_full_core_default_input_size,
+    resolve_rfdetr_full_core_input_divisor,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
     build_rfdetr_segmentation_postprocess,
@@ -21,6 +21,7 @@ from backend.service.domain.models.model_task_types import (
     ModelTaskType,
 )
 
+
 def resolve_rfdetr_runtime_input_size(
     *,
     task_type: ModelTaskType,
@@ -28,12 +29,12 @@ def resolve_rfdetr_runtime_input_size(
     input_size: object,
 ) -> tuple[int, int]:
     """执行 `resolve_rfdetr_runtime_input_size`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -45,19 +46,34 @@ def resolve_rfdetr_runtime_input_size(
         task_type=normalized_task_type,
         model_scale=normalized_model_scale,
     )
-    return align_rfdetr_full_core_input_size(
+    aligned_input_size = align_rfdetr_full_core_input_size(
         task_type=normalized_task_type,
         model_scale=normalized_model_scale,
         input_size=requested_input_size,
     )
+    if aligned_input_size != requested_input_size:
+        raise ServiceConfigurationError(
+            "RF-DETR runtime 输入尺寸不满足模型 divisor，禁止静默对齐",
+            details={
+                "task_type": normalized_task_type,
+                "model_scale": normalized_model_scale,
+                "input_size": list(requested_input_size),
+                "required_divisor": resolve_rfdetr_full_core_input_divisor(
+                    task_type=normalized_task_type,
+                    model_scale=normalized_model_scale,
+                ),
+                "nearest_aligned_input_size": list(aligned_input_size),
+            },
+        )
+    return requested_input_size
 
 
 def build_rfdetr_runtime_postprocess_model(*, task_type: ModelTaskType) -> Any:
     """执行 `build_rfdetr_runtime_postprocess_model`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -82,14 +98,14 @@ def postprocess_rfdetr_runtime_outputs(
     image_width: int,
 ) -> dict[str, Any]:
     """执行 `postprocess_rfdetr_runtime_outputs`。
-    
+
     参数：
     - `torch_module`：传入的 `torch_module` 参数。
     - `postprocess_model`：传入的 `postprocess_model` 参数。
     - `raw_outputs`：传入的 `raw_outputs` 参数。
     - `image_height`：传入的 `image_height` 参数。
     - `image_width`：传入的 `image_width` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -121,14 +137,14 @@ def postprocess_rfdetr_segmentation_runtime_outputs(
     image_width: int,
 ) -> dict[str, Any]:
     """执行 `postprocess_rfdetr_segmentation_runtime_outputs`。
-    
+
     参数：
     - `torch_module`：传入的 `torch_module` 参数。
     - `postprocess_model`：传入的 `postprocess_model` 参数。
     - `raw_outputs`：传入的 `raw_outputs` 参数。
     - `image_height`：传入的 `image_height` 参数。
     - `image_width`：传入的 `image_width` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -161,11 +177,11 @@ def build_rfdetr_single_channel_mask_array(
     mask_threshold: float,
 ) -> Any:
     """执行 `build_rfdetr_single_channel_mask_array`。
-    
+
     参数：
     - `mask_tensor`：传入的 `mask_tensor` 参数。
     - `mask_threshold`：传入的 `mask_threshold` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -199,11 +215,11 @@ def resolve_rfdetr_runtime_output_names(
     output_names: tuple[str, ...],
 ) -> tuple[str, ...]:
     """执行 `resolve_rfdetr_runtime_output_names`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `output_names`：传入的 `output_names` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -234,52 +250,38 @@ def _read_runtime_input_size(
     model_scale: str,
 ) -> tuple[int, int]:
     """执行 `_read_runtime_input_size`。
-    
+
     参数：
     - `input_size`：传入的 `input_size` 参数。
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
 
-    if (
-        isinstance(input_size, tuple)
-        and len(input_size) == 2
-        and int(input_size[0]) > 0
-        and int(input_size[1]) > 0
-    ):
-        return int(input_size[0]), int(input_size[1])
-    input_edge = _resolve_default_input_edge(
-        task_type=task_type,
-        model_scale=model_scale,
-    )
-    return input_edge, input_edge
-
-
-def _resolve_default_input_edge(*, task_type: str, model_scale: str) -> int:
-    """执行 `_resolve_default_input_edge`。
-    
-    参数：
-    - `task_type`：传入的 `task_type` 参数。
-    - `model_scale`：传入的 `model_scale` 参数。
-    
-    返回：
-    - 当前函数的执行结果。
-    """
-
-    try:
-        input_size = resolve_rfdetr_full_core_default_input_size(
-            task_type=task_type,
-            model_scale=model_scale,
-        )
-    except ValueError as exc:
+    if not isinstance(input_size, tuple) or len(input_size) != 2:
         raise ServiceConfigurationError(
-            "RF-DETR runtime 输入尺寸不支持指定任务或 scale",
-            details={"task_type": task_type, "model_scale": model_scale},
+            "RF-DETR runtime 缺少显式 input_size",
+            details={
+                "task_type": task_type,
+                "model_scale": model_scale,
+                "input_size": input_size,
+            },
+        )
+    try:
+        resolved = int(input_size[0]), int(input_size[1])
+    except (TypeError, ValueError) as exc:
+        raise ServiceConfigurationError(
+            "RF-DETR runtime input_size 必须包含两个整数",
+            details={"input_size": input_size},
         ) from exc
-    return input_size[0]
+    if resolved[0] <= 0 or resolved[1] <= 0:
+        raise ServiceConfigurationError(
+            "RF-DETR runtime input_size 必须大于 0",
+            details={"input_size": list(resolved)},
+        )
+    return resolved
 
 
 def _resolve_preferred_output_names(
@@ -311,11 +313,11 @@ def _resolve_preferred_output_names(
 
 def _as_torch_tensor(*, torch_module: Any, value: Any) -> Any:
     """执行 `_as_torch_tensor`。
-    
+
     参数：
     - `torch_module`：传入的 `torch_module` 参数。
     - `value`：传入的 `value` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """

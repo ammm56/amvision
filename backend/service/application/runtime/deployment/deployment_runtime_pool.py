@@ -277,6 +277,34 @@ class DeploymentRuntimePool:
             self._close_session_if_supported(session_to_close)
         return self._build_health(state)
 
+    def close_deployment(self, deployment_instance_id: str) -> None:
+        """移除指定实例池并释放其全部 runtime session。"""
+
+        normalized_id = str(deployment_instance_id).strip()
+        if not normalized_id:
+            raise InvalidRequestError("deployment_instance_id 不能为空")
+        with self._lock:
+            state = self._deployments.get(normalized_id)
+            if state is None:
+                return
+            with state.lock:
+                if any(instance.busy for instance in state.instances):
+                    raise InvalidRequestError(
+                        "当前 deployment 仍有运行中的推理请求，不能 close",
+                        details={"deployment_instance_id": normalized_id},
+                    )
+                self._deployments.pop(normalized_id, None)
+                instances = tuple(state.instances)
+                state.instances.clear()
+        for instance in instances:
+            session_to_close = None
+            with instance.lock:
+                session_to_close = instance.session
+                instance.session = None
+                instance.healthy = False
+                instance.last_error = None
+            self._close_session_if_supported(session_to_close)
+
     def run_inference(
         self,
         *,

@@ -47,6 +47,7 @@ class YoloClassificationBatchCollator:
     """普通 YOLO classification batch collate 逻辑。"""
 
     input_size: tuple[int, int]
+    training: bool
     augmentation_options: Any | None
     build_batch: Callable[..., Any]
     load_imports: Callable[[], Any]
@@ -60,6 +61,7 @@ class YoloClassificationBatchCollator:
             device="cpu",
             precision="fp32",
             imports=self.load_imports(),
+            training=self.training,
             augmentation_options=self.augmentation_options,
         )
 
@@ -70,6 +72,7 @@ def build_yolo_classification_training_dataloader(
     samples: Sequence[Any],
     batch_size: int,
     input_size: tuple[int, int],
+    training: bool,
     augmentation_options: Any | None,
     plan: YoloClassificationDataLoaderPlan,
     shuffle: bool,
@@ -94,6 +97,7 @@ def build_yolo_classification_training_dataloader(
         "num_workers": num_workers,
         "collate_fn": YoloClassificationBatchCollator(
             input_size=input_size,
+            training=bool(training),
             augmentation_options=augmentation_options,
             build_batch=build_batch,
             load_imports=load_imports,

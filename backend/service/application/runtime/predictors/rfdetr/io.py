@@ -45,13 +45,15 @@ def build_rfdetr_input_array(
 
     preprocess_started_at = perf_counter()
     input_height, input_width = input_size
+    # RF-DETR 参考推理在 resize 前先转换为 float tensor。OpenCV 对 float32
+    # 使用同一无 antialias 的 bilinear 语义，可避免 uint8 resize 的量化误差。
+    float_image = image.astype(np_module.float32) / 255.0
     resized_image = cv2_module.resize(
-        image,
+        float_image,
         (input_width, input_height),
         interpolation=cv2_module.INTER_LINEAR,
     )
-    input_array = resized_image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32)
-    input_array = input_array / 255.0
+    input_array = resized_image[:, :, ::-1].transpose(2, 0, 1)
     input_array = np_module.expand_dims(input_array, axis=0)
     mean = np_module.asarray(RFDETR_IMAGENET_MEAN, dtype=np_module.float32).reshape(1, 3, 1, 1)
     std = np_module.asarray(RFDETR_IMAGENET_STD, dtype=np_module.float32).reshape(1, 3, 1, 1)

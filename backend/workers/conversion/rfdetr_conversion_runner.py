@@ -32,6 +32,10 @@ from backend.service.application.models.rfdetr_core.export.onnx_optimize import 
 from backend.service.application.models.rfdetr_core.export.openvino import (
     build_rfdetr_openvino_ir,
 )
+from backend.service.application.models.yolo_core_common.export import (
+    validate_yolo_converted_input_tensor,
+)
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.application.models.catalog.rfdetr import (
     RFDETR_MODEL_FILE_TYPES,
 )
@@ -100,6 +104,26 @@ class LocalRfdetrConversionRunner(ConversionBackend):
             num_classes=len(runtime_target.labels),
             input_size=runtime_target.input_size,
         )
+        with RuntimeSessionLease(export_context) as leased_export_context:
+            return self._run_conversion_with_context(
+                request=request,
+                metadata=metadata,
+                task_type=task_type,
+                runtime_target=runtime_target,
+                export_context=leased_export_context,
+            )
+
+    def _run_conversion_with_context(
+        self,
+        *,
+        request: RfdetrConversionRunRequest,
+        metadata: dict[str, object],
+        task_type: str,
+        runtime_target: object,
+        export_context: object,
+    ) -> RfdetrConversionRunResult:
+        """使用受控 RF-DETR export context 执行转换链。"""
+
         onnx_module, onnxruntime_module, onnx_simplify = (
             import_rfdetr_onnx_conversion_dependencies()
         )
@@ -154,6 +178,7 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     metadata={
                         **export_summary,
                         **runtime_fields,
+                        "model_input_spec": runtime_target.model_input_spec.to_payload(),
                     },
                 )
                 continue
@@ -167,6 +192,13 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     output_names=export_context.output_names,
                 )
                 if onnx_output is not None:
+                    input_tensor = validate_yolo_converted_input_tensor(
+                        input_tensor=validation_summary.get("input_tensor"),
+                        model_input_spec_payload=onnx_output.metadata.get(
+                            "model_input_spec"
+                        ),
+                        artifact_format="onnx",
+                    )
                     onnx_output = RfdetrConversionOutput(
                         target_format=onnx_output.target_format,
                         object_uri=onnx_output.object_uri,
@@ -175,6 +207,7 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                         runtime_precision=onnx_output.runtime_precision,
                         metadata={
                             **onnx_output.metadata,
+                            "input_tensor": input_tensor,
                             "validation_summary": validation_summary,
                         },
                     )
@@ -200,6 +233,13 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     target_format="onnx-optimized",
                 )
                 runtime_fields = build_conversion_output_runtime_fields(target_format="onnx-optimized")
+                input_tensor = validate_yolo_converted_input_tensor(
+                    input_tensor=optimize_summary.get("input_tensor"),
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="onnx-optimized",
+                )
                 optimized_output = RfdetrConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
@@ -209,6 +249,8 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     metadata={
                         **optimize_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -228,6 +270,17 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     target_format="openvino-ir",
                     build_precision=openvino_ir_build_precision,
                 )
+                input_tensor = _build_rfdetr_built_input_tensor(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="openvino-ir",
+                )
                 openvino_output = RfdetrConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
@@ -237,6 +290,8 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -256,6 +311,17 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     target_format="tensorrt-engine",
                     build_precision=tensorrt_engine_build_precision,
                 )
+                input_tensor = _build_rfdetr_built_input_tensor(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="tensorrt-engine",
+                )
                 tensorrt_output = RfdetrConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
@@ -265,6 +331,8 @@ class LocalRfdetrConversionRunner(ConversionBackend):
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -341,3 +409,36 @@ class LocalRfdetrConversionRunner(ConversionBackend):
             output_object_key=output_object_key,
             build_precision=build_precision,
         )
+
+
+def _build_rfdetr_built_input_tensor(
+    *,
+    build_summary: dict[str, object],
+    inherited_input_tensor: object,
+) -> dict[str, object]:
+    """从 RF-DETR OpenVINO/TensorRT 构建摘要读取真实输入。"""
+
+    if not isinstance(inherited_input_tensor, dict):
+        raise ServiceConfigurationError("RF-DETR 上游产物缺少 input_tensor")
+    shape = build_summary.get("input_shape")
+    name = build_summary.get("input_name")
+    dtype = str(build_summary.get("input_dtype")).strip().lower()
+    dtype_aliases = {
+        "float": "float32",
+        "float32": "float32",
+        "f32": "float32",
+        "datatype.float": "float32",
+    }
+    if not isinstance(shape, list) or not isinstance(name, str):
+        raise ServiceConfigurationError("RF-DETR 构建器未返回真实输入张量")
+    if dtype not in dtype_aliases:
+        raise ServiceConfigurationError(
+            "RF-DETR 构建器返回了不受支持的 input dtype",
+            details={"input_dtype": build_summary.get("input_dtype")},
+        )
+    return {
+        "name": name,
+        "layout": inherited_input_tensor.get("layout"),
+        "shape": shape,
+        "dtype": dtype_aliases[dtype],
+    }

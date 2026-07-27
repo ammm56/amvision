@@ -18,6 +18,10 @@ from backend.service.application.models.yolox_core.cfg import YOLOX_DEFAULT_INPU
 from backend.service.application.models.yolox_core.utils.torch_runtime import (
     build_yolox_autocast_context,
 )
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 
 
 @dataclass(frozen=True)
@@ -553,12 +557,11 @@ def load_yolox_resume_checkpoint(
         raise InvalidRequestError("resume checkpoint 的 model_scale 与当前任务不一致")
 
     checkpoint_input_size = checkpoint_payload.get("input_size")
-    if (
-        isinstance(checkpoint_input_size, list)
-        and len(checkpoint_input_size) == 2
-        and all(isinstance(item, int) for item in checkpoint_input_size)
-        and tuple(checkpoint_input_size) != expected_input_size
-    ):
+    resolved_checkpoint_input_size = deserialize_spatial_size_hw(
+        checkpoint_input_size,
+        field_name="checkpoint.input_size",
+    )
+    if resolved_checkpoint_input_size != expected_input_size:
         raise InvalidRequestError("resume checkpoint 的 input_size 与当前任务不一致")
 
     checkpoint_precision = checkpoint_payload.get("precision")
@@ -701,7 +704,7 @@ def build_yolox_checkpoint_state(
         "checkpoint_kind": checkpoint_kind,
         "category_names": list(category_names),
         "model_scale": model_scale,
-        "input_size": list(input_size),
+        "input_size": serialize_spatial_size_hw(input_size),
         "precision": precision,
         "gpu_count": gpu_count,
         "device_ids": list(device_ids),
@@ -1277,7 +1280,7 @@ def build_yolox_train_metrics_payload(
         "batch_size": batch_size,
         "max_epochs": max_epochs,
         "evaluation_interval": evaluation_interval,
-        "input_size": list(input_size),
+        "input_size": serialize_spatial_size_hw(input_size),
         "train_split_name": train_split_name,
         "validation_split_name": validation_split_name,
         "sample_count": sample_count,

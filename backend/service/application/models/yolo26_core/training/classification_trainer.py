@@ -163,6 +163,7 @@ def run_yolo26_classification_training_loop(
             samples=train_annotations,
             batch_size=batch_size,
             input_size=input_size,
+            training=True,
             augmentation_options=augmentation_options,
             plan=replace_yolo_classification_dataloader_plan_seed(
                 plan=resolved_dataloader_plan,

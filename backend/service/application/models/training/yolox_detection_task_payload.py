@@ -11,6 +11,7 @@ from backend.service.application.models.training.yolox_detection_task_types impo
     YoloXTrainingTaskResult,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_input_spec import deserialize_spatial_size_hw
 from backend.service.domain.tasks.task_records import TaskRecord
 
 
@@ -25,14 +26,13 @@ class YoloXTrainingTaskPayloadMixin:
         """从 TaskRecord 反解析训练任务请求。"""
 
         task_spec = dict(task_record.task_spec)
-        input_size_value = task_spec.get("input_size")
-        input_size: tuple[int, int] | None = None
-        if (
-            isinstance(input_size_value, list)
-            and len(input_size_value) == 2
-            and all(isinstance(item, int) for item in input_size_value)
-        ):
-            input_size = (input_size_value[0], input_size_value[1])
+        try:
+            input_size = deserialize_spatial_size_hw(
+                task_spec.get("input_size"),
+                field_name="task_spec.input_size",
+            )
+        except ValueError as exc:
+            raise InvalidRequestError("训练任务 input_size 契约不合法") from exc
 
         extra_options = task_spec.get("extra_options")
         manifest_object_key = self._read_optional_str(task_spec, "manifest_object_key")

@@ -554,6 +554,7 @@ def _run_yolo26_segmentation_epoch(
         samples=train_annotations,
         batch_size=batch_size,
         input_size=base_input_size,
+        training=True,
         augmentation_options=effective_augmentation_options,
         plan=dataloader_plan,
         shuffle=True,

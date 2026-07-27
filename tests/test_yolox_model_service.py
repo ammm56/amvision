@@ -77,6 +77,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
             metadata={
                 "dataset_export_id": "dataset-export-1",
                 "manifest_object_key": "memory://exports/dataset-export-1/manifest.json",
+                "input_size": {"width": 640, "height": 640},
             },
         )
     )
@@ -166,6 +167,7 @@ def test_register_build_rejects_unsupported_build_format() -> None:
             model_scale="s",
             dataset_version_id="dataset-version-1",
             checkpoint_file_id="checkpoint-file-1",
+            metadata={"input_size": {"width": 640, "height": 640}},
         )
     )
 

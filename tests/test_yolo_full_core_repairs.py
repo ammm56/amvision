@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
+import weakref
 
 import cv2
 import numpy as np
@@ -37,7 +39,14 @@ from backend.service.application.models.yolo_core_common.training import (
 from backend.service.application.models.yolo_core_common.weights import (
     restore_yolo_checkpoint_module_attributes,
 )
+from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    DeploymentRuntimePool,
+    DeploymentRuntimePoolConfig,
+)
 from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    DeploymentRuntimeConfiguration,
+)
 
 
 def test_obb_deployment_decode_applies_half_offset_and_stride() -> None:
@@ -66,9 +75,16 @@ def test_detection_category_mapping_preserves_sparse_manifest_ids() -> None:
 
     category_ids = (3, 17, 42)
     assert _resolve_detection_category_id(class_index=0, category_ids=category_ids) == 3
-    assert _resolve_detection_category_id(class_index=2, category_ids=category_ids) == 42
-    assert _resolve_detection_category_id(class_index=-1, category_ids=category_ids) is None
-    assert _resolve_detection_category_id(class_index=3, category_ids=category_ids) is None
+    assert (
+        _resolve_detection_category_id(class_index=2, category_ids=category_ids) == 42
+    )
+    assert (
+        _resolve_detection_category_id(class_index=-1, category_ids=category_ids)
+        is None
+    )
+    assert (
+        _resolve_detection_category_id(class_index=3, category_ids=category_ids) is None
+    )
 
 
 def test_pose_oks_uses_only_gt_visibility_and_coco_denominator() -> None:
@@ -287,3 +303,115 @@ def test_runtime_session_lease_closes_once() -> None:
         assert lease is not None
     lease.close()
     assert session.close_count == 1
+
+
+def test_three_generation_five_task_runtime_resource_recreation_matrix() -> None:
+    """反复创建/释放三代五任务三种转换运行时后不保留模型强引用。"""
+
+    class _Payload:
+        pass
+
+    matrix = [
+        (model_type, task_type, runtime_backend)
+        for model_type in ("yolov8", "yolo11", "yolo26")
+        for task_type in (
+            "detection",
+            "classification",
+            "segmentation",
+            "pose",
+            "obb",
+        )
+        for runtime_backend in ("onnxruntime", "openvino", "tensorrt")
+    ]
+    for model_type, task_type, runtime_backend in matrix:
+        payload = _Payload()
+        payload_ref = weakref.ref(payload)
+        session = SimpleNamespace(
+            model=payload,
+            model_type=model_type,
+            task_type=task_type,
+            runtime_backend=runtime_backend,
+        )
+        with RuntimeSessionLease(session):
+            pass
+        del session
+        del payload
+        assert payload_ref() is None, (
+            f"{model_type}/{task_type}/{runtime_backend} 释放后仍持有模型引用"
+        )
+
+
+def test_runtime_session_lease_releases_on_exception() -> None:
+    """conversion/runtime 异常路径同样只能释放一次。"""
+
+    class _Session:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    session = _Session()
+    with pytest.raises(RuntimeError, match="conversion failed"):
+        with RuntimeSessionLease(session):
+            raise RuntimeError("conversion failed")
+
+    assert session.close_count == 1
+
+
+def test_three_generation_five_task_runtime_pool_recreation_matrix() -> None:
+    """真实 runtime pool 反复 warmup/close 后不保留 session 或模型引用。"""
+
+    class _Payload:
+        pass
+
+    close_counts: list[int] = []
+    payload_refs: list[weakref.ReferenceType[_Payload]] = []
+
+    class _Session:
+        def __init__(self) -> None:
+            self.payload = _Payload()
+            payload_refs.append(weakref.ref(self.payload))
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+            self.payload = None
+            close_counts.append(self.close_count)
+
+    def load_session(**_: object) -> _Session:
+        return _Session()
+
+    pool = DeploymentRuntimePool(
+        dataset_storage=SimpleNamespace(),
+        model_runtime=SimpleNamespace(load_session=load_session),
+    )
+    matrix = [
+        (model_type, task_type, runtime_backend)
+        for model_type in ("yolov8", "yolo11", "yolo26")
+        for task_type in (
+            "detection",
+            "classification",
+            "segmentation",
+            "pose",
+            "obb",
+        )
+        for runtime_backend in ("onnxruntime", "openvino", "tensorrt")
+    ]
+    for index, (model_type, task_type, runtime_backend) in enumerate(matrix):
+        deployment_id = f"matrix-{index}"
+        config = DeploymentRuntimePoolConfig(
+            deployment_instance_id=deployment_id,
+            runtime_target=SimpleNamespace(
+                model_type=model_type,
+                task_type=task_type,
+                runtime_backend=runtime_backend,
+            ),
+            runtime_configuration=DeploymentRuntimeConfiguration(),
+        )
+        pool.warmup_deployment(config)
+        pool.close_deployment(deployment_id)
+
+    assert close_counts == [1] * len(matrix)
+    assert all(payload_ref() is None for payload_ref in payload_refs)
+    assert pool._deployments == {}

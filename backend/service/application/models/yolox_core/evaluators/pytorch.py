@@ -32,6 +32,7 @@ from backend.service.application.models.yolox_core.utils.torch_runtime import (
     build_yolox_autocast_context,
 )
 from backend.service.application.models.yolox_core.weights import load_yolox_warm_start_checkpoint
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 YOLOX_EVALUATION_IMPLEMENTATION_MODE = "yolox-evaluation-core"
@@ -217,7 +218,7 @@ def run_yolox_detection_evaluation(
         "sample_count": len(dataset),
         "device": device_name,
         "precision": precision,
-        "input_size": [request.runtime_target.input_size[0], request.runtime_target.input_size[1]],
+        "input_size": serialize_spatial_size_hw(request.runtime_target.input_size),
         "score_threshold": request.score_threshold,
         "nms_threshold": request.nms_threshold,
         "duration_seconds": duration_seconds,

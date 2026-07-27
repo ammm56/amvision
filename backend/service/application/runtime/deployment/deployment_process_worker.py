@@ -199,6 +199,7 @@ def run_deployment_process_worker(
                 keep_warm_state=keep_warm_state,
                 timeout_seconds=behavior.keep_warm_yield_timeout_seconds,
             )
+            runtime_pool.close_deployment(config.deployment_instance_id)
             if local_buffer_reader is not None:
                 local_buffer_reader.close()
             _put_ok_response(
@@ -636,9 +637,7 @@ def _run_dummy_warmup_passes(
     """
 
     for _ in range(max(0, int(count))):
-        runtime_pool.run_inference(
-            config=runtime_pool_config, request=dummy_request
-        )
+        runtime_pool.run_inference(config=runtime_pool_config, request=dummy_request)
 
 
 def _start_keep_warm_thread(

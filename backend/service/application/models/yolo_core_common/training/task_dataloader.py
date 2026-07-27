@@ -47,6 +47,7 @@ class YoloTaskBatchCollator:
     """普通 YOLO task batch collate 逻辑。"""
 
     base_input_size: tuple[int, int]
+    training: bool
     augmentation_options: Any | None
     available_samples: Sequence[Any]
     build_batch: Callable[..., Any]
@@ -68,6 +69,7 @@ class YoloTaskBatchCollator:
             device="cpu",
             precision="fp32",
             imports=self.load_imports(),
+            training=self.training,
             augmentation_options=self.augmentation_options,
             available_samples=self.available_samples,
         )
@@ -79,6 +81,7 @@ def build_yolo_task_training_dataloader(
     samples: Sequence[Any],
     batch_size: int,
     input_size: tuple[int, int],
+    training: bool,
     augmentation_options: Any | None,
     plan: YoloTaskDataLoaderPlan,
     shuffle: bool,
@@ -104,6 +107,7 @@ def build_yolo_task_training_dataloader(
         "num_workers": num_workers,
         "collate_fn": YoloTaskBatchCollator(
             base_input_size=input_size,
+            training=bool(training),
             augmentation_options=augmentation_options,
             available_samples=tuple(samples),
             build_batch=build_batch,
@@ -139,6 +143,7 @@ def build_yolo_task_evaluation_dataloader(
         samples=selected_samples,
         batch_size=1,
         input_size=input_size,
+        training=False,
         augmentation_options=None,
         plan=plan,
         shuffle=False,

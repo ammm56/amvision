@@ -22,8 +22,10 @@ from backend.service.application.models.yolo_core_common.export import (
     export_yolo_onnx,
     optimize_yolo_onnx,
     resolve_segmentation_export_output_names,
+    validate_yolo_converted_input_tensor,
     validate_yolo_onnx,
 )
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -73,7 +75,7 @@ class LocalYoloModelConversionRunner:
         self,
         request: YoloModelConversionRunRequest,
     ) -> YoloModelConversionRunResult:
-        """执行当前模型的 ONNX/OpenVINO/TensorRT 转换链。"""
+        """在受控 session 生命周期内执行完整转换链。"""
 
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
@@ -82,10 +84,27 @@ class LocalYoloModelConversionRunner:
             task_type=request.task_type,
             target_formats=request.target_formats,
         )
-        session = session_cls.load(
-            dataset_storage=self.dataset_storage,
-            runtime_target=request.source_runtime_target,
-        )
+        with RuntimeSessionLease(
+            session_cls.load(
+                dataset_storage=self.dataset_storage,
+                runtime_target=request.source_runtime_target,
+            )
+        ) as session:
+            return self._run_conversion_with_session(
+                request=request,
+                session=session,
+                export_plan=export_plan,
+            )
+
+    def _run_conversion_with_session(
+        self,
+        *,
+        request: YoloModelConversionRunRequest,
+        session: object,
+        export_plan: YoloExportTaskPlan,
+    ) -> YoloModelConversionRunResult:
+        """使用已接管的 runtime session 执行各转换阶段。"""
+
         onnx_module, onnxruntime_module, onnx_simplify = (
             import_onnx_conversion_dependencies()
         )
@@ -156,6 +175,13 @@ class LocalYoloModelConversionRunner:
                     export_plan=export_plan,
                 )
                 if onnx_output is not None:
+                    validated_input_tensor = validate_yolo_converted_input_tensor(
+                        input_tensor=validation_summary.get("input_tensor"),
+                        model_input_spec_payload=onnx_output.metadata.get(
+                            "model_input_spec"
+                        ),
+                        artifact_format="onnx",
+                    )
                     onnx_output = YoloModelConversionOutput(
                         target_format=onnx_output.target_format,
                         object_uri=onnx_output.object_uri,
@@ -164,6 +190,7 @@ class LocalYoloModelConversionRunner:
                         runtime_precision=onnx_output.runtime_precision,
                         metadata={
                             **onnx_output.metadata,
+                            "input_tensor": validated_input_tensor,
                             "validation_summary": validation_summary,
                         },
                     )
@@ -193,6 +220,13 @@ class LocalYoloModelConversionRunner:
                 runtime_fields = build_conversion_output_runtime_fields(
                     target_format="onnx-optimized",
                 )
+                optimized_input_tensor = validate_yolo_converted_input_tensor(
+                    input_tensor=optimize_summary.get("input_tensor"),
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="onnx-optimized",
+                )
                 optimized_output = YoloModelConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
@@ -209,7 +243,7 @@ class LocalYoloModelConversionRunner:
                         "model_input_spec": onnx_output.metadata[
                             "model_input_spec"
                         ],
-                        "input_tensor": onnx_output.metadata["input_tensor"],
+                        "input_tensor": optimized_input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -229,6 +263,17 @@ class LocalYoloModelConversionRunner:
                     target_format="openvino-ir",
                     build_precision=openvino_ir_build_precision,
                 )
+                openvino_input_tensor = _build_runtime_input_tensor_from_summary(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=openvino_input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="openvino-ir",
+                )
                 openvino_output = YoloModelConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
@@ -245,7 +290,7 @@ class LocalYoloModelConversionRunner:
                         "model_input_spec": onnx_output.metadata[
                             "model_input_spec"
                         ],
-                        "input_tensor": onnx_output.metadata["input_tensor"],
+                        "input_tensor": openvino_input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -265,6 +310,17 @@ class LocalYoloModelConversionRunner:
                     target_format="tensorrt-engine",
                     build_precision=tensorrt_engine_build_precision,
                 )
+                tensorrt_input_tensor = _build_runtime_input_tensor_from_summary(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=tensorrt_input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="tensorrt-engine",
+                )
                 tensorrt_output = YoloModelConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
@@ -281,7 +337,7 @@ class LocalYoloModelConversionRunner:
                         "model_input_spec": onnx_output.metadata[
                             "model_input_spec"
                         ],
-                        "input_tensor": onnx_output.metadata["input_tensor"],
+                        "input_tensor": tensorrt_input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -456,6 +512,47 @@ def _require_runner_hook(hook_name: str, value: Any, *, model_label: str) -> Any
             details={"hook_name": hook_name, "model_label": model_label},
         )
     return value
+
+
+def _build_runtime_input_tensor_from_summary(
+    *,
+    build_summary: dict[str, object],
+    inherited_input_tensor: object,
+) -> dict[str, object]:
+    """从构建器摘要创建产物真实输入张量，不猜测空间维度。"""
+
+    if not isinstance(inherited_input_tensor, dict):
+        raise ServiceConfigurationError("上游转换产物缺少 input_tensor")
+    input_shape = build_summary.get("input_shape")
+    input_name = build_summary.get("input_name")
+    input_dtype = build_summary.get("input_dtype")
+    if not isinstance(input_shape, list) or not isinstance(input_name, str):
+        raise ServiceConfigurationError(
+            "转换构建器未返回真实输入张量",
+            details={"build_summary": build_summary},
+        )
+    dtype_aliases = {
+        "float": "float32",
+        "float32": "float32",
+        "f32": "float32",
+        "datatype.float": "float32",
+        "float16": "float16",
+        "half": "float16",
+        "f16": "float16",
+        "datatype.half": "float16",
+    }
+    normalized_dtype = dtype_aliases.get(str(input_dtype).strip().lower())
+    if normalized_dtype is None:
+        raise ServiceConfigurationError(
+            "转换构建器返回了不受支持的 input dtype",
+            details={"input_dtype": input_dtype},
+        )
+    return {
+        "name": input_name,
+        "layout": inherited_input_tensor.get("layout"),
+        "shape": input_shape,
+        "dtype": normalized_dtype,
+    }
 
 
 __all__ = [

@@ -10,6 +10,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
     scale_yolo_box_from_letterbox,
+    scale_yolo_mask_from_letterbox,
 )
 
 
@@ -303,21 +304,12 @@ def decode_yolo11_segmentation_masks(
             (letterbox_transform.target_width, letterbox_transform.target_height),
             interpolation=cv2_module.INTER_LINEAR,
         )
-        crop_top = letterbox_transform.pad_top
-        crop_left = letterbox_transform.pad_left
-        crop_bottom = min(
-            letterbox_transform.target_height,
-            crop_top + letterbox_transform.resized_height,
-        )
-        crop_right = min(
-            letterbox_transform.target_width,
-            crop_left + letterbox_transform.resized_width,
-        )
-        cropped_mask = resized_mask[crop_top:crop_bottom, crop_left:crop_right]
-        restored_mask = cv2_module.resize(
-            cropped_mask,
-            (letterbox_transform.source_width, letterbox_transform.source_height),
-            interpolation=cv2_module.INTER_LINEAR,
+        restored_mask = scale_yolo_mask_from_letterbox(
+            mask=resized_mask,
+            transform=letterbox_transform,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            interpolation="bilinear",
         )
         binary_mask = (restored_mask >= mask_threshold).astype(np_module.uint8)
         masks.append(binary_mask)

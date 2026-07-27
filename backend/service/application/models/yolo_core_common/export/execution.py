@@ -99,9 +99,20 @@ def validate_yolo_onnx(
         str(onnx_path),
         providers=["CPUExecutionProvider"],
     )
+    ort_input = ort_session.get_inputs()[0]
+    input_tensor = _build_runtime_input_tensor_payload(
+        name=ort_input.name,
+        shape=ort_input.shape,
+        dtype=ort_input.type,
+    )
+    _validate_input_tensor_against_session(
+        session=session,
+        input_tensor=input_tensor,
+        artifact_format="onnx",
+    )
     ort_outputs = ort_session.run(
         list(export_plan.output_names),
-        {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
+        {ort_input.name: dummy_input.detach().cpu().numpy()},
     )
     _validate_task_export_outputs(
         task_type=export_plan.task_type,
@@ -126,6 +137,7 @@ def validate_yolo_onnx(
         else strict_numeric_validation
     )
     summary["strict_numeric_validation"] = resolved_strict_numeric_validation
+    summary["input_tensor"] = input_tensor
     if not bool(summary["finite"]):
         raise ServiceConfigurationError(
             "ONNX 输出包含 NaN 或 Inf",
@@ -157,11 +169,16 @@ def optimize_yolo_onnx(
         raise ServiceConfigurationError("ONNX simplify 校验失败")
     onnx_module.checker.check_model(simplified_model)
     onnx_module.save(simplified_model, str(optimized_path))
+    input_tensor = _build_onnx_graph_input_tensor_payload(
+        onnx_model=simplified_model,
+        onnx_module=onnx_module,
+    )
     return {
         "stage": "optimize-onnx",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
         "optimizer": "onnxsim",
+        "input_tensor": input_tensor,
     }
 
 
@@ -208,7 +225,7 @@ def build_yolo_openvino_ir(
                 ),
             },
         )
-    return {
+    build_summary = {
         "stage": "build-openvino-ir",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
@@ -219,6 +236,10 @@ def build_yolo_openvino_ir(
         "compress_to_fp16": compress_to_fp16,
         "execution_mode": "subprocess-openvino-convert-model",
     }
+    stdout_payload = _parse_last_json_line(completed_process.stdout)
+    if stdout_payload is not None:
+        build_summary.update(dict(stdout_payload))
+    return build_summary
 
 
 def build_yolo_tensorrt_engine(
@@ -412,6 +433,160 @@ def _build_input_tensor_payload(
         "shape": list(input_spec.tensor_shape),
         "dtype": input_spec.dtype,
     }
+
+
+def _build_runtime_input_tensor_payload(
+    *,
+    name: object,
+    shape: object,
+    dtype: object,
+) -> dict[str, object]:
+    """把运行时报告的单输入张量规整为平台摘要。"""
+
+    if not isinstance(name, str) or not name.strip():
+        raise ServiceConfigurationError("转换产物输入张量缺少名称")
+    if not isinstance(shape, (list, tuple)):
+        raise ServiceConfigurationError("转换产物输入张量缺少形状")
+    normalized_shape = [
+        int(dimension)
+        if isinstance(dimension, int) and not isinstance(dimension, bool)
+        else -1
+        for dimension in shape
+    ]
+    normalized_dtype = _normalize_runtime_input_dtype(dtype)
+    return {
+        "name": name.strip(),
+        "layout": "NCHW",
+        "shape": normalized_shape,
+        "dtype": normalized_dtype,
+    }
+
+
+def _normalize_runtime_input_dtype(dtype: object) -> str:
+    """把 ONNX/OpenVINO/TensorRT dtype 名称规整为公开值。"""
+
+    normalized = str(dtype).strip().lower()
+    aliases = {
+        "tensor(float)": "float32",
+        "float": "float32",
+        "float32": "float32",
+        "f32": "float32",
+        "datatype.float": "float32",
+        "tensor(float16)": "float16",
+        "float16": "float16",
+        "half": "float16",
+        "f16": "float16",
+        "datatype.half": "float16",
+    }
+    resolved = aliases.get(normalized)
+    if resolved is None:
+        raise ServiceConfigurationError(
+            "转换产物输入张量 dtype 不受支持",
+            details={"dtype": str(dtype)},
+        )
+    return resolved
+
+
+def _validate_input_tensor_against_session(
+    *,
+    session: object,
+    input_tensor: dict[str, object],
+    artifact_format: str,
+) -> None:
+    """校验转换产物真实输入形状与源模型契约一致。"""
+
+    input_spec = session.runtime_target.model_input_spec
+    if input_spec is None:
+        raise ServiceConfigurationError("YOLO 导出缺少 model_input_spec")
+    validate_yolo_converted_input_tensor(
+        input_tensor=input_tensor,
+        model_input_spec_payload=input_spec.to_payload(),
+        artifact_format=artifact_format,
+    )
+
+
+def validate_yolo_converted_input_tensor(
+    *,
+    input_tensor: object,
+    model_input_spec_payload: object,
+    artifact_format: str,
+) -> dict[str, object]:
+    """验证 ONNX/OpenVINO/TensorRT 的真实输入张量没有发生宽高漂移。"""
+
+    if not isinstance(input_tensor, dict):
+        raise ServiceConfigurationError(
+            "转换产物缺少真实 input_tensor",
+            details={"artifact_format": artifact_format},
+        )
+    if not isinstance(model_input_spec_payload, dict):
+        raise ServiceConfigurationError("转换产物缺少 model_input_spec")
+    expected_shape = model_input_spec_payload.get("tensor_shape")
+    actual_shape = input_tensor.get("shape")
+    if not isinstance(expected_shape, list) or not isinstance(actual_shape, list):
+        raise ServiceConfigurationError(
+            "转换产物输入形状元数据不完整",
+            details={"artifact_format": artifact_format},
+        )
+    normalized_actual = [
+        expected if actual == -1 and index == 0 else actual
+        for index, (actual, expected) in enumerate(
+            zip(actual_shape, expected_shape, strict=False)
+        )
+    ]
+    if len(actual_shape) != len(expected_shape) or normalized_actual != expected_shape:
+        raise ServiceConfigurationError(
+            "转换产物输入形状与源模型契约不一致",
+            details={
+                "artifact_format": artifact_format,
+                "expected_shape": expected_shape,
+                "actual_shape": actual_shape,
+            },
+        )
+    if input_tensor.get("layout") != model_input_spec_payload.get("tensor_layout"):
+        raise ServiceConfigurationError(
+            "转换产物输入 layout 与源模型契约不一致",
+            details={"artifact_format": artifact_format},
+        )
+    if input_tensor.get("dtype") != model_input_spec_payload.get("dtype"):
+        raise ServiceConfigurationError(
+            "转换产物输入 dtype 与源模型契约不一致",
+            details={
+                "artifact_format": artifact_format,
+                "expected_dtype": model_input_spec_payload.get("dtype"),
+                "actual_dtype": input_tensor.get("dtype"),
+            },
+        )
+    return dict(input_tensor)
+
+
+def _build_onnx_graph_input_tensor_payload(
+    *,
+    onnx_model: object,
+    onnx_module: object,
+) -> dict[str, object]:
+    """从优化后的 ONNX graph 读取真实输入张量。"""
+
+    initializers = {item.name for item in onnx_model.graph.initializer}
+    graph_inputs = [
+        item for item in onnx_model.graph.input if item.name not in initializers
+    ]
+    if len(graph_inputs) != 1:
+        raise ServiceConfigurationError(
+            "YOLO ONNX 必须且只能包含一个外部输入",
+            details={"input_count": len(graph_inputs)},
+        )
+    graph_input = graph_inputs[0]
+    tensor_type = graph_input.type.tensor_type
+    shape = [
+        int(dimension.dim_value) if int(dimension.dim_value) > 0 else -1
+        for dimension in tensor_type.shape.dim
+    ]
+    dtype_name = onnx_module.TensorProto.DataType.Name(tensor_type.elem_type)
+    return _build_runtime_input_tensor_payload(
+        name=graph_input.name,
+        shape=shape,
+        dtype=dtype_name,
+    )
 
 
 def _validate_task_export_outputs(*, task_type: str, outputs: list[object]) -> None:

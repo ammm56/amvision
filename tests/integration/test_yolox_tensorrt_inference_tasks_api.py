@@ -253,8 +253,10 @@ def _seed_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["bolt"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
+                "input_size": {"width": 64, "height": 64},
+                "training_config": {
+                    "input_size": {"width": 64, "height": 64}
+                },
             },
         )
     )

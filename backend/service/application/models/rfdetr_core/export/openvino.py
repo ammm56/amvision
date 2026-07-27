@@ -48,6 +48,13 @@ def build_rfdetr_openvino_ir(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     openvino_model = convert_model(str(source_path.resolve()))
+    model_inputs = list(openvino_model.inputs)
+    if len(model_inputs) != 1:
+        raise ServiceConfigurationError(
+            "RF-DETR OpenVINO 模型必须且只能包含一个输入",
+            details={"input_count": len(model_inputs)},
+        )
+    model_input = model_inputs[0]
     attach_openvino_model_artifact_provenance(
         openvino_model=openvino_model,
         provenance=build_model_artifact_provenance(
@@ -82,6 +89,16 @@ def build_rfdetr_openvino_ir(
         "build_precision": normalized_precision,
         "compress_to_fp16": normalized_precision == "fp16",
         "execution_mode": "rfdetr-core-openvino-convert-model",
+        "input_name": model_input.get_any_name(),
+        "input_shape": [
+            int(dimension.get_length()) if dimension.is_static else -1
+            for dimension in model_input.get_partial_shape()
+        ],
+        "input_dtype": (
+            "float32"
+            if str(model_input.get_element_type()).strip().lower() == "f32"
+            else str(model_input.get_element_type())
+        ),
     }
 
 

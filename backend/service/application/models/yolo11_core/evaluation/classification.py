@@ -44,6 +44,7 @@ def evaluate_yolo11_classification_samples(
         samples=samples,
         batch_size=batch_size,
         input_size=input_size,
+        training=False,
         augmentation_options=None,
         plan=plan,
         shuffle=False,

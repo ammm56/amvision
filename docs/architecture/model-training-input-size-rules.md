@@ -15,6 +15,8 @@
 - 公开 API、任务快照、ModelVersion、ModelBuild 和部署响应统一使用 `{"width": W, "height": H}`，不接受有顺序歧义的二元素数组。
 - 模型 core 和张量层统一使用 `(height, width)`；OpenCV resize 参数只在调用点转换为 `(width, height)`。
 - ModelVersion 必须固化完整 `model_input_spec`，ModelBuild 必须继承并校验实际 NCHW 输入张量。转换、推理和部署不得用默认值掩盖契约缺失。
+- `model_input_spec` 当前固定为 version 2，必须显式记录 preprocess、interpolation、normalization、padding value、center、scaleup、auto、stride 和 postprocess contract。开发阶段不兼容缺字段的 version 1 记录，旧模型需要重新训练和转换。
+- ONNX、OpenVINO IR 和 TensorRT engine 登记前必须读取产物自身报告的真实 input name、NCHW shape 和 dtype，并与 ModelVersion 契约逐项比对。禁止只把源版本 metadata 原样复制到 ModelBuild。
 
 ## 训练输入尺寸矩阵
 
@@ -43,12 +45,14 @@
 - 未显式指定时，detection 按 scale 使用 `nano=384`、`s=512`、`m=576`、`l=704` 的方形 resolution；segmentation 使用 `nano=312`、`s=384`、`m=432`、`l=504`、`x=624`。
 - 平台收到矩形或未对齐尺寸时，先按当前 full core 的约束向上对齐，再取较长边作为实际 `resolution`，最终训练尺寸始终登记为 `resolution x resolution`。
 - segmentation 必须按所选模型的 `patch_size * num_windows` 校验，不能只做 32 倍数的通用判断。
+- 转换阶段不再静默修改 RF-DETR 输入尺寸；已登记尺寸不满足 full-core divisor 时直接拒绝转换，并返回最近的合法尺寸。训练阶段得到的最终方形 resolution 必须先固化到 ModelVersion，再由转换链原样使用。
 
 ### YOLOv8 / YOLO11 / YOLO26
 
 - detection / segmentation / pose / OBB / classification 页面使用明确的“输入宽度 / 输入高度”字段，并按同名 JSON 字段提交。
 - 实际原图可以是任意宽高比。detection / segmentation / pose / OBB 由公共 LetterBox 保持比例缩放和填充；classification 使用训练随机裁剪与验证确定性中心裁剪。
 - 页面展示、任务详情、模型版本、转换构建和部署实例必须显示同一尺寸，不得交换宽高或在中途回退到默认值。
+- runtime pool 的 reset、deployment worker shutdown 和异常失效路径都必须释放 ONNXRuntime、OpenVINO、TensorRT 或 PyTorch session；转换用的一次性 export session 同样通过统一 lease 在成功和异常路径释放。
 
 ## 推荐选型
 

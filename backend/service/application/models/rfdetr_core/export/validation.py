@@ -99,9 +99,23 @@ def validate_rfdetr_onnx(
                 "actual_output_names": list(actual_output_names),
             },
         )
+    ort_input = ort_session.get_inputs()[0]
+    input_tensor = {
+        "name": ort_input.name,
+        "layout": "NCHW",
+        "shape": [
+            int(value)
+            if isinstance(value, int) and not isinstance(value, bool)
+            else -1
+            for value in ort_input.shape
+        ],
+        "dtype": (
+            "float32" if str(ort_input.type).strip().lower() == "tensor(float)" else str(ort_input.type)
+        ),
+    }
     ort_outputs = ort_session.run(
         list(output_names),
-        {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
+        {ort_input.name: dummy_input.detach().cpu().numpy()},
     )
     summary = summarize_rfdetr_onnx_validation(
         output_names=output_names,
@@ -114,6 +128,7 @@ def validate_rfdetr_onnx(
             "RF-DETR ONNX 数值校验失败",
             details=dict(summary),
         )
+    summary["input_tensor"] = input_tensor
     return summary
 
 

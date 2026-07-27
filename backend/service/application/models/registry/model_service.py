@@ -10,7 +10,10 @@ from typing import Protocol
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from backend.contracts.files.yolox_model_files import YoloXFileNamingContext, build_default_file_name
+from backend.contracts.files.yolox_model_files import (
+    YoloXFileNamingContext,
+    build_default_file_name,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
@@ -31,11 +34,14 @@ from backend.service.domain.models.model_artifact_provenance import (
 from backend.service.domain.models.model_input_spec import (
     ModelInputSpec,
     SpatialSize,
-    build_yolo_model_input_spec,
+    build_platform_model_input_spec,
     resolve_yolo_default_spatial_size,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
-from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
+from backend.service.domain.models.yolox_model_spec import (
+    DEFAULT_YOLOX_MODEL_SPEC,
+    YoloXModelSpec,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -54,7 +60,9 @@ _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT = {
     "tensorrt-engine": frozenset({"fp32", "fp16"}),
     "rknn": frozenset({"fp32"}),
 }
-_YOLO_MAINLINE_MODEL_TYPES = frozenset({"yolov8", "yolo11", "yolo26"})
+_MODEL_INPUT_CONTRACT_TYPES = frozenset(
+    {"yolov8", "yolo11", "yolo26", "yolox", "rfdetr"}
+)
 
 
 @dataclass(frozen=True)
@@ -410,11 +418,16 @@ class SqlAlchemyModelService:
         self._validate_task_type(request.task_type)
         self._validate_model_scale(request.model_scale)
         with self._open_unit_of_work() as unit_of_work:
-            model_version_id = request.model_version_id or self._next_id("model-version")
-            checkpoint_file_id = request.checkpoint_file_id or self._next_id("model-file")
+            model_version_id = request.model_version_id or self._next_id(
+                "model-version"
+            )
+            checkpoint_file_id = request.checkpoint_file_id or self._next_id(
+                "model-file"
+            )
             pretrained_metadata = self._build_pretrained_metadata(
                 request.metadata,
                 task_type=request.task_type,
+                model_scale=request.model_scale,
             )
             model = self._ensure_model(
                 unit_of_work=unit_of_work,
@@ -554,9 +567,13 @@ class SqlAlchemyModelService:
             runtime_precision=request.runtime_precision,
         )
         with self._open_unit_of_work() as unit_of_work:
-            source_version = unit_of_work.models.get_model_version(request.source_model_version_id)
+            source_version = unit_of_work.models.get_model_version(
+                request.source_model_version_id
+            )
             if source_version is None:
-                raise ValueError(f"未知的 ModelVersion: {request.source_model_version_id}")
+                raise ValueError(
+                    f"未知的 ModelVersion: {request.source_model_version_id}"
+                )
 
             model = unit_of_work.models.get_model(source_version.model_id)
             if model is None:
@@ -568,7 +585,9 @@ class SqlAlchemyModelService:
                 build_metadata=request.metadata,
             )
             build_metadata = attach_model_artifact_provenance(
-                self._strip_deprecated_build_runtime_metadata(normalized_build_metadata),
+                self._strip_deprecated_build_runtime_metadata(
+                    normalized_build_metadata
+                ),
                 artifact_kind="converted-model",
                 trace={
                     "model_build_id": model_build_id,
@@ -591,10 +610,13 @@ class SqlAlchemyModelService:
                         model_scale=model.model_scale,
                         source_version=source_version.model_version_id,
                         file_kind=build_format,
-                        suffix=self._guess_suffix(request.build_file_uri or request.build_file_id),
+                        suffix=self._guess_suffix(
+                            request.build_file_uri or request.build_file_id
+                        ),
                     )
                 ),
-                storage_uri=request.build_file_uri or f"registered://{request.build_file_id}",
+                storage_uri=request.build_file_uri
+                or f"registered://{request.build_file_id}",
                 metadata=attach_model_artifact_provenance(
                     {"build_format": build_format},
                     artifact_kind="converted-model-file",
@@ -760,7 +782,10 @@ class SqlAlchemyModelService:
                 model
                 for model in models
                 if (
-                    (model.scope_kind == PROJECT_MODEL_SCOPE and model.project_id == project_id)
+                    (
+                        model.scope_kind == PROJECT_MODEL_SCOPE
+                        and model.project_id == project_id
+                    )
                     or model.scope_kind == PLATFORM_BASE_MODEL_SCOPE
                 )
             )
@@ -777,9 +802,15 @@ class SqlAlchemyModelService:
                 if summary.version_count > 0 or summary.build_count > 0
             )
 
-            return tuple(sorted(deployable_summaries, key=self._deployment_source_sort_key)[:limit])
+            return tuple(
+                sorted(deployable_summaries, key=self._deployment_source_sort_key)[
+                    :limit
+                ]
+            )
 
-    def get_platform_base_model_detail(self, model_id: str) -> PlatformBaseModelDetailView | None:
+    def get_platform_base_model_detail(
+        self, model_id: str
+    ) -> PlatformBaseModelDetailView | None:
         """按 id 读取单个平台基础模型详情。
 
         参数：
@@ -854,9 +885,15 @@ class SqlAlchemyModelService:
             model = unit_of_work.models.get_model(model_id)
             if model is None:
                 return None
-            if model.scope_kind == PROJECT_MODEL_SCOPE and model.project_id != project_id:
+            if (
+                model.scope_kind == PROJECT_MODEL_SCOPE
+                and model.project_id != project_id
+            ):
                 return None
-            if model.scope_kind != PROJECT_MODEL_SCOPE and model.scope_kind != PLATFORM_BASE_MODEL_SCOPE:
+            if (
+                model.scope_kind != PROJECT_MODEL_SCOPE
+                and model.scope_kind != PLATFORM_BASE_MODEL_SCOPE
+            ):
                 return None
 
             versions = unit_of_work.models.list_model_versions(model.model_id)
@@ -916,18 +953,18 @@ class SqlAlchemyModelService:
     ) -> Model:
         """确保数据库中存在对应的 Model 对象。
 
-        参数：
-        - unit_of_work：当前请求级 Unit of Work。
-    - project_id：所属项目 id；平台基础模型时为空。
-        - scope_kind：模型作用域类型。
-        - model_name：模型名。
-        - model_scale：模型 scale。
-        - task_type：任务类型。
-        - labels_file_id：标签文件 id。
-        - metadata：附加元数据。
+            参数：
+            - unit_of_work：当前请求级 Unit of Work。
+        - project_id：所属项目 id；平台基础模型时为空。
+            - scope_kind：模型作用域类型。
+            - model_name：模型名。
+            - model_scale：模型 scale。
+            - task_type：任务类型。
+            - labels_file_id：标签文件 id。
+            - metadata：附加元数据。
 
-        返回：
-        - 已存在或新建的 Model。
+            返回：
+            - 已存在或新建的 Model。
         """
 
         self._validate_task_type(task_type)
@@ -975,7 +1012,9 @@ class SqlAlchemyModelService:
         if not self.spec.supports_build_format(build_format):
             raise ValueError(f"不支持的 build 格式: {build_format}")
 
-    def _validate_build_runtime_backend(self, *, build_format: str, runtime_backend: str) -> str:
+    def _validate_build_runtime_backend(
+        self, *, build_format: str, runtime_backend: str
+    ) -> str:
         """校验 ModelBuild runtime backend 与 build_format 是否一致。"""
 
         normalized_backend = runtime_backend.strip().lower()
@@ -996,11 +1035,15 @@ class SqlAlchemyModelService:
             )
         return normalized_backend
 
-    def _validate_build_runtime_precision(self, *, build_format: str, runtime_precision: str) -> str:
+    def _validate_build_runtime_precision(
+        self, *, build_format: str, runtime_precision: str
+    ) -> str:
         """校验 ModelBuild runtime precision 是否被 build_format 支持。"""
 
         normalized_precision = runtime_precision.strip().lower()
-        supported_precisions = _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT.get(build_format)
+        supported_precisions = _MODEL_BUILD_RUNTIME_PRECISIONS_BY_FORMAT.get(
+            build_format
+        )
         if supported_precisions is None:
             raise InvalidRequestError(
                 "不支持的 ModelBuild build_format",
@@ -1022,6 +1065,7 @@ class SqlAlchemyModelService:
         metadata: dict[str, object],
         *,
         task_type: str,
+        model_scale: str,
     ) -> dict[str, object]:
         """构建平台级预训练模型登记元数据。
 
@@ -1035,6 +1079,7 @@ class SqlAlchemyModelService:
         pretrained_metadata = self._normalize_yolo_version_input_metadata(
             metadata,
             task_type=task_type,
+            model_scale=model_scale,
             allow_default=True,
         )
         pretrained_metadata.setdefault("source_kind", "pretrained-reference")
@@ -1045,12 +1090,13 @@ class SqlAlchemyModelService:
         metadata: dict[str, object],
         *,
         task_type: str,
+        model_scale: str | None = None,
         allow_default: bool,
     ) -> dict[str, object]:
-        """把 YOLO 主线 ModelVersion 输入信息收敛为唯一显式契约。"""
+        """把平台模型 ModelVersion 输入信息收敛为唯一显式契约。"""
 
         normalized = dict(metadata)
-        if self.spec.model_name not in _YOLO_MAINLINE_MODEL_TYPES:
+        if self.spec.model_name not in _MODEL_INPUT_CONTRACT_TYPES:
             return normalized
 
         raw_input_size = normalized.get("input_size")
@@ -1061,17 +1107,24 @@ class SqlAlchemyModelService:
         if raw_input_size is None:
             if not allow_default:
                 raise InvalidRequestError(
-                    "YOLO 训练输出缺少 input_size，无法登记 ModelVersion",
-                    details={"model_type": self.spec.model_name, "task_type": task_type},
+                    "训练输出缺少 input_size，无法登记 ModelVersion",
+                    details={
+                        "model_type": self.spec.model_name,
+                        "task_type": task_type,
+                    },
                 )
-            spatial_size = resolve_yolo_default_spatial_size(task_type=task_type)
+            spatial_size = self._resolve_default_model_input_size(
+                task_type=task_type,
+                model_scale=model_scale,
+            )
         else:
             spatial_size = self._parse_explicit_spatial_size(
                 raw_input_size,
                 field_name="input_size",
             )
 
-        input_spec = build_yolo_model_input_spec(
+        input_spec = build_platform_model_input_spec(
+            model_type=self.spec.model_name,
             spatial_size=spatial_size,
             task_type=task_type,
         )
@@ -1084,16 +1137,49 @@ class SqlAlchemyModelService:
             normalized["training_config"] = normalized_training_config
         return normalized
 
+    def _resolve_default_model_input_size(
+        self,
+        *,
+        task_type: str,
+        model_scale: str | None,
+    ) -> SpatialSize:
+        """按模型原生配置解析预训练版本的默认输入尺寸。"""
+
+        model_type = self.spec.model_name
+        if model_type in {"yolov8", "yolo11", "yolo26"}:
+            return resolve_yolo_default_spatial_size(task_type=task_type)
+        if model_type == "yolox":
+            return SpatialSize(width=640, height=640)
+        if model_type == "rfdetr":
+            if model_scale is None:
+                raise InvalidRequestError(
+                    "RF-DETR 预训练模型缺少 model_scale，无法解析输入尺寸",
+                    details={"task_type": task_type},
+                )
+            from backend.service.application.models.rfdetr_core.factory import (
+                resolve_rfdetr_full_core_default_input_size,
+            )
+
+            input_height, input_width = resolve_rfdetr_full_core_default_input_size(
+                task_type=task_type,
+                model_scale=model_scale,
+            )
+            return SpatialSize(width=input_width, height=input_height)
+        raise InvalidRequestError(
+            "模型类型缺少默认输入尺寸规则",
+            details={"model_type": model_type, "task_type": task_type},
+        )
+
     def _normalize_yolo_build_input_metadata(
         self,
         *,
         source_version_metadata: dict[str, object],
         build_metadata: dict[str, object],
     ) -> dict[str, object]:
-        """继承并校验 YOLO 主线 ModelBuild 的实际输入张量契约。"""
+        """继承并校验 ModelBuild 的实际输入张量契约。"""
 
         normalized = dict(build_metadata)
-        if self.spec.model_name not in _YOLO_MAINLINE_MODEL_TYPES:
+        if self.spec.model_name not in _MODEL_INPUT_CONTRACT_TYPES:
             return normalized
         try:
             input_spec = ModelInputSpec.from_payload(
@@ -1101,7 +1187,7 @@ class SqlAlchemyModelService:
             )
         except ValueError as error:
             raise InvalidRequestError(
-                "YOLO 来源 ModelVersion 缺少有效 model_input_spec"
+                "来源 ModelVersion 缺少有效 model_input_spec"
             ) from error
 
         actual_shape = self._read_build_input_shape(normalized)
@@ -1206,7 +1292,9 @@ class SqlAlchemyModelService:
             model_version_id=model_version.model_version_id,
         )
         checkpoint_file = self._find_checkpoint_file(model_files)
-        catalog_manifest_object_key = model_version.metadata.get("catalog_manifest_object_key")
+        catalog_manifest_object_key = model_version.metadata.get(
+            "catalog_manifest_object_key"
+        )
         return PlatformBaseModelVersionSummaryView(
             model_version_id=model_version.model_version_id,
             source_kind=model_version.source_kind,
@@ -1215,7 +1303,9 @@ class SqlAlchemyModelService:
             parent_version_id=model_version.parent_version_id,
             file_ids=model_version.file_ids,
             metadata=dict(model_version.metadata),
-            checkpoint_file_id=(checkpoint_file.file_id if checkpoint_file is not None else None),
+            checkpoint_file_id=(
+                checkpoint_file.file_id if checkpoint_file is not None else None
+            ),
             checkpoint_storage_uri=(
                 checkpoint_file.storage_uri if checkpoint_file is not None else None
             ),
@@ -1238,7 +1328,9 @@ class SqlAlchemyModelService:
             model_version_id=model_version.model_version_id,
         )
         checkpoint_file = self._find_checkpoint_file(model_files)
-        catalog_manifest_object_key = model_version.metadata.get("catalog_manifest_object_key")
+        catalog_manifest_object_key = model_version.metadata.get(
+            "catalog_manifest_object_key"
+        )
         return PlatformBaseModelVersionDetailView(
             model_version_id=model_version.model_version_id,
             source_kind=model_version.source_kind,
@@ -1247,7 +1339,9 @@ class SqlAlchemyModelService:
             parent_version_id=model_version.parent_version_id,
             file_ids=model_version.file_ids,
             metadata=dict(model_version.metadata),
-            checkpoint_file_id=(checkpoint_file.file_id if checkpoint_file is not None else None),
+            checkpoint_file_id=(
+                checkpoint_file.file_id if checkpoint_file is not None else None
+            ),
             checkpoint_storage_uri=(
                 checkpoint_file.storage_uri if checkpoint_file is not None else None
             ),
@@ -1256,7 +1350,10 @@ class SqlAlchemyModelService:
                 if isinstance(catalog_manifest_object_key, str)
                 else None
             ),
-            files=tuple(self._build_platform_base_model_file_view(model_file) for model_file in model_files),
+            files=tuple(
+                self._build_platform_base_model_file_view(model_file)
+                for model_file in model_files
+            ),
         )
 
     def _build_platform_base_model_build_view(
@@ -1281,7 +1378,10 @@ class SqlAlchemyModelService:
             conversion_task_id=model_build.conversion_task_id,
             file_ids=model_build.file_ids,
             metadata=build_metadata,
-            files=tuple(self._build_platform_base_model_file_view(model_file) for model_file in model_files),
+            files=tuple(
+                self._build_platform_base_model_file_view(model_file)
+                for model_file in model_files
+            ),
         )
 
     def _build_platform_base_model_file_view(
@@ -1315,7 +1415,9 @@ class SqlAlchemyModelService:
 
         return None
 
-    def _deployment_source_sort_key(self, model: PlatformBaseModelSummaryView) -> tuple[int, int, int, str, str]:
+    def _deployment_source_sort_key(
+        self, model: PlatformBaseModelSummaryView
+    ) -> tuple[int, int, int, str, str]:
         """构建部署来源列表排序键。
 
         Project 内训练模型优先，其次优先有转换 build 的模型，最后按模型名稳定排序。
@@ -1324,7 +1426,13 @@ class SqlAlchemyModelService:
         scope_order = 0 if model.scope_kind == PROJECT_MODEL_SCOPE else 1
         build_order = 0 if model.build_count > 0 else 1
         version_order = 0 if model.version_count > 0 else 1
-        return (scope_order, build_order, version_order, model.model_name, model.model_id)
+        return (
+            scope_order,
+            build_order,
+            version_order,
+            model.model_name,
+            model.model_id,
+        )
 
     def _strip_deprecated_build_runtime_metadata(
         self,
@@ -1460,20 +1568,20 @@ class SqlAlchemyModelService:
     ) -> ModelFile:
         """创建并保存 ModelFile 记录。
 
-        参数：
-        - file_id：文件 id。
-    - project_id：所属项目 id；平台基础模型文件时为空。
-        - scope_kind：文件所属模型作用域类型。
-        - model_id：所属 Model id。
-        - file_type：文件类型。
-        - logical_name：文件逻辑名。
-        - storage_uri：文件存储 URI。
-        - model_version_id：关联的 ModelVersion id。
-        - model_build_id：关联的 ModelBuild id。
-        - metadata：附加元数据。
+            参数：
+            - file_id：文件 id。
+        - project_id：所属项目 id；平台基础模型文件时为空。
+            - scope_kind：文件所属模型作用域类型。
+            - model_id：所属 Model id。
+            - file_type：文件类型。
+            - logical_name：文件逻辑名。
+            - storage_uri：文件存储 URI。
+            - model_version_id：关联的 ModelVersion id。
+            - model_build_id：关联的 ModelBuild id。
+            - metadata：附加元数据。
 
-        返回：
-        - 新建或已存在的 ModelFile。
+            返回：
+            - 新建或已存在的 ModelFile。
         """
 
         existing_file = unit_of_work.model_files.get_model_file(file_id)

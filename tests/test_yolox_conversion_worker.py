@@ -216,6 +216,17 @@ class _FakeYoloXConversionRunner:
         """
 
         base_name = _build_test_output_base_name(request)
+        model_input_spec = request.source_runtime_target.model_input_spec
+        assert model_input_spec is not None
+        input_contract = {
+            "model_input_spec": model_input_spec.to_payload(),
+            "input_tensor": {
+                "name": "images",
+                "layout": model_input_spec.layout,
+                "shape": list(model_input_spec.tensor_shape),
+                "dtype": model_input_spec.dtype,
+            },
+        }
         outputs: list[YoloXConversionOutput] = []
         validation_summary = {
             "allclose": True,
@@ -240,6 +251,7 @@ class _FakeYoloXConversionRunner:
                 metadata={
                     "stage": "export-onnx",
                     "object_uri": onnx_object_key,
+                    **input_contract,
                 },
             )
         )
@@ -258,6 +270,7 @@ class _FakeYoloXConversionRunner:
                         "object_uri": optimized_object_key,
                         "source_object_uri": onnx_object_key,
                         "validation_summary": validation_summary,
+                        **input_contract,
                     },
                 )
             )
@@ -281,6 +294,7 @@ class _FakeYoloXConversionRunner:
                         "build_precision": build_precision,
                         "compress_to_fp16": build_precision == "fp16",
                         "execution_mode": "stub-openvino-build",
+                        **input_contract,
                     },
                 )
             )
@@ -302,6 +316,7 @@ class _FakeYoloXConversionRunner:
                         "build_precision": build_precision,
                         "execution_mode": "stub-tensorrt-build",
                         "engine_file_bytes": self.dataset_storage.resolve(tensorrt_object_key).stat().st_size,
+                        **input_contract,
                     },
                 )
             )

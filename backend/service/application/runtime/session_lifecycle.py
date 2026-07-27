@@ -20,14 +20,24 @@ class RuntimeSessionLease:
         return getattr(self._session, name)
 
     def close(self) -> None:
-        """幂等调用底层 session 的 close；不支持 close 的实现直接跳过。"""
+        """幂等释放底层 session，并清理模型与 GPU 缓存引用。"""
 
         if self._closed:
             return
         self._closed = True
-        close_session = getattr(self._session, "close", None)
-        if callable(close_session):
-            close_session()
+        session = self._session
+        self._session = None
+        try:
+            close_session = getattr(session, "close", None)
+            if callable(close_session):
+                close_session()
+        finally:
+            del session
+            from backend.service.application.support.resource_cleanup import (
+                release_model_task_resources,
+            )
+
+            release_model_task_resources()
 
     def __enter__(self) -> "RuntimeSessionLease":
         """进入受控 session 生命周期。"""

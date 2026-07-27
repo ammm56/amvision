@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
+
 
 @dataclass(frozen=True)
 class DetectionTrainingOutputFiles:
@@ -61,7 +63,7 @@ def build_detection_training_config_payload(
         "batch_size": batch_size,
         "gpu_count": gpu_count,
         "precision": precision,
-        "input_size": _normalize_optional_int_list(input_size),
+        "input_size": _serialize_optional_input_size(input_size),
         "extra_options": dict(extra_options or {}),
     }
 
@@ -177,7 +179,7 @@ def build_detection_training_summary_base(
         "training_sample_count": train_sample_count,
         "split_names": _normalize_str_list(split_names),
         "category_names": _normalize_str_list(category_names),
-        "input_size": _normalize_required_int_list(input_size),
+        "input_size": _serialize_required_input_size(input_size),
         "batch_size": batch_size,
         "max_epochs": max_epochs,
         "device": device,
@@ -224,7 +226,7 @@ def build_detection_training_model_version_metadata(
         "dataset_export_id": dataset_export_id,
         "manifest_object_key": manifest_object_key,
         "category_names": _normalize_str_list(category_names),
-        "input_size": _normalize_optional_int_list(input_size),
+        "input_size": _serialize_optional_input_size(input_size),
         "training_config": dict(training_config),
         "runtime_summary": dict(runtime_summary),
         "warm_start": dict(warm_start_summary),
@@ -254,3 +256,25 @@ def _normalize_required_int_list(values: Sequence[int]) -> list[int]:
     """把必填整型序列规整为列表。"""
 
     return [int(value) for value in values]
+
+
+def _serialize_optional_input_size(
+    values: Sequence[int] | None,
+) -> dict[str, int] | None:
+    """把可选内部 HW 尺寸序列化为明确的 width/height 对象。"""
+
+    if values is None:
+        return None
+    return _serialize_required_input_size(values)
+
+
+def _serialize_required_input_size(values: Sequence[int]) -> dict[str, int]:
+    """把必填内部 HW 尺寸序列化为明确的 width/height 对象。"""
+
+    resolved = tuple(int(value) for value in values)
+    if len(resolved) != 2:
+        raise ValueError("input_size 必须包含 height 和 width")
+    serialized = serialize_spatial_size_hw((resolved[0], resolved[1]))
+    if serialized is None:
+        raise ValueError("input_size 不能为空")
+    return serialized

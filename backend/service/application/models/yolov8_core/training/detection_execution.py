@@ -19,7 +19,10 @@ from backend.service.application.models.postprocess.detection_postprocess import
     DETECTION_POSTPROCESS_MODE_NMS,
     postprocess_detection_prediction_array,
 )
-from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device,
 )
@@ -1281,16 +1284,19 @@ def _validate_resume_checkpoint(
                 "expected_class_count": expected_num_classes,
             },
         )
-    if (
-        not isinstance(checkpoint_input_size, list)
-        or len(checkpoint_input_size) != 2
-        or tuple(int(item) for item in checkpoint_input_size) != expected_input_size
-    ):
+    try:
+        resolved_checkpoint_input_size = deserialize_spatial_size_hw(
+            checkpoint_input_size,
+            field_name="checkpoint.input_size",
+        )
+    except ValueError:
+        resolved_checkpoint_input_size = None
+    if resolved_checkpoint_input_size != expected_input_size:
         raise InvalidRequestError(
             "resume checkpoint 的 input_size 与当前训练请求不一致",
             details={
                 "checkpoint_input_size": checkpoint_input_size,
-                "expected_input_size": list(expected_input_size),
+                "expected_input_size": serialize_spatial_size_hw(expected_input_size),
             },
         )
     if checkpoint_batch_size != expected_batch_size:

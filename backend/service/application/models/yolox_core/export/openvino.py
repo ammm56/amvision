@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path, PurePosixPath
 import subprocess
 from typing import Callable
@@ -57,7 +58,7 @@ def build_yolox_openvino_ir(
                 ),
             },
         )
-    return {
+    build_summary = {
         "stage": "build-openvino-ir",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
@@ -66,9 +67,26 @@ def build_yolox_openvino_ir(
         "compress_to_fp16": compress_to_fp16,
         "execution_mode": "subprocess-openvino-convert-model",
     }
+    stdout_payload = _parse_last_json_line(completed_process.stdout)
+    if stdout_payload is not None:
+        build_summary.update(stdout_payload)
+    return build_summary
 
 
 def resolve_yolox_openvino_weights_object_key(output_object_key: str) -> str:
     """根据 OpenVINO XML object key 推导同名 bin object key。"""
 
     return PurePosixPath(output_object_key).with_suffix(".bin").as_posix()
+
+
+def _parse_last_json_line(stdout: str) -> dict[str, object] | None:
+    """读取 OpenVINO 隔离构建器输出的最后一个 JSON 对象。"""
+
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        return None
+    try:
+        payload = json.loads(lines[-1])
+    except json.JSONDecodeError:
+        return None
+    return dict(payload) if isinstance(payload, dict) else None

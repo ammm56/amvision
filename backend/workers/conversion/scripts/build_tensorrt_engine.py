@@ -112,6 +112,7 @@ def build_tensorrt_engine(
         "engine_origin_marker": MODEL_ARTIFACT_ORIGIN_MARKER,
         "input_name": input_tensor.name,
         "input_shape": list(input_shape),
+        "input_dtype": str(input_tensor.dtype),
         **build_single_input_tensorrt_engine_capabilities(
             input_shape_mode=input_shape_mode,
             input_name=input_tensor.name,

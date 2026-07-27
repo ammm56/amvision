@@ -10,6 +10,9 @@ from backend.service.application.models.export.onnx_export import (
     TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION,
     export_torch_model_to_onnx,
 )
+from backend.service.application.models.yolo_core_common.export.execution import (
+    validate_yolo_converted_input_tensor,
+)
 
 
 YOLOX_EXPORT_INPUT_NAMES = ("images",)
@@ -42,7 +45,14 @@ def export_yolox_onnx(
         "stage": "export-onnx",
         "object_uri": output_object_key,
         "opset_version": YOLOX_ONNX_EXPORT_OPSET_VERSION,
-        "input_size": list(session.runtime_target.input_size),
+        "input_size": session.runtime_target.model_input_spec.spatial_size.to_payload(),
+        "model_input_spec": session.runtime_target.model_input_spec.to_payload(),
+        "input_tensor": {
+            "name": YOLOX_EXPORT_INPUT_NAMES[0],
+            "layout": session.runtime_target.model_input_spec.layout,
+            "shape": list(session.runtime_target.model_input_spec.tensor_shape),
+            "dtype": session.runtime_target.model_input_spec.dtype,
+        },
         "exporter_mode": YOLOX_ONNX_EXPORTER_MODE,
         "input_names": list(YOLOX_EXPORT_INPUT_NAMES),
         "output_names": list(YOLOX_EXPORT_OUTPUT_NAMES),
@@ -68,9 +78,20 @@ def validate_yolox_onnx(
         str(onnx_path),
         providers=["CPUExecutionProvider"],
     )
+    ort_input = ort_session.get_inputs()[0]
+    input_tensor = _build_yolox_input_tensor(
+        name=ort_input.name,
+        shape=ort_input.shape,
+        dtype=ort_input.type,
+    )
+    validate_yolo_converted_input_tensor(
+        input_tensor=input_tensor,
+        model_input_spec_payload=session.runtime_target.model_input_spec.to_payload(),
+        artifact_format="onnx",
+    )
     ort_outputs = ort_session.run(
         None,
-        {ort_session.get_inputs()[0].name: dummy_input.detach().cpu().numpy()},
+        {ort_input.name: dummy_input.detach().cpu().numpy()},
     )
     summary = summarize_yolox_onnx_numeric_validation(
         np_module=session.imports.np,
@@ -82,6 +103,7 @@ def validate_yolox_onnx(
             "ONNX 数值校验失败",
             details=dict(summary),
         )
+    summary["input_tensor"] = input_tensor
     return summary
 
 
@@ -103,11 +125,33 @@ def optimize_yolox_onnx(
         raise ServiceConfigurationError("ONNX simplify 校验失败")
     onnx_module.checker.check_model(simplified_model)
     onnx_module.save(simplified_model, str(optimized_path))
+    initializer_names = {value.name for value in simplified_model.graph.initializer}
+    graph_inputs = [
+        item
+        for item in simplified_model.graph.input
+        if item.name not in initializer_names
+    ]
+    if len(graph_inputs) != 1:
+        raise ServiceConfigurationError(
+            "YOLOX ONNX 必须且只能包含一个外部输入",
+            details={"input_count": len(graph_inputs)},
+        )
+    graph_input = graph_inputs[0]
+    tensor_type = graph_input.type.tensor_type
+    input_tensor = _build_yolox_input_tensor(
+        name=graph_input.name,
+        shape=[
+            int(dimension.dim_value) if int(dimension.dim_value) > 0 else -1
+            for dimension in tensor_type.shape.dim
+        ],
+        dtype=onnx_module.TensorProto.DataType.Name(tensor_type.elem_type),
+    )
     return {
         "stage": "optimize-onnx",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
         "optimizer": "onnxsim",
+        "input_tensor": input_tensor,
     }
 
 
@@ -186,3 +230,35 @@ def _build_yolox_dummy_input(*, session: object) -> object:
         device=session.device_name,
         dtype=session.imports.torch.float32,
     )
+
+
+def _build_yolox_input_tensor(
+    *,
+    name: object,
+    shape: object,
+    dtype: object,
+) -> dict[str, object]:
+    """规整 YOLOX 转换产物报告的真实输入张量。"""
+
+    if not isinstance(name, str) or not isinstance(shape, (list, tuple)):
+        raise ServiceConfigurationError("YOLOX 转换产物输入张量不完整")
+    dtype_aliases = {
+        "tensor(float)": "float32",
+        "float": "float32",
+        "float32": "float32",
+    }
+    normalized_dtype = dtype_aliases.get(str(dtype).strip().lower())
+    if normalized_dtype is None:
+        raise ServiceConfigurationError(
+            "YOLOX 转换产物输入 dtype 不受支持",
+            details={"dtype": str(dtype)},
+        )
+    return {
+        "name": name,
+        "layout": "NCHW",
+        "shape": [
+            int(value) if isinstance(value, int) and not isinstance(value, bool) else -1
+            for value in shape
+        ],
+        "dtype": normalized_dtype,
+    }

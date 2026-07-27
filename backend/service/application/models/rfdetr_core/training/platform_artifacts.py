@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
+
 import torch
 
 from backend.service.application.errors import InvalidRequestError
@@ -139,7 +141,7 @@ def build_metrics_payload(
         "callback_metrics": _tensor_mapping_to_float_dict(
             getattr(trainer, "callback_metrics", {}),
         ),
-        "input_size": list(aligned_input_size),
+        "input_size": serialize_spatial_size_hw(aligned_input_size),
         "implementation_mode": "rfdetr-full-core",
     }
 

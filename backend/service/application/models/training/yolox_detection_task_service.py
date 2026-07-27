@@ -61,6 +61,7 @@ from backend.service.application.models.training.detection_training_rules import
     build_detection_validation_summary_payload,
 )
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.domain.models.yolox_model_spec import DEFAULT_YOLOX_MODEL_SPEC, YoloXModelSpec
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -1066,7 +1067,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             "batch_size": task_spec.batch_size,
             "gpu_count": task_spec.gpu_count,
             "precision": task_spec.precision,
-            "input_size": list(task_spec.input_size) if task_spec.input_size is not None else None,
+            "input_size": serialize_spatial_size_hw(task_spec.input_size),
             "extra_options": dict(task_spec.extra_options),
         }
 
@@ -1162,7 +1163,9 @@ class SqlAlchemyYoloXTrainingTaskService(
                             "max_iterations": progress.max_iterations,
                             "global_iteration": progress.global_iteration,
                             "total_iterations": progress.total_iterations,
-                            "input_size": list(progress.input_size),
+                            "input_size": serialize_spatial_size_hw(
+                                progress.input_size
+                            ),
                             "learning_rate": progress.learning_rate,
                             "train_metrics": dict(progress.train_metrics),
                         },

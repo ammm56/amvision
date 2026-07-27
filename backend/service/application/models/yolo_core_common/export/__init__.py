@@ -13,6 +13,7 @@ from backend.service.application.models.yolo_core_common.export.execution import
     resolve_yolo_openvino_weights_object_key,
     summarize_yolo_onnx_numeric_validation,
     use_yolo_model_export_mode,
+    validate_yolo_converted_input_tensor,
     validate_yolo_onnx,
 )
 from backend.service.application.models.yolo_core_common.export.segmentation import (
@@ -59,5 +60,6 @@ __all__ = [
     "resolve_yolo_export_target_specs",
     "summarize_yolo_onnx_numeric_validation",
     "use_yolo_model_export_mode",
+    "validate_yolo_converted_input_tensor",
     "validate_yolo_onnx",
 ]

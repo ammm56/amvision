@@ -124,7 +124,7 @@ def test_rfdetr_trainer_runner_reads_task_spec_without_queue_payload(
                 "batch_size": 1,
                 "max_epochs": 1,
                 "precision": "fp32",
-                "input_size": [384, 384],
+                "input_size": {"width": 384, "height": 384},
                 "extra_options": {"smoke_validation": True},
             },
             metadata={

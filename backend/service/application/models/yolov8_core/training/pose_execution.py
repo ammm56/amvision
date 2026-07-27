@@ -328,6 +328,7 @@ def run_yolov8_pose_training(
             samples=train_anns,
             batch_size=bs,
             input_size=input_size,
+            training=True,
             augmentation_options=effective_yolov8_augmentation_options,
             plan=replace_yolo_task_dataloader_plan_seed(
                 plan=dataloader_plan,

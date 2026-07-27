@@ -22,6 +22,7 @@ from backend.service.application.models.training.yolox_detection_task_types impo
     YoloXTrainingTaskResult,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_input_spec import deserialize_spatial_size_hw
 from backend.service.domain.tasks.task_records import TaskRecord
 
 
@@ -204,7 +205,15 @@ class YoloXTrainingTaskRegistrationMixin:
             input_size=request.input_size,
             extra_options=request.extra_options,
         )
-        effective_input_size = task_result.summary.get("input_size")
+        try:
+            effective_input_size = deserialize_spatial_size_hw(
+                task_result.summary.get("input_size"),
+                field_name="training_summary.input_size",
+            )
+        except ValueError as exc:
+            raise ValueError("YOLOX 训练摘要 input_size 契约不合法") from exc
+        if effective_input_size is None:
+            effective_input_size = request.input_size
         runtime_summary = build_detection_runtime_summary_payload(
             device=self._read_optional_str(task_result.summary, "device"),
             gpu_count=self._read_optional_int(task_result.summary, "gpu_count"),
@@ -235,11 +244,7 @@ class YoloXTrainingTaskRegistrationMixin:
             dataset_export_id=dataset_export.dataset_export_id,
             manifest_object_key=dataset_export.manifest_object_key,
             category_names=self._read_str_tuple(task_result.summary.get("category_names")),
-            input_size=(
-                effective_input_size
-                if isinstance(effective_input_size, list | tuple)
-                else training_config["input_size"]
-            ),
+            input_size=effective_input_size,
             training_config=training_config,
             runtime_summary=runtime_summary,
             warm_start_summary=dict(task_result.summary.get("warm_start") or {}),

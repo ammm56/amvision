@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
+
 import torch
 
 from backend.service.application.errors import (
@@ -55,6 +57,17 @@ class RfdetrExportContext:
     output_names: tuple[str, ...]
     input_size_summary: dict[str, object]
 
+    def close(self) -> None:
+        """释放一次性导出模型和 dummy tensor，避免转换任务间保留大对象。"""
+
+        model = self.model
+        close_model = getattr(model, "close", None)
+        if callable(close_model):
+            close_model()
+        object.__setattr__(self, "model", None)
+        object.__setattr__(self, "dummy_input", None)
+        del model
+
 
 def prepare_rfdetr_export_context(
     *,
@@ -65,14 +78,14 @@ def prepare_rfdetr_export_context(
     input_size: object,
 ) -> RfdetrExportContext:
     """执行 `prepare_rfdetr_export_context`。
-    
+
     参数：
     - `checkpoint_path`：传入的 `checkpoint_path` 参数。
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `num_classes`：传入的 `num_classes` 参数。
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -82,6 +95,14 @@ def prepare_rfdetr_export_context(
     if checkpoint_path is None or not checkpoint_path.is_file():
         raise ServiceError("RF-DETR 转换缺少可读取的 checkpoint 文件")
 
+    requested_input_size = resolve_rfdetr_export_input_size(input_size)
+    (input_height, input_width), input_size_summary = (
+        resolve_rfdetr_export_input_size_summary(
+            task_type=normalized_task_type,
+            model_scale=normalized_model_scale,
+            input_size=requested_input_size,
+        )
+    )
     state_dict = load_rfdetr_export_state_dict(checkpoint_path)
     model = build_rfdetr_full_core_model(
         task_type=normalized_task_type,
@@ -89,35 +110,37 @@ def prepare_rfdetr_export_context(
         num_classes=num_classes,
         load_pretrained=False,
     )
-    model.load_state_dict(state_dict, strict=False)
-    model.to("cpu")
-    model.eval()
-
-    requested_input_size = resolve_rfdetr_export_input_size(input_size)
-    (input_height, input_width), input_size_summary = resolve_rfdetr_export_input_size_summary(
-        task_type=normalized_task_type,
-        model_scale=normalized_model_scale,
-        input_size=requested_input_size,
-    )
-    return RfdetrExportContext(
-        task_type=normalized_task_type,
-        model_scale=normalized_model_scale,
-        model=model,
-        dummy_input=build_rfdetr_dummy_input(
+    try:
+        model.load_state_dict(state_dict, strict=False)
+        model.to("cpu")
+        model.eval()
+        dummy_input = build_rfdetr_dummy_input(
             input_height=input_height,
             input_width=input_width,
-        ),
-        output_names=resolve_rfdetr_onnx_output_names(normalized_task_type),
-        input_size_summary=input_size_summary,
-    )
+        )
+        return RfdetrExportContext(
+            task_type=normalized_task_type,
+            model_scale=normalized_model_scale,
+            model=model,
+            dummy_input=dummy_input,
+            output_names=resolve_rfdetr_onnx_output_names(normalized_task_type),
+            input_size_summary=input_size_summary,
+        )
+    except Exception:
+        from backend.service.application.support.resource_cleanup import (
+            release_model_task_resources,
+        )
+
+        release_model_task_resources(model)
+        raise
 
 
 def normalize_rfdetr_export_task_type(task_type: ModelTaskType) -> str:
     """执行 `normalize_rfdetr_export_task_type`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -133,10 +156,10 @@ def normalize_rfdetr_export_task_type(task_type: ModelTaskType) -> str:
 
 def load_rfdetr_export_state_dict(checkpoint_path: Path) -> dict[str, object]:
     """执行 `load_rfdetr_export_state_dict`。
-    
+
     参数：
     - `checkpoint_path`：传入的 `checkpoint_path` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -158,10 +181,10 @@ def load_rfdetr_export_state_dict(checkpoint_path: Path) -> dict[str, object]:
 
 def resolve_rfdetr_export_input_size(input_size: object) -> tuple[int, int]:
     """执行 `resolve_rfdetr_export_input_size`。
-    
+
     参数：
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -179,12 +202,12 @@ def resolve_rfdetr_export_input_size_summary(
     input_size: tuple[int, int],
 ) -> tuple[tuple[int, int], dict[str, object]]:
     """执行 `resolve_rfdetr_export_input_size_summary`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -205,21 +228,33 @@ def resolve_rfdetr_export_input_size_summary(
             details={
                 "task_type": str(task_type),
                 "model_scale": model_scale,
-                "input_size": list(input_size),
+                "input_size": serialize_spatial_size_hw(input_size),
                 "required_divisor": divisor,
             },
         ) from exc
-    return aligned_input_size, {
-        "requested": list(input_size),
-        "aligned": list(aligned_input_size),
+    if aligned_input_size != input_size:
+        raise InvalidRequestError(
+            "RF-DETR full-core 转换输入尺寸必须满足模型 divisor，禁止静默对齐",
+            details={
+                "task_type": str(task_type),
+                "model_scale": model_scale,
+                "input_size": serialize_spatial_size_hw(input_size),
+                "required_divisor": divisor,
+                "nearest_aligned_input_size": serialize_spatial_size_hw(
+                    aligned_input_size
+                ),
+            },
+        )
+    return input_size, {
+        "requested": serialize_spatial_size_hw(input_size),
+        "effective": serialize_spatial_size_hw(input_size),
         "required_divisor": divisor,
-        "auto_aligned": aligned_input_size != input_size,
     }
 
 
 def import_rfdetr_onnx_conversion_dependencies() -> tuple[object, object, object]:
     """执行 `import_rfdetr_onnx_conversion_dependencies`。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -242,14 +277,14 @@ def export_rfdetr_onnx_artifact(
     output_names: tuple[str, ...],
 ) -> dict[str, object]:
     """执行 `export_rfdetr_onnx_artifact`。
-    
+
     参数：
     - `model`：传入的 `model` 参数。
     - `dummy_input`：传入的 `dummy_input` 参数。
     - `output_path`：传入的 `output_path` 参数。
     - `output_object_key`：传入的 `output_object_key` 参数。
     - `output_names`：传入的 `output_names` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -279,7 +314,15 @@ def export_rfdetr_onnx_artifact(
         "object_uri": output_object_key,
         "exported_path": str(exported_path),
         "opset_version": RFDETR_ONNX_OPSET_VERSION,
-        "input_size": [int(dummy_input.shape[-2]), int(dummy_input.shape[-1])],
+        "input_size": serialize_spatial_size_hw(
+            (int(dummy_input.shape[-2]), int(dummy_input.shape[-1]))
+        ),
+        "input_tensor": {
+            "name": "image",
+            "layout": "NCHW",
+            "shape": [int(value) for value in dummy_input.shape],
+            "dtype": "float32",
+        },
         "exporter_mode": RFDETR_ONNX_EXPORTER_MODE,
         "output_names": list(output_names),
     }
@@ -295,7 +338,7 @@ def validate_rfdetr_onnx_artifact(
     output_names: tuple[str, ...],
 ) -> dict[str, object]:
     """执行 `validate_rfdetr_onnx_artifact`。
-    
+
     参数：
     - `model`：传入的 `model` 参数。
     - `dummy_input`：传入的 `dummy_input` 参数。
@@ -303,7 +346,7 @@ def validate_rfdetr_onnx_artifact(
     - `onnx_module`：传入的 `onnx_module` 参数。
     - `onnxruntime_module`：传入的 `onnxruntime_module` 参数。
     - `output_names`：传入的 `output_names` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -327,14 +370,14 @@ def build_rfdetr_tensorrt_engine_artifact(
     build_precision: str,
 ) -> dict[str, object]:
     """执行 `build_rfdetr_tensorrt_engine_artifact`。
-    
+
     参数：
     - `source_path`：传入的 `source_path` 参数。
     - `output_path`：传入的 `output_path` 参数。
     - `source_object_key`：传入的 `source_object_key` 参数。
     - `output_object_key`：传入的 `output_object_key` 参数。
     - `build_precision`：传入的 `build_precision` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -354,5 +397,6 @@ def build_rfdetr_tensorrt_engine_artifact(
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
         "engine_file_bytes": output_path.stat().st_size,
+        "input_dtype": "float32",
         **build_summary,
     }

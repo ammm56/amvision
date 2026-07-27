@@ -49,7 +49,9 @@ _MODEL_BUILD_RUNTIME_BACKEND_MAP = {
     "tensorrt-engine": "tensorrt",
     "rknn": "rknn",
 }
-_YOLO_MAINLINE_MODEL_TYPES = frozenset({"yolov8", "yolo11", "yolo26"})
+_MODEL_INPUT_CONTRACT_TYPES = frozenset(
+    {"yolov8", "yolo11", "yolo26", "yolox", "rfdetr"}
+)
 
 
 @dataclass(frozen=True)
@@ -691,9 +693,9 @@ def resolve_model_input_spec(
     model_version_metadata: dict[str, object],
     model_build_metadata: dict[str, object] | None,
 ) -> ModelInputSpec | None:
-    """解析 YOLO 主线唯一输入契约，并校验 ModelBuild 继承关系。"""
+    """解析平台模型唯一输入契约，并校验 ModelBuild 继承关系。"""
 
-    if model_type not in _YOLO_MAINLINE_MODEL_TYPES:
+    if model_type not in _MODEL_INPUT_CONTRACT_TYPES:
         return None
     try:
         version_spec = ModelInputSpec.from_payload(
@@ -701,7 +703,7 @@ def resolve_model_input_spec(
         )
     except ValueError as error:
         raise InvalidRequestError(
-            "YOLO ModelVersion 缺少有效 model_input_spec",
+            "ModelVersion 缺少有效 model_input_spec",
             details={"model_type": model_type},
         ) from error
     if model_build_metadata is None:
@@ -712,17 +714,17 @@ def resolve_model_input_spec(
         )
     except ValueError as error:
         raise InvalidRequestError(
-            "YOLO ModelBuild 缺少有效 model_input_spec",
+            "ModelBuild 缺少有效 model_input_spec",
             details={"model_type": model_type},
         ) from error
     if build_spec != version_spec:
         raise InvalidRequestError(
-            "YOLO ModelBuild 与来源 ModelVersion 的输入契约不一致",
+            "ModelBuild 与来源 ModelVersion 的输入契约不一致",
             details={"model_type": model_type},
         )
     input_tensor = model_build_metadata.get("input_tensor")
     if not isinstance(input_tensor, dict):
-        raise InvalidRequestError("YOLO ModelBuild 缺少 input_tensor")
+        raise InvalidRequestError("ModelBuild 缺少 input_tensor")
     shape = input_tensor.get("shape")
     if (
         not isinstance(shape, list)
@@ -734,7 +736,7 @@ def resolve_model_input_spec(
         )
     ):
         raise InvalidRequestError(
-            "YOLO ModelBuild input_tensor.shape 与 model_input_spec 不一致"
+            "ModelBuild input_tensor.shape 与 model_input_spec 不一致"
         )
     return build_spec
 

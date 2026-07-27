@@ -18,6 +18,10 @@ from backend.service.application.models.yolox_core.export import (
     optimize_yolox_onnx,
     validate_yolox_onnx,
 )
+from backend.service.application.models.yolo_core_common.export import (
+    validate_yolo_converted_input_tensor,
+)
+from backend.service.application.runtime.session_lifecycle import RuntimeSessionLease
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -70,9 +74,24 @@ class LocalYoloXConversionRunner:
 
         if not request.plan_steps:
             raise InvalidRequestError("转换计划 steps 不能为空")
-        session = load_yolox_export_session(
-            runtime_target=request.source_runtime_target,
-        )
+        with RuntimeSessionLease(
+            load_yolox_export_session(
+                runtime_target=request.source_runtime_target,
+            )
+        ) as session:
+            return self._run_conversion_with_session(
+                request=request,
+                session=session,
+            )
+
+    def _run_conversion_with_session(
+        self,
+        *,
+        request: YoloXConversionRunRequest,
+        session: YoloXExportSession,
+    ) -> YoloXConversionRunResult:
+        """使用受控 YOLOX export session 执行转换。"""
+
         onnx_module, onnxruntime_module, onnx_simplify = import_onnx_conversion_dependencies()
         base_name = build_output_base_name(request.source_runtime_target)
         onnx_object_key = f"{request.output_object_prefix}/artifacts/builds/{base_name}.onnx"
@@ -125,13 +144,24 @@ class LocalYoloXConversionRunner:
                     onnxruntime_module=onnxruntime_module,
                 )
                 if onnx_output is not None:
+                    input_tensor = validate_yolo_converted_input_tensor(
+                        input_tensor=validation_summary.get("input_tensor"),
+                        model_input_spec_payload=onnx_output.metadata.get(
+                            "model_input_spec"
+                        ),
+                        artifact_format="onnx",
+                    )
                     onnx_output = YoloXConversionOutput(
                         target_format=onnx_output.target_format,
                         object_uri=onnx_output.object_uri,
                         file_type=onnx_output.file_type,
                         runtime_backend=onnx_output.runtime_backend,
                         runtime_precision=onnx_output.runtime_precision,
-                        metadata={**onnx_output.metadata, "validation_summary": validation_summary},
+                        metadata={
+                            **onnx_output.metadata,
+                            "input_tensor": input_tensor,
+                            "validation_summary": validation_summary,
+                        },
                     )
                 continue
             if step.kind == "optimize-onnx":
@@ -155,6 +185,13 @@ class LocalYoloXConversionRunner:
                     target_format="onnx-optimized",
                 )
                 runtime_fields = build_conversion_output_runtime_fields(target_format="onnx-optimized")
+                input_tensor = validate_yolo_converted_input_tensor(
+                    input_tensor=optimize_summary.get("input_tensor"),
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="onnx-optimized",
+                )
                 optimized_output = YoloXConversionOutput(
                     target_format="onnx-optimized",
                     object_uri=optimized_object_key,
@@ -164,6 +201,8 @@ class LocalYoloXConversionRunner:
                     metadata={
                         **optimize_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": onnx_object_key,
                     },
@@ -181,6 +220,17 @@ class LocalYoloXConversionRunner:
                     target_format="openvino-ir",
                     build_precision=openvino_ir_build_precision,
                 )
+                input_tensor = _build_yolox_built_input_tensor(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="openvino-ir",
+                )
                 openvino_output = YoloXConversionOutput(
                     target_format="openvino-ir",
                     object_uri=openvino_object_key,
@@ -190,6 +240,8 @@ class LocalYoloXConversionRunner:
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -207,6 +259,17 @@ class LocalYoloXConversionRunner:
                     target_format="tensorrt-engine",
                     build_precision=tensorrt_engine_build_precision,
                 )
+                input_tensor = _build_yolox_built_input_tensor(
+                    build_summary=build_summary,
+                    inherited_input_tensor=optimized_output.metadata["input_tensor"],
+                )
+                validate_yolo_converted_input_tensor(
+                    input_tensor=input_tensor,
+                    model_input_spec_payload=onnx_output.metadata.get(
+                        "model_input_spec"
+                    ),
+                    artifact_format="tensorrt-engine",
+                )
                 tensorrt_output = YoloXConversionOutput(
                     target_format="tensorrt-engine",
                     object_uri=tensorrt_object_key,
@@ -216,6 +279,8 @@ class LocalYoloXConversionRunner:
                     metadata={
                         **build_summary,
                         **runtime_fields,
+                        "model_input_spec": onnx_output.metadata["model_input_spec"],
+                        "input_tensor": input_tensor,
                         "validation_summary": validation_summary,
                         "source_object_uri": optimized_object_key,
                     },
@@ -365,3 +430,36 @@ class LocalYoloXConversionRunner:
             build_precision=build_precision,
             run_conversion_script=run_conversion_script,
         )
+
+
+def _build_yolox_built_input_tensor(
+    *,
+    build_summary: dict[str, object],
+    inherited_input_tensor: object,
+) -> dict[str, object]:
+    """从 OpenVINO/TensorRT 构建器摘要读取 YOLOX 真实输入。"""
+
+    if not isinstance(inherited_input_tensor, dict):
+        raise ServiceConfigurationError("YOLOX 上游产物缺少 input_tensor")
+    shape = build_summary.get("input_shape")
+    name = build_summary.get("input_name")
+    dtype = str(build_summary.get("input_dtype")).strip().lower()
+    dtype_aliases = {
+        "float": "float32",
+        "float32": "float32",
+        "f32": "float32",
+        "datatype.float": "float32",
+    }
+    if not isinstance(shape, list) or not isinstance(name, str):
+        raise ServiceConfigurationError("YOLOX 构建器未返回真实输入张量")
+    if dtype not in dtype_aliases:
+        raise ServiceConfigurationError(
+            "YOLOX 构建器返回了不受支持的 input dtype",
+            details={"input_dtype": build_summary.get("input_dtype")},
+        )
+    return {
+        "name": name,
+        "layout": inherited_input_tensor.get("layout"),
+        "shape": shape,
+        "dtype": dtype_aliases[dtype],
+    }

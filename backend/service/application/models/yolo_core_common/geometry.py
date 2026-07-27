@@ -25,6 +25,11 @@ class YoloLetterboxTransform:
     resized_height: int
     scaleup: bool
     centered: bool
+    auto: bool
+    stride: int
+    scale_gain: float
+    fill_value: int
+    interpolation: str
 
     @property
     def source_size(self) -> tuple[int, int]:
@@ -49,6 +54,8 @@ def build_yolo_letterbox_transform(
     auto: bool = False,
     stride: int = 32,
     scale_gain: float = 1.0,
+    fill_value: int = 114,
+    interpolation: str = "bilinear",
 ) -> YoloLetterboxTransform:
     """按 Ultralytics LetterBox 规则计算缩放 gain 和四边 padding。
 
@@ -58,6 +65,9 @@ def build_yolo_letterbox_transform(
     """
 
     target_height, target_width = int(input_size[0]), int(input_size[1])
+    normalized_interpolation = str(interpolation).strip().lower()
+    if normalized_interpolation != "bilinear":
+        raise ValueError("YOLO LetterBox 当前只支持 bilinear interpolation")
     resolved_source_width = max(1, int(source_width))
     resolved_source_height = max(1, int(source_height))
     resolved_target_width = max(1, target_width)
@@ -103,6 +113,11 @@ def build_yolo_letterbox_transform(
         resized_height=resized_height,
         scaleup=bool(scaleup),
         centered=bool(center),
+        auto=bool(auto),
+        stride=max(1, int(stride)),
+        scale_gain=max(0.01, float(scale_gain)),
+        fill_value=max(0, min(255, int(fill_value))),
+        interpolation=normalized_interpolation,
     )
 
 
@@ -131,6 +146,8 @@ def letterbox_yolo_image(
         auto=auto,
         stride=stride,
         scale_gain=scale_gain,
+        fill_value=fill_value,
+        interpolation="bilinear",
     )
     if (
         transform.resized_width == source_width
@@ -145,35 +162,14 @@ def letterbox_yolo_image(
         )
     canvas = np_module.full(
         (transform.target_height, transform.target_width, 3),
-        int(fill_value),
+        transform.fill_value,
         dtype=np_module.uint8,
     )
-    source_x = max(0, -transform.pad_left)
-    source_y = max(0, -transform.pad_top)
-    target_x = max(0, transform.pad_left)
-    target_y = max(0, transform.pad_top)
-    copy_width = max(
-        0,
-        min(
-            transform.resized_width - source_x,
-            transform.target_width - target_x,
-        ),
+    _copy_yolo_letterbox_array(
+        source=resized_image,
+        target=canvas,
+        transform=transform,
     )
-    copy_height = max(
-        0,
-        min(
-            transform.resized_height - source_y,
-            transform.target_height - target_y,
-        ),
-    )
-    if copy_height > 0 and copy_width > 0:
-        canvas[
-            target_y : target_y + copy_height,
-            target_x : target_x + copy_width,
-        ] = resized_image[
-            source_y : source_y + copy_height,
-            source_x : source_x + copy_width,
-        ]
     return canvas, transform
 
 
@@ -185,8 +181,8 @@ def letterbox_yolo_image_to_canvas(
     input_size: tuple[int, int],
     scale_gain: float = 1.0,
     scaleup: bool = True,
-) -> tuple[Any, float, tuple[int, int]]:
-    """生成 LetterBox 画布和可直接变换标注的 gain/pad 参数。"""
+) -> tuple[Any, YoloLetterboxTransform]:
+    """生成 LetterBox 画布和唯一的完整几何变换记录。"""
 
     canvas, transform = letterbox_yolo_image(
         cv2_module=cv2_module,
@@ -196,7 +192,7 @@ def letterbox_yolo_image_to_canvas(
         scaleup=scaleup,
         scale_gain=scale_gain,
     )
-    return canvas, transform.gain, (transform.pad_left, transform.pad_top)
+    return canvas, transform
 
 
 def clip_yolo_xyxy_box(
@@ -276,6 +272,20 @@ def scale_yolo_point_from_letterbox(
     return (x_value, y_value)
 
 
+def scale_yolo_point_to_letterbox(
+    *,
+    point_xy: tuple[float, float],
+    transform: YoloLetterboxTransform,
+) -> tuple[float, float]:
+    """把原图中的点映射到 LetterBox 输入坐标。"""
+
+    x_value = float(point_xy[0]) * transform.gain + float(transform.pad_left)
+    y_value = float(point_xy[1]) * transform.gain + float(transform.pad_top)
+    x_value = max(0.0, min(x_value, float(transform.target_width)))
+    y_value = max(0.0, min(y_value, float(transform.target_height)))
+    return (x_value, y_value)
+
+
 def scale_yolo_xywh_from_letterbox(
     *,
     box_xywh: tuple[float, float, float, float],
@@ -296,6 +306,169 @@ def scale_yolo_xywh_from_letterbox(
     if width <= 0.0 or height <= 0.0:
         return None
     return (center_x, center_y, width, height)
+
+
+def scale_yolo_xywhr_to_letterbox(
+    *,
+    box_xywhr: tuple[float, float, float, float, float],
+    transform: YoloLetterboxTransform,
+) -> tuple[float, float, float, float, float] | None:
+    """把原图 xywhr 旋转框映射到 LetterBox 输入坐标。"""
+
+    center_x, center_y = scale_yolo_point_to_letterbox(
+        point_xy=(float(box_xywhr[0]), float(box_xywhr[1])),
+        transform=transform,
+    )
+    width = max(0.0, float(box_xywhr[2]) * transform.gain)
+    height = max(0.0, float(box_xywhr[3]) * transform.gain)
+    if width <= 0.0 or height <= 0.0:
+        return None
+    return (center_x, center_y, width, height, float(box_xywhr[4]))
+
+
+def scale_yolo_xywhr_from_letterbox(
+    *,
+    box_xywhr: tuple[float, float, float, float, float],
+    transform: YoloLetterboxTransform,
+) -> tuple[float, float, float, float, float] | None:
+    """把 LetterBox 输入坐标中的 xywhr 旋转框反算回原图。"""
+
+    restored = scale_yolo_xywh_from_letterbox(
+        box_xywh=(
+            float(box_xywhr[0]),
+            float(box_xywhr[1]),
+            float(box_xywhr[2]),
+            float(box_xywhr[3]),
+        ),
+        transform=transform,
+    )
+    if restored is None:
+        return None
+    return (*restored, float(box_xywhr[4]))
+
+
+def scale_yolo_mask_to_letterbox(
+    *,
+    mask: Any,
+    transform: YoloLetterboxTransform,
+    cv2_module: Any,
+    np_module: Any,
+) -> Any:
+    """使用同一 LetterBox transform 把原图 mask 映射到模型画布。"""
+
+    source_mask = np_module.asarray(mask)
+    if source_mask.ndim != 2:
+        raise ValueError("YOLO mask 必须是二维数组")
+    resized_mask = cv2_module.resize(
+        source_mask,
+        (transform.resized_width, transform.resized_height),
+        interpolation=cv2_module.INTER_NEAREST,
+    )
+    canvas = np_module.zeros(
+        (transform.target_height, transform.target_width),
+        dtype=source_mask.dtype,
+    )
+    _copy_yolo_letterbox_array(
+        source=resized_mask,
+        target=canvas,
+        transform=transform,
+    )
+    return canvas
+
+
+def scale_yolo_mask_from_letterbox(
+    *,
+    mask: Any,
+    transform: YoloLetterboxTransform,
+    cv2_module: Any,
+    np_module: Any,
+    interpolation: str = "nearest",
+) -> Any:
+    """从模型画布裁出有效区域并恢复到原图 mask 尺寸。"""
+
+    canvas_mask = np_module.asarray(mask)
+    if canvas_mask.ndim != 2:
+        raise ValueError("YOLO mask 必须是二维数组")
+    target_x = max(0, transform.pad_left)
+    target_y = max(0, transform.pad_top)
+    source_x = max(0, -transform.pad_left)
+    source_y = max(0, -transform.pad_top)
+    copy_width = max(
+        0,
+        min(
+            transform.resized_width - source_x,
+            transform.target_width - target_x,
+        ),
+    )
+    copy_height = max(
+        0,
+        min(
+            transform.resized_height - source_y,
+            transform.target_height - target_y,
+        ),
+    )
+    restored_resized = np_module.zeros(
+        (transform.resized_height, transform.resized_width),
+        dtype=canvas_mask.dtype,
+    )
+    if copy_width > 0 and copy_height > 0:
+        restored_resized[
+            source_y : source_y + copy_height,
+            source_x : source_x + copy_width,
+        ] = canvas_mask[
+            target_y : target_y + copy_height,
+            target_x : target_x + copy_width,
+        ]
+    normalized_interpolation = str(interpolation).strip().lower()
+    interpolation_modes = {
+        "nearest": cv2_module.INTER_NEAREST,
+        "bilinear": cv2_module.INTER_LINEAR,
+    }
+    interpolation_mode = interpolation_modes.get(normalized_interpolation)
+    if interpolation_mode is None:
+        raise ValueError("YOLO mask 反变换只支持 nearest 或 bilinear interpolation")
+    return cv2_module.resize(
+        restored_resized,
+        (transform.source_width, transform.source_height),
+        interpolation=interpolation_mode,
+    )
+
+
+def _copy_yolo_letterbox_array(
+    *,
+    source: Any,
+    target: Any,
+    transform: YoloLetterboxTransform,
+) -> None:
+    """按 transform 的裁剪与 padding 位置复制二维或三维数组。"""
+
+    source_x = max(0, -transform.pad_left)
+    source_y = max(0, -transform.pad_top)
+    target_x = max(0, transform.pad_left)
+    target_y = max(0, transform.pad_top)
+    copy_width = max(
+        0,
+        min(
+            transform.resized_width - source_x,
+            transform.target_width - target_x,
+        ),
+    )
+    copy_height = max(
+        0,
+        min(
+            transform.resized_height - source_y,
+            transform.target_height - target_y,
+        ),
+    )
+    if copy_width <= 0 or copy_height <= 0:
+        return
+    target[
+        target_y : target_y + copy_height,
+        target_x : target_x + copy_width,
+    ] = source[
+        source_y : source_y + copy_height,
+        source_x : source_x + copy_width,
+    ]
 
 
 def build_yolo_center_canvas_matrix(

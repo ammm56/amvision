@@ -233,8 +233,16 @@ def seed_yolox_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": list(labels),
-                "input_size": list(input_size),
-                "training_config": {"input_size": list(input_size)},
+                "input_size": {
+                    "width": int(input_size[1]),
+                    "height": int(input_size[0]),
+                },
+                "training_config": {
+                    "input_size": {
+                        "width": int(input_size[1]),
+                        "height": int(input_size[0]),
+                    }
+                },
             },
         )
     )

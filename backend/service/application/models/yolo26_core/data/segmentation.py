@@ -14,6 +14,7 @@ from backend.service.application.models.yolo_core_common.data.tensor_transfer im
     move_yolo_tensor_to_training_device,
 )
 from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
     letterbox_yolo_image_to_canvas,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
@@ -59,6 +60,7 @@ def build_yolo26_segmentation_training_batch(
     device: str,
     precision: str,
     imports: Any,
+    training: bool,
     augmentation_options: Yolo26TaskAugmentationOptions | None = None,
     available_samples: Sequence[Any] | None = None,
 ) -> Yolo26SegmentationTrainingBatch | None:
@@ -68,6 +70,8 @@ def build_yolo26_segmentation_training_batch(
     的 mosaic、mixup、random affine、HSV 和 flip 增强。
     """
 
+    if not training and augmentation_options is not None:
+        raise ValueError("YOLO26 segmentation validation 不允许随机增强")
     if not samples:
         return None
 
@@ -77,6 +81,7 @@ def build_yolo26_segmentation_training_batch(
     resolved_available_samples = tuple(available_samples or samples)
     for sample in samples:
         prepared = _prepare_yolo26_segmentation_sample_with_mix(
+            training=training,
             imports=imports,
             primary_sample=sample,
             available_samples=resolved_available_samples,
@@ -121,6 +126,7 @@ def build_yolo26_segmentation_training_batch(
 
 def _prepare_yolo26_segmentation_sample_with_mix(
     *,
+    training: bool,
     imports: Any,
     primary_sample: Any,
     available_samples: Sequence[Any],
@@ -149,7 +155,7 @@ def _prepare_yolo26_segmentation_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
-            scaleup=augmentation_options is not None,
+            scaleup=training,
         )
     if prepared is None:
         return None
@@ -295,7 +301,7 @@ def _prepare_yolo26_segmentation_single_sample(
     if image is None:
         return None
     target_width, target_height = int(output_size[0]), int(output_size[1])
-    canvas, resize_ratio, pad_xy = letterbox_yolo_image_to_canvas(
+    canvas, letterbox_transform = letterbox_yolo_image_to_canvas(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -307,8 +313,7 @@ def _prepare_yolo26_segmentation_single_sample(
         sample=sample,
         target_width=target_width,
         target_height=target_height,
-        resize_ratio=resize_ratio,
-        pad_xy=pad_xy,
+        letterbox_transform=letterbox_transform,
         imports=imports,
     )
 
@@ -318,8 +323,7 @@ def _build_yolo26_segmentation_sample_targets(
     sample: Any,
     target_width: int,
     target_height: int,
-    resize_ratio: float,
-    pad_xy: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
     imports: Any,
 ) -> dict[str, Any]:
     """构造单张图的 YOLO26 segmentation target。"""
@@ -333,10 +337,10 @@ def _build_yolo26_segmentation_sample_targets(
         zip(sample.boxes_xywh, sample.class_ids, strict=True)
     ):
         x, y, width, height = bbox
-        x1 = x * resize_ratio + pad_xy[0]
-        y1 = y * resize_ratio + pad_xy[1]
-        x2 = (x + width) * resize_ratio + pad_xy[0]
-        y2 = (y + height) * resize_ratio + pad_xy[1]
+        x1 = x * letterbox_transform.gain + letterbox_transform.pad_left
+        y1 = y * letterbox_transform.gain + letterbox_transform.pad_top
+        x2 = (x + width) * letterbox_transform.gain + letterbox_transform.pad_left
+        y2 = (y + height) * letterbox_transform.gain + letterbox_transform.pad_top
         box_targets.append([x1, y1, x2, y2])
         class_targets.append(int(class_id))
 
@@ -350,8 +354,11 @@ def _build_yolo26_segmentation_sample_targets(
             np_module=imports.np,
             polygons=polygons,
             output_size=(target_width, target_height),
-            resize_scale=resize_ratio,
-            pad_xy=pad_xy,
+            resize_scale=letterbox_transform.gain,
+            pad_xy=(
+                letterbox_transform.pad_left,
+                letterbox_transform.pad_top,
+            ),
         )
         mask_targets.append(mask)
         mask_valid.append(valid)

@@ -62,13 +62,11 @@ def prepare_yolo_classification_image(
     target_height = max(1, int(input_size[0]))
     target_width = max(1, int(input_size[1]))
     if training:
-        cropped = _random_resized_crop(
+        return _random_resized_crop(
             image=image,
             target_size=(target_height, target_width),
             cv2_module=cv2_module,
         )
-        if cropped is not None:
-            return cropped
     return _resize_and_center_crop(
         image=image,
         target_size=(target_height, target_width),
@@ -81,7 +79,7 @@ def _random_resized_crop(
     image: Any,
     target_size: tuple[int, int],
     cv2_module: Any,
-) -> Any | None:
+) -> Any:
     """实现 torchvision RandomResizedCrop 的默认 scale/ratio 采样规则。"""
 
     source_height, source_width = image.shape[:2]
@@ -102,7 +100,29 @@ def _random_resized_crop(
                 (int(target_size[1]), int(target_size[0])),
                 interpolation=cv2_module.INTER_LINEAR,
             )
-    return None
+
+    # 与 torchvision RandomResizedCrop.get_params 一致：随机采样连续失败时，
+    # 按 ratio 边界计算确定性中心 crop，而不是切换到 validation resize。
+    source_ratio = float(source_width) / float(max(1, source_height))
+    minimum_ratio = 3.0 / 4.0
+    maximum_ratio = 4.0 / 3.0
+    if source_ratio < minimum_ratio:
+        crop_width = source_width
+        crop_height = int(round(float(crop_width) / minimum_ratio))
+    elif source_ratio > maximum_ratio:
+        crop_height = source_height
+        crop_width = int(round(float(crop_height) * maximum_ratio))
+    else:
+        crop_width = source_width
+        crop_height = source_height
+    left = (source_width - crop_width) // 2
+    top = (source_height - crop_height) // 2
+    crop = image[top : top + crop_height, left : left + crop_width]
+    return cv2_module.resize(
+        crop,
+        (int(target_size[1]), int(target_size[0])),
+        interpolation=cv2_module.INTER_LINEAR,
+    )
 
 
 def _resize_and_center_crop(
@@ -170,12 +190,7 @@ def normalize_yolo_classification_image(
 ) -> Any:
     """转换为 RGB CHW，并应用 ImageNet Normalize 和训练随机擦除。"""
 
-    tensor = (
-        image[:, :, ::-1]
-        .transpose(2, 0, 1)
-        .astype(np_module.float32)
-        / 255.0
-    )
+    tensor = image[:, :, ::-1].transpose(2, 0, 1).astype(np_module.float32) / 255.0
     mean = np_module.asarray((0.485, 0.456, 0.406), dtype=np_module.float32).reshape(
         3, 1, 1
     )

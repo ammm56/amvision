@@ -573,6 +573,74 @@ def test_yolo_core_entrypoint_builds_detection_model(
     assert {"boxes", "scores"}.issubset(prediction[1])
 
 
+@pytest.mark.parametrize(
+    ("model_type", "builder"),
+    (
+        ("yolov8", build_yolov8_model),
+        ("yolo11", build_yolo11_model),
+        ("yolo26", build_yolo26_model),
+    ),
+)
+@pytest.mark.parametrize(
+    "task_type",
+    (
+        DETECTION_TASK_TYPE,
+        CLASSIFICATION_TASK_TYPE,
+        SEGMENTATION_TASK_TYPE,
+        POSE_TASK_TYPE,
+        OBB_TASK_TYPE,
+    ),
+)
+def test_three_generation_five_task_real_core_forward_accepts_non_square_input(
+    model_type: str,
+    builder,
+    task_type: str,
+) -> None:
+    """三代五任务均通过各自真实 builder 执行非方形 core forward。"""
+
+    model = builder(
+        task_type=task_type,
+        model_scale="nano",
+        num_classes=2,
+    )
+    model.eval()
+    input_tensor = torch.randn(1, 3, 64, 96)
+    with torch.inference_mode():
+        output = model(input_tensor)
+
+    assert model.model_name == f"{model_type}-{task_type}"
+    if task_type == CLASSIFICATION_TASK_TYPE:
+        classification_tensors = [
+            value
+            for value in _walk_nested_values(output)
+            if isinstance(value, torch.Tensor)
+        ]
+        assert classification_tensors
+        assert tuple(classification_tensors[0].shape) == (1, 2)
+        return
+    output_tensors = [
+        value
+        for value in _walk_nested_values(output)
+        if isinstance(value, torch.Tensor)
+    ]
+    assert output_tensors
+    assert all(bool(torch.isfinite(value).all()) for value in output_tensors)
+
+
+def _walk_nested_values(value):
+    """递归展开 core forward 的 tensor、dict 与 tuple 输出。"""
+
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _walk_nested_values(item)
+        return
+    if isinstance(value, list | tuple):
+        for item in value:
+            yield from _walk_nested_values(item)
+        return
+    yield value
+
+
 def test_yolo_core_head_module_maps_are_model_specific() -> None:
     """验证 head/decode 入口已经由各自 YOLO core 显式登记。"""
 
@@ -1996,6 +2064,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
     )
 
     pose_batch = build_yolo11_pose_training_batch(
+        training=True,
         samples=[pose_sample],
         input_size=(16, 16),
         device="cpu",
@@ -2003,6 +2072,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
         imports=imports,
     )
     obb_batch = build_yolo11_obb_training_batch(
+        training=True,
         samples=[obb_sample],
         input_size=(16, 16),
         device="cpu",
@@ -2857,6 +2927,7 @@ def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
     batch = build_yolov8_segmentation_training_batch(
+        training=True,
         samples=[sample],
         input_size=(16, 16),
         device="cpu",
@@ -3108,6 +3179,7 @@ def test_yolov8_classification_core_data_eval_and_preview_entries(
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
     batch = build_yolov8_classification_training_batch(
+        training=True,
         samples=[sample],
         input_size=(16, 16),
         device="cpu",
@@ -3163,6 +3235,7 @@ def test_yolov8_pose_core_data_and_eval_entries(tmp_path: Path) -> None:
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
     batch = build_yolov8_pose_training_batch(
+        training=True,
         samples=[sample],
         input_size=(16, 16),
         device="cpu",
@@ -3206,6 +3279,7 @@ def test_yolov8_obb_core_data_and_eval_entries(tmp_path: Path) -> None:
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
     batch = build_yolov8_obb_training_batch(
+        training=True,
         samples=[sample],
         input_size=(16, 16),
         device="cpu",
@@ -3247,6 +3321,7 @@ def test_yolov8_obb_core_data_filters_tiny_rboxes(tmp_path: Path) -> None:
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
 
     batch = build_yolov8_obb_training_batch(
+        training=True,
         samples=[sample],
         input_size=(16, 16),
         device="cpu",
@@ -3284,6 +3359,7 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
         segmentations=[[2.0, 2.0, 10.0, 2.0, 10.0, 10.0, 2.0, 10.0]],
     )
     segmentation_batch = build_yolov8_segmentation_training_batch(
+        training=True,
         samples=[segmentation_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3307,6 +3383,7 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
         keypoints=[keypoints],
     )
     pose_batch = build_yolov8_pose_training_batch(
+        training=True,
         samples=[pose_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3327,6 +3404,7 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
         class_ids=[0],
     )
     obb_batch = build_yolov8_obb_training_batch(
+        training=True,
         samples=[obb_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3379,6 +3457,7 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
         segmentations=[[2.0, 2.0, 8.0, 2.0, 8.0, 8.0, 2.0, 8.0]],
     )
     segmentation_batch = build_yolov8_segmentation_training_batch(
+        training=True,
         samples=[segmentation_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3402,6 +3481,7 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
         keypoints=[keypoints],
     )
     pose_batch = build_yolov8_pose_training_batch(
+        training=True,
         samples=[pose_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3421,6 +3501,7 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
         class_ids=[0],
     )
     obb_batch = build_yolov8_obb_training_batch(
+        training=True,
         samples=[obb_sample],
         input_size=(16, 16),
         device="cpu",
@@ -3596,6 +3677,7 @@ def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(
         segmentations=[[8.0, 8.0, 12.0, 8.0, 12.0, 12.0, 8.0, 12.0]],
     )
     segmentation_batch = build_yolov8_segmentation_training_batch(
+        training=True,
         samples=[segmentation_a],
         available_samples=[segmentation_b],
         input_size=(16, 16),
@@ -3622,6 +3704,7 @@ def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(
         keypoints=[keypoints_b],
     )
     pose_batch = build_yolov8_pose_training_batch(
+        training=True,
         samples=[pose_a],
         available_samples=[pose_b],
         input_size=(16, 16),
@@ -3644,6 +3727,7 @@ def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(
         class_ids=[1],
     )
     obb_batch = build_yolov8_obb_training_batch(
+        training=True,
         samples=[obb_a],
         available_samples=[obb_b],
         input_size=(16, 16),

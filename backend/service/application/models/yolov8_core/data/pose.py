@@ -14,7 +14,10 @@ from backend.service.application.models.yolo_core_common.data.tensor_transfer im
     move_yolo_tensor_to_training_device,
 )
 from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
     letterbox_yolo_image_to_canvas,
+    scale_yolo_box_to_letterbox,
+    scale_yolo_point_to_letterbox,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     pin_yolo_task_value,
@@ -65,11 +68,14 @@ def build_yolov8_pose_training_batch(
     device: str,
     precision: str,
     imports: Any,
+    training: bool,
     augmentation_options: YoloV8TaskAugmentationOptions | None = None,
     available_samples: Sequence[Any] | None = None,
 ) -> YoloV8PoseTrainingBatch | None:
     """把样本列表编码为 YOLOv8 pose 训练 batch。"""
 
+    if not training and augmentation_options is not None:
+        raise ValueError("YOLOv8 pose validation 不允许随机增强")
     if not samples:
         return None
 
@@ -79,6 +85,7 @@ def build_yolov8_pose_training_batch(
     resolved_available_samples = tuple(available_samples or samples)
     for sample in samples:
         prepared = _prepare_yolov8_pose_sample_with_mix(
+            training=training,
             imports=imports,
             primary_sample=sample,
             available_samples=resolved_available_samples,
@@ -116,6 +123,7 @@ def build_yolov8_pose_training_batch(
 
 def _prepare_yolov8_pose_sample_with_mix(
     *,
+    training: bool,
     imports: Any,
     primary_sample: Any,
     available_samples: Sequence[Any],
@@ -144,7 +152,7 @@ def _prepare_yolov8_pose_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
-            scaleup=augmentation_options is not None,
+            scaleup=training,
         )
     if prepared is None:
         return None
@@ -273,7 +281,7 @@ def _prepare_yolov8_pose_single_sample(
     if image is None:
         return None
     target_width, target_height = int(output_size[0]), int(output_size[1])
-    canvas, resize_ratio, pad_xy = letterbox_yolo_image_to_canvas(
+    canvas, letterbox_transform = letterbox_yolo_image_to_canvas(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -283,16 +291,14 @@ def _prepare_yolov8_pose_single_sample(
     )
     return canvas, _build_yolov8_pose_sample_targets(
         sample=sample,
-        resize_ratio=resize_ratio,
-        pad_xy=pad_xy,
+        letterbox_transform=letterbox_transform,
     )
 
 
 def _build_yolov8_pose_sample_targets(
     *,
     sample: Any,
-    resize_ratio: float,
-    pad_xy: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
 ) -> YoloV8PosePreparedTarget:
     """构造单张图的 YOLOv8 pose target。"""
 
@@ -303,10 +309,13 @@ def _build_yolov8_pose_sample_targets(
         zip(sample.boxes_xywh, sample.class_ids, strict=True)
     ):
         x, y, width, height = bbox
-        x1 = x * resize_ratio + pad_xy[0]
-        y1 = y * resize_ratio + pad_xy[1]
-        x2 = (x + width) * resize_ratio + pad_xy[0]
-        y2 = (y + height) * resize_ratio + pad_xy[1]
+        mapped_box = scale_yolo_box_to_letterbox(
+            box_xyxy=(x, y, x + width, y + height),
+            transform=letterbox_transform,
+        )
+        if mapped_box is None:
+            continue
+        x1, y1, x2, y2 = mapped_box
         if x2 - x1 < 2 or y2 - y1 < 2:
             continue
         boxes_xyxy.append([x1, y1, x2, y2])
@@ -315,8 +324,7 @@ def _build_yolov8_pose_sample_targets(
             _transform_yolov8_pose_keypoints(
                 sample=sample,
                 object_index=object_index,
-                resize_ratio=resize_ratio,
-                pad_xy=pad_xy,
+                letterbox_transform=letterbox_transform,
             )
         )
     return YoloV8PosePreparedTarget(
@@ -377,8 +385,7 @@ def _transform_yolov8_pose_keypoints(
     *,
     sample: Any,
     object_index: int,
-    resize_ratio: float,
-    pad_xy: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
 ) -> list[float]:
     """把单个目标的 keypoints 变换到 letterbox 后坐标。"""
 
@@ -391,12 +398,15 @@ def _transform_yolov8_pose_keypoints(
     transformed: list[float] = []
     for keypoint_index in range(keypoint_count):
         base_index = keypoint_index * 3
+        mapped_x, mapped_y = scale_yolo_point_to_letterbox(
+            point_xy=(
+                raw_keypoints[base_index],
+                raw_keypoints[base_index + 1],
+            ),
+            transform=letterbox_transform,
+        )
         transformed.extend(
-            [
-                raw_keypoints[base_index] * resize_ratio + pad_xy[0],
-                raw_keypoints[base_index + 1] * resize_ratio + pad_xy[1],
-                raw_keypoints[base_index + 2],
-            ]
+            [mapped_x, mapped_y, raw_keypoints[base_index + 2]]
         )
     return transformed
 

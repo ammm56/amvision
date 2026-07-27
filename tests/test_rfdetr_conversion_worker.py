@@ -379,8 +379,10 @@ def _seed_rfdetr_segmentation_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["segment-a", "segment-b"],
-                "input_size": [72, 72],
-                "training_config": {"input_size": [72, 72]},
+                "input_size": {"width": 96, "height": 96},
+                "training_config": {
+                    "input_size": {"width": 96, "height": 96}
+                },
             },
         )
     )
@@ -423,8 +425,10 @@ def _seed_rfdetr_detection_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": ["part-a", "part-b"],
-                "input_size": [64, 64],
-                "training_config": {"input_size": [64, 64]},
+                "input_size": {"width": 64, "height": 64},
+                "training_config": {
+                    "input_size": {"width": 64, "height": 64}
+                },
             },
         )
     )
@@ -440,6 +444,7 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
         output_object_key: str,
         build_precision: str,
     ) -> dict[str, object]:
+        input_name, input_shape = self._read_onnx_input(source_object_key)
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("<openvino />", encoding="utf-8")
@@ -453,6 +458,9 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
             "build_precision": build_precision,
             "compress_to_fp16": build_precision == "fp16",
             "execution_mode": "test-double-openvino-build",
+            "input_name": input_name,
+            "input_shape": input_shape,
+            "input_dtype": "float32",
         }
 
     def _build_tensorrt_engine(
@@ -462,6 +470,7 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
         output_object_key: str,
         build_precision: str,
     ) -> dict[str, object]:
+        input_name, input_shape = self._read_onnx_input(source_object_key)
         output_path = self.dataset_storage.resolve(output_object_key)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-rfdetr-tensorrt-engine")
@@ -472,4 +481,21 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
             "build_precision": build_precision,
             "tensorrt_version": "test-double",
             "execution_mode": "test-double-tensorrt-build",
+            "input_name": input_name,
+            "input_shape": input_shape,
+            "input_dtype": "float32",
         }
+
+    def _read_onnx_input(self, source_object_key: str) -> tuple[str, list[int]]:
+        """从测试链真实 optimized ONNX 读取静态输入。"""
+
+        import onnx
+
+        model = onnx.load(str(self.dataset_storage.resolve(source_object_key)))
+        initializer_names = {item.name for item in model.graph.initializer}
+        graph_input = next(
+            item for item in model.graph.input if item.name not in initializer_names
+        )
+        return graph_input.name, [
+            int(dimension.dim_value) for dimension in graph_input.type.tensor_type.shape.dim
+        ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -14,7 +15,12 @@ from backend.service.domain.models.model_artifact_provenance import (
 )
 
 
-def build_openvino_ir(*, source_path: Path, output_path: Path, build_precision: str) -> None:
+def build_openvino_ir(
+    *,
+    source_path: Path,
+    output_path: Path,
+    build_precision: str,
+) -> dict[str, object]:
     """把 ONNX 文件转换为 OpenVINO IR。
 
     参数：
@@ -40,11 +46,28 @@ def build_openvino_ir(*, source_path: Path, output_path: Path, build_precision: 
             trace={"build_format": "openvino-ir"},
         ),
     )
+    model_inputs = list(openvino_model.inputs)
+    if len(model_inputs) != 1:
+        raise RuntimeError(
+            f"converted OpenVINO model must have exactly one input: {len(model_inputs)}"
+        )
+    model_input = model_inputs[0]
+    input_shape = [
+        int(dimension.get_length()) if dimension.is_static else -1
+        for dimension in model_input.get_partial_shape()
+    ]
+    input_name = next(iter(model_input.get_names()), model_input.get_any_name())
+    input_dtype = str(model_input.get_element_type())
     save_model(
         openvino_model,
         str(resolved_output_path),
         compress_to_fp16=(normalized_precision == "fp16"),
     )
+    return {
+        "input_name": input_name,
+        "input_shape": input_shape,
+        "input_dtype": input_dtype,
+    }
 
 
 def main() -> None:
@@ -57,11 +80,12 @@ def main() -> None:
     - 无。
     """
 
-    build_openvino_ir(
+    payload = build_openvino_ir(
         source_path=Path(sys.argv[1]),
         output_path=Path(sys.argv[2]),
         build_precision=str(sys.argv[3]),
     )
+    print(json.dumps(payload))
 
 
 def _exit_successfully() -> None:

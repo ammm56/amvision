@@ -7,8 +7,14 @@ from typing import Any, Literal
 
 
 TensorLayout = Literal["NCHW"]
-InputPreprocessKind = Literal["letterbox", "resize-center-crop"]
-InputNormalizationKind = Literal["zero-to-one", "imagenet"]
+InputPreprocessKind = Literal[
+    "letterbox",
+    "yolox-top-left-letterbox",
+    "resize",
+    "resize-center-crop",
+]
+InputNormalizationKind = Literal["none", "zero-to-one", "imagenet"]
+InputInterpolationKind = Literal["bilinear"]
 
 
 @dataclass(frozen=True)
@@ -72,7 +78,16 @@ class ModelInputSpec:
     color_space: str = "RGB"
     preprocess: InputPreprocessKind = "letterbox"
     normalization: InputNormalizationKind = "zero-to-one"
-    contract_version: int = 1
+    interpolation: InputInterpolationKind = "bilinear"
+    padding_value: int | None = 114
+    center: bool = True
+    scaleup: bool = True
+    auto: bool = False
+    stride: int | None = 32
+    postprocess_contract: str = "yolo-v1"
+    preprocess_contract_version: int = 1
+    postprocess_contract_version: int = 1
+    contract_version: int = 2
 
     def __post_init__(self) -> None:
         """校验当前平台支持的固定契约字段。"""
@@ -83,8 +98,35 @@ class ModelInputSpec:
             raise ValueError("当前模型输入只支持 float32 dtype")
         if self.color_space != "RGB":
             raise ValueError("当前模型输入只支持 RGB color_space")
-        if int(self.contract_version) != 1:
-            raise ValueError("当前模型输入契约只支持 version 1")
+        if self.interpolation != "bilinear":
+            raise ValueError("当前模型输入只支持 bilinear interpolation")
+        if self.padding_value is not None and not 0 <= int(self.padding_value) <= 255:
+            raise ValueError("padding_value 必须位于 0 到 255")
+        if self.stride is not None and int(self.stride) <= 0:
+            raise ValueError("stride 必须大于 0")
+        if not self.postprocess_contract.strip():
+            raise ValueError("postprocess_contract 不能为空")
+        if int(self.preprocess_contract_version) != 1:
+            raise ValueError("当前预处理契约只支持 version 1")
+        if int(self.postprocess_contract_version) != 1:
+            raise ValueError("当前后处理契约只支持 version 1")
+        if int(self.contract_version) != 2:
+            raise ValueError("当前模型输入契约只支持 version 2")
+        self._validate_preprocess_semantics()
+
+    def _validate_preprocess_semantics(self) -> None:
+        """校验不同模型族预处理所需的固定语义。"""
+
+        if self.preprocess in {"letterbox", "yolox-top-left-letterbox"}:
+            if self.padding_value is None or self.stride is None:
+                raise ValueError("LetterBox 输入契约必须声明 padding_value 和 stride")
+            if self.preprocess == "yolox-top-left-letterbox" and self.center:
+                raise ValueError("YOLOX LetterBox 必须使用左上角对齐")
+            return
+        if self.padding_value is not None or self.stride is not None or self.auto:
+            raise ValueError("resize 输入契约不得声明 padding 或 stride/auto")
+        if self.preprocess == "resize" and self.center:
+            raise ValueError("固定 resize 输入契约不得声明 center")
 
     @property
     def tensor_shape(self) -> tuple[int, int, int, int]:
@@ -105,6 +147,15 @@ class ModelInputSpec:
             "color_space": self.color_space,
             "preprocess": self.preprocess,
             "normalization": self.normalization,
+            "interpolation": self.interpolation,
+            "padding_value": self.padding_value,
+            "center": bool(self.center),
+            "scaleup": bool(self.scaleup),
+            "auto": bool(self.auto),
+            "stride": self.stride,
+            "postprocess_contract": self.postprocess_contract,
+            "preprocess_contract_version": int(self.preprocess_contract_version),
+            "postprocess_contract_version": int(self.postprocess_contract_version),
         }
 
     @classmethod
@@ -129,13 +180,44 @@ class ModelInputSpec:
             preprocess=_require_literal(
                 value,
                 "preprocess",
-                {"letterbox", "resize-center-crop"},
+                {
+                    "letterbox",
+                    "yolox-top-left-letterbox",
+                    "resize",
+                    "resize-center-crop",
+                },
                 field_name,
             ),
             normalization=_require_literal(
                 value,
                 "normalization",
-                {"zero-to-one", "imagenet"},
+                {"none", "zero-to-one", "imagenet"},
+                field_name,
+            ),
+            interpolation=_require_literal(
+                value,
+                "interpolation",
+                {"bilinear"},
+                field_name,
+            ),
+            padding_value=_require_optional_int(value, "padding_value", field_name),
+            center=_require_bool(value, "center", field_name),
+            scaleup=_require_bool(value, "scaleup", field_name),
+            auto=_require_bool(value, "auto", field_name),
+            stride=_require_optional_int(value, "stride", field_name),
+            postprocess_contract=_require_string(
+                value,
+                "postprocess_contract",
+                field_name,
+            ),
+            preprocess_contract_version=_require_int(
+                value,
+                "preprocess_contract_version",
+                field_name,
+            ),
+            postprocess_contract_version=_require_int(
+                value,
+                "postprocess_contract_version",
                 field_name,
             ),
             contract_version=_require_int(value, "contract_version", field_name),
@@ -168,7 +250,56 @@ def build_yolo_model_input_spec(
         spatial_size=spatial_size,
         preprocess="resize-center-crop" if is_classification else "letterbox",
         normalization="imagenet" if is_classification else "zero-to-one",
+        padding_value=None if is_classification else 114,
+        center=True,
+        scaleup=True,
+        auto=False,
+        stride=None if is_classification else 32,
+        postprocess_contract=(
+            "yolo-classification-v1" if is_classification else f"yolo-{normalized_task}-v1"
+        ),
     )
+
+
+def build_platform_model_input_spec(
+    *,
+    model_type: str,
+    spatial_size: SpatialSize,
+    task_type: str,
+) -> ModelInputSpec:
+    """按平台模型族和任务构造唯一输入、预处理与后处理契约。"""
+
+    normalized_model_type = model_type.strip().lower()
+    if normalized_model_type in {"yolov8", "yolo11", "yolo26"}:
+        return build_yolo_model_input_spec(
+            spatial_size=spatial_size,
+            task_type=task_type,
+        )
+    if normalized_model_type == "yolox":
+        return ModelInputSpec(
+            spatial_size=spatial_size,
+            preprocess="yolox-top-left-letterbox",
+            normalization="none",
+            padding_value=114,
+            center=False,
+            scaleup=True,
+            auto=False,
+            stride=32,
+            postprocess_contract="yolox-detection-v1",
+        )
+    if normalized_model_type == "rfdetr":
+        return ModelInputSpec(
+            spatial_size=spatial_size,
+            preprocess="resize",
+            normalization="imagenet",
+            padding_value=None,
+            center=False,
+            scaleup=True,
+            auto=False,
+            stride=None,
+            postprocess_contract=f"rfdetr-{task_type.strip().lower()}-v1",
+        )
+    raise ValueError(f"不支持构造输入契约的 model_type: {model_type}")
 
 
 def resolve_yolo_default_spatial_size(*, task_type: str) -> SpatialSize:
@@ -217,6 +348,30 @@ def _require_int(payload: dict[str, Any], key: str, field_name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field_name}.{key} 必须是整数")
     return int(value)
+
+
+def _require_optional_int(
+    payload: dict[str, Any],
+    key: str,
+    field_name: str,
+) -> int | None:
+    """读取可选整数。"""
+
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name}.{key} 必须是整数或 null")
+    return int(value)
+
+
+def _require_bool(payload: dict[str, Any], key: str, field_name: str) -> bool:
+    """读取必填布尔值。"""
+
+    value = payload.get(key)
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name}.{key} 必须是布尔值")
+    return value
 
 
 def _require_literal(

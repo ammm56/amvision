@@ -15,6 +15,9 @@ from backend.service.application.models.rfdetr_core._namespace import (
 from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_config,
 )
+from backend.service.application.models.rfdetr_core.export.execution import (
+    resolve_rfdetr_export_input_size_summary,
+)
 from backend.service.application.models.rfdetr_core.training.platform_artifacts import (
     prepare_resume_checkpoint,
 )
@@ -42,9 +45,42 @@ from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
+from backend.service.application.errors import InvalidRequestError
 
 
-def _request(*, task_type: str, extra_options: dict[str, object]) -> RfdetrPlatformTrainingRequest:
+def test_rfdetr_export_rejects_implicit_input_alignment() -> None:
+    """转换不得把已登记尺寸静默改成另一组实际张量尺寸。"""
+
+    with pytest.raises(InvalidRequestError, match="禁止静默对齐") as exc_info:
+        resolve_rfdetr_export_input_size_summary(
+            task_type=DETECTION_TASK_TYPE,
+            model_scale="nano",
+            input_size=(385, 641),
+        )
+
+    assert exc_info.value.details["input_size"] == {"width": 641, "height": 385}
+    assert exc_info.value.details["nearest_aligned_input_size"] == {
+        "width": 672,
+        "height": 416,
+    }
+
+
+def test_rfdetr_export_keeps_aligned_non_square_input() -> None:
+    """合法非方形输入必须原样进入 RF-DETR 导出张量。"""
+
+    effective, summary = resolve_rfdetr_export_input_size_summary(
+        task_type=DETECTION_TASK_TYPE,
+        model_scale="nano",
+        input_size=(384, 640),
+    )
+
+    assert effective == (384, 640)
+    assert summary["effective"] == {"width": 640, "height": 384}
+
+
+def _request(
+    *, task_type: str, extra_options: dict[str, object]
+) -> RfdetrPlatformTrainingRequest:
     """构造不访问 dataset storage 的参数映射请求。"""
 
     return RfdetrPlatformTrainingRequest(
@@ -83,7 +119,9 @@ def _build_config(
     )
 
 
-def test_rfdetr_detection_platform_maps_matcher_loss_and_recipe_options(tmp_path: Path) -> None:
+def test_rfdetr_detection_platform_maps_matcher_loss_and_recipe_options(
+    tmp_path: Path,
+) -> None:
     """Detection 前端参数必须真实进入 matcher、criterion 和训练配方。"""
 
     options = {
@@ -122,7 +160,9 @@ def test_rfdetr_detection_platform_maps_matcher_loss_and_recipe_options(tmp_path
     assert namespace.giou_loss_coef == pytest.approx(1.9)
 
 
-def test_rfdetr_recipe_boolean_strings_and_default_epochs_are_stable(tmp_path: Path) -> None:
+def test_rfdetr_recipe_boolean_strings_and_default_epochs_are_stable(
+    tmp_path: Path,
+) -> None:
     """配置字符串不得把 false 误判为 true，默认训练不能退化成单 epoch。"""
 
     train_config = _build_config(
@@ -138,17 +178,25 @@ def test_rfdetr_recipe_boolean_strings_and_default_epochs_are_stable(tmp_path: P
     assert train_config.use_ema is False
     assert train_config.multi_scale is False
     assert train_config.expanded_scales is False
-    assert RfdetrTrainingExecutionRequest(
-        dataset_storage=object(),  # type: ignore[arg-type]
-        manifest_payload={},
-    ).max_epochs == 100
-    assert RfdetrSegmentationTrainingExecutionRequest(
-        dataset_storage=object(),  # type: ignore[arg-type]
-        manifest_payload={},
-    ).max_epochs == 100
+    assert (
+        RfdetrTrainingExecutionRequest(
+            dataset_storage=object(),  # type: ignore[arg-type]
+            manifest_payload={},
+        ).max_epochs
+        == 100
+    )
+    assert (
+        RfdetrSegmentationTrainingExecutionRequest(
+            dataset_storage=object(),  # type: ignore[arg-type]
+            manifest_payload={},
+        ).max_epochs
+        == 100
+    )
 
 
-def test_rfdetr_segmentation_platform_maps_mask_and_cosine_options(tmp_path: Path) -> None:
+def test_rfdetr_segmentation_platform_maps_mask_and_cosine_options(
+    tmp_path: Path,
+) -> None:
     """Segmentation mask 权重和最小学习率比例不得被静默忽略。"""
 
     options = {
@@ -179,7 +227,9 @@ def test_rfdetr_segmentation_platform_maps_mask_and_cosine_options(tmp_path: Pat
     assert namespace.mask_dice_loss_coef == pytest.approx(7.0)
 
 
-def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(tmp_path: Path) -> None:
+def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(
+    tmp_path: Path,
+) -> None:
     """完整 Lightning checkpoint 必须原样用于 resume，不能降级成预训练权重。"""
 
     checkpoint_path = tmp_path / "resume.ckpt"
@@ -203,7 +253,9 @@ def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(tmp_pat
     assert restored["global_step"] == 20
 
 
-def test_prepare_rfdetr_resume_checkpoint_converts_legacy_model_payload(tmp_path: Path) -> None:
+def test_prepare_rfdetr_resume_checkpoint_converts_legacy_model_payload(
+    tmp_path: Path,
+) -> None:
     """旧 ModelVersion 仍可恢复模型与 epoch，但不伪造不存在的优化器状态。"""
 
     checkpoint_path = tmp_path / "legacy.pth"
@@ -312,7 +364,9 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     monkeypatch.setattr(
         platform_runner_module,
         "_resolve_device_selection",
-        lambda options: SingleTrainingDeviceSelection(device_name="cpu", device_index=None),
+        lambda options: SingleTrainingDeviceSelection(
+            device_name="cpu", device_index=None
+        ),
     )
     monkeypatch.setattr(
         platform_runner_module,
@@ -351,7 +405,7 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     monkeypatch.setattr(
         platform_runner_module,
         "build_metrics_payload",
-        lambda **kwargs: {"input_size": [384, 384]},
+        lambda **kwargs: {"input_size": {"width": 384, "height": 384}},
     )
     monkeypatch.setattr(
         platform_runner_module,

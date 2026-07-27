@@ -39,6 +39,10 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.model_input_spec import (
+    deserialize_spatial_size_hw,
+    serialize_spatial_size_hw,
+)
 from backend.service.domain.models.rfdetr_model_spec import (
     RFDETR_DEFAULT_DATASET_FORMAT,
     RFDETR_DETECTION_SCALES,
@@ -658,7 +662,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         if request.precision is not None:
             task_spec["precision"] = request.precision
         if request.input_size is not None:
-            task_spec["input_size"] = list(request.input_size)
+            task_spec["input_size"] = serialize_spatial_size_hw(request.input_size)
         return task_spec
 
     def _require_dataset_storage(self):
@@ -717,7 +721,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "batch_size": int(payload.get("batch_size") or 2),
             "max_epochs": int(payload.get("max_epochs") or 1),
             "precision": str(payload.get("precision") or "fp32"),
-            "input_size": list(execution_result.aligned_input_size),
+            "input_size": serialize_spatial_size_hw(
+                execution_result.aligned_input_size
+            ),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {
@@ -735,7 +741,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "task_type": self.task_type,
             "implementation_mode": RFDETR_IMPL_MODE,
             "category_names": list(execution_result.labels),
-            "input_size": list(execution_result.aligned_input_size),
+            "input_size": serialize_spatial_size_hw(
+                execution_result.aligned_input_size
+            ),
             "training_config": training_config,
             "metrics_summary": metrics_summary,
             "validation": dict(execution_result.validation_metrics_payload),
@@ -1039,9 +1047,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
     def _read_input_size(self, value: object) -> tuple[int, int] | None:
         """读取可选输入尺寸。"""
 
-        if isinstance(value, (list, tuple)) and len(value) == 2:
-            return (int(value[0]), int(value[1]))
-        return None
+        return deserialize_spatial_size_hw(value, field_name="input_size")
 
     def _read_optional_int_tuple(self, value: object) -> tuple[int, ...] | None:
         """读取可选整数 tuple。"""

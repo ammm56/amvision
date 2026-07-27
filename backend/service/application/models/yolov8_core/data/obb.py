@@ -14,7 +14,9 @@ from backend.service.application.models.yolo_core_common.data.tensor_transfer im
     move_yolo_tensor_to_training_device,
 )
 from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
     letterbox_yolo_image_to_canvas,
+    scale_yolo_xywhr_to_letterbox,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     pin_yolo_task_value,
@@ -63,11 +65,14 @@ def build_yolov8_obb_training_batch(
     device: str,
     precision: str,
     imports: Any,
+    training: bool,
     augmentation_options: YoloV8TaskAugmentationOptions | None = None,
     available_samples: Sequence[Any] | None = None,
 ) -> YoloV8ObbTrainingBatch | None:
     """把样本列表编码为 YOLOv8 OBB 训练 batch。"""
 
+    if not training and augmentation_options is not None:
+        raise ValueError("YOLOv8 OBB validation 不允许随机增强")
     if not samples:
         return None
 
@@ -77,6 +82,7 @@ def build_yolov8_obb_training_batch(
     resolved_available_samples = tuple(available_samples or samples)
     for sample in samples:
         prepared = _prepare_yolov8_obb_sample_with_mix(
+            training=training,
             imports=imports,
             primary_sample=sample,
             available_samples=resolved_available_samples,
@@ -114,6 +120,7 @@ def build_yolov8_obb_training_batch(
 
 def _prepare_yolov8_obb_sample_with_mix(
     *,
+    training: bool,
     imports: Any,
     primary_sample: Any,
     available_samples: Sequence[Any],
@@ -142,7 +149,7 @@ def _prepare_yolov8_obb_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
-            scaleup=augmentation_options is not None,
+            scaleup=training,
         )
     if prepared is None:
         return None
@@ -271,7 +278,7 @@ def _prepare_yolov8_obb_single_sample(
     if image is None:
         return None
     target_width, target_height = int(output_size[0]), int(output_size[1])
-    canvas, resize_ratio, pad_xy = letterbox_yolo_image_to_canvas(
+    canvas, letterbox_transform = letterbox_yolo_image_to_canvas(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -281,16 +288,14 @@ def _prepare_yolov8_obb_single_sample(
     )
     return canvas, _build_yolov8_obb_sample_targets(
         sample=sample,
-        resize_ratio=resize_ratio,
-        pad_xy=pad_xy,
+        letterbox_transform=letterbox_transform,
     )
 
 
 def _build_yolov8_obb_sample_targets(
     *,
     sample: Any,
-    resize_ratio: float,
-    pad_xy: tuple[int, int],
+    letterbox_transform: YoloLetterboxTransform,
 ) -> YoloV8ObbPreparedTarget:
     """构造单张图的 YOLOv8 OBB target。"""
 
@@ -298,19 +303,13 @@ def _build_yolov8_obb_sample_targets(
     category_indexes: list[int] = []
     for box_xywhr, class_id in zip(sample.boxes_xywhr, sample.class_ids, strict=True):
         cx, cy, width, height, angle = box_xywhr
-        scaled_width = width * resize_ratio
-        scaled_height = height * resize_ratio
-        if scaled_width < 2.0 or scaled_height < 2.0:
-            continue
-        scaled_boxes.append(
-            [
-                cx * resize_ratio + pad_xy[0],
-                cy * resize_ratio + pad_xy[1],
-                scaled_width,
-                scaled_height,
-                angle,
-            ]
+        mapped_box = scale_yolo_xywhr_to_letterbox(
+            box_xywhr=(cx, cy, width, height, angle),
+            transform=letterbox_transform,
         )
+        if mapped_box is None or mapped_box[2] < 2.0 or mapped_box[3] < 2.0:
+            continue
+        scaled_boxes.append(list(mapped_box))
         category_indexes.append(int(class_id))
     return YoloV8ObbPreparedTarget(
         boxes_xywhr=scaled_boxes,

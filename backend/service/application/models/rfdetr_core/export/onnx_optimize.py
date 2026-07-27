@@ -40,9 +40,38 @@ def optimize_rfdetr_onnx_model(
         )
     onnx_module.checker.check_model(simplified_model)
     onnx_module.save(simplified_model, str(optimized_path))
+    initializer_names = {
+        initializer.name for initializer in simplified_model.graph.initializer
+    }
+    graph_inputs = [
+        value
+        for value in simplified_model.graph.input
+        if value.name not in initializer_names
+    ]
+    if len(graph_inputs) != 1:
+        raise ServiceConfigurationError(
+            "RF-DETR ONNX 必须且只能包含一个外部输入",
+            details={"input_count": len(graph_inputs)},
+        )
+    graph_input = graph_inputs[0]
+    tensor_type = graph_input.type.tensor_type
     return {
         "stage": "optimize-onnx",
         "object_uri": output_object_key,
         "source_object_uri": source_object_key,
         "optimizer": "onnxsim",
+        "input_tensor": {
+            "name": graph_input.name,
+            "layout": "NCHW",
+            "shape": [
+                int(dimension.dim_value) if int(dimension.dim_value) > 0 else -1
+                for dimension in tensor_type.shape.dim
+            ],
+            "dtype": (
+                "float32"
+                if onnx_module.TensorProto.DataType.Name(tensor_type.elem_type)
+                == "FLOAT"
+                else onnx_module.TensorProto.DataType.Name(tensor_type.elem_type).lower()
+            ),
+        },
     }

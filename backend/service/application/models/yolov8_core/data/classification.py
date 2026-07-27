@@ -43,6 +43,7 @@ def build_yolov8_classification_training_batch(
     device: str,
     precision: str,
     imports: Any,
+    training: bool,
     augmentation_options: YoloClassificationAugmentationOptions | None = None,
 ) -> YoloV8ClassificationTrainingBatch | None:
     """把样本列表编码为 YOLOv8 classification 训练 batch。"""
@@ -58,6 +59,7 @@ def build_yolov8_classification_training_batch(
             input_size=input_size,
             cv2_module=imports.cv2,
             np_module=imports.np,
+            training=training,
             augmentation_options=augmentation_options,
         )
         image_tensors.append(imports.torch.from_numpy(image_array).float())
@@ -85,17 +87,20 @@ def load_yolov8_classification_image(
     input_size: tuple[int, int],
     cv2_module: Any,
     np_module: Any,
+    training: bool,
     augmentation_options: YoloClassificationAugmentationOptions | None = None,
 ) -> Any:
     """读取并缩放 YOLOv8 classification 图片。"""
 
+    if not training and augmentation_options is not None:
+        raise ValueError("YOLOv8 classification validation 不允许随机增强")
     image = cv2_module.imread(image_path)
     if image is None:
         raise InvalidRequestError(f"无法读取 YOLOv8 classification 训练图片: {image_path}")
     resized = prepare_yolo_classification_image(
         image=image,
         input_size=input_size,
-        training=augmentation_options is not None,
+        training=training,
         cv2_module=cv2_module,
     )
     resized = apply_yolo_classification_augmentation(

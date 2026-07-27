@@ -12,10 +12,15 @@ from backend.service.application.models.catalog.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
     _load_pretrained_catalog_entry,
 )
-from backend.service.application.models.registry.model_service import SqlAlchemyModelService
+from backend.service.application.models.registry.model_service import (
+    SqlAlchemyModelService,
+)
 from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.infrastructure.persistence.base import Base
 
 
@@ -23,7 +28,9 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     """验证启动期 seeder 会把预训练目录中的 manifest 登记为 ModelVersion。"""
 
     session_factory = SessionFactory(
-        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'amvision-pretrained.db').as_posix()}")
+        DatabaseSettings(
+            url=f"sqlite:///{(tmp_path / 'amvision-pretrained.db').as_posix()}"
+        )
     )
     Base.metadata.create_all(session_factory.engine)
     dataset_storage = LocalDatasetStorage(
@@ -34,10 +41,7 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
         dataset_storage=dataset_storage,
     )
     manifest_path = dataset_storage.resolve(
-        (
-            f"{YOLOX_PRETRAINED_CATALOG_ROOT}/nano/default/"
-            "manifest.json"
-        )
+        (f"{YOLOX_PRETRAINED_CATALOG_ROOT}/nano/default/manifest.json")
     )
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path = manifest_path.parent / "checkpoints" / "yolox_nano.pth"
@@ -63,15 +67,21 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     YoloXPretrainedModelCatalogSeeder().seed(runtime)
 
     model_service = SqlAlchemyModelService(session_factory=session_factory)
-    model_version = model_service.get_model_version("mv-pretrained-yolox-detection-nano")
+    model_version = model_service.get_model_version(
+        "mv-pretrained-yolox-detection-nano"
+    )
     assert model_version is not None
     assert model_version.source_kind == "pretrained-reference"
     model = model_service.get_model(model_version.model_id)
     assert model is not None
     assert model.scope_kind == PLATFORM_BASE_MODEL_SCOPE
     assert model.project_id is None
-    model_files = model_service.list_model_files(model_version_id=model_version.model_version_id)
-    checkpoint_file = next(file for file in model_files if file.file_type == "yolox-checkpoint")
+    model_files = model_service.list_model_files(
+        model_version_id=model_version.model_version_id
+    )
+    checkpoint_file = next(
+        file for file in model_files if file.file_type == "yolox-checkpoint"
+    )
     assert checkpoint_file.project_id is None
     assert checkpoint_file.storage_uri == (
         "models/pretrained/yolox/detection/nano/default/checkpoints/yolox_nano.pth"
@@ -79,11 +89,17 @@ def test_yolox_pretrained_catalog_seeder_registers_disk_models(tmp_path: Path) -
     assert model_version.metadata["catalog_manifest_object_key"] == (
         "models/pretrained/yolox/detection/nano/default/manifest.json"
     )
+    assert model_version.metadata["input_size"] == {"width": 640, "height": 640}
+    assert model_version.metadata["model_input_spec"]["preprocess"] == (
+        "yolox-top-left-letterbox"
+    )
 
     session_factory.engine.dispose()
 
 
-def test_yolox_pretrained_catalog_rejects_inconsistent_model_version_id(tmp_path: Path) -> None:
+def test_yolox_pretrained_catalog_rejects_inconsistent_model_version_id(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOX 预训练 manifest 不会接受与 scale 不一致的版本 id。"""
 
     dataset_storage = LocalDatasetStorage(

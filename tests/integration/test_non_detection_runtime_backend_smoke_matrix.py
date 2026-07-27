@@ -304,8 +304,16 @@ def _seed_model_version(
             labels_file_uri=labels_uri,
             metadata={
                 "category_names": list(spec.category_names),
-                "input_size": list(spec.input_size),
-                "training_config": {"input_size": list(spec.input_size)},
+                "input_size": {
+                    "width": int(spec.input_size[1]),
+                    "height": int(spec.input_size[0]),
+                },
+                "training_config": {
+                    "input_size": {
+                        "width": int(spec.input_size[1]),
+                        "height": int(spec.input_size[0]),
+                    }
+                },
             },
         )
     )

@@ -74,8 +74,10 @@ def preprocess_yolox_image(
     target_height, target_width = input_size
     source_height, source_width = int(image.shape[0]), int(image.shape[1])
     resize_ratio = min(target_height / source_height, target_width / source_width)
-    resized_width = max(1, int(round(source_width * resize_ratio)))
-    resized_height = max(1, int(round(source_height * resize_ratio)))
+    # YOLOX 训练、验证和参考实现均使用 int() 向下取整。运行时不能使用
+    # round()，否则部分非方形图片会多出一行或一列有效内容。
+    resized_width = max(1, int(source_width * resize_ratio))
+    resized_height = max(1, int(source_height * resize_ratio))
     resized_image = cv2_module.resize(
         image,
         (resized_width, resized_height),

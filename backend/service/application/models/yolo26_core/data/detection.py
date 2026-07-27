@@ -395,7 +395,7 @@ def _build_yolo26_detection_scaled_cell(
 
     image = _load_yolo26_detection_image(imports=imports, sample=sample)
     output_height, output_width = int(output_size[0]), int(output_size[1])
-    canvas, resize_scale, pad_xy = letterbox_yolo_image_to_canvas(
+    canvas, letterbox_transform = letterbox_yolo_image_to_canvas(
         cv2_module=imports.cv2,
         np_module=imports.np,
         image=image,
@@ -405,14 +405,9 @@ def _build_yolo26_detection_scaled_cell(
     boxes_xyxy: list[tuple[float, float, float, float]] = []
     category_indexes: list[int] = []
     for annotation in sample.annotations:
-        clipped_box = _clip_yolo26_detection_box(
-            box_xyxy=(
-                float(annotation.bbox_xyxy[0]) * resize_scale + float(pad_xy[0]),
-                float(annotation.bbox_xyxy[1]) * resize_scale + float(pad_xy[1]),
-                float(annotation.bbox_xyxy[2]) * resize_scale + float(pad_xy[0]),
-                float(annotation.bbox_xyxy[3]) * resize_scale + float(pad_xy[1]),
-            ),
-            input_size=output_size,
+        clipped_box = scale_yolo_box_to_letterbox(
+            box_xyxy=annotation.bbox_xyxy,
+            transform=letterbox_transform,
         )
         if clipped_box is None:
             continue
