@@ -121,56 +121,56 @@ FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定
 - NodeCatalogRegistry 把 core nodes 与 custom nodes 合并成统一目录
 - WorkflowGraphTemplate 和 FlowApplication 的校验始终针对统一节点目录，而不是只看某一个 node pack
 
-### barcode.protocol-nodes 当前维护方式
+### barcode.nodes 当前维护方式
 
-barcode.protocol-nodes 现在采用和 opencv.nodes 一致的拆分维护方式：
+barcode.nodes 现在采用和 opencv.nodes 一致的分类目录维护方式：
 
-- backend/nodes/*.py 只放节点执行实现、NODE_TYPE_ID 和 handle_node
-- workflow/catalog_sources/nodes/*.json 单独维护每个节点的 NodeDefinition
+- categories/<category>/backend/nodes/*.py 放对应分类的节点执行实现、NODE_TYPE_ID 和 handle_node
+- categories/<category>/workflow/nodes/*.json 单独维护对应分类的 NodeDefinition
 - workflow/catalog_sources/payload_contracts.json 维护额外 payload 规则
 - workflow/catalog_sources/metadata.json 维护节点包元数据
-- workflow/catalog.json 作为最终产物，供 manifest.json 的 customNodeCatalogPath 引用
+- 根 workflow/catalog.json 汇总全部分类，供 manifest.json 的 customNodeCatalogPath 引用
 
-其中 custom_nodes/barcode_protocol_nodes/workflow/catalog_builder.py 提供两层调用：
+其中 custom_nodes/barcode_nodes/workflow/catalog_builder.py 提供两层调用：
 
 - build_custom_node_catalog_payload：把 workflow/catalog_sources 下的定义组装成可序列化 JSON 结构
 - write_custom_node_catalog：把组装结果写回 workflow/catalog.json
 
-custom_nodes/barcode_protocol_nodes/workflow/generate_catalog.py 是面向日常维护的命令入口。开发阶段不依赖自动任务；当节点定义变化或新增节点后，由开发人员手动执行生成步骤回写 catalog.json。
+custom_nodes/barcode_nodes/workflow/generate_catalog.py 是面向日常维护的命令入口。开发阶段不依赖自动任务；当节点定义变化或新增节点后，由开发人员手动执行生成步骤回写 catalog.json。
 
-### barcode.protocol-nodes 手动生成流程
+### barcode.nodes 手动生成流程
 
-对于 barcode.protocol-nodes，catalog.json 的维护流程分成两类：
+对于 barcode.nodes，catalog.json 的维护流程分成两类：
 
 1. decode 节点规格发生变化
 
-这类变化通常来自 custom_nodes/barcode_protocol_nodes/specs.py，例如新增条码制式、修改 display_name、description、capability_tags 或公共参数 schema。此时需要先更新批量生成的 backend 节点模块和对应 node JSON，再回写 catalog.json。
+这类变化通常来自 custom_nodes/barcode_nodes/specs.py，例如新增条码制式、修改 display_name、description、capability_tags 或公共参数 schema。此时需要先更新批量生成的 backend 节点模块和对应 node JSON，再回写 catalog.json。
 
 ```powershell
 conda activate amvision
-python -m custom_nodes.barcode_protocol_nodes.backend.generate_decode_node_modules
-python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+python -m custom_nodes.barcode_nodes.backend.generate_decode_node_modules
+python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ```
 
 2. 非 decode 节点发生变化
 
-这类节点包括 filter-results、match-exists、results-summary、draw-results 等手写节点。修改方式是分别维护：
+这类节点包括 filter-results、match-exists、results-summary、draw-results 和 display-response 等手写节点。修改方式是分别维护：
 
-- backend/nodes/<node>.py
-- workflow/catalog_sources/nodes/<node>.json
+- categories/<category>/backend/nodes/<node>.py
+- categories/<category>/workflow/nodes/<node>.json
 
 完成修改后只需要回写 catalog.json：
 
 ```powershell
 conda activate amvision
-python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ```
 
 ### 维护约定
 
 - workflow/catalog.json 视为发布产物，不直接手工编辑
-- workflow/catalog_sources/nodes/*.json 才是 barcode.protocol-nodes 的 NodeDefinition 源文件
-- backend/nodes/*.py 和 workflow/catalog_sources/nodes/*.json 需要保持一一对应
+- categories/*/workflow/nodes/*.json 才是 barcode.nodes 的 NodeDefinition 源文件
+- categories/*/backend/nodes/*.py 和 categories/*/workflow/nodes/*.json 需要保持一一对应
 - 新增节点时，应先补执行实现和对应 node JSON，再手动执行 generate_catalog.py 回写 catalog.json
 - 如变更来自 specs.py，还应先执行 generate_decode_node_modules.py，避免 backend/nodes 与 node JSON 漂移
 
@@ -319,7 +319,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 对于需要拆分维护的 node pack，推荐把每个 NodeDefinition 单独维护在 workflow/catalog_sources/nodes/ 下，把额外 payload 规则 维护在 workflow/catalog_sources/payload_contracts.json，然后通过类似 custom_nodes/opencv_nodes/categories/basic/workflow/generate_catalog.py 的生成步骤汇总出最终的 workflow/catalog.json。
 
-barcode.protocol-nodes 当前已经采用这套维护方式，并固定通过 custom_nodes/barcode_protocol_nodes/workflow/generate_catalog.py 手动回写 workflow/catalog.json。
+barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_nodes/barcode_nodes/workflow/generate_catalog.py 手动回写 workflow/catalog.json。
 
 ### FlowApplication
 

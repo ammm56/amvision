@@ -15,14 +15,14 @@ from backend.service.infrastructure.integrations.modbus import (
     ModbusRegistersReadResponse,
     ModbusWriteResponse,
 )
-from custom_nodes.plc_modbus_tcp_nodes.backend.nodes import (
+from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.nodes import (
     read_value,
     wait_condition,
     write_result_signals,
     write_value,
 )
-import custom_nodes.plc_modbus_tcp_nodes.backend.runtime.client as modbus_client_runtime
-import custom_nodes.plc_modbus_tcp_nodes.backend.runtime.wait_condition as modbus_wait_runtime
+import custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.client as modbus_client_runtime
+import custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.wait_condition as modbus_wait_runtime
 
 
 def test_read_value_node_returns_typed_scalar(monkeypatch) -> None:

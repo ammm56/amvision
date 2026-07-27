@@ -47,7 +47,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from custom_nodes.barcode_protocol_nodes.specs import QR_CROP_DECODE_REMAP_NODE_TYPE_ID
+from custom_nodes.barcode_nodes.specs import QR_CROP_DECODE_REMAP_NODE_TYPE_ID
 from tests.api_test_support import build_test_jpeg_bytes, build_valid_test_png_bytes
 from tests.yolox_test_support import FakeDeploymentProcessSupervisor
 

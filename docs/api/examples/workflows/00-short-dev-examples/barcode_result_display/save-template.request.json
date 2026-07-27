@@ -171,7 +171,7 @@
           "fields": {
             "app_id": "barcode-result-display-app",
             "template_id": "barcode-result-display-template",
-            "node_pack": "barcode.protocol-nodes"
+            "node_pack": "barcode.nodes"
           }
         }
       },

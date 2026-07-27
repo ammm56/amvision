@@ -1,0 +1,27 @@
+"""Barcode 结果过滤节点实现。"""
+
+from __future__ import annotations
+
+from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes.barcode_nodes.shared.backend.runtime.filters import filter_barcode_results_payload
+
+
+NODE_TYPE_ID = "custom.barcode.filter-results"
+
+
+def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+    """按指定条件过滤条码结果。
+
+    参数：
+    - request：当前 workflow 节点执行请求。
+
+    返回：
+    - dict[str, object]：包含过滤后 barcode-results.v1 的节点输出。
+    """
+
+    return {
+        "results": filter_barcode_results_payload(
+            request.input_values.get("results"),
+            parameters=request.parameters,
+        )
+    }

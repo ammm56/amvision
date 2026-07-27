@@ -59,7 +59,7 @@ def test_local_node_pack_loader_loads_enabled_node_pack_with_satisfied_dependenc
 
     assert {manifest.node_pack_id for manifest in catalog_snapshot.node_pack_manifests} == {
         "opencv.nodes",
-        "barcode.protocol-nodes",
+        "barcode.nodes",
     }
     assert {node.node_type_id for node in catalog_snapshot.node_definitions} == {
         "custom.opencv.draw-detections",
@@ -82,7 +82,7 @@ def test_local_node_pack_loader_requires_declared_dependency_to_exist_before_ena
     node_pack_loader.refresh()
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
     status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
-    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+    status_item = _find_status_item(status_snapshot, "barcode.nodes")
 
     assert catalog_snapshot.node_definitions == ()
     assert status_item.state == "failed"
@@ -105,11 +105,11 @@ def test_local_node_pack_loader_requires_dependency_to_be_enabled_before_enable(
     node_pack_loader.refresh()
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
     status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
-    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+    status_item = _find_status_item(status_snapshot, "barcode.nodes")
 
     assert {manifest.node_pack_id for manifest in catalog_snapshot.node_pack_manifests} == {
         "opencv.nodes",
-        "barcode.protocol-nodes",
+        "barcode.nodes",
     }
     assert catalog_snapshot.node_definitions == ()
     assert status_item.state == "failed"
@@ -133,7 +133,7 @@ def test_local_node_pack_loader_requires_dependency_version_to_match_before_enab
     node_pack_loader.refresh()
     catalog_snapshot = node_pack_loader.get_catalog_snapshot()
     status_snapshot = node_pack_loader.get_node_pack_status_snapshot()
-    status_item = _find_status_item(status_snapshot, "barcode.protocol-nodes")
+    status_item = _find_status_item(status_snapshot, "barcode.nodes")
 
     assert {node.node_type_id for node in catalog_snapshot.node_definitions} == {"custom.opencv.draw-detections"}
     assert status_item.state == "failed"
@@ -270,7 +270,7 @@ def _create_dependent_node_pack_fixture(
 ) -> Path:
     """创建带有 manifest dependencies 声明的最小节点包目录。"""
 
-    node_pack_dir = tmp_path / "custom_nodes" / "barcode_protocol_nodes"
+    node_pack_dir = tmp_path / "custom_nodes" / "barcode_nodes"
     backend_dir = node_pack_dir / "backend"
     workflow_dir = node_pack_dir / "workflow"
     backend_dir.mkdir(parents=True, exist_ok=True)
@@ -294,14 +294,14 @@ def register(context):
         dependency_payload["versionRange"] = dependency_version_range
     manifest_payload = {
         "format_id": "amvision.node-pack-manifest.v1",
-        "id": "barcode.protocol-nodes",
+        "id": "barcode.nodes",
         "version": "0.1.0",
         "displayName": "Barcode Protocol Nodes",
         "description": "测试用带依赖声明的条码节点包。",
         "category": "custom-node-pack",
         "capabilities": ["pipeline.node", "barcode.summary"],
         "dependencies": [dependency_payload],
-        "entrypoints": {"backend": "custom_nodes.barcode_protocol_nodes.backend.entry:register"},
+        "entrypoints": {"backend": "custom_nodes.barcode_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30},
         "enabledByDefault": True,
@@ -330,7 +330,7 @@ def register(context):
                 "parameter_schema": {"type": "object", "properties": {}},
                 "capability_tags": ["barcode.summary"],
                 "runtime_requirements": {},
-                "node_pack_id": "barcode.protocol-nodes",
+                "node_pack_id": "barcode.nodes",
                 "node_pack_version": "0.1.0",
             }
         ],

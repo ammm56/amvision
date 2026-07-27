@@ -41,7 +41,7 @@ from backend.service.application.workflows.workflow_service import (
     LocalWorkflowJsonService,
 )
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
-from tests.test_workflow_barcode_protocol_nodes import _build_barcode_test_png_bytes
+from tests.test_workflow_barcode_nodes import _build_barcode_test_png_bytes
 
 
 def test_detection_deployment_sync_infer_health_app_runtime_smoke_executes_in_explicit_order(

@@ -1,4 +1,4 @@
-"""本地数据库输出节点执行入口。"""
+"""Database SQL 节点执行入口。"""
 
 from __future__ import annotations
 
@@ -38,12 +38,12 @@ from custom_nodes.database_nodes.providers.sql.backend.runtime.payloads import (
 )
 
 
-def execute_local_db_upsert_node(
+def execute_sql_upsert_node(
     *,
     request: WorkflowNodeExecutionRequest,
     node_name: str,
 ) -> dict[str, object]:
-    """执行第一阶段受限本地数据库 upsert。"""
+    """执行受限的 SQL 单表 upsert。"""
 
     primary_source_kind, source_roots = _read_source_roots(
         request=request,
@@ -195,8 +195,8 @@ def execute_local_db_upsert_node(
                 affected_row_count = None
     except SQLAlchemyError as exc:
         raise ServiceError(
-            "本地数据库 upsert 失败",
-            code="local_db_upsert_failed",
+            "SQL upsert 失败",
+            code="sql_upsert_failed",
             status_code=502,
             details={
                 "node_id": request.node_id,

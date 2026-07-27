@@ -3,11 +3,10 @@
   "id": "http.nodes",
   "version": "0.2.0",
   "displayName": "HTTP Nodes",
-  "description": "提供通用 HTTP 请求、鉴权、查询参数、JSON 映射和响应处理能力；业务系统提交属于 recipes。",
+  "description": "提供通用 HTTP 请求、鉴权、查询参数、JSON 映射和响应处理能力。",
   "category": "integration",
   "categoryRoot": "http",
-  "implementationLayout": "recipes",
-  "migrationAliases": ["output.mes-http-nodes"],
+  "implementationLayout": "categories",
   "capabilities": [
     "pipeline.node",
     "integration.http",
@@ -31,7 +30,7 @@
   "customNodeCatalogPath": "workflow/catalog.json",
   "metadata": {
     "categoryRoot": "http",
-    "recipeLayout": "recipes/<recipe>",
-    "implementedRecipes": ["mes"]
+    "sourceLayout": "categories/<category>",
+    "implementedCategories": ["request"]
   }
 }

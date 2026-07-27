@@ -7,10 +7,10 @@ from pathlib import Path
 from tests.api_test_support import build_test_headers, create_api_test_context
 
 
-def test_workflow_node_catalog_loads_barcode_display_pack_when_dependencies_are_available(
+def test_workflow_node_catalog_loads_unified_barcode_pack(
     tmp_path: Path,
 ) -> None:
-    """验证 API 启动链会加载满足依赖的 barcode.display-nodes。
+    """验证 API 启动链会加载统一的 barcode.nodes。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
@@ -26,7 +26,7 @@ def test_workflow_node_catalog_loads_barcode_display_pack_when_dependencies_are_
         with context.client:
             response = context.client.get(
                 "/api/v1/workflows/node-catalog",
-                params={"node_pack_id": "barcode.display-nodes"},
+                params={"node_pack_id": "barcode.nodes"},
                 headers=headers,
             )
     finally:
@@ -34,7 +34,7 @@ def test_workflow_node_catalog_loads_barcode_display_pack_when_dependencies_are_
 
     assert response.status_code == 200
     payload = response.json()
-    assert [item["id"] for item in payload["node_pack_manifests"]] == ["barcode.display-nodes"]
+    assert [item["id"] for item in payload["node_pack_manifests"]] == ["barcode.nodes"]
     assert any(item["node_type_id"] == "custom.barcode.display-response" for item in payload["node_definitions"])
     assert any(
         group["category"] == "barcode.display"

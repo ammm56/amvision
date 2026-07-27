@@ -109,7 +109,7 @@
     },
     {
       "node_id": "callback_result",
-      "node_type_id": "core.output.http-post",
+      "node_type_id": "custom.http.request",
       "parameters": {
         "url": "http://127.0.0.1:18080/plc/register/result",
         "method": "POST",

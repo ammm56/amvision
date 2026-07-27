@@ -174,7 +174,7 @@
           "example_kind": "industrial-single-frame-glue-roi-modbus-callback-strict",
           "delivery_order": [
             "plc-modbus-write-result-signals",
-            "http-post-callback"
+            "http-request-callback"
           ]
         }
       }
@@ -197,7 +197,7 @@
     },
     {
       "node_id": "callback_result",
-      "node_type_id": "core.output.http-post",
+      "node_type_id": "custom.http.request",
       "parameters": {
         "url": "http://127.0.0.1:18080/inspection/result",
         "method": "POST",
@@ -507,7 +507,7 @@
     "callback_delivery_order": [
       "plc-modbus-write-result-signals",
       "build-callback-payload",
-      "http-post-callback"
+      "http-request-callback"
     ],
     "node_groups": {
       "input": [

@@ -120,9 +120,9 @@
         "metadata": {}
       },
       {
-        "binding_id": "mes_prepared_request",
+        "binding_id": "http_prepared_request",
         "direction": "output",
-        "template_port_id": "mes_prepared_request",
+        "template_port_id": "http_prepared_request",
         "binding_kind": "workflow-execute-output",
         "config": {
           "payload_type_id": "value.v1"
@@ -130,9 +130,9 @@
         "metadata": {}
       },
       {
-        "binding_id": "mes_response",
+        "binding_id": "http_response",
         "direction": "output",
-        "template_port_id": "mes_response",
+        "template_port_id": "http_response",
         "binding_kind": "workflow-execute-output",
         "config": {
           "payload_type_id": "value.v1"
@@ -140,9 +140,9 @@
         "metadata": {}
       },
       {
-        "binding_id": "local_db_prepared_row",
+        "binding_id": "sql_prepared_row",
         "direction": "output",
-        "template_port_id": "local_db_prepared_row",
+        "template_port_id": "sql_prepared_row",
         "binding_kind": "workflow-execute-output",
         "config": {
           "payload_type_id": "value.v1"
@@ -150,9 +150,9 @@
         "metadata": {}
       },
       {
-        "binding_id": "local_db_result",
+        "binding_id": "sql_result",
         "direction": "output",
-        "template_port_id": "local_db_result",
+        "template_port_id": "sql_result",
         "binding_kind": "workflow-execute-output",
         "config": {
           "payload_type_id": "value.v1"

@@ -1,1 +1,1 @@
-"""本地数据库输出 backend 包。"""
+"""Database SQL backend 包。"""

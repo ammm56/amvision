@@ -4,10 +4,10 @@
   "node_definitions": [
     {
       "format_id": "amvision.node-definition.v1",
-      "node_type_id": "custom.output.local-db-upsert",
-      "display_name": "Local DB Upsert",
-      "category": "integration.output",
-      "description": "把 result-record、workflow-result 或批次摘要按受限列映射规则写入本地数据库单表，适合第一阶段现场结果归档与追溯。",
+      "node_type_id": "custom.database.sql.upsert",
+      "display_name": "SQL Upsert",
+      "category": "database.sql.write",
+      "description": "通过受限列映射向 SQLite、MySQL 或 PostgreSQL 单表执行 upsert。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -189,9 +189,9 @@
       },
       "parameter_ui_schema": null,
       "capability_tags": [
-        "integration.output",
         "integration.database",
-        "integration.database.local-upsert"
+        "integration.database.sql",
+        "integration.database.upsert"
       ],
       "runtime_requirements": {
         "python_packages": [
@@ -199,7 +199,7 @@
         ]
       },
       "node_pack_id": "database.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "phase": "implemented"
       }
@@ -208,7 +208,7 @@
   "metadata": {
     "phase": "implemented",
     "families": [
-      "local-db"
+      "sql"
     ],
     "features": [
       "row-upsert",

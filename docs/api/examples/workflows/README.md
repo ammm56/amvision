@@ -7,9 +7,9 @@
 - `00-short-dev-examples/`：短链路、开发中、单节点或边界不明确的 workflow 示例，用于快速调试 template/application、preview run 和 runtime 调用。
 - `01-*` 到 `05-*`：已经明确为第一到第五类完整 HTTP workflow app 的验证示例。
 - `06-*`、`07-*`：独立的 TriggerSource / ZeroMQ 调试示例，同一个 workflow app 同时发布 HTTP `image-base64.v1` 和 ZeroMQ `image-ref.v1` 输入，在与 `04-*`、`05-*` 一致的本地调试链路上额外验证双入口和图级显式转换。
-- `08-*`：独立的 TriggerSource / PLC 调试示例，聚焦 `plc-register -> workflow app runtime -> result-record -> http-post` 这条现场回传链。
+- `08-*`：独立的 TriggerSource / PLC 调试示例，聚焦 `plc-register -> workflow app runtime -> result-record -> http-request` 这条现场回传链。
 - `09-*`：独立的 TriggerSource / directory-watch 调试示例，聚焦“目录事件 -> 工业目录批次检测 workflow app”的现场接法。
-- `10-*`：正式的工业单帧交付示例，聚焦 `regions.v1 + ROI + delivery context -> process-decision -> PLC/JSON/CSV/MES/local-db` 这条现场结果交付链。
+- `10-*`：正式的工业单帧交付示例，聚焦 `regions.v1 + ROI + delivery context -> process-decision -> PLC/JSON/CSV/MES/sql` 这条现场结果交付链。
 - `11-*`：独立的 TriggerSource / directory-poll 调试示例，聚焦“固定周期目录轮询 -> 工业目录批次检测 workflow app”的现场接法，并把 `checkpoint + batch + callback` 这条正式链路收成 checked-in 调试入口。
 - `12-*`：正式的 segmentation direct model 调试示例，聚焦 `image-base64 -> core.model.segmentation -> segments-to-regions -> process-decision` 这条最小现场链。
 - `13-*`：正式的 classification direct model 调试示例，聚焦 `top class + top score -> process-decision` 这条最小现场链。

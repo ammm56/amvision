@@ -3,7 +3,7 @@
   "template_id": "industrial-single-frame-glue-roi-delivery-bundle-template",
   "template_version": "1.0.0",
   "display_name": "Industrial Single Frame Glue ROI Delivery Bundle",
-  "description": "面向工业单帧现场的 ROI 规则与结果交付全链样例。输入本地图像路径、上游 regions.v1，以及运行时交付上下文；执行覆盖率和偏移检查，把结果先写入 Modbus 点位，再完成本地 JSON/CSV 归档，最后把同一份 result-record 继续送到 MES HTTP 和本地数据库归档节点。",
+  "description": "面向工业单帧现场的 ROI 规则与结果交付全链样例。输入本地图像路径、上游 regions.v1，以及运行时交付上下文；执行覆盖率和偏移检查，把结果先写入 Modbus 点位，再完成本地 JSON/CSV 归档，最后把同一份 result-record 继续送到 HTTP 和本地数据库归档节点。",
   "nodes": [
     {
       "node_id": "request_image_path_input",
@@ -76,7 +76,7 @@
           "inspection_kind": "glue-roi-delivery-bundle",
           "station_id": "line-b-02",
           "result_signal_transport": "modbus-tcp",
-          "delivery_mode": "plc-json-csv-mes-local-db",
+          "delivery_mode": "plc-json-csv-http-sql",
           "mes_url": "http://127.0.0.1:18080/mes/inspection-result",
           "database_target": "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3"
         }
@@ -202,16 +202,16 @@
             "json-save-local",
             "csv-append-local",
             "build-delivery-context",
-            "mes-http-post",
-            "local-db-upsert"
+            "http-request",
+            "sql-upsert"
           ],
-          "local_db_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql"
+          "sql_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql"
         }
       }
     },
     {
-      "node_id": "mes_result_callback",
-      "node_type_id": "custom.output.mes-http-post",
+      "node_id": "http_result_callback",
+      "node_type_id": "custom.http.request",
       "parameters": {
         "url": "http://127.0.0.1:18080/mes/inspection-result",
         "method": "POST",
@@ -327,8 +327,8 @@
       }
     },
     {
-      "node_id": "archive_local_db",
-      "node_type_id": "custom.output.local-db-upsert",
+      "node_id": "archive_sql",
+      "node_type_id": "custom.database.sql.upsert",
       "parameters": {
         "database_url": "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3",
         "table_name": "inspection_results",
@@ -652,28 +652,28 @@
       "edge_id": "edge-process-mes-result",
       "source_node_id": "process_decision",
       "source_port": "result",
-      "target_node_id": "mes_result_callback",
+      "target_node_id": "http_result_callback",
       "target_port": "result"
     },
     {
       "edge_id": "edge-delivery-context-mes-request",
       "source_node_id": "build_delivery_context",
       "source_port": "value",
-      "target_node_id": "mes_result_callback",
+      "target_node_id": "http_result_callback",
       "target_port": "request"
     },
     {
-      "edge_id": "edge-process-local-db-result",
+      "edge_id": "edge-process-sql-result",
       "source_node_id": "process_decision",
       "source_port": "result",
-      "target_node_id": "archive_local_db",
+      "target_node_id": "archive_sql",
       "target_port": "result"
     },
     {
-      "edge_id": "edge-delivery-context-local-db-request",
+      "edge_id": "edge-delivery-context-sql-request",
       "source_node_id": "build_delivery_context",
       "source_port": "value",
-      "target_node_id": "archive_local_db",
+      "target_node_id": "archive_sql",
       "target_port": "request"
     }
   ],
@@ -746,31 +746,31 @@
       "source_port": "value"
     },
     {
-      "output_id": "mes_prepared_request",
-      "display_name": "MES Prepared Request",
+      "output_id": "http_prepared_request",
+      "display_name": "HTTP Prepared Request",
       "payload_type_id": "value.v1",
-      "source_node_id": "mes_result_callback",
+      "source_node_id": "http_result_callback",
       "source_port": "prepared_request"
     },
     {
-      "output_id": "mes_response",
-      "display_name": "MES Response",
+      "output_id": "http_response",
+      "display_name": "HTTP Response",
       "payload_type_id": "value.v1",
-      "source_node_id": "mes_result_callback",
+      "source_node_id": "http_result_callback",
       "source_port": "response"
     },
     {
-      "output_id": "local_db_prepared_row",
-      "display_name": "Local DB Prepared Row",
+      "output_id": "sql_prepared_row",
+      "display_name": "SQL Prepared Row",
       "payload_type_id": "value.v1",
-      "source_node_id": "archive_local_db",
+      "source_node_id": "archive_sql",
       "source_port": "prepared_row"
     },
     {
-      "output_id": "local_db_result",
-      "display_name": "Local DB Result",
+      "output_id": "sql_result",
+      "display_name": "SQL Result",
       "payload_type_id": "value.v1",
-      "source_node_id": "archive_local_db",
+      "source_node_id": "archive_sql",
       "source_port": "result"
     },
     {
@@ -802,14 +802,14 @@
     "signal_write_input_binding": "request_signal_write",
     "delivery_context_input_binding": "request_delivery_context",
     "result_signal_transport": "modbus-tcp",
-    "local_db_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql",
+    "sql_schema_sql": "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql",
     "delivery_order": [
       "plc-modbus-write-result-signals",
       "json-save-local",
       "csv-append-local",
       "build-delivery-context",
-      "mes-http-post",
-      "local-db-upsert"
+      "http-request",
+      "sql-upsert"
     ],
     "node_groups": {
       "input": [
@@ -837,8 +837,8 @@
       ],
       "delivery": [
         "build_delivery_context",
-        "mes_result_callback",
-        "archive_local_db"
+        "http_result_callback",
+        "archive_sql"
       ]
     }
   }

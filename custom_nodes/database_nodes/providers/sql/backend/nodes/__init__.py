@@ -1,4 +1,4 @@
-"""本地数据库输出节点实现集合。"""
+"""Database SQL节点实现集合。"""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ for module in NODE_MODULES:
     if callable(handle_node):
         node_type_id = _read_node_type_id(module)
         if node_type_id in NODE_HANDLERS:
-            raise RuntimeError(f"检测到重复的本地数据库输出节点类型 id: {node_type_id}")
+            raise RuntimeError(f"检测到重复的Database SQL节点类型 id: {node_type_id}")
         NODE_HANDLERS[node_type_id] = handle_node
 
 

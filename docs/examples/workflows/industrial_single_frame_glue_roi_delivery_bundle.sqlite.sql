@@ -1,5 +1,5 @@
 -- 工业单帧结果交付全链样例使用的 SQLite 建表脚本。
--- 当前 custom.output.local-db-upsert 不负责自动建表，导入 workflow 前应先在目标 SQLite 文件上执行本脚本。
+-- 当前 custom.database.sql.upsert 不负责自动建表，导入 workflow 前应先在目标 SQLite 文件上执行本脚本。
 
 CREATE TABLE IF NOT EXISTS inspection_results (
     record_id TEXT PRIMARY KEY,

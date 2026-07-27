@@ -1,4 +1,4 @@
-"""本地数据库输出节点 runtime 类型。"""
+"""Database SQL节点 runtime 类型。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""本地数据库输出节点参数读取。"""
+"""Database SQL节点参数读取。"""
 
 from __future__ import annotations
 

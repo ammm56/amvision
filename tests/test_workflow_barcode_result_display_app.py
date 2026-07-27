@@ -24,7 +24,7 @@ from backend.service.settings import (
     BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import create_test_runtime
-from tests.test_workflow_barcode_protocol_nodes import _build_mixed_barcode_test_png_bytes
+from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
 
 
 def test_barcode_result_display_example_preview_run_returns_annotated_image_and_table(tmp_path: Path) -> None:
@@ -61,7 +61,7 @@ def test_barcode_result_display_example_preview_run_returns_annotated_image_and_
     assert response_body["meta"] == {
         "app_id": "barcode-result-display-app",
         "template_id": "barcode-result-display-template",
-        "node_pack": "barcode.protocol-nodes",
+        "node_pack": "barcode.nodes",
     }
 
     response_data = response_body["data"]

@@ -11,11 +11,11 @@
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)：节点扩展 trigger、hook、完成回调和数据上报规范
 - [docs/nodes/opencv-circle-nodes.md](opencv-circle-nodes.md)：Hough Circles、Circle Measure 和四圆角点组合的职责、参数与调试方法
 - [docs/nodes/examples/example.simple-node-pack.manifest.json](examples/example.simple-node-pack.manifest.json)：简单节点包可直接复制的 manifest 示例
-- [docs/nodes/examples/barcode.protocol-nodes.manifest.dependency-example.json](examples/barcode.protocol-nodes.manifest.dependency-example.json)：基于 barcode.protocol-nodes 的 pack 依赖案例 manifest
+- [docs/nodes/examples/barcode.nodes.manifest.dependency-example.json](examples/barcode.nodes.manifest.dependency-example.json)：基于 barcode.nodes 的 pack 依赖案例 manifest
 - [custom_nodes/_scaffold/README.md](../../custom_nodes/_scaffold/README.md)：custom_nodes 初始化模板目录，包含 simple 和 dependent 两种骨架
 - [custom_nodes/hello_world_nodes/manifest.json](../../custom_nodes/hello_world_nodes/manifest.json)：最小 hello-world 自定义节点包示例
-- [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)：真实的 pack 级依赖节点包示例
-- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 规则，以及 barcode.protocol-nodes 的 catalog.json 手动生成流程
+- [custom_nodes/barcode_nodes/manifest.json](../../custom_nodes/barcode_nodes/manifest.json)：真实的 pack 级依赖节点包示例
+- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 规则，以及 barcode.nodes 的 catalog.json 手动生成流程
 
 ## 建议内容
 

@@ -17,6 +17,15 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 
 
+def _build_repository_node_catalog_registry() -> NodeCatalogRegistry:
+    """构建同时包含核心节点与仓库 custom node pack 的目录。"""
+
+    custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root)
+    node_pack_loader.refresh()
+    return NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+
+
 def test_detection_deployment_lifecycle_example_documents_are_valid() -> None:
     """验证 deployment lifecycle 示例模板与应用可以通过当前规则校验。"""
 
@@ -746,7 +755,7 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
         json.loads(application_path.read_text(encoding="utf-8"))
     )
 
-    registry = NodeCatalogRegistry()
+    registry = _build_repository_node_catalog_registry()
     validate_workflow_graph_template(
         template=template,
         node_definitions=registry.get_workflow_node_definitions(),
@@ -951,7 +960,7 @@ def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_v
     assert template.metadata["callback_delivery_order"] == [
         "plc-modbus-write-result-signals",
         "build-callback-payload",
-        "http-post-callback",
+        "http-request-callback",
     ]
     assert [
         template_input.input_id for template_input in template.template_inputs
@@ -1035,8 +1044,8 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "save_result_json",
         "append_result_csv",
         "build_delivery_context",
-        "mes_result_callback",
-        "archive_local_db",
+        "http_result_callback",
+        "archive_sql",
     ]
     assert template.nodes[12].node_type_id == "custom.plc.modbus.write-result-signals"
     assert template.nodes[15].node_type_id == "core.logic.object-create"
@@ -1049,10 +1058,10 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "csv_summary",
         "metadata",
     ]
-    assert template.nodes[16].node_type_id == "custom.output.mes-http-post"
+    assert template.nodes[16].node_type_id == "custom.http.request"
     assert template.nodes[16].parameters["body_mode"] == "json_envelope"
     assert template.nodes[16].parameters["field_mappings"][0]["target_path"] == "payload.record_id"
-    assert template.nodes[17].node_type_id == "custom.output.local-db-upsert"
+    assert template.nodes[17].node_type_id == "custom.database.sql.upsert"
     assert template.nodes[17].parameters["database_url"] == (
         "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3"
     )
@@ -1060,7 +1069,7 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
     assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-delivery-bundle"
     assert template.metadata["focus"] == "single-frame-industrial-result-delivery"
     assert template.metadata["delivery_context_input_binding"] == "request_delivery_context"
-    assert template.metadata["local_db_schema_sql"] == (
+    assert template.metadata["sql_schema_sql"] == (
         "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql"
     )
     assert template.metadata["delivery_order"] == [
@@ -1068,8 +1077,8 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "json-save-local",
         "csv-append-local",
         "build-delivery-context",
-        "mes-http-post",
-        "local-db-upsert",
+        "http-request",
+        "sql-upsert",
     ]
     assert [
         template_input.input_id for template_input in template.template_inputs
@@ -1087,10 +1096,10 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "inspection_alarm",
         "signal_write_summary",
         "delivery_context",
-        "mes_prepared_request",
-        "mes_response",
-        "local_db_prepared_row",
-        "local_db_result",
+        "http_prepared_request",
+        "http_response",
+        "sql_prepared_row",
+        "sql_result",
         "decision_summary",
         "json_summary",
         "csv_summary",
@@ -1109,10 +1118,10 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "inspection_alarm",
         "signal_write_summary",
         "delivery_context",
-        "mes_prepared_request",
-        "mes_response",
-        "local_db_prepared_row",
-        "local_db_result",
+        "http_prepared_request",
+        "http_response",
+        "sql_prepared_row",
+        "sql_result",
         "decision_summary",
         "json_summary",
         "csv_summary",
@@ -1256,7 +1265,7 @@ def test_industrial_single_frame_example_documents_are_valid(
         json.loads(application_path.read_text(encoding="utf-8"))
     )
 
-    registry = NodeCatalogRegistry()
+    registry = _build_repository_node_catalog_registry()
     validate_workflow_graph_template(
         template=template,
         node_definitions=registry.get_workflow_node_definitions(),
@@ -3071,14 +3080,13 @@ def test_industrial_local_directory_batch_detection_position_gate_documents_are_
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes] == [
+        "iterate_batch_start",
         "request_directory_path_input",
         "deployment_request_input",
         "scan_directory",
         "batch_window",
         "create_roi",
         "iterate_batch",
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "detect",
@@ -3176,7 +3184,7 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
         json.loads(application_path.read_text(encoding="utf-8"))
     )
 
-    registry = NodeCatalogRegistry()
+    registry = _build_repository_node_catalog_registry()
     validate_workflow_graph_template(
         template=template,
         node_definitions=registry.get_workflow_node_definitions(),
@@ -3184,6 +3192,7 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes] == [
+        "iterate_batch_start",
         "wrap_trigger_payload",
         "wrap_trigger_event",
         "deployment_request_input",
@@ -3193,8 +3202,6 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
         "extract_directory_path",
         "create_roi",
         "iterate_batch",
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "detect",
@@ -3297,7 +3304,7 @@ def test_industrial_local_directory_poll_detection_position_gate_documents_are_v
         json.loads(application_path.read_text(encoding="utf-8"))
     )
 
-    registry = NodeCatalogRegistry()
+    registry = _build_repository_node_catalog_registry()
     validate_workflow_graph_template(
         template=template,
         node_definitions=registry.get_workflow_node_definitions(),
@@ -3305,6 +3312,7 @@ def test_industrial_local_directory_poll_detection_position_gate_documents_are_v
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes] == [
+        "iterate_batch_start",
         "wrap_trigger_payload",
         "wrap_trigger_event",
         "deployment_request_input",
@@ -3314,8 +3322,6 @@ def test_industrial_local_directory_poll_detection_position_gate_documents_are_v
         "extract_directory_path",
         "create_roi",
         "iterate_batch",
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "detect",
@@ -3427,12 +3433,11 @@ def test_industrial_local_directory_batch_segments_continuity_gate_documents_are
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes] == [
+        "iterate_batch_start",
         "request_directory_path_input",
         "scan_directory",
         "batch_window",
         "iterate_batch",
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "get_current_segments_value",
@@ -3537,12 +3542,11 @@ def test_industrial_local_directory_batch_regions_continuity_gate_documents_are_
     validate_flow_application_bindings(template=template, application=application)
 
     assert [node.node_id for node in template.nodes] == [
+        "iterate_batch_start",
         "request_directory_path_input",
         "scan_directory",
         "batch_window",
         "iterate_batch",
-        "get_current_file_record",
-        "get_current_file_index",
         "extract_current_file_path",
         "load_image",
         "get_current_regions_value",

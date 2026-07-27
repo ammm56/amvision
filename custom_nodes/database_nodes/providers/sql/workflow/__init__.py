@@ -1,1 +1,1 @@
-"""本地数据库输出 workflow 目录工具。"""
+"""Database SQL workflow 目录工具。"""

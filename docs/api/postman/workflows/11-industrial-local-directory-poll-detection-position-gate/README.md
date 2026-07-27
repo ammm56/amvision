@@ -31,7 +31,7 @@
 - `app-runtime.invoke.request.json` 里的 `files[*].path`
 - `app-runtime.invoke.request.json` 里的 `file_paths[*]`
 
-默认回传地址写的是 `http://127.0.0.1:18080/directory-poll/detection-position-batch-result`。当前 template 里 `http-post` 节点使用 `require_success=false`，因此本地没有回调服务时不会把整条 workflow 直接打失败，但现场联调时仍建议改成真实回传地址。
+默认回传地址写的是 `http://127.0.0.1:18080/directory-poll/detection-position-batch-result`。当前 template 里 `http-request` 节点使用 `require_success=false`，因此本地没有回调服务时不会把整条 workflow 直接打失败，但现场联调时仍建议改成真实回传地址。
 
 ## 推荐联调顺序
 

@@ -1897,7 +1897,7 @@ def test_workflow_api_industrial_single_frame_glue_roi_delivery_bundle_requests_
         create_request["metadata"]["example_kind"]
         == "industrial-single-frame-glue-roi-delivery-bundle"
     )
-    assert create_request["metadata"]["delivery_mode"] == "plc-json-csv-mes-local-db"
+    assert create_request["metadata"]["delivery_mode"] == "plc-json-csv-http-sql"
     assert "request_timeout_seconds" not in create_request
 
     assert preview_run_request["application_ref"] == {
@@ -1952,8 +1952,8 @@ def test_workflow_api_industrial_single_frame_glue_roi_delivery_bundle_requests_
     assert "signal_write_summary" in readme_text
     assert "json_summary" in readme_text
     assert "csv_summary" in readme_text
-    assert "mes_prepared_request" in readme_text
-    assert "local_db_prepared_row" in readme_text
+    assert "http_prepared_request" in readme_text
+    assert "sql_prepared_row" in readme_text
 
 
 def test_workflow_postman_directory_contains_ordered_formal_workflow_collections() -> (

@@ -239,7 +239,7 @@
     },
     {
       "node_id": "callback_result",
-      "node_type_id": "core.output.http-post",
+      "node_type_id": "custom.http.request",
       "parameters": {
         "url": "http://127.0.0.1:18080/directory-watch/detection-position-batch-result",
         "method": "POST",
@@ -582,9 +582,9 @@
       "target_port": "value"
     },
     {
-      "edge_id": "edge-process_decision-iterate_batch-result",
+      "edge_id": "edge-process_decision-iterate_batch-summary",
       "source_node_id": "process_decision",
-      "source_port": "result",
+      "source_port": "summary",
       "target_node_id": "iterate_batch",
       "target_port": "result"
     }

@@ -724,7 +724,7 @@ http-response 输出或 WorkflowRun outputs
 
 - 当前 `plc-register` 的 `input_binding_mapping` 只负责从标准化事件上下文里读取原始 `payload / event` 对象，不会按 `payload_type_id` 自动再包装成 `value.v1`
 - 因此 checked-in 的 `08-plc-register-modbus-tcp-async-result-record` 示例把两个输入都定义成 `response-body.v1`，再在图内通过 `payload-to-value` 显式桥接到 `value.v1`
-- 这条样例的重点不是再做一次 PLC 条件判定，而是把 TriggerSource 已经筛过的现场事件正式接到 `result-record / http-post` 这条业务链
+- 这条样例的重点不是再做一次 PLC 条件判定，而是把 TriggerSource 已经筛过的现场事件正式接到 `result-record / http-request` 这条业务链
 
 ## `directory-poll` 工业目录轮询配置示例
 

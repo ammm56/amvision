@@ -154,7 +154,7 @@
 目标：
 
 - 确认 `result-record` 内容可用
-- 确认 `http-post / json-save-local / csv-append-local` 符合现场需要
+- 确认 `http-request / json-save-local / csv-append-local` 符合现场需要
 
 建议最后联调：
 

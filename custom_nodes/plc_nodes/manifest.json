@@ -1,0 +1,40 @@
+{
+  "format_id": "amvision.node-pack-manifest.v1",
+  "id": "plc.nodes",
+  "version": "0.2.0",
+  "displayName": "PLC Nodes",
+  "description": "提供统一的 PLC 协议读写、条件等待和结果信号回写节点；协议实现按 protocols 目录隔离。",
+  "category": "integration",
+  "categoryRoot": "plc",
+  "implementationLayout": "protocols",
+  "capabilities": [
+    "pipeline.node",
+    "integration.plc",
+    "integration.plc.modbus-tcp",
+    "integration.report"
+  ],
+  "permissionScopes": [
+    "integration.endpoint.invoke",
+    "integration.plc.modbus.read",
+    "integration.plc.modbus.write"
+  ],
+  "entrypoints": {
+    "backend": "custom_nodes.plc_nodes.backend.entry:register"
+  },
+  "compatibility": {
+    "api": ">=0.1 <1.0",
+    "runtime": ">=3.12"
+  },
+  "timeout": {
+    "defaultSeconds": 60
+  },
+  "enabledByDefault": true,
+  "customNodeCatalogPath": "workflow/catalog.json",
+  "metadata": {
+    "categoryRoot": "plc",
+    "protocolLayout": "protocols/<protocol>",
+    "implementedProtocols": [
+      "modbus-tcp"
+    ]
+  }
+}

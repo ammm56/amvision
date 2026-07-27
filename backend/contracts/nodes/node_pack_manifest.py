@@ -102,7 +102,6 @@ class NodePackManifest(BaseModel):
     - category：节点包主类别。
     - category_root：节点目录中 category 的稳定根路径。
     - implementation_layout：包内实现的目录组织方式。
-    - migration_aliases：当前节点包替代的旧 node pack id。
     - capabilities：节点包能力声明列表。
     - dependencies：当前节点包依赖的其他节点包列表。
     - permission_scopes：节点包声明的权限范围。
@@ -127,9 +126,9 @@ class NodePackManifest(BaseModel):
         "flat",
         "categories",
         "providers",
+        "protocols",
         "recipes",
     ] = Field(default="flat", alias="implementationLayout")
-    migration_aliases: tuple[str, ...] = Field(default=(), alias="migrationAliases")
     capabilities: tuple[str, ...] = ()
     dependencies: tuple[NodePackDependency, ...] = ()
     permission_scopes: tuple[str, ...] = Field(default=(), alias="permissionScopes")
@@ -169,14 +168,6 @@ class NodePackManifest(BaseModel):
         if duplicated_dependency_ids:
             duplicated_text = ", ".join(sorted(duplicated_dependency_ids))
             raise ValueError(f"dependencies 存在重复 node_pack_id: {duplicated_text}")
-        normalized_aliases = [
-            _require_stripped_text(alias, "migration_aliases")
-            for alias in self.migration_aliases
-        ]
-        if self.node_pack_id in normalized_aliases:
-            raise ValueError("migration_aliases 不能包含当前 node_pack_id")
-        if len(set(normalized_aliases)) != len(normalized_aliases):
-            raise ValueError("migration_aliases 不能包含重复 id")
         return self
 
 

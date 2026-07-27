@@ -1,0 +1,12 @@
+{
+  "phase": "implemented",
+  "families": [
+    "http-request"
+  ],
+  "features": [
+    "generic-request",
+    "query-mapping",
+    "body-mapping",
+    "prepared-request-preview"
+  ]
+}

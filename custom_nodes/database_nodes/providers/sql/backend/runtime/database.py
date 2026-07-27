@@ -1,4 +1,4 @@
-"""本地数据库输出节点数据库访问和 upsert 构造。"""
+"""Database SQL节点数据库访问和 upsert 构造。"""
 
 from __future__ import annotations
 

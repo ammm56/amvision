@@ -1,4 +1,4 @@
-"""本地数据库输出节点输入来源和行 payload 构造。"""
+"""Database SQL节点输入来源和行 payload 构造。"""
 
 from __future__ import annotations
 

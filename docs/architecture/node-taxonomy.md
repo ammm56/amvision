@@ -11,7 +11,7 @@
 - `category` 是节点选择器中的多级功能路径，不是 node pack。
 - 代码目录反映包内实现边界，不参与公开工作流标识。
 
-`node_type_id` 是工作流长期保存的稳定标识。目录迁移和节点分类调整不得顺带修改已有 `node_type_id`。需要更名时，旧 id 保留隐藏兼容定义，新 id 作为首选定义。
+`node_type_id` 是工作流保存的节点标识。开发阶段发生职责或命名调整时，直接更新节点定义、模板、应用、测试和文档，不保留隐藏兼容节点。进入正式发布阶段后，再通过显式版本迁移管理公开 id 变化。
 
 ## node pack 拆分规则
 
@@ -31,13 +31,13 @@
 - 版本和发布周期长期独立。
 - 实现来自不同厂商，且安装一个 provider 不应加载另一个 provider 的 SDK。此时可以拆 provider pack；目录和分类仍保持统一命名。
 
-禁止按 basic、geometry、measurement 或某个 MES 场景直接创建一级 pack。这些名称应是包内分类或 recipe。
+禁止按 basic、geometry、measurement、单个协议或某个业务场景直接创建一级 pack。这些名称应是包内分类、provider 或 protocol。
 
 ## custom_nodes 目录规则
 
 ### 按算法分类
 
-OpenCV 采用 `categories`：
+OpenCV 和 Barcode 采用 `categories`：
 
 ```text
 custom_nodes/opencv_nodes/
@@ -53,6 +53,17 @@ custom_nodes/opencv_nodes/
    ├─ measurement/
    ├─ defect/
    └─ render/
+
+custom_nodes/barcode_nodes/
+├─ manifest.json
+├─ shared/
+└─ categories/
+   ├─ decode/
+   ├─ compose/
+   ├─ logic/
+   ├─ render/
+   ├─ transform/
+   └─ display/
 ```
 
 ### 按实现后端分类
@@ -71,27 +82,36 @@ custom_nodes/database_nodes/providers/
 
 未实现的 provider 只写入规划，不放空节点定义，不伪造可执行能力。SQL provider 当前覆盖 SQLite、MySQL 和 PostgreSQL 的受限 upsert。Redis 需要独立依赖、连接规则、key namespace 和超时规则，完成后再加入 catalog。
 
-### 按业务配置分类
+### 按协议分类
 
-HTTP 采用 `recipes`：
+PLC 采用 `protocols`：
+
+```text
+custom_nodes/plc_nodes/
+├─ manifest.json
+└─ protocols/
+   └─ modbus_tcp/
+```
+
+### 按通用操作分类
+
+HTTP 采用 `categories`：
 
 ```text
 custom_nodes/http_nodes/
-├─ backend/
-├─ workflow/
-└─ recipes/
-   └─ mes/
+├─ manifest.json
+└─ categories/
+   └─ request/
 ```
 
-HTTP Request 是公开通用节点。MES 提交是参数模板和字段映射场景，不作为 pack 名或首选 node type。旧 `custom.output.mes-http-post` 只用于读取已有流程。
+HTTP Request 是通用节点。MES 提交只是 URL、鉴权和字段映射的一种配置，不形成独立代码目录或 node type。
 
 ## manifest 规则
 
 统一 pack 使用以下显式字段：
 
 - `categoryRoot`：包内所有节点 `category` 的根路径。
-- `implementationLayout`：`flat`、`categories`、`providers` 或 `recipes`。
-- `migrationAliases`：被当前 pack 替代的旧 pack id。
+- `implementationLayout`：`flat`、`categories`、`providers`、`protocols` 或 `recipes`。
 
 加载器校验每个节点的 `category` 必须位于 `categoryRoot` 下。这样可以避免 Database 节点重新落入 `integration.output`，也可以避免 Camera provider 在目录中成为新的一级 pack。
 
@@ -118,10 +138,9 @@ backend/nodes/core_nodes/io/output/
 ├─ records/
 ├─ response/
 ├─ storage/
-└─ http/        # 仅保留旧流程兼容实现
 ```
 
-规则节点归入 `backend/nodes/core_nodes/logic/rules/`。旧 core HTTP Post 从节点选择器隐藏，新流程使用 `custom.http.request`。
+规则节点归入 `backend/nodes/core_nodes/logic/rules/`。HTTP 调用统一使用 `custom.http.request`，core 不再重复实现外部协议节点。
 
 ## 节点选择器
 
@@ -131,18 +150,7 @@ backend/nodes/core_nodes/io/output/
 2. 分类树：按 `category` 的根路径和子路径展示。
 3. 节点：显示节点名、完整分类、说明和稳定 `node_type_id`。
 
-`metadata.catalogHidden=true` 的兼容节点参与旧流程校验和执行，但不出现在新增节点入口。
-
-## 当前迁移
-
-| 旧 pack | 新 pack | 包内位置 |
-| --- | --- | --- |
-| `opencv.*-nodes` 七个包 | `opencv.nodes` | `categories/*` |
-| `camera.usb-uvc-nodes` | `camera.nodes` | `providers/usb_uvc` |
-| `output.local-db-nodes` | `database.nodes` | `providers/sql` |
-| `output.mes-http-nodes` | `http.nodes` | `recipes/mes` |
-
-已有 OpenCV 和 Camera 的 `node_type_id` 保持不变。HTTP 新增 `custom.http.request`，Database 新增 `custom.database.sql.upsert`；旧 `custom.output.*` id 均保留隐藏兼容定义。
+当前开发阶段的 catalog 只包含现行节点定义，不登记已删除 pack、旧 node type 或隐藏兼容副本。
 
 ## 设计参考
 

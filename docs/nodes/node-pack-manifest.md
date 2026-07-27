@@ -105,27 +105,27 @@
 
 基于现有复杂示例 pack 的案例文件：
 
-- [docs/nodes/examples/barcode.protocol-nodes.manifest.dependency-example.json](examples/barcode.protocol-nodes.manifest.dependency-example.json)
+- [docs/nodes/examples/barcode.nodes.manifest.dependency-example.json](examples/barcode.nodes.manifest.dependency-example.json)
 - [custom_nodes/_scaffold/dependent_node_pack/manifest.template.json](../../custom_nodes/_scaffold/dependent_node_pack/manifest.template.json)
-- [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)
+- [custom_nodes/barcode_nodes/manifest.json](../../custom_nodes/barcode_nodes/manifest.json)
 
-这个案例文件使用现有 `barcode.protocol-nodes` 的真实 pack id、entrypoint 和 capability 形状，演示当复杂条码节点链需要复用 `opencv.nodes` 时，应如何把 pack 级依赖显式写进 manifest。它是文档案例，不直接替代当前仓库运行时使用的 `custom_nodes/barcode_protocol_nodes/manifest.json`。
+这个案例文件使用现有 `barcode.nodes` 的真实 pack id、entrypoint 和 capability 形状，演示当复杂条码节点链需要复用 `opencv.nodes` 时，应如何把 pack 级依赖显式写进 manifest。它是文档案例，不直接替代当前仓库运行时使用的 `custom_nodes/barcode_nodes/manifest.json`。
 
-当前仓库还提供了真正可复制的初始化模板目录 [custom_nodes/_scaffold](../../custom_nodes/_scaffold/README.md)，以及一个已经落地的复杂依赖 pack [custom_nodes/barcode_display_nodes/manifest.json](../../custom_nodes/barcode_display_nodes/manifest.json)。前者适合新 pack 起步，后者适合参考真实的 `dependencies` 写法和 entrypoint 组织方式。
+当前仓库还提供了真正可复制的初始化模板目录 [custom_nodes/_scaffold](../../custom_nodes/_scaffold/README.md)，以及一个已经落地的复杂依赖 pack [custom_nodes/barcode_nodes/manifest.json](../../custom_nodes/barcode_nodes/manifest.json)。前者适合新 pack 起步，后者适合参考真实的 `dependencies` 写法和 entrypoint 组织方式。
 
-customNodeCatalogPath 指向 node pack 对外暴露的最终目录文件。对于采用碎片化维护的节点包，推荐把源文件放在 workflow/catalog_sources/ 下，再由生成步骤手动汇总成这个 catalog.json。当前 barcode.protocol-nodes 已采用这种方式，开发阶段通过以下命令手动回写目录文件：
+customNodeCatalogPath 指向 node pack 对外暴露的最终目录文件。对于采用碎片化维护的节点包，推荐把源文件放在 workflow/catalog_sources/ 下，再由生成步骤手动汇总成这个 catalog.json。当前 barcode.nodes 已采用这种方式，开发阶段通过以下命令手动回写目录文件：
 
 ```powershell
 conda activate amvision
-python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ```
 
-如果 barcode.protocol-nodes 的变更来自 specs.py 中的 decode 规格，还需要先生成 backend/nodes 下的 decode 模块和 workflow/catalog_sources/nodes 下的 decode JSON，再执行 catalog 生成：
+如果 barcode.nodes 的变更来自 specs.py 中的 decode 规格，还需要先生成 backend/nodes 下的 decode 模块和 workflow/catalog_sources/nodes 下的 decode JSON，再执行 catalog 生成：
 
 ```powershell
 conda activate amvision
-python -m custom_nodes.barcode_protocol_nodes.backend.generate_decode_node_modules
-python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
+python -m custom_nodes.barcode_nodes.backend.generate_decode_node_modules
+python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ```
 
 ## 必填字段
@@ -146,7 +146,6 @@ python -m custom_nodes.barcode_protocol_nodes.workflow.generate_catalog
 - description
 - categoryRoot：节点定义 `category` 的稳定根路径；提供后由 loader 强制校验
 - implementationLayout：包内实现采用 `flat`、`categories`、`providers` 或 `recipes`
-- migrationAliases：当前 pack 替代的旧 node pack id，只用于迁移说明和兼容解析，不得包含当前 id
 - permissionScopes
 - configSchema
 - inputSchema and outputSchema

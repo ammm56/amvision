@@ -23,10 +23,9 @@
 - `sam3_segment_nodes`
 - `opencv.nodes`，功能实现在 `opencv_nodes/categories/`
 - `database.nodes`，provider 实现在 `database_nodes/providers/`
-- `http.nodes`，业务配置场景实现在 `http_nodes/recipes/`
-- `barcode_display_nodes`
-- `barcode_protocol_nodes`
-- `plc_modbus_tcp_nodes`
+- `http.nodes`，通用 HTTP 功能实现在 `http_nodes/categories/`
+- `barcode.nodes`，条码能力按 `barcode_nodes/categories/` 分类
+- `plc.nodes`，协议实现按 `plc_nodes/protocols/` 分类
 
 其中 `opencv_nodes/categories/basic` 当前已经有：
 
@@ -291,7 +290,7 @@
 
 当前已落地：
 
-- `custom_nodes/plc_modbus_tcp_nodes/` 已作为默认启用的第一层 PLC custom node pack 落地
+- `custom_nodes/plc_nodes/protocols/modbus_tcp/` 已作为默认启用的第一层 PLC custom node pack 落地
 - 当前对外节点面已收口为 `read-value / write-value / wait-condition / write-result-signals`
 - 当前 pack 已切到项目内最小 Modbus TCP runtime，不依赖 `projectsrc/` 目录或额外第三方 Python 包直接执行
 - 当前仍只覆盖 workflow 内主动读写与等待条件，不包含常驻轮询 trigger-source、S7、MC、OPC UA 或厂商 PLC SDK 语义
@@ -584,7 +583,7 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 - 当前 `read-value / write-value` 直接按 `00001 / 10001 / 30001 / 400001` 这类逻辑地址语义接点位，不再要求 workflow 侧先区分 coils / input registers / holding registers
 - 当前 `data_type` 已补齐到 `bool / uint8 / int8 / uint16 / int16 / uint32 / int32 / uint64 / int64 / float / double / string`
 - `wait-condition` 当前适合等待 ready 位、确认位、状态字或阈值条件；`wait_timeout_seconds = null` 表示无限等待，但真正长期常驻监听仍应归到后续 TriggerSource 类实现，不承担 TriggerSource 常驻守护职责
-- 当前仓库已补三条 checked-in Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*`、`plc_modbus_wait_status_word_alarm_mask.*`，以及把 `wait-condition -> write-value -> result-record -> http-post` 串成现场握手回传闭环的 `plc_modbus_wait_ready_ack_callback.*`
+- 当前仓库已补三条 checked-in Modbus 样例：`plc_modbus_wait_status_word_ready_mask.*`、`plc_modbus_wait_status_word_alarm_mask.*`，以及把 `wait-condition -> write-value -> result-record -> http-request` 串成现场握手回传闭环的 `plc_modbus_wait_ready_ack_callback.*`
 
 ### Modbus 结果回写节点设计
 
@@ -594,7 +593,7 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 
 定位：
 
-- 放在 `custom_nodes/plc_modbus_tcp_nodes/`
+- 放在 `custom_nodes/plc_nodes/protocols/modbus_tcp/`
 - 继续复用现有 shared Modbus TCP transport 与 `write-value` 的地址、数据类型和编码语义
 - 第一阶段只做 Modbus TCP 结果回写，不抽象成“通用 PLC 输出节点”
 - 后续如果需要 S7 / MC / OPC UA 回写，分别在对应协议 pack 中做同型节点
@@ -624,7 +623,7 @@ PLC 也必须按协议族和设备边界分层，不能只写“PLC 节点”。
 
 - `result`
   - 类型：`value.v1`
-  - 作用：返回本次写回摘要，供后续 `result-record / http-post / json-save-local` 继续归档或排障
+  - 作用：返回本次写回摘要，供后续 `result-record / http-request / json-save-local` 继续归档或排障
 
 建议输出摘要字段：
 
@@ -828,11 +827,11 @@ PLC 能力也应至少拆成两类：
 - `modbus tcp trigger-source` 值得做，而且是 PLC 这条线最自然的下一步
 - 这一层不应做成普通 workflow 节点，而应落到 `WorkflowTriggerSource + ProtocolAdapter` 体系
 - 触发源负责常驻轮询、边沿判定、去抖、幂等与创建 `WorkflowRun`
-- workflow 图继续负责后续业务逻辑，例如写 ack、写 OK/NG、`result-record` 和 `http-post`
+- workflow 图继续负责后续业务逻辑，例如写 ack、写 OK/NG、`result-record` 和 `http-request`
 
 当前边界：
 
-- `custom_nodes/plc_modbus_tcp_nodes/` 继续只承载 workflow 内主动读写、等待条件与结果回写
+- `custom_nodes/plc_nodes/protocols/modbus_tcp/` 继续只承载 workflow 内主动读写、等待条件与结果回写
 - `backend/service/infrastructure/integrations/modbus/` 承载共享 Modbus TCP transport
 - 当前 `plc-register` trigger-source adapter 已直接复用共享 transport，不反向依赖 custom node pack
 
@@ -899,7 +898,7 @@ PLC 能力也应至少拆成两类：
 3. 落 `PlcRegisterTriggerAdapter`
    - 已完成第一阶段：已注册到 `TriggerSourceSupervisor`，当前只做 polling + async submit
 4. 补输入映射与结果样例
-   - 已完成 checked-in 正式样例；当前已提供 `plc-register` 的 TriggerSource 请求样例，以及 `plc-register -> workflow app runtime -> result-record / http-post` 的完整 workflow app 示例
+   - 已完成 checked-in 正式样例；当前已提供 `plc-register` 的 TriggerSource 请求样例，以及 `plc-register -> workflow app runtime -> result-record / http-request` 的完整 workflow app 示例
 5. 补最小测试
    - 已完成；当前已覆盖 adapter 组件测试、`enable / disable / health` API 测试，以及触发事件标准化与 input binding 映射测试
 

@@ -1,4 +1,4 @@
-"""生成本地数据库输出 checked-in catalog.json。"""
+"""生成Database SQL checked-in catalog.json。"""
 
 from __future__ import annotations
 

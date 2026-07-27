@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
-from custom_nodes.plc_modbus_tcp_nodes.workflow.catalog_builder import (
+from custom_nodes.plc_nodes.protocols.modbus_tcp.workflow.catalog_builder import (
     build_custom_node_catalog_payload,
 )
 
@@ -17,7 +17,9 @@ def test_modbus_tcp_node_catalog_builder_matches_checked_in_catalog() -> None:
     workflow_dir = (
         Path(__file__).resolve().parents[1]
         / "custom_nodes"
-        / "plc_modbus_tcp_nodes"
+        / "plc_nodes"
+        / "protocols"
+        / "modbus_tcp"
         / "workflow"
     )
     checked_in_payload = json.loads(
@@ -31,7 +33,7 @@ def test_modbus_tcp_node_catalog_builder_matches_checked_in_catalog() -> None:
 
 
 def test_repository_modbus_tcp_node_pack_is_enabled_by_default() -> None:
-    """验证仓库内置 plc.modbus-tcp-nodes 会被默认加载。"""
+    """验证仓库内置 plc.nodes 会被默认加载。"""
 
     custom_nodes_root = Path(__file__).resolve().parents[1] / "custom_nodes"
     node_pack_loader = LocalNodePackLoader(custom_nodes_root)
@@ -44,7 +46,7 @@ def test_repository_modbus_tcp_node_pack_is_enabled_by_default() -> None:
         node.node_type_id for node in node_pack_loader.get_workflow_node_definitions()
     }
 
-    assert "plc.modbus-tcp-nodes" in node_pack_ids
+    assert "plc.nodes" in node_pack_ids
     assert {
         "custom.plc.modbus.read-value",
         "custom.plc.modbus.write-value",

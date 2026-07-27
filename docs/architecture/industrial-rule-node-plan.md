@@ -14,7 +14,7 @@
 - 第 2 批 `ROI / coverage / overlap` 当前已接通 `roi-create / regions-intersection-metrics / regions-coverage-check / regions-inside-check / regions-offset-check`
 - 第 3 批可解释完整性指标首轮已全部接通：`region-component-count / region-largest-component-ratio / region-hole-count / region-gap-check / region-span-metrics / region-continuity-score`
 - 第 4 批工业判定节点当前已接通 `threshold-check / range-check / presence-check / ok-ng-decision / alarm-condition / process-decision`
-- 第 4 批结果回传节点当前已接通 `result-record / alarm-record / json-save-local / csv-append-local / http-post`
+- 第 4 批结果回传节点当前已接通 `result-record / alarm-record / json-save-local / csv-append-local / http-request`
 - 第 4 批输入接入节点当前已接通 `image-load-local / image-list-local / directory-scan / directory-batch-window`
 - `core.vision.detections-to-regions` 当前已接通，可把 deployment detection 或其他 `detections.v1` 结果桥接进现有工业规则链
 - `core.vision.segments-to-regions` 当前也已接通，可把外部或中间节点输出的 `segments.v1(mask / polygon / bbox)` 结果桥接进现有工业规则链
@@ -345,7 +345,7 @@
 - 输出：`value.v1(summary)`
 - 作用：本地累计 CSV / 日志
 
-#### core.output.http-post
+#### custom.http.request
 
 - 放置位置：`core`
 - 输入：`result-record.v1 / alarm-record.v1 / value.v1`
@@ -392,7 +392,7 @@
 6. `image-load-local`
 7. `directory-scan`
 8. `json-save-local`
-9. `http-post`
+9. `http-request`
 
 ### 第 4 批当前已接通子集
 
@@ -408,7 +408,7 @@
   - `image-load-local`
   - `directory-scan`
   - `json-save-local`
-  - `http-post`
+  - `http-request`
 - 范围判断、报警对象与小批量输入：
   - `range-check`
   - `alarm-record`
@@ -448,7 +448,7 @@
 - `core` 只放模型无关、协议无关、无硬件依赖的通用节点
 - `custom` 放设备、厂商 SDK、现场环境差异较大的 workflow 节点
 - `trigger-source` 不是普通 workflow 节点，而是 runtime 外部触发适配层
-- `output-integration` 重点是结果回传和外部系统交付，不等同于当前已经实现的通用 `json-save-local / csv-append-local / http-post`
+- `output-integration` 重点是结果回传和外部系统交付，不等同于当前已经实现的通用 `json-save-local / csv-append-local / http-request`
 
 ### 一、core 层待办
 
@@ -514,15 +514,15 @@
 
 - 当前这一项已实现：`core.output.workflow-result`
   - 作用：把 `status / code / message / data / metrics / files / trace_id / event_id` 收成统一 `workflow-result.v1`
-  - 当前状态：已可与 `result-record / batch-record / http-post / trigger-source` 结果调度链对接
+  - 当前状态：已可与 `result-record / batch-record / http-request / trigger-source` 结果调度链对接
 
 #### P2：现场协议回传
 
-- `custom.output.mes-http-post`
+- `custom.http.request`
   - 放置位置：`custom`
-  - 作用：在现有 `core.output.http-post` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / core.output.batch-result-summary` 输出的 `summary(value)` 重组为更贴现场的请求体
+  - 作用：在现有 `custom.http.request` 之上补一层面向 MES / 上位机常见接口的受限包装，把 `result-record / workflow-result / core.output.batch-result-summary` 输出的 `summary(value)` 重组为更贴现场的请求体
   - 原因：现场 MES 接口千差万别，这一层不适合塞进 `core.output.*`；第一阶段只做受限通用层，不做“万能 MES 适配器”，厂商或项目专有接口继续通过后续 custom pack 扩展
-  - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/http_nodes/recipes/mes/` 或等价目录，不与通用 `core.output.http-post` 混写
+  - 建议形态：单独 custom pack，建议后续放在 `custom_nodes/http_nodes/categories/request/` 或等价目录，不与通用 `custom.http.request` 混写
   - 当前状态：第一阶段 pack / specs / catalog / runtime 已落地，当前已支持 `result-record.v1 / workflow-result.v1 / summary(value.v1) + request(value.v1)` 的受限 JSON 回传，以及 `prepared_request` 调试输出
 
 第一阶段输入输出规则：
@@ -540,7 +540,7 @@
   - 当主业务输入缺失，或三者同时提供多个时，节点直接报错，不做隐式优先级猜测
 - 输出端口：
   - `response`：`value.v1`
-    - 作用：沿用 `core.output.http-post` 风格，输出 `ok / status_code / headers / body_json 或 body_text / url / method`
+    - 作用：沿用 `custom.http.request` 风格，输出 `ok / status_code / headers / body_json 或 body_text / url / method`
   - `prepared_request`：`value.v1`
     - 作用：输出实际组装后的 `method / url / query / headers / body` 调试摘要，用于现场排障和 workflow 预览
     - 约束：敏感字段如 `Authorization`、token、password 必须脱敏，不直接回显明文
@@ -649,7 +649,7 @@
 - `custom.plc.modbus.write-result-signals`
   - 作用：把 `OK / NG / alarm / ack-needed / result-code` 等结果写回 Modbus TCP 的 coils 或 holding registers
   - 原因：工业现场常见的最终动作不是保存 JSON，而是写状态位或报码；这一层必须先与当前 Modbus TCP pack 对齐，而不是抽象成“通用 PLC 信号写入”
-- `custom.output.local-db-upsert`
+- `custom.database.sql.upsert`
   - 放置位置：`custom`
   - 作用：把结果写入本地 SQLite/MySQL/PostgreSQL 中已知结构的结果表，用于工作站追溯、统计和后续补传
   - 原因：当前已有 JSON/CSV，本地数据库归档还没有正式节点；第一阶段不做任意 SQL 或任意表结构自动推断，而是要求显式表名、唯一键和字段映射
@@ -821,8 +821,8 @@
 7. `directory-poll` trigger-source
 8. `directory-watch` trigger-source
 9. 先按当前现场主线收 `custom.plc.modbus.write-result-signals`
-10. `custom.output.mes-http-post` 第一阶段实现
-11. `custom.output.local-db-upsert` 第一阶段实现
+10. `custom.http.request` 第一阶段实现
+11. `custom.database.sql.upsert` 第一阶段实现
 12. 最后按项目需要选择 `custom.video.* / custom.protocol.* / 更多协议 pack`
 
 以上第 1 到第 11 项当前已实现，后续顺序自然顺延到第 12 项开始。

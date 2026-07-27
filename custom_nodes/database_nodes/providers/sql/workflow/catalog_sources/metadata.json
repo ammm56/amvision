@@ -1,7 +1,7 @@
 {
   "phase": "implemented",
   "families": [
-    "local-db"
+    "sql"
   ],
   "features": [
     "row-upsert",

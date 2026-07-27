@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import httpx
 import pytest
 from PIL import Image
 
@@ -36,11 +35,10 @@ from backend.nodes.core_nodes.io.output.records.batch_result_summary import (
     _batch_result_summary_handler,
 )
 from backend.nodes.core_nodes.io.output.storage.csv_append_local import _csv_append_local_handler
-from backend.nodes.core_nodes.io.output.http.http_post import _http_post_handler
 from backend.nodes.core_nodes.io.output.storage.json_save_local import _json_save_local_handler
 from backend.nodes.core_nodes.io.output.records.workflow_result import _workflow_result_handler
 from backend.nodes.runtime_support import require_execution_image_registry
-from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -183,72 +181,6 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
     assert output_path.is_file()
     assert '"ok_ng": "NG"' in output_path.read_text(encoding="utf-8")
     assert output["summary"]["value"]["record_kind"] == "result-record"
-
-
-def test_http_post_handler_posts_json_and_returns_summary(monkeypatch: object) -> None:
-    """验证 HTTP 回传节点会发送 JSON 并返回摘要。"""
-
-    captured_request: dict[str, object] = {}
-
-    def _fake_request(**kwargs: object) -> httpx.Response:
-        captured_request.update(kwargs)
-        request = httpx.Request(method=str(kwargs["method"]), url=str(kwargs["url"]))
-        return httpx.Response(
-            status_code=201,
-            headers={"content-type": "application/json"},
-            json={"accepted": True},
-            request=request,
-        )
-
-    monkeypatch.setattr("backend.nodes.core_nodes.io.output.http.http_post._send_http_request", _fake_request)
-
-    output = _http_post_handler(
-        WorkflowNodeExecutionRequest(
-            node_id="http-post",
-            node_definition=object(),
-            parameters={"url": "http://example.test/callback", "method": "POST"},
-            input_values={
-                "value": {"value": {"ok_ng": "OK", "station_id": "line-a-01"}}
-            },
-            execution_metadata={},
-        )
-    )
-
-    assert captured_request["method"] == "POST"
-    assert captured_request["url"] == "http://example.test/callback"
-    assert captured_request["json"] == {"ok_ng": "OK", "station_id": "line-a-01"}
-    assert output["response"]["value"]["ok"] is True
-    assert output["response"]["value"]["status_code"] == 201
-    assert output["response"]["value"]["body_json"]["accepted"] is True
-
-
-def test_http_post_handler_maps_timeout_to_operation_timeout(
-    monkeypatch: object,
-) -> None:
-    """验证 HTTP 超时会转换为节点超时错误。"""
-
-    def _fake_request(**_: object) -> httpx.Response:
-        raise httpx.TimeoutException("timeout")
-
-    monkeypatch.setattr(
-        "backend.nodes.core_nodes.io.output.http.http_post._send_http_request",
-        _fake_request,
-    )
-
-    with pytest.raises(OperationTimeoutError):
-        _http_post_handler(
-            WorkflowNodeExecutionRequest(
-                node_id="http-post-timeout",
-                node_definition=object(),
-                parameters={
-                    "url": "http://example.test/callback",
-                    "method": "POST",
-                    "timeout_seconds": 0.1,
-                },
-                input_values={"value": {"value": {"ok_ng": "OK"}}},
-                execution_metadata={},
-            )
-        )
 
 
 def test_csv_append_local_handler_appends_alarm_record(tmp_path: Path) -> None:

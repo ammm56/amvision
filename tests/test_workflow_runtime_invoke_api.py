@@ -27,7 +27,7 @@ from backend.service.settings import (
     BackendServiceWorkflowRuntimeConfig,
 )
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
-from tests.test_workflow_barcode_protocol_nodes import _build_mixed_barcode_test_png_bytes
+from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result_display(

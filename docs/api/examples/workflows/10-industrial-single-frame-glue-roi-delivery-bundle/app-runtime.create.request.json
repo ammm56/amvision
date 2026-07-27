@@ -4,6 +4,6 @@
   "display_name": "Industrial Single Frame Glue ROI Delivery Bundle Runtime",
   "metadata": {
     "example_kind": "industrial-single-frame-glue-roi-delivery-bundle",
-    "delivery_mode": "plc-json-csv-mes-local-db"
+    "delivery_mode": "plc-json-csv-http-sql"
   }
 }

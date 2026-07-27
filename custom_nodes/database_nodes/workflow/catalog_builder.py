@@ -27,35 +27,13 @@ def build_custom_node_catalog_document() -> CustomNodeCatalogDocument:
     """合并 Database provider 节点定义。"""
 
     payload = build_sql_catalog_payload()
-    definitions = []
+    definitions: list[dict[str, object]] = []
     for raw_definition in payload["node_definitions"]:
-        preferred_definition = dict(raw_definition)
-        preferred_definition["node_type_id"] = "custom.database.sql.upsert"
-        preferred_definition["display_name"] = "SQL Upsert"
-        preferred_definition["description"] = (
-            "通过受限列映射向 SQLite、MySQL 或 PostgreSQL 单表执行 upsert。"
-        )
-        preferred_definition["node_pack_id"] = NODE_PACK_ID
-        preferred_definition["node_pack_version"] = NODE_PACK_VERSION
-        preferred_definition["category"] = "database.sql.write"
-        preferred_metadata = dict(preferred_definition.get("metadata") or {})
-        preferred_metadata["legacyNodeTypeIds"] = [
-            "custom.output.local-db-upsert"
-        ]
-        preferred_definition["metadata"] = preferred_metadata
-        definitions.append(preferred_definition)
-
-        legacy_definition = dict(raw_definition)
-        legacy_definition["display_name"] = "Local DB Upsert (Compatibility)"
-        legacy_definition["node_pack_id"] = NODE_PACK_ID
-        legacy_definition["node_pack_version"] = NODE_PACK_VERSION
-        legacy_definition["category"] = "database.compatibility"
-        legacy_metadata = dict(legacy_definition.get("metadata") or {})
-        legacy_metadata["catalogHidden"] = True
-        legacy_metadata["deprecated"] = True
-        legacy_metadata["preferredNodeTypeId"] = "custom.database.sql.upsert"
-        legacy_definition["metadata"] = legacy_metadata
-        definitions.append(legacy_definition)
+        definition = dict(raw_definition)
+        definition["node_pack_id"] = NODE_PACK_ID
+        definition["node_pack_version"] = NODE_PACK_VERSION
+        definition["category"] = "database.sql.write"
+        definitions.append(definition)
     document = CustomNodeCatalogDocument.model_validate(
         {
             **payload,

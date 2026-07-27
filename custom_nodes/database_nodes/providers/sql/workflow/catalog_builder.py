@@ -1,4 +1,4 @@
-"""本地数据库输出节点目录生成器。"""
+"""Database SQL节点目录生成器。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from backend.nodes.core_catalog import get_core_workflow_payload_contracts
 
 
 def get_workflow_dir() -> Path:
-    """返回本地数据库输出 workflow 目录。"""
+    """返回Database SQL workflow 目录。"""
 
     return Path(__file__).resolve().parent
 

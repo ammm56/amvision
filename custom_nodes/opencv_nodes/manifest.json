@@ -7,15 +7,6 @@
   "category": "vision",
   "categoryRoot": "opencv",
   "implementationLayout": "categories",
-  "migrationAliases": [
-    "opencv.basic-nodes",
-    "opencv.defect-nodes",
-    "opencv.geometry-nodes",
-    "opencv.matching-nodes",
-    "opencv.measurement-nodes",
-    "opencv.render-nodes",
-    "opencv.shape-nodes"
-  ],
   "capabilities": [
     "pipeline.node",
     "vision.opencv",

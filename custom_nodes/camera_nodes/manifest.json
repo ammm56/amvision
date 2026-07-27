@@ -7,7 +7,6 @@
   "category": "integration",
   "categoryRoot": "camera",
   "implementationLayout": "providers",
-  "migrationAliases": ["camera.usb-uvc-nodes"],
   "capabilities": [
     "pipeline.node",
     "integration.camera",

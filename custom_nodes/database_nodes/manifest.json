@@ -7,7 +7,6 @@
   "category": "integration",
   "categoryRoot": "database",
   "implementationLayout": "providers",
-  "migrationAliases": ["output.local-db-nodes"],
   "capabilities": [
     "pipeline.node",
     "integration.database",

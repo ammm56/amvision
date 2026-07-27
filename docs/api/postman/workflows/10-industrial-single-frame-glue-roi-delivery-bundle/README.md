@@ -9,7 +9,7 @@
 - 保存 workflow template
 - 保存 workflow application
 - 先用 preview/runtime 做规则链联调
-- 再观察 PLC 信号写入、JSON/CSV 归档、MES 请求准备和 local-db upsert 是否都按预期收口
+- 再观察 PLC 信号写入、JSON/CSV 归档、MES 请求准备和 sql upsert 是否都按预期收口
 
 ## 导入后先改的变量
 
@@ -29,9 +29,9 @@
 - 上述三个请求里的 `request_signal_write.unit_id`
 - 上述三个请求里的 `request_signal_write.signal_values.*`
 
-如果需要联调 local-db upsert，先执行 [docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](../../../examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql) 准备本地 SQLite 表结构。
+如果需要联调 sql upsert，先执行 [docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](../../../examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql) 准备本地 SQLite 表结构。
 
-默认模板中的 MES 地址、JSON/CSV 保存路径和 local-db 连接参数都只是现场占位值。第一次联调建议先确认“准备出的结果对象和请求摘要”是否正确，再接入真实外部系统。
+默认模板中的 MES 地址、JSON/CSV 保存路径和 sql 连接参数都只是现场占位值。第一次联调建议先确认“准备出的结果对象和请求摘要”是否正确，再接入真实外部系统。
 
 ## 推荐联调顺序
 
@@ -80,8 +80,8 @@
 - `signal_write_summary`
 - `json_summary`
 - `csv_summary`
-- `mes_prepared_request`
-- `local_db_prepared_row`
+- `http_prepared_request`
+- `sql_prepared_row`
 
 ### 5. 再跑 async workflow run
 
@@ -100,6 +100,6 @@
 
 ## 现场联调建议
 
-- 第一次联调建议先把 PLC/MES/local-db 都当作“结果准备对象”来看，不要一上来就接真实写入。
+- 第一次联调建议先把 PLC/MES/sql 都当作“结果准备对象”来看，不要一上来就接真实写入。
 - 如果规则链本身还在调整，优先盯 `inspection_result.metrics`、`inspection_result.conditions` 和 `inspection_result.reasons`。
-- 如果规则已经稳定，再逐步核对 `signal_write_summary`、`json_summary`、`csv_summary`、`mes_prepared_request`、`local_db_prepared_row` 这几类结果出口。
+- 如果规则已经稳定，再逐步核对 `signal_write_summary`、`json_summary`、`csv_summary`、`http_prepared_request`、`sql_prepared_row` 这几类结果出口。
