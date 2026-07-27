@@ -79,12 +79,12 @@
                   <Button
                     size="sm"
                     variant="secondary"
-                    title="详情"
-                    aria-label="详情"
+                    :title="t('workflowEditor.applications.detail')"
+                    :aria-label="t('workflowEditor.applications.detail')"
                     @click="openDetail(workflowApp.application.application_id)"
                   >
                     <SquarePen :size="14" />
-                    <span>详情</span>
+                    <span>{{ t('workflowEditor.applications.detail') }}</span>
                   </Button>
                   <Button
                     size="sm"
@@ -101,11 +101,11 @@
                     size="sm"
                     variant="danger"
                     :disabled="deletingApplicationId === workflowApp.application.application_id || workflowApp.runtimes.length > 0"
-                    :title="workflowApp.runtimes.length > 0 ? '先删除运行记录后再删除应用' : '删除应用；未被其他应用使用的图版本会一并删除'"
+                    :title="workflowApp.runtimes.length > 0 ? t('workflowEditor.applications.deleteBlocked') : t('workflowEditor.applications.deleteHint')"
                     @click="deleteWorkflowApp(workflowApp)"
                   >
                     <Trash2 :size="14" />
-                    删除
+                    {{ t('workflowEditor.applications.delete') }}
                   </Button>
                 </div>
               </td>
@@ -229,7 +229,9 @@ async function loadPage(offset?: number): Promise<void> {
     appRuntimes.value = runtimeStatusResult.items
     applicationPagination.value = workflowAppResponse.pagination
     if (runtimeStatusResult.failedRuntimeIds.length > 0) {
-      errorMessage.value = `部分 runtime 状态刷新失败，已标记为 unknown：${runtimeStatusResult.failedRuntimeIds.join(', ')}`
+      errorMessage.value = t('workflowEditor.applications.partialRuntimeRefreshFailed', {
+        runtimeIds: runtimeStatusResult.failedRuntimeIds.join(', '),
+      })
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.messages.loadFailed')
@@ -242,7 +244,10 @@ async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void>
   if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
   const applicationId = workflowApp.application.application_id
   const shouldDeleteGraph = isGraphVersionOnlyUsedByApplication(workflowApp)
-  const confirmed = window.confirm(shouldDeleteGraph ? `删除应用 ${applicationId}，并删除未被其他应用使用的图版本？` : `删除应用 ${applicationId}？`)
+  const confirmed = window.confirm(t(
+    shouldDeleteGraph ? 'workflowEditor.applications.confirmDeleteWithGraph' : 'workflowEditor.applications.confirmDelete',
+    { applicationId },
+  ))
   if (!confirmed) return
   deletingApplicationId.value = applicationId
   errorMessage.value = null
@@ -260,7 +265,7 @@ async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void>
       : applicationPagination.value.offset
     await loadPage(nextOffset)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除应用失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.applications.deleteFailed')
   } finally {
     deletingApplicationId.value = null
   }

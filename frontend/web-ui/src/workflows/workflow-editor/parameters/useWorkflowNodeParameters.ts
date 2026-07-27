@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { NodeDefinition, NodeParameterUiField, WorkflowGraphNode, WorkflowJsonObject } from '../types'
 
 export type WorkflowNodeParameterSelectValue = string | number | boolean | null
@@ -72,7 +73,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
 
   function nodeParameterEnumOptions(field: NodeParameterUiField): WorkflowNodeParameterSelectOption[] {
     const enumOptions = field.enum_options.map((option, index) => ({ label: option.label, value: String(index) }))
-    return field.required ? enumOptions : [{ label: '未设置', value: '' }, ...enumOptions]
+    return field.required ? enumOptions : [{ label: translate('workflowEditor.feedback.notSet'), value: '' }, ...enumOptions]
   }
 
   function updateNodeParameterFromTextEvent(node: NodeView, field: NodeParameterUiField, event: Event): void {
@@ -131,7 +132,10 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     const rawValue = target.value.trim()
     if (!rawValue) {
       if (field.required) {
-        options.setErrorMessage(`${options.readNodeTitle(node)} / ${options.readParameterLabel(field)} 不能为空。`)
+        options.setErrorMessage(translate('workflowEditor.feedback.parameterRequired', {
+          node: options.readNodeTitle(node),
+          parameter: options.readParameterLabel(field),
+        }))
         return
       }
       updateNodeParameter(node, field, '')
@@ -143,8 +147,10 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
     try {
       const parsedValue = JSON.parse(rawValue)
       if (!isJsonParameterValueCompatible(field, parsedValue)) {
-        const expectedType = field.json_schema.type === 'array' ? '数组' : '对象'
-        throw new Error(`参数要求 ${expectedType}`)
+        const expectedType = field.json_schema.type === 'array'
+          ? translate('workflowEditor.feedback.arrayType')
+          : translate('workflowEditor.feedback.objectType')
+        throw new Error(translate('workflowEditor.feedback.parameterTypeRequired', { type: expectedType }))
       }
       updateNodeParameter(node, field, parsedValue)
       const draftKey = buildComplexParameterDraftKey(node, field)
@@ -155,7 +161,11 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
       options.setErrorMessage(null)
     } catch (error) {
       const detail = error instanceof Error && error.message ? `：${error.message}` : ''
-      options.setErrorMessage(`${options.readNodeTitle(node)} / ${options.readParameterLabel(field)} 需要填写合法 JSON${detail}`)
+      options.setErrorMessage(translate('workflowEditor.feedback.invalidParameterJson', {
+        node: options.readNodeTitle(node),
+        parameter: options.readParameterLabel(field),
+        detail,
+      }))
     }
   }
 
@@ -173,7 +183,7 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
       nextParameters[field.parameter_name] = value
     }
     node.node.parameters = nextParameters
-    options.setStatusMessage('已更新节点参数')
+    options.setStatusMessage(translate('workflowEditor.feedback.nodeParametersUpdated'))
   }
 
   function updateNodeParametersByName(node: NodeView, updates: Record<string, unknown>): void {
@@ -204,12 +214,12 @@ export function useWorkflowNodeParameters<NodeView extends WorkflowNodeParameter
       changed = true
     }
     if (!changed) {
-      options.setErrorMessage(`${options.readNodeTitle(node)} 没有可更新的目标参数`)
+      options.setErrorMessage(translate('workflowEditor.feedback.noTargetParameters', { node: options.readNodeTitle(node) }))
       return
     }
     node.node.parameters = nextParameters
     options.setErrorMessage(null)
-    options.setStatusMessage('已从图片取参更新节点参数')
+    options.setStatusMessage(translate('workflowEditor.feedback.imageParametersUpdated'))
   }
 
   return {

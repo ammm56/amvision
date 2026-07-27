@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowBoundaryKind, WorkflowBoundaryPosition } from './useWorkflowPublicBindings'
 import type { FlowApplicationBinding, WorkflowGraphInput, WorkflowGraphOutput } from '../types'
 
@@ -54,7 +55,7 @@ export function useWorkflowBoundaryNodes<NodeView extends WorkflowBoundaryNodeGr
         kind: 'entry',
         portDirection: 'output',
         title: 'App Entry',
-        description: `公开输入 ${options.appInputBindings.value.length}`,
+        description: translate('workflowEditor.feedback.publicInputCount', { count: options.appInputBindings.value.length }),
         x: entryPosition.x,
         y: entryPosition.y,
         width: 250,
@@ -65,7 +66,7 @@ export function useWorkflowBoundaryNodes<NodeView extends WorkflowBoundaryNodeGr
         kind: 'result',
         portDirection: 'input',
         title: 'App Result',
-        description: `公开输出 ${options.appOutputBindings.value.length}`,
+        description: translate('workflowEditor.feedback.publicOutputCount', { count: options.appOutputBindings.value.length }),
         x: resultPosition.x,
         y: resultPosition.y,
         width: 250,

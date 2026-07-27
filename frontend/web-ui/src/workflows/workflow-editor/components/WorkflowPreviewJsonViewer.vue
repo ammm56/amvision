@@ -9,15 +9,15 @@
           </div>
           <div class="workflow-preview-json-viewer__actions">
             <Button size="sm" variant="secondary" type="button" @click="toggleCompactMode">
-              {{ compactMode ? '格式化' : '压缩' }}
+              {{ compactMode ? t('workflowEditor.editor.formatJson') : t('workflowEditor.editor.compactJson') }}
             </Button>
             <Button size="sm" variant="secondary" type="button" @click="wrapLines = !wrapLines">
-              {{ wrapLines ? '取消换行' : '自动换行' }}
+              {{ wrapLines ? t('workflowEditor.editor.disableWrap') : t('workflowEditor.editor.enableWrap') }}
             </Button>
             <Button size="sm" variant="secondary" type="button" @click="copyJsonText">
-              {{ copied ? '已复制' : '复制 JSON' }}
+              {{ copied ? t('workflowEditor.editor.copied') : t('workflowEditor.editor.copyJson') }}
             </Button>
-            <Button size="sm" variant="secondary" type="button" title="关闭" aria-label="关闭 JSON 查看器" @click="emit('close')">
+            <Button size="sm" variant="secondary" type="button" :title="t('common.close')" :aria-label="t('workflowEditor.editor.closeJsonViewer')" @click="emit('close')">
               <X :size="17" />
             </Button>
           </div>
@@ -26,8 +26,8 @@
           <pre class="json-view workflow-preview-json-viewer__content" :class="{ 'is-wrapped': wrapLines }">{{ displayText }}</pre>
         </div>
         <div class="workflow-preview-json-viewer__status">
-          <span>{{ lineCount }} 行</span>
-          <span>{{ charCount }} 字符</span>
+          <span>{{ t('workflowEditor.editor.lineCount', { count: lineCount }) }}</span>
+          <span>{{ t('workflowEditor.editor.charCount', { count: charCount }) }}</span>
         </div>
       </div>
     </div>
@@ -37,8 +37,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
+
+const { t } = useTranslation()
 
 interface PreviewJsonViewerState {
   title: string

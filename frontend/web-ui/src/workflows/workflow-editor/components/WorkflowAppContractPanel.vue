@@ -1,7 +1,7 @@
 <template>
   <div class="workflow-graph-app-contract">
     <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
-      <h2>应用输入</h2>
+      <h2>{{ t('workflowEditor.editor.applicationInputs') }}</h2>
       <StatusBadge tone="info">{{ inputBindings.length }} / {{ outputBindings.length }}</StatusBadge>
     </div>
     <section class="workflow-graph-contract-section">
@@ -20,11 +20,11 @@
           <strong>{{ binding.binding_id }}</strong>
           <span>{{ getPayloadTypeId(binding) || 'unknown' }}</span>
         </div>
-        <small>{{ binding.required ? '必填' : '可选' }} / {{ binding.binding_kind }}</small>
+        <small>{{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }} / {{ binding.binding_kind }}</small>
       </div>
     </section>
     <section class="workflow-graph-contract-section">
-      <h3>应用输出</h3>
+      <h3>{{ t('workflowEditor.editor.applicationOutputs') }}</h3>
       <div v-for="binding in outputBindings" :key="`contract-output-${binding.binding_id}`" class="workflow-graph-contract-binding">
         <div>
           <strong>{{ binding.binding_id }}</strong>
@@ -38,6 +38,7 @@
 
 <script setup lang="ts">
 import { Plus } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -53,4 +54,6 @@ const emit = defineEmits<{
   'add-request-image-ref': []
   'add-request-image-base64': []
 }>()
+
+const { t } = useI18n()
 </script>

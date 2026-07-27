@@ -21,7 +21,7 @@
     @contextmenu.prevent.stop="emit('openNodeContextMenu', $event, node)"
   >
     <span class="workflow-graph-node__title" :title="readTitle(node)">{{ readTitle(node) }}</span>
-    <span v-if="node.node.enabled === false" class="workflow-graph-node__disabled-badge">已禁用</span>
+    <span v-if="node.node.enabled === false" class="workflow-graph-node__disabled-badge">{{ t('workflowEditor.editor.disabled') }}</span>
     <span class="workflow-graph-node__type">{{ node.definition?.category || node.node.node_type_id }}</span>
     <div class="workflow-graph-node__ports">
       <div v-for="row in readPortRows(node)" :key="row.key" class="workflow-graph-node__port-row">
@@ -102,6 +102,8 @@
 </template>
 
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+
 import WorkflowNodeParameterWidgets from './WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePreviewDisplay from './WorkflowNodePreviewDisplay.vue'
 import type { PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
@@ -112,6 +114,7 @@ import type { NodeParameterUiField, NodePortDefinition } from '../types'
 
 type PortDirection = 'input' | 'output'
 
+const { t } = useTranslation()
 const props = defineProps<{
   nodes: WorkflowGraphNodeView[]
   selectedNodeId: string | null

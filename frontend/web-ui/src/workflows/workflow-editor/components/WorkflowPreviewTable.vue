@@ -1,6 +1,6 @@
 <template>
   <div class="workflow-preview-table" :class="{ 'workflow-preview-table--compact': compact }">
-    <div v-if="displayRows.length === 0" class="workflow-preview-table__empty">{{ emptyText || '暂无数据' }}</div>
+    <div v-if="displayRows.length === 0" class="workflow-preview-table__empty">{{ emptyText || t('workflowEditor.editor.noData') }}</div>
     <div v-else class="workflow-preview-table__scroller">
       <table>
         <thead>
@@ -15,12 +15,15 @@
         </tbody>
       </table>
     </div>
-    <small v-if="truncatedCount > 0" class="workflow-preview-table__summary">仅显示前 {{ displayRows.length }} 行，共 {{ rows.length }} 行</small>
+    <small v-if="truncatedCount > 0" class="workflow-preview-table__summary">
+      {{ t('workflowEditor.editor.tableTruncated', { shown: displayRows.length, total: rows.length }) }}
+    </small>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTranslation } from '@/platform/i18n'
 
 interface PreviewTableColumnView {
   key: string
@@ -36,11 +39,12 @@ const props = withDefaults(defineProps<{
   maxRows?: number
   compact?: boolean
 }>(), {
-  emptyText: '暂无数据',
+  emptyText: '',
   maxRows: 20,
   compact: false,
 })
 
+const { t } = useTranslation()
 const displayRows = computed(() => props.maxRows > 0 ? props.rows.slice(0, props.maxRows) : props.rows)
 const truncatedCount = computed(() => Math.max(props.rows.length - displayRows.value.length, 0))
 

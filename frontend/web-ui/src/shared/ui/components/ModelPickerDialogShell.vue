@@ -34,7 +34,7 @@
             <header class="model-picker-shell__section-heading">
               <strong>{{ listTitle }}</strong>
               <span class="model-picker-shell__heading-meta">
-                <LoaderCircle v-if="loading" class="model-picker-shell__spinner" :size="16" aria-label="正在更新" />
+                <LoaderCircle v-if="loading" class="model-picker-shell__spinner" :size="16" :aria-label="t('common.updating')" />
                 <span class="model-picker-shell__count">{{ listCount }}</span>
               </span>
             </header>
@@ -52,6 +52,9 @@
 
 <script setup lang="ts">
 import { LoaderCircle, X } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
+
+const { t } = useTranslation()
 
 defineProps<{
   open: boolean

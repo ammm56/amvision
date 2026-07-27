@@ -1,4 +1,5 @@
 import { apiRequest, apiRequestWithHeaders } from '@/shared/api/http-client'
+import { translate } from '@/platform/i18n'
 import { parsePaginationHeaders, type PaginatedResult } from '@/shared/api/pagination'
 import type {
   FlowApplication,
@@ -229,12 +230,12 @@ export async function refreshWorkflowAppRuntimeStatuses(
       try {
         return { item: await getWorkflowAppRuntimeHealth(runtime.workflow_runtime_id), failed: false }
       } catch (error) {
-        const message = error instanceof Error ? error.message : '读取 runtime health 失败'
+        const message = error instanceof Error ? error.message : translate('workflowEditor.appDetail.messages.healthFailed')
         return {
           item: {
             ...runtime,
             observed_state: 'unknown',
-            last_error: `状态刷新失败：${message}`,
+            last_error: translate('workflowEditor.appDetail.messages.statusRefreshFailed', { message }),
             health_summary: { status_refresh_failed: true },
           },
           failed: true,

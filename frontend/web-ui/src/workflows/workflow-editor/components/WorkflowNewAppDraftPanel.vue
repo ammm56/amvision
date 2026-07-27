@@ -2,37 +2,41 @@
   <div class="workflow-graph-new-app-panel">
     <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
       <div>
-        <h2>首次保存</h2>
+        <h2>{{ t('workflowEditor.editor.firstSave') }}</h2>
       </div>
-      <StatusBadge :tone="saveBlocker ? 'warning' : 'success'">{{ saveBlocker ? '待完成' : '可保存' }}</StatusBadge>
+      <StatusBadge :tone="saveBlocker ? 'warning' : 'success'">
+        {{ saveBlocker ? t('workflowEditor.editor.incomplete') : t('workflowEditor.editor.canSave') }}
+      </StatusBadge>
     </div>
     <label class="workflow-graph-preview-field">
-      <span>应用名称</span>
-      <input :value="draft.displayName" placeholder="检测应用" @input="emit('update-display-name', $event)" />
+      <span>{{ t('workflowEditor.editor.appName') }}</span>
+      <input :value="draft.displayName" :placeholder="t('workflowEditor.editor.appNamePlaceholder')" @input="emit('update-display-name', $event)" />
     </label>
     <label class="workflow-graph-preview-field">
-      <span>应用 id</span>
+      <span>{{ t('workflowEditor.editor.appId') }}</span>
       <input :value="draft.applicationId" placeholder="inspection-app" @input="emit('update-application-id', $event)" @change="emit('normalize-application-id', $event)" />
     </label>
     <label class="workflow-graph-preview-field">
-      <span>图 id</span>
+      <span>{{ t('workflowEditor.editor.graphId') }}</span>
       <input :value="draft.graphId" placeholder="inspection-graph" @input="emit('update-graph-id', $event)" @change="emit('normalize-graph-id', $event)" />
     </label>
     <label class="workflow-graph-preview-field">
-      <span>图版本</span>
+      <span>{{ t('workflowEditor.editor.graphVersion') }}</span>
       <input :value="draft.graphVersion" placeholder="1.0.0" @input="emit('update-graph-version', $event)" @change="emit('normalize-graph-version', $event)" />
     </label>
     <label class="workflow-graph-preview-field">
-      <span>说明</span>
-      <input :value="draft.description" placeholder="可选" @input="emit('update-description', $event)" />
+      <span>{{ t('workflowEditor.editor.formDescription') }}</span>
+      <input :value="draft.description" :placeholder="t('workflowEditor.editor.optional')" @input="emit('update-description', $event)" />
     </label>
     <p class="workflow-graph-preview-hint" :class="{ 'workflow-graph-preview-hint--danger': saveBlocker }">
-      {{ saveBlocker || '首次保存会创建应用和图。' }}
+      {{ saveBlocker || t('workflowEditor.editor.firstSaveHint') }}
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 export interface WorkflowNewAppDraftView {
@@ -58,4 +62,6 @@ const emit = defineEmits<{
   'normalize-graph-id': [event: Event]
   'normalize-graph-version': [event: Event]
 }>()
+
+const { t } = useI18n()
 </script>

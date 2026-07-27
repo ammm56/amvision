@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { FlowApplicationBinding, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
 export interface WorkflowPreviewValidationOptions {
@@ -101,10 +102,14 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
   const previewBlockingMessages = computed(() => {
     const messages: string[] = []
     if (missingRequiredPreviewBindingIds.value.length > 0) {
-      messages.push(`Preview run 需要填写：${missingRequiredPreviewBindingIds.value.join(', ')}`)
+      messages.push(translate('workflowEditor.feedback.previewRequiredBindings', {
+        bindings: missingRequiredPreviewBindingIds.value.join(', '),
+      }))
     }
     for (const group of missingAlternativePreviewBindingGroups.value) {
-      messages.push(`至少填写一个图片入口：${group.join(' 或 ')}`)
+      messages.push(translate('workflowEditor.feedback.previewAlternativeGroup', {
+        bindings: group.join(translate('workflowEditor.feedback.orSeparator')),
+      }))
     }
     return messages
   })
@@ -112,7 +117,9 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
   const previewHelpText = computed(() => {
     const messages = [...previewBlockingMessages.value]
     if (options.previewAlternativeImageBindingIds.value.length > 1) {
-      messages.push(`图片入口至少填写一个：${options.previewAlternativeImageBindingIds.value.join(' 或 ')}`)
+      messages.push(translate('workflowEditor.feedback.previewAlternativeImages', {
+        bindings: options.previewAlternativeImageBindingIds.value.join(translate('workflowEditor.feedback.orSeparator')),
+      }))
     }
     return messages.join('；')
   })

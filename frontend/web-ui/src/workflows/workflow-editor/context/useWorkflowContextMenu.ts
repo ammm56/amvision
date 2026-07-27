@@ -1,5 +1,6 @@
 import { computed, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import {
   buildPublicPortMetadata,
   createUniquePublicId,
@@ -163,17 +164,17 @@ export function useWorkflowContextMenu<
 
   function exposeNodeInputAsAppInput(node: NodeView, port: NodePortDefinition, inputOptions: { required?: boolean } = {}): void {
     if (!options.workflowApp.value) {
-      options.setErrorMessage('当前图还没有应用草稿，暂不能创建公开输入')
+      options.setErrorMessage(translate('workflowEditor.feedback.noDraftForPublicInput'))
       return
     }
     const existingInput = options.templateInputs.value.find((input) => input.target_node_id === node.node.node_id && input.target_port === port.name)
     if (existingInput) {
       options.selectApplicationBoundary('entry' as BoundaryKind)
-      options.setStatusMessage(`${existingInput.input_id} 已经是应用输入`)
+      options.setStatusMessage(translate('workflowEditor.feedback.alreadyPublicInput', { id: existingInput.input_id }))
       return
     }
     if (options.findInputEdge(node.node.node_id, port.name) && !port.multiple) {
-      options.setErrorMessage('该输入端口已有普通连线，请先删除连线再公开为应用输入')
+      options.setErrorMessage(translate('workflowEditor.feedback.inputConnectedBeforeExpose'))
       return
     }
     const inputId = createUniquePublicId(
@@ -205,19 +206,19 @@ export function useWorkflowContextMenu<
     options.applicationBindingsDraft.value = [...options.applicationBindingsDraft.value, binding]
     options.setPreviewInputStateForBinding(binding)
     options.selectApplicationBoundary('entry' as BoundaryKind)
-    options.setStatusMessage('已公开为应用输入')
+    options.setStatusMessage(translate('workflowEditor.feedback.exposedAsInput'))
     options.setErrorMessage(null)
   }
 
   function exposeNodeOutputAsAppOutput(node: NodeView, port: NodePortDefinition): void {
     if (!options.workflowApp.value) {
-      options.setErrorMessage('当前图还没有应用草稿，暂不能创建公开输出')
+      options.setErrorMessage(translate('workflowEditor.feedback.noDraftForPublicOutput'))
       return
     }
     const existingOutput = options.templateOutputs.value.find((output) => output.source_node_id === node.node.node_id && output.source_port === port.name)
     if (existingOutput) {
       options.selectApplicationBoundary('result' as BoundaryKind)
-      options.setStatusMessage(`${existingOutput.output_id} 已经是应用输出`)
+      options.setStatusMessage(translate('workflowEditor.feedback.alreadyPublicOutput', { id: existingOutput.output_id }))
       return
     }
     const outputId = createDefaultPublicOutputId(node, port)
@@ -243,7 +244,7 @@ export function useWorkflowContextMenu<
     options.templateOutputs.value = [...options.templateOutputs.value, templateOutput]
     options.applicationBindingsDraft.value = [...options.applicationBindingsDraft.value, binding]
     options.selectApplicationBoundary('result' as BoundaryKind)
-    options.setStatusMessage('已公开为应用输出')
+    options.setStatusMessage(translate('workflowEditor.feedback.exposedAsOutput'))
     options.setErrorMessage(null)
   }
 
@@ -301,7 +302,7 @@ export function useWorkflowContextMenu<
       boundaryKind: boundary.kind,
       bindingId: binding.binding_id,
     })
-    options.setStatusMessage(`已选择 ${binding.binding_id}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.selectedBinding', { id: binding.binding_id }))
   }
 
   function openEdgeContextMenu(event: MouseEvent, link: LinkView): void {

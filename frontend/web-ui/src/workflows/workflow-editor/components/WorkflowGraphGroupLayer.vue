@@ -54,7 +54,7 @@
         <span
           v-else
           class="workflow-graph-group__name"
-          title="双击编辑节点组名称"
+          :title="t('workflowEditor.editor.editGroupName')"
           @dblclick.stop="beginNameEdit(group)"
         >{{ group.name }}</span>
         <span class="workflow-graph-group__count">{{ group.member_node_ids.length }}</span>
@@ -62,8 +62,8 @@
           <button
             type="button"
             class="workflow-graph-group__color-button"
-            title="选择节点组颜色"
-            aria-label="选择节点组颜色"
+            :title="t('workflowEditor.editor.selectGroupColor')"
+            :aria-label="t('workflowEditor.editor.selectGroupColor')"
             :style="{ '--workflow-graph-group-swatch-color': group.color || defaultGroupColor }"
             @mousedown.stop
             @click.stop="toggleColorPicker(group.group_id)"
@@ -76,8 +76,8 @@
               class="workflow-graph-group__swatch"
               :class="{ 'is-active': readGroupColor(group) === color }"
               :style="{ '--workflow-graph-group-swatch-color': color }"
-              :title="`设置颜色 ${color}`"
-              :aria-label="`设置节点组颜色 ${color}`"
+              :title="t('workflowEditor.editor.setColor', { color })"
+              :aria-label="t('workflowEditor.editor.setGroupColor', { color })"
               @click="selectGroupColor(group.group_id, color)"
             />
           </span>
@@ -85,8 +85,8 @@
         <button
           type="button"
           class="workflow-graph-group__delete"
-          title="删除节点组，不删除组内节点"
-          aria-label="删除节点组"
+          :title="t('workflowEditor.editor.deleteGroupHint')"
+          :aria-label="t('workflowEditor.editor.deleteGroup')"
           @mousedown.stop
           @click.stop="emit('deleteGroup', group.group_id)"
         >
@@ -97,8 +97,8 @@
         v-if="!group.locked"
         type="button"
         class="workflow-graph-group__resize"
-        title="调整节点组大小"
-        aria-label="调整节点组大小"
+        :title="t('workflowEditor.editor.resizeGroup')"
+        :aria-label="t('workflowEditor.editor.resizeGroup')"
         @mousedown.stop.prevent="emit('startGroupResize', $event, group)"
       />
     </div>
@@ -109,7 +109,7 @@
       :style="rectStyle(draftRect, '#22b8cf')"
     >
       <div class="workflow-graph-group__header">
-        <span class="workflow-graph-group__name">新节点组</span>
+        <span class="workflow-graph-group__name">{{ t('workflowEditor.editor.newGroup') }}</span>
       </div>
     </div>
   </div>
@@ -118,10 +118,12 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
 import { CheckCircle, CircleDotDashed, CircleOff, Lock, LockOpen, Trash2 } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
 import type { WorkflowGraphGroupState } from '../graph/useWorkflowGraphGroups'
 
+const { t } = useTranslation()
 const props = defineProps<{
   groups: WorkflowGraphGroup[]
   selectedGroupId: string | null
@@ -163,13 +165,13 @@ function rectStyle(rect: WorkflowGraphGroupRect, color: string): Record<string, 
 
 function readToggleTitle(group: WorkflowGraphGroup): string {
   const state = props.readGroupState(group)
-  if (state === 'enabled') return '禁用节点组'
-  if (state === 'disabled') return '启用节点组'
-  return '统一启用节点组'
+  if (state === 'enabled') return t('workflowEditor.editor.disableGroup')
+  if (state === 'disabled') return t('workflowEditor.editor.enableGroup')
+  return t('workflowEditor.editor.enableMixedGroup')
 }
 
 function readLockTitle(group: WorkflowGraphGroup): string {
-  return group.locked ? '解锁节点组，恢复移动和调整大小' : '锁定节点组，组区域用于拖动画布'
+  return group.locked ? t('workflowEditor.editor.unlockGroup') : t('workflowEditor.editor.lockGroup')
 }
 
 function handleGroupMouseDown(event: MouseEvent, group: WorkflowGraphGroup): void {

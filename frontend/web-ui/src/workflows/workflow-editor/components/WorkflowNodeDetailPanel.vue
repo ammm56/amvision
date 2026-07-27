@@ -1,7 +1,7 @@
 <template>
   <div class="workflow-graph-inspector-body">
     <div class="workflow-graph-inspector-row">
-      <span>节点</span>
+      <span>{{ t('workflowEditor.editor.node') }}</span>
       <strong>{{ readTitle(node) }}</strong>
     </div>
     <div class="workflow-graph-inspector-row">
@@ -13,17 +13,17 @@
       <strong>{{ node.node.node_type_id }}</strong>
     </div>
     <div class="workflow-graph-inspector-row">
-      <span>分类</span>
+      <span>{{ t('workflowEditor.editor.category') }}</span>
       <strong>{{ node.definition?.category || 'unknown' }}</strong>
     </div>
     <div class="workflow-graph-inspector-row">
-      <span>端口</span>
+      <span>{{ t('workflowEditor.editor.ports') }}</span>
       <strong>{{ node.inputs.length }} in / {{ node.outputs.length }} out</strong>
     </div>
     <label class="workflow-graph-inspector-toggle-row">
       <span>
-        <strong>启用节点</strong>
-        <small>关闭后保存到图中，运行时跳过该节点。</small>
+        <strong>{{ t('workflowEditor.editor.enableNode') }}</strong>
+        <small>{{ t('workflowEditor.editor.enableNodeHint') }}</small>
       </span>
       <input
         type="checkbox"
@@ -35,7 +35,11 @@
 </template>
 
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
+
+const { t } = useTranslation()
 
 defineProps<{
   node: WorkflowGraphNodeView

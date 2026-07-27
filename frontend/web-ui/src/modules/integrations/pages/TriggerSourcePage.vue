@@ -4,17 +4,17 @@
       <div>
         <div class="heading-with-hint">
           <h1>TriggerSource</h1>
-          <InfoHint text="从 WorkflowAppRuntime 创建外部协议入口，把协议事件映射到 Workflow App input bindings。" />
+          <InfoHint :text="t('triggerSources.description')" />
         </div>
       </div>
       <div class="page-actions">
         <ButtonLink v-if="selectedRuntime" :to="appDetailPath">
           <Workflow :size="16" />
-          返回应用
+          {{ t('triggerSources.actions.backToApp') }}
         </ButtonLink>
         <Button variant="secondary" :disabled="loading" @click="loadPage">
           <RefreshCw :size="16" />
-          刷新
+          {{ t('common.refresh') }}
         </Button>
       </div>
     </header>
@@ -25,28 +25,32 @@
     <form class="form-panel" @submit.prevent="submitTriggerSource">
       <div class="section-heading">
         <div>
-          <h2>添加触发入口</h2>
+          <h2>{{ t('triggerSources.createTitle') }}</h2>
         </div>
         <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime">
           <Save :size="16" />
-          创建 TriggerSource
+          {{ t('triggerSources.actions.create') }}
         </Button>
       </div>
 
-      <EmptyState v-if="!loading && runtimes.length === 0" title="还没有 WorkflowAppRuntime" description="先在应用详情页创建并启动 runtime，再从该 runtime 添加触发入口。" />
+      <EmptyState
+        v-if="!loading && runtimes.length === 0"
+        :title="t('triggerSources.emptyRuntimeTitle')"
+        :description="t('triggerSources.emptyRuntimeDescription')"
+      />
 
       <template v-else>
         <div class="form-grid">
           <label class="field field--wide">
             <span>WorkflowAppRuntime</span>
-            <SelectField :model-value="selectedRuntimeId" :options="runtimeOptions" placeholder="选择 runtime" @update:model-value="selectRuntime" />
+            <SelectField :model-value="selectedRuntimeId" :options="runtimeOptions" :placeholder="t('triggerSources.placeholders.selectRuntime')" @update:model-value="selectRuntime" />
           </label>
           <label class="field">
-            <span>协议模板</span>
+            <span>{{ t('triggerSources.fields.protocolTemplate') }}</span>
             <SelectField :model-value="protocolTemplateId" :options="protocolTemplateOptions" @update:model-value="selectProtocolTemplate" />
           </label>
           <label class="field">
-            <span>创建后启用</span>
+            <span>{{ t('triggerSources.fields.enableAfterCreate') }}</span>
             <SelectField :model-value="enableAfterCreate" :options="enableAfterCreateOptions" @update:model-value="setEnableAfterCreate" />
           </label>
         </div>
@@ -86,13 +90,13 @@
           <label v-if="selectedProtocolTemplate.templateId === 'zeromq-image-trigger'" class="field">
             <span class="field-label">
               pool_name
-              <InfoHint text="ZeroMQ 第二帧图片 bytes 写入的 LocalBufferBroker pool；选项来自后端当前配置。" />
+              <InfoHint :text="t('triggerSources.hints.poolName')" />
             </span>
             <SelectField
               :model-value="localBufferPoolName"
               :options="localBufferPoolOptions"
               :disabled="localBufferPoolOptions.length === 0"
-              placeholder="后端未配置 pool"
+              :placeholder="t('triggerSources.placeholders.poolUnavailable')"
               @update:model-value="setLocalBufferPoolName"
             />
           </label>
@@ -106,23 +110,23 @@
           <div class="section-heading">
             <div>
               <div class="heading-with-hint">
-                <h2>自动推断</h2>
-                <InfoHint text="自动推断会优先使用 metadata 标记。常见双入口图会同时启用 request_image_base64 和 request_image_ref；ZeroMQ 图片 bytes 默认写入 LocalBuffer，再通过 payload.request_image_ref 映射到 request_image_ref。" />
+                <h2>{{ t('triggerSources.inferenceTitle') }}</h2>
+                <InfoHint :text="t('triggerSources.hints.inference')" />
               </div>
             </div>
-            <StatusBadge tone="info">{{ selectedProtocolTemplate.displayName }}</StatusBadge>
+            <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
           </div>
           <div class="summary-grid">
             <div>
-              <span>图片输入</span>
+              <span>{{ t('triggerSources.fields.imageInput') }}</span>
               <strong>{{ inferredImageBindingText }}</strong>
             </div>
             <div>
-              <span>请求参数</span>
-              <strong>{{ inferredRequestBinding?.binding_id ?? '未找到' }}</strong>
+              <span>{{ t('triggerSources.fields.requestParameters') }}</span>
+              <strong>{{ inferredRequestBinding?.binding_id ?? t('triggerSources.values.notFound') }}</strong>
             </div>
             <div>
-              <span>HTTP 回执</span>
+              <span>{{ t('triggerSources.fields.httpReceipt') }}</span>
               <strong>{{ resultBinding }}</strong>
             </div>
             <div>
@@ -134,7 +138,7 @@
 
         <details class="trigger-source-advanced">
           <summary class="section-heading trigger-source-advanced__summary">
-            <strong>高级设置与手动 mapping</strong>
+            <strong>{{ t('triggerSources.advancedTitle') }}</strong>
             <Settings2 :size="16" />
           </summary>
 
@@ -143,56 +147,56 @@
               <label class="field">
                 <span class="field-label">
                   submit_mode
-                  <InfoHint text="sync 会等待 WorkflowRun 完成并把结果写入协议回包；async 只创建 run，结果需要之后按 workflow_run_id 查询。" />
+                  <InfoHint :text="t('triggerSources.hints.submitMode')" />
                 </span>
                 <SelectField :model-value="submitMode" :options="submitModeOptions" @update:model-value="setSubmitMode" />
               </label>
               <label class="field">
                 <span class="field-label">
                   result_mode
-                  <InfoHint text="sync-reply 直接返回 result_binding 的输出；accepted-then-query 返回 run id 让调用方查询；event-only 不返回 workflow 输出。" />
+                  <InfoHint :text="t('triggerSources.hints.resultMode')" />
                 </span>
                 <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
               </label>
               <label class="field">
                 <span class="field-label">
                   ack_policy
-                  <InfoHint text="声明协议层确认时机；当前实际等待主要由 submit_mode 决定。同步回包通常使用 ack-after-run-finished。" />
+                  <InfoHint :text="t('triggerSources.hints.ackPolicy')" />
                 </span>
                 <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" @update:model-value="setAckPolicy" />
               </label>
               <label class="field">
                 <span class="field-label">
                   reply_timeout_seconds
-                  <InfoHint text="同步等待 workflow 结果的最长秒数；需要大于 WinForms/SDK 的 ZeroMQ 等待超时。" />
+                  <InfoHint :text="t('triggerSources.hints.replyTimeout')" />
                 </span>
-                <input v-model="replyTimeoutSeconds" inputmode="numeric" placeholder="空表示默认" />
+                <input v-model="replyTimeoutSeconds" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDefault')" />
               </label>
               <label class="field">
                 <span class="field-label">
                   debounce_window_ms
-                  <InfoHint text="保存同一触发源短时间重复事件的去抖窗口配置，后续可由 adapter 或调度层执行；空表示不启用。" />
+                  <InfoHint :text="t('triggerSources.hints.debounce')" />
                 </span>
-                <input v-model="debounceWindowMs" inputmode="numeric" placeholder="空表示不启用" />
+                <input v-model="debounceWindowMs" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDisabled')" />
               </label>
               <label class="field">
                 <span class="field-label">
                   idempotency_key_path
-                  <InfoHint text="从事件中读取幂等键，例如 payload.request_id；同一键可用于避免重复提交。" />
+                  <InfoHint :text="t('triggerSources.hints.idempotency')" />
                 </span>
                 <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
               </label>
               <label class="field">
                 <span class="field-label">
-                  WorkflowRun 记录
-                  <InfoHint text="full 保留完整运行记录；minimal 只写最小状态记录；none 不写 WorkflowRun 数据库记录，仅适合同步高速触发。" />
+                  {{ t('triggerSources.fields.workflowRunRecord') }}
+                  <InfoHint :text="t('triggerSources.hints.workflowRunRecord')" />
                 </span>
                 <SelectField :model-value="workflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setWorkflowRunRecordMode" />
               </label>
               <label class="field">
                 <span class="field-label">
-                  返回诊断数据
-                  <InfoHint text="关闭时不在调用结果中返回 timings 和 node_timings；生产高帧率触发建议关闭，排查问题时再开启。" />
+                  {{ t('triggerSources.fields.returnDiagnostics') }}
+                  <InfoHint :text="t('triggerSources.hints.returnDiagnostics')" />
                 </span>
                 <SelectField :model-value="returnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setReturnDiagnostics" />
               </label>
@@ -202,10 +206,14 @@
               <article v-for="row in mappingRows" :key="row.bindingId" class="trigger-mapping-row">
                 <div class="trigger-mapping-row__target">
                   <strong>{{ row.bindingId }}</strong>
-                  <span>{{ row.payloadTypeId || 'unknown' }} / {{ row.required ? '必填' : '可选' }} / {{ row.inferred ? '已推断' : '手动' }}</span>
+                  <span>
+                    {{ row.payloadTypeId || 'unknown' }} /
+                    {{ row.required ? t('triggerSources.values.required') : t('triggerSources.values.optional') }} /
+                    {{ row.inferred ? t('triggerSources.values.inferred') : t('triggerSources.values.manual') }}
+                  </span>
                 </div>
                 <label class="field">
-                  <span>映射方式</span>
+                  <span>{{ t('triggerSources.fields.mappingMode') }}</span>
                   <SelectField :model-value="row.mode" :options="mappingModeOptions" @update:model-value="setMappingMode(row, $event)" />
                 </label>
                 <label v-if="row.mode === 'source'" class="field trigger-mapping-row__source">
@@ -213,10 +221,10 @@
                   <input v-model="row.sourcePath" placeholder="payload.request_image_ref" />
                 </label>
                 <label v-else-if="row.mode === 'static'" class="field trigger-mapping-row__source">
-                  <span>固定值</span>
-                  <input v-model="row.staticValue" placeholder="按字符串、数字或布尔值提交" />
+                  <span>{{ t('triggerSources.fields.staticValue') }}</span>
+                  <input v-model="row.staticValue" :placeholder="t('triggerSources.placeholders.staticValue')" />
                 </label>
-                <p v-else class="trigger-mapping-row__hint">该 binding 不参与当前 TriggerSource。</p>
+                <p v-else class="trigger-mapping-row__hint">{{ t('triggerSources.mappingSkipped') }}</p>
               </article>
             </div>
           </div>
@@ -227,11 +235,15 @@
     <section class="resource-section">
       <div class="section-heading">
         <div>
-          <h2>已有 TriggerSource</h2>
+          <h2>{{ t('triggerSources.listTitle') }}</h2>
         </div>
         <StatusBadge tone="neutral">{{ totalTriggerSourceCount }}</StatusBadge>
       </div>
-      <EmptyState v-if="!loading && triggerSources.length === 0" title="还没有 TriggerSource" description="创建后会显示启停状态、health、last_error 和映射摘要。" />
+      <EmptyState
+        v-if="!loading && triggerSources.length === 0"
+        :title="t('triggerSources.emptyTitle')"
+        :description="t('triggerSources.emptyDescription')"
+      />
       <div v-else class="resource-table">
         <table>
           <thead>
@@ -242,7 +254,7 @@
               <th>state</th>
               <th>health</th>
               <th>last_error</th>
-              <th>操作</th>
+              <th>{{ t('triggerSources.fields.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -265,11 +277,11 @@
                 <div class="table-actions table-actions--wrap">
                   <Button v-if="!source.enabled" size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="setTriggerSourceEnabled(source, true)">
                     <Power :size="14" />
-                    启用
+                    {{ t('triggerSources.actions.enable') }}
                   </Button>
                   <Button v-else size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="setTriggerSourceEnabled(source, false)">
                     <PowerOff :size="14" />
-                    停用
+                    {{ t('triggerSources.actions.disable') }}
                   </Button>
                   <Button size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="refreshTriggerSourceHealth(source)">
                     <Activity :size="14" />
@@ -277,7 +289,7 @@
                   </Button>
                   <Button size="sm" variant="danger" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="deleteTriggerSource(source)">
                     <Trash2 :size="14" />
-                    删除
+                    {{ t('triggerSources.actions.delete') }}
                   </Button>
                 </div>
               </td>
@@ -304,6 +316,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow } from '@lucide/vue'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -360,7 +373,7 @@ interface MappingRow {
 
 interface ProtocolTemplateOption {
   templateId: ProtocolTemplateId
-  displayName: string
+  displayNameKey: string
   triggerKind: string
   defaultEndpoint: string
   endpointLabel: string
@@ -376,10 +389,12 @@ interface ProtocolTemplateOption {
   defaultIdempotencyKeyPath: string
 }
 
+const { t } = useI18n()
+
 const protocolTemplates: ProtocolTemplateOption[] = [
   {
     templateId: 'zeromq-image-trigger',
-    displayName: 'ZeroMQ 图片触发',
+    displayNameKey: 'triggerSources.protocols.zeromqImage',
     triggerKind: 'zeromq-topic',
     defaultEndpoint: 'tcp://127.0.0.1:5555',
     endpointLabel: 'bind_endpoint',
@@ -396,7 +411,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
   },
   {
     templateId: 'webhook-json',
-    displayName: 'Webhook JSON',
+    displayNameKey: 'triggerSources.protocols.webhookJson',
     triggerKind: 'webhook',
     defaultEndpoint: '/workflow-triggers/{trigger_source_id}',
     endpointLabel: 'webhook path',
@@ -413,43 +428,43 @@ const protocolTemplates: ProtocolTemplateOption[] = [
   },
 ]
 
-const enableAfterCreateOptions: SelectOption[] = [
-  { label: '否，先保存配置', value: 'false' },
-  { label: '是，创建后启用', value: 'true' },
-]
+const enableAfterCreateOptions = computed<SelectOption[]>(() => [
+  { label: t('triggerSources.options.saveDisabled'), value: 'false' },
+  { label: t('triggerSources.options.createEnabled'), value: 'true' },
+])
 
-const submitModeOptions: SelectOption[] = [
-  { label: 'sync', value: 'sync', description: '等待 WorkflowRun 完成并返回结果' },
-  { label: 'async', value: 'async', description: '只创建 WorkflowRun，之后查询结果' },
-]
+const submitModeOptions = computed<SelectOption[]>(() => [
+  { label: 'sync', value: 'sync', description: t('triggerSources.options.submitSync') },
+  { label: 'async', value: 'async', description: t('triggerSources.options.submitAsync') },
+])
 
-const resultModeOptions: SelectOption[] = [
-  { label: 'sync-reply', value: 'sync-reply', description: '同步协议回包直接带结果' },
-  { label: 'accepted-then-query', value: 'accepted-then-query', description: '回包带 run id，调用方之后查询' },
-  { label: 'event-only', value: 'event-only', description: '只记录事件，不要求结果回包' },
-]
+const resultModeOptions = computed<SelectOption[]>(() => [
+  { label: 'sync-reply', value: 'sync-reply', description: t('triggerSources.options.resultSyncReply') },
+  { label: 'accepted-then-query', value: 'accepted-then-query', description: t('triggerSources.options.resultAccepted') },
+  { label: 'event-only', value: 'event-only', description: t('triggerSources.options.resultEventOnly') },
+])
 
-const ackPolicyOptions: SelectOption[] = [
-  { label: 'ack-after-run-finished', value: 'ack-after-run-finished', description: 'run 完成后确认' },
-  { label: 'ack-after-run-created', value: 'ack-after-run-created', description: 'run 创建后确认' },
-]
+const ackPolicyOptions = computed<SelectOption[]>(() => [
+  { label: 'ack-after-run-finished', value: 'ack-after-run-finished', description: t('triggerSources.options.ackFinished') },
+  { label: 'ack-after-run-created', value: 'ack-after-run-created', description: t('triggerSources.options.ackCreated') },
+])
 
-const workflowRunRecordModeOptions: SelectOption[] = [
-  { label: 'minimal', value: 'minimal', description: '只写最小状态记录，适合高速触发' },
-  { label: 'full', value: 'full', description: '保留完整 WorkflowRun 记录' },
-  { label: 'none', value: 'none', description: '同步调用不写 WorkflowRun 数据库记录' },
-]
+const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
+  { label: 'minimal', value: 'minimal', description: t('triggerSources.options.recordMinimal') },
+  { label: 'full', value: 'full', description: t('triggerSources.options.recordFull') },
+  { label: 'none', value: 'none', description: t('triggerSources.options.recordNone') },
+])
 
-const returnDiagnosticsOptions: SelectOption[] = [
-  { label: '否', value: 'false', description: '生产默认，不返回 timings 和 node_timings' },
-  { label: '是', value: 'true', description: '排查问题时返回耗时诊断' },
-]
+const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
+  { label: t('triggerSources.options.no'), value: 'false', description: t('triggerSources.options.diagnosticsOff') },
+  { label: t('triggerSources.options.yes'), value: 'true', description: t('triggerSources.options.diagnosticsOn') },
+])
 
-const mappingModeOptions: SelectOption[] = [
-  { label: '事件字段', value: 'source', description: '从外部事件 payload/metadata 中读取' },
-  { label: '固定值', value: 'static', description: '每次触发都传同一个值' },
-  { label: '不映射', value: 'skip', description: '这个 binding 不参与当前入口' },
-]
+const mappingModeOptions = computed<SelectOption[]>(() => [
+  { label: t('triggerSources.options.eventField'), value: 'source', description: t('triggerSources.options.eventFieldDescription') },
+  { label: t('triggerSources.options.staticValue'), value: 'static', description: t('triggerSources.options.staticValueDescription') },
+  { label: t('triggerSources.options.skip'), value: 'skip', description: t('triggerSources.options.skipDescription') },
+])
 
 const route = useRoute()
 const projectStore = useProjectStore()
@@ -497,20 +512,20 @@ const templateOutputById = computed(() => new Map((graph.value?.template_outputs
 const inferredImageBindings = computed(() => findImageInputBindings())
 const inferredImageBinding = computed(() => inferredImageBindings.value[0] ?? null)
 const inferredImageBindingText = computed(() => {
-  if (appInputBindings.value.length === 0) return '无需外部输入'
+  if (appInputBindings.value.length === 0) return t('triggerSources.values.noExternalInput')
   const bindingIds = inferredImageBindings.value.map((binding) => binding.binding_id)
-  return bindingIds.length > 0 ? bindingIds.join(' / ') : '未找到'
+  return bindingIds.length > 0 ? bindingIds.join(' / ') : t('triggerSources.values.notFound')
 })
 const inferredRequestBinding = computed(() => findRequestInputBinding())
 const runtimeOptions = computed<SelectOption[]>(() => [
-  { label: '选择 runtime', value: '' },
+  { label: t('triggerSources.placeholders.selectRuntime'), value: '' },
   ...runtimes.value.map((runtime) => ({
     label: `${runtime.display_name || runtime.workflow_runtime_id} / ${runtime.application_id} / ${runtime.observed_state}`,
     value: runtime.workflow_runtime_id,
   })),
 ])
 const protocolTemplateOptions = computed<SelectOption[]>(() => protocolTemplates.map((template) => ({
-  label: template.displayName,
+  label: protocolTemplateDisplayName(template),
   value: template.templateId,
   description: template.templateId === 'zeromq-image-trigger' ? 'multipart bytes -> payload.request_image_ref' : 'JSON body -> payload.request_image_base64',
 })))
@@ -545,6 +560,10 @@ const localBufferPoolOptions = computed<SelectOption[]>(() => configuredLocalBuf
   label: poolName,
   value: poolName,
 })))
+
+function protocolTemplateDisplayName(template: ProtocolTemplateOption): string {
+  return t(template.displayNameKey)
+}
 
 function readQueryString(name: string): string {
   const value = route.query[name]
@@ -821,7 +840,7 @@ function applyProtocolTemplateDefaults(): void {
   const runtimeSuffix = sanitizeIdentifier(runtime?.workflow_runtime_id || runtime?.application_id || 'runtime')
   const templatePrefix = template.templateId === 'webhook-json' ? 'webhook' : 'zeromq'
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
-  displayName.value = `${template.displayName} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
+  displayName.value = `${protocolTemplateDisplayName(template)} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = buildDefaultEndpoint(template)
   syncLocalBufferPoolSelection()
   resultBinding.value = findDefaultResultBinding()
@@ -841,7 +860,7 @@ async function loadSelectedRuntimeApp(): Promise<void> {
     workflowApp.value = await getWorkflowApp(selectedProjectId.value, runtime.application_id)
     applyProtocolTemplateDefaults()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '读取 Workflow App 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.loadAppFailed')
   }
 }
 
@@ -889,10 +908,10 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
     await loadSelectedRuntimeApp()
     const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
     if (failedIds.length > 0) {
-      errorMessage.value = `部分运行状态刷新失败，已标记为 unknown：${failedIds.join(', ')}`
+      errorMessage.value = t('triggerSources.messages.partialRuntimeRefreshFailed', { runtimeIds: failedIds.join(', ') })
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '读取 TriggerSource 页面失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.loadFailed')
   } finally {
     loading.value = false
   }
@@ -902,7 +921,7 @@ function buildTransportConfig(): WorkflowJsonObject {
   const normalizedEndpoint = endpoint.value.trim().replace('{trigger_source_id}', triggerSourceId.value.trim())
   if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
     const selectedPoolName = resolveLocalBufferPoolName()
-    if (!selectedPoolName) throw new Error('LocalBufferBroker pools 未配置，不能创建 ZeroMQ 图片 TriggerSource')
+    if (!selectedPoolName) throw new Error(t('triggerSources.messages.poolRequired'))
     return {
       bind_endpoint: normalizedEndpoint,
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
@@ -1012,7 +1031,7 @@ function formatError(value: unknown): string {
 }
 
 function formatLastTriggered(value: string | null | undefined): string {
-  return value ? formatSystemDateTime(value) : '未触发'
+  return value ? formatSystemDateTime(value) : t('triggerSources.values.neverTriggered')
 }
 
 async function submitTriggerSource(): Promise<void> {
@@ -1023,9 +1042,9 @@ async function submitTriggerSource(): Promise<void> {
   statusMessage.value = null
   try {
     const normalizedTriggerSourceId = triggerSourceId.value.trim()
-    if (!normalizedTriggerSourceId) throw new Error('trigger_source_id 不能为空')
+    if (!normalizedTriggerSourceId) throw new Error(t('triggerSources.messages.idRequired'))
     if (submitMode.value === 'async' && workflowRunRecordMode.value === 'none') {
-      throw new Error('async TriggerSource 不能使用 none 记录模式')
+      throw new Error(t('triggerSources.messages.asyncRecordNone'))
     }
     const triggerSource = await createWorkflowTriggerSource({
       projectId: selectedProjectId.value,
@@ -1061,9 +1080,9 @@ async function submitTriggerSource(): Promise<void> {
       },
     })
     await loadPage({ triggerSourceOffset: 0, preserveStatusMessage: true })
-    statusMessage.value = `已创建 TriggerSource：${triggerSource.trigger_source_id}`
+    statusMessage.value = t('triggerSources.messages.created', { triggerSourceId: triggerSource.trigger_source_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '创建 TriggerSource 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.createFailed')
   } finally {
     saving.value = false
   }
@@ -1077,9 +1096,12 @@ async function setTriggerSourceEnabled(source: WorkflowTriggerSource, enabled: b
       ? await enableWorkflowTriggerSource(source.trigger_source_id)
       : await disableWorkflowTriggerSource(source.trigger_source_id)
     replaceTriggerSource(updatedSource)
-    statusMessage.value = `${enabled ? '已启用' : '已停用'} TriggerSource：${source.trigger_source_id}`
+    statusMessage.value = t(
+      enabled ? 'triggerSources.messages.enabled' : 'triggerSources.messages.disabled',
+      { triggerSourceId: source.trigger_source_id },
+    )
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新 TriggerSource 状态失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.updateStateFailed')
   } finally {
     busyTriggerSourceId.value = null
   }
@@ -1094,16 +1116,16 @@ async function refreshTriggerSourceHealth(source: WorkflowTriggerSource): Promis
     source.health_summary = { ...health.health_summary } as WorkflowJsonObject
     source.last_error = health.last_error ?? null
     source.last_triggered_at = health.last_triggered_at ?? null
-    statusMessage.value = `已更新 TriggerSource health：${source.trigger_source_id}`
+    statusMessage.value = t('triggerSources.messages.healthUpdated', { triggerSourceId: source.trigger_source_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '读取 TriggerSource health 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.healthFailed')
   } finally {
     busyTriggerSourceId.value = null
   }
 }
 
 async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void> {
-  const confirmed = window.confirm(`删除 TriggerSource ${source.trigger_source_id}？`)
+  const confirmed = window.confirm(t('triggerSources.messages.confirmDelete', { triggerSourceId: source.trigger_source_id }))
   if (!confirmed) return
   busyTriggerSourceId.value = source.trigger_source_id
   errorMessage.value = null
@@ -1116,9 +1138,9 @@ async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void>
     const nextHealth = { ...healthByTriggerSourceId.value }
     delete nextHealth[source.trigger_source_id]
     healthByTriggerSourceId.value = nextHealth
-    statusMessage.value = `已删除 TriggerSource：${source.trigger_source_id}`
+    statusMessage.value = t('triggerSources.messages.deleted', { triggerSourceId: source.trigger_source_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除 TriggerSource 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.deleteFailed')
   } finally {
     busyTriggerSourceId.value = null
   }

@@ -3,20 +3,20 @@
     <header class="page-header">
       <div>
         <h1>{{ application?.display_name || applicationId }}</h1>
-        <p class="page-description">{{ application?.description || '查看应用合同、HTTP 调用、runtime 和触发入口。' }}</p>
+        <p class="page-description">{{ application?.description || t('workflowEditor.appDetail.description') }}</p>
       </div>
       <div class="page-actions">
         <Button variant="secondary" @click="openAppList">
           <ArrowLeft :size="16" />
-          返回列表
+          {{ t('workflowEditor.appDetail.actions.backToList') }}
         </Button>
         <Button variant="secondary" @click="openGraphEditor">
           <Workflow :size="16" />
-          打开图编辑
+          {{ t('workflowEditor.actions.openGraphEditor') }}
         </Button>
         <Button variant="secondary" :disabled="loading" @click="loadPage">
           <RefreshCw :size="16" />
-          刷新
+          {{ t('common.refresh') }}
         </Button>
       </div>
     </header>
@@ -24,13 +24,17 @@
     <InlineError :message="errorMessage" />
     <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
 
-    <EmptyState v-if="!loading && !workflowApp" title="未找到 Workflow App" description="应用可能已删除，或当前项目没有访问权限。" />
+    <EmptyState
+      v-if="!loading && !workflowApp"
+      :title="t('workflowEditor.appDetail.notFoundTitle')"
+      :description="t('workflowEditor.appDetail.notFoundDescription')"
+    />
 
     <template v-else-if="workflowApp">
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>应用摘要</h2>
+            <h2>{{ t('workflowEditor.appDetail.summaryTitle') }}</h2>
           </div>
           <StatusBadge :tone="selectedRuntime?.observed_state === 'running' ? 'success' : 'neutral'">
             {{ selectedRuntime?.observed_state ?? 'no-runtime' }}
@@ -67,7 +71,7 @@
           <table>
             <thead>
               <tr>
-                <th>方向</th>
+                <th>{{ t('workflowEditor.appDetail.fields.direction') }}</th>
                 <th>binding</th>
                 <th>payload type</th>
                 <th>required</th>
@@ -83,7 +87,7 @@
                   <span>{{ binding.config.endpoint || binding.metadata.endpoint || '-' }}</span>
                 </td>
                 <td>{{ getBindingPayloadTypeId(binding) || 'unknown' }}</td>
-                <td>{{ binding.required ? '必填' : '可选' }}</td>
+                <td>{{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }}</td>
                 <td>{{ binding.template_port_id }}</td>
                 <td>{{ binding.binding_kind }}</td>
               </tr>
@@ -95,36 +99,40 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>运行时</h2>
+            <h2>{{ t('workflowEditor.appDetail.runtimeTitle') }}</h2>
           </div>
           <div class="table-actions table-actions--wrap">
             <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy" @click="createRuntime">
               <Plus :size="16" />
-              创建 runtime
+              {{ t('workflowEditor.appDetail.actions.createRuntime') }}
             </Button>
             <Button
               v-if="canWriteWorkflows"
               variant="secondary"
               :disabled="!selectedRuntime || loading"
-              :title="selectedRuntime ? '为当前 runtime 添加触发入口' : '先创建或设为当前 runtime'"
+              :title="selectedRuntime ? t('workflowEditor.appDetail.actions.addTriggerForCurrent') : t('workflowEditor.appDetail.actions.selectRuntimeFirst')"
               @click="openSelectedRuntimeTriggerSource"
             >
               <PlugZap :size="16" />
-              添加触发入口
+              {{ t('workflowEditor.appDetail.actions.addTriggerSource') }}
             </Button>
           </div>
         </div>
         <div v-if="canWriteWorkflows" class="form-grid workflow-runtime-defaults">
           <label class="field">
-            <span>WorkflowRun 记录</span>
+            <span>{{ t('workflowEditor.appDetail.fields.workflowRunRecord') }}</span>
             <SelectField :model-value="runtimeWorkflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setRuntimeWorkflowRunRecordMode" />
           </label>
           <label class="field">
-            <span>返回诊断数据</span>
+            <span>{{ t('workflowEditor.appDetail.fields.returnDiagnostics') }}</span>
             <SelectField :model-value="runtimeReturnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setRuntimeReturnDiagnostics" />
           </label>
         </div>
-        <EmptyState v-if="runtimes.length === 0" title="还没有 WorkflowAppRuntime" description="创建 runtime 后可启动、查看 health，并作为 TriggerSource 的目标。" />
+        <EmptyState
+          v-if="runtimes.length === 0"
+          :title="t('workflowEditor.appDetail.emptyRuntimeTitle')"
+          :description="t('workflowEditor.appDetail.emptyRuntimeDescription')"
+        />
         <div v-else class="resource-table">
           <table>
             <thead>
@@ -133,7 +141,7 @@
                 <th>state</th>
                 <th>health / error</th>
                 <th>updated</th>
-                <th>操作</th>
+                <th>{{ t('workflowEditor.columns.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -156,12 +164,12 @@
                       size="sm"
                       variant="secondary"
                       :disabled="!canSelectRuntime(runtime)"
-                      :title="canSelectRuntime(runtime) ? '把该 runtime 设为当前操作对象' : '此 runtime 已是当前操作对象'"
+                      :title="canSelectRuntime(runtime) ? t('workflowEditor.appDetail.actions.setCurrentHint') : t('workflowEditor.appDetail.actions.currentHint')"
                       @click="selectRuntime(runtime.workflow_runtime_id)"
                     >
                       <CheckCircle2 v-if="runtime.workflow_runtime_id === selectedRuntimeId" :size="14" />
                       <MousePointer2 v-else :size="14" />
-                      {{ runtime.workflow_runtime_id === selectedRuntimeId ? '当前' : '设为当前' }}
+                      {{ runtime.workflow_runtime_id === selectedRuntimeId ? t('workflowEditor.appDetail.actions.current') : t('workflowEditor.appDetail.actions.setCurrent') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -172,7 +180,7 @@
                       @click="controlRuntime(runtime, 'start')"
                     >
                       <Play :size="14" />
-                      启动
+                      {{ t('workflowEditor.appDetail.actions.start') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -183,7 +191,7 @@
                       @click="controlRuntime(runtime, 'stop')"
                     >
                       <Square :size="14" />
-                      停止
+                      {{ t('workflowEditor.appDetail.actions.stop') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -194,17 +202,17 @@
                       @click="controlRuntime(runtime, 'restart')"
                     >
                       <RotateCw :size="14" />
-                      重启
+                      {{ t('workflowEditor.appDetail.actions.restart') }}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       :disabled="!canRefreshRuntimeHealth(runtime)"
-                      title="刷新该 runtime 的健康状态"
+                      :title="t('workflowEditor.appDetail.actions.refreshHealthHint')"
                       @click="refreshRuntimeHealth(runtime)"
                     >
                       <Activity :size="14" />
-                      健康检查
+                      {{ t('workflowEditor.appDetail.actions.healthCheck') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -215,7 +223,7 @@
                       @click="openTriggerSourceCreate(runtime.workflow_runtime_id)"
                     >
                       <PlugZap :size="14" />
-                      添加触发
+                      {{ t('workflowEditor.appDetail.actions.addTrigger') }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -226,7 +234,7 @@
                       @click="deleteRuntime(runtime)"
                     >
                       <Trash2 :size="14" />
-                      删除
+                      {{ t('workflowEditor.appDetail.actions.delete') }}
                     </Button>
                   </div>
                 </td>
@@ -239,13 +247,13 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>HTTP 调用</h2>
+            <h2>{{ t('workflowEditor.appDetail.httpTitle') }}</h2>
           </div>
           <StatusBadge :tone="selectedRuntime ? 'info' : 'neutral'">{{ selectedRuntime?.workflow_runtime_id ?? 'select-runtime' }}</StatusBadge>
         </div>
         <div v-if="selectedRuntime" class="form-grid">
           <div class="field field--wide">
-            <span>接口</span>
+            <span>{{ t('workflowEditor.appDetail.fields.endpoint') }}</span>
             <pre class="json-view">POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/runs
 POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/invoke
 GET /api/v1/workflows/runs/{workflow_run_id}
@@ -258,35 +266,43 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           <div class="table-actions table-actions--wrap field--wide">
             <Button variant="secondary" @click="resetSamplePayload">
               <Copy :size="16" />
-              生成示例输入
+              {{ t('workflowEditor.appDetail.actions.generateSample') }}
             </Button>
             <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy" @click="submitRun('async')">
               <Send :size="16" />
-              创建异步 run
+              {{ t('workflowEditor.appDetail.actions.createAsyncRun') }}
             </Button>
             <Button v-if="canWriteWorkflows" variant="secondary" :disabled="runtimeActionBusy" @click="submitRun('sync')">
               <Zap :size="16" />
-              同步 invoke
+              {{ t('workflowEditor.appDetail.actions.syncInvoke') }}
             </Button>
           </div>
         </div>
-        <EmptyState v-else title="未选择 runtime" description="创建或选择 runtime 后可查看 HTTP endpoint 和测试调用。" />
+        <EmptyState
+          v-else
+          :title="t('workflowEditor.appDetail.noRuntimeSelectedTitle')"
+          :description="t('workflowEditor.appDetail.noRuntimeSelectedDescription')"
+        />
       </section>
 
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>最近调用回执</h2>
+            <h2>{{ t('workflowEditor.appDetail.lastReceiptTitle') }}</h2>
           </div>
           <div class="table-actions table-actions--wrap">
             <Button variant="secondary" :disabled="fetchingLastRun || !lastRun" @click="refreshLastRun">
               <RefreshCw :size="16" />
-              获取异步结果
+              {{ t('workflowEditor.appDetail.actions.fetchAsyncResult') }}
             </Button>
             <StatusBadge :tone="lastRun ? runTone(lastRun.state) : 'neutral'">{{ lastRun?.state ?? 'none' }}</StatusBadge>
           </div>
         </div>
-        <EmptyState v-if="!lastRun" title="还没有本页发起的 WorkflowRun" description="通过上方 HTTP 调用面板发起后，会显示 run 状态、输出和错误摘要。" />
+        <EmptyState
+          v-if="!lastRun"
+          :title="t('workflowEditor.appDetail.emptyRunTitle')"
+          :description="t('workflowEditor.appDetail.emptyRunDescription')"
+        />
         <div v-else class="summary-grid">
           <div>
             <span>workflow_run_id</span>
@@ -311,9 +327,9 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           :status-code="lastRunResponseStatusCode"
           :body="lastRunResponseBody"
         />
-        <p v-else-if="lastRun" class="result-note">当前结果没有可渲染的 http_response.body，下面保留完整回执 JSON。</p>
+        <p v-else-if="lastRun" class="result-note">{{ t('workflowEditor.appDetail.noRenderableBody') }}</p>
         <details v-if="lastRun" class="result-details">
-          <summary>查看完整回执 JSON</summary>
+          <summary>{{ t('workflowEditor.appDetail.viewReceiptJson') }}</summary>
           <pre class="json-view">{{ lastRunReceiptText }}</pre>
         </details>
       </section>
@@ -321,20 +337,24 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
       <section class="resource-section">
         <div class="section-heading">
           <div>
-            <h2>触发入口</h2>
+            <h2>{{ t('workflowEditor.appDetail.triggerSourceTitle') }}</h2>
           </div>
           <Button
             v-if="canWriteWorkflows"
             variant="primary"
             :disabled="!selectedRuntime || loading"
-            :title="selectedRuntime ? '为当前 runtime 添加触发入口' : '先创建或设为当前 runtime'"
+            :title="selectedRuntime ? t('workflowEditor.appDetail.actions.addTriggerForCurrent') : t('workflowEditor.appDetail.actions.selectRuntimeFirst')"
             @click="openSelectedRuntimeTriggerSource"
           >
             <PlugZap :size="16" />
-            添加触发入口
+            {{ t('workflowEditor.appDetail.actions.addTriggerSource') }}
           </Button>
         </div>
-        <EmptyState v-if="relatedTriggerSources.length === 0" title="还没有 TriggerSource" description="从 runtime 上下文添加后，会按外部协议把事件映射到应用输入。" />
+        <EmptyState
+          v-if="relatedTriggerSources.length === 0"
+          :title="t('workflowEditor.appDetail.emptyTriggerTitle')"
+          :description="t('workflowEditor.appDetail.emptyTriggerDescription')"
+        />
         <div v-else class="resource-table">
           <table>
             <thead>
@@ -368,6 +388,7 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   Activity,
   ArrowLeft,
@@ -426,21 +447,22 @@ interface SelectOption {
   description?: string
 }
 
-const workflowRunRecordModeOptions: SelectOption[] = [
-  { label: 'full', value: 'full', description: '保留完整 WorkflowRun 记录' },
-  { label: 'minimal', value: 'minimal', description: '只写最小状态记录' },
-  { label: 'none', value: 'none', description: '同步调用不写 WorkflowRun 数据库记录' },
-]
-
-const returnDiagnosticsOptions: SelectOption[] = [
-  { label: '否', value: 'false', description: '生产默认，不返回 timings 和 node_timings' },
-  { label: '是', value: 'true', description: '排查问题时返回耗时诊断' },
-]
-
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
+
+const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
+  { label: 'full', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
+  { label: 'minimal', value: 'minimal', description: t('workflowEditor.appDetail.options.recordMinimal') },
+  { label: 'none', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
+])
+
+const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
+  { label: t('workflowEditor.appDetail.options.no'), value: 'false', description: t('workflowEditor.appDetail.options.diagnosticsOff') },
+  { label: t('workflowEditor.appDetail.options.yes'), value: 'true', description: t('workflowEditor.appDetail.options.diagnosticsOn') },
+])
 
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -594,10 +616,10 @@ function resetSamplePayload(): void {
 
 function parseInputBindings(): WorkflowJsonObject {
   const parsedValue = JSON.parse(runtimePayloadText.value || '{}') as unknown
-  if (!isRecord(parsedValue)) throw new Error('input_bindings 必须是 JSON object')
+  if (!isRecord(parsedValue)) throw new Error(t('workflowEditor.appDetail.messages.inputBindingsObject'))
   const candidate = parsedValue.input_bindings
   if (candidate !== undefined) {
-    if (!isRecord(candidate)) throw new Error('input_bindings 必须是 JSON object')
+    if (!isRecord(candidate)) throw new Error(t('workflowEditor.appDetail.messages.inputBindingsObject'))
     validateInputBindingPayloads(candidate)
     return candidate
   }
@@ -610,7 +632,7 @@ function validateInputBindingPayloads(inputBindingPayloads: Record<string, unkno
     if (!Object.prototype.hasOwnProperty.call(inputBindingPayloads, binding.binding_id)) continue
     const payload = inputBindingPayloads[binding.binding_id]
     if (payload === null || payload === undefined) {
-      if (binding.required) throw new Error(`${binding.binding_id} 是必填输入，不能为 null`)
+      if (binding.required) throw new Error(t('workflowEditor.appDetail.messages.requiredInputNull', { bindingId: binding.binding_id }))
       continue
     }
     const payloadTypeId = getBindingPayloadTypeId(binding)
@@ -621,45 +643,45 @@ function validateInputBindingPayloads(inputBindingPayloads: Record<string, unkno
 
 function validateImageBase64BindingPayload(bindingId: string, payload: unknown): void {
   if (!isRecord(payload)) {
-    throw new Error(`${bindingId} 必须是 image-base64.v1 对象，例如 {"image_base64":"<base64>","media_type":"image/png"}`)
+    throw new Error(t('workflowEditor.appDetail.messages.imageBase64Object', { bindingId }))
   }
   const imageBase64 = payload.image_base64
   if (typeof imageBase64 !== 'string' || !imageBase64.trim()) {
-    throw new Error(`${bindingId} 缺少有效 image_base64 字段`)
+    throw new Error(t('workflowEditor.appDetail.messages.imageBase64Missing', { bindingId }))
   }
 }
 
 function validateImageRefBindingPayload(bindingId: string, payload: unknown): void {
   if (!isRecord(payload)) {
-    throw new Error(`${bindingId} 必须是 image-ref.v1 对象，例如 {"transport_kind":"storage","object_key":"workflows/inputs/sample.png"}`)
+    throw new Error(t('workflowEditor.appDetail.messages.imageRefObject', { bindingId }))
   }
   const transportKind = payload.transport_kind
   if (transportKind === undefined || transportKind === null || transportKind === '') {
     const objectKey = payload.object_key
     if (typeof objectKey !== 'string' || !objectKey.trim()) {
-      throw new Error(`${bindingId} 缺少有效 object_key 字段`)
+      throw new Error(t('workflowEditor.appDetail.messages.objectKeyMissing', { bindingId }))
     }
     return
   }
   if (transportKind === 'storage') {
     const objectKey = payload.object_key
     if (typeof objectKey !== 'string' || !objectKey.trim()) {
-      throw new Error(`${bindingId} 的 storage 输入缺少有效 object_key 字段`)
+      throw new Error(t('workflowEditor.appDetail.messages.storageObjectKeyMissing', { bindingId }))
     }
   } else if (transportKind === 'memory') {
     const imageHandle = payload.image_handle
     if (typeof imageHandle !== 'string' || !imageHandle.trim()) {
-      throw new Error(`${bindingId} 的 memory 输入缺少有效 image_handle 字段`)
+      throw new Error(t('workflowEditor.appDetail.messages.memoryHandleMissing', { bindingId }))
     }
   } else if (transportKind === 'buffer') {
     const bufferRef = payload.buffer_ref
     if (typeof bufferRef !== 'string' || !bufferRef.trim()) {
-      throw new Error(`${bindingId} 的 buffer 输入缺少有效 buffer_ref 字段`)
+      throw new Error(t('workflowEditor.appDetail.messages.bufferRefMissing', { bindingId }))
     }
   } else if (transportKind === 'frame') {
     const frameRef = payload.frame_ref
     if (typeof frameRef !== 'string' || !frameRef.trim()) {
-      throw new Error(`${bindingId} 的 frame 输入缺少有效 frame_ref 字段`)
+      throw new Error(t('workflowEditor.appDetail.messages.frameRefMissing', { bindingId }))
     }
   }
 }
@@ -724,38 +746,42 @@ function canDeleteRuntime(runtime: WorkflowAppRuntime): boolean {
 }
 
 function startRuntimeTitle(runtime: WorkflowAppRuntime): string {
-  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
-  if (isRuntimeRunning(runtime)) return 'runtime 已在运行'
-  if (isRuntimeStarting(runtime)) return 'runtime 正在启动或已提交启动请求'
-  if (isRuntimeStopping(runtime)) return 'runtime 正在停止，停止完成后再启动'
-  return '启动该 runtime'
+  if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (isRuntimeRunning(runtime)) return t('workflowEditor.appDetail.hints.runtimeRunning')
+  if (isRuntimeStarting(runtime)) return t('workflowEditor.appDetail.hints.runtimeStarting')
+  if (isRuntimeStopping(runtime)) return t('workflowEditor.appDetail.hints.runtimeStoppingBeforeStart')
+  return t('workflowEditor.appDetail.hints.startRuntime')
 }
 
 function stopRuntimeTitle(runtime: WorkflowAppRuntime): string {
-  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
-  if (runtime.observed_state === 'stopping') return 'runtime 正在停止'
-  if (!canStopRuntime(runtime)) return 'runtime 未运行，无需停止'
-  return '停止该 runtime'
+  if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (runtime.observed_state === 'stopping') return t('workflowEditor.appDetail.hints.runtimeStopping')
+  if (!canStopRuntime(runtime)) return t('workflowEditor.appDetail.hints.runtimeNotRunning')
+  return t('workflowEditor.appDetail.hints.stopRuntime')
 }
 
 function restartRuntimeTitle(runtime: WorkflowAppRuntime): string {
-  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
-  if (!isRuntimeRunning(runtime)) return '只有 running 状态的 runtime 才能重启'
-  return '重启该 runtime'
+  if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (!isRuntimeRunning(runtime)) return t('workflowEditor.appDetail.hints.restartRunningOnly')
+  return t('workflowEditor.appDetail.hints.restartRuntime')
 }
 
 function addTriggerTitle(runtime: WorkflowAppRuntime): string {
-  if (!canWriteWorkflows.value) return '当前账号没有创建触发入口权限'
-  if (!runtime.workflow_runtime_id) return '缺少 runtime id'
-  return isRuntimeRunning(runtime) ? '为该 runtime 添加触发入口' : '为该 runtime 添加触发入口，启动后生效'
+  if (!canWriteWorkflows.value) return t('workflowEditor.appDetail.hints.noTriggerPermission')
+  if (!runtime.workflow_runtime_id) return t('workflowEditor.appDetail.hints.runtimeIdMissing')
+  return isRuntimeRunning(runtime)
+    ? t('workflowEditor.appDetail.hints.addTrigger')
+    : t('workflowEditor.appDetail.hints.addTriggerAfterStart')
 }
 
 function deleteRuntimeTitle(runtime: WorkflowAppRuntime): string {
   const triggerSourceCount = runtimeTriggerSourceCount(runtime)
-  if (isRuntimeBusy()) return '当前有 runtime 操作未完成'
-  if (isRuntimeRunning(runtime) || runtime.observed_state === 'starting' || runtime.observed_state === 'stopping') return '先停止 runtime 后再删除'
-  if (triggerSourceCount > 0) return `先删除 ${triggerSourceCount} 个绑定的 TriggerSource 后再删除 runtime`
-  return '删除该 runtime'
+  if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (isRuntimeRunning(runtime) || runtime.observed_state === 'starting' || runtime.observed_state === 'stopping') {
+    return t('workflowEditor.appDetail.hints.stopBeforeDelete')
+  }
+  if (triggerSourceCount > 0) return t('workflowEditor.appDetail.hints.deleteTriggersFirst', { count: triggerSourceCount })
+  return t('workflowEditor.appDetail.hints.deleteRuntime')
 }
 
 function replaceRuntime(updatedRuntime: WorkflowAppRuntime): void {
@@ -850,10 +876,10 @@ async function loadPage(): Promise<void> {
     resetSamplePayload()
     const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
     if (failedIds.length > 0) {
-      errorMessage.value = `部分运行状态刷新失败，已标记为 unknown：${failedIds.join(', ')}`
+      errorMessage.value = t('workflowEditor.appDetail.messages.partialRefreshFailed', { runtimeIds: failedIds.join(', ') })
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '读取 Workflow App 详情失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.loadFailed')
   } finally {
     loading.value = false
   }
@@ -875,9 +901,9 @@ async function createRuntime(): Promise<void> {
     })
     replaceRuntime(runtime)
     selectedRuntimeId.value = runtime.workflow_runtime_id
-    statusMessage.value = `已创建 runtime：${runtime.workflow_runtime_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.runtimeCreated', { runtimeId: runtime.workflow_runtime_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '创建 runtime 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.createRuntimeFailed')
   } finally {
     busyRuntimeId.value = null
   }
@@ -898,9 +924,12 @@ async function controlRuntime(runtime: WorkflowAppRuntime, action: RuntimeContro
     }
     const updatedRuntime = await actions[action](runtime.workflow_runtime_id)
     replaceRuntime(updatedRuntime)
-    statusMessage.value = `runtime ${action} 已提交：${updatedRuntime.workflow_runtime_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.runtimeActionSubmitted', {
+      action,
+      runtimeId: updatedRuntime.workflow_runtime_id,
+    })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : `runtime ${action} 失败`
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.runtimeActionFailed', { action })
   } finally {
     busyRuntimeId.value = null
   }
@@ -913,9 +942,9 @@ async function refreshRuntimeHealth(runtime: WorkflowAppRuntime): Promise<void> 
   try {
     const updatedRuntime = await getWorkflowAppRuntimeHealth(runtime.workflow_runtime_id)
     replaceRuntime(updatedRuntime)
-    statusMessage.value = `已更新 runtime health：${updatedRuntime.workflow_runtime_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.healthUpdated', { runtimeId: updatedRuntime.workflow_runtime_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '读取 runtime health 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.healthFailed')
   } finally {
     busyRuntimeId.value = null
   }
@@ -923,7 +952,7 @@ async function refreshRuntimeHealth(runtime: WorkflowAppRuntime): Promise<void> 
 
 async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
   if (!workflowApp.value || !canDeleteRuntime(runtime)) return
-  const confirmed = window.confirm(`删除 runtime ${runtime.workflow_runtime_id}？`)
+  const confirmed = window.confirm(t('workflowEditor.appDetail.messages.confirmDeleteRuntime', { runtimeId: runtime.workflow_runtime_id }))
   if (!confirmed) return
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
@@ -932,9 +961,9 @@ async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
     workflowApp.value.runtimes = workflowApp.value.runtimes.filter((item) => item.workflow_runtime_id !== runtime.workflow_runtime_id)
     workflowApp.value.primaryRuntime = workflowApp.value.runtimes.find((item) => item.observed_state === 'running') ?? workflowApp.value.runtimes[0] ?? null
     selectedRuntimeId.value = workflowApp.value.primaryRuntime?.workflow_runtime_id ?? workflowApp.value.runtimes[0]?.workflow_runtime_id ?? ''
-    statusMessage.value = `已删除 runtime：${runtime.workflow_runtime_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.runtimeDeleted', { runtimeId: runtime.workflow_runtime_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除 runtime 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.deleteRuntimeFailed')
   } finally {
     busyRuntimeId.value = null
   }
@@ -944,7 +973,7 @@ async function submitRun(mode: RunSubmitMode): Promise<void> {
   const runtime = selectedRuntime.value
   if (!runtime || !canWriteWorkflows.value) return
   if (mode === 'async' && readRuntimeWorkflowRunRecordMode(runtime) === 'none') {
-    errorMessage.value = '当前 runtime 使用 none 记录模式，不能提交异步 run'
+    errorMessage.value = t('workflowEditor.appDetail.messages.asyncRunRecordNone')
     return
   }
   busyRuntimeId.value = runtime.workflow_runtime_id
@@ -955,9 +984,9 @@ async function submitRun(mode: RunSubmitMode): Promise<void> {
       ? await createWorkflowRun(runtime.workflow_runtime_id, { inputBindings, executionMetadata: { source: 'web-ui-app-detail' } })
       : await invokeWorkflowAppRuntime(runtime.workflow_runtime_id, { inputBindings, executionMetadata: { source: 'web-ui-app-detail' } })
     lastRun.value = run
-    statusMessage.value = `已创建 WorkflowRun：${run.workflow_run_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.runCreated', { runId: run.workflow_run_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '调用 runtime 失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.invokeFailed')
   } finally {
     busyRuntimeId.value = null
   }
@@ -970,9 +999,9 @@ async function refreshLastRun(): Promise<void> {
   errorMessage.value = null
   try {
     lastRun.value = await getWorkflowRun(run.workflow_run_id)
-    statusMessage.value = `已获取 WorkflowRun 结果：${run.workflow_run_id}`
+    statusMessage.value = t('workflowEditor.appDetail.messages.runFetched', { runId: run.workflow_run_id })
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '获取 WorkflowRun 结果失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.fetchRunFailed')
   } finally {
     fetchingLastRun.value = false
   }

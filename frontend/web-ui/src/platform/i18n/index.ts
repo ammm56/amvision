@@ -24,8 +24,19 @@ export function setI18nLocale(locale: SupportedLocale): void {
   globalScope.locale.value = locale
 }
 
-export function translate(key: string): string {
-  return i18n.global.t(key)
+export function translate(key: string, params?: Record<string, string | number>): string {
+  return params ? i18n.global.t(key, params) : i18n.global.t(key)
+}
+
+export function useTranslation(): {
+  t: (key: string, params?: Record<string, string | number>) => string
+} {
+  return {
+    t(key, params) {
+      void i18n.global.locale.value
+      return translate(key, params)
+    },
+  }
 }
 
 export { defaultLocale, isSupportedLocale, supportedLocaleOptions, type SupportedLocale } from './locales'

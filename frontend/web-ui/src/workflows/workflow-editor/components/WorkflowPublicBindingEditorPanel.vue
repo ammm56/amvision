@@ -6,7 +6,11 @@
       </div>
       <StatusBadge tone="info">{{ bindings.length }}</StatusBadge>
     </div>
-    <EmptyState v-if="bindings.length === 0" title="暂无公开接口" description="右键节点端口后选择公开为应用输入或应用输出。" />
+    <EmptyState
+      v-if="bindings.length === 0"
+      :title="t('workflowEditor.editor.emptyPublicBindings')"
+      :description="t('workflowEditor.editor.emptyPublicBindingsHint')"
+    />
     <section
       v-for="binding in bindings"
       :key="`public-binding-editor-${binding.direction}-${binding.binding_id}`"
@@ -17,11 +21,11 @@
         <small>{{ readEndpointText(binding) }}</small>
       </div>
       <label class="workflow-graph-preview-field">
-        <span>公开 id</span>
+        <span>{{ t('workflowEditor.editor.publicId') }}</span>
         <input :value="binding.binding_id" @change="emit('update-binding-id', binding, $event)" />
       </label>
       <label class="workflow-graph-preview-field">
-        <span>显示名称</span>
+        <span>{{ t('workflowEditor.editor.displayName') }}</span>
         <input :value="readDisplayName(binding)" @input="emit('update-display-name', binding, $event)" />
       </label>
       <label class="workflow-graph-preview-field">
@@ -34,7 +38,7 @@
       </label>
       <label v-if="binding.direction === 'input'" class="workflow-graph-public-binding-editor__checkbox">
         <input type="checkbox" :checked="binding.required" @change="emit('update-required', binding, $event)" />
-        <span>必填输入</span>
+        <span>{{ t('workflowEditor.editor.requiredInput') }}</span>
       </label>
       <div class="workflow-graph-inspector-row">
         <span>payload type</span>
@@ -42,7 +46,7 @@
       </div>
       <Button variant="danger" type="button" @click="emit('delete-binding', binding)">
         <Trash2 :size="16" />
-        删除公开接口
+        {{ t('workflowEditor.editor.deletePublicBinding') }}
       </Button>
     </section>
   </div>
@@ -50,12 +54,15 @@
 
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import type { FlowApplicationBinding } from '../types'
+
+const { t } = useTranslation()
 
 type SelectValue = string | number | boolean | null
 

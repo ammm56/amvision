@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphInput, WorkflowGraphOutput } from '../types'
 
@@ -63,7 +64,7 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
       edgeId: null,
       boundaryKind: null,
     })
-    options.setStatusMessage('已删除节点')
+    options.setStatusMessage(translate('workflowEditor.feedback.nodeDeleted'))
     return true
   }
 
@@ -72,7 +73,7 @@ export function useWorkflowGraphDeletion<NodeView extends WorkflowDeletionGraphN
     options.graphEdges.value = options.graphEdges.value.filter((edge) => edge.edge_id !== edgeId)
     options.clearTransientUi()
     options.setSelection({ nodeId: null, edgeId: null, boundaryKind: null })
-    options.setStatusMessage('已删除连线')
+    options.setStatusMessage(translate('workflowEditor.feedback.edgeDeleted'))
     return true
   }
 

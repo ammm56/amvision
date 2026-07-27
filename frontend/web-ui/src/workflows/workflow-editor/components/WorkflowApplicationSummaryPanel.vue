@@ -1,15 +1,15 @@
 <template>
   <div class="workflow-graph-inspector-body">
     <div class="workflow-graph-inspector-row">
-      <span>应用</span>
+      <span>{{ t('workflowEditor.editor.application') }}</span>
       <strong>{{ applicationId }}</strong>
     </div>
     <div class="workflow-graph-inspector-row">
-      <span>应用输入</span>
+      <span>{{ t('workflowEditor.editor.applicationInputs') }}</span>
       <strong>{{ templateInputText || emptyText }}</strong>
     </div>
     <div class="workflow-graph-inspector-row">
-      <span>应用输出</span>
+      <span>{{ t('workflowEditor.editor.applicationOutputs') }}</span>
       <strong>{{ templateOutputText || emptyText }}</strong>
     </div>
     <div v-if="previewRunText" class="workflow-graph-inspector-row">
@@ -20,6 +20,8 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 defineProps<{
   applicationId: string
   templateInputText: string
@@ -27,4 +29,6 @@ defineProps<{
   emptyText: string
   previewRunText: string | null
 }>()
+
+const { t } = useI18n()
 </script>

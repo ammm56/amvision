@@ -12,27 +12,42 @@ const localeAliases: Record<string, string[]> = {
 }
 
 export function resolveNodeDefinitionDisplayName(definition: NodeDefinition, locale: SupportedLocale): string {
-  return resolveLocalizedText(readNodeMetadataLocalization(definition.metadata, 'display_name'), definition.display_name, locale)
+  return resolveLocalizedText(
+    readNodeMetadataLocalization(definition.metadata, 'display_name'),
+    definition.display_name,
+    locale,
+    humanizeIdentifier(definition.node_type_id),
+  )
 }
 
 export function resolveNodeDefinitionDescription(definition: NodeDefinition, locale: SupportedLocale): string {
-  return resolveLocalizedText(readNodeMetadataLocalization(definition.metadata, 'description'), definition.description, locale)
+  return resolveLocalizedText(readNodeMetadataLocalization(definition.metadata, 'description'), definition.description, locale, '')
 }
 
 export function resolveNodePortDisplayName(port: NodePortDefinition, locale: SupportedLocale): string {
-  return resolveLocalizedText(readNodeMetadataLocalization(port.metadata, 'display_name'), port.display_name, locale) || port.name
+  return resolveLocalizedText(
+    readNodeMetadataLocalization(port.metadata, 'display_name'),
+    port.display_name,
+    locale,
+    humanizeIdentifier(port.name),
+  ) || port.name
 }
 
 export function resolveNodePortDescription(port: NodePortDefinition, locale: SupportedLocale): string {
-  return resolveLocalizedText(readNodeMetadataLocalization(port.metadata, 'description'), port.description, locale)
+  return resolveLocalizedText(readNodeMetadataLocalization(port.metadata, 'description'), port.description, locale, '')
 }
 
 export function resolveNodeParameterDisplayName(field: NodeParameterUiField, locale: SupportedLocale): string {
-  return resolveLocalizedText(readParameterSchemaLocalization(field, 'title'), field.display_name, locale) || field.parameter_name
+  return resolveLocalizedText(
+    readParameterSchemaLocalization(field, 'title'),
+    field.display_name,
+    locale,
+    humanizeIdentifier(field.parameter_name),
+  ) || field.parameter_name
 }
 
 export function resolveNodeParameterDescription(field: NodeParameterUiField, locale: SupportedLocale): string {
-  return resolveLocalizedText(readParameterSchemaLocalization(field, 'description'), field.description, locale)
+  return resolveLocalizedText(readParameterSchemaLocalization(field, 'description'), field.description, locale, '')
 }
 
 function readNodeMetadataLocalization(metadata: WorkflowJsonObject, key: 'display_name' | 'description'): unknown {
@@ -51,25 +66,32 @@ function readParameterSchemaLocalization(field: NodeParameterUiField, key: 'titl
   return localization[key]
 }
 
-function resolveLocalizedText(localizedValue: unknown, fallbackValue: unknown, locale: SupportedLocale): string {
+function resolveLocalizedText(
+  localizedValue: unknown,
+  fallbackValue: unknown,
+  locale: SupportedLocale,
+  nonChineseFallback = '',
+): string {
   const localizedMap = readLocalizedTextMap(localizedValue)
   for (const candidateLocale of buildLocaleFallbackChain(locale)) {
     const localizedText = normalizeText(localizedMap[candidateLocale])
     if (localizedText) return localizedText
   }
   const fallbackText = normalizeText(fallbackValue)
-  if (fallbackText) return fallbackText
-  for (const localizedText of Object.values(localizedMap)) {
-    const normalizedText = normalizeText(localizedText)
-    if (normalizedText) return normalizedText
+  if (locale === 'zh-CN') {
+    if (fallbackText) return fallbackText
+    for (const localizedText of Object.values(localizedMap)) {
+      const normalizedText = normalizeText(localizedText)
+      if (normalizedText) return normalizedText
+    }
+    return ''
   }
-  return ''
+  return fallbackText && !containsHan(fallbackText) ? fallbackText : nonChineseFallback
 }
 
 function buildLocaleFallbackChain(locale: SupportedLocale): string[] {
   const chain = [locale, ...(localeAliases[locale] ?? [])]
   if (locale !== 'en-US') chain.push('en-US', 'en')
-  if (locale !== 'zh-CN') chain.push('zh-CN', 'zh')
   return [...new Set(chain)]
 }
 
@@ -85,6 +107,18 @@ function readLocalizedTextMap(value: unknown): LocalizedTextMap {
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function containsHan(value: string): boolean {
+  return /[\u3400-\u9fff]/u.test(value)
+}
+
+function humanizeIdentifier(value: string): string {
+  const leaf = value.split('.').filter(Boolean).at(-1) || value
+  return leaf
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+    .trim()
 }
 
 function isWorkflowJsonObject(value: unknown): value is WorkflowJsonObject {

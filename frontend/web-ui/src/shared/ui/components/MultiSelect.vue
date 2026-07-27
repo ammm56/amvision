@@ -9,7 +9,7 @@
       @keydown.escape.prevent="close"
       @keydown.down.prevent="open = true"
     >
-      <span v-if="selectedOptions.length === 0" class="ui-multi-select__placeholder">{{ placeholder }}</span>
+      <span v-if="selectedOptions.length === 0" class="ui-multi-select__placeholder">{{ resolvedPlaceholder }}</span>
       <span v-else class="ui-multi-select__chips">
         <span v-for="option in selectedOptions" :key="optionKey(option.value)" class="ui-multi-select__chip">
           {{ option.label }}
@@ -43,6 +43,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 type MultiSelectValue = string
 
@@ -60,11 +61,12 @@ const props = withDefaults(
     disabled?: boolean
   }>(),
   {
-    placeholder: '请选择',
+    placeholder: '',
     disabled: false,
   },
 )
 
+const { t } = useTranslation()
 const emit = defineEmits<{
   'update:modelValue': [value: MultiSelectValue[]]
   change: [value: MultiSelectValue[]]
@@ -74,6 +76,7 @@ const rootElement = ref<HTMLElement | null>(null)
 const open = ref(false)
 
 const selectedOptions = computed(() => props.options.filter((option) => props.modelValue.includes(option.value)))
+const resolvedPlaceholder = computed(() => props.placeholder || t('common.selectPlaceholder'))
 
 function optionKey(value: MultiSelectValue): string {
   return `string:${value}`

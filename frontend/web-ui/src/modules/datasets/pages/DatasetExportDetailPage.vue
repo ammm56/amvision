@@ -7,14 +7,14 @@
       <div class="page-actions">
         <ButtonLink to="/datasets">
           <ArrowLeft :size="16" />
-          返回数据集页
+          {{ t('datasetExportDetail.actions.backToDatasets') }}
         </ButtonLink>
         <ButtonLink
           v-if="detail?.task_id"
           :to="`/tasks/${detail.task_id}`"
         >
           <Activity :size="16" />
-          任务状态
+          {{ t('datasetExportDetail.actions.taskStatus') }}
         </ButtonLink>
         <Button
           v-if="detail"
@@ -23,7 +23,7 @@
           @click="packageCurrentExport"
         >
           <PackageCheck :size="16" />
-          打包
+          {{ t('datasetExportDetail.actions.package') }}
         </Button>
         <Button
           v-if="detail"
@@ -32,7 +32,7 @@
           @click="downloadCurrentExport"
         >
           <Download :size="16" />
-          下载
+          {{ t('datasetExportDetail.actions.download') }}
         </Button>
         <Button
           v-if="detail"
@@ -41,7 +41,7 @@
           @click="deleteDialogOpen = true"
         >
           <Trash2 :size="16" />
-          删除导出记录
+          {{ t('datasetExportDetail.actions.delete') }}
         </Button>
         <Button variant="secondary" :disabled="loading" @click="loadDetail">
           <RefreshCw :size="16" />
@@ -55,43 +55,43 @@
     <section v-if="detail" class="resource-section">
       <div class="section-heading">
         <div>
-          <h2>导出摘要</h2>
+          <h2>{{ t('datasetExportDetail.summaryTitle') }}</h2>
         </div>
         <StatusBadge :tone="statusTone(detail.status)">{{ detail.status }}</StatusBadge>
       </div>
       <div class="summary-grid">
         <div>
-          <span>Project id</span>
+          <span>{{ t('datasetExportDetail.fields.projectId') }}</span>
           <strong>{{ detail.project_id }}</strong>
         </div>
         <div>
-          <span>Dataset id</span>
+          <span>{{ t('datasetExportDetail.fields.datasetId') }}</span>
           <strong>{{ detail.dataset_id }}</strong>
         </div>
         <div>
-          <span>DatasetVersion id</span>
+          <span>{{ t('datasetExportDetail.fields.datasetVersionId') }}</span>
           <strong>{{ detail.dataset_version_id }}</strong>
         </div>
         <div>
-          <span>任务类型</span>
+          <span>{{ t('datasetExportDetail.fields.taskType') }}</span>
           <strong>{{ detail.task_type }}</strong>
         </div>
       </div>
       <div class="summary-grid">
         <div>
-          <span>导出格式</span>
+          <span>{{ t('datasetExportDetail.fields.exportFormat') }}</span>
           <strong>{{ detail.format_id }}</strong>
         </div>
         <div>
-          <span>样本数</span>
+          <span>{{ t('datasetExportDetail.fields.sampleCount') }}</span>
           <strong>{{ detail.sample_count }}</strong>
         </div>
         <div>
-          <span>包含 test split</span>
-          <strong>{{ detail.include_test_split ? '是' : '否' }}</strong>
+          <span>{{ t('datasetExportDetail.fields.includeTestSplit') }}</span>
+          <strong>{{ detail.include_test_split ? t('datasetExportDetail.values.yes') : t('datasetExportDetail.values.no') }}</strong>
         </div>
         <div>
-          <span>创建时间</span>
+          <span>{{ t('datasetExportDetail.fields.createdAt') }}</span>
           <strong>{{ formatSystemDateTime(detail.created_at) }}</strong>
         </div>
       </div>
@@ -101,23 +101,23 @@
     <section v-if="detail" class="operation-grid">
       <article class="resource-section">
         <div>
-          <h2>下载包</h2>
+          <h2>{{ t('datasetExportDetail.packageTitle') }}</h2>
         </div>
         <div class="summary-list">
           <div>
-            <span>文件名</span>
+            <span>{{ t('datasetExportDetail.fields.fileName') }}</span>
             <strong>{{ detail.package_file_name || '-' }}</strong>
           </div>
           <div>
-            <span>文件 object key</span>
+            <span>{{ t('datasetExportDetail.fields.fileObjectKey') }}</span>
             <strong>{{ detail.package_object_key || '-' }}</strong>
           </div>
           <div>
-            <span>文件大小</span>
+            <span>{{ t('datasetExportDetail.fields.fileSize') }}</span>
             <strong>{{ detail.package_size ?? '-' }}</strong>
           </div>
           <div>
-            <span>打包时间</span>
+            <span>{{ t('datasetExportDetail.fields.packagedAt') }}</span>
             <strong>{{ detail.packaged_at ? formatSystemDateTime(detail.packaged_at) : '-' }}</strong>
           </div>
         </div>
@@ -125,23 +125,23 @@
 
       <article class="resource-section">
         <div>
-          <h2>运行磁盘数据</h2>
+          <h2>{{ t('datasetExportDetail.runtimeDataTitle') }}</h2>
         </div>
         <div class="summary-list">
           <div>
-            <span>导出目录</span>
+            <span>{{ t('datasetExportDetail.fields.exportPath') }}</span>
             <strong>{{ detail.export_path || '-' }}</strong>
           </div>
           <div>
-            <span>Manifest</span>
+            <span>{{ t('datasetExportDetail.fields.manifest') }}</span>
             <strong>{{ detail.manifest_object_key || '-' }}</strong>
           </div>
           <div>
-            <span>Queue task</span>
+            <span>{{ t('datasetExportDetail.fields.queueTask') }}</span>
             <strong>{{ detail.queue_task_id || '-' }}</strong>
           </div>
           <div>
-            <span>Task</span>
+            <span>{{ t('datasetExportDetail.fields.task') }}</span>
             <RouterLink v-if="detail.task_id" :to="`/tasks/${detail.task_id}`">{{ detail.task_id }}</RouterLink>
             <strong v-else>-</strong>
           </div>
@@ -150,21 +150,21 @@
 
       <article class="resource-section">
         <div>
-          <h2>Split 列表</h2>
+          <h2>{{ t('datasetExportDetail.splitListTitle') }}</h2>
         </div>
         <pre class="json-view">{{ splitNamesJson }}</pre>
       </article>
 
       <article class="resource-section">
         <div>
-          <h2>类别列表</h2>
+          <h2>{{ t('datasetExportDetail.categoryListTitle') }}</h2>
         </div>
         <pre class="json-view">{{ categoryNamesJson }}</pre>
       </article>
 
       <article class="resource-section">
         <div>
-          <h2>附加元数据</h2>
+          <h2>{{ t('datasetExportDetail.metadataTitle') }}</h2>
         </div>
         <pre class="json-view">{{ metadataJson }}</pre>
       </article>
@@ -254,7 +254,7 @@ async function loadDetail(): Promise<void> {
   try {
     detail.value = await getDatasetExportDetail(datasetExportId.value)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '数据集导出详情加载失败'
+    errorMessage.value = error instanceof Error ? error.message : t('datasetExportDetail.messages.loadFailed')
   } finally {
     loading.value = false
   }
@@ -269,7 +269,7 @@ async function packageCurrentExport(): Promise<void> {
     const packageResult = await packageDatasetExport(detail.value.dataset_export_id)
     detail.value = { ...detail.value, ...packageResult }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '数据集导出打包失败'
+    errorMessage.value = error instanceof Error ? error.message : t('datasetExportDetail.messages.packageFailed')
   } finally {
     packaging.value = false
   }
@@ -289,7 +289,7 @@ async function downloadCurrentExport(): Promise<void> {
     anchor.click()
     window.URL.revokeObjectURL(objectUrl)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '数据集导出下载失败'
+    errorMessage.value = error instanceof Error ? error.message : t('datasetExportDetail.messages.downloadFailed')
   } finally {
     downloading.value = false
   }
@@ -304,7 +304,7 @@ async function deleteCurrentExport(): Promise<void> {
     await deleteDatasetExport(detail.value.dataset_export_id)
     await router.push('/datasets')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '数据集导出删除失败'
+    errorMessage.value = error instanceof Error ? error.message : t('datasetExportDetail.messages.deleteFailed')
   } finally {
     deleting.value = false
     deleteDialogOpen.value = false

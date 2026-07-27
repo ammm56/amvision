@@ -68,6 +68,7 @@ export function useTrainingParameters(options: {
   selectedTaskType: Ref<ModelTaskType>
   resolvedTrainingModelType: ComputedRef<string>
   resolvedTrainingModelScale: ComputedRef<string>
+  translate: (key: string, params?: Record<string, string>) => string
 }) {
   const outputModelName = ref('')
   const lastSuggestedOutputModelName = ref('')
@@ -101,9 +102,12 @@ export function useTrainingParameters(options: {
   )
   const trainingModelParameterSectionTitle = computed(() => {
     if (!options.resolvedTrainingModelType.value) {
-      return '高级参数'
+      return options.translate('modelOps.trainingParameters.advanced')
     }
-    return `${options.selectedTaskType.value} / ${options.resolvedTrainingModelType.value} 高级参数`
+    return options.translate('modelOps.trainingParameters.advancedForModel', {
+      taskType: options.selectedTaskType.value,
+      modelType: options.resolvedTrainingModelType.value,
+    })
   })
 
   function buildSuggestedOutputModelName(

@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
 
 export type WorkflowGraphGroupState = 'enabled' | 'disabled' | 'mixed' | 'empty'
@@ -66,7 +67,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
   function toggleGroupCreateMode(): void {
     groupCreateMode.value = !groupCreateMode.value
     draftGroupRect.value = null
-    options.setStatusMessage(groupCreateMode.value ? '拖拽画布区域创建节点组' : null)
+    options.setStatusMessage(groupCreateMode.value ? translate('workflowEditor.feedback.dragToCreateGroup') : null)
   }
 
   function cancelTransientGroupOperations(): void {
@@ -108,14 +109,14 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     document.removeEventListener('mousemove', moveGroupCreate)
     document.removeEventListener('mouseup', stopGroupCreate)
     if (!rect || rect.width < minimumGroupWidth || rect.height < minimumGroupHeight) {
-      options.setStatusMessage('节点组区域太小，已取消创建')
+      options.setStatusMessage(translate('workflowEditor.feedback.groupTooSmall'))
       return
     }
     const group = createGraphGroup(rect)
     options.graphGroups.value = [...options.graphGroups.value, group]
     selectedGroupId.value = group.group_id
     syncGroupMemberships(group.group_id)
-    options.setStatusMessage(`已创建节点组：${group.name}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.groupCreated', { name: group.name }))
   }
 
   function selectGroup(groupId: string): void {
@@ -239,9 +240,14 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     }
     group.enabled = nextEnabled
     if (skippedNodeTitles.length > 0) {
-      options.setStatusMessage(`节点组已更新，跳过受保护节点：${skippedNodeTitles.join('、')}`)
+      options.setStatusMessage(translate('workflowEditor.feedback.groupUpdatedSkipped', {
+        nodes: skippedNodeTitles.join(translate('workflowEditor.feedback.listSeparator')),
+      }))
     } else {
-      options.setStatusMessage(`${group.name} 已${nextEnabled ? '启用' : '禁用'}`)
+      options.setStatusMessage(translate(
+        nextEnabled ? 'workflowEditor.feedback.groupEnabled' : 'workflowEditor.feedback.groupDisabled',
+        { name: group.name },
+      ))
     }
   }
 
@@ -253,9 +259,10 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     }
     selectedGroupId.value = group.group_id
     options.setStatusMessage(
-      group.locked
-        ? `已锁定节点组：${group.name}，组区域可用于拖动画布`
-        : `已解锁节点组：${group.name}，可移动和调整大小`,
+      translate(
+        group.locked ? 'workflowEditor.feedback.groupLocked' : 'workflowEditor.feedback.groupUnlocked',
+        { name: group.name },
+      ),
     )
   }
 
@@ -264,11 +271,11 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     if (!group) return
     const normalizedName = nextName.trim()
     if (!normalizedName) {
-      options.setErrorMessage('节点组名称不能为空')
+      options.setErrorMessage(translate('workflowEditor.feedback.groupNameRequired'))
       return
     }
     group.name = normalizedName
-    options.setStatusMessage(`已更新节点组名称：${normalizedName}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.groupNameUpdated', { name: normalizedName }))
   }
 
   function deleteGroup(groupId: string): void {
@@ -279,14 +286,14 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     if (groupDragState.value?.groupId === groupId) groupDragState.value = null
     if (groupResizeState.value?.groupId === groupId) groupResizeState.value = null
     removeDocumentListeners()
-    options.setStatusMessage(`已删除节点组：${group.name}，组内节点不受影响`)
+    options.setStatusMessage(translate('workflowEditor.feedback.groupDeleted', { name: group.name }))
   }
 
   function updateGroupColor(groupId: string, color: string): void {
     const group = options.graphGroups.value.find((item) => item.group_id === groupId)
     if (!group) return
     group.color = color
-    options.setStatusMessage(`已更新节点组颜色：${group.name}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.groupColorUpdated', { name: group.name }))
   }
 
   function readGroupState(group: WorkflowGraphGroup): WorkflowGraphGroupState {
@@ -312,7 +319,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     const groupIndex = options.graphGroups.value.length + 1
     return {
       group_id: createUniqueGroupId(groupIndex),
-      name: `节点组 ${groupIndex}`,
+      name: translate('workflowEditor.feedback.defaultGroupName', { index: groupIndex }),
       enabled: true,
       rect: {
         x: Math.round(rect.x),

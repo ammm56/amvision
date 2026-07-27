@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { translate } from '@/platform/i18n'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
 import { createWorkflowPreviewRun } from '../services/workflow-runtime.service'
@@ -51,10 +52,10 @@ export function useWorkflowEditorActions() {
       await validateWorkflowTemplate(input.template)
       await validateWorkflowApplication(input.projectId, input.application, input.template)
       const result = await saveWorkflowApp(input)
-      statusMessage.value = '已保存'
+      statusMessage.value = translate('workflowEditor.feedback.saved')
       return result
     } catch (error) {
-      errorMessage.value = readErrorMessage(error, '保存失败')
+      errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.saveFailed'))
       return null
     } finally {
       saving.value = false
@@ -86,7 +87,7 @@ export function useWorkflowEditorActions() {
       statusMessage.value = null
       return previewRun
     } catch (error) {
-      errorMessage.value = readErrorMessage(error, 'Preview run 失败')
+      errorMessage.value = readErrorMessage(error, translate('workflowEditor.feedback.previewRunFailed'))
       return null
     } finally {
       previewing.value = false

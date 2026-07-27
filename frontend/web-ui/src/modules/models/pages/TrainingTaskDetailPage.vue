@@ -14,7 +14,7 @@
           :to="`/tasks/${task.task_id}`"
         >
           <Activity :size="16" />
-          任务状态
+          {{ t('trainingDetail.actions.taskStatus') }}
         </ButtonLink>
         <Button
           v-if="task && canDeleteTask"
@@ -299,7 +299,7 @@ function actionIcon(action: ModelTrainingTaskActionName) {
 
 async function refreshPage(): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
   const currentTaskType = taskType.value
@@ -329,7 +329,7 @@ async function refreshPage(): Promise<void> {
 
 async function runAction(action: ModelTrainingTaskActionName): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
   if (action === 'delete') {
@@ -355,7 +355,7 @@ function openDeleteDialog(): void {
 
 async function deleteCurrentTask(): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
   const currentTaskType = taskType.value
@@ -374,11 +374,11 @@ async function deleteCurrentTask(): Promise<void> {
 
 async function registerCheckpoint(): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
   if (taskType.value !== 'detection') {
-    errorMessage.value = 'register-model-version 当前只用于 detection 训练任务'
+    errorMessage.value = t('trainingDetail.messages.registerDetectionOnly')
     return
   }
   const currentTaskType = taskType.value
@@ -396,7 +396,7 @@ async function registerCheckpoint(): Promise<void> {
 
 async function selectOutputFile(fileName: string): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('trainingDetail.messages.taskTypeRequired')
     return
   }
   const currentTaskType = taskType.value

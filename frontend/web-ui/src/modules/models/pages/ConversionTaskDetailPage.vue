@@ -14,7 +14,7 @@
           :to="`/tasks/${task.task_id}`"
         >
           <Activity :size="16" />
-          任务状态
+          {{ t('conversionDetail.actions.taskStatus') }}
         </ButtonLink>
         <Button
           v-if="task && canWriteTasks"
@@ -212,7 +212,7 @@ function isTerminalTask(state: string): boolean {
 
 async function loadDetail(): Promise<void> {
   if (!taskType.value) {
-    errorMessage.value = 'task_type 不能为空'
+    errorMessage.value = t('conversionDetail.messages.taskTypeRequired')
     return
   }
   loading.value = true

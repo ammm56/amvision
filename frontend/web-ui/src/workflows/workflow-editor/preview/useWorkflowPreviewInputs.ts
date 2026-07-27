@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { FlowApplicationBinding } from '../types'
 
 export type PreviewSelectValue = string | number | boolean | null
@@ -27,10 +28,12 @@ export interface PreviewInputState {
   plainValue: string
 }
 
-export const previewImageRefTransportKindOptions: PreviewSelectOption[] = [
-  { label: 'ObjectStore 图片', value: 'storage' },
-  { label: '运行内存 image handle', value: 'memory' },
-]
+export function getPreviewImageRefTransportKindOptions(): PreviewSelectOption[] {
+  return [
+    { label: translate('workflowEditor.feedback.objectStoreImage'), value: 'storage' },
+    { label: translate('workflowEditor.feedback.memoryImageHandle'), value: 'memory' },
+  ]
+}
 
 interface WorkflowPreviewInputsOptions {
   getBindingPayloadTypeId: (binding: FlowApplicationBinding) => string
@@ -246,7 +249,7 @@ function readFileAsBase64(file: File): Promise<string> {
       const commaIndex = result.indexOf(',')
       resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
     }
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片文件失败'))
+    reader.onerror = () => reject(reader.error ?? new Error(translate('workflowEditor.feedback.readImageFailed')))
     reader.readAsDataURL(file)
   })
 }

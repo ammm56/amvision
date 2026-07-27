@@ -37,15 +37,19 @@
       r="6"
       @mousedown.stop.prevent="emit('startEdgeTargetReconnect', $event, handle.edgeId)"
     >
-      <title>拖到新的输入端口重新连接</title>
+      <title>{{ t('workflowEditor.editor.reconnectEdge') }}</title>
     </circle>
     <path v-if="showDraft" class="workflow-graph-link workflow-graph-link--draft" :d="draftPath" />
   </svg>
 </template>
 
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+
 import type { WorkflowEdgeHandleView } from '../canvas/useWorkflowEdgeHandles'
 import type { WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
+
+const { t } = useTranslation()
 
 defineProps<{
   links: WorkflowGraphLinkView[]

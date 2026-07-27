@@ -3,8 +3,8 @@
     <button
       type="button"
       class="workflow-graph-minimap__close"
-      title="隐藏小地图"
-      aria-label="隐藏小地图"
+      :title="t('workflowEditor.editor.hideMinimap')"
+      :aria-label="t('workflowEditor.editor.hideMinimap')"
       @mousedown.stop
       @click.stop="emit('toggle')"
     >
@@ -25,8 +25,8 @@
     v-else
     type="button"
     class="workflow-graph-minimap-toggle"
-    title="显示小地图"
-    aria-label="显示小地图"
+    :title="t('workflowEditor.editor.showMinimap')"
+    :aria-label="t('workflowEditor.editor.showMinimap')"
     @mousedown.stop
     @click.stop="emit('toggle')"
   >
@@ -36,6 +36,7 @@
 
 <script setup lang="ts">
 import { Map as MapIcon, X } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 interface WorkflowMinimapNode {
   nodeId: string
@@ -53,4 +54,6 @@ const emit = defineEmits<{
   'start-navigation': [event: MouseEvent]
   toggle: []
 }>()
+
+const { t } = useI18n()
 </script>

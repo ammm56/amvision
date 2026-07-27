@@ -99,7 +99,7 @@
       <section class="training-parameter-section field field--wide">
         <div class="training-parameter-section__header">
           <div>
-            <h3>通用参数</h3>
+            <h3>{{ t('modelOps.trainingParameters.common') }}</h3>
           </div>
         </div>
         <div class="form-grid training-parameter-grid">
@@ -132,7 +132,7 @@
             <input :value="evaluationInterval" type="number" min="1" @input="emitNumber('update:evaluationInterval', $event)" />
           </label>
           <label class="field">
-            <span>训练设备</span>
+            <span>{{ t('modelOps.trainingParameters.device') }}</span>
             <SelectField
               :model-value="trainingDevice"
               :options="trainingDeviceOptions"
@@ -146,9 +146,9 @@
           <div v-if="trainingTaskSupportsWarmStart" class="field field--wide">
             <span>{{ t('modelOps.fields.warmStart') }}</span>
             <div class="training-inline-summary" :class="{ 'is-empty': !warmStartModelVersionId.trim() }">
-              <strong>{{ warmStartModelVersionId || '当前未选择继续训练来源版本' }}</strong>
+              <strong>{{ warmStartModelVersionId || t('modelOps.trainingParameters.noWarmStart') }}</strong>
               <span>
-                {{ warmStartModelVersionId ? '已选择继续训练来源版本。' : '未选择时从当前基础模型默认版本开始训练。' }}
+                {{ warmStartModelVersionId ? t('modelOps.trainingParameters.warmStartSelected') : t('modelOps.trainingParameters.warmStartDefault') }}
               </span>
               <div class="training-inline-summary__actions">
                 <Button
@@ -175,7 +175,7 @@
           <div>
             <h3>{{ trainingModelParameterSectionTitle }}</h3>
           </div>
-          <span class="training-parameter-section__hint">已按当前模型预填默认值，可按需修改</span>
+          <span class="training-parameter-section__hint">{{ t('modelOps.trainingParameters.defaultsHint') }}</span>
         </div>
         <div class="form-grid training-parameter-grid">
           <label
@@ -184,11 +184,11 @@
             class="field"
             :class="{ 'field--wide': field.wide }"
           >
-            <span>{{ field.label }}</span>
+            <span>{{ localizeTrainingParameterLabel(field) }}</span>
             <SelectField
               v-if="field.inputKind === 'select'"
               :model-value="trainingModelParameterValues[field.key] ?? ''"
-              :options="field.options ?? []"
+              :options="localizeTrainingParameterOptions(field)"
               @update:model-value="$emit('update:trainingModelParameterValue', field.key, normalizeSelectValue($event))"
             />
             <input
@@ -211,7 +211,7 @@
       >
         <div class="training-parameter-section__header">
           <div>
-            <h3>数据增强参数</h3>
+            <h3>{{ t('modelOps.trainingParameters.augmentation') }}</h3>
           </div>
           <label class="training-augmentation-switch">
             <input
@@ -219,11 +219,11 @@
               :checked="trainingAugmentationEnabled"
               @change="emitBoolean('update:trainingAugmentationEnabled', $event)"
             />
-            <span>{{ trainingAugmentationEnabled ? '启用数据增强' : '已关闭数据增强' }}</span>
+            <span>{{ trainingAugmentationEnabled ? t('modelOps.trainingParameters.augmentationEnabled') : t('modelOps.trainingParameters.augmentationDisabled') }}</span>
           </label>
         </div>
         <p class="training-parameter-section__description">
-          默认开启。关闭后提交训练时会按当前模型任务关闭对应的数据增强。
+          {{ t('modelOps.trainingParameters.augmentationDescription') }}
         </p>
         <div
           class="form-grid training-parameter-grid"
@@ -235,11 +235,11 @@
             class="field"
             :class="{ 'field--wide': field.wide }"
           >
-            <span>{{ field.label }}</span>
+            <span>{{ localizeTrainingParameterLabel(field) }}</span>
             <SelectField
               v-if="field.inputKind === 'select'"
               :model-value="trainingModelParameterValues[field.key] ?? ''"
-              :options="field.options ?? []"
+              :options="localizeTrainingParameterOptions(field)"
               :disabled="!trainingAugmentationEnabled"
               @update:model-value="$emit('update:trainingModelParameterValue', field.key, normalizeSelectValue($event))"
             />
@@ -360,7 +360,27 @@ const emit = defineEmits<{
   'update:trainingAugmentationEnabled': [value: boolean]
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+function humanizeParameterToken(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b(hsv|nms|dfl|ema|giou|ce|cpu|gpu|rfdetr)\b/gi, (token) => token.toUpperCase())
+    .replace(/^./, (character) => character.toUpperCase())
+}
+
+function localizeTrainingParameterLabel(field: TrainingParameterField): string {
+  return locale.value === 'zh-CN' ? field.label : humanizeParameterToken(field.key)
+}
+
+function localizeTrainingParameterOptions(field: TrainingParameterField): TrainingParameterFieldOption[] {
+  if (locale.value === 'zh-CN') return field.options ?? []
+  return (field.options ?? []).map((option) => {
+    if (option.value === 'true') return { ...option, label: t('modelOps.trainingParameters.enabled') }
+    if (option.value === 'false' || option.value === 'none') return { ...option, label: t('modelOps.trainingParameters.disabled') }
+    return { ...option, label: humanizeParameterToken(option.value) }
+  })
+}
 
 function normalizeSelectValue(value: SelectValue): string {
   return typeof value === 'string' ? value : String(value ?? '')

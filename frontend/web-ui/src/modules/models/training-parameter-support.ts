@@ -1,3 +1,4 @@
+import { translate } from '@/platform/i18n'
 import type { ModelTaskType } from './services/model.service'
 
 export type TrainingParameterInputKind = 'text' | 'number' | 'select'
@@ -768,7 +769,7 @@ export function validateTrainingModelLayerValues(
       return null
     }
     if (!minValue || !maxValue) {
-      return `${label} 需要同时填写最小值和最大值`
+      return translate('modelOps.trainingParameters.rangePairRequired', { label })
     }
     return null
   }

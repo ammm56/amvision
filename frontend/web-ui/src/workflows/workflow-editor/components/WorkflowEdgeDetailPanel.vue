@@ -14,16 +14,19 @@
     </div>
     <Button variant="danger" @click="emit('delete-edge')">
       <Trash2 :size="16" />
-      删除连线
+      {{ t('workflowEditor.editor.deleteEdge') }}
     </Button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 import type { WorkflowGraphEdge } from '../types'
+
+const { t } = useTranslation()
 
 defineProps<{
   edge: WorkflowGraphEdge

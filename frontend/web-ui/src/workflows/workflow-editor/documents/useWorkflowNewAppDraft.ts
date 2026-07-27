@@ -20,15 +20,16 @@ export interface WorkflowNewAppDraftOptions {
   isNewApp: ComputedRef<boolean>
   selectedProjectId: ComputedRef<string>
   readNodeCount: () => number
+  translate: (key: string, params?: Record<string, string>) => string
 }
 
 export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
-  const newWorkflowAppDraft = ref<NewWorkflowAppDraftState>(createNewWorkflowAppDraftState())
+  const newWorkflowAppDraft = ref<NewWorkflowAppDraftState>(createNewWorkflowAppDraftState(options.translate))
 
   const newWorkflowAppSaveBlocker = computed(() => readNewWorkflowAppSaveBlocker())
 
   function resetNewWorkflowAppDraft(): void {
-    newWorkflowAppDraft.value = createNewWorkflowAppDraftState()
+    newWorkflowAppDraft.value = createNewWorkflowAppDraftState(options.translate)
   }
 
   function updateNewWorkflowDraftField(field: keyof NewWorkflowAppDraftState, event: Event): void {
@@ -58,11 +59,11 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
   function readNewWorkflowAppSaveBlocker(): string | null {
     if (!options.isNewApp.value) return null
     const draft = newWorkflowAppDraft.value
-    if (!draft.displayName.trim()) return '填写应用名称后才能保存。'
-    if (!draft.applicationId.trim()) return '填写应用 id 后才能保存。'
-    if (!draft.graphId.trim()) return '填写图 id 后才能保存。'
-    if (!draft.graphVersion.trim()) return '填写图版本后才能保存。'
-    if (options.readNodeCount() === 0) return '至少添加一个节点后才能首次保存。'
+    if (!draft.displayName.trim()) return options.translate('workflowEditor.editor.saveBlockers.appName')
+    if (!draft.applicationId.trim()) return options.translate('workflowEditor.editor.saveBlockers.appId')
+    if (!draft.graphId.trim()) return options.translate('workflowEditor.editor.saveBlockers.graphId')
+    if (!draft.graphVersion.trim()) return options.translate('workflowEditor.editor.saveBlockers.graphVersion')
+    if (options.readNodeCount() === 0) return options.translate('workflowEditor.editor.saveBlockers.nodeRequired')
     return null
   }
 
@@ -84,7 +85,7 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       format_id: 'amvision.workflow-graph-template.v1',
       template_id: draft.graphId,
       template_version: draft.graphVersion,
-      display_name: `${draft.displayName || draft.graphId} 图`,
+      display_name: options.translate('workflowEditor.editor.graphDisplayName', { name: draft.displayName || draft.graphId }),
       description: draft.description.trim(),
       nodes: [],
       edges: [],
@@ -164,7 +165,7 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       ...template,
       template_id: draft.graphId.trim(),
       template_version: draft.graphVersion.trim(),
-      display_name: `${draft.displayName.trim() || draft.graphId.trim()} 图`,
+      display_name: options.translate('workflowEditor.editor.graphDisplayName', { name: draft.displayName.trim() || draft.graphId.trim() }),
       description: draft.description.trim(),
       metadata: { ...template.metadata, source: template.metadata.source ?? 'workflow-graph-editor' },
     }
@@ -212,11 +213,11 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
   }
 }
 
-function createNewWorkflowAppDraftState(): NewWorkflowAppDraftState {
+function createNewWorkflowAppDraftState(translate: WorkflowNewAppDraftOptions['translate']): NewWorkflowAppDraftState {
   const suffix = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)
   return {
     applicationId: `workflow-app-${suffix}`,
-    displayName: '新建应用',
+    displayName: translate('workflowEditor.editor.newTitle'),
     graphId: `workflow-graph-${suffix}`,
     graphVersion: '1.0.0',
     description: '',

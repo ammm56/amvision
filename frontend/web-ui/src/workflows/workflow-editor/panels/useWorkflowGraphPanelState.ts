@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import type { FlowApplicationBinding } from '../types'
 
@@ -15,7 +16,7 @@ export interface WorkflowGraphPanelStateOptions {
 export function useWorkflowGraphPanelState(options: WorkflowGraphPanelStateOptions) {
   function selectBoundaryBinding(kind: WorkflowBoundaryKind, binding: FlowApplicationBinding): void {
     options.selectApplicationBoundary(kind)
-    options.setStatusMessage(`已选择 ${binding.binding_id}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.selectedBinding', { id: binding.binding_id }))
   }
 
   function isMinimapNodeSelected(nodeId: string): boolean {

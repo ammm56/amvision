@@ -66,7 +66,7 @@
     <div class="workflow-graph-toolbar__actions">
       <Button :variant="groupCreateMode ? 'primary' : 'secondary'" :disabled="loading" @click="emit('toggleGroupCreateMode')">
         <BoxSelect :size="16" />
-        节点组
+        {{ t('workflowEditor.editor.nodeGroup') }}
       </Button>
       <Button variant="secondary" :disabled="loading" @click="emit('refresh')">
         <RefreshCw :size="16" />

@@ -22,7 +22,9 @@ const projectOptions = computed(() => {
     return [{ label: projectStore.selectedProjectId, value: projectStore.selectedProjectId }]
   }
   return projectStore.projects.map((project) => ({
-    label: project.display_name || project.project_id,
+    label: project.project_id === 'project-1' && ['默认项目', 'Default Project', '既定プロジェクト', '기본 프로젝트'].includes(project.display_name ?? '')
+      ? t('projects.defaultDisplayName')
+      : project.display_name || project.project_id,
     value: project.project_id,
   }))
 })

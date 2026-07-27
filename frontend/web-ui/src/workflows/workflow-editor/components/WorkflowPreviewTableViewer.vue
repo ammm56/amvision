@@ -5,9 +5,9 @@
         <div class="workflow-preview-table-viewer__toolbar">
           <div class="workflow-preview-table-viewer__title">
             <strong>{{ table.title }}</strong>
-            <span>{{ table.columns.length }} 列 / {{ table.rowCount ?? table.rows.length }} 行</span>
+            <span>{{ t('workflowEditor.editor.tableDimensions', { columns: table.columns.length, rows: table.rowCount ?? table.rows.length }) }}</span>
           </div>
-          <Button size="sm" variant="secondary" type="button" title="关闭" aria-label="关闭表格查看器" @click="emit('close')">
+          <Button size="sm" variant="secondary" type="button" :title="t('common.close')" :aria-label="t('workflowEditor.editor.closeTableViewer')" @click="emit('close')">
             <X :size="17" />
           </Button>
         </div>
@@ -20,8 +20,8 @@
           />
         </div>
         <div class="workflow-preview-table-viewer__status">
-          <span>已加载 {{ table.rows.length }} 行</span>
-          <span>总计 {{ table.rowCount ?? table.rows.length }} 行</span>
+          <span>{{ t('workflowEditor.editor.loadedRows', { count: table.rows.length }) }}</span>
+          <span>{{ t('workflowEditor.editor.totalRows', { count: table.rowCount ?? table.rows.length }) }}</span>
         </div>
       </div>
     </div>
@@ -30,10 +30,13 @@
 
 <script setup lang="ts">
 import { X } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 
 import WorkflowPreviewTable from './WorkflowPreviewTable.vue'
+
+const { t } = useTranslation()
 
 interface PreviewTableColumnView {
   key: string

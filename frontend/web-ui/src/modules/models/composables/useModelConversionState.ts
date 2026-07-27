@@ -1,5 +1,6 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import {
   createModelConversionTask,
   type ConversionTargetKey,
@@ -24,7 +25,7 @@ export function useModelConversionState(options: {
 
   async function submitConversion(): Promise<void> {
     if (!options.conversionModelType.value.trim()) {
-      options.setErrorMessage('model_type 不能为空')
+      options.setErrorMessage(translate('modelOps.messages.modelTypeRequired'))
       return
     }
     conversionSubmitting.value = true

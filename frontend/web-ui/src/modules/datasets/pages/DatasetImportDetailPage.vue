@@ -14,7 +14,7 @@
           :to="`/tasks/${detail.task_id}`"
         >
           <Activity :size="16" />
-          任务状态
+          {{ t('datasetImportDetail.actions.taskStatus') }}
         </ButtonLink>
         <Button
           v-if="detail"

@@ -7,39 +7,39 @@
     </button>
     <button v-if="contextMenu.port?.direction === 'input'" type="button" @click="emit('expose-app-input')">
       <Plus :size="15" />
-      公开为应用输入
+      {{ t('workflowEditor.editor.exposeAppInput') }}
     </button>
     <button v-if="contextMenu.port?.direction === 'output'" type="button" @click="emit('expose-app-output')">
       <Plus :size="15" />
-      公开为应用输出
+      {{ t('workflowEditor.editor.exposeAppOutput') }}
     </button>
     <button v-if="contextMenu.bindingId" type="button" @click="emit('delete-binding')">
       <Trash2 :size="15" />
-      删除公开接口
+      {{ t('workflowEditor.editor.deletePublicBinding') }}
     </button>
     <button v-if="contextMenu.nodeId" type="button" @click="emit('delete-node')">
       <Trash2 :size="15" />
-      删除节点
+      {{ t('workflowEditor.editor.deleteNode') }}
     </button>
     <button v-if="contextMenu.edgeId" type="button" @click="emit('delete-edge')">
       <Trash2 :size="15" />
-      删除连线
+      {{ t('workflowEditor.editor.deleteEdge') }}
     </button>
     <button v-if="contextMenu.boundaryKind" type="button" @click="emit('reset-boundary-position')">
       <RefreshCw :size="15" />
-      重置边界位置
+      {{ t('workflowEditor.editor.resetBoundaryPosition') }}
     </button>
     <button type="button" @click="emit('fit-view')">
       <MapIcon :size="15" />
-      定位全部节点
+      {{ t('workflowEditor.editor.fitView') }}
     </button>
     <button type="button" @click="emit('reset-view')">
       <RefreshCw :size="15" />
-      重置画布位置
+      {{ t('workflowEditor.editor.resetView') }}
     </button>
     <button type="button" @click="emit('toggle-minimap')">
       <MapIcon :size="15" />
-      {{ minimapVisible ? '隐藏小地图' : '显示小地图' }}
+      {{ minimapVisible ? t('workflowEditor.editor.hideMinimap') : t('workflowEditor.editor.showMinimap') }}
     </button>
     <button type="button" @click="emit('toggle-theme')">
       <Sun v-if="graphTheme === 'dark'" :size="15" />
@@ -59,6 +59,7 @@
 
 <script setup lang="ts">
 import { ChevronRight, Map as MapIcon, Moon, Play, Plus, RefreshCw, Save, Sun, Trash2 } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 type AppBoundaryKind = 'entry' | 'result'
 type PortDirection = 'input' | 'output'
@@ -110,4 +111,6 @@ const emit = defineEmits<{
   save: []
   preview: []
 }>()
+
+const { t } = useI18n()
 </script>

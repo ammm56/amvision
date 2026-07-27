@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowConnectionDraftState } from '../canvas/useWorkflowPortConnections'
 import type { NodeDefinition } from '../types'
 
@@ -81,7 +82,7 @@ export function useWorkflowNodePicker<NodeView extends WorkflowNodePickerNodeVie
     })
     options.graphNodes.value.push(graphNode)
     options.setSelection({ nodeId, edgeId: null, boundaryKind: null })
-    options.setStatusMessage('已添加节点')
+    options.setStatusMessage(translate('workflowEditor.feedback.nodeAdded'))
     return graphNode
   }
 

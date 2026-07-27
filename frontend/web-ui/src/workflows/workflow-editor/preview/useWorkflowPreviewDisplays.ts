@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import { readProjectObjectContentBlob, readWorkflowPreviewRunArtifactBlob } from '../services/workflow-runtime.service'
 import type { WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
@@ -210,13 +211,15 @@ export function useWorkflowPreviewDisplays() {
   function readPreviewNodeDisplayTooltip(display: PreviewNodeDisplay | null): string {
     if (!display) return ''
     if (display.kind === 'table') {
-      return display.rows.length > 0 ? '双击查看完整表格' : (display.statusText || '当前没有表格数据')
+      return display.rows.length > 0
+        ? translate('workflowEditor.feedback.openFullTable')
+        : (display.statusText || translate('workflowEditor.feedback.noTableData'))
     }
     if (display.kind === 'gallery') {
-      return display.galleryItems.length > 0 ? '双击查看首张预览图片' : display.statusText
+      return display.galleryItems.length > 0 ? translate('workflowEditor.feedback.openFirstGalleryImage') : display.statusText
     }
     if (display.kind === 'image') {
-      return display.image?.src ? '双击查看预览图片' : display.statusText
+      return display.image?.src ? translate('workflowEditor.feedback.openPreviewImage') : display.statusText
     }
     return display.statusText
   }
@@ -395,7 +398,9 @@ function buildTablePreviewNodeDisplay(displayOutput: PreviewNodeOutput): Preview
     title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'table',
     payload,
-    statusText: rows.length > 0 ? `${columns.length} 列 / ${rowCount} 行` : emptyText || `${columns.length} 列 / 0 行`,
+    statusText: rows.length > 0
+      ? translate('workflowEditor.editor.tableDimensions', { columns: columns.length, rows: rowCount })
+      : emptyText || translate('workflowEditor.editor.tableDimensions', { columns: columns.length, rows: 0 }),
     formattedValue: '',
     image: null,
     galleryItems: [],
@@ -432,7 +437,9 @@ async function buildGalleryPreviewNodeDisplay(
     title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'gallery',
     payload,
-    statusText: galleryItems.length > 0 ? `${galleryItems.length} 张 / 总计 ${totalCount} 张` : '图库没有可显示图片',
+    statusText: galleryItems.length > 0
+      ? translate('workflowEditor.feedback.galleryCount', { shown: galleryItems.length, total: totalCount })
+      : translate('workflowEditor.feedback.galleryEmpty'),
     formattedValue: '',
     image: galleryItems[0] ?? null,
     galleryItems,
@@ -455,7 +462,9 @@ function buildValuePreviewNodeDisplay(displayOutput: PreviewNodeOutput): Preview
     title: readDisplayText(payload.title) || displayOutput.nodeId,
     kind: 'value',
     payload,
-    statusText: readDisplayText(payload.status_text) || emptyText || (hasValue ? 'JSON 预览' : '未返回可显示 value'),
+    statusText: readDisplayText(payload.status_text)
+      || emptyText
+      || (hasValue ? translate('workflowEditor.feedback.jsonPreview') : translate('workflowEditor.feedback.noDisplayValue')),
     formattedValue: formatPreviewJson(previewValue) || 'null',
     image: null,
     galleryItems: [],
@@ -496,7 +505,9 @@ async function buildPreviewViewerImage(
     src: displayImage.src,
     displaySrc: displayImage.src,
     sourceSrc: sourceImage.src ?? displayImage.src,
-    statusText: displayImage.src ? '预览图已生成' : buildPreviewImageStatusText(displayImage.transportKind, displayImage.objectKey),
+    statusText: displayImage.src
+      ? translate('workflowEditor.feedback.previewImageReady')
+      : buildPreviewImageStatusText(displayImage.transportKind, displayImage.objectKey),
     transportKind: displayImage.transportKind,
     mediaType: sourceImage.mediaType || displayImage.mediaType,
     width: sourceWidth,
@@ -557,7 +568,7 @@ async function resolveStoragePreviewImageSrc(
     registerObjectUrl(objectUrl)
     return objectUrl
   } catch (error) {
-    console.warn('读取 Preview 图片失败', error)
+    console.warn(translate('workflowEditor.feedback.readPreviewImageFailed'), error)
     return null
   }
 }
@@ -573,8 +584,8 @@ async function readPreviewImageBlob(previewRun: WorkflowPreviewRun, objectKey: s
 }
 
 function buildPreviewImageStatusText(transportKind: string, objectKey: string | null): string {
-  if (transportKind === 'storage-ref' && objectKey) return '预览图引用暂不可读取'
-  return '本次 Preview 未返回可展示图片'
+  if (transportKind === 'storage-ref' && objectKey) return translate('workflowEditor.feedback.previewReferenceUnavailable')
+  return translate('workflowEditor.feedback.noPreviewImage')
 }
 
 function readPreviewImageOverlays(value: unknown): PreviewImageOverlay[] {

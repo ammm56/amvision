@@ -1,4 +1,5 @@
 import { apiRequest, apiRequestWithHeaders } from '@/shared/api/http-client'
+import { translate } from '@/platform/i18n'
 import { parsePaginationHeaders, type PaginatedResult } from '@/shared/api/pagination'
 import type { WorkflowJsonObject } from '@/workflows/workflow-editor/types'
 
@@ -183,12 +184,12 @@ export async function refreshWorkflowTriggerSourceStatuses(
           failed: false,
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : '读取 TriggerSource health 失败'
+        const message = error instanceof Error ? error.message : translate('triggerSources.messages.healthFailed')
         return {
           item: {
             ...source,
             observed_state: 'unknown',
-            last_error: `状态刷新失败：${message}`,
+            last_error: translate('triggerSources.messages.statusRefreshFailed', { message }),
             health_summary: { status_refresh_failed: true },
           },
           health: null,

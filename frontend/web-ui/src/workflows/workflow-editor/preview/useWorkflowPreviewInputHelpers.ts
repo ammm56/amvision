@@ -1,5 +1,6 @@
 import type { ComputedRef } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { FlowApplicationBinding, WorkflowJsonObject } from '../types'
 
 export interface WorkflowPreviewInputHelperOptions {
@@ -13,10 +14,18 @@ export interface WorkflowPreviewInputHelperOptions {
 export function useWorkflowPreviewInputHelpers(options: WorkflowPreviewInputHelperOptions) {
   function previewBindingHelpText(binding: FlowApplicationBinding): string {
     const payloadTypeId = options.getBindingPayloadTypeId(binding) || 'unknown'
-    const requiredText = binding.required ? '必填输入' : '可选输入'
-    if (payloadTypeId === 'image-base64.v1') return `${requiredText}。选择图片文件后会自动转换为 image-base64 payload。`
-    if (payloadTypeId === 'image-ref.v1') return `${requiredText}。可填写 ObjectStore object_key，或填写运行内存 image_handle。`
-    if (payloadTypeId === 'value.v1') return `${requiredText}。按字段名和值提交 value payload。`
+    const requiredText = binding.required
+      ? translate('workflowEditor.feedback.requiredInput')
+      : translate('workflowEditor.feedback.optionalInput')
+    if (payloadTypeId === 'image-base64.v1') {
+      return translate('workflowEditor.feedback.imageBase64InputHint', { requirement: requiredText })
+    }
+    if (payloadTypeId === 'image-ref.v1') {
+      return translate('workflowEditor.feedback.imageRefInputHint', { requirement: requiredText })
+    }
+    if (payloadTypeId === 'value.v1') {
+      return translate('workflowEditor.feedback.valueInputHint', { requirement: requiredText })
+    }
     return `${requiredText}。payload type: ${payloadTypeId}。`
   }
 

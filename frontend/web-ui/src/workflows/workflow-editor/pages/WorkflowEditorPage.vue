@@ -282,7 +282,7 @@ import { useWorkflowContextMenu, type WorkflowContextMenuState } from '../contex
 import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
 import { useWorkflowPreviewDisplays, type PreviewImageInteractionApplyEvent } from '../preview/useWorkflowPreviewDisplays'
 import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
-import { previewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
+import { getPreviewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
 import { useWorkflowDocumentBuilder } from '../documents/useWorkflowDocumentBuilder'
 import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
@@ -763,7 +763,7 @@ const graphNodePreviewDataHeight = 176
 const graphNodePreviewGalleryColumns = 2
 const graphNodePreviewGalleryItemHeight = 72
 const graphNodePreviewGalleryGap = 6
-const imageRefTransportKindOptions = previewImageRefTransportKindOptions
+const imageRefTransportKindOptions = computed(() => getPreviewImageRefTransportKindOptions())
 const graphNodeWidgetRowHeight = 34
 let imageInteractionPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 
@@ -826,6 +826,7 @@ const {
   isNewApp,
   selectedProjectId,
   readNodeCount: () => graphNodes.value.length,
+  translate: (key, params) => t(key, params ?? {}),
 })
 const {
   buildCurrentTemplate,
@@ -918,7 +919,7 @@ async function commitEditorTitleEdit(): Promise<void> {
   if (!app || !editorTitleEditable.value || editorTitleSaving.value) return
   const nextDisplayName = editorTitleDraft.value.trim()
   if (!nextDisplayName) {
-    errorMessage.value = '应用名称不能为空'
+    errorMessage.value = t('workflowEditor.feedback.appNameRequired')
     return
   }
   if (nextDisplayName === app.applicationDocument.application.display_name) {
@@ -940,9 +941,9 @@ async function commitEditorTitleEdit(): Promise<void> {
     }
     editorTitleDraft.value = ''
     editorTitleEditing.value = false
-    statusMessage.value = '应用名称已更新'
+    statusMessage.value = t('workflowEditor.feedback.appNameUpdated')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '应用名称更新失败'
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.feedback.appNameUpdateFailed')
   } finally {
     editorTitleSaving.value = false
   }
@@ -1262,7 +1263,7 @@ function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue):
 function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): boolean {
   const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
   if (!targetNode) {
-    errorMessage.value = `未找到取参目标节点：${event.nodeId}`
+    errorMessage.value = t('workflowEditor.feedback.interactionTargetNotFound', { nodeId: event.nodeId })
     return false
   }
   const updates = buildPreviewImageInteractionParameterUpdates(event, targetNode.node.parameters)
@@ -1272,7 +1273,7 @@ function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent):
       selectNode(event.nodeId)
       return true
     }
-    errorMessage.value = `${readGraphNodeTitle(targetNode)} 暂不支持当前图片取参结果`
+    errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
     return false
   }
   updateNodeParametersByName(targetNode, updates)

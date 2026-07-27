@@ -1,14 +1,14 @@
 <template>
   <div class="workflow-graph-preview-inputs">
     <div class="workflow-graph-panel__header">
-      <h2>Preview 输入</h2>
+      <h2>{{ t('workflowEditor.editor.previewInputs') }}</h2>
       <div class="workflow-graph-panel__tools">
         <InfoHint
           v-if="helpText"
           :text="helpText"
         />
         <StatusBadge :tone="blockingMessages.length ? 'danger' : 'success'">
-          {{ blockingMessages.length ? '缺少输入' : '就绪' }}
+          {{ blockingMessages.length ? t('workflowEditor.editor.missingInputs') : t('common.ready') }}
         </StatusBadge>
       </div>
     </div>
@@ -20,22 +20,24 @@
         </span>
         <div class="workflow-graph-preview-binding__tools">
           <InfoHint :text="readBindingHelpText(binding)" />
-          <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">{{ binding.required ? '必填' : '可选' }}</StatusBadge>
+          <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">
+            {{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }}
+          </StatusBadge>
         </div>
       </div>
       <template v-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'value.v1'">
         <div class="workflow-graph-value-fields">
           <label v-for="field in states[binding.binding_id].valueFields" :key="field.id" class="workflow-graph-value-field">
-            <input v-model="field.key" placeholder="字段名" />
-            <input v-model="field.value" placeholder="字段值" />
-            <button type="button" title="删除字段" @click="emit('remove-value-field', binding.binding_id, field.id)">
+            <input v-model="field.key" :placeholder="t('workflowEditor.editor.fieldName')" />
+            <input v-model="field.value" :placeholder="t('workflowEditor.editor.fieldValue')" />
+            <button type="button" :title="t('workflowEditor.editor.deleteField')" @click="emit('remove-value-field', binding.binding_id, field.id)">
               <Trash2 :size="14" />
             </button>
           </label>
         </div>
         <Button size="sm" variant="secondary" type="button" @click="emit('add-value-field', binding.binding_id)">
           <Plus :size="14" />
-          添加字段
+          {{ t('workflowEditor.editor.addField') }}
         </Button>
       </template>
       <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'image-base64.v1'">
@@ -43,16 +45,16 @@
           v-model="states[binding.binding_id].file"
           icon="image"
           accept="image/*"
-          label="图片文件"
+          :label="t('workflowEditor.editor.imageFile')"
         />
         <label class="workflow-graph-preview-field">
           <span>media_type</span>
-          <input v-model="states[binding.binding_id].mediaType" placeholder="自动使用文件类型" />
+          <input v-model="states[binding.binding_id].mediaType" :placeholder="t('workflowEditor.editor.autoFileType')" />
         </label>
       </template>
       <template v-else-if="states[binding.binding_id] && getPayloadTypeId(binding) === 'image-ref.v1'">
         <label class="workflow-graph-preview-field">
-          <span>引用来源</span>
+          <span>{{ t('workflowEditor.editor.referenceSource') }}</span>
           <SelectField
             :model-value="states[binding.binding_id].imageRefTransportKind"
             :options="imageRefTransportKindOptions"
@@ -74,8 +76,8 @@
       </template>
       <template v-else-if="states[binding.binding_id]">
         <label class="workflow-graph-preview-field">
-          <span>输入值</span>
-          <input v-model="states[binding.binding_id].plainValue" placeholder="按字符串值提交" />
+          <span>{{ t('workflowEditor.editor.inputValue') }}</span>
+          <input v-model="states[binding.binding_id].plainValue" :placeholder="t('workflowEditor.editor.submitAsString')" />
         </label>
       </template>
     </section>
@@ -84,6 +86,7 @@
 
 <script setup lang="ts">
 import { Plus, Trash2 } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
@@ -108,4 +111,6 @@ const emit = defineEmits<{
   'remove-value-field': [bindingId: string, fieldId: string]
   'set-image-ref-transport-kind': [bindingId: string, value: PreviewSelectValue]
 }>()
+
+const { t } = useI18n()
 </script>

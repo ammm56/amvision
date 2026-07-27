@@ -11,7 +11,7 @@
       <div class="runtime-body-viewer__group-heading">
         <div>
           <p class="runtime-body-viewer__kicker">Images</p>
-          <h3>图片结果</h3>
+          <h3>{{ t('workflowEditor.editor.imageResults') }}</h3>
         </div>
         <span>{{ displayImages.length }} item{{ displayImages.length > 1 ? 's' : '' }}</span>
       </div>
@@ -19,7 +19,7 @@
         <article v-for="image in displayImages" :key="image.path" class="runtime-body-viewer__image-card">
           <button type="button" class="runtime-body-viewer__image-preview" :disabled="!image.src" @click="openImage(image)">
             <img v-if="image.src" :src="image.src" :alt="image.title" />
-            <div v-else class="runtime-body-viewer__image-empty">当前结果只保留脱敏副本，无法直接预览原图。</div>
+            <div v-else class="runtime-body-viewer__image-empty">{{ t('workflowEditor.editor.redactedImageUnavailable') }}</div>
           </button>
           <div class="runtime-body-viewer__image-meta">
             <strong>{{ image.title }}</strong>
@@ -29,7 +29,7 @@
           </div>
           <div class="table-actions table-actions--wrap">
             <Button size="sm" variant="secondary" type="button" :disabled="!image.src" @click="openImage(image)">
-              查看图片
+              {{ t('workflowEditor.editor.viewImage') }}
             </Button>
           </div>
         </article>
@@ -40,7 +40,7 @@
       <div class="runtime-body-viewer__group-heading">
         <div>
           <p class="runtime-body-viewer__kicker">Videos</p>
-          <h3>视频结果</h3>
+          <h3>{{ t('workflowEditor.editor.videoResults') }}</h3>
         </div>
         <span>{{ displayVideos.length }} item{{ displayVideos.length > 1 ? 's' : '' }}</span>
       </div>
@@ -48,7 +48,7 @@
         <article v-for="video in displayVideos" :key="video.path" class="runtime-body-viewer__image-card">
           <div class="runtime-body-viewer__video-preview">
             <video v-if="video.src" :src="video.src" controls preload="metadata" />
-            <div v-else class="runtime-body-viewer__image-empty">当前视频结果没有可用的 object key，无法直接播放。</div>
+            <div v-else class="runtime-body-viewer__image-empty">{{ t('workflowEditor.editor.videoUnavailable') }}</div>
           </div>
           <div class="runtime-body-viewer__image-meta">
             <strong>{{ video.title }}</strong>
@@ -86,7 +86,7 @@
     </section>
 
     <details class="runtime-body-viewer__raw">
-      <summary>查看原始 response body JSON</summary>
+      <summary>{{ t('workflowEditor.editor.viewRawResponseJson') }}</summary>
       <pre class="json-view runtime-body-viewer__json">{{ rawJsonText }}</pre>
     </details>
 
@@ -96,11 +96,14 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { useTranslation } from '@/platform/i18n'
 
 import { createProjectFileObjectUrl } from '@/shared/api/file-url'
 import Button from '@/shared/ui/components/Button.vue'
 import ImageViewer from '@/shared/ui/components/ImageViewer.vue'
 import type { WorkflowJsonObject } from '../types'
+
+const { t } = useTranslation()
 
 interface ResponseImagePayload {
   transport_kind: string

@@ -1,7 +1,7 @@
 <template>
   <div class="workflow-graph-preview-inputs">
     <div class="workflow-graph-panel__header">
-      <h2>运行结果</h2>
+      <h2>{{ t('workflowEditor.editor.runResult') }}</h2>
       <StatusBadge :tone="badgeTone">
         {{ statusLabel }}
       </StatusBadge>
@@ -18,25 +18,25 @@
       </div>
       <div v-if="previewRun.state === 'failed'" class="workflow-graph-preview-result workflow-graph-preview-result--error">
         <div class="workflow-graph-inspector-row">
-          <span>失败消息</span>
+          <span>{{ t('workflowEditor.editor.failureMessage') }}</span>
           <strong>{{ failureMessage }}</strong>
         </div>
         <div v-if="failureNodeLabel" class="workflow-graph-inspector-row">
-          <span>失败节点</span>
+          <span>{{ t('workflowEditor.editor.failureNode') }}</span>
           <strong>{{ failureNodeLabel }}</strong>
         </div>
         <div v-if="failureLocation" class="workflow-graph-inspector-row">
-          <span>执行位置</span>
+          <span>{{ t('workflowEditor.editor.executionLocation') }}</span>
           <strong>{{ failureLocation }}</strong>
         </div>
         <div v-if="failureDetailMessage && failureDetailMessage !== failureMessage" class="workflow-graph-inspector-row">
-          <span>底层错误</span>
+          <span>{{ t('workflowEditor.editor.underlyingError') }}</span>
           <strong>{{ failureDetailMessage }}</strong>
         </div>
         <pre
           v-if="failureDetailsJson"
           class="json-view"
-          @dblclick.stop="emit('open-json', '失败详情', failureDetails, failureDetailMessage || failureMessage)"
+          @dblclick.stop="emit('open-json', t('workflowEditor.editor.failureDetails'), failureDetails, failureDetailMessage || failureMessage)"
         >{{ failureDetailsJson }}</pre>
       </div>
       <div v-if="httpResponse" class="workflow-graph-preview-result">
@@ -50,15 +50,19 @@
         >{{ httpResponseBodyJson || httpResponseJson }}</pre>
       </div>
       <div v-else-if="previewRun.state !== 'failed'" class="workflow-graph-preview-card__empty">
-        {{ hasNodeDisplays ? '本次 Preview 没有 http_response 输出，结果已在节点预览中显示。' : '本次 Preview 没有 http_response 输出。' }}
+        {{ hasNodeDisplays ? t('workflowEditor.editor.noHttpResponseWithNodePreview') : t('workflowEditor.editor.noHttpResponse') }}
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useTranslation } from '@/platform/i18n'
+
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { WorkflowJsonObject, WorkflowPreviewRun } from '../types'
+
+const { t } = useTranslation()
 
 defineProps<{
   previewRun: WorkflowPreviewRun

@@ -248,7 +248,9 @@ let pageRequestSerial = 0
 
 const canWriteTasks = computed(() => sessionStore.hasScopes(['tasks:write']))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
-const trainingDeviceOptions = computed(() => buildTrainingDeviceOptions(sessionStore.bootstrap?.devices ?? null))
+const trainingDeviceOptions = computed(() => buildTrainingDeviceOptions(sessionStore.bootstrap?.devices ?? null).map((option) => (
+  option.value === '' ? { ...option, label: t('modelOps.trainingParameters.autoDevice') } : option
+)))
 const conversionTargetOptions = computed(() => {
   if (hasCudaDevice(sessionStore.bootstrap?.devices ?? null)) {
     return baseConversionTargetOptions
@@ -380,6 +382,7 @@ const {
   selectedTaskType,
   resolvedTrainingModelType,
   resolvedTrainingModelScale,
+  translate: (key, params) => t(key, params ?? {}),
 })
 
 watch(trainingDeviceOptions, (options) => {

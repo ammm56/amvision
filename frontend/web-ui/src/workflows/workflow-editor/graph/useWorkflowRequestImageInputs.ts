@@ -1,5 +1,6 @@
 import type { ComputedRef, Ref } from 'vue'
 
+import { translate } from '@/platform/i18n'
 import type { WorkflowBoundaryNodeView } from '../bindings/useWorkflowBoundaryNodes'
 import { createUniquePublicId, type WorkflowBoundaryKind, type WorkflowBoundaryPosition } from '../bindings/useWorkflowPublicBindings'
 import type { WorkflowPortReference } from '../canvas/useWorkflowPortConnections'
@@ -78,12 +79,12 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     const existingBinding = options.appInputBindings.value.find((binding) => binding.binding_id === input.bindingId)
     if (existingBinding) {
       options.selectApplicationBoundary('entry')
-      options.setStatusMessage(`${input.bindingId} 已存在`)
+      options.setStatusMessage(translate('workflowEditor.feedback.bindingAlreadyExists', { id: input.bindingId }))
       return
     }
     const definition = options.nodeDefinitionsById.value.get(input.nodeTypeId)
     if (!definition) {
-      options.setErrorMessage(`节点目录缺少 ${input.nodeTypeId}`)
+      options.setErrorMessage(translate('workflowEditor.feedback.nodeTypeMissing', { nodeType: input.nodeTypeId }))
       return
     }
     const previousBindingIds = new Set(options.applicationBindingsDraft.value.map((binding) => binding.binding_id))
@@ -92,7 +93,7 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     const payloadPort = graphNode.inputs.find((port) => port.name === input.portName) ?? graphNode.inputs[0]
     if (!payloadPort) {
       options.deleteGraphNode(graphNode.node.node_id)
-      options.setErrorMessage(`${definition.display_name} 没有可公开的输入端口`)
+      options.setErrorMessage(translate('workflowEditor.feedback.noExposableInput', { node: definition.display_name }))
       return
     }
     options.exposeNodeInputAsAppInput(graphNode, payloadPort, { required: false })
@@ -107,7 +108,7 @@ export function useWorkflowRequestImageInputs<NodeView extends WorkflowRequestIm
     connectRequestImageFallbackIfReady()
     layoutRequestImageNodes()
     options.selectApplicationBoundary('entry')
-    options.setStatusMessage(`已添加 ${input.bindingId}`)
+    options.setStatusMessage(translate('workflowEditor.feedback.bindingAdded', { id: input.bindingId }))
     options.setErrorMessage(null)
   }
 

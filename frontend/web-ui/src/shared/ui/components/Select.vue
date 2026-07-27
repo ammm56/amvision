@@ -10,7 +10,7 @@
       @keydown.down.prevent="open = true"
     >
       <span class="ui-select__value" :class="{ 'is-placeholder': !selectedOption }">
-        {{ selectedOption?.label ?? placeholder }}
+        {{ selectedOption?.label ?? resolvedPlaceholder }}
       </span>
       <ChevronDown :size="16" />
     </button>
@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ChevronDown } from '@lucide/vue'
+import { useTranslation } from '@/platform/i18n'
 
 type SelectValue = string | number | boolean | null
 
@@ -53,11 +54,12 @@ const props = withDefaults(
     disabled?: boolean
   }>(),
   {
-    placeholder: '请选择',
+    placeholder: '',
     disabled: false,
   },
 )
 
+const { t } = useTranslation()
 const emit = defineEmits<{
   'update:modelValue': [value: SelectValue]
   change: [value: SelectValue]
@@ -67,6 +69,7 @@ const rootElement = ref<HTMLElement | null>(null)
 const open = ref(false)
 
 const selectedOption = computed(() => props.options.find((option) => Object.is(option.value, props.modelValue)) ?? null)
+const resolvedPlaceholder = computed(() => props.placeholder || t('common.selectPlaceholder'))
 
 function optionKey(value: SelectValue): string {
   return `${typeof value}:${String(value)}`

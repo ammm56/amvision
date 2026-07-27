@@ -127,7 +127,7 @@
             @click="projectStore.selectProject(project.project_id)"
           >
             <td>
-              <strong>{{ project.display_name || project.project_id }}</strong>
+              <strong>{{ readProjectDisplayName(project) }}</strong>
               <span>{{ project.project_id }}</span>
             </td>
             <td>
@@ -156,6 +156,7 @@ import { useI18n } from 'vue-i18n'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
+import type { ProjectCatalogItem } from '@/shared/contracts'
 import {
   downloadSdkConfigPackage,
   previewSdkConfigPackage,
@@ -188,6 +189,17 @@ const canBootstrapProject = computed(() =>
 const defaultProjectExists = computed(() =>
   projectStore.projects.some((project) => project.project_id === defaultProjectId),
 )
+
+function readProjectDisplayName(project: ProjectCatalogItem): string {
+  const displayName = project.display_name || project.project_id
+  if (
+    project.project_id === defaultProjectId
+    && ['默认项目', 'Default Project', '既定プロジェクト', '기본 프로젝트'].includes(displayName)
+  ) {
+    return t('projects.defaultDisplayName')
+  }
+  return displayName
+}
 
 onMounted(() => {
   if (projectStore.projects.length === 0 || projectStore.projects.some((project) => !project.summary)) {

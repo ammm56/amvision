@@ -170,6 +170,7 @@ onMounted(() => {
 
 .dataset-version-picker__search:focus-within {
   border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .dataset-version-picker__search input {
@@ -179,6 +180,12 @@ onMounted(() => {
   outline: 0;
   color: var(--input-text);
   background: transparent;
+}
+
+.dataset-version-picker__search
+  input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .dataset-version-picker__empty {
